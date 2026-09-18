@@ -65,9 +65,18 @@ class TestRandomMixUpV2(BaseTester):
             rtol, atol = 1e-4, 1e-4
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[:, 0], label)
-        self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        self.assert_close(out_label[:, 2], lam, rtol=rtol, atol=atol)
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(out_label[:, 0], label.to(label_dtype))
+        self.assert_close(
+            out_label[:, 1],
+            torch.tensor([0, 1], device=device, dtype=label_dtype),
+        )
+        self.assert_close(
+            out_label[:, 2],
+            lam.to(label_dtype),
+            rtol=rtol,
+            atol=atol,
+        )
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(0)
@@ -84,7 +93,13 @@ class TestRandomMixUpV2(BaseTester):
         out_image, out_label = f(input, label)
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(
+            out_label[:, 2],
+            lam.to(label_dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
 
     def test_random_mixup_lam0(self, device, dtype):
         torch.manual_seed(0)
@@ -101,9 +116,18 @@ class TestRandomMixUpV2(BaseTester):
         out_image, out_label = f(input, label)
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[:, 0], label)
-        self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(out_label[:, 0], label.to(label_dtype))
+        self.assert_close(
+            out_label[:, 1],
+            torch.tensor([0, 1], device=device, dtype=label_dtype),
+        )
+        self.assert_close(
+            out_label[:, 2],
+            lam.to(label_dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -124,9 +148,31 @@ class TestRandomMixUpV2(BaseTester):
 
         out_image, out_label = f(input, label)
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[:, 0], label)
-        self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(out_label[:, 0], label.to(label_dtype))
+        self.assert_close(
+            out_label[:, 1],
+            torch.tensor([0, 1], device=device, dtype=label_dtype),
+        )
+        self.assert_close(
+            out_label[:, 2],
+            lam.to(label_dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
+    @pytest.mark.parametrize("image_dtype", [torch.bfloat16, torch.float16])
+    def test_class_labels_preserve_precision(self, image_dtype, device):
+        image = torch.rand(4, 1, 8, 8, device=device, dtype=image_dtype)
+        labels = torch.tensor([257, 999, 2049, 4097], device=device)
+
+        aug = RandomMixUpV2(p=1.0, data_keys=["input", "class"])
+        _, output_labels = aug(image, labels)
+
+        self.assert_close(
+            output_labels[:, 0],
+            labels.to(torch.float32),
+        )
 
     @pytest.mark.parametrize("p", [0.0, 0.5])
     def test_partial_batch_passthrough(self, p, device, dtype):
@@ -171,9 +217,13 @@ class TestRandomCutMixV2(BaseTester):
         out_image, out_label = f(input, label)
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[0, :, 0], label)
-        self.assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        self.assert_close(out_label[0, :, 2], torch.tensor([0.5, 0.5], device=device, dtype=dtype))
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(out_label[0, :, 0], label.to(label_dtype))
+        self.assert_close(
+            out_label[0, :, 1],
+            torch.tensor([0, 1], device=device, dtype=label_dtype),
+        )
+        self.assert_close(out_label[0, :, 2], torch.tensor([0.5, 0.5], device=device, dtype=label_dtype))
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(76)
@@ -185,7 +235,8 @@ class TestRandomCutMixV2(BaseTester):
         label = torch.tensor([1, 0], device=device)
 
         expected = input.clone()
-        exp_label = torch.tensor([[[1, 1, 0], [0, 0, 0]]], device=device, dtype=dtype)
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        exp_label = torch.tensor([[[1, 1, 0], [0, 0, 0]]], device=device, dtype=label_dtype)
 
         out_image, out_label = f(input, label)
 
@@ -215,12 +266,16 @@ class TestRandomCutMixV2(BaseTester):
         out_image, out_label = f(input, label)
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[0, :, 0], label)
-        self.assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(out_label[0, :, 0], label.to(label_dtype))
+        self.assert_close(
+            out_label[0, :, 1],
+            torch.tensor([0, 1], device=device, dtype=label_dtype),
+        )
         # cut area = 4 / 12, but with use_correct_lambda=True the lambda calculation is different
         self.assert_close(
             out_label[0, :, 2],
-            torch.tensor([0.66667, 0.66667], device=device, dtype=dtype),
+            torch.tensor([0.66667, 0.66667], device=device, dtype=label_dtype),
             rtol=1e-4,
             atol=1e-4,
         )
@@ -246,9 +301,15 @@ class TestRandomCutMixV2(BaseTester):
         out_image, out_label = f(input, label)
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[:, :, 0], label.view(1, -1).expand(5, 2))
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(out_label[:, :, 0], label.view(1, -1).expand(5, 2).to(label_dtype))
         self.assert_close(
-            out_label[:, :, 1], torch.tensor([[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]], device=device, dtype=dtype)
+            out_label[:, :, 1],
+            torch.tensor(
+                [[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]],
+                device=device,
+                dtype=label_dtype,
+            ),
         )
         # Updated expected values for use_correct_lambda=True
         self.assert_close(
@@ -256,7 +317,7 @@ class TestRandomCutMixV2(BaseTester):
             torch.tensor(
                 [[0.9167, 0.6667], [1.0, 0.8333], [0.5, 0.9167], [0.9167, 1.0], [0.5, 0.6667]],
                 device=device,
-                dtype=dtype,
+                dtype=torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype,
             ),
             rtol=1e-4,
             atol=1e-4,
@@ -283,10 +344,27 @@ class TestRandomCutMixV2(BaseTester):
         out_image, out_label = f(input, label)
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[0, :, 0], label)
-        self.assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(out_label[0, :, 0], label.to(label_dtype))
         self.assert_close(
-            out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=dtype), rtol=1e-4, atol=1e-4
+            out_label[0, :, 1],
+            torch.tensor([0, 1], device=device, dtype=label_dtype),
+        )
+        self.assert_close(
+            out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=label_dtype), rtol=1e-4, atol=1e-4
+        )
+
+    @pytest.mark.parametrize("image_dtype", [torch.bfloat16, torch.float16])
+    def test_class_labels_preserve_precision(self, image_dtype, device):
+        image = torch.rand(4, 1, 8, 8, device=device, dtype=image_dtype)
+        labels = torch.tensor([257, 999, 2049, 4097], device=device)
+
+        aug = RandomCutMixV2(p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
+        _, output_labels = aug(image, labels)
+
+        self.assert_close(
+            output_labels[0, :, 0],
+            labels.to(torch.float32),
         )
 
     @pytest.mark.parametrize("p", [0.0, 0.5])
