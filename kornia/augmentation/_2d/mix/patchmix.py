@@ -47,9 +47,10 @@ class PatchMix(MixAugmentationBaseV2):
             or broadcast it to the batch form ``False``.
 
     Convention:
-        - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``: a larger
-          value, including the default ``16`` on a smaller image, draws negative coordinates and copies an arbitrary
-          smaller rectangle without raising
+        - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``. A larger
+          value is not rejected: the patch is truncated at the image border, and once it exceeds a side by more than
+          one pixel, as the default ``16`` does on a smaller image, negative coordinates are drawn and an arbitrary
+          smaller rectangle is copied
           (`#4650 <https://github.com/kornia/kornia/issues/4650>`_).
           Each output sample copies that rectangle
           from its paired input at the same sampled top-left coordinate; the output image retains its input shape.
