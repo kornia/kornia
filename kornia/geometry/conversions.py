@@ -610,19 +610,13 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
           degenerate inputs listed on
           :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
 
-    .. warning::
-        ``eps`` is added *inside* the square root that produces the dominant
-        component, so with the default the result is not a unit quaternion. In
-        ``float64``, ``rotation_matrix_to_quaternion(torch.eye(3))`` returns
-        ``[1.0000000012499999, 0., 0., 0.]`` (``||q|| - 1`` is ``1.25e-09``),
-        while ``eps=0.0`` returns exactly ``[1., 0., 0., 0.]``. The inflation is
-        below one ulp of 1.0 in ``float32``, ``float16`` and ``bfloat16``, where
-        the identity already comes back exactly unit. Tracked in
-        `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
-
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
-        eps: added inside the square root of the dominant component; see the warning above.
+        eps: lower bound the square root radicands are clamped to, so a slightly
+            non-orthogonal input does not produce NaN. A dtype whose resolution
+            swallows ``eps`` gets a floor of zero instead — ``1e-8`` flushes to
+            ``0.0`` in ``float16`` — so pass a larger ``eps`` there. The
+            divisions are separately guarded against a zero denominator.
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -631,7 +625,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         >>> input = torch.tensor([[1., 0., 0.],
         ...                       [0., 1., 0.],
         ...                       [0., 0., 1.]])
-        >>> rotation_matrix_to_quaternion(input, eps=torch.finfo(input.dtype).eps)
+        >>> rotation_matrix_to_quaternion(input)
         tensor([1., 0., 0., 0.])
 
     """
@@ -652,7 +646,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
     trace: torch.Tensor = m00 + m11 + m22
 
     def trace_positive_cond() -> torch.Tensor:
-        sq = torch.sqrt(trace + 1.0 + eps) * 2.0  # sq = 4 * qw.
+        sq = torch.sqrt((trace + 1.0).clamp(min=eps)) * 2.0  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
@@ -660,7 +654,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_1() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
+        sq = torch.sqrt((1.0 + m00 - m11 - m22).clamp(min=eps)) * 2.0  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
         qy = safe_zero_division(m01 + m10, sq)
@@ -668,7 +662,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_2() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
+        sq = torch.sqrt((1.0 + m11 - m00 - m22).clamp(min=eps)) * 2.0  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
         qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
@@ -676,7 +670,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_3() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
+        sq = torch.sqrt((1.0 + m22 - m00 - m11).clamp(min=eps)) * 2.0  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
         qx = safe_zero_division(m02 + m20, sq)
         qy = safe_zero_division(m12 + m21, sq)
@@ -3263,20 +3257,6 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` and
           :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_Rt`.
           Tracked in `#3962 <https://github.com/kornia/kornia/issues/3962>`_
-
-    .. warning::
-        The output quaternion is not exactly unit in ``float64``: the identity
-        input ``[1., 0., 0., 0.]`` with ``t = (1, 1, 1)`` returns
-        ``[0., 1.0000000012499999, 0., 0.]``, so ``|q| - 1`` is
-        ``1.2499998813808588e-09`` (torch 2.9.1, cpu), where ``float32`` returns
-        an exactly unit ``[0., 1., 0., 0.]``. The ``[0, 1, 0, 0]`` shape is
-        correct and not a component shift — for an identity input the composed
-        rotation is ``diag(1, -1, -1)``, a half turn about ``x``. Only the
-        magnitude is wrong; it is inherited from
-        :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`.
-        Colmap consumers that validate ``QW QX QY QZ`` as a unit quaternion will
-        see it. Tracked in
-        `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
 
     .. warning::
         The all-zero quaternion is never rejected. At every floating dtype, the
