@@ -23,7 +23,9 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import is_compiling
 from kornia.enhance import equalize_clahe
+from kornia.enhance.equalization import _equalize_clahe
 
 
 class RandomClahe(IntensityAugmentationBase2D):
@@ -63,10 +65,11 @@ class RandomClahe(IntensityAugmentationBase2D):
           leaves the gather unchecked and returns an in-range image as if the input had been valid.
 
     Convention:
-        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. When every
-          draw is equal -- which ``same_on_batch=True`` guarantees, and an unlucky batch can produce on
+        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. In eager mode,
+          when every draw is equal -- which ``same_on_batch=True`` guarantees, and an unlucky batch can produce on
           its own -- the batch takes a single :func:`kornia.enhance.equalize_clahe` call instead of one
-          per image; the result is the same either way.
+          per image; the result is the same either way. Compiled execution batches the per-image limits
+          as tensors, so newly sampled limits reuse the same graph.
 
     .. warning::
         ``grid_size`` is unvalidated past its positivity check. Its two
@@ -126,6 +129,8 @@ class RandomClahe(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         clip_limits = params["clip_limit_factor"]
+        if is_compiling():
+            return _equalize_clahe(input, clip_limits, flags["grid_size"], flags["slow_and_differentiable"])
         if bool(torch.all(clip_limits == clip_limits[0])):
             return equalize_clahe(input, float(clip_limits[0]), flags["grid_size"], flags["slow_and_differentiable"])
 

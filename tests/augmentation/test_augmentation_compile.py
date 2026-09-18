@@ -193,3 +193,83 @@ class TestAugmentationCompile(BaseTester):
 
         input = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         self.assert_close(InheritedFlip()(input), input + 1)
+
+
+class TestRandomCropCompile(BaseTester):
+    @pytest.mark.parametrize("padding_mode", ["constant", "reflect", "replicate"])
+    def test_compile_crop_replay(self, device, dtype, torch_optimizer, padding_mode):
+        aug = K.RandomCrop((5, 7), padding=(2, 1, 3, 2), padding_mode=padding_mode)
+        input = torch.rand(2, 3, 12, 15, device=device, dtype=dtype, requires_grad=True)
+        counter = CompileCounter()
+        fn = torch_optimizer(aug, backend=counter)
+        for offset in range(10):
+            params = aug.forward_parameters(input.shape)
+            params["src"] = torch.tensor(
+                [
+                    [[offset, 0], [offset + 6, 0], [offset + 6, 4], [offset, 4]],
+                    [[1, 2], [3, 2], [3, 5], [1, 5]],
+                ],
+                device=device,
+                dtype=dtype,
+            )
+            expected = aug(input, params=params)
+            actual = fn(input, params=params)
+            self.assert_close(actual, expected)
+            weights = torch.rand_like(actual)
+            self.assert_close(
+                torch.autograd.grad(actual, input, weights)[0], torch.autograd.grad(expected, input, weights)[0]
+            )
+            if offset == 1:
+                frames = counter.frame_count
+        assert counter.frame_count == frames
+
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_compile_crop_random(self, device, dtype, torch_optimizer, same_on_batch):
+        aug = K.RandomCrop((32, 32), same_on_batch=same_on_batch)
+        input = torch.rand(32, 3, 64, 64, device=device, dtype=dtype)
+        counter = CompileCounter()
+        fn = torch_optimizer(aug, backend=counter)
+        outputs = []
+        for i in range(40):
+            outputs.append(fn(input))
+            if i == 1:
+                frames = counter.frame_count
+        assert all(output.shape == (32, 3, 32, 32) for output in outputs)
+        assert any(not torch.equal(outputs[0], output) for output in outputs[1:])
+        assert counter.frame_count == frames
+
+    @pytest.mark.parametrize("size,pad_if_needed", [((7, 9), False), ((19, 23), False), ((19, 23), True)])
+    def test_compile_crop_backend(self, device, dtype, torch_optimizer, size, pad_if_needed):
+        aug = K.RandomCrop(size, pad_if_needed=pad_if_needed, padding=1)
+        input = torch.rand(2, 3, 12, 15, device=device, dtype=dtype, requires_grad=True)
+        fn = torch_optimizer(aug)
+        for _ in range(3):
+            params = aug.forward_parameters(input.shape)
+            expected = aug(input, params=params)
+            actual = fn(input, params=params)
+            self.assert_close(actual, expected)
+            weights = torch.rand_like(actual)
+            actual_grad = torch.autograd.grad(actual, input, weights)[0]
+            if device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
+                # Compare against opmath accumulation, as for compiled resized crops above.
+                reference = input.detach().float().requires_grad_()
+                expected_grad = torch.autograd.grad(aug(reference, params=params), reference, weights.float())[0].to(
+                    dtype
+                )
+            else:
+                expected_grad = torch.autograd.grad(expected, input, weights)[0]
+            self.assert_close(actual_grad, expected_grad)
+
+    @pytest.mark.parametrize("augmentation", [K.RandomCrop, K.RandomResizedCrop])
+    @pytest.mark.parametrize("nonfinite", [float("nan"), float("inf")])
+    def test_compile_crop_without_resize_nonfinite(self, device, dtype, torch_optimizer, augmentation, nonfinite):
+        aug = augmentation((3, 3))
+        input = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4)
+        input[..., 1, 1] = nonfinite
+        params = aug.forward_parameters(input.shape)
+        params["src"] = torch.tensor([[[0, 0], [2, 0], [2, 2], [0, 2]]], device=device, dtype=dtype)
+        actual = torch_optimizer(aug)(input, params=params)
+        expected = aug(input, params=params)
+        self.assert_close(actual.isnan(), expected.isnan())
+        self.assert_close(actual.isinf(), expected.isinf())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num(), atol=0, rtol=0)
