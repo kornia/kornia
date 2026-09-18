@@ -29,6 +29,11 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   interpret those historical files as measurements at the advertised count.
   When comparing against a revision with the old timer, use one thread in both runs
   or apply the timer correction to the baseline as well.
+- **Sustained CPU warm-up:** call `common.warm_up_cpu()` once after setting the thread count.
+  Hybrid CPUs (performance + efficiency cores) keep lightly loaded threads on efficiency cores
+  until they have carried sustained load, and WSL2 cannot pin them. On an i7-14700K this moved a
+  5x5 oneDNN convolution from 0.56 ms to 0.22 ms while a slice-based filter barely changed, so
+  an unwarmed A/B can pick the wrong implementation. The filters flagship does this.
 - **Checkout provenance:** the filters flagship script imports Kornia from its own checkout
   and prints the source path. Direct script execution must not silently benchmark an
   installed wheel or another editable checkout while recording the current tree's commit.

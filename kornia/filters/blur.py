@@ -30,20 +30,28 @@ from .filter import filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 _HAS_MKLDNN = torch.backends.mkldnn.is_available()
+# From this many elements (e.g. 32 RGB 256x256 images) eager CPU pooling and slice sums
+# overtake oneDNN's depthwise convolution; below it oneDNN wins (i7-14700K, warmed threads).
+_ONEDNN_LARGE_INPUT = 1 << 22
 
 
-def _box_blur_pool_eligible(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> bool:
+def _box_blur_pool_eligible(input: torch.Tensor, kernel_size: tuple[int, int] | int, separable: bool) -> bool:
     """Select average pooling where it beats convolution.
 
-    Pooling wins on CUDA and on CPUs without oneDNN. oneDNN's depthwise convolution
-    beats ATen's CPU pooling for kernels larger than 5, so there pooling is kept for small kernels.
+    Pooling wins on CUDA and on CPUs without oneDNN. With oneDNN, eager pooling only wins
+    on large inputs and compiled pooling only for small windows.
     """
     # Pooling does not participate in autocast in the same way as convolution.
     # Keep the convolution implementation there to preserve the established
     # output dtype and precision contract.
     if not input.is_floating_point() or is_autocast_enabled():
         return False
-    return not (input.device.type == "cpu" and _HAS_MKLDNN and max(_unpack_2d_ks(kernel_size)) > 5)
+    if not (input.device.type == "cpu" and _HAS_MKLDNN):
+        return True
+    size = max(_unpack_2d_ks(kernel_size))
+    if is_compiling():
+        return size <= (5 if separable else 3)
+    return input.numel() >= _ONEDNN_LARGE_INPUT and size <= (15 if separable else 5)
 
 
 def _needs_convolution_for_extreme_cpu_values(input: torch.Tensor, num_terms: int) -> bool:
@@ -120,9 +128,9 @@ def box_blur(
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. Floating inputs use average pooling outside autocast,
-          except for kernels larger than 5 on CPUs with oneDNN; complex inputs and
-          autocast use convolution. The dense implementation
+          for larger kernels. Floating inputs use average pooling outside autocast
+          where it is faster (on CPUs with oneDNN, only for large inputs or small
+          compiled windows); complex inputs and autocast use convolution. The dense implementation
           may differ by floating-point roundoff. Ordinary eager CPU execution
           falls back to convolution for extreme input ranges; captured graphs
           and function transforms retain native pooling arithmetic.
@@ -142,7 +150,7 @@ def box_blur(
     """
     KORNIA_CHECK_IS_TENSOR(input)
 
-    if _box_blur_pool_eligible(input, kernel_size):
+    if _box_blur_pool_eligible(input, kernel_size, separable):
         ky, kx = _unpack_2d_ks(kernel_size)
         num_terms = max(ky, kx) if separable else ky * kx
         if not _needs_convolution_for_extreme_cpu_values(input, num_terms):
@@ -180,9 +188,9 @@ class BoxBlur(nn.Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. Floating inputs use average pooling outside autocast,
-          except for kernels larger than 5 on CPUs with oneDNN; complex inputs and
-          autocast use convolution. The dense implementation
+          for larger kernels. Floating inputs use average pooling outside autocast
+          where it is faster (on CPUs with oneDNN, only for large inputs or small
+          compiled windows); complex inputs and autocast use convolution. The dense implementation
           may differ by floating-point roundoff. Ordinary eager CPU execution
           falls back to convolution for extreme input ranges; captured graphs
           and function transforms retain native pooling arithmetic.

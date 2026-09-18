@@ -21,6 +21,7 @@ import argparse
 import importlib.util
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +46,13 @@ def _load_filter_flagship():
     finally:
         sys.path.remove(benchmark_dir)
     return module
+
+
+@pytest.mark.device_agnostic
+def test_warm_up_cpu_is_bounded():
+    start = time.perf_counter()
+    common.warm_up_cpu(0.05)
+    assert time.perf_counter() - start < 2.0
 
 
 @pytest.mark.device_agnostic

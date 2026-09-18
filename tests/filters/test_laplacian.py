@@ -84,8 +84,11 @@ class TestLaplacian(BaseTester):
         expected = filter2d(data, kernel, border_type)
         self.assert_close(laplacian(data, kernel_size, border_type, normalized), expected)
 
-    def test_slices_dispatch(self, monkeypatch, device, dtype):
-        # CPU uses slices with or without oneDNN; eager CUDA keeps cuDNN's convolution.
+    @pytest.mark.parametrize("has_mkldnn", [False, True])
+    @pytest.mark.parametrize("shape", [(1, 2, 9, 10), (1, 4, 1024, 1024)])
+    def test_slices_dispatch(self, monkeypatch, has_mkldnn, shape, device, dtype):
+        # CPU uses slices except on large inputs with oneDNN; eager CUDA keeps cuDNN's convolution.
+        monkeypatch.setattr(laplacian_module, "_HAS_MKLDNN", has_mkldnn)
         conv = laplacian_module.filter2d
         calls = 0
 
@@ -95,8 +98,10 @@ class TestLaplacian(BaseTester):
             return conv(*args, **kwargs)
 
         monkeypatch.setattr(laplacian_module, "filter2d", counted_conv)
-        laplacian(torch.rand(1, 2, 9, 10, device=device, dtype=dtype), 5)
-        uses_slices = device.type == "cpu" and dtype in (torch.float32, torch.float64)
+        data = torch.rand(shape, device=device, dtype=dtype)
+        laplacian(data, 5)
+        small = not has_mkldnn or data.numel() < 1 << 22
+        uses_slices = device.type == "cpu" and dtype in (torch.float32, torch.float64) and small
         assert calls == int(not uses_slices)
 
     @pytest.mark.parametrize("value", ["large", "inf", "nan"])

@@ -115,6 +115,7 @@ from common import (
     run_metadata,
     save_json,
     versions_line,
+    warm_up_cpu,
 )
 
 import kornia.filters as KF
@@ -476,6 +477,7 @@ def main() -> None:
     skip_compile = frozenset(s.strip() for s in args.skip_compile_ops.split(",") if s.strip())
 
     torch.set_num_threads(args.threads)
+    warm_up_cpu()
     torch.manual_seed(0)
     device = torch.device(args.device)
     dtype = getattr(torch, args.dtype)

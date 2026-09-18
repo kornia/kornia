@@ -138,8 +138,9 @@ class TestBoxBlur(BaseTester):
     @pytest.mark.parametrize("has_mkldnn", [False, True])
     @pytest.mark.parametrize("kernel_size", [5, (3, 7), 9])
     @pytest.mark.parametrize("separable", [False, True])
-    def test_pooling_dispatch(self, monkeypatch, has_mkldnn, kernel_size, separable, device, dtype):
-        # oneDNN's CPU convolution beats pooling for kernels larger than 5.
+    @pytest.mark.parametrize("shape", [(1, 2, 12, 13), (1, 4, 1024, 1024)])
+    def test_pooling_dispatch(self, monkeypatch, has_mkldnn, kernel_size, separable, shape, device, dtype):
+        # Eager oneDNN convolution beats CPU pooling except on large inputs with moderate windows.
         monkeypatch.setattr(blur_module, "_HAS_MKLDNN", has_mkldnn)
         pool = blur_module._box_blur_pool
         calls = 0
@@ -150,12 +151,13 @@ class TestBoxBlur(BaseTester):
             return pool(*args, **kwargs)
 
         monkeypatch.setattr(blur_module, "_box_blur_pool", counted_pool)
-        data = torch.rand(1, 2, 12, 13, device=device, dtype=dtype)
+        data = torch.rand(shape, device=device, dtype=dtype)
         actual = box_blur(data, kernel_size, separable=separable)
         expected = filter2d(data, get_box_kernel2d(kernel_size, device=device, dtype=dtype))
         self.assert_close(actual, expected)
-        large = max(kernel_size) if isinstance(kernel_size, tuple) else kernel_size
-        assert calls == int(not (device.type == "cpu" and has_mkldnn and large > 5))
+        size = max(kernel_size) if isinstance(kernel_size, tuple) else kernel_size
+        onednn_pools = data.numel() >= 1 << 22 and size <= (15 if separable else 5)
+        assert calls == int(not (device.type == "cpu" and has_mkldnn) or onednn_pools)
 
     def test_separable_empty_batch(self, device, dtype):
         data = torch.empty(0, 3, 8, 9, device=device, dtype=dtype)

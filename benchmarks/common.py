@@ -34,6 +34,7 @@ import platform
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,21 @@ from typing import Any, Callable, Optional
 
 import torch
 import torch.utils.benchmark as bench
+
+
+def warm_up_cpu(seconds: float = 3.0) -> None:
+    """Keep PyTorch's intra-op thread pool under sustained load before any timing.
+
+    Hybrid CPUs schedule lightly loaded threads on efficiency cores and move them to performance
+    cores only after sustained load; under WSL2 the guest cannot pin them. On an i7-14700K a 5x5
+    oneDNN convolution measured 0.56 ms before and 0.22 ms after this warm-up, while a lighter
+    implementation of the same filter was barely affected, so an unwarmed run can reverse A/B
+    conclusions. ``blocked_autorange``'s own short warmup does not reach that state.
+    """
+    a = torch.rand(1024, 1024)
+    end = time.perf_counter() + seconds
+    while time.perf_counter() < end:
+        a @ a
 
 
 def time_us(
