@@ -195,17 +195,16 @@ class TestCoarseMatching(BaseTester):
 
 
 class TestFineMatching(BaseTester):
-    def test_convention_std_gradient_is_finite_on_a_peaked_heatmap_4229(self, device, dtype):
-        # A heatmap peaked on one cell has zero variance. `std` was sqrt(clamp(var, min=1e-10)): in float16 the
-        # floor is 0, and torch < 2.14 passes clamp's gradient through at the bound, so sqrt'(0) = inf reached
-        # the features as nan. torch 2.14 zeroes clamp's gradient at the bound, so on 2.14 this passes on the
-        # old code too; the torch 2.5.1 / 2.9.1 legs are the ones that discriminate.
+    @staticmethod
+    def _run(device, dtype, peaked):
+        """Run FineMatching on a peaked or a uniform heatmap; return `std` and the input it flows back to."""
         M, W, C = 4, 5, 8
-        center = W * W // 2
         feat_f0 = torch.zeros(M, W * W, C, device=device, dtype=dtype)
         feat_f1 = torch.zeros(M, W * W, C, device=device, dtype=dtype)
-        feat_f0[:, center, 0] = 30.0
-        feat_f1[:, center, 0] = 30.0
+        if peaked:
+            # One dominant cell, so the softmax is a spike and the variance of both coordinates is zero.
+            feat_f0[:, W * W // 2, 0] = 30.0
+            feat_f1[:, W * W // 2, 0] = 30.0
         feat_f1.requires_grad_(True)
         data = {
             "hw0_i": (40, 40),
@@ -216,8 +215,29 @@ class TestFineMatching(BaseTester):
             "b_ids": torch.zeros(M, dtype=torch.long, device=device),
         }
         FineMatching()(feat_f0, feat_f1, data)
-        std = data["expec_f"][:, 2]
+        return data["expec_f"][:, 2], feat_f1
+
+    def test_regression_std_gradient_is_finite_on_a_peaked_heatmap_4229(self, device, dtype):
+        # A heatmap peaked on one cell has zero variance. `std` was sqrt(clamp(var, min=1e-10)): in float16 the
+        # floor is 0, and torch < 2.14 passes clamp's gradient through at the bound, so sqrt'(0) = inf reached
+        # the features as nan. torch 2.14 zeroes clamp's gradient at the bound, so on 2.14 this passes on the
+        # old code too; the torch 2.5.1 / 2.9.1 legs are the ones that discriminate.
+        std, feat_f1 = self._run(device, dtype, peaked=True)
         std.sum().backward()
         assert bool(torch.isfinite(feat_f1.grad).all()), feat_f1.grad
-        # The value is unchanged: sqrt of the floor as represented in the input dtype.
-        self.assert_close(std, torch.full_like(std, 1e-10).sqrt())
+        # The value is unchanged, and it is `2 * sqrt(floor)`, not `sqrt(floor)`: `std` sums over the two
+        # coordinate axes, so both floored terms land in it. Asserted exactly -- the sum of two identical
+        # terms is their double in every dtype -- because the default tolerance is wider than the quantity
+        # being pinned, and would accept `std == 0`, a dropped `sqrt` and a `1e-12` floor alike.
+        self.assert_close(std, torch.full_like(std, 1e-10).sqrt() * 2, rtol=0.0, atol=0.0)
+
+    def test_std_is_the_real_deviation_above_the_floor(self, device, dtype):
+        # The floor branch is only half the behaviour: nothing else in the repo reads `expec_f` or `std` at
+        # all -- the pretrained tests compare keypoints, which come from `coords_normalized` -- so without
+        # this, forcing the floor branch to be taken always, which corrupts `std` for every real heatmap,
+        # passes the whole file. A uniform heatmap over the normalized grid `linspace(-1, 1, 5)` has
+        # `var = mean(g**2) = 0.5` on each axis, so `std` is `2 * sqrt(0.5)` rather than the floor.
+        std, feat_f1 = self._run(device, dtype, peaked=False)
+        self.assert_close(std, torch.full_like(std, 0.5).sqrt() * 2)
+        std.sum().backward()
+        assert bool(torch.isfinite(feat_f1.grad).all()), feat_f1.grad
