@@ -1277,6 +1277,20 @@ class TestRandomVerticalFlip(BaseTester):
         self.gradcheck(RandomVerticalFlip(p=1.0), (input,))
 
 
+class TestHueAugmentationBlackPixels(BaseTester):
+    @pytest.mark.parametrize("augmentation", [ColorJiggle, ColorJitter])
+    def test_black_pixels(self, device, dtype, augmentation):
+        data = torch.tensor([0.75, 0.5, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).repeat(1, 1, 6, 8)
+        data[..., :2, :3] = 0.0
+        data.requires_grad_()
+
+        result = augmentation(hue=(0.1, 0.1), p=1.0)(data)
+        assert torch.isfinite(result).all()
+        self.assert_close(result[..., :2, :3], torch.zeros_like(result[..., :2, :3]))
+        (gradient,) = torch.autograd.grad(result.sum(), data)
+        assert torch.isfinite(gradient).all()
+
+
 class TestColorJiggle(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.

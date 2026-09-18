@@ -24,6 +24,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.random_generator import RectangleEraseGenerator
+from kornia.color import rgb_to_hsv
 from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import BaseError, ImageError, ShapeError
 from kornia.enhance import (
@@ -235,13 +236,6 @@ class TestIntensityValueRangeConventions(BaseTester):
             # the context for every later test in the process.  On MPS the check is skipped by design
             # and the raw histogram gather raises instead (an AcceleratorError, a RuntimeError subclass).
             pytest.skip("CUDA: the value assert is a device-side assert that invalidates the context")
-        if dtype == torch.float16 and name in ("ColorJiggle", "ColorJitter"):
-            pytest.skip(
-                "float16 only (#4560): the contrast step collapses the [-1, 0] fixture to exact zeros "
-                "and rgb_to_hsv's eps=1e-8 then underflows for a black pixel, so adjust_hue returns "
-                "NaN (adjust_hue(torch.zeros(1, 3, 2, 2, dtype=torch.float16), 0.1) is already NaN); "
-                "float32, float64 and bfloat16 are finite"
-            )
         if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         fixtures = _out_of_range_fixtures(device, dtype)
@@ -395,11 +389,6 @@ class TestIntensityValueRangeConventions(BaseTester):
     # cpu) -- all nine print `min=0 max=0` in both runs.
     @pytest.mark.parametrize("name", _COLLAPSES_ON_NEGATIVE_FIXTURE)
     def test_wart_intensity_negative_input_collapses_to_zero_4430(self, device, dtype, name):
-        if dtype == torch.float16 and name == "ColorJitter":
-            pytest.skip(
-                "float16 only (#4560): the collapsed image reaches adjust_hue, whose rgb_to_hsv gives a "
-                "NaN saturation for a black pixel there (eps=1e-8 underflows in float16)"
-            )
         image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
         assert float(_run(name, image, seed=0).abs().max()) == 0.0
 
@@ -443,15 +432,13 @@ class TestIntensityValueRangeConventions(BaseTester):
         image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
         every, some = [], []
         for name in sorted(_INTENSITY_FACTORIES):
-            if name == "RandomEqualize" or (dtype == torch.float16 and name == "ColorJitter"):
-                continue  # raises out of range; float16 ColorJitter (#4560) is NaN there
+            if name == "RandomEqualize":
+                continue
             if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
                 continue  # torch 2.5.1 has no half reflection_pad2d on the CPU
             zeros = sum(float(_run(name, image, seed=seed).abs().max()) == 0.0 for seed in range(5))
             (every if zeros == 5 else some if zeros else []).append(name)
         expected = set(self._COLLAPSES_ON_CONSTANT_MINUS_ONE)
-        if dtype == torch.float16:
-            expected -= {"ColorJitter"}
         assert set(every) == expected
         assert set(some) <= {"ColorJiggle", "RandomPlasmaContrast"}
         # The two constant-image artefacts do not collapse the non-constant audit fixture on any of 20 seeds.
@@ -845,8 +832,6 @@ class TestIntensityColourConventions(BaseTester):
         ],
     )
     def test_convention_color_jiggle_negative_collapse_depends_on_which_steps_run(self, device, dtype, args, lo, hi):
-        if dtype == torch.float16 and args[3] > 0.0:
-            pytest.skip("float16 only (#4560): the hue step returns NaN for a black pixel")
         torch.manual_seed(_FIXTURE_SEED)
         image = (torch.rand(2, 3, 6, 8) - 1.0).to(device=device, dtype=dtype)
         assert torch.equal(K.ColorJiggle(p=1.0)(image), image)
@@ -959,8 +944,7 @@ class TestIntensityColourConventions(BaseTester):
     # Row 6c-10, the range half: RandomHue has no clamp, and a hue rotation keeps each pixel's largest and
     # smallest channel values, so a pixel outside [0, 1] keeps a channel outside it.  The exception is a
     # pixel whose largest channel is exactly 0, whose HSV saturation divides by that zero: the round trip
-    # returns zeros, and NaN in float16 (the #4560 underflow, which reaches a zero-max pixel that is not
-    # black as well).
+    # returns zeros, in every dtype since the #4560 guard.
     # Snippet used to generate expected:
     #   x = torch.tensor([[1.5, 0.2, 0.3], [0.5, -0.1, 0.2], [-0.2, -0.5, -0.9], [0.0, -0.5, -0.5]])
     #   torch.manual_seed(0); print(K.RandomHue((0.25, 0.25), p=1.0)(x.reshape(4, 3, 1, 1)).reshape(4, 3))
@@ -975,10 +959,8 @@ class TestIntensityColourConventions(BaseTester):
         zero_max = torch.tensor([0.0, -0.5, -0.5], device=device, dtype=dtype).reshape(1, 3, 1, 1)
         torch.manual_seed(_FORWARD_SEED)
         collapsed = K.RandomHue((0.25, 0.25), p=1.0)(zero_max)
-        if dtype == torch.float16:
-            assert bool(collapsed.isnan().any())
-        else:
-            self.assert_close(collapsed, torch.zeros_like(collapsed))
+        # Zeros in every dtype since the #4560 guard; float16 used to be NaN here.
+        self.assert_close(collapsed, torch.zeros_like(collapsed))
 
     # Row 6c-11: RandomGrayscale keeps the channel count and writes the same value into every
     # channel; the default weights are the ITU-R BT.601 luma weights, so a pure red pixel becomes
@@ -1988,38 +1970,52 @@ class TestIntensityColourConventions(BaseTester):
         assert torch.equal(out[far : far + 1], equalize_clahe(image[far : far + 1], float(clip[0]), (2, 2)))
         assert not torch.equal(out[far : far + 1], equalize_clahe(image[far : far + 1], float(clip[far]), (2, 2)))
 
-    # Issue #4560: every class whose path goes through rgb_to_hsv returns NaN for a black pixel in
-    # float16, because the conversion's `eps=1e-8` underflows to 0 there; bfloat16 keeps the exponent
-    # range of float32 and is finite.  Pinned here so the four warnings that cite #4560 have an
-    # executable anchor, and so the skip reasons above stay honest if the NaN ever disappears.
+    # Every class whose path goes through rgb_to_hsv is finite for a black pixel in every dtype,
+    # float16 included (the fix for #4560: the saturation divisor was `max_rgb + eps` with `eps=1e-8`,
+    # which underflows to `0` in float16, so a black pixel divided `0 / 0`).  The guard substitutes a
+    # safe divisor through `torch.where` rather than clamping, so it bounds the derivative too and not
+    # just the value.  Pinned here so the four docstrings that used to cite #4560 have an executable
+    # anchor, and so the skip branches this file used to carry stay deleted.
     # Snippet used to generate expected:
-    #   for dt in (torch.float16, torch.float32, torch.bfloat16):
+    #   for dt in (torch.float16, torch.float32, torch.bfloat16, torch.float64):
     #       print(dt, K.RandomHue((0.1, 0.1), p=1.0)(torch.zeros(1, 3, 4, 4, dtype=dt)).isnan().any())
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `True`, `False`, `False`; the same for
-    # RandomSaturation((1.5, 1.5)), ColorJiggle(0, 0, 0, (0.1, 0.1)) and ColorJitter(0, 0, 0, (0.1, 0.1)).
-    # The pixel (0, -0.5, -0.5) is NaN in float16 through the three hue-step configurations and finite
-    # through the two saturation-only ones (measured on cpu in all four dtypes and on mps float32).
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `False` in every dtype, and the same for
+    # RandomSaturation((1.5, 1.5)), ColorJiggle(0, 0, 0, (0.1, 0.1)), ColorJiggle(0, 0, (1.5, 1.5), 0)
+    # and ColorJitter(0, 0, 0, (0.1, 0.1)), for the black pixel and for (0, -0.5, -0.5) alike.
     @pytest.mark.parametrize(
         "name", ["RandomHue", "RandomSaturation", "ColorJiggle", "ColorJiggleSaturation", "ColorJitter"]
     )
-    def test_wart_hsv_path_black_pixel_is_nan_in_float16_4560(self, device, dtype, name):
+    def test_convention_hsv_path_zero_max_pixel_is_finite_4560(self, device, dtype, name):
         factories = {
             "RandomHue": lambda: K.RandomHue((0.1, 0.1), p=1.0),
             "RandomSaturation": lambda: K.RandomSaturation((1.5, 1.5), p=1.0),
             "ColorJiggle": lambda: K.ColorJiggle(0.0, 0.0, 0.0, (0.1, 0.1), p=1.0),
-            # ColorJiggle's saturation step is adjust_saturation, an HSV round trip too, so the NaN needs
-            # no hue step (ColorJitter's gray-subtraction saturation does not have it).
+            # ColorJiggle's saturation step is adjust_saturation, an HSV round trip too, so it reached the
+            # NaN without a hue step (ColorJitter's gray-subtraction saturation never did).
             "ColorJiggleSaturation": lambda: K.ColorJiggle(0.0, 0.0, (1.5, 1.5), 0.0, p=1.0),
             "ColorJitter": lambda: K.ColorJitter(0.0, 0.0, 0.0, (0.1, 0.1), p=1.0),
         }
-        # A black pixel, and a pixel whose largest channel is 0 without being black: the hue step divides
-        # by that zero maximum too, while the saturation step's NaN needs `max - min` to be 0 as well.
+        # A black pixel, and a pixel whose largest channel is 0 without being black: the hue step divided
+        # by that zero maximum too, while the saturation step's NaN also needed `max - min` to be 0.
         pixels = torch.tensor([[0.0, 0.0, 0.0], [0.0, -0.5, -0.5]], device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = factories[name]()(pixels.T.reshape(1, 3, 1, 2))
-        half = dtype == torch.float16
-        hue_path = name not in ("RandomSaturation", "ColorJiggleSaturation")
-        assert out.isnan().any(1)[0, 0].tolist() == [half, half and hue_path]
+        assert bool(out.isfinite().all()), (name, dtype, out.tolist())
+
+    # The guard is a `torch.where` and not a clamp, so the BACKWARD pass is finite too.  A clamp would
+    # bound the value while leaving the unbounded derivative to reach the backward pass -- the trap
+    # AGENTS.md documents under #4229 -- and nothing in the forward pins above would notice.
+    # Snippet used to generate expected:
+    #   for dt in (torch.float16, torch.float32):
+    #       x = torch.zeros(1, 3, 2, 2, dtype=dt, requires_grad=True)
+    #       rgb_to_hsv(x).sum().backward(); print(dt, x.grad.isfinite().all())
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `True` for both.
+    @pytest.mark.device_agnostic
+    def test_convention_rgb_to_hsv_black_pixel_gradient_is_finite_4560(self):
+        for torch_dtype in (torch.float16, torch.float32, torch.float64):
+            image = torch.zeros(1, 3, 2, 2, dtype=torch_dtype, requires_grad=True)
+            rgb_to_hsv(image).sum().backward()
+            assert bool(image.grad.isfinite().all()), torch_dtype
 
     # Row 6c-46: an unbatched (C, H, W) input is promoted to (1, C, H, W), and `keepdim=True`
     # returns the unbatched shape again.  Checked across four classes of the sub-batch so the claim
