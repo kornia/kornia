@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import importlib
+
 import pytest
 import torch
 
@@ -22,6 +24,8 @@ from kornia.filters import MedianBlur, median_blur
 from kornia.filters.kernels import get_binary_kernel2d
 
 from testing.base import BaseTester
+
+median_module = importlib.import_module("kornia.filters.median")
 
 
 class TestMedianBlur(BaseTester):
@@ -132,6 +136,24 @@ class TestMedianBlur(BaseTester):
         actual = median_blur(inp, kernel_size)
         self.assert_close(actual.isnan(), expected.isnan())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    @pytest.mark.parametrize("shape", [(1, 2, 7, 9), (1, 4, 512, 512)])
+    def test_selection_dispatch(self, monkeypatch, kernel_size, shape, device, dtype):
+        # CPU always selects; eager CUDA only for 3x3 on inputs large enough to hide launches.
+        network = median_module._median_blur_network
+        calls = 0
+
+        def counted_network(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return network(*args, **kwargs)
+
+        monkeypatch.setattr(median_module, "_median_blur_network", counted_network)
+        data = torch.rand(shape, device=device, dtype=dtype)
+        median_blur(data, kernel_size)
+        expected = device.type == "cpu" or (device.type == "cuda" and kernel_size == 3 and data.numel() >= 1 << 20)
+        assert calls == int(expected)
 
     @pytest.mark.parametrize("kernel_size", [3, 5])
     def test_tied_gradients_unchanged(self, kernel_size, device, dtype):

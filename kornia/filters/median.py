@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 
 from .kernels import _unpack_2d_ks, get_binary_kernel2d
 
@@ -118,12 +118,15 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     ky, kx = _unpack_2d_ks(kernel_size)
-    # ATen's per-pixel median reduction dominates CPU inference for small
-    # windows. A fixed selection network avoids it. Keep the original path for
-    # autograd (in particular its tie indices) and other devices/sizes.
+    # ATen's per-pixel median reduction dominates inference for small windows.
+    # A fixed selection network avoids it. Inductor fuses the network into one
+    # CUDA kernel; eager CUDA launches one kernel per comparator, which only pays
+    # off for 3x3 windows on large inputs. Keep the original path for autograd
+    # (in particular its tie indices) and other devices/sizes.
+    on_cuda = input.device.type == "cuda" and (is_compiling() or (ky == 3 and input.numel() >= 1 << 20))
     if (
-        input.device.type == "cpu"
-        and not torch.is_autocast_enabled("cpu")
+        (input.device.type == "cpu" or on_cuda)
+        and not is_autocast_enabled()
         and input.shape[1] != 0
         and input.is_floating_point()
         and not input.requires_grad

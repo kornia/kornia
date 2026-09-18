@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import importlib
+
 import pytest
 import torch
 
@@ -22,6 +24,8 @@ from kornia.filters import BoxBlur, box_blur, filter2d, filter2d_separable
 from kornia.filters.kernels import get_box_kernel1d, get_box_kernel2d
 
 from testing.base import BaseTester
+
+blur_module = importlib.import_module("kornia.filters.blur")
 
 
 class TestBoxBlur(BaseTester):
@@ -99,6 +103,28 @@ class TestBoxBlur(BaseTester):
 
         self.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
         self.assert_close(BoxBlur((3, 5), separable=separable)(data), expected, rtol=1e-5, atol=1e-6)
+
+    @pytest.mark.parametrize("has_mkldnn", [False, True])
+    @pytest.mark.parametrize("kernel_size", [5, (3, 7), 9])
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_pooling_dispatch(self, monkeypatch, has_mkldnn, kernel_size, separable, device, dtype):
+        # oneDNN's CPU convolution beats pooling for kernels larger than 5.
+        monkeypatch.setattr(blur_module, "_HAS_MKLDNN", has_mkldnn)
+        pool = blur_module._box_blur_pool
+        calls = 0
+
+        def counted_pool(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return pool(*args, **kwargs)
+
+        monkeypatch.setattr(blur_module, "_box_blur_pool", counted_pool)
+        data = torch.rand(1, 2, 12, 13, device=device, dtype=dtype)
+        actual = box_blur(data, kernel_size, separable=separable)
+        expected = filter2d(data, get_box_kernel2d(kernel_size, device=device, dtype=dtype))
+        self.assert_close(actual, expected)
+        large = max(kernel_size) if isinstance(kernel_size, tuple) else kernel_size
+        assert calls == int(not (device.type == "cpu" and has_mkldnn and large > 5))
 
     def test_separable_empty_batch(self, device, dtype):
         data = torch.empty(0, 3, 8, 9, device=device, dtype=dtype)

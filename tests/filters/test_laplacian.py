@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import importlib
+
 import pytest
 import torch
 
@@ -22,6 +24,8 @@ from kornia.filters import Laplacian, filter2d, get_laplacian_kernel1d, get_lapl
 from kornia.filters.kernels import normalize_kernel2d
 
 from testing.base import BaseTester, assert_close
+
+laplacian_module = importlib.import_module("kornia.filters.laplacian")
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
@@ -79,6 +83,21 @@ class TestLaplacian(BaseTester):
 
         expected = filter2d(data, kernel, border_type)
         self.assert_close(laplacian(data, kernel_size, border_type, normalized), expected)
+
+    def test_slices_dispatch(self, monkeypatch, device, dtype):
+        # CPU uses slices with or without oneDNN; eager CUDA keeps cuDNN's convolution.
+        conv = laplacian_module.filter2d
+        calls = 0
+
+        def counted_conv(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return conv(*args, **kwargs)
+
+        monkeypatch.setattr(laplacian_module, "filter2d", counted_conv)
+        laplacian(torch.rand(1, 2, 9, 10, device=device, dtype=dtype), 5)
+        uses_slices = device.type == "cpu" and dtype in (torch.float32, torch.float64)
+        assert calls == int(not uses_slices)
 
     @pytest.mark.parametrize("normalized", [True, False])
     def test_kernel_size_one(self, normalized, device, dtype):

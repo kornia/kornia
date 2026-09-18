@@ -36,15 +36,19 @@ _HAS_MKLDNN = torch.backends.mkldnn.is_available()
 
 
 def _gaussian_blur2d_cpu_eligible(input: torch.Tensor) -> bool:
-    """Select large native-precision images without an accelerated CPU convolution backend."""
-    # Preserve convolution's autocast and legacy tracing behaviour, and leave oneDNN's
-    # optimized CPU kernels alone. Small images are faster in one convolution;
-    # convolution also avoids a long chain of slice-backward operations.
+    """Select large native-precision images where weighted slices beat convolution."""
+    # Preserve convolution's autocast and legacy tracing behaviour. Small images are faster
+    # in one convolution; convolution also avoids a long chain of slice-backward operations.
+    # Eager slices beat oneDNN too, but Inductor compiles oneDNN's convolution better than
+    # the slices. On CUDA only Inductor's fused slices beat cuDNN; eager slices are slower.
+    if input.device.type == "cpu":
+        device_ok = not (_HAS_MKLDNN and is_compiling())
+    else:
+        device_ok = input.device.type == "cuda" and is_compiling()
     return (
-        not torch.jit.is_tracing()
-        and input.device.type == "cpu"
+        device_ok
+        and not torch.jit.is_tracing()
         and input.dtype in (torch.float32, torch.float64)
-        and not _HAS_MKLDNN
         and not is_autocast_enabled()
         and not (torch.is_grad_enabled() and input.requires_grad)
         and input.is_contiguous()

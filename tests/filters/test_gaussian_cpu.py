@@ -38,8 +38,8 @@ def _require_native_cpu(device: torch.device, dtype: torch.dtype) -> None:
 
 
 def _use_native_cpu_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The production guard deliberately leaves oneDNN convolutions alone. Force
-    # its unavailable branch so this suite exercises the native fallback on CI.
+    # With oneDNN the production guard keeps convolution under compilation. Force
+    # its unavailable branch so this suite exercises the slices on CI either way.
     monkeypatch.setattr(gaussian_module, "_HAS_MKLDNN", False)
 
 
@@ -203,14 +203,20 @@ class TestGaussianBlurCpu(BaseTester):
             )
             self.assert_close(actual, expected)
 
-    def test_onednn_available_falls_back_to_convolution(self, monkeypatch, device, dtype):
+    def test_onednn_available_uses_slices_in_eager(self, monkeypatch, device, dtype):
+        # Eager slices beat oneDNN's convolution; compilation keeps convolution
+        # there (see test_dynamo_large_input_dispatch).
         _require_native_cpu(device, dtype)
         monkeypatch.setattr(gaussian_module, "_HAS_MKLDNN", True)
+        helper = gaussian_module._gaussian_blur2d_cpu
+        calls = 0
 
-        def should_not_run(*args, **kwargs):
-            raise AssertionError("oneDNN hosts must keep their convolution implementation")
+        def counted_helper(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return helper(*args, **kwargs)
 
-        monkeypatch.setattr(gaussian_module, "_gaussian_blur2d_cpu", should_not_run)
+        monkeypatch.setattr(gaussian_module, "_gaussian_blur2d_cpu", counted_helper)
         image = torch.rand(1, 1, 256, 512, device=device, dtype=dtype)
         actual = gaussian_blur2d(image, (5, 7), (0.9, 1.3), "reflect")
         expected = filter2d_separable(
@@ -219,7 +225,9 @@ class TestGaussianBlurCpu(BaseTester):
             get_gaussian_kernel1d(5, 0.9, device=device, dtype=dtype),
             "reflect",
         )
-        self.assert_close(actual, expected)
+        tolerance = _cpu_tolerance(dtype)
+        self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
+        assert calls == 1
 
     def test_autocast_falls_back_to_convolution(self, monkeypatch, device, dtype):
         if device.type != "cpu" or dtype != torch.float32:

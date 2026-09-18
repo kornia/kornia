@@ -29,6 +29,22 @@ from kornia.core.utils import is_autocast_enabled
 from .filter import filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
+_HAS_MKLDNN = torch.backends.mkldnn.is_available()
+
+
+def _box_blur_pool_eligible(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> bool:
+    """Select average pooling where it beats convolution.
+
+    Pooling wins on CUDA and on CPUs without oneDNN. oneDNN's depthwise convolution
+    beats ATen's CPU pooling for kernels larger than 5, so there pooling is kept for small kernels.
+    """
+    # Pooling does not participate in autocast in the same way as convolution.
+    # Keep the convolution implementation there to preserve the established
+    # output dtype and precision contract.
+    if not input.is_floating_point() or is_autocast_enabled():
+        return False
+    return not (input.device.type == "cpu" and _HAS_MKLDNN and max(_unpack_2d_ks(kernel_size)) > 5)
+
 
 def _box_blur_pool(
     input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str, separable: bool
@@ -74,8 +90,9 @@ def box_blur(
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. Floating inputs use average pooling outside autocast;
-          complex inputs and autocast use convolution. The dense implementation
+          for larger kernels. Floating inputs use average pooling outside autocast,
+          except for kernels larger than 5 on CPUs with oneDNN; complex inputs and
+          autocast use convolution. The dense implementation
           may differ by floating-point roundoff.
 
     Returns:
@@ -93,10 +110,7 @@ def box_blur(
     """
     KORNIA_CHECK_IS_TENSOR(input)
 
-    # Pooling does not participate in autocast in the same way as convolution.
-    # Keep the convolution implementation there to preserve the established
-    # output dtype and precision contract.
-    if input.is_floating_point() and not is_autocast_enabled():
+    if _box_blur_pool_eligible(input, kernel_size):
         return _box_blur_pool(input, kernel_size, border_type, separable)
 
     if separable:
@@ -131,8 +145,9 @@ class BoxBlur(nn.Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. Floating inputs use average pooling outside autocast;
-          complex inputs and autocast use convolution. The dense implementation
+          for larger kernels. Floating inputs use average pooling outside autocast,
+          except for kernels larger than 5 on CPUs with oneDNN; complex inputs and
+          autocast use convolution. The dense implementation
           may differ by floating-point roundoff.
 
     Returns:

@@ -22,21 +22,21 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .filter import filter2d
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_laplacian_kernel2d, normalize_kernel2d
 
-_HAS_MKLDNN = torch.backends.mkldnn.is_available()
 
+def _laplacian_slices_eligible(input: torch.Tensor) -> bool:
+    """Select the slice implementation where it beats depthwise convolution.
 
-def _laplacian_cpu_eligible(input: torch.Tensor) -> bool:
-    """Select the slice implementation when CPU convolution has no accelerated backend."""
-    return (
-        input.device.type == "cpu"
-        and not torch.is_autocast_enabled("cpu")
-        and input.dtype in (torch.float32, torch.float64)
-        and not _HAS_MKLDNN
-    )
+    On CPU (with or without oneDNN) the slices win in eager mode and are on par when compiled. On CUDA
+    Inductor fuses them into one kernel, but eager slices lose to cuDNN at larger batches.
+    """
+    if is_autocast_enabled() or input.dtype not in (torch.float32, torch.float64):
+        return False
+    return input.device.type == "cpu" or (input.device.type == "cuda" and is_compiling())
 
 
 def laplacian(
@@ -80,7 +80,7 @@ def laplacian(
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
 
-    if not _laplacian_cpu_eligible(input):
+    if not _laplacian_slices_eligible(input):
         kernel = get_laplacian_kernel2d((ky, kx), device=input.device, dtype=input.dtype)[None]
         if normalized:
             kernel = normalize_kernel2d(kernel)
