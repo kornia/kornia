@@ -159,6 +159,30 @@ class TestBoxBlur(BaseTester):
         onednn_pools = data.numel() >= 1 << 22 and size <= (15 if separable else 5)
         assert calls == int(not (device.type == "cpu" and has_mkldnn) or onednn_pools)
 
+    @pytest.mark.parametrize("has_mkldnn", [False, True])
+    @pytest.mark.parametrize("kernel_size,separable", [(3, False), (5, False), (5, True), (7, True)])
+    @pytest.mark.parametrize("shape", [(1, 2, 12, 13), (1, 4, 1024, 1024)])
+    def test_dynamo_pooling_dispatch(
+        self, monkeypatch, has_mkldnn, kernel_size, separable, shape, device, dtype, torch_optimizer
+    ):
+        monkeypatch.setattr(blur_module, "_HAS_MKLDNN", has_mkldnn)
+        pool = blur_module._box_blur_pool
+        calls = 0
+
+        def counted_pool(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return pool(*args, **kwargs)
+
+        monkeypatch.setattr(blur_module, "_box_blur_pool", counted_pool)
+        data = torch.rand(shape, device=device, dtype=dtype)
+        compiled = torch_optimizer(lambda x: box_blur(x, kernel_size, separable=separable), fullgraph=True)
+        actual = compiled(data)
+        expected = filter2d(data, get_box_kernel2d(kernel_size, device=device, dtype=dtype))
+        self.assert_close(actual, expected)
+        onednn_pools = kernel_size <= (5 if separable else 3)
+        assert calls == int(not (device.type == "cpu" and has_mkldnn) or onednn_pools)
+
     def test_separable_empty_batch(self, device, dtype):
         data = torch.empty(0, 3, 8, 9, device=device, dtype=dtype)
 

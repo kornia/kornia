@@ -37,9 +37,10 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   Hybrid CPUs (performance + efficiency cores) keep lightly loaded threads on efficiency cores
   until they have carried sustained load, and WSL2 cannot pin them. On an i7-14700K this moved a
   5x5 oneDNN convolution from 0.56 ms to 0.22 ms while a slice-based filter barely changed, so
-  an unwarmed A/B can pick the wrong implementation. The filters flagship does this.
-- **Checkout provenance:** the filters flagship script imports Kornia from its own checkout
-  and prints the source path. Direct script execution must not silently benchmark an
+  an unwarmed A/B can pick the wrong implementation. The filters and augmentation flagships do
+  this, including accelerator runs because they also time CPU-only library baselines.
+- **Checkout provenance:** the filters and augmentation flagship scripts import Kornia from
+  their own checkout and print the source path. Direct script execution must not silently benchmark an
   installed wheel or another editable checkout while recording the current tree's commit.
 - **Device sync inside the timed region:** `blocked_autorange` syncs CUDA; for MPS pass
   `sync=torch.mps.synchronize` to `time_us`. A hand-rolled `time.time()` around a GPU call

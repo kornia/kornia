@@ -316,3 +316,25 @@ def test_filter_benchmark_kornia_rs_missing_api(monkeypatch):
     )
     assert len(ops) == 4
     assert all(row.get("kornia-rs") is None for row in ops.values())
+
+
+@pytest.mark.device_agnostic
+def test_filter_benchmark_missing_pillow_filters():
+    pil = pytest.importorskip("PIL.Image")
+    flagship = _load_filter_flagship()
+    ops, _ = flagship.build_ops(
+        1,
+        9,
+        11,
+        torch.device("cpu"),
+        torch.float32,
+        False,
+        None,
+        None,
+        None,
+        pil,
+        None,
+        selected_ops=frozenset({"gaussian_blur2d", "median_blur", "box_blur"}),
+    )
+    assert len(ops) == 3
+    assert all(row["PIL"] is None for row in ops.values())

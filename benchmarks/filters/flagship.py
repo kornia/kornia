@@ -356,7 +356,9 @@ def build_ops(
         row["torchvision v2"] = (lambda: tvf.gaussian_blur(batch_f, [5, 5], [1.5, 1.5])) if tvf else None
         row["kornia-rs"] = (lambda: [krs_gaussian(im, (5, 5), (1.5, 1.5)) for im in imgs_u8]) if krs_gaussian else None
         row["PIL"] = (
-            (lambda: [pil.fromarray(im).filter(pilf.GaussianBlur(radius=1.5)) for im in imgs_u8]) if pil else None
+            (lambda: [pil.fromarray(im).filter(pilf.GaussianBlur(radius=1.5)) for im in imgs_u8])
+            if pil is not None and pilf is not None
+            else None
         )
         row["scikit-image"] = (
             (
@@ -405,7 +407,11 @@ def build_ops(
         row["albumentations"] = alb(A.MedianBlur(blur_limit=(5, 5), p=1.0)) if A else None
         row["torchvision v2"] = None
         row["kornia-rs"] = (lambda: [krs_median(im, 5) for im in imgs_u8]) if krs_median else None
-        row["PIL"] = (lambda: [pil.fromarray(im).filter(pilf.MedianFilter(5)) for im in imgs_u8]) if pil else None
+        row["PIL"] = (
+            (lambda: [pil.fromarray(im).filter(pilf.MedianFilter(5)) for im in imgs_u8])
+            if pil is not None and pilf is not None
+            else None
+        )
         row["scikit-image"] = (
             (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="constant", cval=0) for im in imgs_f])
             if skf
@@ -420,7 +426,11 @@ def build_ops(
         row["albumentations"] = alb(A.Blur(blur_limit=(5, 5), p=1.0)) if A else None
         row["torchvision v2"] = None
         row["kornia-rs"] = (lambda: [krs_box(im, (5, 5)) for im in imgs_u8]) if krs_box else None
-        row["PIL"] = (lambda: [pil.fromarray(im).filter(pilf.BoxBlur(2)) for im in imgs_u8]) if pil else None
+        row["PIL"] = (
+            (lambda: [pil.fromarray(im).filter(pilf.BoxBlur(2)) for im in imgs_u8])
+            if pil is not None and pilf is not None
+            else None
+        )
         row["scikit-image"] = (
             # The 2D rank implementation is faster than a 3D HWC footprint.
             skimage_per_channel(lambda image: skf.rank.mean(image, footprint=footprint_5), imgs_u8) if skf else None
