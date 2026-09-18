@@ -445,8 +445,9 @@ Serializing an augmentation
   registration behavior.
 - Pickle and deepcopy can retain recorded parameters and transform state,
   but support is configuration-dependent. The ``kornia.augmentation.auto``
-  policies cannot currently be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_), and ``copy.deepcopy``
+  policies containing operation wrappers cannot currently be pickled
+  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). An empty
+  ``AutoAugment(policy=[[]])`` has no wrappers and can be pickled. ``copy.deepcopy``
   of a used policy can raise ``RuntimeError``, for example ``RandAugment``
   after a forward pass with gradients enabled
   (`#4656 <https://github.com/kornia/kornia/issues/4656>`_).

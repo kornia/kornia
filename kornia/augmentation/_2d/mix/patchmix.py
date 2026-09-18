@@ -55,8 +55,10 @@ class PatchMix(MixAugmentationBaseV2):
           Each output sample copies that rectangle
           from its paired input at the same sampled top-left coordinate; the output image retains its input shape.
           The sampled ``lam`` is stored in ``_params`` but is not used to blend the image or produce labels.
-        - ``p`` is a batch-wide gate. ``same_on_batch=True`` pairs every image with itself, so the output equals
-          the input (`#4650 <https://github.com/kornia/kornia/issues/4650>`_). This class implements image input only;
+        - ``p`` is a batch-wide gate. With ``same_on_batch=True``, the pairing scores are tied before they are
+          sorted, so the resulting pairing order is backend- and input-size-dependent; the output follows the
+          recorded ``_params["mix_pairs"]`` rather than promising self-pairing (`#4650
+          <https://github.com/kornia/kornia/issues/4650>`_). This class implements image input only;
           requesting a class, mask, box, or keypoint key reaches the base's unsupported handler, with the
           no-selection exception described on the base.
 

@@ -126,26 +126,33 @@ class TestAutoAugmentConventions(BaseTester):
     def test_convention_policy_matrix_composes_and_inverse_refuses_intensity(self, device, dtype):
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
-        image = torch.rand(2, 1, 8, 6, device=device, dtype=dtype)
+        image = torch.zeros(2, 1, 5, 5, device=device, dtype=dtype)
+        image[..., 2, 2] = 1
         geometric = AutoAugment(policy=[[("translate_x", 1.0, 5)]])
         params = geometric.forward_parameters(image.shape)
-        params[0].data[0].data["translate_x"].zero_()
+        params[0].data[0].data["translate_x"].fill_(1.0)
+        params[0].data[0].data["batch_prob"].fill_(1.0)
         output = geometric(image, params=params)
-        self.assert_close(geometric.transform_matrix, torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1))
+        expected_translation = torch.zeros_like(image)
+        expected_translation[..., 2, 3] = 1
+        self.assert_close(output, expected_translation)
+        expected_translation_matrix = image.new_tensor([[1, 0, 1], [0, 1, 0], [0, 0, 1]]).expand(2, -1, -1)
+        self.assert_close(geometric.transform_matrix, expected_translation_matrix)
         inverted = geometric.inverse(output, params=params)
-        assert inverted.shape == image.shape
-        if dtype not in (torch.float16, torch.bfloat16):
-            self.assert_close(inverted, image)
+        self.assert_close(inverted, image)
 
         ordered = AutoAugment(policy=[[("rotate", 1.0, 5), ("translate_x", 1.0, 5)]])
         marker = torch.zeros(2, 1, 5, 5, device=device, dtype=dtype)
-        marker[..., 2, 2] = 1
+        marker[..., 1, 2] = 1
         ordered_params = ordered.forward_parameters(marker.shape)
         ordered_params[0].data[0].data["degrees"].fill_(90.0)
         ordered_params[0].data[1].data["translate_x"].fill_(1.0)
         for item in ordered_params[0].data:
             item.data["batch_prob"].fill_(1.0)
-        ordered(marker, params=ordered_params)
+        ordered_output = ordered(marker, params=ordered_params)
+        expected_ordered_output = torch.zeros_like(marker)
+        expected_ordered_output[..., 2, 2] = 1
+        self.assert_close(ordered_output, expected_ordered_output)
         # Rotation about (2, 2), followed by translation: T @ R, not R @ T.
         expected_matrix = marker.new_tensor([[0, 1, 1], [-1, 0, 4], [0, 0, 1]]).expand(2, -1, -1)
         self.assert_close(ordered.transform_matrix, expected_matrix)
@@ -154,7 +161,6 @@ class TestAutoAugmentConventions(BaseTester):
 
         chained = RandAugment(n=2, m=15, policy=[[("rotate", -30.0, 30.0)], [("translate_x", -0.5, 0.5)]])
         chained_params = chained.forward_parameters(marker.shape)
-        rotate_first = "degrees" in chained_params[0].data[0].data
         for item in chained_params:
             data = item.data[0].data
             data["batch_prob"].fill_(1.0)
@@ -162,18 +168,67 @@ class TestAutoAugmentConventions(BaseTester):
                 data["degrees"].fill_(90.0)
             else:
                 data["translate_x"].fill_(1.0)
-        chained(marker, params=chained_params)
-        # Whichever is drawn first is applied first: T @ R, or R @ T when the translation leads.
-        chained_matrix = expected_matrix if rotate_first else marker.new_tensor([[0, 1, 0], [-1, 0, 3], [0, 0, 1]])
-        self.assert_close(chained.transform_matrix, chained_matrix.expand(2, -1, -1))
-        recomputed = chained.get_transformation_matrix(marker, params=chained_params, recompute=True)
-        self.assert_close(recomputed, chained_matrix.expand(2, -1, -1))
+        for execution_params in (chained_params, list(reversed(chained_params))):
+            rotate_first = "degrees" in execution_params[0].data[0].data
+            chained_output = chained(marker, params=execution_params)
+            # The supplied parameter order selects T @ R, or R @ T when the translation leads.
+            chained_matrix = expected_matrix if rotate_first else marker.new_tensor([[0, 1, 0], [-1, 0, 3], [0, 0, 1]])
+            self.assert_close(chained.transform_matrix, chained_matrix.expand(2, -1, -1))
+            recomputed = chained.get_transformation_matrix(marker, params=execution_params, recompute=True)
+            self.assert_close(recomputed, chained_matrix.expand(2, -1, -1))
+            expected_chained_output = torch.zeros_like(marker)
+            if rotate_first:
+                expected_chained_output[..., 2, 2] = 1
+            else:
+                expected_chained_output[..., 1, 1] = 1
+            self.assert_close(chained_output, expected_chained_output)
 
         intensity = AutoAugment(policy=[[("solarize", 1.0, 5)]])
         intensity(image)
         self.assert_close(intensity.transform_matrix, torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1))
         with pytest.raises(RuntimeError, match="is not supported"):
             intensity.inverse(image)
+
+        skipped_intensity = AutoAugment(policy=[[("solarize", 1.0, 5)]])
+        skipped_params = skipped_intensity.forward_parameters(image.shape)
+        skipped_params[0].data[0].data["batch_prob"].zero_()
+        skipped_output = skipped_intensity(image, params=skipped_params)
+        self.assert_close(skipped_output, image)
+        self.assert_close(skipped_intensity.inverse(skipped_output, params=skipped_params), image)
+
+    @pytest.mark.device_agnostic
+    def test_convention_policy_sequential_supplied_params_define_the_execution_path(self):
+        policy = PolicySequential(
+            ops.Invert(initial_probability=1.0), ops.Solarize(initial_magnitude=0.5, initial_probability=1.0)
+        )
+        image = torch.tensor([0.2], dtype=torch.float32).reshape(1, 1, 1, 1)
+        generated = policy.forward_parameters(image.shape)
+        for param in generated:
+            param.data["batch_prob"].fill_(1.0)
+            if "thresholds" in param.data:
+                param.data["thresholds"].fill_(0.5)
+                param.data["additions"].zero_()
+        self.assert_close(policy(image, params=generated), torch.tensor([0.2]).reshape_as(image))
+        reversed_params = list(reversed(generated))
+        self.assert_close(policy(image, params=reversed_params), torch.tensor([0.8]).reshape_as(image))
+        self.assert_close(policy(image, params=generated[:1]), torch.tensor([0.8]).reshape_as(image))
+        assert [param.name for param in policy._params] == [generated[0].name]
+
+    @pytest.mark.device_agnostic
+    def test_convention_intensity_matrix_requires_a_nonempty_selected_policy(self):
+        image = torch.rand(1, 1, 3, 3)
+        intensity = AutoAugment(policy=[[("solarize", 1.0, 5)]])
+        intensity(image)
+        self.assert_close(intensity.transform_matrix, torch.eye(3).unsqueeze(0))
+        empty = AutoAugment(policy=[[]])
+        self.assert_close(empty(image), image)
+        assert empty.transform_matrix is None
+
+    @pytest.mark.device_agnostic
+    def test_convention_symmetric_magnitude_preserves_the_post_mapping_value(self):
+        posterize = ops.Posterize(initial_magnitude=0.5, magnitude_range=(0.0, 8.0), symmetric_megnitude=True)
+        bits = posterize.forward_parameters(torch.Size([32, 1, 1, 1]))["bits_factor"]
+        self.assert_close(bits, torch.zeros_like(bits), rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_convention_operation_probability_and_magnitude_clamps(self):

@@ -52,8 +52,9 @@ class OperationBase(nn.Module):
           unchanged, unless both its ``p`` and ``p_batch`` equal ``1``. Only that unconditional configuration
           blends every row with the fully transformed image; otherwise rows at or below the threshold stay
           unchanged even after the outer blend.
-        - a symmetric magnitude chooses an independent sign for every row; nonzero magnitudes therefore remain
-          nonzero and can have either sign.
+        - a symmetric magnitude first applies the configured magnitude mapping, then chooses an independent sign
+          for every row. Sign selection preserves the mapped magnitude, but the mapping can first quantize it to
+          zero. For example, ``Posterize`` maps ``0.5`` to zero with ``magnitude_range=(0, 8)``.
         - :class:`~kornia.augmentation.auto.PolicySequential` is a lower-level container. Its own sampler calls
           ``operation.op.forward_parameters`` directly, bypassing this wrapper's magnitude mapping. This is a
           distinct direct-use behavior, tracked in `#4441

@@ -53,6 +53,15 @@ class Test3DAugmentationConventions(BaseTester):
             self.assert_close(augmentation.transform_matrix, volume.new_tensor(matrix)[None])
 
     @pytest.mark.device_agnostic
+    def test_convention_flip_matrix_is_rounded_in_float16(self):
+        # Transform matrices keep the input dtype. float16 cannot represent every integer above 2048.
+        volume = torch.zeros(1, 1, 1, 1, 2050, dtype=torch.float16)
+        augmentation = K.RandomHorizontalFlip3D(p=1.0)
+        augmentation(volume)
+        assert augmentation.transform_matrix.dtype is torch.float16
+        assert augmentation.transform_matrix[0, 0, 3] == 2048
+
+    @pytest.mark.device_agnostic
     def test_convention_degrees_and_motion_angle_follow_xyz_order(self):
         ranges = ((10.0, 10.0), (20.0, 20.0), (30.0, 30.0))
         shape = (2, 1, 3, 4, 5)
@@ -80,6 +89,7 @@ class Test3DAugmentationConventions(BaseTester):
         assert center.flags["align_corners"] and crop.flags["align_corners"]
         assert center.flags["resample"].name == crop.flags["resample"].name == "BILINEAR"
         assert center(volume).shape == crop(volume).shape == (1, 1, 2, 3, 4)
+        self.assert_close(center(volume), volume[..., 1:3, 1:4, 1:5])
         assert K.CenterCrop3D((2, 3, 4), p=0.0)(volume).shape == volume.shape
         assert K.RandomCrop3D((2, 3, 4), p=0.0)(volume).shape == volume.shape
         padded = K.RandomCrop3D((2, 3, 4), padding=(1, 2, 3, 4, 5, 6), p=1.0).precrop_padding(volume)
@@ -97,6 +107,20 @@ class Test3DAugmentationConventions(BaseTester):
                 batch_prob = augmentation.forward_parameters(torch.Size([8, 1, 4, 5, 6]))["batch_prob"]
                 assert batch_prob.numel() == 8
                 assert bool((batch_prob == batch_prob[0]).all())
+
+    def test_convention_random_crop3d_uses_sampled_nonzero_offset(self, device, dtype):
+        if not supports_nearest_3d_grid_sample(device, dtype):
+            pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
+        augmentation = K.RandomCrop3D((2, 3, 4), resample="nearest", p=1.0)
+        params = augmentation.forward_parameters(volume.shape)
+        # The source cube starts at (x, y, z) = (1, 1, 1), deliberately excluding the top-left crop.
+        params["src"] = torch.tensor(
+            [[[1, 1, 1], [4, 1, 1], [4, 3, 1], [1, 3, 1], [1, 1, 2], [4, 1, 2], [4, 3, 2], [1, 3, 2]]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(augmentation(volume, params=params), volume[..., 1:3, 1:4, 1:5])
 
     def test_convention_geometric_defaults_and_identity(self, device, dtype):
         if not supports_bilinear_3d_grid_sample(device, dtype):
@@ -145,6 +169,29 @@ class Test3DAugmentationConventions(BaseTester):
         rotation(volume)
         self.assert_close(affine.transform_matrix[:, :3, :3], rotation.transform_matrix[:, :3, :3].transpose(-1, -2))
 
+    @pytest.mark.parametrize(
+        ("axis", "rotation_position", "affine_position"),
+        [(0, (1, 4, 3), (3, 2, 3)), (1, (3, 2, 3), (1, 2, 5)), (2, (1, 2, 5), (1, 4, 3))],
+    )
+    def test_convention_affine_and_rotation3d_move_an_asymmetric_marker(
+        self, axis, rotation_position, affine_position, device, dtype
+    ):
+        if not supports_nearest_3d_grid_sample(device, dtype):
+            pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
+        # Odd, unequal D/H/W dimensions put the rotation centre on voxels and make all axes observable.
+        volume = torch.zeros(1, 1, 5, 7, 9, device=device, dtype=dtype)
+        volume[..., 1, 2, 3] = 1
+        degrees = [(0.0, 0.0)] * 3
+        degrees[axis] = (90.0, 90.0)
+        rotation = K.RandomRotation3D(tuple(degrees), resample="nearest", p=1.0, align_corners=True)
+        affine = K.RandomAffine3D(tuple(degrees), resample="nearest", p=1.0, align_corners=True)
+        rotated, affined = rotation(volume), affine(volume)
+        expected_rotation, expected_affine = torch.zeros_like(volume), torch.zeros_like(volume)
+        expected_rotation[(0, 0, *rotation_position)] = 1
+        expected_affine[(0, 0, *affine_position)] = 1
+        self.assert_close(rotated, expected_rotation)
+        self.assert_close(affined, expected_affine)
+
     def test_convention_equalize_small_volume_roundoff(self, device, dtype):
         small = torch.linspace(0.1, 0.9, 255, device=device, dtype=dtype).reshape(1, 1, 1, 1, 255)
         augmentation = K.RandomEqualize3D(p=1.0)
@@ -167,6 +214,14 @@ class Test3DAugmentationConventions(BaseTester):
         assert augmentation.flags["resample"].name == "NEAREST"
         assert augmentation.p_batch == 1.0
         assert augmentation.p == 0.5
+
+    def test_convention_motion_blur3d_fixed_kernel_filters_an_impulse(self, device, dtype):
+        volume = torch.zeros(1, 1, 5, 5, 5, device=device, dtype=dtype)
+        volume[..., 2, 2, 2] = 1
+        output = K.RandomMotionBlur3D(3, (0.0, 0.0, 0.0), 0.0, p=1.0)(volume)
+        expected = torch.zeros_like(volume)
+        expected[..., 2, 2, 1:4] = 1 / 3
+        self.assert_close(output, expected)
 
     @pytest.mark.device_agnostic
     def test_convention_3d_augmentations_have_no_direct_inverse(self):
@@ -209,6 +264,14 @@ class Test3DAugmentationConventions(BaseTester):
         assert K.RandomCrop3D((2, 3, 4), padding=2, p=0.0)(volume).shape == (1, 1, 8, 9, 10)
         assert K.RandomCrop3D((6, 7, 9), pad_if_needed=True, p=0.0)(volume).shape == (1, 1, 8, 9, 12)
         assert K.RandomCrop3D((2, 3, 4), p=0.0)(volume).shape == volume.shape
+
+    @pytest.mark.device_agnostic
+    def test_convention_crop3d_validates_size_before_a_disabled_gate(self):
+        volume = torch.rand(1, 1, 4, 5, 6)
+        with pytest.raises(AssertionError, match="Crop size must be smaller"):
+            K.CenterCrop3D((5, 6, 7), p=0.0)(volume)
+        with pytest.raises(ValueError, match="cannot be smaller than crop size"):
+            K.RandomCrop3D((9, 9, 9), padding=1, p=0.0)(volume)
 
     @pytest.mark.parametrize(
         "padding,size,marker",

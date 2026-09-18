@@ -45,8 +45,8 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy,
           and for :class:`RandAugment` the order in which its sub-policies were drawn. When matrix computation is
           enabled, their geometric transformation matrices
-          compose in that same execution order; a policy containing only intensity
-          operations has the identity matrix.
+          compose in that same execution order; a nonempty policy containing only intensity
+          operations has the identity matrix. An empty selected sub-policy has no matrix.
           ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an applied
           intensity operation cannot be undone.
         - input normalization, random-number generation, parameter placement, replay, and serialization follow

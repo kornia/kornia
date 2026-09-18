@@ -56,40 +56,58 @@ class TestMixConventions(BaseTester):
 
     def test_convention_mixup_class_rows_describe_the_image_mix(self, device, dtype):
         image = torch.stack(
-            [torch.zeros(1, 4, 4, device=device, dtype=dtype), torch.ones(1, 4, 4, device=device, dtype=dtype)]
+            [torch.full((1, 4, 4), value, device=device, dtype=dtype) for value in (0.0, 1.0, 2.0, 3.0)]
         )
-        labels = torch.tensor([4, 9], device=device)
+        labels = torch.tensor([4, 9, 12, 15], device=device)
         aug = K.RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input", "class"])
-        # A fixed non-identity pairing: a random draw pairs each row with itself half the time at B=2.
         aug(image, labels)
         params = dict(aug._params)
-        params["mixup_pairs"] = torch.tensor([1, 0])
+        # This is neither identity nor a one-row batch roll, so the recorded pairing is observable.
+        params["mixup_pairs"] = torch.tensor([2, 0, 3, 1])
         output, mixed_labels = aug(image, labels, params=params)
 
         pairs = aug._params["mixup_pairs"].to(device)
         expected = image * 0.75 + image.index_select(0, pairs) * 0.25
         self.assert_close(output, expected)
-        assert mixed_labels.shape == (2, 3)
+        assert mixed_labels.shape == (4, 3)
         self.assert_close(mixed_labels[:, 0], labels.to(dtype))
         self.assert_close(mixed_labels[:, 1], labels.index_select(0, pairs).to(dtype))
-        self.assert_close(mixed_labels[:, 2], torch.full((2,), 0.25, device=device, dtype=dtype))
+        self.assert_close(mixed_labels[:, 2], torch.full((4,), 0.25, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("num_mix", [1, 2])
     def test_convention_cutmix_class_axis_is_num_mix_then_batch(self, num_mix, device, dtype):
-        image = torch.rand(3, 1, 8, 8, device=device, dtype=dtype)
-        labels = torch.tensor([2, 5, 7], device=device)
-        aug = K.RandomCutMixV2(
-            num_mix=num_mix, cut_size=(0.5, 0.5), p=1.0, data_keys=["input", "class"], use_correct_lambda=True
+        image = torch.stack(
+            [torch.arange(42, device=device, dtype=dtype).reshape(1, 6, 7) + 100 * row for row in range(3)]
         )
+        labels = torch.tensor([2, 5, 7], device=device)
+        aug = K.RandomCutMixV2(num_mix=num_mix, p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
         aug(image, labels)
         params = dict(aug._params)
         params["mix_pairs"] = torch.tensor([[1, 2, 0], [2, 0, 1]])[:num_mix]
-        _, mixed_labels = aug(image, labels, params=params)
+        # The two rectangles have unequal x/y starts and dimensions.  They also do not overlap, so num_mix=2
+        # checks both donor/crop stages independently.
+        params["crop_src"] = image.new_tensor(
+            [
+                [[[1, 2], [3, 2], [3, 3], [1, 3]], [[1, 2], [3, 2], [3, 3], [1, 3]], [[1, 2], [3, 2], [3, 3], [1, 3]]],
+                [[[4, 0], [5, 0], [5, 2], [4, 2]], [[4, 0], [5, 0], [5, 2], [4, 2]], [[4, 0], [5, 0], [5, 2], [4, 2]]],
+            ]
+        )[:num_mix]
+        params["image_shape"] = image.new_tensor([6, 7])
+        params["dtype"] = torch.tensor(DType.get(dtype).value)
+        output, mixed_labels = aug(image, labels, params=params)
+
+        expected = image.clone()
+        expected[:, :, 2:4, 1:4] = image[torch.tensor([1, 2, 0], device=device), :, 2:4, 1:4]
+        if num_mix == 2:
+            expected[:, :, 0:3, 4:6] = image[torch.tensor([2, 0, 1], device=device), :, 0:3, 4:6]
+        self.assert_close(output, expected)
 
         assert mixed_labels.shape == (num_mix, 3, 3)
         self.assert_close(mixed_labels[:, :, 0], labels.to(dtype).expand(num_mix, -1))
         for mix, pairs in enumerate(aug._params["mix_pairs"].to(device)):
             self.assert_close(mixed_labels[mix, :, 1], labels.index_select(0, pairs).to(dtype))
+        expected_lambdas = image.new_tensor([1 - 6 / 42, 1 - 6 / 42])[:num_mix]
+        self.assert_close(mixed_labels[:, :, 2], expected_lambdas[:, None].expand(-1, 3))
 
     @pytest.mark.parametrize(("use_correct_lambda", "expected_lambda"), [(False, 0.25), (True, 0.75)])
     def test_convention_cutmix_lambda_is_the_configured_area_fraction(
@@ -195,6 +213,24 @@ class TestMixConventions(BaseTester):
         expected = image.new_tensor([[0, 0, 3, 3]] * 3 + [[1, 1, 4, 4]] * 3)
         self.assert_close(output, expected.expand(6, 1, 6, 4))
 
+    def test_convention_mosaic_uses_each_output_row_permutation(self, device, dtype):
+        image = torch.arange(4, device=device, dtype=dtype).reshape(4, 1, 1, 1).expand(4, 1, 4, 4)
+        aug = K.RandomMosaic(start_ratio_range=(0.5, 0.5), p=1.0)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = torch.ones(4)
+        params["permutation"] = torch.tensor([[0, 1, 2, 3], [1, 0, 3, 2], [2, 3, 0, 1], [3, 2, 1, 0]])
+        output = aug(image, params=params)
+
+        expected = image.new_tensor(
+            [
+                [[0, 0, 2, 2], [0, 0, 2, 2], [1, 1, 3, 3], [1, 1, 3, 3]],
+                [[1, 1, 3, 3], [1, 1, 3, 3], [0, 0, 2, 2], [0, 0, 2, 2]],
+                [[2, 2, 0, 0], [2, 2, 0, 0], [3, 3, 1, 1], [3, 3, 1, 1]],
+                [[3, 3, 1, 1], [3, 3, 1, 1], [2, 2, 0, 0], [2, 2, 0, 0]],
+            ]
+        ).unsqueeze(1)
+        self.assert_close(output, expected)
+
     @pytest.mark.parametrize("data_key", ["bbox", "bbox_xyxy", "bbox_xywh"])
     def test_convention_mosaic_supports_each_documented_box_key(self, data_key, device, dtype):
         image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
@@ -242,21 +278,22 @@ class TestMixConventions(BaseTester):
         # The generator records a Beta sample as `lam`, but PatchMix copies a full square patch. The fixed
         # coordinates and permutation make the written pixels independent of that recorded value.
         image = torch.stack(
-            [torch.zeros(1, 4, 4, device=device, dtype=dtype), torch.ones(1, 4, 4, device=device, dtype=dtype)]
+            [torch.arange(35, device=device, dtype=dtype).reshape(1, 5, 7) + 100 * row for row in range(3)]
         )
         aug = K.PatchMix(patch_size=2, p=1.0)
         params = {
-            "batch_prob": torch.ones(2),
-            "mix_pairs": torch.tensor([1, 0]),
-            "patch_coords": torch.tensor([[1, 1], [1, 1]]),
-            "lam": torch.tensor([0.125, 0.875]),
+            "batch_prob": torch.ones(3),
+            "mix_pairs": torch.tensor([2, 0, 1]),
+            "patch_coords": torch.tensor([[0, 2], [3, 0], [1, 1]]),
+            "lam": torch.tensor([0.125, 0.5, 0.875]),
             "dtype": torch.tensor(6),
         }
         output = aug(image, params=params)
 
         expected = image.clone()
-        expected[0, :, 1:3, 1:3] = 1
-        expected[1, :, 1:3, 1:3] = 0
+        expected[0, :, 2:4, 0:2] = image[2, :, 2:4, 0:2]
+        expected[1, :, 0:2, 3:5] = image[0, :, 0:2, 3:5]
+        expected[2, :, 1:3, 1:3] = image[1, :, 1:3, 1:3]
         self.assert_close(output, expected)
 
     @pytest.mark.device_agnostic
@@ -323,16 +360,32 @@ class TestMixConventions(BaseTester):
             assert 0.3 < rows.float().mean() < 0.7
 
     @pytest.mark.device_agnostic
-    def test_wart_patchmix_oversized_patch_and_same_on_batch_4650(self):
+    def test_wart_patchmix_oversized_patch_and_same_on_batch_ties_4650(self):
         image = torch.rand(4, 1, 8, 10)
         aug = K.PatchMix(p=1.0)  # the default patch_size=16 exceeds both image sides
         output = aug(image)
         assert (aug._params["patch_coords"] < 0).all()
         changed = (output != image)[:, 0]
         assert changed.any(-1).sum(-1).max() < 8 and changed.any(-2).sum(-1).max() < 10
+        # same_on_batch ties the pair scores. argsort does not promise how equal scores are ordered, especially
+        # for large inputs, so assert the output follows the recorded pairing instead of platform-specific identity.
+        shared_image = torch.arange(1000, dtype=torch.float32).reshape(1000, 1, 1, 1).expand(-1, 1, 8, 10).clone()
         shared = K.PatchMix(patch_size=4, p=1.0, same_on_batch=True)
-        self.assert_close(shared(image), image, rtol=0, atol=0)
-        assert shared._params["mix_pairs"].tolist() == [0, 1, 2, 3]
+        shared_output = shared(shared_image)
+        pairs = shared._params["mix_pairs"]
+        assert torch.equal(pairs.sort().values, torch.arange(1000))
+        x, y = shared._params["patch_coords"].unbind(-1)
+        columns = torch.arange(10).view(1, 1, 10)
+        rows = torch.arange(8).view(1, 8, 1)
+        inside_patch = (
+            (columns >= x[:, None, None])
+            & (columns < x[:, None, None] + 4)
+            & (rows >= y[:, None, None])
+            & (rows < y[:, None, None] + 4)
+        )
+        # Each donor's pixel value is its batch index, providing an oracle independent of patch-copy slicing.
+        expected = torch.where(inside_patch[:, None], pairs[:, None, None, None].to(shared_image), shared_image)
+        self.assert_close(shared_output, expected, rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_wart_mosaic_output_size_boxes_and_resample_default_4652(self):

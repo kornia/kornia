@@ -34,10 +34,11 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     """Policy tuple for applying multiple operations.
 
     Convention:
-        - accepts only :class:`~kornia.augmentation.auto.operations.OperationBase` children and applies them in
-          construction order. ``forward`` stores a ``ParamItem`` for every child in ``_params``; those parameters
-          can replay the same operations through
-          ``forward(input, params=...)``.
+        - accepts only :class:`~kornia.augmentation.auto.operations.OperationBase` children. Generated parameters
+          apply every child in construction order. Supplied ``params`` define the execution path instead: their
+          order and membership select the referenced children, so they may replay a reordered or partial path.
+          ``forward`` stores the ``ParamItem`` objects for the path it executed in ``_params``; those parameters can
+          replay the same operations through ``forward(input, params=...)``.
         - its transformation matrix is the ordered product of its geometric wrapped operations. Intensity
           operations do not contribute to that matrix.
         - direct ``forward_parameters`` delegates to each wrapped augmentation rather than to

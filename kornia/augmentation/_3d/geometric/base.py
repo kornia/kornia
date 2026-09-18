@@ -30,6 +30,8 @@ class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
           Resampling follows the matrix in that source frame at ``align_corners=True``; at
           ``align_corners=False`` normalization can make the applied warp differ from the recorded matrix
           (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+          Matrices use the input dtype, so integer voxel translations are rounded when that dtype cannot represent
+          them exactly (for example, float16 stores the width translation for ``W=2050`` as ``2048``).
         - the matrix is useful for forward bookkeeping only: this base provides no 3D inverse implementation.
 
     """
