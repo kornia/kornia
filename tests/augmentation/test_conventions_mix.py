@@ -312,17 +312,23 @@ class TestMixConventions(BaseTester):
         image = torch.rand(4, 1, 6, 8)
         boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4)
         assert K.RandomMosaic(output_size=(4, 10), p=0.0)(image).shape == (4, 1, 4, 10)
-        results = []
-        for output_size in (None, (4, 10)):
-            torch.manual_seed(2)
-            aug = K.RandomMosaic(output_size=output_size, p=0.5, data_keys=["input", "bbox_xyxy"])
-            results.append(aug(image, boxes)[1])
-            batch_prob = aug._params["batch_prob"] > 0
-            assert batch_prob.any() and not batch_prob.all()
-        self.assert_close(results[0], results[1])
-        assert results[1][..., 3].max() > 4  # a box bottom below the 4-pixel-high output
+        # Replay one recorded draw under both settings, with a hand-set gate that selects rows 1 and 3 only.
+        reference = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])
+        reference(image, boxes)
+        params = dict(reference._params)
+        params["batch_prob"] = torch.tensor([0.0, 1.0, 0.0, 1.0])
+        selected = params["batch_prob"] > 0
+        results = [
+            K.RandomMosaic(output_size=output_size, p=1.0, data_keys=["input", "bbox_xyxy"])(
+                image, boxes, params=params
+            )
+            for output_size in (None, (4, 10))
+        ]
+        assert results[0][0].shape == (4, 1, 6, 8) and results[1][0].shape == (4, 1, 4, 10)
+        self.assert_close(results[0][1], results[1][1])  # the boxes ignore output_size
+        assert results[1][1][selected][..., 3].max() > 4  # a box bottom below the 4-pixel-high output
         placeholder = torch.tensor([[1.0, 1.0, 4.0, 4.0]] + [[0.0, 0.0, 1.0, 1.0]] * 3)
-        self.assert_close(results[1][~batch_prob], placeholder.expand(int((~batch_prob).sum()), -1, -1))
+        self.assert_close(results[1][1][~selected], placeholder.expand(2, -1, -1))
         with pytest.raises(TypeError, match="NoneType"):
             K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
 

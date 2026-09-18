@@ -25,11 +25,13 @@ from kornia.augmentation.auto.operations import PolicySequential, ops
 from kornia.augmentation.auto.rand_augment import RandAugment
 from kornia.augmentation.auto.trivial_augment import TrivialAugment
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_2d_grid_sample
 
 
 class TestAutoAugmentConventions(BaseTester):
     def test_convention_policy_params_record_the_selected_path_and_replay(self, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
         image = torch.rand(3, 1, 8, 6, device=device, dtype=dtype)
         cases = [
             (AutoAugment(policy=[[("rotate", 1.0, 5)]]), 1),
@@ -122,6 +124,8 @@ class TestAutoAugmentConventions(BaseTester):
                 RandAugment(n=n, m=15, policy=policy)
 
     def test_convention_policy_matrix_composes_and_inverse_refuses_intensity(self, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
         image = torch.rand(2, 1, 8, 6, device=device, dtype=dtype)
         geometric = AutoAugment(policy=[[("translate_x", 1.0, 5)]])
         params = geometric.forward_parameters(image.shape)
@@ -210,6 +214,8 @@ class TestAutoAugmentConventions(BaseTester):
         assert direct_operation.op.p == 0.5
 
     def test_convention_recorded_params_reproduce_the_sampled_forward(self, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
         image = torch.rand(3, 3, 8, 8, device=device, dtype=dtype)
         for aug in (AutoAugment(), RandAugment(n=2, m=15), TrivialAugment()):
             for seed in range(4):

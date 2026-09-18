@@ -72,6 +72,8 @@ class Test3DAugmentationConventions(BaseTester):
             assert augmentation.transform_matrix[0, diagonal[0], diagonal[1]] == 1
 
     def test_convention_crop_size_padding_defaults_and_batch_gate(self, device, dtype):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
         volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
         center = K.CenterCrop3D((2, 3, 4), p=1.0)
         crop = K.RandomCrop3D((2, 3, 4), p=1.0, same_on_batch=True)
