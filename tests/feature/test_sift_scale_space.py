@@ -27,7 +27,13 @@ from kornia.feature import SIFTFeatureScaleSpace, get_laf_center, get_laf_orient
 from kornia.feature.sift.scale_space import _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
 from kornia.filters import spatial_gradient
 
-from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamo_is_available,
+    supports_reflect_padding,
+    supports_replicate_padding,
+)
 
 
 class TestSharedSIFTScaleSpace(BaseTester):
@@ -114,6 +120,7 @@ class TestSharedSIFTScaleSpace(BaseTester):
             lambda m, a: _SIFTScaleSpaceDescriptor._descriptor_histograms(m, a, xx, yy, separable), (mag, angle)
         )
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("components", [["scale_pyr"], ["subpix"], ["scale_pyr", "subpix"]])
     def test_checkpoint_round_trip(self, components):
         eager = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid")
