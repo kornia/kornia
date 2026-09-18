@@ -44,17 +44,23 @@ import torch.utils.benchmark as bench
 
 
 def time_us(
-    fn: Callable[[], object], min_run_time: float = 1.0, sync: Optional[Callable[[], None]] = None
+    fn: Callable[[], object],
+    min_run_time: float = 1.0,
+    sync: Optional[Callable[[], None]] = None,
+    num_threads: int = 1,
 ) -> tuple[float, float]:
     """Median and interquartile-range wall clock of ``fn`` in microseconds.
 
     ``blocked_autorange`` warms up, runs many repeats, and synchronizes CUDA. Devices it does
     not sync (MPS) pass their sync as ``sync`` so it lands inside the timed region. Returns
     ``(nan, nan)`` if ``fn`` raises, so callers can render a skip cell instead of dying.
+    ``num_threads`` controls the timed calls; Timer otherwise overrides the caller's thread count with one.
     """
     stmt = "fn(); sync()" if sync is not None else "fn()"
     try:
-        m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}).blocked_autorange(min_run_time=min_run_time)
+        m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}, num_threads=num_threads).blocked_autorange(
+            min_run_time=min_run_time
+        )
         return m.median * 1e6, m.iqr * 1e6
     except Exception:
         return float("nan"), float("nan")

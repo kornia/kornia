@@ -179,9 +179,9 @@ class VideoSequential(ImageSequential):
 
         if same_on_frame and same_on_batch:
             return v.repeat(batch_shape[0] * frame_num, *([1] * (v.ndim - 1)))
-        elif same_on_frame:
+        if same_on_frame:
             return self.__repeat_param_across_channels__(v, frame_num)
-        elif same_on_batch:
+        if same_on_batch:
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
 

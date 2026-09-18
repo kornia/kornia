@@ -29,6 +29,8 @@ from kornia.core.check import KORNIA_CHECK
 class RandomRain(IntensityAugmentationBase2D):
     r"""Add Random Rain to the image.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         number_of_drops: number of drops per image
@@ -40,6 +42,36 @@ class RandomRain(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - the input must have one or three channels; any other channel count raises on the forward pass.
+        - ``drop_height`` runs down rows and ``drop_width`` along columns: both name image axes, not
+          drop-local ones, and a negative ``drop_width`` slants the drop the other way across the columns.
+        - a drop is written as the fixed value ``200 / 255``, not as a function of the image, so the rain is
+          darker than every pixel above ``200 / 255`` that it falls on, inside ``[0, 1]`` or not. Every other
+          pixel is carried through unclamped.
+        - both sizes must be strictly smaller than the image on their own axis. Once the larger of the two
+          sizes is at least ``2``, a drop of size ``h`` spans ``h + 1`` rows or columns end to end, so a size
+          one short of the image already reaches from edge to edge; a drop whose sizes are both at most ``1``
+          is a single pixel. ``span`` is an extent, not a count: the drop is a ``linspace`` of
+          ``max(drop_height, abs(drop_width))`` steps truncated to integers, so when the two sizes differ the
+          painted cells have gaps inside that span -- ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10``
+          image paints rows ``[0, 1, 2, 3, 5]``. A size as large as the image's, or a ``drop_height`` below
+          ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
+        - a drop's start coordinate is scaled by ``H - h - 1`` rather than ``H - h``, so the last row and
+          the last column of the image are never painted unless the drop is exactly one short of the image
+          on that axis; a single-pixel drop never reaches the last two rows. Tracked in
+          `#4604 <https://github.com/kornia/kornia/issues/4604>`_.
+        - the three integer ranges are closed and uniform: every integer from the lower to the upper bound
+          is drawn with the same probability, so the default ``drop_height=(5, 20)`` reaches ``20``, the
+          default ``drop_width=(-5, 5)`` reaches ``-5`` and ``5``, and ``0`` carries no more weight than
+          any other width. Both upper bounds are live against the size rule above, which they were not
+          when they were practically never drawn: with the defaults an image 20 pixels tall, or 5 pixels
+          wide, now raises on some seeds -- and on every seed once it is 5 pixels tall or shorter, where
+          no drawable height is legal. A range that is reversed, fractional or non-finite raises
+          ``ValueError`` at construction.
+        - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
+          the same coordinates; left at ``False`` each sample draws its own.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
@@ -47,7 +79,7 @@ class RandomRain(IntensityAugmentationBase2D):
         >>> rain(input)
         tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
-                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.3489, 0.4017, 0.7843, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
 

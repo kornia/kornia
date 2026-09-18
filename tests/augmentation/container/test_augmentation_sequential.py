@@ -28,6 +28,7 @@ from kornia.constants import BorderType, DataKey, Resample
 from kornia.core._compat import torch_version_lt
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.geometry.boxes import Boxes
+from kornia.geometry.transform import resize
 
 from testing.augmentation.utils import reproducibility_test
 from testing.base import BaseTester, assert_close
@@ -739,8 +740,6 @@ class TestConventionAugmentationSequential(BaseTester):
         # passthrough, so annotations desynchronized from the mixed image. The container now dispatches to
         # the child's own handlers: RandomMosaic transforms boxes (container xyxy_plus path), and unsupported
         # keys raise NotImplementedError as a direct call does. A class key still raises from the container.
-        if dtype == torch.bfloat16:
-            pytest.skip("Tracked in #4467: the mix forward path has no bfloat16 DType")
         from kornia.geometry.boxes import Boxes
 
         image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
@@ -805,21 +804,22 @@ class TestConventionAugmentationSequential(BaseTester):
             assert out_first.unique().tolist() == [False, True]  # integer labels 2, 3 and 5 are lost
 
     @pytest.mark.parametrize("key", ["bbox_xyxy", "bbox_xywh"])
-    def test_wart_suffixed_coordinate_box_dict_keys_expect_vertices_4483(self, key, device, dtype):
+    @pytest.mark.parametrize("suffix", ["", "_2", "-a"])
+    def test_dictionary_coordinate_box_keys_4483(self, key, suffix, device, dtype):
         image = torch.arange(20, device=device, dtype=dtype).reshape(1, 1, 4, 5)
         boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype)
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
-        output = seq({"image": image, key: boxes})
+        output = seq({"image": image, key + suffix: boxes})
         expected = [2.0, 0.0, 4.0, 2.0] if key == "bbox_xyxy" else [3.0, 0.0, 2.0, 2.0]
-        self.assert_close(output[key], torch.tensor([[expected]], device=device, dtype=dtype))
-        with pytest.raises(ValueError, match="when vertices_plus mode"):
-            seq({"image": image, key + "-a": boxes})
+        self.assert_close(output[key + suffix], torch.tensor([[expected]], device=device, dtype=dtype))
+        restored = seq.inverse(output)
+        self.assert_close(restored[key + suffix], boxes)
 
-    def test_wart_dictionary_class_alias_is_metadata_4483(self):
+    def test_dictionary_class_alias_4483(self):
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
         keys, metadata = seq._read_datakeys_from_dict(("input", "class", "class-a", "label", "label-a"))
-        assert keys == [DataKey.INPUT, DataKey.LABEL, DataKey.LABEL]
-        assert metadata == ["class", "class-a"]
+        assert keys == [DataKey.INPUT, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL]
+        assert metadata == []
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     @pytest.mark.parametrize("align_corners", [None, False, True])
@@ -862,15 +862,68 @@ class TestConventionAugmentationSequential(BaseTester):
         bool_mask[:, :, 1:4, 2:6] = True
         assert aug(torch.rand(2, 3, 6, 8, device=device, dtype=dtype), bool_mask)[1].dtype == torch.bool
 
-    def test_wart_resize_antialias_blurs_masks_4479(self, device, dtype):
-        # Resize applies antialiasing before the mask's nearest interpolation, introducing values outside the
-        # input label set. This is a current wart, tracked in #4479.
-        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        mask = torch.full((1, 1, 8, 8), 2.0, device=device, dtype=dtype)
-        mask[:, :, :, 4:] = 3.0
-        aug = K.AugmentationSequential(K.Resize((4, 4), antialias=True), data_keys=["input", "mask"])
+    @pytest.mark.parametrize("mask_dtype", [torch.float32, torch.int64, torch.bool])
+    def test_resize_antialias_preserves_mask_labels_4479(self, mask_dtype, device, dtype):
+        yy, xx = torch.meshgrid(
+            torch.arange(12, device=device),
+            torch.arange(16, device=device),
+            indexing="ij",
+        )
+        blocks = ((yy // 2) + (xx // 2)) % 2
+
+        if mask_dtype == torch.bool:
+            mask = blocks.bool()
+        else:
+            mask = (2 + blocks).to(mask_dtype)
+
+        mask = mask[None, None]
+        image = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+
+        without_antialias = K.AugmentationSequential(
+            K.Resize((6, 8), antialias=False),
+            data_keys=["input", "mask"],
+        )
+        with_antialias = K.AugmentationSequential(
+            K.Resize((6, 8), antialias=True),
+            data_keys=["input", "mask"],
+        )
+
+        expected_mask = without_antialias(image, mask)[1]
+        out_image, out_mask = with_antialias(image, mask)
+        expected_image = resize(image, (6, 8), "bilinear", align_corners=True, antialias=True)
+
+        assert out_mask.dtype == mask_dtype
+        assert torch.equal(out_mask, expected_mask)
+        assert set(out_mask.unique().tolist()) == set(mask.unique().tolist())
+        self.assert_close(out_image, expected_image)
+
+    def test_resize_mask_explicit_antialias_override_4479(self, device, dtype):
+        yy, xx = torch.meshgrid(
+            torch.arange(12, device=device),
+            torch.arange(16, device=device),
+            indexing="ij",
+        )
+        mask = (((yy // 2) + (xx // 2)) % 2).to(dtype)[None, None]
+        image = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+
+        aug = K.AugmentationSequential(
+            K.Resize((6, 8), antialias=True),
+            data_keys=["input", "mask"],
+            extra_args={
+                DataKey.MASK: {
+                    "resample": Resample.BILINEAR,
+                    "align_corners": True,
+                    "antialias": True,
+                }
+            },
+        )
+
         out_mask = aug(image, mask)[1]
-        assert not set(out_mask.unique().tolist()).issubset({2.0, 3.0})
+        expected = resize(mask, (6, 8), "bilinear", align_corners=True, antialias=True)
+        without_antialias = resize(mask, (6, 8), "bilinear", align_corners=True, antialias=False)
+
+        self.assert_close(out_mask, expected)
+        assert not torch.equal(out_mask, without_antialias)
 
     def test_convention_boxes_follow_the_xyxy_plus_convention(self, device, dtype):
         # Convention pin: the container's box arithmetic is `Boxes`' inclusive `xyxy_plus` mode, for a scaling
@@ -989,15 +1042,66 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(IndexError):
             seq(image, image.clone())
 
-    def test_wart_dictionary_pops_metadata_and_matches_raw_prefixes_4483(self, device, dtype):
+    def test_dictionary_preserves_metadata_and_input_4483(self, device, dtype):
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
-        keys, metadata = seq._read_datakeys_from_dict(("imagenet_id", "maskrcnn_boxes", "labelled_image", "note"))
-        assert keys == [DataKey.INPUT, DataKey.MASK, DataKey.LABEL]
-        assert metadata == ["note"]
-        data = {"image": torch.ones(1, 1, 2, 2, device=device, dtype=dtype), "note": "retained in output"}
+        metadata = {"imagenet_id": 7, "maskrcnn_boxes": "unchanged", "labelled_image": None, "note": "retained"}
+        image = torch.arange(4, device=device, dtype=dtype).reshape(1, 1, 2, 2)
+        data = {"note": metadata["note"], "image": image, **metadata}
+        original = dict(data)
         output = seq(data)
-        assert "note" not in data
-        assert output["note"] == "retained in output"
+        assert data.keys() == original.keys()
+        for key, value in original.items():
+            assert data[key] is value
+        self.assert_close(output["image"], image.flip(-1))
+        for key, value in metadata.items():
+            assert output[key] is value
+        restored = seq.inverse(output)
+        self.assert_close(restored["image"], image)
+        for key, value in metadata.items():
+            assert restored[key] is value
+            assert output[key] is value
+
+    def test_dictionary_key_boundaries_4483(self):
+        seq = K.AugmentationSequential(data_keys=None)
+        names = ("image", "IMAGE-left", "input_2", "mask_2", "keypoints-right", "bbox_xyxy_2", "bbox_xywh-a", "bbox_2")
+        keys, metadata = seq._read_datakeys_from_dict(names)
+        assert keys == [
+            DataKey.INPUT,
+            DataKey.INPUT,
+            DataKey.INPUT,
+            DataKey.MASK,
+            DataKey.KEYPOINTS,
+            DataKey.BBOX_XYXY,
+            DataKey.BBOX_XYWH,
+            DataKey.BBOX,
+        ]
+        assert metadata == []
+        names = (
+            "imagenet_id",
+            "maskrcnn_boxes",
+            "labelled_image",
+            "keypoint",
+            "classification",
+            "inputsize",
+            "images",
+            "masks",
+            "labels",
+            "bboxes",
+            "inputs",
+            "image2",
+            "imageLeft",
+            "image.2",
+            "keypoints2",
+        )
+        keys, metadata = seq._read_datakeys_from_dict(names)
+        assert keys == []
+        assert metadata == list(names)
+
+        keys, metadata = seq._read_datakeys_from_dict(
+            ("bbox_xyxy2", "bbox_xywh2", "class", "class_id", "class_weights", "class-names")
+        )
+        assert keys == [DataKey.BBOX, DataKey.BBOX, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL]
+        assert metadata == []
 
     def test_convention_same_on_batch_none_does_not_override_a_child(self, device, dtype):
         # Convention pin: `AugmentationSequential(same_on_batch=None)` - the default - keeps whatever each

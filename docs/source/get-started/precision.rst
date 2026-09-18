@@ -47,11 +47,11 @@ precision, so the table says nothing about those backends.
    * - ``kornia.augmentation``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 205 / 83
+     - 200 / 56
      - float16: 108 entries are ``CutmixGenerator``, whose Dirichlet sampling rejects float16 parameters; most
        of the rest are ``VideoSequential`` / ``AugmentationSequential`` and 3D-augmentation gradient checks.
-       bfloat16: ``RandomJigsaw``, ``RandomCutMixV2``, ``RandomMixUpV2`` and ``RandomMosaic`` raise
-       ``KeyError: 'BFLOAT16'`` (`issue #4467 <https://github.com/kornia/kornia/issues/4467>`_).
+       bfloat16: mostly 3D-augmentation gradient checks (28 of 56 entries are ``RandomMotionBlur3D`` /
+       ``RandomRotation3D`` backward).
    * - ``kornia.geometry.transform``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -146,9 +146,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.models``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 15 / 7
-     - EfficientViT (float16) and the Kimi-VL MoonViT encoder (both dtypes) raise dtype-mismatch errors;
-       bfloat16 RT-DETR RepVGG deployment fusion misses accuracy.
+     - 9 / 1
+     - float16: EfficientViT raises dtype-mismatch errors. bfloat16: RT-DETR RepVGG deployment fusion misses
+       accuracy.
    * - ``contrib``, ``core``, ``io``, ``onnx``, ``sensors``, ``tracking``, ``utils``
      - ✅ Yes
      - ⚠️ Partial

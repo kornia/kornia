@@ -67,10 +67,11 @@ class StereoCamera:
           and the two matrices return opposing values. :attr:`Q` is exactly the matrix written out on the
           :doc:`/geometry.camera.stereo` page, above this docstring, evaluated at the page's own ``tx``: the
           page's :math:`P_1` carries ``fx * tx`` in its last column, so that ``tx`` is ``P_right[0, 3] / fx``,
-          which the constructor rejects only when it is **positive** (``tx = 0`` and a batch with one positive
-          product pass, see the second warning below). The :attr:`tx` attribute exposes the negation of that
-          symbol, ``-P_right[0, 3] / fx``; substituting the attribute's value for the page's ``tx`` gives
-          neither :attr:`Q` nor its negation, because the page's last row carries no ``tx`` and does not flip.
+          which the constructor requires to be strictly **negative** for every rig in the batch; a zero product
+          (a degenerate baseline) and a positive one (the cameras swapped) both raise. The :attr:`tx` attribute
+          exposes the negation of that symbol, ``-P_right[0, 3] / fx``; substituting the attribute's value for
+          the page's ``tx`` gives neither :attr:`Q` nor its negation, because the page's last row carries no
+          ``tx`` and does not flip.
         - a disparity map is channels-**last**, :math:`(B, H, W, 1)`, for
           :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` and for the module-level
           :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` alike -- the :math:`(B, 1, H, W)`
@@ -86,18 +87,11 @@ class StereoCamera:
         depth and integer pixel-centre conventions.
 
     .. warning::
-        Several of the constructor guards do not enforce the contract above. A differing ``cx`` is
-        **rejected**, even though :attr:`cx_left` and :attr:`cx_right` are exposed separately and
-        ``Q[3, 3]`` carries ``fy * (cx_left - cx_right)`` for exactly that case, so that factor is zero on
-        any rig the constructor accepts. The ``tx * fx < 0`` guard is quantified with ``torch.all``, so a
-        batch whose second element has the two cameras the wrong way round is accepted and reprojects that
-        element behind the camera. And ``tx = 0`` passes the same guard, collapsing ``Q`` so that every
-        disparity reprojects to the origin with no ``inf`` to notice. These guard issues are tracked as
-        `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
-        ``test_wart_stereo_rejects_differing_principal_points_4270``,
-        ``test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270``,
-        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270`` in
-        ``tests/geometry/camera/test_stereo.py``.
+        A differing ``cx`` is **rejected**, even though :attr:`cx_left` and :attr:`cx_right` are exposed
+        separately and ``Q[3, 3]`` carries ``fy * (cx_left - cx_right)`` for exactly that case, so that factor
+        is zero on any rig the constructor accepts. Whether to admit a differing ``cx`` or to drop that claim is
+        tracked as `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
+        ``test_wart_stereo_rejects_differing_principal_points_4270`` in ``tests/geometry/camera/test_stereo.py``.
 
     .. warning::
         The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
@@ -189,10 +183,22 @@ class StereoCamera:
                 f"Got {rectified_left_camera[..., :, :3]} and {rectified_right_camera[..., :, :3]}."
             )
 
-        # Ensure that tx * fx is negative and exists.
+        # Reject every rig whose baseline is zero or points the wrong way. The right camera's last column is
+        # -tx * fx, so it must be strictly negative: zero means coincident cameras, which collapses Q and sends
+        # every disparity to the origin, and positive means the two cameras are swapped. The quantifier is
+        # ``any``, so one bad rig cannot hide behind good ones, and an empty batch stays vacuously valid. Neither
+        # comparison screens non-finite input: ``nan`` fails both of them and ``-inf`` is negative, so both are
+        # still accepted, exactly as they were before these checks were tightened.
+        # The check reads the data, which graph capture cannot do; skip it under export.
         tx_fx = rectified_right_camera[..., 0, 3]
-        if not is_exporting() and tx_fx.numel() > 0 and torch.all(torch.gt(tx_fx, 0)):
-            raise StereoException(f"Expected :math:`T_x * f_x` to be negative. Got {tx_fx}.")
+        if not is_exporting():
+            if torch.any(tx_fx == 0):
+                raise StereoException(
+                    "Expected a non-zero stereo baseline, but :math:`T_x * f_x` is 0 for at least one camera pair, "
+                    f"so `tx` is 0 and every disparity would reproject to the origin. Got {tx_fx}."
+                )
+            if torch.any(tx_fx > 0):
+                raise StereoException(f"Expected :math:`T_x * f_x` to be negative for every camera pair. Got {tx_fx}.")
 
     @property
     def batch_size(self) -> int:

@@ -46,17 +46,26 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or
           interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
         - container mask processing has dtype- and operator-specific limitations; see
-          `#4478 <https://github.com/kornia/kornia/issues/4478>`_ and
-          `#4479 <https://github.com/kornia/kornia/issues/4479>`_. Direct ``transform_masks`` calls use the
+          `#4478 <https://github.com/kornia/kornia/issues/4478>`_. Direct ``transform_masks`` calls use the
           image dtype guard and therefore reject ``bool`` masks.
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
           while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
+        - a scalar magnitude ``x`` means ``center ± x``, as it does for the intensity classes: its lower end
+          is floored at the parameter's lower bound, and an upper end past the upper bound raises the same
+          error the explicit range does. The bounds are ``(-360, 360)`` for :class:`RandomRotation`'s and
+          :class:`RandomAffine`'s ``degrees`` and for :class:`RandomShear`'s and :class:`RandomAffine`'s
+          ``shear``, ``(-1, 1)`` for :class:`RandomTranslate`'s ``translate_x`` and ``translate_y``,
+          ``(0, 1)`` for :class:`RandomAffine`'s ``translate``, and ``(-3, 3)`` for
+          :class:`RandomRotation90`'s ``times``. The 3D classes read their scalar through a helper that
+          carries no bound, tracked in `#4617 <https://github.com/kornia/kornia/issues/4617>`_.
 
     Note:
         Masks are resampled with nearest neighbour whatever ``resample`` the augmentation uses for images,
         unless ``resample`` is passed explicitly to :meth:`transform_masks` or :meth:`inverse_masks` --
         which is what ``extra_args[DataKey.MASK]`` does in a container. An explicit value is honoured in
-        both directions.
+        both directions. Antialiasing is disabled for masks by default, even when it is enabled for images.
+        Pass ``antialias=True`` explicitly to :meth:`transform_masks` or through ``extra_args[DataKey.MASK]``
+        to filter soft masks.
 
     """
 
@@ -115,6 +124,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         # Nearest is the mask default, but an explicit ``resample`` wins, matching ``inverse_masks``.
         if "resample" not in kwargs and "resample" in (self.flags if flags is None else flags):
             kwargs["resample"] = Resample.get("nearest")
+
+        # Disable antialiasing by default for masks so discrete labels are preserved,
+        # while allowing an explicit override for soft masks.
+        if "antialias" not in kwargs and "antialias" in (self.flags if flags is None else flags):
+            kwargs["antialias"] = False
+
         return super().transform_masks(input, params, flags, transform=transform, **kwargs)
 
     def apply_transform_mask(

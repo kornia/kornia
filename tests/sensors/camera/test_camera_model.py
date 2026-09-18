@@ -30,7 +30,7 @@ from kornia.sensors.camera.distortion_model import (
 )
 from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Projection
 
-from testing.base import BaseTester
+from testing.base import _DTYPE_PRECISIONS, BaseTester
 
 # Asymmetric fixture shared by the convention/wart pins below: fx = 100 != fy = 50 and cx = 4 != cy = 3 on a
 # non-square 6 x 8 image, so a transposed or swapped reading of the parameter vector changes the literals.
@@ -94,11 +94,21 @@ class TestPinholeCamera(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_project_unproject(self, device, dtype, batch_size):
         params, image_size = self._make_rand_data(batch_size, device, dtype)
+        # unproject divides by fx / fy and scales by z, so a focal length or a depth drawn near
+        # zero makes the half-precision round trip miss by far more than the dtype tolerance.
+        # Keep both in [1, 2) (#4399).
+        params[:, :2] += 1.0
         cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
         points = torch.rand((batch_size, 3), device=device, dtype=dtype)
+        points[..., 2] += 1.0
         projected = cam.project(Vector3(points))
         unprojected = cam.unproject(projected, points[..., 2])
-        self.assert_close(points, unprojected.data)
+        # Even there the round trip is not exact: u = fx * x / z + cx lands in [1, 4), where it is
+        # rounded to one ULP, and unproject scales that rounding by z / fx < 2. The miss is bounded
+        # by ULP(u) * z / fx, which reaches 2 * eps, while the half-precision default atol is about
+        # 1 eps. Floor atol at 4 * eps so the verdict does not depend on the draw.
+        rtol, atol = _DTYPE_PRECISIONS[dtype]
+        self.assert_close(points, unprojected.data, rtol=rtol, atol=max(atol, 4 * torch.finfo(dtype).eps))
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
