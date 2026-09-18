@@ -34,10 +34,11 @@ def _resize_coordinates(
     positions = torch.arange(output_size, device=start.device, dtype=start.dtype)
     if mode == "nearest":
         # ATen computes the scale on the host (usually float32; see the CPU-double path). CUDA/Inductor
-        # tensor division can use reciprocal multiplication instead, changing pixels
-        # at integer boundaries (e.g. 26 -> 22). Materialize possible scales as graph constants;
-        # only the sampled length indexes this table at runtime. No float64 GPU/MPS ops.
-        scales = torch.tensor([n / output_size for n in range(input_size + 1)], device=start.device, dtype=start.dtype)
+        # tensor float32 division can change pixels at integer boundaries (e.g. 26 -> 22).
+        # Build scales in CPU float64 before casting, like host scalar arithmetic. Tensor
+        # arange keeps input_size symbolic under dynamic=True; a Python range specializes it.
+        # No float64 GPU/MPS ops or device-to-host copies of sampled coordinates are needed.
+        scales = (torch.arange(input_size + 1, device="cpu", dtype=torch.float64) / output_size).to(start)
         return (positions * scales[length.long()]).float().floor()
     if align_corners:
         coordinates = positions * ((length - 1) / (output_size - 1) if output_size > 1 else length * 0.0)
@@ -85,6 +86,13 @@ def _compiled_slice_resize(
         # ATen's generic CPU nearest kernel uses double scales for double images,
         # then floorf; its channels-last kernel uses float scales. Match the layout
         # of the actual slices (including crop_by_indices' identical-box batch path).
+        # _use_vectorized_kernel_cond_2d selects float scales for Hout + Wout <= 128
+        # or channels-last slices with C > 3; otherwise HelperInterpNearest uses doubles.
+        # The threshold is an ATen benchmark heuristic, present in both supported endpoints:
+        # https://github.com/pytorch/pytorch/blob/v2.5.1/aten/src/ATen/native/cpu/UpSampleKernel.cpp#L1539-L1574
+        # https://github.com/pytorch/pytorch/blob/v2.14.0/aten/src/ATen/native/cpu/UpSampleKernel.cpp
+        # Keep test_compile_nearest_large_output across torch versions: a rounding change
+        # selects a different pixel, so this cannot be covered by a looser value tolerance.
         xd = _resize_coordinates(x0.double(), x1.double(), width, size[1], mode, align_corners)
         yd = _resize_coordinates(y0.double(), y1.double(), height, size[0], mode, align_corners)
         if channels > 3:
@@ -98,9 +106,12 @@ def _compiled_slice_resize(
             x, y = torch.where(channels_last, x, xd), torch.where(channels_last, y, yd)
         else:
             x, y = xd, yd
-    # Accumulate interpolation-tap gradients in opmath precision before casting to
-    # half/bfloat16, rather than rounding separately at each gather's backward.
-    work = input if mode == "nearest" else input.to(coordinate_dtype)
+    # Accumulate gradients in opmath precision before casting to half/bfloat16.
+    # Nearest upsampling also needs this: many outputs can gather the same pixel,
+    # and half atomic additions can saturate even with a single gather operation.
+    work = input.float() if input.dtype in (torch.float16, torch.bfloat16) else input
+    if mode != "nearest":
+        work = work.to(coordinate_dtype)
     flat = work.reshape(batch, channels, height * width)
 
     def gather(x_index: torch.Tensor, y_index: torch.Tensor) -> torch.Tensor:
@@ -110,7 +121,7 @@ def _compiled_slice_resize(
         return flat.gather(2, indices.expand(-1, channels, -1)).reshape(batch, channels, *size)
 
     if mode == "nearest":
-        return gather(x, y)
+        return gather(x, y).to(input.dtype)
 
     def preserve_slice(result: torch.Tensor, slice_values: torch.Tensor) -> torch.Tensor:
         # crop_by_indices skips interpolate entirely when the slice already has the

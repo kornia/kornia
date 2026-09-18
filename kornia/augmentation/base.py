@@ -91,9 +91,13 @@ class _BasicAugmentationBase(nn.Module):
         # classes exhausts its recompilation limit after only a few distinct augmentations.
         # Copy the implementation (not a wrapper that re-enters the shared frame), once per
         # class. Keep overrides and the original globals/closure, including zero-argument super.
+        # This isolates the entry frame only: graph-break resumptions inside shared helpers
+        # can still share caches (for example RandomCrop padding in a mixed pipeline).
         forward = getattr_static(cls, "forward")
         if "forward" not in cls.__dict__ and isinstance(forward, FunctionType):
-            code = forward.__code__.replace(co_name=f"{cls.__name__}.forward")
+            code = forward.__code__.replace(
+                co_name=f"{cls.__name__}.forward", co_qualname=f"{cls.__qualname__}.forward"
+            )
             clone = FunctionType(code, forward.__globals__, "forward", forward.__defaults__, forward.__closure__)
             update_wrapper(clone, forward)
             clone.__kwdefaults__ = forward.__kwdefaults__

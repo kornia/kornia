@@ -4238,10 +4238,12 @@ class TestRandomClahe(BaseTester):
 
     @pytest.mark.parametrize("batch_prob", [(True, True), (False, True), (False, False)])
     @pytest.mark.parametrize("slow_and_differentiable", [False, True])
-    def test_per_sample_clip_limit_replay(self, batch_prob, slow_and_differentiable, device, dtype):
+    @pytest.mark.parametrize("limits", [(0.5, 40.0), (7.0, 7.0), (0.0, -1.0)])
+    def test_per_sample_clip_limit_replay(self, batch_prob, slow_and_differentiable, limits, device, dtype):
         torch.manual_seed(0)
         input_data = torch.rand(2, 1, 32, 32).pow(3).to(device=device, dtype=dtype)
-        clip_limits = torch.tensor([0.5, 40.0])
+        input_data.requires_grad_(slow_and_differentiable)
+        clip_limits = torch.tensor(limits)
         aug = RandomClahe(
             clip_limit=(0.5, 40.0),
             grid_size=(2, 2),
@@ -4262,7 +4264,14 @@ class TestRandomClahe(BaseTester):
         )
         expected = torch.where(torch.tensor(batch_prob, device=device).view(-1, 1, 1, 1), transformed, input_data)
 
-        self.assert_close(aug(input_data, params=params), expected)
+        actual = aug(input_data, params=params)
+        self.assert_close(actual, expected)
+        if slow_and_differentiable:
+            weights = torch.rand_like(actual)
+            self.assert_close(
+                torch.autograd.grad(actual, input_data, weights)[0],
+                torch.autograd.grad(expected, input_data, weights)[0],
+            )
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(0)

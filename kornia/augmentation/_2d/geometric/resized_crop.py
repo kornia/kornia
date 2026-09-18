@@ -82,6 +82,11 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         Only resample mode supports :meth:`inverse`; its inverse
         resamples onto the original canvas and cannot recover information discarded by cropping or interpolation.
 
+    Note:
+        Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
+        not bitwise. Eager execution retains native slicing and resizing for performance;
+        the tensorized compiled path avoids recompilation as crop coordinates change.
+
     Example:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.tensor([[[0., 1., 2.],

@@ -108,6 +108,11 @@ class RandomCrop(GeometricAugmentationBase2D):
         resample mode supports :meth:`inverse`; inverse removes pre-crop padding but cannot restore cropped or
         interpolated content.
 
+    Note:
+        Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
+        not bitwise. Eager execution retains native slicing and resizing for performance;
+        the tensorized compiled path avoids recompilation as crop coordinates change.
+
     Examples:
         >>> import torch
         >>> _ = torch.manual_seed(0)

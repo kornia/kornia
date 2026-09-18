@@ -22,7 +22,7 @@ import pickle
 
 import pytest
 import torch
-from torch._dynamo.testing import CompileCounter
+from torch._dynamo.testing import CompileCounter, CompileCounterWithBackend
 
 import kornia.augmentation as K
 
@@ -46,6 +46,8 @@ class TestAugmentationCompile(BaseTester):
         input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         compiled = []
         for aug in augmentations:
+            # Isolate shared entry-frame caching here. Crop and CLAHE random-path
+            # tests separately trace parameter sampling and check graph reuse.
             params = aug.forward_parameters(input.shape)
             counter = CompileCounter()
             fn = torch_optimizer(aug, backend=counter, fullgraph=True)
@@ -84,9 +86,17 @@ class TestAugmentationCompile(BaseTester):
             actual = fn(input, params=params)
             self.assert_close(actual, expected)
             weights = torch.rand_like(actual)
-            self.assert_close(
-                torch.autograd.grad(actual, input, weights)[0], torch.autograd.grad(expected, input, weights)[0]
-            )
+            actual_grad = torch.autograd.grad(actual, input, weights)[0]
+            if device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
+                # CUDA half interpolate backward rounds atomic updates. Compare with
+                # float32 accumulation, as in the real-backend replay tests below.
+                reference = input.detach().float().requires_grad_()
+                expected_grad = torch.autograd.grad(aug(reference, params=params), reference, weights.float())[0].to(
+                    dtype
+                )
+            else:
+                expected_grad = torch.autograd.grad(expected, input, weights)[0]
+            self.assert_close(actual_grad, expected_grad)
         assert counter.frame_count == 1
 
     @pytest.mark.parametrize("same_on_batch", [False, True])
@@ -99,6 +109,36 @@ class TestAugmentationCompile(BaseTester):
         assert all(output.shape == (2, 3, 8, 8) for output in outputs)
         assert any(not torch.equal(outputs[0], output) for output in outputs[1:])
         assert counter.frame_count == 1
+
+    def test_forward_code_qualname(self):
+        for cls in (K.RandomHorizontalFlip, K.RandomVerticalFlip):
+            assert cls.forward.__code__.co_qualname == f"{cls.__qualname__}.forward"
+
+    @pytest.mark.parametrize("backend", ["eager", "inductor"])
+    def test_compile_nearest_dynamic_shape(self, device, dtype, torch_optimizer, backend):
+        aug = K.RandomResizedCrop((46, 22), resample="nearest", align_corners=None)
+        counter = CompileCounter() if backend == "eager" else CompileCounterWithBackend(backend)
+        fn = torch_optimizer(aug, backend=counter, fullgraph=True, dynamic=True)
+        frames = None
+        for height, width in [(14, 26), (18, 30), (22, 34)]:
+            input = torch.rand(2, 3, height, width, device=device, dtype=dtype)
+            params = aug.forward_parameters(input.shape)
+            params["src"] = (
+                torch.tensor(
+                    [[[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]],
+                    device=device,
+                    dtype=dtype,
+                )
+                .expand(2, -1, -1)
+                .clone()
+            )
+            self.assert_close(fn(input, params=params), aug(input, params=params), atol=0, rtol=0)
+            if frames is None:
+                # Cold Inductor can invoke the backend twice during initial dynamic
+                # compilation. Changing spatial sizes must reuse the resulting graph.
+                frames = counter.frame_count
+                assert frames > 0
+            assert counter.frame_count == frames
 
     def test_forward_copy_and_pickle(self, device, dtype):
         aug = K.RandomHorizontalFlip(p=1)
@@ -131,6 +171,23 @@ class TestAugmentationCompile(BaseTester):
         fresh = K.RandomResizedCrop((9, 11), resample=resample, align_corners=align_corners)
         fn = torch_optimizer(fresh, fullgraph=True)
         assert fn(input).shape == fn(input).shape == (2, 3, 9, 11)
+
+    @pytest.mark.parametrize("backend", ["eager", "inductor"])
+    def test_compile_nearest_upsample_gradient(self, device, dtype, torch_optimizer, backend):
+        torch.manual_seed(17)
+        aug = K.RandomResizedCrop((32, 32), resample="nearest", align_corners=None)
+        input = torch.rand(1, 1, 2, 2, device=device, dtype=dtype, requires_grad=True)
+        params = aug.forward_parameters(input.shape)
+        params["src"] = torch.zeros(1, 4, 2, device=device, dtype=dtype)
+        actual = torch_optimizer(aug, backend=backend, fullgraph=True)(input, params=params)
+        self.assert_close(actual, aug(input, params=params), atol=0, rtol=0)
+        weights = torch.rand_like(actual)
+        # All 1024 output gradients accumulate into one pixel. Half atomics can
+        # saturate here; use float32 accumulation for both half dtypes as the oracle.
+        reference = input.detach().to(torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype)
+        reference.requires_grad_()
+        expected_grad = torch.autograd.grad(aug(reference, params=params), reference, weights.to(reference))[0]
+        self.assert_close(torch.autograd.grad(actual, input, weights)[0], expected_grad.to(dtype))
 
     def test_compile_nearest_rounding(self, device, dtype, torch_optimizer):
         aug = K.RandomResizedCrop((46, 22), resample="nearest", align_corners=None)
@@ -216,9 +273,17 @@ class TestRandomCropCompile(BaseTester):
             actual = fn(input, params=params)
             self.assert_close(actual, expected)
             weights = torch.rand_like(actual)
-            self.assert_close(
-                torch.autograd.grad(actual, input, weights)[0], torch.autograd.grad(expected, input, weights)[0]
-            )
+            actual_grad = torch.autograd.grad(actual, input, weights)[0]
+            if device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
+                # CUDA half interpolate backward rounds atomic updates. Compare with
+                # float32 accumulation, as in the real-backend replay tests below.
+                reference = input.detach().float().requires_grad_()
+                expected_grad = torch.autograd.grad(aug(reference, params=params), reference, weights.float())[0].to(
+                    dtype
+                )
+            else:
+                expected_grad = torch.autograd.grad(expected, input, weights)[0]
+            self.assert_close(actual_grad, expected_grad)
             if offset == 1:
                 frames = counter.frame_count
         assert counter.frame_count == frames
