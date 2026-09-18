@@ -41,7 +41,7 @@ LLMS_FULL = REPO / "docs" / "source" / "_extra" / "llms-full.txt"
 # accelerator result set for the latest version is used when that one is absent.
 HERO = {
     "suite": "augmentation",
-    "machine": "apple-m1",
+    "machine": "apple-m1-pro",
     "op": "RandomGaussianBlur",
     "batch": 32,
     "backend": "kornia (eager)",

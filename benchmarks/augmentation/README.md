@@ -25,6 +25,17 @@ Each script prints the git commit, platform, and (on CUDA) the device name, per 
 contract in [`benchmarks/README.md`](../README.md). Optional libraries that are not installed are reported as a
 skip line rather than failing the run.
 
+Known defect in the compiled `RandomResizedCrop` row, tracked in
+[#4658](https://github.com/kornia/kornia/issues/4658): that class specializes its graph on the crop
+box it samples, so it recompiles indefinitely — 1.3–5.6 s compiles keep arriving between 1 ms cached
+calls. `kornia_row`'s single warmup call cannot stabilize an op whose guards depend on freshly
+sampled parameters, so the timed region catches compilation and the committed number is a snapshot
+of the storm, not steady-state throughput: at batch 8 and 32 it reads about 2 img/s against roughly
+5800 eager, reproducibly, and at batch 1 it swings between 1 and 4516 img/s between runs. The rows
+are published as measured so the defect stays visible; re-measure them when #4658 is fixed. The same
+issue covers every augmentation sharing one Dynamo cache entry, which bites any pipeline of more
+than about eight classes.
+
 ## The regimes — why the numbers are not apples-to-apples
 
 The libraries do not solve the same problem, and reading a single column as "the winner" is

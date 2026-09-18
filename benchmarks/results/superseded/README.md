@@ -17,8 +17,15 @@ whenever the hardware is available.
 | `0.9.0rc1/filters--apple-m1--mps.json` | `83725c6b`, 2026-08-08 | as above |
 | `0.9.0rc1/filters--apple-m4--cpu.json` | `f0a06c70`, 2026-08-18 | as above; no post-#4647 M4 run exists yet |
 | `0.9.0rc1/filters--apple-m4--mps.json` | `f0a06c70`, 2026-08-18 | as above |
+| `0.9.0rc1/augmentation--apple-m1--cpu.json` | `83725c6b`, 2026-08-08 | #4647 — `RandomGaussianBlur` delegates to `kornia.filters.gaussian_blur2d`, so its rows predate the change; replaced by `augmentation--apple-m1-pro--*` |
+| `0.9.0rc1/augmentation--apple-m1--mps.json` | `83725c6b`, 2026-08-08 | as above |
+| `0.9.0rc1/augmentation--apple-m4--cpu.json` | `f0a06c70`, 2026-08-18 | as above; no post-#4647 M4 run exists yet |
+| `0.9.0rc1/augmentation--apple-m4--mps.json` | `f0a06c70`, 2026-08-18 | as above |
 
-These four were single warmed runs of the filters flagship against the pre-#4647 implementations.
-Published beside a post-#4647 run they would read as a hardware difference — for example
-`median_blur` at batch 32 measured 11 img/s on the M1 and 16 img/s on the M4 before the change
-against 69 img/s on an M1 Pro after it — which is a change in kornia, not in the machines.
+These are single warmed runs of the filters and augmentation flagships against the pre-#4647
+implementations. Published beside a post-#4647 run they would read as a hardware difference — for
+example `median_blur` at batch 32 measured 11 img/s on the M1 and 16 img/s on the M4 before the
+change against 69 img/s on an M1 Pro after it, and `RandomGaussianBlur` at batch 32 measured
+157 img/s on the M1 and 414 on the M4 against 3235 on an M1 Pro — which is a change in kornia, not
+in the machines. The augmentation classes hold no filter implementation of their own; they call
+`kornia.filters`, so a filters change moves their numbers too.
