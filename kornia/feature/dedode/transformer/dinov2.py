@@ -358,8 +358,7 @@ class DinoVisionTransformer(nn.Module):
         ret = self.forward_features(*args, **kwargs)
         if is_training:
             return ret
-        else:
-            return self.head(ret["x_norm_clstoken"])
+        return self.head(ret["x_norm_clstoken"])
 
 
 def init_weights_vit_timm(module: nn.Module, name: str = ""):

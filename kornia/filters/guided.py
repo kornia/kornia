@@ -202,16 +202,15 @@ def guided_blur(
             subsample,
             separable=separable,
         )
-    else:
-        return _guided_blur_multichannel_guidance(
-            guidance,
-            input,
-            kernel_size,
-            eps,
-            border_type,
-            subsample,
-            separable=separable,
-        )
+    return _guided_blur_multichannel_guidance(
+        guidance,
+        input,
+        kernel_size,
+        eps,
+        border_type,
+        subsample,
+        separable=separable,
+    )
 
 
 class GuidedBlur(nn.Module):
