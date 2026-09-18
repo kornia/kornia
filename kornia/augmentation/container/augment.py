@@ -132,15 +132,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           the mask, the keypoints and all three box spellings alike, and ``bbox_xywh`` keeps its ``w`` and
           ``h``. Labels are passed through untouched by a geometric step.
         - mask resampling normally uses nearest interpolation, but this does not guarantee label preservation:
-          padding can introduce a fill value.
-          Put the image before the masks, including
-          in dictionary insertion order, so mask conversion uses that image's working dtype. Masks preceding
-          the image use the previous call's image dtype, or ``float32`` on a fresh container. The container
-          casts every mask output to the last mask argument's dtype (the first
-          element's dtype if that argument is a list). A single mask or masks with a common dtype therefore
-          keep that dtype, ``bool`` included. Conversion through the image working dtype can round integer
-          labels that dtype cannot represent exactly, and mixed mask dtypes can lose labels, for example when a
-          final boolean mask makes an integer semantic mask boolean too. Tracked in
+          padding can introduce a fill value. Masks are converted to this call's image working dtype wherever
+          they sit in ``data_keys`` or dictionary insertion order, and each mask output comes back in the dtype
+          of its own argument (per element for a list), ``bool`` included, so masks of different dtypes do not
+          affect each other. The conversion through the image working dtype can still round integer labels that
+          dtype cannot represent exactly, for example ``2049`` through ``float16``. Tracked in
           `#4478 <https://github.com/kornia/kornia/issues/4478>`_.
         - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
           has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
@@ -471,6 +467,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # TODO: validate args batching, and its consistency
 
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
+        # Resolve this call's image dtype before any mask is converted, so a mask that precedes the image in
+        # ``data_keys`` or dictionary insertion order uses it too, rather than the previous call's image dtype
+        # (or ``float32`` on a fresh container). Masks after an image keep using the most recent image, as before.
+        if not is_exporting():
+            for arg, dcate in zip(args, data_keys):
+                if DataKey.get(dcate) in _IMG_OPTIONS:
+                    self.input_dtype = cast(torch.Tensor, arg).dtype
+                    break
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
@@ -479,12 +483,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     self.input_dtype = arg.dtype
                 inp.append(arg)
             elif DataKey.get(dcate) in _MSK_OPTIONS:
-                if isinstance(inp, list):
-                    arg = cast(List[torch.Tensor], arg)
-                    self.mask_dtype = arg[0].dtype
+                # Output dtypes are read back per argument in ``_arguments_postproc``; ``mask_dtype`` only records
+                # the last mask's dtype for callers that read the attribute. The test is on ``arg``: it used to be
+                # on the accumulator ``inp``, which is always a list, so a tensor mask was indexed at ``arg[0]``
+                # and an empty batch raised ``IndexError``.
+                if isinstance(arg, list):
+                    if len(arg) > 0:
+                        self.mask_dtype = arg[0].dtype
                 else:
-                    arg = cast(torch.Tensor, arg)
-                    self.mask_dtype = arg.dtype
+                    self.mask_dtype = cast(torch.Tensor, arg).dtype
                 inp.append(self._preproc_mask(arg))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
@@ -506,7 +513,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
             elif DataKey.get(dcate) in _MSK_OPTIONS:
-                _out_m = self._postproc_mask(cast(MaskDataType, out_arg))
+                _out_m = self._postproc_mask(cast(MaskDataType, out_arg), cast(MaskDataType, in_arg))
                 out.append(_out_m)
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
@@ -708,16 +715,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
         return arg
 
-    def _postproc_mask(self, arg: MaskDataType) -> MaskDataType:
+    def _postproc_mask(self, arg: MaskDataType, like: MaskDataType) -> MaskDataType:
+        # Each mask output goes back to the dtype of its own argument, per element for a list. A single shared
+        # dtype would cast every mask to whichever mask came last: an integer semantic mask followed by a boolean
+        # one came back boolean, and its labels collapsed to ``True``.
         if isinstance(arg, list):
-            new_arg = []
-            for a in arg:
-                a_new = a.to(self.mask_dtype) if self.mask_dtype else a.to(torch.float)
-                new_arg.append(a_new)
-            return new_arg
-
-        arg = arg.to(self.mask_dtype) if self.mask_dtype else arg.to(torch.float)
-        return arg
+            likes = like if isinstance(like, list) else [like] * len(arg)
+            return [a.to(ref.dtype) for a, ref in zip(arg, likes)]
+        ref = like[0] if isinstance(like, list) else like
+        return arg.to(ref.dtype)
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
         if DataKey.get(dcate) in [DataKey.BBOX]:
