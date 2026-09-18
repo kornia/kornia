@@ -23,7 +23,7 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-from kornia.core.utils import _torch_histc_cast
+from kornia.core.utils import _normalize_to_float32_or_float64
 from kornia.image.utils import perform_keep_shape_image
 
 from .histogram import histogram
@@ -134,8 +134,34 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
     return interp_tiles
 
 
-def _my_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
-    return _torch_histc_cast(tiles, bins=bins, min=0, max=1)
+def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
+    r"""Histogram every tile over ``[0, 1]`` in one pass, matching a per-tile CPU ``torch.histc``.
+
+    One ``scatter_add_`` counts all tiles, instead of one ``histc`` launch per tile, and keeps a static
+    output shape so the function stays a single dynamo graph. The index is computed as ``histc``
+    computes it, in the same float32/float64 promotion as ``_torch_histc_cast``: ``floor(x * bins)``,
+    with ``x == 1`` in the last bin. Values outside ``[0, 1]`` and NaN are not counted, which the CPU
+    ``histc`` also skips; they go to one extra overflow column per tile that is dropped. (``histc`` on
+    MPS counts values marginally outside ``[0, 1]``, so there this matches CPU rather than MPS.)
+
+    Args:
+        tiles: flattened tiles. (T, P)
+        bins: number of bins.
+
+    Returns:
+        Per-tile counts in the dtype of ``tiles``. (T, bins)
+
+    """
+    num_tiles = tiles.shape[0]
+    x = tiles.to(_normalize_to_float32_or_float64(tiles.dtype))
+    # clamp keeps [0, 1] unchanged and NaN as NaN, so the comparison is False exactly where histc skips.
+    in_range = x.clamp(0, 1) == x
+    idx = (x * bins).to(torch.int64).clamp_(0, bins - 1)
+    # this mask is what drops out-of-range values; without it they land in the first or last bin
+    idx = torch.where(in_range, idx, bins)
+    counts = torch.zeros(num_tiles, bins + 1, dtype=x.dtype, device=x.device)
+    counts.scatter_add_(1, idx, torch.ones_like(x))
+    return counts[:, :bins].to(tiles.dtype)
 
 
 def _compute_luts(
@@ -162,10 +188,7 @@ def _compute_luts(
     pixels: int = th * tw
     tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # test with view  # T x (THxTW)
     if not diff:
-        if torch.jit.is_scripting():
-            histos = torch.stack([_torch_histc_cast(tile, bins=num_bins, min=0, max=1) for tile in tiles])
-        else:
-            histos = torch.stack(list(map(_my_histc, tiles, [num_bins] * len(tiles))))
+        histos = _tiles_histc(tiles, num_bins)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile

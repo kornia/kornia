@@ -111,6 +111,31 @@ class TestEqualization(BaseTester):
         assert out.shape == img.shape
         assert torch.isfinite(out).all()
 
+    def test_histogram_skips_out_of_range(self, device, dtype):
+        # torch.histc on CPU counts only values inside [min, max] and _tiles_histc must too. 1.0000001 and
+        # -1e-7 are inside the window equalize_clahe admits (see RandomClahe's warning and #4564), and MPS's
+        # torch.histc counts them, so this also pins CPU/MPS parity.
+        from kornia.enhance.equalization import _tiles_histc
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("1.0000001 and -1e-7 round to 1 and 0 in half precision")
+        tiles = torch.tensor([[0.5, 1.0000001, -1e-7, 0.25]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(_tiles_histc(tiles, 4), expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # The tile histograms keep a static shape, so equalize_clahe is one dynamo graph. A data-dependent
+        # op such as bincount splits it into six; torch.compile without fullgraph=True would not notice.
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+
+        def op(x):
+            return enhance.equalize_clahe(x, 40.0, (2, 2))
+
+        torch._dynamo.reset()
+        explanation = torch._dynamo.explain(op)(img)
+        assert explanation.graph_break_count == 0, explanation.break_reasons
+        self.assert_close(torch_optimizer(op)(img), op(img))
+
     @pytest.mark.parametrize("grid_size", [(2, 2), (2, 3), (3, 2)])
     def test_gradcheck(self, device, grid_size):
         torch.random.manual_seed(4)
