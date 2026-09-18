@@ -57,8 +57,10 @@ class RandomRain(IntensityAugmentationBase2D):
           painted cells have gaps inside that span -- ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10``
           image paints rows ``[0, 1, 2, 3, 5]``. A size as large as the image's, or a ``drop_height`` below
           ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
-        - a drop's start is uniform over every position that keeps the whole drop inside the image, so every
-          row and column, the last ones included, can be painted.
+        - every start position that keeps the whole drop inside the image is equally likely, so the last row
+          and the last column are reachable. Reachable by a start, not necessarily painted: the gaps inside a
+          drop's span described above can still leave a column untouched -- ``drop_height=5`` with
+          ``drop_width=9`` on a ``6 x 10`` image has one legal start and never paints column ``8``.
         - the three integer ranges are closed and uniform: every integer from the lower to the upper bound
           is drawn with the same probability, so the default ``drop_height=(5, 20)`` reaches ``20``, the
           default ``drop_width=(-5, 5)`` reaches ``-5`` and ``5``, and ``0`` carries no more weight than
@@ -130,9 +132,12 @@ class RandomRain(IntensityAugmentationBase2D):
             y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
 
             # A drop may start anywhere its far end stays inside the image. The far end is the line's last
-            # offset, which is 0 for a single-pixel drop. The clamp keeps a draw that rounds up to 1.0 (half
-            # precision) on the last admissible start.
-            last_dy, last_dx = int(x[-1]), int(y[-1])
+            # offset -- the end point is included once there are at least two steps, and a single-pixel drop
+            # is the start alone. Derived in Python rather than read off `x[-1]`/`y[-1]`, which would sync the
+            # device on every batch element. The clamp is for the MPS half `rand` that can return exactly 1.0
+            # (#4553): it keeps such a draw on the last admissible start instead of one past it. Main was safe
+            # there only by accident, its multiplier being one smaller.
+            last_dy, last_dx = (height_of_drop, width_of_drop) if size_of_line > 1 else (0, 0)
             rows, cols = image.shape[2] - last_dy, image.shape[3] - abs(last_dx)
             random_y_coords = (coordinates_of_drops[:, 0] * rows).long().clamp(max=rows - 1)
             random_x_coords = (coordinates_of_drops[:, 1] * cols).long().clamp(max=cols - 1) + max(-last_dx, 0)
