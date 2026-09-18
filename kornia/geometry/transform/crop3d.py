@@ -40,10 +40,11 @@ def crop_and_resize3d(
         - ``boxes``: :math:`(B, 8, 3)` corner points in ``(x, y, z)`` order, front face
           then back face, each face top-left, top-right, bottom-right, bottom-left —
           same ``(x, y)``/inclusive-pixel convention as :func:`crop_and_resize`, with
-          ``z`` anchored at the top-left of the first depth slice (``z = 0``);
-          reproducing the exact integer-voxel slice requires ``align_corners=True`` —
-          the default ``False`` interpolates instead
-        - align_corners: ``False`` by default
+          ``z`` anchored at the top-left of the first depth slice (``z = 0``); an
+          integer-cornered box reproduces the exact integer-voxel slice under either
+          ``align_corners`` setting, since the box is given in voxel coordinates
+        - align_corners: ``False`` by default; it changes nothing on an in-bounds box, since the box is
+          given in voxel coordinates
 
     Args:
         tensor: the 3D volume tensor with shape (B, C, D, H, W).

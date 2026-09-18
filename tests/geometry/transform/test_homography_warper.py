@@ -456,6 +456,45 @@ class TestHomographyNormalTransform(BaseTester):
         output = kornia.geometry.linalg.transform_points(transform, input)
         self.assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
+    def test_transform3d_apply_align_corners_false(self, device, dtype):
+        # 3D twin of test_transform_apply_align_corners_false (#4503): +/-1 are the outer voxel
+        # EDGES, so the centres 0 and size-1 land at -1 + 1/size and 1 - 1/size on each axis.
+        depth, height, width = 4, 2, 5
+        input = torch.tensor([[0.0, 0.0, 0.0], [width - 1, height - 1, depth - 1]], device=device, dtype=dtype)
+        expected = torch.tensor([[-0.8, -0.5, -0.75], [0.8, 0.5, 0.75]], device=device, dtype=dtype)
+        transform = kornia.geometry.conversions.normal_transform_pixel3d(
+            depth, height, width, device=device, dtype=dtype, align_corners=False
+        )
+        output = kornia.geometry.linalg.transform_points(transform, input)
+        self.assert_close(output, expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("depth", [1, 2, 5])
+    @pytest.mark.parametrize("height", [1, 2, 5])
+    @pytest.mark.parametrize("width", [1, 2, 5])
+    def test_normalize_homography3d_identity_align_corners_false(self, depth, height, width, device, dtype):
+        # There is no denormalize_homography3d (#3962), so the round trip is pinned two ways:
+        # an identity stays an identity under the half-pixel frames, including at size 1 where the
+        # mapping is finite without a guard, and the result equals the explicit composition
+        # N_dst @ H @ inv(N_src) built from normal_transform_pixel3d(align_corners=False). The
+        # inverse goes through kornia's _torch_inverse_cast, as in the function itself, because
+        # torch.linalg.inv has no float16/bfloat16 kernel.
+        dsize = (depth, height, width)
+        identity = torch.eye(4, device=device, dtype=dtype)[None]
+        normalized = kornia.geometry.conversions.normalize_homography3d(identity, dsize, dsize, align_corners=False)
+        assert torch.isinf(normalized).sum().item() == 0
+        self.assert_close(normalized, identity)
+        homo = torch.tensor(
+            [[[1.0, 0.2, 0.0, 0.5], [-0.1, 1.0, 0.1, -0.3], [0.0, 0.05, 1.0, 0.2], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        n = kornia.geometry.conversions.normal_transform_pixel3d(
+            depth, height, width, device=device, dtype=dtype, align_corners=False
+        )
+        expected = n @ homo @ _torch_inverse_cast(n)
+        actual = kornia.geometry.conversions.normalize_homography3d(homo, dsize, dsize, align_corners=False)
+        self.assert_close(actual, expected)
+
 
 class TestHomographyWarper3D(BaseTester):
     num_tests = 10
