@@ -839,8 +839,11 @@ class TestPinholeCamera(BaseTester):
         inplace = cam.scale_(0.5)
         assert inplace is cam
         assert cam.height.is_floating_point()
-        self.assert_close(cam.height, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(cam.width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # int64 height/width * Python float 0.5 promotes to the default floating dtype
+        # (e.g. float32), not necessarily the camera's intrinsics dtype. Construct the
+        # expected values from the promoted tensors rather than the fixture dtype.
+        self.assert_close(cam.height, cam.height.new_tensor([3.0]), atol=0.0, rtol=0.0)
+        self.assert_close(cam.width, cam.width.new_tensor([4.0]), atol=0.0, rtol=0.0)
         expected_K = _k44(device, dtype)
         expected_K[:, :2, :3] *= 0.5
         self.assert_close(K, _k44(device, dtype), atol=0.0, rtol=0.0)
