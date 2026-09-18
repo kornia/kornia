@@ -16,6 +16,9 @@
 #
 
 from enum import Enum
+from functools import update_wrapper
+from inspect import getattr_static
+from types import FunctionType
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
@@ -81,6 +84,22 @@ class _BasicAugmentationBase(nn.Module):
     # Users can introspect via ``aug.exportable``; CI iterates the known-exportable
     # subset in ``tests/augmentation/test_onnx_export.py``.
     ONNX_EXPORTABLE = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Dynamo caches by code object. Sharing an inherited forward across all augmentation
+        # classes exhausts its recompilation limit after only a few distinct augmentations.
+        # Copy the implementation (not a wrapper that re-enters the shared frame), once per
+        # class. Keep overrides and the original globals/closure, including zero-argument super.
+        forward = getattr_static(cls, "forward")
+        if "forward" not in cls.__dict__ and isinstance(forward, FunctionType):
+            code = forward.__code__.replace(co_name=f"{cls.__name__}.forward")
+            clone = FunctionType(code, forward.__globals__, "forward", forward.__defaults__, forward.__closure__)
+            update_wrapper(clone, forward)
+            clone.__kwdefaults__ = forward.__kwdefaults__
+            clone.__qualname__ = f"{cls.__qualname__}.forward"
+            clone.__module__ = cls.__module__
+            cls.forward = clone
 
     @property
     def exportable(self) -> bool:
