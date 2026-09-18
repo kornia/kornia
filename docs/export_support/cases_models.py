@@ -1123,8 +1123,9 @@ A(
         "contrib",
         _kmeans_fit,
         [torch.randn(20, 2) * 0.5 + torch.tensor([2.5, 2.5])],
-        note="max_iterations=5, tolerance=None (fixed iteration count); the centroid update is now a one-hot "
-        "matmul with no data-dependent control flow, so it traces and exports as a single graph",
+        note="max_iterations=5, tolerance=None (fixed iteration count); the centroid update has no "
+        "data-dependent control flow, so torch.export and the ONNX export now succeed; the one remaining "
+        "graph break is torch.manual_seed in __init__",
     )
 )
 A(case("contrib.Lambda", "contrib", K.contrib.Lambda(K.color.rgb_to_grayscale), [IMG], note="wraps rgb_to_grayscale"))

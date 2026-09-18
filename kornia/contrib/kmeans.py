@@ -55,6 +55,10 @@ class KMeans:
         # cluster_centers should have only 2 dimensions
         if cluster_centers is not None:
             KORNIA_CHECK_SHAPE(cluster_centers, ["C", "D"])
+            KORNIA_CHECK(
+                cluster_centers.shape[0] == num_clusters,
+                f"cluster_centers has {cluster_centers.shape[0]} rows but num_clusters={num_clusters}",
+            )
 
         self.num_clusters = num_clusters
         self._cluster_centers = cluster_centers

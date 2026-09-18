@@ -90,6 +90,12 @@ class TestKMeans(BaseTester):
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
         assert "7 != 5" in str(errinfo)
 
+        # case: num_clusters does not match the number of rows in an explicit cluster_centers
+        with pytest.raises(BaseError) as errinfo:
+            starting_centers = torch.rand((5, 2), device=device, dtype=dtype)
+            kornia.contrib.KMeans(3, starting_centers, 1e-3, 100, 0)
+        assert "cluster_centers has 5 rows but num_clusters=3" in str(errinfo.value)
+
     def test_empty_cluster_reseeds_to_a_data_point(self, device, dtype):
         # Both starting centers coincide, so every point ties to cluster 0 (argmin keeps the
         # first index on a tie) and cluster 1 gets no points assigned to it for the one update.
@@ -132,7 +138,9 @@ class TestKMeans(BaseTester):
         kmeans.fit(x)
 
         assert torch.isfinite(kmeans.cluster_centers).all()
-        self.assert_close(kmeans.cluster_centers, expected.to(device=device, dtype=dtype))
+        # exact in every dtype on the fixed implementation - a nonzero tolerance would let the
+        # pre-fix bfloat16 error (0.25, well under BaseTester's default bfloat16 tolerance) pass
+        self.assert_close(kmeans.cluster_centers, expected.to(device=device, dtype=dtype), rtol=0.0, atol=0.0)
 
     @staticmethod
     def _create_data(device, dtype):
