@@ -210,3 +210,45 @@ class TestParamValidation:
         """A scalar that overshoots a geometric parameter's bound is rejected at construction."""
         with pytest.raises(ValueError, match=match_msg):
             ctor()
+
+    # The 3D readers took a scalar or an explicit range without any bound, so an angle past one
+    # turn was sampled instead of rejected (#4617). Executed 2026-09-17 (torch 2.5.0, cpu).
+    @pytest.mark.parametrize(
+        "ctor, match_msg",
+        [
+            (lambda: K.RandomRotation3D(400.0), r"degrees out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)"),
+            (
+                lambda: K.RandomRotation3D((-400.0, 400.0)),
+                r"degrees out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)",
+            ),
+            (lambda: K.RandomAffine3D(400.0), r"degrees out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)"),
+            (
+                lambda: K.RandomAffine3D(30.0, shears=400.0),
+                r"shears out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)",
+            ),
+            (
+                lambda: K.RandomMotionBlur3D(3, 400.0, 0.5),
+                r"angle out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)",
+            ),
+        ],
+        ids=["rotation3d-scalar", "rotation3d-range", "affine3d-degrees", "affine3d-shears", "motion-blur3d-angle"],
+    )
+    def test_3d_angle_past_one_turn_raises(self, ctor, match_msg):
+        """A 3D angle range wider than one turn is rejected, as the 2D one is."""
+        with pytest.raises(ValueError, match=match_msg):
+            ctor()
+
+    @pytest.mark.parametrize(
+        "ctor",
+        [
+            lambda: K.RandomRotation3D(360.0),
+            lambda: K.RandomRotation3D((-360.0, 360.0)),
+            lambda: K.RandomRotation3D((10.0, 20.0, 30.0)),
+            lambda: K.RandomAffine3D(30.0, shears=(10.0, 20.0, 30.0, 40.0, 50.0, 60.0)),
+            lambda: K.RandomMotionBlur3D(3, 360.0, 0.5),
+        ],
+        ids=["at-the-bound", "explicit-at-the-bound", "per-axis", "per-axis-shears", "motion-blur-at-the-bound"],
+    )
+    def test_3d_angles_inside_the_bound_still_construct(self, ctor):
+        """The bound is inclusive, and the per-axis forms are unaffected."""
+        assert ctor() is not None
