@@ -49,18 +49,17 @@ class RandomClahe(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
-    .. warning::
-        An input outside ``[0, 1]`` reaches :func:`kornia.enhance.equalize_clahe` unchecked and comes
-        back as a raw torch indexing error that names neither this class nor the range it needs. As for
-        :class:`RandomEqualize`, the rejection is not exactly at the boundary: the failing index is the
-        256-entry lookup indexed with ``(input * 255).long()``, so a value less than one 8-bit code outside
-        ``[0, 1]``, at either end, is still admitted, up to the rounding of ``input * 255`` in the input's
-        dtype. Tracked in
-        `#4564 <https://github.com/kornia/kornia/issues/4564>`_. Unlike :class:`RandomEqualize`, CLAHE has
-        no value check on any device, so the raw error is what every caller gets on the CPU. On MPS the
-        outcome depends on torch: ``2.14`` raises the raw ``gather`` error
-        (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1`` leaves the gather
-        unchecked and returns an in-range image as if the input had been valid.
+    Convention:
+        - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming
+          :func:`kornia.enhance.equalize_clahe` and that range, the way :class:`RandomEqualize` raises for
+          :func:`kornia.enhance.equalize`. As for :class:`RandomEqualize`, the rejection is not exactly at
+          the boundary: the check guards the 256-entry lookup indexed with ``(input * 255).long()``, so a
+          value less than one 8-bit code outside ``[0, 1]``, at either end, is still admitted, up to the
+          rounding of ``input * 255`` in the input's dtype. The check runs on the CPU and on CUDA. **It is
+          skipped on MPS by design** -- materializing the condition there would drain the queued stream on
+          every call -- so an MPS image keeps the pre-existing behaviour: torch ``2.14`` raises the raw
+          ``gather`` error (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1``
+          leaves the gather unchecked and returns an in-range image as if the input had been valid.
 
     .. warning::
         ``clip_limit`` is drawn per sample, but the first sample's value is applied to the whole batch.
@@ -77,7 +76,9 @@ class RandomClahe(IntensityAugmentationBase2D):
         instead.
 
     .. note::
-        This function internally uses :func:`kornia.enhance.equalize_clahe`.
+        This function internally uses :func:`kornia.enhance.equalize_clahe`, which expects the input in
+        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values its 256-bin lookup
+        cannot index.
 
     Examples:
         >>> img = torch.rand(1, 10, 20)
