@@ -899,9 +899,10 @@ class TestEqualize(BaseTester):
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
     def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
         # kornia#4431: an input the 256-bin lookup cannot index used to fail with a raw
-        # "index 259 is out of bounds" from the gather.
-        if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        # "index 259 is out of bounds" from the gather. On MPS the lookup is range-checked on the host,
+        # so the same named error is raised there too (kornia#4600).
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * scale + shift
         with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
             kornia.enhance.equalize(x)

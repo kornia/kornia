@@ -172,9 +172,10 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
     def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
         # kornia#4564: the tile-LUT gather used to fail with a raw
-        # "index ... is out of bounds for dimension 5 with size 256".
-        if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        # "index ... is out of bounds for dimension 5 with size 256". On MPS the lookup is range-checked
+        # on the host, so the same named error is raised there too (kornia#4600).
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * scale + shift
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
