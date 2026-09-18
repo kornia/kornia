@@ -110,6 +110,7 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "albumentations": _optional_version("albumentations"),
         "kornia_rs": _optional_version("kornia_rs"),
         "pillow": _optional_version("PIL"),
+        "skimage": _optional_version("skimage"),
     }
     if device.type == "cuda":
         meta["cuda_device"] = torch.cuda.get_device_name(device)
@@ -141,7 +142,7 @@ def save_json(path: str | Path, metadata: dict[str, Any], results: list[dict[str
 
 def versions_line(meta: dict[str, Any]) -> str:
     """One-line software-stack summary for printed table headers (the JSON carries the same data)."""
-    keys = ("torch", "kornia", "python", "opencv", "torchvision", "albumentations", "pillow", "kornia_rs")
+    keys = ("torch", "kornia", "python", "opencv", "torchvision", "albumentations", "pillow", "kornia_rs", "skimage")
     return "# " + ", ".join(f"{k} {meta.get(k) or '-'}" for k in keys)
 
 

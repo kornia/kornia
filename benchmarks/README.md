@@ -10,7 +10,7 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | --- | --- |
 | [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
-| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
+| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL/scikit-image. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
@@ -97,6 +97,18 @@ One file per run:
    native data regime) — a misconfigured baseline is worse than no baseline.
 4. Missing optional libraries must degrade to a skip note, never a crash.
 5. Document the regimes in the module docstring; keep the honest framing.
+
+The filters flagship includes optional scikit-image baselines. To exercise every
+current baseline, install the benchmark-only dependencies with
+`uv pip install --upgrade --prerelease allow scikit-image kornia-rs`; this currently
+selects scikit-image 0.26 and kornia-rs 0.1.15rc5. Its module docstring lists
+differences in padding, kernel support, normalization, and clipping; empty cells
+indicate an unavailable dependency or a missing native counterpart.
+The kornia-rs adapters detect APIs individually: stable 0.1.14 supplies Gaussian
+and box blur; 0.1.15rc5 also supplies median, Sobel, and grayscale bilateral.
+The latter has a separate row because its Python API only accepts grayscale.
+See [median parallelism notes](filters/median_parallelism.md) for the CPU/CUDA/MPS
+implementation audit and related PyTorch issues and pull requests.
 
 ## Contributing results (any machine)
 
