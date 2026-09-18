@@ -36,6 +36,51 @@ are published as measured so the defect stays visible; re-measure them when #465
 issue covers every augmentation sharing one Dynamo cache entry, which bites any pipeline of more
 than about eight classes.
 
+## Intel i7-14700K and RTX 4090 snapshot (2026-09-18)
+
+Kornia 0.9.0rc1 at `d579a572` (CPU) and `43cf6b46` (CUDA), WSL2, Python 3.11.14,
+PyTorch 2.14.0+cu130, four PyTorch threads, float32 RGB 256×256, batches 1/8/32.
+The augmentation implementation is identical at these two revisions. Both runs use the public
+random-transform classes, include parameter sampling and allocation, verify the checkout import,
+and warm the CPU workers before the sweep. CPU and CUDA ran sequentially. Timing uses the shared
+`blocked_autorange` helper with a one-second minimum and CUDA synchronization. All suite baselines
+were installed: torchvision 0.29.0+cu130, albumentations 2.0.8, OpenCV 4.11.0 and Pillow 12.3.0.
+
+Full rows, timing IQRs and metadata:
+[`CPU JSON`](../results/0.9.0rc1/augmentation--i7-14700k-rtx-4090--cpu.json) and
+[`CUDA JSON`](../results/0.9.0rc1/augmentation--i7-14700k-rtx-4090--cuda.json).
+These are single-run snapshots, not a main-versus-PR comparison. The table below is batch 32,
+in input images/s; the JSON also contains every cross-library baseline.
+
+| Operation | CPU eager | CPU compiled | CUDA eager | CUDA compiled |
+| --- | ---: | ---: | ---: | ---: |
+| RandomHorizontalFlip | 35,053 | 27,515 | 416,440 | 458,367 |
+| RandomAffine | 2,842 | 2,764 | 7,805 | 46,690 |
+| RandomPerspective | 1,927 | 2,325 | 16,595 | 57,774 |
+| RandomResizedCrop | 14,466 | 1 | 17,383 | 2 |
+| ColorJiggle | 306 | 1,273 | 11,867 | 37,292 |
+| RandomGaussianBlur | 1,451 | 1,327 | 48,674 | 177,738 |
+| RandomBrightness | 15,338 | 28,208 | 143,210 | 175,711 |
+| RandomGrayscale | 15,196 | 32,851 | 191,763 | 480,502 |
+
+Compilation helps CUDA Gaussian blur by 3.65× and ColorJiggle by 3.14× in this batch-32 slice.
+It also loses: CPU Gaussian blur runs at 0.91× eager throughput, and CPU horizontal flip at 0.78×.
+Torchvision remains faster on several CUDA operations, including affine, brightness and grayscale;
+see the JSON for all columns and the regime descriptions below before comparing CPU uint8 loops
+with batched float tensors.
+
+**Compiled RandomResizedCrop is not steady-state throughput.** The #4658 recompilation problem
+also appears on this Intel/CUDA stack: CPU compiled throughput is approximately 1 image/s at every
+batch, and CUDA batches 8/32 approximately 2 images/s. CUDA batch 1 measured 1,947 images/s in this
+run, which does not establish stability across runs. These values are retained as measured.
+
+Reproduce with the project interpreter:
+
+```bash
+python benchmarks/augmentation/flagship.py --batches 1,8,32 --size 256 --threads 4 --device cpu --compile --json aug_cpu.json
+python benchmarks/augmentation/flagship.py --batches 1,8,32 --size 256 --threads 4 --device cuda --compile --json aug_cuda.json
+```
+
 ## The regimes — why the numbers are not apples-to-apples
 
 The libraries do not solve the same problem, and reading a single column as "the winner" is
