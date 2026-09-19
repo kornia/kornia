@@ -25,6 +25,68 @@ from testing.base import BaseTester
 
 
 class TestRandomCrop3D(BaseTester):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize(
+        "padding,pad_if_needed,size",
+        [
+            (None, False, (2, 3, 4)),
+            (2, False, (2, 3, 4)),
+            ((1, 2, 3), False, (2, 3, 4)),
+            ((1, 2, 3, 4, 1, 2), False, (2, 3, 4)),
+            (None, True, (6, 7, 9)),
+            (1, True, (8, 9, 10)),
+        ],
+    )
+    def test_skipped_padding(self, batch_size, padding, pad_if_needed, size, device, dtype):
+        input_tensor = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
+        input_tensor = input_tensor.repeat(batch_size, 1, 1, 1, 1).requires_grad_()
+        aug = RandomCrop3D(size, padding=padding, pad_if_needed=pad_if_needed, p=0.0)
+
+        output = aug(input_tensor)
+
+        self.assert_close(output, input_tensor, rtol=0, atol=0)
+        self.assert_close(aug.transform_matrix, torch.eye(4, device=device, dtype=dtype).expand(batch_size, 4, 4))
+        self.assert_close(aug(input_tensor, params=aug._params), input_tensor, rtol=0, atol=0)
+        output.sum().backward()
+        self.assert_close(input_tensor.grad, torch.ones_like(input_tensor), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("shape", [(4, 5, 6), (2, 4, 5, 6), (2, 1, 4, 5, 6)])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    def test_skipped_padding_keepdim(self, shape, keepdim, device, dtype):
+        input_tensor = torch.ones(shape, device=device, dtype=dtype)
+        aug = RandomCrop3D((6, 7, 9), padding=1, pad_if_needed=True, p=0.0, keepdim=keepdim)
+        expected = input_tensor if keepdim else input_tensor.reshape((1,) * (5 - len(shape)) + shape)
+
+        self.assert_close(aug(input_tensor), expected, rtol=0, atol=0)
+
+    def test_skipped_padding_params(self, device, dtype):
+        input_tensor = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
+        aug = RandomCrop3D((2, 3, 4), padding=2, p=0.5)
+        # Use explicit decisions so the test does not depend on random draws.
+        params = aug.forward_parameters(input_tensor.shape)
+        params["batch_prob"] = torch.ones_like(params["batch_prob"])
+        assert aug(input_tensor, params=params).shape == (1, 1, 2, 3, 4)
+        params = {**params, "batch_prob": torch.zeros_like(params["batch_prob"])}
+
+        self.assert_close(aug(input_tensor, params=params), input_tensor, rtol=0, atol=0)
+        self.assert_close(aug.transform_matrix, torch.eye(4, device=device, dtype=dtype).unsqueeze(0))
+
+    @pytest.mark.parametrize("padding_mode", ["constant", "replicate", "reflect"])
+    @pytest.mark.parametrize("padding", [None, 1, (1, 2, 1), (1, 2, 1, 2, 1, 2)])
+    def test_padding_replay(self, padding, padding_mode, device, dtype):
+        torch.manual_seed(42)
+        input_tensor = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6).repeat(2, 1, 1, 1, 1)
+        input_tensor = input_tensor / 120
+        aug = RandomCrop3D((7, 8, 9), padding=padding, pad_if_needed=True, padding_mode=padding_mode, p=1.0)
+        padded = aug.precrop_padding(input_tensor)
+        output = aug(input_tensor)
+
+        assert output.shape == (2, 1, 7, 8, 9)
+        for index, box in enumerate(aug._params["src"]):
+            x, y, z = box[0].long().tolist()
+            self.assert_close(output[index], padded[index, :, z : z + 7, y : y + 8, x : x + 9])
+        self.assert_close(aug(input_tensor, params=aug._params), output)
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
