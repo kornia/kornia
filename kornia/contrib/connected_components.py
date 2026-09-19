@@ -156,17 +156,24 @@ def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
         ]
     )
     parents = blocks.flatten()
+    # Some MPS devices cannot compile int64 atomic min. Keep the forest in
+    # int32 when every zero-based block index fits, without narrowing edge indices.
+    if image.device.type == "mps" and parents.numel() <= torch.iinfo(torch.int32).max + 1:
+        parents = parents.to(torch.int32)
     while True:
         source_roots, target_roots = parents[sources], parents[targets]
         merged = parents.clone()
         merged.scatter_reduce_(
-            0, torch.maximum(source_roots, target_roots), torch.minimum(source_roots, target_roots), reduce="amin"
+            0,
+            torch.maximum(source_roots, target_roots).long(),
+            torch.minimum(source_roots, target_roots),
+            reduce="amin",
         )
         # Only roots are hooked and every parent decreases, so cycles cannot
         # form. Fully compress before hooking again: hooking non-roots could
         # detach an already-merged subtree.
         while True:
-            compressed = merged[merged]
+            compressed = merged[merged.long()]
             if torch.equal(compressed, merged):
                 break
             merged = compressed
@@ -174,5 +181,6 @@ def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
             break
         parents = merged
 
-    labels = (parents.reshape(blocks.shape) + 1).repeat_interleave(2, -2).repeat_interleave(2, -1)
+    # Widen before reserving zero for background, including the largest int32 root.
+    labels = (parents.long().reshape(blocks.shape) + 1).repeat_interleave(2, -2).repeat_interleave(2, -1)
     return (labels[:, :height, :width] * mask).reshape(image.shape)
