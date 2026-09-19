@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Callable, Dict, List, Optional, Self, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 
 import torch
 from torch import nn
