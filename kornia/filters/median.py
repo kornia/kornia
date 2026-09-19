@@ -21,10 +21,12 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 
 from .kernels import _unpack_2d_ks, get_binary_kernel2d
+
+_VALID_BORDERS = {"constant", "reflect", "replicate", "circular"}
 
 
 def _median_network(size: int) -> tuple[tuple[int, int, bool, bool], ...]:
@@ -66,10 +68,10 @@ def _median_network(size: int) -> tuple[tuple[int, int, bool, bool], ...]:
 _MEDIAN_NETWORKS = {3: _median_network(9), 5: _median_network(25)}
 
 
-def _median_blur_network(input: torch.Tensor, size: int) -> torch.Tensor:
+def _median_blur_network(input: torch.Tensor, size: int, border_type: str) -> torch.Tensor:
     """Select a small-window median without materializing patches or sorting them."""
     radius = size // 2
-    padded = F.pad(input, (radius, radius, radius, radius))
+    padded = F.pad(input, (radius, radius, radius, radius), mode=border_type)
     height, width = input.shape[-2:]
     values = [padded[..., y : y + height, x : x + width] for y in range(size) for x in range(size)]
     for left, right, low, high in _MEDIAN_NETWORKS[size]:
@@ -92,7 +94,7 @@ def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]
     return (ky - 1) // 2, (kx - 1) // 2
 
 
-def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torch.Tensor:
+def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect") -> torch.Tensor:
     r"""Blur an image using the median filter.
 
     .. image:: _static/img/median_blur.png
@@ -100,6 +102,8 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     Args:
         input: the input image with shape :math:`(B,C,H,W)`.
         kernel_size: the blurring kernel size.
+        border_type: the padding mode to be applied before filtering.
+        The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
 
     Returns:
         the blurred input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -116,8 +120,16 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    border_type_lower = str(border_type).lower()
+    KORNIA_CHECK(
+        border_type_lower in _VALID_BORDERS,
+        f"Invalid border, {border_type}. Expected one of {_VALID_BORDERS}",
+    )
+    border_type = border_type_lower
 
     ky, kx = _unpack_2d_ks(kernel_size)
+    if input.shape[1] == 0:
+        return input
     # ATen's per-pixel median reduction dominates inference for small windows.
     # A fixed selection network avoids it. Inductor fuses the network into one
     # CUDA kernel; eager CUDA launches one kernel per comparator, which only pays
@@ -134,7 +146,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
         and ky == kx
         and ky in _MEDIAN_NETWORKS
     ):
-        return _median_blur_network(input, ky)
+        return _median_blur_network(input, ky, border_type)
 
     padding = _compute_zero_padding(kernel_size)
 
@@ -143,7 +155,14 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     b, c, h, w = input.shape
 
     # map the local window to single vector
-    features: torch.Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
+    input = F.pad(input, (padding[1], padding[1], padding[0], padding[0]), mode=border_type)
+    features: torch.Tensor = F.conv2d(
+        input.reshape(b * c, 1, h + 2 * padding[0], w + 2 * padding[1]),
+        kernel,
+        padding=0,
+        stride=1,
+    )
+
     features = features.view(b, c, ky * kx, h, w)  # BxCx(K_h * K_w)xHxW
 
     # compute the median along the feature axis
@@ -158,6 +177,8 @@ class MedianBlur(nn.Module):
 
     Args:
         kernel_size: the blurring kernel size.
+        border_type: the padding mode to be applied before filtering.
+            The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
 
     Returns:
         the blurred input torch.Tensor.
@@ -175,9 +196,10 @@ class MedianBlur(nn.Module):
 
     """
 
-    def __init__(self, kernel_size: tuple[int, int] | int) -> None:
+    def __init__(self, kernel_size: tuple[int, int] | int, border_type: str = "reflect") -> None:
         super().__init__()
         self.kernel_size = kernel_size
+        self.border_type = border_type
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Replace each pixel with the median value in its local window.
@@ -197,4 +219,4 @@ class MedianBlur(nn.Module):
             Tensor with shape :math:`(B, C, H, W)` containing the median-
             filtered result for each channel independently.
         """
-        return median_blur(input, self.kernel_size)
+        return median_blur(input, self.kernel_size, self.border_type)
