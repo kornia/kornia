@@ -122,10 +122,10 @@ class AffineGenerator3D(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
+        degrees = _tuple_range_reader(self.degrees, 3, device, dtype, "degrees", (-360, 360))
         shear: Optional[torch.Tensor] = None
         if self.shears is not None:
-            shear = _tuple_range_reader(self.shears, 6, device, dtype)
+            shear = _tuple_range_reader(self.shears, 6, device, dtype, "shears", (-360, 360))
             self.sxy_sampler = UniformDistribution(shear[0, 0], shear[0, 1], validate_args=False)
             self.sxz_sampler = UniformDistribution(shear[1, 0], shear[1, 1], validate_args=False)
             self.syx_sampler = UniformDistribution(shear[2, 0], shear[2, 1], validate_args=False)

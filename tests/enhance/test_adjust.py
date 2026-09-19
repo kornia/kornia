@@ -144,6 +144,17 @@ class TestAdjustSaturation(BaseTester):
 
 
 class TestAdjustHue(BaseTester):
+    def test_black_pixels(self, device, dtype):
+        data = torch.tensor([0.75, 0.5, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).repeat(1, 1, 2, 2)
+        data[..., 0, 0] = 0.0
+        data.requires_grad_()
+
+        result = kornia.enhance.adjust_hue(data, 0.1)
+        assert torch.isfinite(result).all()
+        self.assert_close(result[..., 0, 0], torch.zeros_like(result[..., 0, 0]))
+        (gradient,) = torch.autograd.grad(result.sum(), data)
+        assert torch.isfinite(gradient).all()
+
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)

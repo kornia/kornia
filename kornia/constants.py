@@ -39,7 +39,7 @@ class _KORNIA_EnumMeta(EnumMeta):
         if isinstance(other, str):
             return any(val.name.upper() == other.upper() for val in self)
 
-        elif isinstance(other, int):
+        if isinstance(other, int):
             return any(val.value == other for val in self)
 
         return any(val == other for val in self)
@@ -52,10 +52,10 @@ def _get(cls: Type[_T], value: TKEnum[_T]) -> _T:
     if isinstance(value, str):
         return cls[value.upper()]
 
-    elif isinstance(value, int):
+    if isinstance(value, int):
         return cls(value)
 
-    elif isinstance(value, cls):
+    if isinstance(value, cls):
         return value
 
     raise TypeError(
@@ -115,16 +115,16 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
         if isinstance(value, torch.dtype):
             return cls[str(value).upper()[6:]]
 
-        elif isinstance(value, torch.Tensor):
+        if isinstance(value, torch.Tensor):
             return cls(int(value.item()))
 
-        elif isinstance(value, str):
+        if isinstance(value, str):
             return cls[value.upper()]
 
-        elif isinstance(value, int):
+        if isinstance(value, int):
             return cls(value)
 
-        elif isinstance(value, cls):
+        if isinstance(value, cls):
             return value
 
         raise TypeError(f"Invalid identifier {value} with type {type(value)}.")
@@ -136,16 +136,16 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
         if data == DType.INT64:
             return torch.long
 
-        elif data == DType.FLOAT16:
+        if data == DType.FLOAT16:
             return torch.float16
 
-        elif data == DType.FLOAT32:
+        if data == DType.FLOAT32:
             return torch.float32
 
-        elif data == DType.FLOAT64:
+        if data == DType.FLOAT64:
             return torch.float64
 
-        elif data == DType.BFLOAT16:
+        if data == DType.BFLOAT16:
             return torch.bfloat16
 
         raise ValueError

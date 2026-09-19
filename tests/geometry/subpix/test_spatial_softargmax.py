@@ -803,3 +803,96 @@ class TestAdaptiveQuadInterp3d(BaseTester):
         assert len(d_idx) > 0, "No NMS maxima found — check the synthetic input"
         diff = (coord_conv[0, 0, :, d_idx, h_idx, w_idx] - coord_iter[0, 0, :, d_idx, h_idx, w_idx]).abs().max()
         self.assert_close(diff, torch.zeros_like(diff), atol=1e-5, rtol=0)
+
+
+class TestPackedQuadraticFit(BaseTester):
+    @pytest.mark.parametrize("count", [0, 17])
+    def test_cramer_reference(self, device, dtype, count):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
+        # Transposed input exercises the strided columns used by the patch gather.
+        system = torch.randn(count, 9, device=device, dtype=dtype).T.detach().requires_grad_()
+        if count:
+            with torch.no_grad():
+                system[:3] += 4
+                system[:, :4] = 0
+                system[0:2, :4] = 1
+                system[2, :4] = system.new_tensor([0, 0.5e-7, 1e-7, 2e-7])
+                system[6:, :4] = 0.1
+        cpu = system.detach().cpu().requires_grad_()
+        expected = subpix._solve_cramer_sym3x3(*cpu)
+        actual = subpix._solve_cramer_sym3x3_cuda(*system)
+        for got, want in zip(actual, expected):
+            self.assert_close(got.cpu(), want, atol=0, rtol=0)
+        weights = torch.linspace(0.1, 0.9, count, device=device, dtype=dtype)
+        # Threshold cases pin forward/mask semantics. Near-singular derivatives
+        # cancel large terms, so compare gradient accumulation on conditioned rows.
+        weights[:4] = 0
+        grad = torch.autograd.grad(sum((v * weights).sum() for v in actual[:3]), system)[0]
+        grad_ref = torch.autograd.grad(sum((v * weights.cpu()).sum() for v in expected[:3]), cpu)[0]
+        self.assert_close(grad.cpu(), grad_ref)
+
+    def test_cramer_keeps_input_shape(self, device, dtype):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
+        # The packed CUDA solve indexes a single batch dimension. A wider caller
+        # must keep its shape and its values rather than be flattened on CUDA only.
+        torch.manual_seed(0)
+        system = torch.randn(9, 2, 5, device=device, dtype=dtype)
+        system[:3] += 4.0
+        actual = subpix._solve_cramer_sym3x3(*system)
+        expected = subpix._solve_cramer_sym3x3(*system.reshape(9, -1))
+        for got, want in zip(actual, expected):
+            assert got.shape == (2, 5)
+            self.assert_close(got.reshape(-1), want, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("count", [0, 19])
+    def test_patch_derivatives(self, device, dtype, count):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
+        patch = torch.randn(27, count, device=device, dtype=dtype).T.detach().requires_grad_()
+        actual = subpix._quadratic_derivatives3d(patch)
+        expected = (
+            0.5 * (patch[:, 14] - patch[:, 12]),
+            0.5 * (patch[:, 16] - patch[:, 10]),
+            0.5 * (patch[:, 22] - patch[:, 4]),
+            patch[:, 14] - 2.0 * patch[:, 13] + patch[:, 12],
+            patch[:, 16] - 2.0 * patch[:, 13] + patch[:, 10],
+            patch[:, 22] - 2.0 * patch[:, 13] + patch[:, 4],
+            0.25 * (patch[:, 17] - patch[:, 15] - patch[:, 11] + patch[:, 9]),
+            0.25 * (patch[:, 23] - patch[:, 21] - patch[:, 5] + patch[:, 3]),
+            0.25 * (patch[:, 25] - patch[:, 19] - patch[:, 7] + patch[:, 1]),
+        )
+        for got, want in zip(actual, expected):
+            self.assert_close(got, want, atol=0, rtol=0)
+        loss = sum(v.square().sum() for v in actual)
+        loss_ref = sum(v.square().sum() for v in expected)
+        grad = torch.autograd.grad(loss, patch, retain_graph=True)[0]
+        grad_ref = torch.autograd.grad(loss_ref, patch)[0]
+        self.assert_close(grad, grad_ref)
+
+    @pytest.mark.parametrize("op_name", ["conv_quad_interp3d", "iterative_quad_interp3d"])
+    @pytest.mark.parametrize("n_iters", [1, 5])
+    @pytest.mark.parametrize("allow_scale_steps", [False, True])
+    def test_public_cuda_reference(self, device, dtype, op_name, n_iters, allow_scale_steps):
+        if device.type != "cuda" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("Compare the packed CUDA path against the scalar CPU path")
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        op = getattr(subpix, op_name)
+        sample = torch.rand(2, 2, 5, 9, 8, dtype=dtype).requires_grad_()
+        cuda_sample = sample.detach().to(device).requires_grad_()
+        kwargs = {"n_iters": n_iters, "allow_scale_steps": allow_scale_steps, "strict_maxima_bonus": 0.0}
+        expected = op(sample, **kwargs)
+        actual = op(cuda_sample, **kwargs)
+        for got, want in zip(actual, expected):
+            self.assert_close(got.cpu(), want, atol=0, rtol=0)
+        grad = torch.autograd.grad(sum(t.square().mean() for t in actual), cuda_sample)[0]
+        grad_ref = torch.autograd.grad(sum(t.square().mean() for t in expected), sample)[0]
+        self.assert_close(grad.cpu(), grad_ref)

@@ -559,7 +559,10 @@ class Boxes:
             provided bounds.
         """
         if not (isinstance(topleft, torch.Tensor) and isinstance(botright, torch.Tensor)):
-            raise NotImplementedError
+            raise NotImplementedError(
+                "`Boxes.clamp` accepts `topleft` and `botright` as `(B, 2)` torch.Tensor bounds; "
+                f"got topleft={type(topleft).__name__} and botright={type(botright).__name__}."
+            )
         if inplace:
             _data = self._data
         else:
@@ -601,7 +604,7 @@ class Boxes:
             NotImplementedError: Always.
 
         """
-        raise NotImplementedError
+        raise NotImplementedError("`Boxes.trim` is not implemented.")
 
     def filter_boxes_by_area(
         self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
@@ -988,7 +991,9 @@ class Boxes:
 
         """
         if method == "fast":
-            raise NotImplementedError
+            raise NotImplementedError(
+                "`Boxes.translate(method='fast')` is not implemented; use `method='warp'` instead."
+            )
         if method != "warp":
             raise NotImplementedError
 

@@ -58,12 +58,8 @@ class Normalize(IntensityAugmentationBase2D):
           inverts this class, up to float rounding, when both apply -- each draws its own ``p`` gate.
         - the result is not clamped: moving an image out of ``[0, 1]`` is what this class is for.
 
-    .. warning::
-        A non-contiguous input -- anything :meth:`torch.Tensor.view` cannot reshape, such as a
-        ``transpose``d or ``permute``d view -- raises a raw ``RuntimeError: view size is not compatible
-        with input tensor's size and stride`` from :func:`kornia.enhance.normalize`, naming neither this
-        class nor the fix (``.contiguous()``). Tracked in
-        `#4577 <https://github.com/kornia/kornia/issues/4577>`_.
+        - non-contiguous input, such as a transposed or permuted image, produces the same
+          values as its contiguous copy.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize`.

@@ -193,6 +193,44 @@ def test_rng_seed_fixture_is_available_without_a_profile(test_rng_seed: int, req
     assert test_rng_seed == seed_test_rng(request.node.nodeid)
 
 
+def _describe_audit_drift(
+    audited: Counter[tuple[str, int, str]], discovered: Counter[tuple[str, int, str]]
+) -> list[str]:
+    """Render an audited-vs-discovered diff as fix instructions.
+
+    A stale entry whose call is still at the audited line is count drift, not a missing call site.
+    Otherwise a stale entry and a missing entry that share (path, name) are almost always one call
+    site that moved lines; pair with the nearest candidate and name its line, hedged, because a
+    delete plus an unrelated add is indistinguishable from a move.
+    """
+    stale = sorted((audited - discovered).elements())
+    missing = sorted((discovered - audited).elements())
+
+    problems: list[str] = []
+    for path, line, name in stale:
+        found_here = discovered[(path, line, name)]
+        if found_here:
+            problems.append(
+                f"audited entry {path}:{line} {name} is audited {audited[(path, line, name)]}x "
+                f"but found {found_here}x at that line"
+            )
+            continue
+        candidates = [m for m in missing if m[0] == path and m[2] == name]
+        if candidates:
+            moved = min(candidates, key=lambda m: abs(m[1] - line))
+            missing.remove(moved)
+            problems.append(
+                f"audited entry {path}:{line} {name} has no call site; "
+                f"{moved[0]}:{moved[1]} {moved[2]} is not audited (the same call moved?)"
+            )
+        else:
+            problems.append(f"audited entry {path}:{line} {name} has no matching call site (stale entry)")
+    problems.extend(
+        f"eager RNG call site {path}:{line} {name} is missing from the audit" for path, line, name in missing
+    )
+    return problems
+
+
 def test_eager_rng_audit_matches_exact_inventory() -> None:
     """Validate audited (path, line, name) triples as a multiset, so a stale line still fails."""
     from testing.half_precision_eager_rng import AUDITED_EAGER_RNG_CALLS, find_eager_rng_calls
@@ -202,10 +240,41 @@ def test_eager_rng_audit_matches_exact_inventory() -> None:
     )
     audited = Counter((entry.call.path, entry.call.line, entry.call.name) for entry in AUDITED_EAGER_RNG_CALLS)
 
-    stale = sorted((audited - discovered).elements())
-    missing = sorted((discovered - audited).elements())
-    assert not stale, f"audited entries with no matching call site (stale line?): {stale}"
-    assert not missing, f"eager RNG call sites missing from the audit: {missing}"
+    problems = _describe_audit_drift(audited, discovered)
+    assert not problems, "eager RNG audit drifted:\n" + "\n".join(problems)
+
+
+def test_describe_audit_drift_reports_moves_stales_missings_and_count_drift() -> None:
+    # Every branch of _describe_audit_drift runs only when the real audit has drifted, i.e. never on a
+    # green CI leg, so it is pinned here instead: a near-line candidate with a different name must not
+    # be picked, the nearer of two same-name candidates wins, and a call still present at the audited
+    # line is reported as count drift rather than "no matching call site".
+    audited = Counter(
+        {
+            ("tests/a.py", 10, "torch.rand"): 1,
+            ("tests/a.py", 20, "torch.randperm"): 1,
+            ("tests/c.py", 49, "torch.randn"): 2,
+        }
+    )
+    discovered = Counter(
+        {
+            ("tests/a.py", 9, "torch.randn"): 1,
+            ("tests/a.py", 11, "torch.rand"): 1,
+            ("tests/a.py", 25, "torch.rand"): 1,
+            ("tests/b.py", 5, "random.random"): 1,
+            ("tests/c.py", 49, "torch.randn"): 1,
+        }
+    )
+
+    assert _describe_audit_drift(audited, discovered) == [
+        "audited entry tests/a.py:10 torch.rand has no call site; "
+        "tests/a.py:11 torch.rand is not audited (the same call moved?)",
+        "audited entry tests/a.py:20 torch.randperm has no matching call site (stale entry)",
+        "audited entry tests/c.py:49 torch.randn is audited 2x but found 1x at that line",
+        "eager RNG call site tests/a.py:9 torch.randn is missing from the audit",
+        "eager RNG call site tests/a.py:25 torch.rand is missing from the audit",
+        "eager RNG call site tests/b.py:5 random.random is missing from the audit",
+    ]
 
 
 def test_eager_rng_scanner_skips_lazy_function_and_lambda_bodies(tmp_path: Path) -> None:

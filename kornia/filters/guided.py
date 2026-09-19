@@ -55,7 +55,8 @@ def _guided_blur_grayscale_guidance(
 
     mean_I = box_blur(guidance_sub, kernel_size, border_type, separable=separable)
     corr_I = box_blur(guidance_sub.square(), kernel_size, border_type, separable=separable)
-    var_I = corr_I - mean_I.square()
+    # Fuse the multiply/subtract to avoid an image-sized intermediate.
+    var_I = torch.addcmul(corr_I, mean_I, mean_I, value=-1)
 
     if input is guidance:
         mean_p = mean_I
@@ -64,13 +65,13 @@ def _guided_blur_grayscale_guidance(
     else:
         mean_p = box_blur(input_sub, kernel_size, border_type, separable=separable)
         corr_Ip = box_blur(guidance_sub * input_sub, kernel_size, border_type, separable=separable)
-        cov_Ip = corr_Ip - mean_I * mean_p
+        cov_Ip = torch.addcmul(corr_Ip, mean_I, mean_p, value=-1)
 
     if isinstance(eps, torch.Tensor):
         eps = eps.view(-1, 1, 1, 1)  # N -> NCHW
 
     a = cov_Ip / (var_I + eps)
-    b = mean_p - a * mean_I
+    b = torch.addcmul(mean_p, a, mean_I, value=-1)
 
     mean_a = box_blur(a, kernel_size, border_type, separable=separable)
     mean_b = box_blur(b, kernel_size, border_type, separable=separable)
@@ -79,7 +80,7 @@ def _guided_blur_grayscale_guidance(
         mean_a = interpolate(mean_a, scale_factor=subsample, mode="bilinear")
         mean_b = interpolate(mean_b, scale_factor=subsample, mode="bilinear")
 
-    return mean_a * guidance + mean_b
+    return torch.addcmul(mean_b, mean_a, guidance)
 
 
 def _guided_blur_multichannel_guidance(
@@ -97,7 +98,7 @@ def _guided_blur_multichannel_guidance(
     mean_I = box_blur(guidance_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
     II = (guidance_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
     corr_I = box_blur(II, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
-    var_I = corr_I.reshape(B, H, W, C, C) - mean_I.unsqueeze(-2) * mean_I.unsqueeze(-1)
+    var_I = torch.addcmul(corr_I.reshape(B, H, W, C, C), mean_I.unsqueeze(-2), mean_I.unsqueeze(-1), value=-1)
 
     if guidance is input:
         mean_p = mean_I
@@ -107,7 +108,7 @@ def _guided_blur_multichannel_guidance(
         mean_p = box_blur(input_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
         Ip = (input_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
         corr_Ip = box_blur(Ip, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
-        cov_Ip = corr_Ip.reshape(B, H, W, C, -1) - mean_p.unsqueeze(-2) * mean_I.unsqueeze(-1)
+        cov_Ip = torch.addcmul(corr_Ip.reshape(B, H, W, C, -1), mean_p.unsqueeze(-2), mean_I.unsqueeze(-1), value=-1)
 
     if isinstance(eps, torch.Tensor):
         _eps = torch.eye(C, device=guidance.device, dtype=guidance.dtype).view(1, 1, 1, C, C) * eps.view(-1, 1, 1, 1, 1)
@@ -167,7 +168,8 @@ def guided_blur(
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
-        separable: run as composition of two 1d-convolutions. Default: False
+        separable: use two one-dimensional box-filter passes, reducing work for
+          large windows. Default: False
 
     Returns:
         the blurred torch.Tensor with same shape as `input` :math:`(B, C, H, W)`.
@@ -200,16 +202,15 @@ def guided_blur(
             subsample,
             separable=separable,
         )
-    else:
-        return _guided_blur_multichannel_guidance(
-            guidance,
-            input,
-            kernel_size,
-            eps,
-            border_type,
-            subsample,
-            separable=separable,
-        )
+    return _guided_blur_multichannel_guidance(
+        guidance,
+        input,
+        kernel_size,
+        eps,
+        border_type,
+        subsample,
+        separable=separable,
+    )
 
 
 class GuidedBlur(nn.Module):
@@ -225,7 +226,8 @@ class GuidedBlur(nn.Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
-        separable: run as composition of two 1d-convolutions. Default: False
+        separable: use two one-dimensional box-filter passes, reducing work for
+          large windows. Default: False
 
     Returns:
         the blurred input torch.Tensor.

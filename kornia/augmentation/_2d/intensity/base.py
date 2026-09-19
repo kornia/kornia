@@ -67,19 +67,17 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           out-of-range image even at ``p=0.0`` -- and a skipped sample's gradient can be NaN where the
           transform's derivative is infinite (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
-          per sample where the class's own docstring says so. Two classes draw per sample and then
-          apply one draw to the whole batch. :class:`RandomMotionBlur` fills ``_params["ksize_factor"]`` with
-          one kernel size per sample and blurs the batch with the one at ``_params["idx"]``, an index drawn
-          uniformly over the batch rather than the first sample's; :class:`RandomClahe` draws ``clip_limit``
-          per sample and applies the first sample's
-          (`#4572 <https://github.com/kornia/kornia/issues/4572>`_); and :class:`RandomDissolving`
+          per sample where the class's own docstring says so. One class draws per sample and then
+          applies one draw to the whole batch: :class:`RandomMotionBlur` fills ``_params["ksize_factor"]``
+          with one kernel size per sample and blurs the batch with the one at ``_params["idx"]``, an index
+          drawn uniformly over the batch rather than the first sample's. :class:`RandomDissolving`
           hard-codes ``same_on_batch=True``. Several classes also draw a whole-image field --
           ``gaussian_noise``, ``gradient``, ``plasma``, and :class:`RandomSaltAndPepperNoise`'s boolean
           ``mask_salt`` and ``mask_pepper`` -- whose stored shape normally follows the original batched
           ``(B, C, H, W)`` input shape. A ``(C, H, W)`` input remains batched in those parameters even when
           ``keepdim=True``. ``gaussian_noise`` instead stores ``(1, C, H, W)`` with ``same_on_batch=True``,
-          then expands it at application time, while the plasma classes keep one map per sample even then
-          (`#4570 <https://github.com/kornia/kornia/issues/4570>`_); ``RandomPlasmaShadow`` stores
+          then expands it at application time, while the plasma classes with ``same_on_batch=True`` store an
+          expanded ``(B, C, H, W)`` view with shared storage for the batch; ``RandomPlasmaShadow`` stores
           ``(B, 1, H, W)``. :class:`ColorJiggle` and :class:`ColorJitter` both draw an application ``order``;
           it is shared by the whole batch. Only :class:`ColorJitter` takes a fixed ``order`` constructor
           argument. Without one, on either class, an ``order`` tensor passed as a forward keyword, or

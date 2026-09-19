@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 import io
+import itertools
 import pickle
 
 import pytest
@@ -1117,27 +1118,104 @@ class TestNoiseAndWeatherConventions(BaseTester):
         drawn = aug.forward_parameters((2000, 1, 64, 64))["drop_height_factor"]
         assert sorted(set(drawn.flatten().tolist())) == [2, 3, 4]
 
-    # Issue #4604: the start coordinate is scaled by `H - h - 1`, so the last row and column are never
-    # painted unless the drop is one short of the image on that axis.  Literal seeds, as for the other
-    # census pins: the claim is over the union of 300 draws, not one.
-    # Snippet used to generate expected: the reproduction in #4604.
-    # executed 2026-09-16 (torch 2.14.0, cpu) -> rows `[0, 1, 2, 3]`, cols `[0, ..., 8]` on `6 x 10`;
-    # `drop_height=(5, 5)`, `drop_width=(9, 9)` paints rows 0..5 and cols 0..9.
-    def test_wart_random_rain_never_paints_the_last_row_or_column_4604(self, device, dtype):
+    # Issue #4604: a drop starts anywhere that keeps it inside the image, so every row and column is painted,
+    # for a single pixel and for drops slanting either way.  Literal seeds, as for the other census pins: the
+    # claim is over the union of 300 draws, not one.  Before the fix the single-pixel case painted rows
+    # `[0, 1, 2, 3]` and cols `[0, ..., 8]` on `6 x 10`.
+    @pytest.mark.parametrize("drop_height, drop_width", [(1, 0), (2, 2), (2, -2)])
+    def test_convention_random_rain_paints_every_row_and_column_4604(self, device, dtype, drop_height, drop_width):
         image = torch.zeros(1, 3, 6, 10, device=device, dtype=dtype)
+        # `.to` so the coordinate sampler runs in the test's dtype: left at construction defaults it stays
+        # float32 even for a float16 image, and the MPS half `rand` that returns exactly 1.0 (#4553) -- the
+        # draw the clamp exists for -- is never reached.
+        aug = K.RandomRain(
+            number_of_drops=(20, 20), drop_height=(drop_height, drop_height), drop_width=(drop_width, drop_width), p=1.0
+        ).to(device=device, dtype=dtype)
         rows, cols = set(), set()
         for seed in range(300):
             torch.manual_seed(seed)
-            out = K.RandomRain(number_of_drops=(20, 20), drop_height=(1, 1), drop_width=(0, 0), p=1.0)(image)
-            lit = (out[0, 0] != 0).nonzero()
+            lit = (aug(image)[0, 0] != 0).nonzero()
             rows |= set(lit[:, 0].tolist())
             cols |= set(lit[:, 1].tolist())
-        assert sorted(rows) == [0, 1, 2, 3] and sorted(cols) == list(range(9))
-        # One short of the image on both axes is the only case that reaches the far edge.
+        assert sorted(rows) == list(range(6)) and sorted(cols) == list(range(10))
+
+    # Issue #4604, the painted extent: a single drop paints a bounding box of exactly ``(h, |w|)`` -- the
+    # linspace includes both end points once it has two steps, and is the start alone when it has one -- and
+    # that box lands inside the image for every legal start.  The union pin above cannot see this: it only
+    # records which rows and columns are hit somewhere across 300 draws, so a drop split across opposite
+    # edges by a negative-index wrap still covers ``range(10)`` and passes.  Swept rather than pinned to
+    # literals, because the claim is a bound over the whole legal domain, not a census of one shape.
+    # Snippet used to generate expected:
+    #   for H, W in itertools.product(range(2, 8), repeat=2):
+    #       for h in range(1, H):
+    #           for w in range(-(W - 1), W):
+    #               for seed in range(2):
+    #                   ... print(box, expected, in_bounds)
+    # executed 2026-09-18 (torch 2.14.0, cpu) -> 0 violations.  With ``+ max(-last_dx, 0)`` deleted, seed 1
+    # of ``6 x 10, h=2, w=-2`` starts a drop at ``(2, 0)`` and paints ``(2, 0)`` and ``(4, -2)``, the latter
+    # wrapping round to ``(4, 8)``: a box of ``(2, 8)`` against the expected ``(2, 2)``.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_single_drop_box_is_its_size_4604(self):
+        for height, width in itertools.product(range(2, 8), repeat=2):
+            image = torch.zeros(1, 1, height, width)
+            for drop_height in range(1, height):
+                for drop_width in range(-(width - 1), width):
+                    aug = K.RandomRain(
+                        number_of_drops=(1, 1),
+                        drop_height=(drop_height, drop_height),
+                        drop_width=(drop_width, drop_width),
+                        p=1.0,
+                    )
+                    expected = (drop_height, abs(drop_width)) if max(drop_height, abs(drop_width)) > 1 else (0, 0)
+                    for seed in range(2):
+                        torch.manual_seed(seed)
+                        lit = (aug(image)[0, 0] != 0).nonzero()
+                        rows, cols = lit[:, 0].tolist(), lit[:, 1].tolist()
+                        case = (height, width, drop_height, drop_width, seed)
+                        assert (max(rows) - min(rows), max(cols) - min(cols)) == expected, case
+                        assert min(rows) >= 0 and max(rows) < height, case
+                        assert min(cols) >= 0 and max(cols) < width, case
+
+    # Issue #4604, the uniformity half of the bullet: every legal start is equally likely, not merely
+    # reachable.  The union pin is blind to the distribution -- folding the row overflow onto the last row
+    # keeps the union at ``range(6)`` while badly skewing where drops land -- so this counts start rows the
+    # way the #4567 pin above counts drawn sizes, with the same 15% band and for the same reason.  Single
+    # pixel drops on a wide image, so each painted cell is one start and collisions are rare (100 drops over
+    # 12000 cells, about 0.4 an image), read off the output rather than recomputed from the parameters.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0)
+    #   aug = K.RandomRain(number_of_drops=(100, 100), drop_height=(1, 1), drop_width=(0, 0), p=1.0)
+    #   out = aug(torch.zeros(200, 1, 6, 2000))
+    #   print(torch.bincount((out[:, 0] != 0).nonzero()[:, 1], minlength=6).tolist())
+    # executed 2026-09-18 (torch 2.14.0, cpu) -> every bin within 1% of the uniform expectation.  Scaling
+    # the row draw by ``cols`` instead of ``rows`` puts every drop on the last row.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_start_row_is_uniform_4604(self):
+        aug = K.RandomRain(number_of_drops=(100, 100), drop_height=(1, 1), drop_width=(0, 0), p=1.0)
         torch.manual_seed(_FORWARD_SEED)
-        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(9, 9), p=1.0)(image)
-        lit = (out[0, 0] != 0).nonzero()
-        assert int(lit[:, 0].max()) == 5 and int(lit[:, 1].max()) == 9
+        lit = (aug(torch.zeros(200, 1, 6, 2000))[:, 0] != 0).nonzero()
+        counts = torch.bincount(lit[:, 1], minlength=6)
+        expected = int(counts.sum()) / 6
+        assert bool(((counts > 0.85 * expected) & (counts < 1.15 * expected)).all()), counts.tolist()
+
+    # Issue #4604, the clamp on the start draw: the coordinate sampler runs over ``[0, 1]`` and the MPS half
+    # ``rand`` really does return an exact ``1.0`` (#4553), which would put the start one past the last
+    # admissible one and index out of the image.  Reproduced here by patching the draw rather than left to
+    # the MPS leg, so the pin fires on every device; same idiom as the closed-range pin above.  Main was
+    # safe against this only by accident, its multiplier being one smaller than the true count of starts.
+    # Snippet used to generate expected: the config below with `torch.rand` patched to return `1.0`.
+    # executed 2026-09-18 (torch 2.14.0, cpu) -> the drop paints `(3, 9)` and `(5, 7)`, the last row and the
+    # last column.  Clamping to `rows` instead of `rows - 1` raises `index 6 is out of bounds`, and `cols`
+    # instead of `cols - 1` raises `index 10 is out of bounds`.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_start_draw_of_one_stays_inside_4604(self, monkeypatch):
+        real_rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *a, **kw: torch.ones_like(real_rand(*a, **kw)))
+        aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(2, 2), drop_width=(-2, -2), p=1.0)
+        # The patch has to reach the generator's own draws, or the pin is vacuous.
+        assert float(aug.forward_parameters((1, 1, 6, 10))["coordinates_factor"].min()) == 1.0
+        lit = (aug(torch.zeros(1, 1, 6, 10))[0, 0] != 0).nonzero().tolist()
+        assert sorted(lit) == [[3, 9], [5, 7]]
 
     # Row 6c-28 in the state #4453 left it (it closed #4448): with ``same_on_batch=True`` every
     # sample of the batch gets the same number of drops, the same drop size and the same coordinates;
@@ -1234,7 +1312,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # trip, which is not the identity at either singular lightness: (1.5, 0.5, 0.5) has lightness exactly 1,
     # where `2 - max - min` vanishes, and comes back white; (2, -2, -2) has lightness exactly 0, where
     # `max + min` vanishes, and comes back black although it is neither all-negative nor negative in
-    # lightness.  Both are NaN in float16, where `eps` underflows and the saturation is 0 / 0 (#4571).
+    # lightness.  The guarded denominators make both endpoints finite in every supported dtype.
     # The coefficient is 0.9, not 1.0, and (1.8, 0, 0) is the last row: coverage is `lightness < coefficient`
     # at random_snow.py:118, so the only pixel that can tell `<` from `<=` is one whose lightness equals the
     # coefficient exactly.  At coefficient 1.0 that pixel was (1.5, 0.5, 0.5) -- but it is also the lightness-1
@@ -1248,9 +1326,9 @@ class TestNoiseAndWeatherConventions(BaseTester):
     #   x = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0], [1.5, 0.5, 0.5],
     #                     [2.0, -2.0, -2.0], [1.7999999523162842, 0.0, 0.0]]).T.reshape(1, 3, 1, 6)
     #   torch.manual_seed(0); print(K.RandomSnow(snow_coefficient=(0.9, 0.9), brightness=(2.0, 2.0), p=1.0)(x))
-    # executed 2026-09-16 (torch 2.14.0, cpu float32/float64/float16/bfloat16 and mps float32) -> the pixels
+    # executed 2026-09-16 (torch 2.9.1, cpu float32/float64/float16/bfloat16) -> the pixels
     # `(1, 1, 1)`, `(2, 1.5, 1.5)`, `(0, 0, 0)`, `(1, 1, 1)`, `(0, 0, 0)` and the boundary pixel unchanged;
-    # rows 3 and 4 are `(nan, nan, nan)` in float16.
+    # rows 3 and 4 are finite white and black in every supported dtype.
     def test_convention_random_snow_clamps_only_covered_lightness(self, device, dtype):
         pixels = torch.tensor(
             [
@@ -1270,12 +1348,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
         self.assert_close(out[:3], pixels.new_tensor([[1.0, 1.0, 1.0], [2.0, 1.5, 1.5], [0.0, 0.0, 0.0]]))
         # Lightness exactly at the coefficient is missed, so the pixel survives the round trip unchanged.
         self.assert_close(out[5], pixels[5])
-        if dtype == torch.float16:
-            assert bool(out[3].isnan().all())
-            assert bool(out[4].isnan().all())
-        else:
-            self.assert_close(out[3], pixels.new_ones(3))
-            self.assert_close(out[4], pixels.new_zeros(3))
+        self.assert_close(out[3], pixels.new_ones(3))
+        self.assert_close(out[4], pixels.new_zeros(3))
 
     # The singular region at lightness 1 has the width of rgb_to_hls's eps = 1e-8: a lightness 2e-7 off
     # comes back close to its input in float32 and float64 (half precision rounds it onto the point), while
@@ -1288,7 +1362,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # `[-82271062.5, 82271064.5, 82271064.5]`.
     def test_convention_random_snow_singularity_has_eps_width(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision: 1.5 + 4e-7 rounds onto the singular point (float16 is NaN there, #4571)")
+            pytest.skip("half precision: 1.5 + 4e-7 rounds onto the singular point")
 
         def run(lightness: float) -> torch.Tensor:
             pixel = torch.tensor([2 * lightness - 0.5, 0.5, 0.5], dtype=torch.float64).reshape(1, 3, 1, 1)
@@ -1302,19 +1376,20 @@ class TestNoiseAndWeatherConventions(BaseTester):
             self.assert_close(run(1 + 1e-8), near.new_tensor([2.0, 0.0, 0.0]))
             assert float(run(1 + 5e-9).abs().min()) > 1e6
 
-    # float16, so every achromatic pixel -- black, gray or white -- gets a NaN hue that the HLS round trip
-    # spreads to all three channels.  bfloat16 keeps the exponent range of float32 and is finite.
+    # Every achromatic pixel -- black, gray or white -- stays finite through the HLS round trip.
     # Snippet used to generate expected:
     #   for dt in (torch.float16, torch.bfloat16, torch.float32):
-    #       torch.manual_seed(0); print(dt, K.RandomSnow(p=1.0)(torch.full((1, 3, 2, 2), 0.5, dtype=dt)).isnan().any())
-    # executed 2026-09-15 (torch 2.14.0, cpu; mps float16 as well) -> `True`, `False`, `False`, and the
-    # same for the constants 0.0 and 1.0.
+    #       torch.manual_seed(0); y = K.RandomSnow(p=1.0)(torch.full((1, 3, 2, 2), 0.5, dtype=dt))
+    #       print(dt, torch.isfinite(y).all())
+    # current CPU run -> True for float16, bfloat16 and float32, and the same for constants 0.0 and 1.0.
     @pytest.mark.parametrize("value", [0.0, 0.5, 1.0])
-    def test_wart_random_snow_achromatic_pixel_is_nan_in_float16_4571(self, device, dtype, value):
+    def test_convention_random_snow_achromatic_pixel_is_finite_4571(self, device, dtype, value):
         gray = torch.full((1, 3, 2, 2), value, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomSnow(p=1.0)(gray)
-        assert bool(out.isnan().any()) == (dtype == torch.float16)
+        assert bool(torch.isfinite(out).all())
+        expected = gray.new_full(gray.shape, value)
+        self.assert_close(out, expected)
 
     # The channel-count precondition is a class-by-class contract, so it is pinned as one table rather
     # than per class: five of these were documented before this batch and five were not, and the split
@@ -1687,19 +1762,16 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert float((out - image).abs().max()) > 0.03
         assert torch.equal(aug(image, params=aug._params), out)
 
-    # Issue #4570: with same_on_batch=True the three RandomPlasma* classes share their scalar draws, but
-    # diamond_square draws one fractal map per sample, so identical inputs can come back different.  #3624
-    # reported this together with RandomGaussianNoise and RandomChannelShuffle, and #3723 fixed only those two.
-    # The maps differ on every draw; the outputs need not.  RandomPlasmaShadow shades a pixel only where its
-    # map is below the shared `shade_quantity`, so a high quantity shades every pixel alike -- on this 0.3
-    # fixture its outputs are identical for 66 of seeds 0..199 (0 for the other two classes) -- and its
-    # output leg is not asserted.
+    # Issue #4570: with same_on_batch=True the three RandomPlasma* classes share their scalar draws and
+    # expanded fractal map view, so identical inputs receive identical transformations.  #3624 reported this
+    # together with RandomGaussianNoise and RandomChannelShuffle, and #3723 fixed only those two.
     # Snippet used to generate expected:
     #   torch.manual_seed(0); aug = K.RandomPlasmaBrightness(p=1.0, same_on_batch=True)
     #   y = aug(torch.full((4, 3, 8, 8), 0.3)); print(torch.equal(aug._params["plasma"][0], aug._params["plasma"][1]))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `False` for all three classes, with the outputs differing too.
+    #   print(torch.equal(y[0], y[1]))
+    # executed 2026-09-16 (torch 2.9.1+cpu, cpu) -> `True` for maps and outputs for all three classes.
     @pytest.mark.parametrize("name", ["RandomPlasmaBrightness", "RandomPlasmaContrast", "RandomPlasmaShadow"])
-    def test_wart_plasma_same_on_batch_draws_one_map_per_sample_4570(self, device, dtype, name):
+    def test_convention_plasma_same_on_batch_shares_map_4570(self, device, dtype, name):
         image = torch.full((4, 3, 8, 8), 0.3, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         aug = getattr(K, name)(p=1.0, same_on_batch=True)
@@ -1707,9 +1779,12 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         for key, value in aug._params.items():
             if key not in ("plasma", "forward_input_shape"):
                 assert all(torch.equal(value[0], value[b]) for b in range(4)), f"{key} is not shared"
-        assert not torch.equal(aug._params["plasma"][0], aug._params["plasma"][1])
-        if name != "RandomPlasmaShadow":
-            assert not torch.equal(out[0], out[1])
+        assert torch.equal(aug._params["plasma"][0], aug._params["plasma"][1])
+        # The map is expanded, not repeated: a batch stride of 0 is the storage promise
+        # `IntensityAugmentationBase2D`'s Convention block makes, and `repeat` would satisfy the
+        # equality above while quietly allocating (and un-aliasing) one map per sample.
+        assert aug._params["plasma"].stride()[0] == 0
+        assert torch.equal(out[0], out[1])
 
     # Row 6c-43 in its new state: the `math domain error` the audit saw on a one-pixel axis is gone,
     # so a 1x1 and a 1x8 image now run and keep their shape.
@@ -1777,16 +1852,9 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(K.Denormalize(mean=mean, std=std, p=1.0)(normalized), image)
 
-    # Issue #4577: `normalize` reshapes with `Tensor.view`, so a non-contiguous input raises a raw torch
-    # error naming neither the class nor the fix.  `RandomAutoContrast` reaches `normalize_min_max` and
-    # fails the same way.
-    # Snippet used to generate expected:
-    #   x = torch.rand(2, 3, 8, 8).transpose(2, 3)
-    #   torch.manual_seed(0); K.Normalize(mean=torch.tensor([0.5]), std=torch.tensor([0.5]), p=1.0)(x)
-    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `RuntimeError: view size is not
-    # compatible with input tensor's size and stride`; `.contiguous()` on the same view succeeds.
+    # Issue #4577: normalization preserves image values across contiguous and strided layouts.
     @pytest.mark.parametrize("name", ["Normalize", "RandomAutoContrast"])
-    def test_wart_non_contiguous_input_raises_a_raw_view_error_4577(self, device, dtype, name):
+    def test_convention_non_contiguous_input_matches_contiguous_4577(self, device, dtype, name):
         factories = {
             "Normalize": lambda: K.Normalize(
                 mean=torch.tensor([0.5], device=device, dtype=dtype),
@@ -1800,14 +1868,11 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         view = image.transpose(2, 3)
         assert not view.is_contiguous()
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError, match="view size is not compatible") as excinfo:
-            _sync(factories[name]()(view).device)
-        # The frame that reshapes is `normalize` for Normalize and `normalize_min_max` for
-        # RandomAutoContrast, which never calls `normalize`; the class warnings name that function.
-        assert excinfo.traceback[-1].name == {"Normalize": "normalize", "RandomAutoContrast": "normalize_min_max"}[name]
-        # The same values, made contiguous, go through -- so it is the layout and not the numbers.
+        actual = factories[name]()(view)
         torch.manual_seed(_FORWARD_SEED)
-        assert factories[name]()(view.contiguous()).shape == view.shape
+        expected = factories[name]()(view.contiguous())
+        assert actual.shape == view.shape
+        self.assert_close(actual, expected)
 
     # Row 6c-16: a ``(B, C)`` statistic is applied per SAMPLE.  The pins above use one fixture for all
     # six forms, and their thresholds cannot tell a per-sample application from a row-0 or batch-mean
