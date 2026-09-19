@@ -143,6 +143,17 @@ class TestParamValidation:
             (float("inf"), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
             (float("nan"), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
             (torch.tensor(float("inf")), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            # The explicit-range form of the same rule (#4635). An `inf` endpoint used to slip
+            # through exactly when bounds[1] was itself `inf`, because the joint check then
+            # compares `inf >= inf`; with a finite domain it was already rejected.
+            ((0.0, float("inf")), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            ([0.0, float("inf")], 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            (torch.tensor([0.0, float("inf")]), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            ((0.0, float("inf")), 0, (0, float("inf")), "singular", ValueError, "must be finite"),
+            # nan was already rejected, but reported as "out of bounds", which named the domain
+            # rather than the endpoint. Now it gets the same message as every other non-finite range.
+            ((0.0, float("nan")), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            ((float("-inf"), 1.0), 0, (-10, 10), "joint", ValueError, "must be finite"),
         ],
     )
     def test_range_bound_errors(self, factor, center, bounds, check, expected_exception, match_msg):
