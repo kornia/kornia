@@ -1,0 +1,7 @@
+`RandomMotionBlur3D` keeps a tuple `kernel_size` inside the range it was given. An even upper bound used to
+admit the odd size above it -- the `+ 1` was taken off `kernel_size[1] // 2` rather than off the largest odd
+size in the range -- so `(3, 4)` drew `5` and `(3, 20)` drew `21`. The upper bound is now the largest odd size
+not above `kernel_size[1]`. A `float32` draw landing on the sampler's open upper end is clamped back onto the
+range, where `(3, 5)` could otherwise draw `7`. A reversed range such as `(20, 3)` now raises a `ValueError` at
+construction; it used to be accepted and drew a constant `9`, outside both of its own bounds. A range holding
+no odd size still rounds up out of the range, so `(4, 4)` draws `5` as before, matching the 2D generator.
