@@ -142,15 +142,9 @@ def render_gaussian2d(
     dtype = mean.dtype
     device = mean.device
 
-    # Create coordinates vectors at a fixed float32, regardless of `dtype` -- float16 can only
-    # exactly represent integers up to 2048, so for width/height beyond that, building the
-    # pixel-coordinate linspace directly at a float16 `dtype` collapses distinct coordinates
-    # together (confirmed directly: torch.linspace(0, 2199, 2200, dtype=torch.float16) has only
-    # 2124 distinct values, not 2200), silently distorting the rendered Gaussian's shape near
-    # the collapse point. `dist_x_sq`/`dist_y_sq`/`gauss_x`/`gauss_y` below promote to float32
-    # automatically once combined with these (ordinary PyTorch type promotion); the final
-    # returned heatmap is cast back to `dtype` at the very end, where it belongs -- a smooth
-    # density in [0, 1] loses nothing meaningful by rounding to float16 only once, at output.
+    # Build the coordinate vectors at float32 for half-precision inputs: float16 only represents
+    # integers exactly up to 2048 and bfloat16 up to 256, so a linspace built at `dtype` collapses
+    # distinct pixel coordinates on large grids. Other dtypes keep their own precision.
     compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     if normalized_coordinates:
         xs = torch.linspace(-1, 1, width, device=device, dtype=compute_dtype)
@@ -184,4 +178,5 @@ def render_gaussian2d(
     gauss_x = gauss_x / (gauss_x.sum(dim=-1, keepdim=True) + 1e-8)
     gauss_y = gauss_y / (gauss_y.sum(dim=-1, keepdim=True) + 1e-8)
 
-    return (gauss_y.unsqueeze(-1) * gauss_x.unsqueeze(-2)).to(dtype)
+    # Cast the 1-D vectors, not the (*, H, W) outer product, to avoid a full-size float32 intermediate.
+    return gauss_y.to(dtype).unsqueeze(-1) * gauss_x.to(dtype).unsqueeze(-2)

@@ -68,30 +68,32 @@ class TestRenderGaussian2d(BaseTester):
 
         self.assert_close(res_orig, res_opt)
 
-    def test_large_width_float16_peak_not_distorted(self, device):
-        """render_gaussian2d built its pixel-coordinate linspace at `dtype` -- float16 can only
-        exactly represent integers up to 2048 (confirmed: torch.linspace(0, 2199, 2200,
-        dtype=torch.float16) has only 2124 distinct values, not 2200), so for width > 2048 the
-        rendered Gaussian's shape silently distorted near the collapse region: an INPUT mean
-        stored in float16 (2049.3 -> rounds to 2050.0, confirmed directly -- float16's own
-        precision limit, not this bug) could still land the rendered PEAK on the wrong pixel,
-        because the internal coordinate grid used to find that peak was independently corrupted.
-        Compares the peak location against `mean`'s own ACTUAL stored value (post float16
-        rounding), not the original higher-precision Python float -- so this isolates the
-        internal-grid bug specifically, without conflating it with float16's separate, expected,
-        unrelated precision limit on the input `mean` itself. The float32 arm is the
-        wide-precision control (exact for widths well past 2**24); float64 is avoided so the
-        test also runs on MPS, which has no float64."""
-        width = 2200
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("normalized", [False, True])
+    @pytest.mark.parametrize("axis", ["x", "y"])
+    def test_large_grid_peak_not_distorted(self, device, dtype, normalized, axis):
+        """The coordinate grid must not collapse in half precision (float16 above 2048, bfloat16 above ~256)."""
+        n = 2200
         mu = 2049.3
-        for dtype in (torch.float16, torch.float32):
-            mean = torch.tensor([[mu, 5.0]], dtype=dtype, device=device)
-            std = torch.tensor([[2.0, 2.0]], dtype=dtype, device=device)
-            heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (10, width), False)
-            assert heatmap.dtype == dtype
-            peak_x = int(heatmap[0, 5].argmax())
-            expected = round(mean[0, 0].item())
-            assert peak_x == expected, f"dtype={dtype}: peak at pixel {peak_x}, expected {expected}"
+        size = (10, n) if axis == "x" else (n, 10)
+        mu_norm = mu / (n - 1) * 2 - 1
+        mean_xy = [mu, 5.0] if axis == "x" else [5.0, mu]
+        std_xy = [2.0, 2.0]
+        if normalized:
+            # a wider sigma keeps 1 / sigma**2 inside the float16 range
+            mean_xy = [mu_norm, 0.0] if axis == "x" else [0.0, mu_norm]
+            std_xy = [6.0 / (n - 1) * 2] * 2
+        mean = torch.tensor([mean_xy], dtype=dtype, device=device)
+        std = torch.tensor([std_xy], dtype=dtype, device=device)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, size, normalized)
+
+        assert heatmap.dtype == dtype
+        # Compare against the mean as actually stored (post half rounding), so only the grid is under test.
+        stored = mean[0, 0 if axis == "x" else 1].item()
+        expected = round((stored + 1) / 2 * (n - 1)) if normalized else round(stored)
+        line = heatmap[0, 5] if axis == "x" else heatmap[0, :, 5]
+        assert line[expected] == line.max()
 
 
 class TestSpatialSoftmax2d(BaseTester):
