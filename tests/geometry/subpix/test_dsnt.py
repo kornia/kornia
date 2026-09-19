@@ -68,6 +68,31 @@ class TestRenderGaussian2d(BaseTester):
 
         self.assert_close(res_orig, res_opt)
 
+    def test_large_width_float16_peak_not_distorted(self, device):
+        """render_gaussian2d built its pixel-coordinate linspace at `dtype` -- float16 can only
+        exactly represent integers up to 2048 (confirmed: torch.linspace(0, 2199, 2200,
+        dtype=torch.float16) has only 2124 distinct values, not 2200), so for width > 2048 the
+        rendered Gaussian's shape silently distorted near the collapse region: an INPUT mean
+        stored in float16 (2049.3 -> rounds to 2050.0, confirmed directly -- float16's own
+        precision limit, not this bug) could still land the rendered PEAK on the wrong pixel,
+        because the internal coordinate grid used to find that peak was independently corrupted.
+        Compares the peak location against `mean`'s own ACTUAL stored value (post float16
+        rounding), not the original higher-precision Python float -- so this isolates the
+        internal-grid bug specifically, without conflating it with float16's separate, expected,
+        unrelated precision limit on the input `mean` itself. The float32 arm is the
+        wide-precision control (exact for widths well past 2**24); float64 is avoided so the
+        test also runs on MPS, which has no float64."""
+        width = 2200
+        mu = 2049.3
+        for dtype in (torch.float16, torch.float32):
+            mean = torch.tensor([[mu, 5.0]], dtype=dtype, device=device)
+            std = torch.tensor([[2.0, 2.0]], dtype=dtype, device=device)
+            heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (10, width), False)
+            assert heatmap.dtype == dtype
+            peak_x = int(heatmap[0, 5].argmax())
+            expected = round(mean[0, 0].item())
+            assert peak_x == expected, f"dtype={dtype}: peak at pixel {peak_x}, expected {expected}"
+
 
 class TestSpatialSoftmax2d(BaseTester):
     @pytest.fixture(params=[torch.ones(1, 1, 5, 7), torch.randn(2, 3, 16, 16)])
