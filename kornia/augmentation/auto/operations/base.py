@@ -19,7 +19,6 @@ from typing import Callable, Dict, List, Optional, Self, Tuple, TypeVar
 
 import torch
 from torch import nn
-from torch.distributions import Bernoulli, RelaxedBernoulli
 
 from kornia.augmentation.base import _AugmentationBase
 
@@ -35,7 +34,7 @@ class OperationBase(nn.Module):
             The magnitude parameter name shall align with the attribute inside the random_generator
             in each augmentation. If None, the augmentation will be randomly applied according to
             the augmentation sampling range.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
+        temperature: retained for API compatibility.
         is_batch_operation: determine if to obtain the probability from `p` or `p_batch`.
             Set to True for most non-shape-persistent operations (e.g. cropping).
 
@@ -58,17 +57,11 @@ class OperationBase(nn.Module):
 
         self._init_magnitude(initial_magnitude)
 
-        # Avoid skipping the sampling in `__batch_prob_generator__`
-        self.probability_range = (1e-7, 1 - 1e-7)
         self._is_batch_operation = is_batch_operation
         if is_batch_operation:
-            self._probability = nn.Parameter(torch.empty(1).fill_(self.op.p_batch))
+            self._probability = self.op.p_batch
         else:
-            self._probability = nn.Parameter(torch.empty(1).fill_(self.op.p))
-
-        if temperature < 0:
-            raise ValueError(f"Expect temperature value greater than 0. Got {temperature}.")
-        self.register_buffer("temperature", torch.empty(1).fill_(temperature))
+            self._probability = self.op.p
 
         self.symmetric_megnitude = symmetric_megnitude
         self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
@@ -118,37 +111,6 @@ class OperationBase(nn.Module):
             if initial_magnitude[0][1] is not None:
                 self._magnitude = nn.Parameter(torch.empty(1).fill_(initial_magnitude[0][1]))
 
-    def _update_probability_gen(self, relaxation: bool) -> None:
-        if relaxation:
-            if self._is_batch_operation:
-                self.op._p_batch_gen = RelaxedBernoulli(self.temperature, self.probability)
-            else:
-                self.op._p_gen = RelaxedBernoulli(self.temperature, self.probability)
-        elif self._is_batch_operation:
-            self.op._p_batch_gen = Bernoulli(self.probability)
-        else:
-            self.op._p_gen = Bernoulli(self.probability)
-
-    def train(self, mode: bool = True) -> Self:
-        """Switch training mode and refresh probability samplers.
-
-        Args:
-            mode: ``True`` for training mode, ``False`` for evaluation mode.
-
-        Returns:
-            This module.
-        """
-        self._update_probability_gen(relaxation=mode)
-        return super().train(mode=mode)
-
-    def eval(self) -> Self:
-        """Switch to evaluation mode.
-
-        Returns:
-            This module.
-        """
-        return self.train(False)
-
     def forward_parameters(
         self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
@@ -165,7 +127,6 @@ class OperationBase(nn.Module):
         if mag is None:
             mag = self.magnitude
 
-        self._update_probability_gen(relaxation=True)
         params = self.op.forward_parameters(batch_shape)
 
         if mag is not None:
@@ -227,11 +188,6 @@ class OperationBase(nn.Module):
         return mag
 
     @property
-    def probability(self) -> torch.Tensor:
-        """Return the operation probability after applying configured bounds.
-
-        Returns:
-            Probability tensor clamped to ``probability_range``.
-        """
-        p = self._probability.clamp(*self.probability_range)
-        return p
+    def probability(self) -> float:
+        """Return the configured operation probability."""
+        return self._probability
