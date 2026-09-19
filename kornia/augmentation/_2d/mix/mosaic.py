@@ -142,20 +142,16 @@ class RandomMosaic(MixAugmentationBaseV2):
 
                 if maybe_out_boxes is None:
                     maybe_out_boxes = _box
+                elif to_apply.all():
+                    KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
                 else:
-                    if to_apply.all():
-                        KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
-                    else:
-                        # Only selected samples contribute additional mosaic boxes.
-                        # Represent non-selected samples as padding rather than real boxes.
-                        tile_boxes = Boxes(
-                            [
-                                _box._data[k] if to_apply[k] else _box._data[k, :0]
-                                for k in range(_box._data.shape[0])
-                            ],
-                            mode=_box._mode,
-                        )
-                        KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(tile_boxes, inplace=True)
+                    # Only selected samples contribute additional mosaic boxes.
+                    # Represent non-selected samples as padding rather than real boxes.
+                    tile_boxes = Boxes(
+                        [_box._data[k] if to_apply[k] else _box._data[k, :0] for k in range(_box._data.shape[0])],
+                        mode=_box._mode,
+                    )
+                    KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(tile_boxes, inplace=True)
         out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
         out_boxes.clamp(offset, offset_end, inplace=True)
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
