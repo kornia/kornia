@@ -66,11 +66,13 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
         - ``kernel_size`` is drawn once per sample into ``_params["ksize_factor"]``, and the whole batch is
           then blurred with the single entry at ``_params["idx"]``, an index drawn uniformly over the batch.
-          The draw truncates a float, so the range's upper bound is practically never reached -- only when
-          the ``float32`` draw rounds onto it, about once in ``2**24`` -- and ``kernel_size=(3, 5)`` is a
-          constant ``3`` while ``(3, 7)`` draws only ``3`` and ``5``. An even bound is separately rounded
-          **up** out of the requested range, so ``(4, 4)`` draws ``5``. Tracked in
-          `#4599 <https://github.com/kornia/kornia/issues/4599>`_.
+          A tuple range draws each odd size inside it with equal probability, bounds included, so
+          ``kernel_size=(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws ``3, 5, ..., 19``. A range that
+          holds no odd size is rounded **up** out of the requested range instead, so ``(4, 4)`` draws ``5``;
+          a reversed one such as ``(20, 3)`` raises at construction. Because the whole range is drawn, and
+          not just its lowest odd size, every size in it is live against the image-size rule below: with
+          ``border_type="reflect"`` a ``kernel_size=(3, 5)`` on a ``2 x 2`` image raises on the draws of
+          ``5`` -- about half of them -- where a constant ``3`` always fit.
         - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
           border pixel is blended with ``0`` and pulled toward it: below the input's own minimum for a
           positive image, and above its maximum for a negative one. With

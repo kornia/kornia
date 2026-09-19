@@ -376,37 +376,49 @@ class TestBlurConventions(BaseTester):
         assert aug.flags["resample"] == Resample.NEAREST
 
     # Issue #4599: `kernel_size` is drawn once per SAMPLE and then one entry -- the one at a uniformly
-    # drawn `_params["idx"]`, not the first -- is applied to the whole batch; and because the draw is
-    # `UniformDistribution(ks[0] // 2, ks[1] // 2)` truncated with `.int()`, the range's upper bound is
-    # practically never reached.  `(3, 5)` is therefore a constant 3 -- "practically": the float32 draw
-    # rounds onto the bound about once in 2**24 (seed 204 draws one 5 in 50000), so the pin is that the
-    # bound is vanishingly rare, not impossible.  RandomRain had the same wart and no longer does
-    # (#4567): it draws over `[lo, hi + 1)`, floors, and clamps that rounding escape back onto the closed
-    # range -- the remedy this one still needs.
+    # drawn `_params["idx"]`, not the first -- is applied to the whole batch.  The half-size is drawn on
+    # `[lo, hi + 1)` and floored, so every odd size in the requested range is drawn, bounds included, in
+    # near-equal shares; the draw used to truncate a float on `[lo, hi)`, which made `(3, 5)` a constant 3.
+    # This is the same remedy RandomRain took for #4567.  An even upper bound caps at the largest odd size
+    # below it, and a range holding no odd size still rounds up (`(4, 4)` draws 5).
     # Snippet used to generate expected:
     #   import collections
-    #   for ks in ((3, 5), (3, 7), (5, 11)):
+    #   for ks in ((3, 5), (3, 7), (5, 11), (3, 20), (4, 7), (4, 4)):
     #       torch.manual_seed(0)
     #       v = K.RandomMotionBlur(ks, (0., 0.), (0., 0.), p=1.).forward_parameters((20000, 1, 8, 8))
-    #       print(ks, sorted(collections.Counter(v["ksize_factor"].tolist())))
-    # executed 2026-09-16 (torch 2.14.0, cpu) -> `[3]`, `[3, 5]`, `[5, 7, 9]`; `idx` over 400 seeds at
-    # B = 6 lands on every row (`{0: 67, 1: 71, 2: 66, 3: 57, 4: 83, 5: 56}`).
+    #       print(ks, dict(sorted(collections.Counter(v["ksize_factor"].tolist()).items())))
+    # executed 2026-09-16 (torch 2.5.0, cpu) -> `{3: 10065, 5: 9935}`, `{3: 6688, 5: 6776, 7: 6536}`,
+    # `{5: 4959, 7: 5106, 9: 5044, 11: 4891}`, `{3: 2219, ..., 19: 2184}` (nine sizes), `{5: 10065, 7: 9935}`,
+    # `{5: 20000}`.
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize(("kernel_size", "drawn"), [((3, 5), [3]), ((3, 7), [3, 5]), ((5, 11), [5, 7, 9])])
-    def test_wart_random_motion_blur_upper_bound_is_never_drawn_4599(self, kernel_size, drawn):
+    @pytest.mark.parametrize(
+        ("kernel_size", "drawn"),
+        [
+            ((3, 5), [3, 5]),
+            ((3, 7), [3, 5, 7]),
+            ((5, 11), [5, 7, 9, 11]),
+            ((3, 20), [3, 5, 7, 9, 11, 13, 15, 17, 19]),
+            ((4, 7), [5, 7]),
+            ((4, 4), [5]),
+        ],
+    )
+    def test_convention_random_motion_blur_draws_every_odd_size_in_the_range_4599(self, kernel_size, drawn):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomMotionBlur(kernel_size, (0.0, 0.0), (0.0, 0.0), p=1.0)
         factors = aug.forward_parameters((20000, 1, 8, 8))["ksize_factor"]
-        assert sorted(set(factors[factors != kernel_size[1]].tolist())) == drawn
-        # The requested upper bound is odd and admissible, and it is practically absent: at most a rounding
-        # handful of 20000 draws, where a uniform draw over the odd sizes would give thousands.
-        assert kernel_size[1] % 2 == 1 and kernel_size[1] not in drawn
-        assert int((factors == kernel_size[1]).sum()) < 5
+        counts = torch.stack([(factors == k).sum() for k in drawn])
+        assert sorted(set(factors.tolist())) == drawn
+        # Near-equal shares: each size within 10% of 20000 / len(drawn), where the old truncation left the
+        # upper bound at a rounding handful.
+        expected = 20000 / len(drawn)
+        assert bool(((counts - expected).abs() < 0.1 * expected).all()), counts.tolist()
 
-    # Issue #4599, the other half: the per-sample draw is real, and a random index selects which one
-    # the batch gets -- so `_params["ksize_factor"]` holds B different values while one kernel is used.
+    # Issue #4671: the per-sample draw is real, and a random index selects which one the batch gets --
+    # so `_params["ksize_factor"]` holds B different values while one kernel is used.  This started as
+    # the other half of #4599, but that issue is scoped to the truncated draw and is closed by this
+    # PR, so the wart is tracked on its own issue from here.
     @pytest.mark.device_agnostic
-    def test_wart_random_motion_blur_applies_one_randomly_indexed_kernel_size_4599(self):
+    def test_wart_random_motion_blur_applies_one_randomly_indexed_kernel_size_4671(self):
         picked = set()
         distinct = 0
         for seed in range(64):
