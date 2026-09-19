@@ -77,15 +77,18 @@ class TestRandomCrop3D(BaseTester):
         torch.manual_seed(42)
         input_tensor = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6).repeat(2, 1, 1, 1, 1)
         input_tensor = input_tensor / 120
-        aug = RandomCrop3D((7, 8, 9), padding=padding, pad_if_needed=True, padding_mode=padding_mode, p=1.0)
+        # Nearest sampling makes integer-coordinate crops match slicing, even in half precision.
+        aug = RandomCrop3D(
+            (7, 8, 9), padding=padding, pad_if_needed=True, padding_mode=padding_mode, resample="nearest", p=1.0
+        )
         padded = aug.precrop_padding(input_tensor)
         output = aug(input_tensor)
 
         assert output.shape == (2, 1, 7, 8, 9)
         for index, box in enumerate(aug._params["src"]):
             x, y, z = box[0].long().tolist()
-            self.assert_close(output[index], padded[index, :, z : z + 7, y : y + 8, x : x + 9])
-        self.assert_close(aug(input_tensor, params=aug._params), output)
+            self.assert_close(output[index], padded[index, :, z : z + 7, y : y + 8, x : x + 9], rtol=0, atol=0)
+        self.assert_close(aug(input_tensor, params=aug._params), output, rtol=0, atol=0)
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
