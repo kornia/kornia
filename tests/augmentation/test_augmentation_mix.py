@@ -585,6 +585,22 @@ class TestRandomMosaic(BaseTester):
 
 
 class TestRandomJigsaw(BaseTester):
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    @pytest.mark.parametrize("gate", [None, [0.0, 0.0], [1.0, 0.0]])
+    @pytest.mark.parametrize(
+        ("shape", "grid"),
+        [((2, 1, 9, 13), (2, 3)), ((2, 3, 3, 4), (2, 2)), ((2, 1, 8, 13), (2, 3))],
+    )
+    def test_invalid_grid_before_gate_4651(self, p, gate, shape, grid, device, dtype):
+        image = torch.zeros(shape, device=device, dtype=dtype)
+        aug = RandomJigsaw(grid=grid, p=p)
+        params = None
+        if gate is not None:
+            params = aug.forward_parameters(image.shape)
+            params["batch_prob"] = torch.tensor(gate)
+        with pytest.raises(RuntimeError, match="must be divisible by grid"):
+            aug(image, params=params)
+
     def test_smoke(self, device, dtype):
         f = RandomJigsaw(data_keys=["input"])
         repr = "RandomJigsaw(grid=(4, 4), p=0.5, p_batch=1.0, same_on_batch=False, grid=(4, 4))"
