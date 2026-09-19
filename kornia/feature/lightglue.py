@@ -690,16 +690,7 @@ class LightGlue(nn.Module):
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
         """
-        device_type = next(
-            (
-                t.device.type
-                for d in data.values()
-                if isinstance(d, dict)
-                for t in d.values()
-                if isinstance(t, torch.Tensor)
-            ),
-            "cuda",
-        )
+        device_type = data["image0"]["keypoints"].device.type
         with torch.autocast(enabled=self.conf.mp, device_type=device_type):
             return self._forward(data)
 

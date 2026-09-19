@@ -428,12 +428,20 @@ class TestLightGlue(BaseTester):
 
     def test_mp_forward_uses_input_device_type(self, device, dtype):
         """With ``mp=True``, ``forward`` derives the autocast ``device_type`` from the
-        input tensors rather than a hardcoded ``\"cuda\"`` (regression for #4624).
+        keypoints device (the computation device), not from a hardcoded ``\"cuda\"`` nor
+        from the first tensor encountered while scanning the input dict (regression for
+        #4624).
         """
         if dtype == torch.float16:
             pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype, mp=True)
         data = _make_data(device, dtype)
+        # Put a non-keypoint tensor (image_size) first so a naive "first tensor wins"
+        # resolver would select it instead of the keypoints device.
+        data["image0"] = {
+            "image_size": data["image0"].pop("image_size"),
+            **data["image0"],
+        }
         seen: dict[str, str] = {}
         real_ac = torch.autocast
 
@@ -445,7 +453,7 @@ class TestLightGlue(BaseTester):
             with torch.no_grad():
                 out = lg(data)
 
-        assert seen["device_type"] == str(torch.device(device).type)
+        assert seen["device_type"] == data["image0"]["keypoints"].device.type
         assert "matches0" in out
 
     @pytest.mark.slow
