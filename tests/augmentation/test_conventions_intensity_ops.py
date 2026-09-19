@@ -413,10 +413,12 @@ class TestBlurConventions(BaseTester):
         expected = 20000 / len(drawn)
         assert bool(((counts - expected).abs() < 0.1 * expected).all()), counts.tolist()
 
-    # Issue #4599, the other half: the per-sample draw is real, and a random index selects which one
-    # the batch gets -- so `_params["ksize_factor"]` holds B different values while one kernel is used.
+    # Issue #4671: the per-sample draw is real, and a random index selects which one the batch gets --
+    # so `_params["ksize_factor"]` holds B different values while one kernel is used.  This started as
+    # the other half of #4599, but that issue is scoped to the truncated draw and is closed by this
+    # PR, so the wart is tracked on its own issue from here.
     @pytest.mark.device_agnostic
-    def test_wart_random_motion_blur_applies_one_randomly_indexed_kernel_size_4599(self):
+    def test_wart_random_motion_blur_applies_one_randomly_indexed_kernel_size_4671(self):
         picked = set()
         distinct = 0
         for seed in range(64):

@@ -86,6 +86,13 @@ class MotionBlurGenerator(RandomGeneratorBase):
             # closed [lo, hi] is equally likely; truncating a draw on [lo, hi) never reached hi.
             # hi is the largest odd size not above the upper bound, and never below lo, which keeps an
             # even-only range such as (4, 4) drawing 5 as before.
+            # A reversed pair is what the `max(half_lo, ...)` below would otherwise turn into a draw
+            # above *both* bounds: `(20, 3)` drew a constant 21.  #4568 set the precedent for
+            # RandomRain's closed integer ranges -- refuse it here rather than sample outside it.
+            if self.kernel_size[0] > self.kernel_size[1]:
+                raise ValueError(
+                    f"`kernel_size`[0] should be smaller than or equal to `kernel_size`[1]. Got {self.kernel_size}."
+                )
             half_lo = self.kernel_size[0] // 2
             half_hi = max(half_lo, (self.kernel_size[1] - 1) // 2)
             self.ksize_sampler = UniformDistribution(half_lo, half_hi + 1, validate_args=False)
