@@ -651,8 +651,13 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     trace: torch.Tensor = m00 + m11 + m22
 
+    def _safe_sqrt_sq(r: torch.Tensor) -> torch.Tensor:
+        mask = r > 0.0
+        safe_r = torch.where(mask, r, torch.ones_like(r))
+        return torch.where(mask, torch.sqrt(safe_r) * 2.0, torch.zeros_like(r))
+
     def trace_positive_cond() -> torch.Tensor:
-        sq = torch.sqrt(trace + 1.0 + eps) * 2.0  # sq = 4 * qw.
+        sq = _safe_sqrt_sq(trace + 1.0 + eps)  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
@@ -660,7 +665,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_1() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
+        sq = _safe_sqrt_sq(1.0 + m00 - m11 - m22 + eps)  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
         qy = safe_zero_division(m01 + m10, sq)
@@ -668,7 +673,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_2() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
+        sq = _safe_sqrt_sq(1.0 + m11 - m00 - m22 + eps)  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
         qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
@@ -676,7 +681,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_3() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
+        sq = _safe_sqrt_sq(1.0 + m22 - m00 - m11 + eps)  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
         qx = safe_zero_division(m02 + m20, sq)
         qy = safe_zero_division(m12 + m21, sq)
@@ -739,9 +744,15 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    # Exact smallest positive float16 subnormal, kept literal for TorchScript support.
-    safe_eps = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
-    return F.normalize(quaternion, p=2.0, dim=-1, eps=safe_eps)
+    safe_eps: float = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
+    norm = torch.linalg.vector_norm(quaternion, ord=2, dim=-1, keepdim=True)
+    mask = norm > 0.0
+    safe_norm = torch.where(mask, norm, torch.ones_like(norm))
+    denom = torch.where(mask, torch.clamp(safe_norm, min=safe_eps), torch.ones_like(norm))
+    out = quaternion / denom
+    if eps == 0.0:
+        return torch.where(mask, out, torch.full_like(quaternion, float("nan")))
+    return torch.where(mask, out, torch.zeros_like(quaternion))
 
 
 # based on:
