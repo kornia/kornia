@@ -22,6 +22,7 @@ import torch
 
 from kornia.augmentation import (
     AugmentationSequential,
+    PatchMix,
     RandomCutMixV2,
     RandomJigsaw,
     RandomMixUpV2,
@@ -32,6 +33,92 @@ from kornia.augmentation import (
 from kornia.geometry.bbox import infer_bbox_shape
 
 from testing.base import BaseTester
+
+
+class TestMixValidation(BaseTester):
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_custom_annotation_handler(self, p, device, dtype):
+        class KeypointMix(RandomMixUpV2):
+            def apply_transform_keypoint(self, input, params, flags):
+                return input + 1
+
+        image = torch.zeros(2, 1, 8, 8, device=device, dtype=dtype)
+        keypoints = image.new_zeros(2, 1, 2)
+        _, output = KeypointMix(p=p)(image, keypoints, data_keys=["input", "keypoints"])
+        self.assert_close(output, keypoints + p)
+
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    @pytest.mark.parametrize("gate", [None, [0.0, 0.0], [1.0, 0.0]])
+    @pytest.mark.parametrize("constructor_keys", [False, True])
+    @pytest.mark.parametrize(
+        ("augmentation", "kwargs", "keys", "error"),
+        [
+            (RandomMixUpV2, {}, ["bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "mask"], NotImplementedError),
+            (
+                RandomCutMixV2,
+                {"use_correct_lambda": True},
+                ["bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "mask"],
+                NotImplementedError,
+            ),
+            (
+                RandomJigsaw,
+                {"grid": (2, 2)},
+                ["bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label", "mask"],
+                NotImplementedError,
+            ),
+            (
+                PatchMix,
+                {"patch_size": 2},
+                ["bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label", "mask"],
+                NotImplementedError,
+            ),
+            (RandomMosaic, {}, ["keypoints", "mask"], NotImplementedError),
+            (RandomMosaic, {}, ["class", "label"], RuntimeError),
+        ],
+    )
+    def test_unsupported_keys_4651(self, augmentation, kwargs, keys, error, p, gate, constructor_keys, device, dtype):
+        image = torch.zeros(2, 1, 8, 8, device=device, dtype=dtype)
+        boxes = image.new_tensor([[[1, 1, 4, 4]]]).repeat(2, 1, 1)
+        annotations = {
+            "bbox": image.new_tensor([[[[1, 1], [4, 1], [4, 4], [1, 4]]]]).repeat(2, 1, 1, 1),
+            "bbox_xyxy": boxes,
+            "bbox_xywh": boxes,
+            "keypoints": image.new_zeros(2, 1, 2),
+            "class": torch.arange(2, device=device),
+            "label": torch.arange(2, device=device),
+            "mask": torch.zeros_like(image),
+        }
+        for key in keys:
+            data_keys = ["input", key]
+            aug = augmentation(p=p, **kwargs, **({"data_keys": data_keys} if constructor_keys else {}))
+            params = None
+            if gate is not None:
+                params = aug.forward_parameters(image.shape)
+                params["batch_prob"] = torch.tensor(gate)
+            with pytest.raises(error) as exc:
+                aug(image, annotations[key], params=params, **({} if constructor_keys else {"data_keys": data_keys}))
+            assert type(exc.value) is error
+            if error is RuntimeError:
+                assert str(exc.value) == "RandomMosaic does not support `TAG` types."
+
+    @pytest.mark.parametrize("key", ["bbox_xyxy", "keypoints", "mask"])
+    def test_container_rejects_skipped_unsupported_keys_4651(self, key, device, dtype):
+        image = torch.zeros(2, 1, 8, 8, device=device, dtype=dtype)
+        annotations = {
+            "bbox_xyxy": image.new_tensor([[[1, 1, 4, 4]]]).repeat(2, 1, 1),
+            "keypoints": image.new_zeros(2, 1, 2),
+            "mask": torch.zeros_like(image),
+        }
+        aug = AugmentationSequential(RandomMixUpV2(p=0.0), data_keys=["input", key])
+        with pytest.raises(NotImplementedError):
+            aug(image, annotations[key])
+
+    def test_supported_mosaic_boxes_skipped(self, device, dtype):
+        image = torch.arange(128, device=device, dtype=dtype).reshape(2, 1, 8, 8)
+        boxes = image.new_tensor([[[1, 1, 4, 4]]]).repeat(2, 1, 1)
+        output, output_boxes = RandomMosaic(p=0.0)(image, boxes, data_keys=["input", "bbox_xyxy"])
+        self.assert_close(output, image, rtol=0, atol=0)
+        self.assert_close(output_boxes, boxes, rtol=0, atol=0)
 
 
 class TestRandomMixUpV2(BaseTester):
