@@ -246,7 +246,7 @@ Image Segmentation
 .. autofunction:: connected_components_union_find
 
 Choosing a labeling method
-^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``connected_components_union_find`` computes the exact 8-connected partition
 without an iteration budget. It accepts boolean masks and returns ``int64``

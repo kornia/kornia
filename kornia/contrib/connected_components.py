@@ -123,7 +123,9 @@ def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
 
     height, width = image.shape[-2:]
     mask = (image == 1).reshape(-1, height, width)
-    padded = F.pad(mask, (0, width % 2, 0, height % 2))
+    # MPSGraph's boolean padding can abort the process; allocate the border explicitly.
+    padded = mask.new_zeros((mask.shape[0], height + height % 2, width + width % 2))
+    padded[:, :height, :width] = mask
     top_left, top_right = padded[:, ::2, ::2], padded[:, ::2, 1::2]
     bottom_left, bottom_right = padded[:, 1::2, ::2], padded[:, 1::2, 1::2]
     # Every pair of foreground pixels inside a 2x2 block is 8-connected.
