@@ -72,3 +72,105 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
         out = torch.mul(out, mask)  # mask using element-wise multiplication
 
     return out.to(image.dtype).view_as(image)
+
+
+def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
+    r"""Label 8-connected foreground components exactly using block union-find.
+
+    This pure PyTorch implementation contracts each 2x2 block, following the
+    block-based approach of Allegretti, Bolelli and Grana, *Optimized Block-Based
+    Algorithms to Label Connected Components on GPUs*, TPDS 2020,
+    https://doi.org/10.1109/TPDS.2019.2934683. Root hooking with ``scatter_reduce_``
+    and pointer jumping replace the paper's custom CUDA union kernels.
+
+    Unlike :func:`connected_components`, this function runs until convergence
+    and returns integer labels, including for half-precision inputs. There is
+    no iteration budget to choose based on component diameter.
+
+    Args:
+        image: Binary image of shape :math:`(*, 1, H, W)`. Boolean, integer and
+            floating-point tensors are accepted. Only values equal to 1 are
+            foreground, as in :func:`connected_components`.
+
+    Returns:
+        A ``torch.int64`` tensor on the input device with the same shape.
+        Background is zero. Foreground labels are the minimum 1-based block
+        index in each component, in raster order over flattened batches and
+        the :math:`\lceil H/2\rceil \times \lceil W/2\rceil` block grid.
+        Labels are deterministic and distinct across images, but not contiguous
+        and not equal to the labels of the pooling implementation.
+
+    Note:
+        This discrete operation is not differentiable. Working memory is linear
+        in the number of pixels. Convergence checks synchronize the device with
+        the host; CUDA graph capture and ``torch.compile(fullgraph=True)`` are
+        not supported. All mask, edge and label computation stays on the input
+        device. The existing pooling API remains useful for fixed-work graphs.
+
+    Example:
+        >>> mask = torch.tensor([[[1, 0, 0], [0, 0, 1]]], dtype=torch.bool)
+        >>> connected_components_union_find(mask)
+        tensor([[[1, 0, 0],
+                 [0, 0, 2]]])
+
+    """
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input image is not a torch.Tensor. Got: {type(image)}")
+    if image.ndim < 3 or image.shape[-3] != 1:
+        raise ValueError(f"Input image shape must be (*,1,H,W). Got: {image.shape}")
+    if image.numel() == 0:
+        return torch.zeros_like(image, dtype=torch.int64)
+
+    height, width = image.shape[-2:]
+    mask = (image == 1).reshape(-1, height, width)
+    padded = F.pad(mask, (0, width % 2, 0, height % 2))
+    top_left, top_right = padded[:, ::2, ::2], padded[:, ::2, 1::2]
+    bottom_left, bottom_right = padded[:, 1::2, ::2], padded[:, 1::2, 1::2]
+    # Every pair of foreground pixels inside a 2x2 block is 8-connected.
+    # A block may connect to four already-visited neighbors, but only if an
+    # actual pair of foreground pixels touches across the shared boundary.
+    blocks = torch.arange(top_left.numel(), device=image.device).reshape(top_left.shape)
+    left = (top_left[:, :, 1:] | bottom_left[:, :, 1:]) & (top_right[:, :, :-1] | bottom_right[:, :, :-1])
+    above = (top_left[:, 1:, :] | top_right[:, 1:, :]) & (bottom_left[:, :-1, :] | bottom_right[:, :-1, :])
+    above_left = top_left[:, 1:, 1:] & bottom_right[:, :-1, :-1]
+    above_right = top_right[:, 1:, :-1] & bottom_left[:, :-1, 1:]
+
+    sources = torch.cat(
+        [
+            blocks[:, :, 1:].flatten(),
+            blocks[:, 1:, :].flatten(),
+            blocks[:, 1:, 1:].flatten(),
+            blocks[:, 1:, :-1].flatten(),
+        ]
+    )
+    # Absent edges become self-loops. Fixed-size arrays avoid nonzero/boolean
+    # indexing, which would add device synchronizations during edge creation.
+    targets = torch.cat(
+        [
+            torch.where(left, blocks[:, :, :-1], blocks[:, :, 1:]).flatten(),
+            torch.where(above, blocks[:, :-1, :], blocks[:, 1:, :]).flatten(),
+            torch.where(above_left, blocks[:, :-1, :-1], blocks[:, 1:, 1:]).flatten(),
+            torch.where(above_right, blocks[:, :-1, 1:], blocks[:, 1:, :-1]).flatten(),
+        ]
+    )
+    parents = blocks.flatten()
+    while True:
+        source_roots, target_roots = parents[sources], parents[targets]
+        merged = parents.clone()
+        merged.scatter_reduce_(
+            0, torch.maximum(source_roots, target_roots), torch.minimum(source_roots, target_roots), reduce="amin"
+        )
+        # Only roots are hooked and every parent decreases, so cycles cannot
+        # form. Fully compress before hooking again: hooking non-roots could
+        # detach an already-merged subtree.
+        while True:
+            compressed = merged[merged]
+            if torch.equal(compressed, merged):
+                break
+            merged = compressed
+        if torch.equal(merged, parents):
+            break
+        parents = merged
+
+    labels = (parents.reshape(blocks.shape) + 1).repeat_interleave(2, -2).repeat_interleave(2, -1)
+    return (labels[:, :height, :width] * mask).reshape(image.shape)

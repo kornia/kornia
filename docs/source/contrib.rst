@@ -243,6 +243,26 @@ Image Segmentation
 ------------------
 .. autofunction:: connected_components
 
+.. autofunction:: connected_components_union_find
+
+Choosing a labeling method
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``connected_components_union_find`` computes the exact 8-connected partition
+without an iteration budget. It accepts boolean masks and returns ``int64``
+labels, so half-precision inputs do not cause distinct component IDs to collide.
+It is useful for segmentation masks containing long structures such as vessels,
+roads and text strokes. Its convergence checks synchronize the accelerator with
+the host, and the result is not differentiable.
+
+``connected_components`` retains its fixed-count pooling implementation and its
+existing output dtype and label convention. When using it, choose enough
+iterations for the largest component's graph diameter: the default 100 steps
+can leave a long component split into multiple labels. A small fixed budget may
+be faster than union-find for small or fragmented masks, but does not guarantee
+convergence. The two implementations produce different numerical label IDs;
+compare their foreground partitions instead of comparing label values directly.
+
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
 
