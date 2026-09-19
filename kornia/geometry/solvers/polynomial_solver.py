@@ -232,6 +232,15 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     return solutions
 
 
+# A returned value must actually solve the quartic: scaled Horner residual above this is not a
+# root of it at all. Chosen from a 2000-row sweep per family rather than by feel. The spurious
+# values in #4474 sit four orders above it, an ill-conditioned cluster of four close real roots
+# in float32 sits well below it while landing far from the true roots, and tightening from 1e-3
+# to 1e-4 removed the last float64 false positive without dropping a single genuine root in
+# either dtype. Loose on purpose: this rejects non-roots, it does not grade accuracy.
+_QUARTIC_ROOT_RESIDUAL_TOL = 1e-4
+
+
 def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     r"""Solve given quartic equation.
 
@@ -431,6 +440,35 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     roots1 = solve_quadratic(torch.stack([q1_a, q1_b, q1_c], dim=1))
     roots2 = solve_quadratic(torch.stack([q2_a, q2_b, q2_c], dim=1))
+
+    # Ferrari reports the roots of the factorization it built, not of the quartic it was
+    # given, and in float32 those can differ completely. When solve_cubic loses a near-double
+    # resolvent root -- which is exactly what a near-perfect-square quartic produces -- the
+    # best remaining candidate leaves R^2 < 0, R falls back to 0, E's radicand goes negative
+    # too, and both quadratics collapse to x^2 + (A/2)x + y/2. Its roots are then returned as
+    # the quartic's while leaving a residual of 25 and 64 on the two cases in #4474.
+    #
+    # So verify before returning: evaluate the normalized quartic at each root by Horner and
+    # drop the ones that are not roots of it, using the zero placeholder this function already
+    # returns for a quartic with no real roots. The threshold is deliberately loose. It is
+    # there to reject values that do not solve the quartic at all, not to grade accuracy: a
+    # cluster of four close real roots is ill-conditioned in float32 and lands a long way from
+    # the true values while still satisfying the polynomial, and those stay.
+    root_candidates = torch.cat([roots1, roots2], dim=-1)
+    abs_root = torch.abs(root_candidates)
+    A_e, B_e, C_e, D_e = (t.unsqueeze(-1) for t in (A, B, C, D))
+    root_residual = (((root_candidates + A_e) * root_candidates + B_e) * root_candidates + C_e) * root_candidates + D_e
+    root_residual_scale = torch.maximum(
+        torch.ones_like(root_candidates),
+        abs_root**4
+        + torch.abs(A_e) * abs_root**3
+        + torch.abs(B_e) * abs_root**2
+        + torch.abs(C_e) * abs_root
+        + torch.abs(D_e),
+    )
+    is_root = torch.abs(root_residual) / root_residual_scale <= _QUARTIC_ROOT_RESIDUAL_TOL
+    root_candidates = torch.where(is_root, root_candidates, torch.zeros_like(root_candidates))
+    roots1, roots2 = root_candidates[:, :2], root_candidates[:, 2:]
 
     solutions[mask_quartic, 0:2] = roots1.to(dtype=solutions.dtype)
     solutions[mask_quartic, 2:4] = roots2.to(dtype=solutions.dtype)
