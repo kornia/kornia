@@ -27,6 +27,8 @@ This oracle-tuned baseline favors pooling: users normally do not know this
 budget. The default 100-iteration baseline is also measured, but incorrect
 partitions must never be treated as equivalent-work speedups. SciPy itself is
 not timed because it labels host arrays, whereas these APIs label device tensors.
+CUDA rows include peak allocated bytes above the resident input, including the
+output and temporary tensors but excluding the allocator's reserved cache.
 """
 
 from __future__ import annotations
@@ -91,7 +93,7 @@ def main():
     parser.add_argument("--sizes", type=int, nargs="+", default=[256, 1024])
     parser.add_argument("--batch", type=int, default=1)
     parser.add_argument("--calibrate", action="store_true")
-    parser.add_argument("--min-run-time", type=float, default=0.5)
+    parser.add_argument("--min-run-time", type=float, default=1.0)
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
     device = torch.device(args.device)
@@ -136,6 +138,15 @@ def main():
                     raise AssertionError(f"Incorrect partition: {case}, {size}")
                 sync = torch.mps.synchronize if device.type == "mps" else None
                 median, iqr = time_us(operation, min_run_time=args.min_run_time, sync=sync)
+                peak_extra_bytes = None
+                if device.type == "cuda":
+                    torch.cuda.synchronize(device)
+                    allocated = torch.cuda.memory_allocated(device)
+                    torch.cuda.reset_peak_memory_stats(device)
+                    output = operation()
+                    torch.cuda.synchronize(device)
+                    peak_extra_bytes = torch.cuda.max_memory_allocated(device) - allocated
+                    del output
                 row = {
                     "op": "connected_components",
                     "backend": backend,
@@ -148,6 +159,7 @@ def main():
                     "correct": correct,
                     "median_us": median,
                     "iqr_us": iqr,
+                    "peak_extra_bytes": peak_extra_bytes,
                     "throughput_per_s": args.batch * 1e6 / median,
                 }
                 results.append(row)
