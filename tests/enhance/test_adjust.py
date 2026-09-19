@@ -1180,10 +1180,17 @@ class TestSolarize(BaseTester):
         shifted = (img + addition).clamp(0.0, 1.0)
         expected = torch.where(shifted >= 0.5, 1.0 - shifted, shifted)
         self.assert_close(TestSolarize.f(img, 0.5, addition), expected)
+        # Both entries are asserted: checking only sample 0 leaves a 1-D `additions` broadcast from the
+        # first entry indistinguishable from a real per-sample dispatch.
         per_sample = torch.tensor([addition, 0.0], device=device, dtype=dtype)
-        self.assert_close(TestSolarize.f(img, 0.5, per_sample)[0], expected[0])
+        out = TestSolarize.f(img, 0.5, per_sample)
+        self.assert_close(out[0], expected[0])
+        unshifted = img[1].clamp(0.0, 1.0)
+        self.assert_close(out[1], torch.where(unshifted >= 0.5, 1.0 - unshifted, unshifted))
 
-    @pytest.mark.parametrize("addition", [0.5001, -0.5001])
+    # `0.5 + 2 ** -24` is the next float32 above the bound, so the pin constrains it to one ulp
+    # rather than to the ~1700 an 0.5001 leaves.
+    @pytest.mark.parametrize("addition", [0.5 + 2**-24, -(0.5 + 2**-24), 0.5001, -0.5001])
     def test_additions_outside_closed_range_raise_4605(self, device, addition):
         if device.type != "cpu":
             pytest.skip("CPU only: the value check is an async device assert elsewhere")

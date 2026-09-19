@@ -56,8 +56,9 @@ class RandomSolarize(IntensityAugmentationBase2D):
           :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
         - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, and
           :func:`kornia.enhance.solarize` accepts the same closed interval, so a range that reaches an endpoint,
-          or draws one exactly, is applied rather than rejected. The forward check runs on the device of the
-          drawn ``additions`` -- the CPU by default -- so it also applies to an MPS image.
+          or draws one exactly, is applied rather than rejected. Because the two intervals are now the same,
+          the function's own forward check cannot fire for this class; it still applies to a direct
+          :func:`kornia.enhance.solarize` call, on the device its own ``.. note::`` describes.
 
     .. warning::
         An input entirely outside ``[0, 1]`` can collapse at either end. An all-negative input can come back

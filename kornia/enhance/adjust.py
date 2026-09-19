@@ -709,14 +709,14 @@ def solarize(
     pixel compared against ``thresholds``, and every pixel at or above it is replaced by ``1 - value``.
     The addition is therefore applied on both sides of the threshold, and it can move a pixel across it:
     with ``thresholds=0.5`` and ``additions=0.2``, ``[0.1, 0.4, 0.6, 0.9]`` comes back as
-    ``[0.3, 0.4, 0.2, 0.0]``. The value of 'addition' is between -0.5 and 0.5.
+    ``[0.3, 0.4, 0.2, 0.0]``. The value of 'addition' is in the closed range [-0.5, 0.5].
 
     Args:
         input: image torch.Tensor with shapes like :math:`(*, C, H, W)` to solarize.
         thresholds: solarize thresholds.
             If int or one element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
-        additions: between -0.5 and 0.5.
+        additions: in the closed range [-0.5, 0.5], endpoints included.
             If None, no addition will be performed.
             If int or one element torch.Tensor, same addition will be added across the whole batch.
             If 1-d torch.Tensor, additions will be added element-wisely, len(additions) == len(input).
