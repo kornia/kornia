@@ -741,3 +741,48 @@ class TestQuarticSolver(BaseTester):
         # zero-radicand gradient convention was fixed in #4339 and is covered above.
         assert bool(torch.isfinite(mixed.grad[0]).all()), mixed.grad
         self.assert_close(mixed.grad[0], alone.grad[0])
+
+    def test_no_spurious_real_roots_for_near_square_quartic_4474(self, device, dtype):
+        # (x^2 + 2x + 5)(x^2 + 2x + 5.01) has no real roots, but its resolvent cubic has a
+        # near-double root that float32 solve_cubic loses. Ferrari then fell back to R = 0,
+        # both quadratics collapsed to x^2 + (A/2)x + y/2, and its roots came back as the
+        # quartic's while leaving a residual of 25 (#4474).
+        coeffs = torch.tensor([[1.0, 4.0, 14.01, 20.02, 25.05]], device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+
+        # Every returned value must satisfy the quartic it was given. Zeros are the
+        # placeholder for "no real root" and are skipped, which is the correct answer here.
+        for root in roots[0]:
+            if root == 0.0:
+                continue
+            residual = (((root + 4.0) * root + 14.01) * root + 20.02) * root + 25.05
+            assert bool(torch.abs(residual) < 1e-2), f"{root} is not a root, residual {residual}"
+
+    def test_near_square_family_returns_no_real_roots_4474(self, device, dtype):
+        # The same failure across the family rather than one literal, so a future change that
+        # reintroduces it on neighbouring coefficients is caught too. Each row is
+        # (x^2 + a x + b)(x^2 + a x + b + eps) with a discriminant that admits no real root.
+        rows, a = [], 2.0
+        for b in (5.0, 6.5, 8.0):
+            for eps in (1e-3, 1e-2, 1e-1):
+                c1 = b + eps
+                # expand (x^2 + a x + b)(x^2 + a x + c1)
+                rows.append([1.0, 2 * a, b + c1 + a * a, a * (b + c1), b * c1])
+        coeffs = torch.tensor(rows, device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+
+        assert bool((roots == 0.0).all()), f"expected the no-real-root placeholder, got {roots}"
+
+    def test_four_real_roots_survive_the_residual_filter_4474(self, device, dtype):
+        # The guard rejects non-roots; it must not reject roots. A well-separated
+        # four-real-root quartic and a biquadratic both keep every root.
+        quartics = [
+            [1.0, -10.0, 35.0, -50.0, 24.0],  # (x-1)(x-2)(x-3)(x-4)
+            [1.0, 0.0, -5.0, 0.0, 4.0],  # (x^2-1)(x^2-4)
+        ]
+        expected = [[1.0, 2.0, 3.0, 4.0], [-2.0, -1.0, 1.0, 2.0]]
+        roots = solver.solve_quartic(torch.tensor(quartics, device=device, dtype=dtype))
+
+        for row, want in zip(roots, expected):
+            got = torch.sort(row).values
+            self.assert_close(got, torch.tensor(want, device=device, dtype=dtype).sort().values, rtol=1e-3, atol=1e-3)
