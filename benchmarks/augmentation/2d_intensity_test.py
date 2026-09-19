@@ -287,7 +287,9 @@ def test_aug_2d_median_blur(benchmark, device, dtype, torch_optimizer, shape):
 
 def test_aug_2d_motion_blur(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
-    aug = RandomMotionBlur((3, 3), 45.0, 5.5, p=1.0)
+    # ``direction`` is bounded by [-1, 1]; 1.0 is the widest admissible magnitude and draws from the
+    # same [-1, 1] the out-of-bounds 5.5 used to be clamped to, so the measured op is unchanged.
+    aug = RandomMotionBlur((3, 3), 45.0, 1.0, p=1.0)
     op = torch_optimizer(aug)
 
     actual = benchmark(op, input=data)

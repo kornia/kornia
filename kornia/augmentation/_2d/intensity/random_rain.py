@@ -57,19 +57,18 @@ class RandomRain(IntensityAugmentationBase2D):
           painted cells have gaps inside that span -- ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10``
           image paints rows ``[0, 1, 2, 3, 5]``. A size as large as the image's, or a ``drop_height`` below
           ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
-        - a drop's start coordinate is scaled by ``H - h - 1`` rather than ``H - h``, so the last row and
-          the last column of the image are never painted unless the drop is exactly one short of the image
-          on that axis; a single-pixel drop never reaches the last two rows. Tracked in
-          `#4604 <https://github.com/kornia/kornia/issues/4604>`_.
-        - the drawn sizes and drop count are float draws truncated toward zero, so unless the range is a single
-          point, a positive upper bound is practically never drawn: the default ``drop_height=(5, 20)`` gives
-          heights of ``5`` to ``19`` (an image shorter than 20 pixels raises on some seeds, and on every seed when
-          it is 5 pixels tall or shorter). A negative ``drop_width`` bound rounds toward zero instead: a negative
-          lower bound is practically never drawn while a non-positive upper bound is, and a range from ``-1`` or
-          below to ``1`` or above draws ``0`` twice as often as any other value -- or practically always at
-          ``(-1, 1)`` exactly, where only an exact ``-1.0`` draw, one ``float32`` value in ``2**24``, escapes
-          the truncation to ``0``. Tracked in `#4567
-          <https://github.com/kornia/kornia/issues/4567>`_.
+        - every start position that keeps the whole drop inside the image is equally likely, so the last row
+          and the last column are reachable. Reachable by a start, not necessarily painted: the gaps inside a
+          drop's span described above can still leave a column untouched -- ``drop_height=5`` with
+          ``drop_width=9`` on a ``6 x 10`` image has one legal start and never paints column ``8``.
+        - the three integer ranges are closed and uniform: every integer from the lower to the upper bound
+          is drawn with the same probability, so the default ``drop_height=(5, 20)`` reaches ``20``, the
+          default ``drop_width=(-5, 5)`` reaches ``-5`` and ``5``, and ``0`` carries no more weight than
+          any other width. Both upper bounds are live against the size rule above, which they were not
+          when they were practically never drawn: with the defaults an image 20 pixels tall, or 5 pixels
+          wide, now raises on some seeds -- and on every seed once it is 5 pixels tall or shorter, where
+          no drawable height is legal. A range that is reversed, fractional or non-finite raises
+          ``ValueError`` at construction.
         - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
           the same coordinates; left at ``False`` each sample draws its own.
 
@@ -80,7 +79,7 @@ class RandomRain(IntensityAugmentationBase2D):
         >>> rain(input)
         tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
-                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.3489, 0.4017, 0.7843, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
 
@@ -127,19 +126,23 @@ class RandomRain(IntensityAugmentationBase2D):
             height_of_drop: int = int(params["drop_height_factor"][i])
             width_of_drop: int = int(params["drop_width_factor"][i])
 
-            # Generate start coordinates for each drop
-            random_y_coords = coordinates_of_drops[:, 0] * (image.shape[2] - height_of_drop - 1)
-            if width_of_drop > 0:
-                random_x_coords = coordinates_of_drops[:, 1] * (image.shape[3] - width_of_drop - 1)
-            else:
-                random_x_coords = coordinates_of_drops[:, 1] * (image.shape[3] + width_of_drop - 1) - width_of_drop
-
-            coords = torch.cat([random_y_coords[None], random_x_coords[None]], dim=0).to(image.device, dtype=torch.long)
-
             # Generate how our drop will look like into the image
             size_of_line: int = max(height_of_drop, abs(width_of_drop))
             x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
             y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
+
+            # A drop may start anywhere its far end stays inside the image. The far end is the line's last
+            # offset -- the end point is included once there are at least two steps, and a single-pixel drop
+            # is the start alone. Derived in Python rather than read off `x[-1]`/`y[-1]`, which would sync the
+            # device on every batch element. The clamp is for the MPS half `rand` that can return exactly 1.0
+            # (#4553): it keeps such a draw on the last admissible start instead of one past it. Main was safe
+            # there only by accident, its multiplier being one smaller.
+            last_dy, last_dx = (height_of_drop, width_of_drop) if size_of_line > 1 else (0, 0)
+            rows, cols = image.shape[2] - last_dy, image.shape[3] - abs(last_dx)
+            random_y_coords = (coordinates_of_drops[:, 0] * rows).long().clamp(max=rows - 1)
+            random_x_coords = (coordinates_of_drops[:, 1] * cols).long().clamp(max=cols - 1) + max(-last_dx, 0)
+
+            coords = torch.stack([random_y_coords, random_x_coords]).to(image.device)
             # Draw lines
             for k in range(x.shape[0]):
                 modeified_img[i, :, coords[0] + x[k], coords[1] + y[k]] = 200 / 255

@@ -53,10 +53,8 @@ class Denormalize(IntensityAugmentationBase2D):
           `#4496 <https://github.com/kornia/kornia/issues/4496>`_ and is removed here.
         - the statistics live in ``flags`` rather than in a buffer, so ``state_dict()`` is empty and
           ``Module.to(...)`` leaves their device and dtype alone.
-        - this class inverts :class:`Normalize` built with the same float, sequence or tensor ``mean`` and
-          ``std``, up to float rounding, when both apply -- each draws its own ``p`` gate. An ``int``
-          statistic, which :class:`Normalize` accepts, raises here on the forward pass
-          (`#4573 <https://github.com/kornia/kornia/issues/4573>`_).
+        - this class inverts :class:`Normalize` built with the same float, integer, sequence or tensor ``mean`` and
+          ``std``, up to float rounding, when both apply -- each draws its own ``p`` gate.
         - the result is not clamped: it is ``input * std + mean`` whatever range the input is in.
 
     .. note::
@@ -79,10 +77,10 @@ class Denormalize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
-        if isinstance(mean, float):
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean])
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std])
 
         if isinstance(mean, (tuple, list)):

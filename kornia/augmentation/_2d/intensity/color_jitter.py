@@ -62,13 +62,13 @@ class ColorJitter(IntensityAugmentationBase2D):
     Convention:
         - this class and :class:`ColorJiggle` draw the same factor values and the same random application
           ``order`` from the same seed when their effective sampling bounds match and both modules stay on
-          the CPU. A scalar ``brightness > 1`` does not match: :class:`ColorJiggle` draws from ``[0, 2]``
-          while this class draws from ``[0, 1 + brightness]``. Off the CPU the ``order`` diverges, because
-          this class always draws it on the CPU where :class:`ColorJiggle` draws it on the sampler device;
-          and this class keeps the sampler dtype for its factors where :class:`ColorJiggle` returns them in
-          the dtype of its constructor arguments (``float32`` for Python floats). Only this class takes an
-          ``order`` constructor argument that replaces the sampled order with a fixed one. The classes use different
-          primitives for three adjustments:
+          the CPU. A scalar ``brightness > 1`` is where they part: :class:`ColorJiggle` rejects it, because
+          its bound is ``[0, 2]``, while this class draws from ``[0, 1 + brightness]``. Off the CPU the
+          ``order`` diverges, because this class always draws it on the CPU where :class:`ColorJiggle`
+          draws it on the sampler device; and this class keeps the sampler dtype for its factors where
+          :class:`ColorJiggle` returns them in the dtype of its constructor arguments (``float32`` for
+          Python floats). Only this class takes an ``order`` constructor argument that replaces the
+          sampled order with a fixed one. The classes use different primitives for three adjustments:
           :func:`kornia.enhance.adjust_brightness_accumulative` against
           :func:`kornia.enhance.adjust_brightness`,
           :func:`kornia.enhance.adjust_contrast_with_mean_subtraction` against
@@ -94,11 +94,6 @@ class ColorJitter(IntensityAugmentationBase2D):
         default included, runs the brightness step unless a fixed ``order`` leaves it out. The collapse depends on the
         draw: a contrast or saturation factor above ``1`` applied before the brightness step can lift part of the image
         above zero first. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
-
-    .. warning::
-        In ``float16`` a pixel whose largest channel is ``0`` -- for an input in ``[0, 1]``, a black pixel --
-        comes back as NaN when it reaches the hue step, because ``rgb_to_hsv``'s ``eps`` underflows there. Tracked in
-        `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness_accumulative`,

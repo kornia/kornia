@@ -312,6 +312,57 @@ class TestDrawLine(BaseTester):
             excinfo.value
         )
 
+    # The tests below sit after test_point_size on purpose: its parametrize arguments call torch.rand at
+    # import time, and testing/half_precision_eager_rng.py audits that call by line number (305).
+    # Moving them above it shifts that line and fails the audit.
+    def test_draw_line_lights_both_endpoints(self, dtype, device):
+        # The integer ceiling reaches minor exactly at t = major, so p1 and p2 are both drawn. The float
+        # step this replaced left p2 dark on about 7% of random lines.
+        generator = torch.Generator().manual_seed(0)
+        height, width = 37, 91
+        xs = torch.randint(0, width, (300, 2), generator=generator)
+        ys = torch.randint(0, height, (300, 2), generator=generator)
+        color = torch.tensor([1.0])
+        for (x1, x2), (y1, y2) in zip(xs.tolist(), ys.tolist()):
+            img = torch.zeros(1, height, width, dtype=dtype, device=device)
+            img = draw_line(img, torch.tensor([x1, y1]), torch.tensor([x2, y2]), color)
+            assert img[0, y1, x1] == 1.0, ((x1, y1), (x2, y2))
+            assert img[0, y2, x2] == 1.0, ((x1, y1), (x2, y2))
+            assert img.sum() == max(abs(x2 - x1), abs(y2 - y1)) + 1, ((x1, y1), (x2, y2))
+
+    def test_draw_line_empty_batch_draws_nothing(self, dtype, device):
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        empty = torch.zeros(0, 2, dtype=torch.long)
+        out = draw_line(img, empty, empty, torch.tensor([1.0]))
+        assert out.shape == (1, 8, 8)
+        assert out.count_nonzero() == 0
+
+    def test_draw_line_rejects_points_of_different_shapes(self, dtype, device):
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(ValueError, match="must have the same batch sizes"):
+            draw_line(img, torch.tensor([1, 1]), torch.tensor([[2, 2], [3, 3]]), torch.tensor([1.0]))
+
+    def test_draw_line_passes_through_its_exact_lattice_points(self, dtype, device):
+        # The segment from (0, 0) to (117, 18) passes exactly through (13k, 2k). The minor coordinate
+        # is ceil(t * 18 / 117), and a float step landed just above the exact integer at some of
+        # these points, which rounded the pixel up a row: (26, 5) instead of (26, 4).
+        img = torch.zeros(1, 19, 118, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([0, 0]), torch.tensor([117, 18]), torch.tensor([1.0]))
+        for k in range(10):
+            assert img[0, 2 * k, 13 * k] == 1.0, (13 * k, 2 * k)
+            assert img[0, :, 13 * k].sum() == 1.0, 13 * k
+
+    def test_draw_lines_batched_matches_drawing_each_line(self, dtype, device):
+        # One batch mixing a vertical, a horizontal, a single point and both slope regimes.
+        p1 = torch.tensor([[3, 1], [0, 9], [5, 5], [1, 2], [30, 0], [7, 18]])
+        p2 = torch.tensor([[3, 17], [31, 9], [5, 5], [29, 11], [2, 19], [26, 3]])
+        color = torch.tensor([1.0, 2.0])
+        batched = draw_line(torch.zeros(2, 20, 32, dtype=dtype, device=device), p1, p2, color)
+        expected = torch.zeros(2, 20, 32, dtype=dtype, device=device)
+        for a, b in zip(p1, p2):
+            expected = draw_line(expected, a, b, color)
+        self.assert_close(batched, expected, rtol=0.0, atol=0.0)
+
 
 class TestDrawRectangle(BaseTester):
     @pytest.mark.parametrize("batch", (4, 17))

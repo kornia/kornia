@@ -52,8 +52,8 @@ class AugmentationBase3D(_AugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
         if shape is None:
             return _transform_input3d(input)
-        else:
-            return _transform_input3d_by_shape(input, reference_shape=shape, match_channel=match_channel)
+
+        return _transform_input3d_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return 4x4 identity matrix."""

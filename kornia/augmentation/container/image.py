@@ -378,7 +378,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         for arg in self.children():
             if isinstance(arg, ImageSequential) and not arg.is_intensity_only(strict):
                 return False
-            elif isinstance(arg, ImageSequential):
+            if isinstance(arg, ImageSequential):
                 pass
             elif isinstance(arg, K.IntensityAugmentationBase2D):
                 pass

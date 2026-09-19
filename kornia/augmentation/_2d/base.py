@@ -82,8 +82,7 @@ class AugmentationBase2D(_AugmentationBase):
           and an ``(H, W)`` input to ``(1, 1, H, W)``; ``keepdim=True`` restores the input rank on the way out
           and never drops a real batch dimension. The dtype guard accepts ``float16``, ``bfloat16``, ``float32``
           and ``float64`` and raises ``TypeError`` naming those four on an integer tensor. The output keeps the
-          input's device. Individual augmentations may have dtype-specific behavior; see their own docs and
-          `#4467 <https://github.com/kornia/kornia/issues/4467>`_.
+          input's device. Individual augmentations may have dtype-specific behavior; see their own docs.
         - unsupported ranks and container entry points report validation errors through different paths.
           Tracked in `#4424 <https://github.com/kornia/kornia/issues/4424>`_.
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
@@ -170,8 +169,8 @@ class AugmentationBase2D(_AugmentationBase):
 
         if shape is None:
             return _transform_input(input)
-        else:
-            return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
+
+        return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):

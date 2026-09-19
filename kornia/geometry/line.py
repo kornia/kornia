@@ -269,8 +269,7 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
             KORNIA_CHECK_SHAPE(weights, ["B", "N"])
             KORNIA_CHECK(points.shape[0] == weights.shape[0])
             return _fit_line_weighted_ols_2d(points, weights)
-        else:
-            return _fit_line_ols_2d(points)
+        return _fit_line_ols_2d(points)
 
     mean = points.mean(-2, True)
     A = points - mean

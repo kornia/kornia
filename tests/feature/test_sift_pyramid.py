@@ -1,0 +1,269 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# limitations under the License.
+
+from __future__ import annotations
+
+import pytest
+import torch
+
+from kornia.feature import SIFTDescriptorFromPyramid, get_laf_orientation, laf_from_center_scale_ori
+
+from testing.base import BaseTester, supports_reflect_padding
+
+
+class TestSIFTDescriptorFromPyramid(BaseTester):
+    def test_shape_norm_and_empty(self, device, dtype):
+        image = torch.rand(2, 1, 64, 80, device=device, dtype=dtype)
+        xy = torch.tensor([[[24.0, 24.0], [48.0, 40.0]], [[20.0, 30.0], [52.0, 36.0]]], device=device, dtype=dtype)
+        scale = torch.full((2, 2, 1, 1), 8.0, device=device, dtype=dtype)
+        lafs = laf_from_center_scale_ori(xy, scale)
+        feature = SIFTDescriptorFromPyramid().to(device, dtype)
+        oriented, descriptors = feature.orient_and_describe(image, lafs)
+        assert oriented.shape == lafs.shape
+        assert descriptors.shape == (2, 2, 128)
+        self.assert_close(descriptors.norm(dim=-1), torch.ones(2, 2, device=device, dtype=dtype))
+        empty_lafs, empty_descriptors = feature.orient_and_describe(image, lafs[:, :0])
+        assert empty_lafs.shape == (2, 0, 2, 3)
+        assert empty_descriptors.shape == (2, 0, 128)
+
+    def test_horizontal_gradient_keeps_orientation(self, device, dtype):
+        image = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 1, 64).expand(1, 1, 64, 64)
+        xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
+        lafs = laf_from_center_scale_ori(xy, torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype))
+        oriented, _ = SIFTDescriptorFromPyramid(rootsift=False).to(device, dtype).orient_and_describe(image, lafs)
+        self.assert_close(
+            get_laf_orientation(oriented), torch.zeros(1, 1, 1, device=device, dtype=dtype), rtol=0.0, atol=1e-2
+        )
+
+    def test_flat_input_has_finite_backward(self, device, dtype):
+        image = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype, requires_grad=True)
+        xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
+        # This scale selects the second octave, exercising the in-place updates
+        # on _laf_at_level's cloned LAF tensor during backward.
+        lafs = laf_from_center_scale_ori(
+            xy, torch.full((1, 1, 1, 1), 20.0, device=device, dtype=dtype, requires_grad=True)
+        )
+        _, descriptors = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
+        descriptors.sum().backward()
+        assert torch.isfinite(image.grad).all()
+
+    def test_odd_spatial_pooling(self, device, dtype):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
+        lafs = laf_from_center_scale_ori(xy, torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype))
+        _, descriptors = (
+            SIFTDescriptorFromPyramid(spatial_bin_size=3).to(device, dtype).orient_and_describe(image, lafs)
+        )
+        assert descriptors.shape == (1, 1, 128)
+
+    def test_invalid_laf_and_mixed_laf_dtype(self, device, dtype):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        laf_dtype = torch.float32 if device.type == "mps" else torch.float64
+        lafs = torch.zeros(1, 2, 2, 3, device=device, dtype=laf_dtype)
+        lafs[0, 1] = torch.tensor([[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]], device=device, dtype=laf_dtype)
+        oriented, descriptors = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
+        assert oriented.dtype == lafs.dtype
+        assert descriptors.dtype == dtype
+        self.assert_close(descriptors[0, 0], torch.zeros(128, device=device, dtype=dtype))
+        assert torch.isfinite(descriptors).all()
+
+    def test_all_invalid_lafs_keep_zero_backward(self, device, dtype):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype, requires_grad=True)
+        lafs = torch.zeros(1, 2, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        descriptors = SIFTDescriptorFromPyramid().to(device, dtype)(image, lafs)
+        descriptors.sum().backward()
+        self.assert_close(descriptors, torch.zeros_like(descriptors))
+        self.assert_close(image.grad, torch.zeros_like(image.grad))
+        self.assert_close(lafs.grad, torch.zeros_like(lafs.grad))
+
+    def test_unused_upper_octaves_do_not_build_histograms(self, device, dtype, monkeypatch):
+        import kornia.feature.sift.pyramid as implementation
+
+        image = torch.rand(1, 1, 80, 80, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[6.0, 0, 40], [0, 6.0, 40]]]], device=device, dtype=dtype)
+        calls = []
+        pyrdown_calls = []
+        original = implementation.spatial_gradient
+        original_pyrdown = implementation.pyrdown
+
+        def gradient(level, *args, **kwargs):
+            calls.append(level.shape)
+            return original(level, *args, **kwargs)
+
+        def counted_pyrdown(level, *args, **kwargs):
+            pyrdown_calls.append(level.shape)
+            return original_pyrdown(level, *args, **kwargs)
+
+        monkeypatch.setattr(implementation, "spatial_gradient", gradient)
+        monkeypatch.setattr(implementation, "pyrdown", counted_pyrdown)
+        actual = SIFTDescriptorFromPyramid().to(device, dtype)(image, lafs)
+        assert calls == [image.shape]
+        assert pyrdown_calls == []
+        single_level = SIFTDescriptorFromPyramid().to(device, dtype)
+        monkeypatch.setattr(single_level, "_pyramid", lambda image, num_levels=None: [image])
+        self.assert_close(actual, single_level(image, lafs))
+
+    def test_unused_lower_octaves_do_not_build_histograms(self, device, dtype, monkeypatch):
+        import kornia.feature.sift.pyramid as implementation
+
+        image = torch.rand(1, 1, 160, 160, device=device, dtype=dtype)
+        # A large frame selects octave 2. Octaves 0 and 1 are still resampled to
+        # reach it, but their histogram maps are the largest allocations here and
+        # nothing ever samples them.
+        lafs = torch.tensor([[[[40.0, 0.0, 80.0], [0.0, 40.0, 80.0]]]], device=device, dtype=dtype)
+        feature = SIFTDescriptorFromPyramid().to(device, dtype)
+        levels = feature._select_levels(lafs, feature._num_pyramid_levels(image))
+        assert levels.flatten().tolist() == [2]
+
+        shapes = []
+        original = implementation.spatial_gradient
+
+        def gradient(level, *args, **kwargs):
+            shapes.append(tuple(level.shape[-2:]))
+            return original(level, *args, **kwargs)
+
+        monkeypatch.setattr(implementation, "spatial_gradient", gradient)
+        oriented, descriptors = feature.orient_and_describe(image, lafs)
+        assert shapes == [(40, 40)]
+
+        # Skipping the unused octaves must not change a single output value.
+        # Only CPU can be held to bitwise equality: the histogram scatter uses
+        # atomics on an accelerator, so it is not run-to-run reproducible there.
+        reference = SIFTDescriptorFromPyramid().to(device, dtype)
+        monkeypatch.setattr(reference, "_level_occupancy", lambda levels, num_levels: [True] * num_levels)
+        expected_lafs, expected_descriptors = reference.orient_and_describe(image, lafs)
+        exact = {"rtol": 0.0, "atol": 0.0} if device.type == "cpu" else {}
+        self.assert_close(oriented, expected_lafs, **exact)
+        self.assert_close(descriptors, expected_descriptors, **exact)
+
+    def test_all_invalid_lafs_skip_pyramid_construction(self, device, dtype, monkeypatch):
+        image = torch.rand(1, 1, 80, 80, device=device, dtype=dtype)
+        lafs = torch.zeros(1, 2, 2, 3, device=device, dtype=dtype)
+        feature = SIFTDescriptorFromPyramid().to(device, dtype)
+
+        def unexpected_pyramid(*args, **kwargs):
+            raise AssertionError("all-invalid LAFs must not build an image pyramid")
+
+        monkeypatch.setattr(feature, "_pyramid", unexpected_pyramid)
+        descriptors = feature(image, lafs)
+        self.assert_close(descriptors, torch.zeros_like(descriptors))
+
+    def test_upright_preserves_laf_orientation(self, device, dtype):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
+        lafs = laf_from_center_scale_ori(
+            xy,
+            torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
+            torch.full((1, 1, 1), 25.0, device=device, dtype=dtype),
+        )
+        oriented, _ = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs, upright=True)
+        self.assert_close(get_laf_orientation(oriented), get_laf_orientation(lafs))
+
+    def test_affine_gradient_is_canonicalized(self, device, dtype):
+        # I(x,y)=x+y has a known gradient, so A^T(1,1) tests shear,
+        # anisotropic magnitude, nonzero orientation, and the LAF rotation sign.
+        axis = torch.arange(65, device=device, dtype=dtype)
+        image = (axis[:, None] + axis[None, :])[None, None]
+        lafs = torch.tensor([[[[8.0, 2.0, 32.0], [0.0, 6.0, 32.0]]]], device=device, dtype=dtype)
+        oriented, descriptors = (
+            SIFTDescriptorFromPyramid(rootsift=False).to(device, dtype).orient_and_describe(image, lafs)
+        )
+        gradient = oriented[..., :2, :2].transpose(-1, -2) @ torch.ones(2, 1, device=device, dtype=dtype)
+        # Histogram discretization interpolates a 45-degree input between bins.
+        assert gradient[..., 0, 0].min() > 0
+        assert (gradient[..., 1, 0].abs() / gradient[..., 0, 0]).max() < 0.06
+        assert descriptors.reshape(1, 1, 8, 16).sum(-1).argmax(-1).item() == 0
+
+    def test_odd_pyramid_coordinates(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("direct pyramid helper requires native reflect padding; the descriptor promotes half inputs")
+        # Linear images remain linear away from borders. Sampling any octave at
+        # the transformed frame centre must return the original pixel coordinate.
+        h, w = 65, 67
+        x = torch.arange(w, device=device, dtype=dtype)[None].expand(h, w)
+        y = torch.arange(h, device=device, dtype=dtype)[:, None].expand(h, w)
+        feature = SIFTDescriptorFromPyramid().to(device, dtype)
+        lafs = torch.tensor([[[[20.0, 0.0, 27.0], [0.0, 20.0, 31.0]]]], device=device, dtype=dtype)
+        pyramid = feature._pyramid(torch.stack([x, y])[None])
+        level_lafs = feature._laf_at_level(lafs, pyramid, 1)
+        sampled = feature._sample(pyramid[1], pyramid[1], level_lafs, 1)
+        self.assert_close(sampled.flatten(), lafs[0, 0, :, 2])
+
+    def test_nonfinite_frame_backward(self, device, dtype):
+        image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype, requires_grad=True)
+        lafs = torch.tensor(
+            [[[[8.0, 0.0, float("nan")], [0.0, 8.0, 20.0]], [[8.0, 0.0, 20.0], [0.0, 8.0, 20.0]]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        _, desc = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
+        desc.sum().backward()
+        self.assert_close(desc[0, 0], torch.zeros_like(desc[0, 0]))
+        assert torch.isfinite(image.grad).all()
+        assert torch.isfinite(lafs.grad).all()
+
+    def test_gradcheck(self, device):
+        image = torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64)
+        lafs = torch.tensor([[[[2.0, 0.0, 3.0], [0.0, 2.0, 3.0]]]], device=device, dtype=torch.float64)
+        feature = SIFTDescriptorFromPyramid(spatial_bin_size=3).to(device, torch.float64)
+        self.gradcheck(lambda image: feature(image, lafs), (image,))
+
+    def test_empty_batch(self, device, dtype):
+        image = torch.empty(0, 1, 40, 40, device=device, dtype=dtype)
+        lafs = torch.empty(0, 3, 2, 3, device=device, dtype=dtype)
+        oriented, desc = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
+        assert oriented.shape == (0, 3, 2, 3)
+        assert desc.shape == (0, 3, 128)
+
+    @pytest.mark.parametrize("batch_size,num_lafs", [(1, 0), (0, 3)])
+    def test_empty_inputs_keep_zero_backward(self, device, dtype, batch_size, num_lafs):
+        image = torch.empty(batch_size, 1, 40, 40, device=device, dtype=dtype, requires_grad=True)
+        lafs = torch.empty(batch_size, num_lafs, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        descriptors = SIFTDescriptorFromPyramid().to(device, dtype)(image, lafs)
+        descriptors.sum().backward()
+        self.assert_close(image.grad, torch.zeros_like(image.grad))
+        self.assert_close(lafs.grad, torch.zeros_like(lafs.grad))
+
+    def test_descriptor_forward_does_not_reorient(self, device, dtype, monkeypatch):
+        image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[6.0, 2.0, 20.0], [-2.0, 6.0, 20.0]]]], device=device, dtype=dtype)
+        original = lafs.clone()
+        descriptor = SIFTDescriptorFromPyramid().to(device, dtype)
+
+        def unexpected_orientation(*args):
+            raise AssertionError("Descriptor forward must respect the supplied orientation")
+
+        monkeypatch.setattr(descriptor, "_orientation", unexpected_orientation)
+        descriptors = descriptor(image, lafs)
+        assert descriptors.shape == (1, 1, 128)
+        self.assert_close(lafs, original)
+
+    def test_orientation_and_description_share_one_pyramid(self, device, dtype, monkeypatch):
+        image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[8.0, 0.0, 20.0], [0.0, 8.0, 20.0]]]], device=device, dtype=dtype)
+        descriptor = SIFTDescriptorFromPyramid().to(device, dtype)
+        original = descriptor._pyramid
+        calls = []
+
+        def counted_pyramid(image, num_levels=None):
+            calls.append(image.shape)
+            return original(image, num_levels)
+
+        monkeypatch.setattr(descriptor, "_pyramid", counted_pyramid)
+        descriptor.orient_and_describe(image, lafs)
+        assert len(calls) == 1

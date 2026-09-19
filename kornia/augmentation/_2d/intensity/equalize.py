@@ -43,8 +43,9 @@ class RandomEqualize(IntensityAugmentationBase2D):
     Convention:
         - this class raises on an out-of-``[0, 1]`` input instead of transforming it. See
           :class:`~kornia.augmentation.IntensityAugmentationBase2D` for the policies used by the other
-          intensity augmentations. :class:`RandomClahe` also raises out of range, with a raw indexing error
-          that names neither the class nor the range (`#4564 <https://github.com/kornia/kornia/issues/4564>`_).
+          intensity augmentations. :class:`RandomClahe` also raises out of range, with a message naming
+          :func:`kornia.enhance.equalize_clahe` and the range; its check is skipped on MPS, where the raw
+          indexing error survives on torch ``2.14``.
         - the rejection is not exactly at the boundary: the check guards the 256-entry lookup indexed with
           ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]``, at either end, is
           still admitted, up to the rounding of ``input * 255`` in the input's dtype: in ``float16``,

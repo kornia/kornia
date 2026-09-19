@@ -110,8 +110,6 @@ class TestRgbToHls(BaseTester):
         self.assert_close(kornia.color.rgb_to_hls(data), expected, low_tolerance=True)
 
     def test_nan_rgb_to_hls(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         data = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
 
         # OpenCV
@@ -125,10 +123,70 @@ class TestRgbToHls(BaseTester):
         )
         self.assert_close(kornia.color.rgb_to_hls(data), expected)
 
+    @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_achromatic_values_are_finite_and_canonical(self, device, dtype, gray_level, shape, requires_grad):
+        input_data = torch.full(shape, gray_level, device=device, dtype=dtype)
+        input_data.requires_grad_(requires_grad)
+        output = kornia.color.rgb_to_hls(input_data)
+        expected = torch.empty_like(output)
+        expected[..., 0, :, :].fill_(0.0)
+        expected[..., 1, :, :].fill_(gray_level)
+        expected[..., 2, :, :].fill_(0.0)
+        assert torch.isfinite(output).all(), "hls-achromatic-oracle: nonfinite output"
+        self.assert_close(output, expected)
+        if requires_grad:
+            output.sum().backward()
+            assert input_data.grad is not None
+            assert torch.isfinite(input_data.grad).all(), "hls-achromatic-oracle: nonfinite backward gradient"
+        assert output.shape == input_data.shape
+        assert output.device == input_data.device
+        assert output.dtype == input_data.dtype
+
+    @pytest.mark.parametrize(
+        ("rgb", "expected"),
+        [
+            ([1.5, 0.5, 0.5], [0.0, 1.0, 1.0]),
+            ([2.0, -2.0, -2.0], [0.0, 0.0, 4.0]),
+        ],
+    )
+    def test_out_of_range_zero_lightness_denominator_values(self, device, dtype, rgb, expected):
+        image = torch.tensor(rgb, device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        actual = kornia.color.rgb_to_hls(image)
+        self.assert_close(actual, image.new_tensor(expected).reshape(1, 3, 1, 1))
+
+    @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_achromatic_round_trip_is_finite(self, device, dtype, gray_level, shape):
+        input_data = torch.full(shape, gray_level, device=device, dtype=dtype)
+        hls = kornia.color.rgb_to_hls(input_data)
+        output = kornia.color.hls_to_rgb(hls)
+        assert torch.isfinite(hls).all(), "hls-roundtrip-oracle: nonfinite HLS"
+        assert torch.isfinite(output).all(), "hls-roundtrip-oracle: nonfinite RGB"
+        self.assert_close(output, input_data)
+        assert output.shape == input_data.shape
+        assert output.device == input_data.device
+        assert output.dtype == input_data.dtype
+
     def test_nan_random_extreme_values(self, device, dtype):
         # generate extreme colors randomly
         ext_rand_slice = (torch.rand((1, 3, 32, 32), dtype=dtype, device=device) >= 0.5).float()
         assert not kornia.color.rgb_to_hls(ext_rand_slice).isnan().any()
+
+    # Independent oracle for RGB=(0.2, 0.5, 0.4): chroma=0.3, lightness=0.35,
+    # and green-max hue=((0.4-0.2)/(0.3+eps)+2)*pi/3, saturation=0.3/(0.7+eps).
+    @pytest.mark.parametrize(
+        ("eps", "expected"),
+        [
+            (0.0, [2.792526803190927, 0.35, 0.4285714285714286]),
+            (0.1, [2.617993877991494, 0.35, 0.375]),
+        ],
+    )
+    def test_eps_is_added_to_both_nonzero_denominators(self, device, dtype, eps, expected):
+        image = torch.tensor([[[[0.2]], [[0.5]], [[0.4]]]], device=device, dtype=dtype)
+        actual = kornia.color.rgb_to_hls(image, eps=eps)
+        self.assert_close(actual, image.new_tensor(expected).reshape(1, 3, 1, 1))
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
