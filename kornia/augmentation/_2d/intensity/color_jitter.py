@@ -95,11 +95,6 @@ class ColorJitter(IntensityAugmentationBase2D):
         draw: a contrast or saturation factor above ``1`` applied before the brightness step can lift part of the image
         above zero first. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
-    .. warning::
-        In ``float16`` a pixel whose largest channel is ``0`` -- for an input in ``[0, 1]``, a black pixel --
-        comes back as NaN when it reaches the hue step, because ``rgb_to_hsv``'s ``eps`` underflows there. Tracked in
-        `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
-
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness_accumulative`,
         :func:`kornia.enhance.adjust_contrast_with_mean_subtraction`,

@@ -15,12 +15,13 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _check_filter_min_size
+from kornia.constants import BorderType
 from kornia.filters import box_blur
 
 
@@ -34,7 +35,9 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     Args:
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
+          The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``, given as a
+          case-insensitive string, a ``BorderType`` member or its integer value
+          (CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3).
         normalized: selects the implementation of :func:`kornia.filters.box_blur`: ``True`` computes the blur
           as two 1D passes (``separable=True``), ``False`` as one 2D pass. The kernel is L1-normalized either
           way, so both return the mean of each window, never its sum, and differ only by float rounding.
@@ -52,10 +55,8 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
           rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
           a constant image survives either up to the rounding of the kernel weights. ``border_type`` defaults
-          to ``"reflect"``, as the function does, but ``normalized=True`` does **not** match
-          :func:`kornia.filters.box_blur`'s own ``separable=False``, so the default class output differs from
-          the default function output in the last bits -- about ``1.2e-07`` on a ``[0, 1]`` image. Where
-          :class:`RandomGaussianBlur` passes its function's own defaults through, this one does not.
+          to ``"reflect"``, as the function does, and ``normalized=True`` matches
+          :func:`kornia.filters.box_blur`'s ``separable=True`` default.
         - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
           average of input values and stays between the input's own extremes, up to the rounding of the kernel
           weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
@@ -87,19 +88,23 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def __init__(
         self,
         kernel_size: Tuple[int, int] = (3, 3),
-        border_type: str = "reflect",
+        border_type: Union[int, str, BorderType] = "reflect",
         normalized: bool = True,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.flags = {"kernel_size": kernel_size, "border_type": border_type, "normalized": normalized}
+        self.flags = {
+            "kernel_size": kernel_size,
+            "border_type": BorderType.get(border_type),
+            "normalized": normalized,
+        }
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        _check_filter_min_size(
-            "RandomBoxBlur", input, flags["kernel_size"], border_type=str(flags["border_type"])
-        )
-        return box_blur(input, flags["kernel_size"], border_type=flags["border_type"], separable=flags["normalized"])
+        # a per-call `border_type` override reaches `flags` unnormalized, so normalize here too
+        border_type = BorderType.get(flags["border_type"]).name.lower()
+        _check_filter_min_size("RandomBoxBlur", input, flags["kernel_size"], border_type=border_type)
+        return box_blur(input, flags["kernel_size"], border_type=border_type, separable=flags["normalized"])

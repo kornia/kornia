@@ -58,7 +58,7 @@ class RandomSnow(IntensityAugmentationBase2D):
           ``rgb_to_hls``'s saturation denominator vanishes, which collapse whether the snow covers them or not:
           lightness exactly ``1``, where ``2 - max - min`` is zero and ``(1.5, 0.5, 0.5)`` comes back white,
           and its mirror at lightness exactly ``0``, where ``max + min`` is zero and ``(2.0, -2.0, -2.0)``
-          comes back black. Both are NaN in ``float16`` (see below). The collapse is at the point, not around
+          comes back black. The collapse is at the point, not around
           it: ``(1.4, 0.5, 0.5)`` and a lightness more than about ``1e-7`` off ``1`` come back close to their
           input. Within ``rgb_to_hls``'s ``eps`` of ``1e-8`` of the point, which only ``float64`` can
           represent, they do not: a lightness of ``1 + 1e-8`` comes back as ``(2, 0, 0)`` and ``1 + 5e-9`` as
@@ -69,12 +69,6 @@ class RandomSnow(IntensityAugmentationBase2D):
         zero or negative comes back black in any image -- including an out-of-range pixel such as
         ``(2.0, -2.0, -2.0)``, which is neither all-negative nor has a negative lightness. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
-
-    .. warning::
-        In ``float16`` every achromatic pixel -- black, gray or white -- comes back as NaN, and so does an
-        out-of-range pixel whose lightness is exactly ``0`` or exactly ``1``, because ``rgb_to_hls``'s ``eps``
-        underflows there. Tracked in
-        `#4571 <https://github.com/kornia/kornia/issues/4571>`_.
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)

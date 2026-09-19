@@ -484,14 +484,13 @@ class DescriptorMatcherWithSteerer(nn.Module):
         """
         if self.match_mode == "nn":
             return match_nn(d1, d2, dm=dm)
-        elif self.match_mode == "mnn":
+        if self.match_mode == "mnn":
             return match_mnn(d1, d2, dm=dm)
-        elif self.match_mode == "snn":
+        if self.match_mode == "snn":
             return match_snn(d1, d2, self.th, dm=dm)
-        elif self.match_mode == "smnn":
+        if self.match_mode == "smnn":
             return match_smnn(d1, d2, self.th, dm=dm)
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def forward(
         self,

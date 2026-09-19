@@ -18,14 +18,15 @@
 """In this module several equalization methods are exposed: he, ahe, clahe."""
 
 import math
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn.functional as F
 
-from kornia.core.utils import _torch_histc_cast
+from kornia.core.utils import _normalize_to_float32_or_float64
 from kornia.image.utils import perform_keep_shape_image
 
+from .adjust import _assert_async_value_check
 from .histogram import histogram
 
 
@@ -134,12 +135,38 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
     return interp_tiles
 
 
-def _my_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
-    return _torch_histc_cast(tiles, bins=bins, min=0, max=1)
+def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
+    r"""Histogram every tile over ``[0, 1]`` in one pass, matching a per-tile CPU ``torch.histc``.
+
+    One ``scatter_add_`` counts all tiles, instead of one ``histc`` launch per tile, and keeps a static
+    output shape so the function stays a single dynamo graph. The index is computed as ``histc``
+    computes it, in the same float32/float64 promotion as ``_torch_histc_cast``: ``floor(x * bins)``,
+    with ``x == 1`` in the last bin. Values outside ``[0, 1]`` and NaN are not counted, which the CPU
+    ``histc`` also skips; they go to one extra overflow column per tile that is dropped. (``histc`` on
+    MPS counts values marginally outside ``[0, 1]``, so there this matches CPU rather than MPS.)
+
+    Args:
+        tiles: flattened tiles. (T, P)
+        bins: number of bins.
+
+    Returns:
+        Per-tile counts in the dtype of ``tiles``. (T, bins)
+
+    """
+    num_tiles = tiles.shape[0]
+    x = tiles.to(_normalize_to_float32_or_float64(tiles.dtype))
+    # clamp keeps [0, 1] unchanged and NaN as NaN, so the comparison is False exactly where histc skips.
+    in_range = x.clamp(0, 1) == x
+    idx = (x * bins).to(torch.int64).clamp_(0, bins - 1)
+    # this mask is what drops out-of-range values; without it they land in the first or last bin
+    idx = torch.where(in_range, idx, bins)
+    counts = torch.zeros(num_tiles, bins + 1, dtype=x.dtype, device=x.device)
+    counts.scatter_add_(1, idx, torch.ones_like(x))
+    return counts[:, :bins].to(tiles.dtype)
 
 
 def _compute_luts(
-    tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 40.0, diff: bool = False
+    tiles_x_im: torch.Tensor, num_bins: int = 256, clip: Union[float, torch.Tensor] = 40.0, diff: bool = False
 ) -> torch.Tensor:
     r"""Compute luts for a batched set of tiles.
 
@@ -162,19 +189,34 @@ def _compute_luts(
     pixels: int = th * tw
     tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # test with view  # T x (THxTW)
     if not diff:
-        if torch.jit.is_scripting():
-            histos = torch.stack([_torch_histc_cast(tile, bins=num_bins, min=0, max=1) for tile in tiles])
-        else:
-            histos = torch.stack(list(map(_my_histc, tiles, [num_bins] * len(tiles))))
+        histos = _tiles_histc(tiles, num_bins)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
-        histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
+        # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile
+        histos = histogram(tiles, bins, torch.tensor(0.001))
         histos *= pixels
 
-    if clip > 0.0:
+    if isinstance(clip, torch.Tensor):
+        # Match Python scalar arithmetic before rounding each image's threshold, then broadcast
+        # over its tiles and channels. Keeping the limits in tensors avoids compile guards on draws.
+        # MPS cannot store doubles; compute its thresholds on CPU before copying them with the LUTs.
+        limits = clip.to(device="cpu", dtype=torch.float64) if clip.device.type == "mps" else clip.double()
+        max_vals = (limits * pixels).div(num_bins, rounding_mode="floor").clamp(min=1)
+        max_vals = max_vals.to(histos).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
+        limited = histos.clamp(max=max_vals)
+        clipped_tensor = torch.relu(histos - max_vals).sum(1) if diff else pixels - limited.sum(1)
+        residual_tensor = torch.remainder(clipped_tensor, num_bins)
+        limited = limited + ((clipped_tensor - residual_tensor) / num_bins).unsqueeze(1)
+        limited = limited + (torch.arange(num_bins, device=histos.device) < residual_tensor.unsqueeze(1))
+        enabled = (clip > 0).to(device=histos.device).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
+        histos = torch.where(enabled, limited, histos)
+    elif clip > 0.0:
         max_val: float = max(clip * pixels // num_bins, 1)
+        if diff:
+            clipped: torch.Tensor = torch.relu(histos - max_val).sum(1)
         histos.clamp_(max=max_val)
-        clipped: torch.Tensor = pixels - histos.sum(1)
+        if not diff:
+            clipped = pixels - histos.sum(1)
         residual: torch.Tensor = torch.remainder(clipped, num_bins)
         redist: torch.Tensor = (clipped - residual).div(num_bins)
         histos += redist[None].transpose(0, 1)
@@ -361,10 +403,26 @@ def equalize_clahe(
         >>> res.shape
         torch.Size([2, 3, 10, 20])
 
+    .. note::
+       The input is expected in :math:`[0, 1]`; each tile is equalized from a 256-bin lookup table.
+       Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
+       naming the range. The check runs on CPU and CUDA (via ``torch._assert_async``); on MPS it is
+       skipped, as for :func:`kornia.enhance.equalize`.
+
     """
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
 
+    return _equalize_clahe(input, clip_limit, grid_size, slow_and_differentiable)
+
+
+def _equalize_clahe(
+    input: torch.Tensor,
+    clip_limit: Union[float, torch.Tensor],
+    grid_size: Tuple[int, int],
+    slow_and_differentiable: bool,
+) -> torch.Tensor:
+    """Equalize a BCHW tensor using a scalar or one tensor clip limit per image."""
     if not isinstance(grid_size, tuple):
         raise TypeError(f"Input grid_size type is not Tuple. Got {type(grid_size)}")
 
@@ -376,6 +434,15 @@ def equalize_clahe(
 
     if grid_size[0] <= 0 or grid_size[1] <= 0:
         raise ValueError(f"Input grid_size elements must be positive. Got {grid_size}")
+
+    # The tile LUTs are gathered below with ``(interp_tiles * 255).long()``, which is in bounds
+    # only for values in (-1/255, 256/255). Check that domain without ``.item()``, so there is no
+    # device sync and fullgraph still compiles; inputs the lookup can index are unchanged.
+    _assert_async_value_check(
+        ((input * 255.0 > -1.0) & (input * 255.0 < 256.0)).all(),
+        "equalize_clahe expects input values in [0, 1]. Scale the image into that range first, "
+        "for example image / 255.0 for 8-bit data.",
+    )
 
     imgs: torch.Tensor = input  # B x C x H x W
 

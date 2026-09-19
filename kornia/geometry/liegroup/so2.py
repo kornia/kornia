@@ -100,7 +100,7 @@ class So2(nn.Module):
         z = self.z
         if isinstance(right, So2):
             return So2(z * right.z)
-        elif isinstance(right, (Vector2, torch.Tensor)):
+        if isinstance(right, (Vector2, torch.Tensor)):
             if isinstance(right, torch.Tensor):
                 # check_so2_t_shape
                 is_batch_shape = KORNIA_CHECK_SHAPE(right, ["B", "2"], raises=False)
@@ -115,10 +115,8 @@ class So2(nn.Module):
             out = torch.stack((real * x - imag * y, imag * x + real * y), -1)
             if isinstance(right, torch.Tensor):
                 return out
-            else:
-                return Vector2(out)
-        else:
-            raise TypeError(f"Not So2 or torch.Tensor type. Got: {type(right)}")
+            return Vector2(out)
+        raise TypeError(f"Not So2 or torch.Tensor type. Got: {type(right)}")
 
     @property
     def z(self) -> torch.Tensor:

@@ -88,15 +88,14 @@ class So3(nn.Module):
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
             return So3(self.q * right.q)
-        elif isinstance(right, (torch.Tensor, Vector3)):
+        if isinstance(right, (torch.Tensor, Vector3)):
             _right_data = _unwrap(right)
             KORNIA_CHECK_SHAPE(_right_data, ["*", "3"])
             w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
             quat = Quaternion(torch.cat((w, _right_data), -1))
             out = (self.q * quat * self.q.conj()).vec
             return Vector3(out) if isinstance(right, Vector3) else out
-        else:
-            raise TypeError(f"Not So3 or torch.Tensor type. Got: {type(right)}")
+        raise TypeError(f"Not So3 or torch.Tensor type. Got: {type(right)}")
 
     @property
     def q(self) -> Quaternion:

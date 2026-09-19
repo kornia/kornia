@@ -42,13 +42,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         additional limitations; see `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
         With zero scale, the image warp is identity up to numerical precision for either ``align_corners``
-        setting with float32, float64, and bfloat16 inputs.
-
-    .. warning::
-        Float16 has a kernel-epsilon underflow that produces non-finite weights and NaN output for either
-        ``align_corners`` setting; this is tracked in `#4557 <https://github.com/kornia/kornia/issues/4557>`_.
-        The solve has additional dtype limitations documented on
-        :func:`~kornia.geometry.transform.get_tps_transform`.
+        setting with float16, float32, float64, and bfloat16 inputs.
 
     Args:
         scale: the non-negative scale factor to apply to the destination points.

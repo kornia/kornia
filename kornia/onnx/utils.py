@@ -105,7 +105,7 @@ class ONNXLoader(CachedDownloader):
                 )
             return onnx.load(file_path)  # type:ignore
 
-        elif model_name.startswith(("http://", "https://")):
+        if model_name.startswith(("http://", "https://")):
             cache_dir = kwargs.get("cache_dir", None) or kornia_config.hub_onnx_dir
             kwargs.update({"cache_dir": cache_dir})
             file_path = cls.download_to_cache(
@@ -126,7 +126,7 @@ class ONNXLoader(CachedDownloader):
                 )
             return onnx.load(file_path)  # type:ignore
 
-        elif os.path.exists(model_name):
+        if os.path.exists(model_name):
             return onnx.load(model_name)  # type:ignore
 
         raise ValueError(f"File {model_name} not found")

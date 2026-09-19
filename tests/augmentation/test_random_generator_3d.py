@@ -691,3 +691,51 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
         assert_close(res["ksize_factor"], expected["ksize_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["angle_factor"], expected["angle_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["direction_factor"], expected["direction_factor"], rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_is_constant_across_batch(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 7),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        for seed in range(20):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((6,)), same_on_batch=False)
+
+            assert res["ksize_factor"].shape == (6,)
+            assert res["ksize_factor"].unique().numel() == 1
+            assert int(res["ksize_factor"][0]) in {3, 5, 7}
+
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_includes_upper_bound(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 7),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        seen = set()
+        for seed in range(1000):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((1,)), same_on_batch=False)
+            seen.add(int(res["ksize_factor"][0]))
+
+        assert seen == {3, 5, 7}
+
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_even_upper_bound_rounds_up(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 20),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        seen = set()
+        for seed in range(1000):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((1,)), same_on_batch=False)
+            seen.add(int(res["ksize_factor"][0]))
+
+        assert seen == {3, 5, 7, 9, 11, 13, 15, 17, 19, 21}
