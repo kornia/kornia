@@ -139,13 +139,23 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _idx = i * flags["mosaic_grid"][1] + j
                 _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]
                 _box.translate(_offset, inplace=True)
-                # zero-out unrelated batch elements.
-                _box._data[~to_apply] = 0
+
                 if maybe_out_boxes is None:
-                    _box._data[~to_apply] = input._data[~to_apply]
                     maybe_out_boxes = _box
                 else:
-                    KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
+                    if to_apply.all():
+                        KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
+                    else:
+                        # Only selected samples contribute additional mosaic boxes.
+                        # Represent non-selected samples as padding rather than real boxes.
+                        tile_boxes = Boxes(
+                            [
+                                _box._data[k] if to_apply[k] else _box._data[k, :0]
+                                for k in range(_box._data.shape[0])
+                            ],
+                            mode=_box._mode,
+                        )
+                        KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(tile_boxes, inplace=True)
         out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
         out_boxes.clamp(offset, offset_end, inplace=True)
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
@@ -207,10 +217,11 @@ class RandomMosaic(MixAugmentationBaseV2):
             else:
                 padding_mode = flags["padding_mode"]
 
+            output_size = input.shape[-2:] if flags["output_size"] is None else flags["output_size"]
             return crop_by_transform_mat(
                 input,
                 transform[:, :2, :],
-                flags["output_size"],
+                output_size,
                 mode=flags["resample"].name.lower(),
                 padding_mode=padding_mode,
                 align_corners=flags["align_corners"],
