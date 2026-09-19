@@ -49,7 +49,8 @@ class TestRandomMixUpV2(BaseTester):
         )
         label = torch.tensor([1, 0], device=device, dtype=dtype)
         lam = torch.tensor([0.1320, 0.3074], device=device, dtype=dtype)
-        expected_lambda = torch.tensor([0.1320, 0.3074], device=device, dtype=torch.float32)
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        expected_lambda = torch.tensor([0.1320, 0.3074], device=device, dtype=label_dtype)
 
         expected = torch.stack(
             [
@@ -66,7 +67,6 @@ class TestRandomMixUpV2(BaseTester):
             rtol, atol = 1e-4, 1e-4
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.assert_close(out_label[:, 0], label.to(label_dtype))
         self.assert_close(
             out_label[:, 1],
