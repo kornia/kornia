@@ -605,9 +605,7 @@ class TestBlurConventions(BaseTester):
     # value causes wrapping around more than once.`, while motion `k=3` on 1x1 (radius 1, axis 1) and
     # the `"constant"`/`"replicate"` legs return the input shape.  The boundary is the radius, not the
     # kernel: `(9, 9)` circular runs at H=4 and raises at H=3; motion `k=5` runs at 2x2.
-    def test_convention_circular_padding_rejects_images_smaller_than_kernel_radius_4559(
-        self, device, dtype
-    ):
+    def test_convention_circular_padding_rejects_images_smaller_than_kernel_radius_4559(self, device, dtype):
         if not supports_replicate_padding(device, dtype):
             pytest.skip("replication_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FIXTURE_SEED)
@@ -635,6 +633,50 @@ class TestBlurConventions(BaseTester):
             for border in ("constant", "replicate"):
                 torch.manual_seed(_FORWARD_SEED)
                 assert make(border)(thin).shape == thin.shape, f"{name} at {border} should accept a 3-row image"
+
+    # Issue #4559, the case the first cut of the guard missed: RandomBoxBlur accepts EVEN kernel
+    # sizes, and `filter2d` pads those asymmetrically -- `(k - 1) // 2` in front, `k // 2` behind.
+    # Stating the minima against the radius `(k - 1) // 2` therefore under-reports by one pixel for
+    # every even extent, and those inputs walked straight past the guard into the raw torch errors
+    # it exists to replace.  The constraint is the wider pad, `k // 2`.
+    # Snippet used to generate expected:
+    #   for k in range(1, 9):
+    #       front, rear = (k - 1) // 2, k - 1 - (k - 1) // 2
+    #       for mode in ("reflect", "circular"):
+    #           min(s for s in range(1, 12) if F.pad(torch.rand(1, 1, s, s), [front, rear] * 2, mode=mode))
+    # executed 2026-09-19 (torch 2.5.0, cpu) -> reflect needs `k // 2 + 1` and circular `k // 2` for
+    # every k in 1..8, i.e. 3 and 2 for a 4-wide kernel where the radius said 2 and 1.
+    @pytest.mark.parametrize(
+        "kernel, border, too_small, big_enough",
+        [
+            ((4, 4), "reflect", (1, 1, 2, 2), (1, 1, 3, 3)),
+            ((4, 4), "circular", (1, 1, 1, 1), (1, 1, 2, 2)),
+            ((2, 2), "reflect", (1, 1, 1, 1), (1, 1, 2, 2)),
+            ((6, 6), "reflect", (1, 1, 3, 3), (1, 1, 4, 4)),
+            ((6, 6), "circular", (1, 1, 2, 2), (1, 1, 3, 3)),
+        ],
+    )
+    def test_convention_even_kernels_use_the_wider_asymmetric_pad_4559(
+        self, kernel, border, too_small, big_enough, device, dtype
+    ):
+        if border == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        torch.manual_seed(_FIXTURE_SEED)
+        small = torch.rand(*too_small).to(device=device, dtype=dtype)
+        large = torch.rand(*big_enough).to(device=device, dtype=dtype)
+
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(ValueError, match="RandomBoxBlur cannot filter an image this small"):
+            _sync(K.RandomBoxBlur(kernel, border_type=border, p=1.0)(small).device)
+        # one pixel more and it is kornia's job to run, not to refuse
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomBoxBlur(kernel, border_type=border, p=1.0)(large).shape == large.shape
+        # the modes that invent their padding are untouched by the widening
+        for invented in ("constant", "replicate"):
+            if invented == "replicate" and not supports_replicate_padding(device, dtype):
+                continue
+            torch.manual_seed(_FORWARD_SEED)
+            assert K.RandomBoxBlur(kernel, border_type=invented, p=1.0)(small).shape == small.shape
 
     # The constant-border claim is directional, and a positive fixture cannot tell "pulled toward 0" from
     # "pulled below the minimum".  On an all-negative image zero padding pushes the border ABOVE the

@@ -512,12 +512,14 @@ class MultiprocessWrapper:
 
 
 #: How small an image each padding mode can filter, given the kernel extent ``k`` along that axis.
-#: ``reflect`` cannot mirror a pad wider than the axis and ``circular`` cannot wrap one, so both are
-#: stated against the radius ``(k - 1) // 2``; ``"valid"`` is the no-padding case, where the kernel
-#: itself must fit. ``constant`` and ``replicate`` invent their padding and run on a 1-pixel axis.
+#: ``filter2d`` pads an even kernel asymmetrically -- ``(k - 1) // 2`` in front and ``k // 2``
+#: behind -- so the constraint is against the wider of the two, ``k // 2``, not against the radius.
+#: ``reflect`` cannot mirror a pad as wide as the axis and ``circular`` cannot wrap one wider than
+#: it; ``"valid"`` is the no-padding case, where the kernel itself must fit. ``constant`` and
+#: ``replicate`` invent their padding and run on a 1-pixel axis.
 _MIN_FILTERED_SIZE: Dict[str, Callable[[int], int]] = {
-    "reflect": lambda extent: (extent - 1) // 2 + 1,
-    "circular": lambda extent: (extent - 1) // 2,
+    "reflect": lambda extent: extent // 2 + 1,
+    "circular": lambda extent: extent // 2,
     "valid": lambda extent: extent,
 }
 
@@ -531,7 +533,7 @@ def _check_filter_min_size(
     """Refuse an image the filter's padding cannot handle, naming the class and the shape.
 
     torch raises about "padding size" or "calculated padded input size" from two layers below,
-    which names neither the augmentation nor the image the caller passed (#4559).
+    which names neither the augmentation nor the image the caller passed.
     """
     size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else tuple(kernel_size)
     smallest = _MIN_FILTERED_SIZE.get(str(border_type).lower())
