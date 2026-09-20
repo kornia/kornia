@@ -37,6 +37,7 @@ from kornia.enhance import (
     equalize_clahe,
     normalize_min_max,
     posterize,
+    solarize,
 )
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
@@ -1584,8 +1585,7 @@ class TestIntensityColourConventions(BaseTester):
     # bits out of bounds. Expected inside (0, 8)`, `RuntimeError: Gamma must be non-negative.`,
     # `ValueError: brightness out of bounds. Expected inside (0.0, 2.0)`, `ValueError: contrast out
     # of bounds. Expected inside (0, inf)`, `ValueError: saturation out of bounds. Expected inside
-    # (0, inf)`, `ValueError: hue out of bounds. Expected inside (-0.5, 0.5)`, `RuntimeError: The addition
-    # must be in the open range (-0.5, 0.5).` (for 0.5 and -0.5; #4605), `BaseError: sigma must be positive` and
+    # (0, inf)`, `ValueError: hue out of bounds. Expected inside (-0.5, 0.5)`, `BaseError: sigma must be positive` and
     # `BaseError: Height of drop should be greater than zero and less than image height.`; then
     # `BaseError: Kernel size must be an odd integer bigger than 0` (Gaussian (4, 4)), `... bigger than 2`
     # (motion (1, 1)), `BaseError: Invalid value in num_drop_channels` and `IndexError: index 25 is out
@@ -1628,18 +1628,6 @@ class TestIntensityColourConventions(BaseTester):
                 r"saturation out of bounds\. Expected inside \(0, inf\)",
             ),
             ("hue_above_half", "construction", ValueError, r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\)"),
-            (
-                "solarize_additions_at_half",
-                "forward",
-                RuntimeError,
-                r"The addition must be in the open range \(-0\.5, 0\.5\)",
-            ),
-            (
-                "solarize_additions_at_minus_half",
-                "forward",
-                RuntimeError,
-                r"The addition must be in the open range \(-0\.5, 0\.5\)",
-            ),
             ("gaussian_blur_sigma_zero", "forward", BaseError, r"sigma must be positive"),
             ("gaussian_blur_even_kernel", "forward", BaseError, r"Kernel size must be an odd integer bigger than 0"),
             ("median_blur_even_kernel", "forward", RuntimeError, r"is invalid for input of size"),
@@ -1703,10 +1691,6 @@ class TestIntensityColourConventions(BaseTester):
     def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
         if case in ("gamma_negative", "gain_negative") and device.type != "cpu":
             pytest.skip("CPU only: on CUDA the value assert is a device-side assert; MPS skips the check")
-        # The solarize check runs on the CPU-drawn additions, so unlike the gamma check it raises for an
-        # MPS image as well; CUDA stays out, like every value assert here.
-        if case.startswith("solarize_additions") and device.type == "cuda":
-            pytest.skip("not on CUDA: value asserts are kept out of the shared CUDA process")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),
@@ -1722,10 +1706,6 @@ class TestIntensityColourConventions(BaseTester):
             "hue_scalar_above_half": lambda: K.RandomHue(0.6, p=1.0),
             "brightness_scalar_above_two": lambda: K.RandomBrightness(3.0, p=1.0),
             "solarize_scalar_threshold_above_half": lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
-            # The construction check is the closed [-0.5, 0.5]; kornia.enhance.solarize rejects the
-            # ends on the forward pass, so this one constructs and raises like the gamma case.
-            "solarize_additions_at_half": lambda: K.RandomSolarize((0.5, 0.5), (0.5, 0.5), p=1.0),
-            "solarize_additions_at_minus_half": lambda: K.RandomSolarize((0.5, 0.5), (-0.5, -0.5), p=1.0),
             # The constructor admits sigma 0; gaussian_blur2d rejects it on the forward pass.
             "gaussian_blur_sigma_zero": lambda: K.RandomGaussianBlur((3, 3), (0.0, 0.0), p=1.0),
             # The documented "greater than zero" is checked against the image on the forward pass.
@@ -1765,6 +1745,19 @@ class TestIntensityColourConventions(BaseTester):
         with pytest.raises(error, match=match):
             # The sync is what surfaces an MPS kernel error inside this block rather than later.
             _sync(aug(image).device)
+
+    # Issue #4605: RandomSolarize admits the closed [-0.5, 0.5] for `additions`, and
+    # kornia.enhance.solarize now accepts the same interval, so an endpoint range is applied on the
+    # forward pass instead of raising `The addition must be in the open range (-0.5, 0.5)`.
+    @pytest.mark.parametrize("addition", [0.5, -0.5])
+    def test_convention_random_solarize_applies_an_additions_endpoint_4605(self, device, dtype, addition):
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: value asserts are kept out of the shared CUDA process")
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
+        aug = K.RandomSolarize((0.5, 0.5), (addition, addition), p=1.0)
+        out = aug(image)
+        self.assert_close(out, solarize(image, 0.5, addition))
 
     # Row 6c-45, the bound that never raises: RandomPlanckianJitter's `select_from` is used as a Python
     # index into its table, so a negative entry down to -25 selects a row from the end instead of being
