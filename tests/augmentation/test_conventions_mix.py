@@ -198,11 +198,19 @@ class TestMixConventions(BaseTester):
         image[:, :, :2, 2:] = 2
         image[:, :, 2:, :2] = 3
         image[:, :, 2:, 2:] = 4
-        params = {"batch_prob": torch.ones(1), "permutation": torch.tensor([[3, 2, 1, 0]])}
+        # The second row carries different values and a different permutation: each image is partitioned from
+        # its own pieces, never from another row's.
+        image = torch.cat([image, image + 10])
+        params = {"batch_prob": torch.ones(2), "permutation": torch.tensor([[3, 2, 1, 0], [1, 0, 3, 2]])}
         output = K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params)
 
         expected = torch.tensor(
-            [[[[4, 4, 2, 2], [4, 4, 2, 2], [3, 3, 1, 1], [3, 3, 1, 1]]]], device=device, dtype=dtype
+            [
+                [[[4, 4, 2, 2], [4, 4, 2, 2], [3, 3, 1, 1], [3, 3, 1, 1]]],
+                [[[12, 12, 14, 14], [12, 12, 14, 14], [11, 11, 13, 13], [11, 11, 13, 13]]],
+            ],
+            device=device,
+            dtype=dtype,
         )
         self.assert_close(output, expected)
 

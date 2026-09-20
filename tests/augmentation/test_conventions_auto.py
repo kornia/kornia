@@ -206,6 +206,11 @@ class TestAutoAugmentConventions(BaseTester):
         skipped_output = skipped_intensity(image, params=skipped_params)
         self.assert_close(skipped_output, image)
         self.assert_close(skipped_intensity.inverse(skipped_output, params=skipped_params), image)
+        # One applied row is enough to make the path non-invertible.
+        skipped_params[0].data[0].data["batch_prob"][0] = 1.0
+        partial_output = skipped_intensity(image, params=skipped_params)
+        with pytest.raises(RuntimeError, match="is not supported"):
+            skipped_intensity.inverse(partial_output, params=skipped_params)
 
     @pytest.mark.device_agnostic
     def test_convention_policy_sequential_supplied_params_define_the_execution_path(self):
