@@ -63,9 +63,15 @@ class TestRandomMotionBlur(BaseTester):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5, p=1.0)
         output = f(input)
 
+        ksize = (
+            int(f._params["ksize_factor"][f._params["idx"].to(torch.long)].item())
+            if "idx" in f._params
+            else int(f._params["ksize_factor"][0].item())
+        )
+
         expected = motion_blur(
             input,
-            f._params["ksize_factor"].unique().item(),
+            ksize,
             f._params["angle_factor"],
             f._params["direction_factor"],
             f.flags["border_type"].name.lower(),
@@ -139,9 +145,15 @@ class TestRandomMotionBlur3D(BaseTester):
         f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5, p=1.0)
         output = f(input)
 
+        ksize = (
+            int(f._params["ksize_factor"][f._params["idx"].to(torch.long)].item())
+            if "idx" in f._params
+            else int(f._params["ksize_factor"][0].item())
+        )
+
         expected = motion_blur3d(
             input,
-            f._params["ksize_factor"].unique().item(),
+            ksize,
             f._params["angle_factor"],
             f._params["direction_factor"],
             f.flags["border_type"].name.lower(),
