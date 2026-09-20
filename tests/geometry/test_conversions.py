@@ -2790,61 +2790,28 @@ class TestPolCartConversions(BaseTester):
         )[1]
         self.assert_close(phi_y_axis, torch.tensor(1.5707963267948966, device=device, dtype=dtype))
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="cart2pol returns sqrt(x**2 + y**2 + eps), biasing rho — kornia#3939",
-        strict=True,
-    )
     def test_convention_cart2pol_rho_is_the_exact_radius(self, device, dtype):
-        # Intended behavior: rho is the Euclidean radius, so rho(0, 0) == 0. It currently is
-        # not: eps is added *inside* the sqrt, so rho = sqrt(x**2 + y**2 + eps) and the origin
-        # maps to sqrt(1e-8) = 1e-4 (see #3939; eps belongs in the gradient path, not the
-        # value). Marked xfail(strict=True) so fixing #3939 makes this XPASS loudly.
-        # Snippet used to generate expected (stdlib only):
-        #   math.hypot(0.0, 0.0) -> 0.0 ; kornia cart2pol(0., 0.)[0].item() -> 0.0001
+        # The radius is the Euclidean distance. The gradient-safe implementation must not
+        # perturb the forward value at the origin or elsewhere (#3939).
         if dtype == torch.float16:
-            pytest.skip("float16 cannot represent the default eps=1e-8, so the bias is invisible there")
-
-        rho = kornia.geometry.conversions.cart2pol(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(0.0, device=device, dtype=dtype)
-        )[0]
-        self.assert_close(rho, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-6, rtol=0.0)
-
-    def test_wart_rho_is_biased_by_eps_inside_the_sqrt_3939(self, device, dtype):
-        # Wart pin for kornia#3939, companion to the strict xfail above: assert the CURRENT
-        # biased rho. The xfail pins the intended rho(0, 0) == 0 but cannot flip under every fix
-        # polarity -- the equally standard sqrt(clamp(x**2 + y**2, min=eps)) (the shape
-        # normalize_pixel_coordinates already uses) also returns 1e-4 at the origin, leaving the
-        # mark silently XFAIL with a stale reason string. So two cells are pinned: the origin,
-        # rho = sqrt(eps) = 1e-4, which flips under a grad-only eps (rho 0) and under eps**2
-        # inside the sqrt (rho 1e-8); and a sub-eps point x = 5e-5, whose x**2 = 2.5e-9 < eps
-        # gives rho = sqrt(1.25e-8) ~ 1.118e-4, which additionally flips under the clamp shape
-        # (rho 1e-4, 10.6 % below, outside rtol 1e-2). If either assert fails, #3939 was
-        # (partly) fixed -- update or remove the warning in cart2pol and flip/remove the strict
-        # xfail above. eps=1e-8 is passed explicitly so the pinned literals do not silently
-        # track a later change to the default.
-        # Snippet used to generate expected (torch only, executed at each pinned dtype):
-        #   c2p = kornia.geometry.conversions.cart2pol
-        #   c2p(torch.tensor(0., dtype=torch.float64), torch.tensor(0., dtype=torch.float64),
-        #       eps=1e-8)[0] -> 0.0001                    (f32: 9.999999747378752e-05)
-        #   c2p(torch.tensor(5e-5, dtype=torch.float64), torch.tensor(0., dtype=torch.float64),
-        #       eps=1e-8)[0] -> 0.00011180339887498949    (f32: 0.00011180339788552374)
-        # At bfloat16 the outputs land within 0.3 % of the literals (1.00136e-4, 1.12057e-4),
-        # inside rtol 1e-2, so the pin holds there too.
-        if dtype == torch.float16:
-            pytest.skip("float16 cannot represent eps=1e-8, so rho is 0 at both pinned points and the bias invisible")
+            pytest.skip("float16 cannot represent the default eps=1e-8")
 
         zero = torch.tensor(0.0, device=device, dtype=dtype)
+        rho_origin = kornia.geometry.conversions.cart2pol(zero, zero)[0]
+        self.assert_close(rho_origin, zero, atol=0.0, rtol=0.0)
 
-        rho_origin = kornia.geometry.conversions.cart2pol(zero, zero, eps=1e-8)[0]
-        rho_sub_eps = kornia.geometry.conversions.cart2pol(
-            torch.tensor(5e-5, device=device, dtype=dtype), zero, eps=1e-8
-        )[0]
+        x = torch.tensor(3.0, device=device, dtype=dtype)
+        y = torch.tensor(4.0, device=device, dtype=dtype)
+        rho = kornia.geometry.conversions.cart2pol(x, y)[0]
+        self.assert_close(rho, torch.tensor(5.0, device=device, dtype=dtype))
 
-        self.assert_close(rho_origin, torch.tensor(1e-4, device=device, dtype=dtype), atol=0.0, rtol=1e-2)
-        self.assert_close(
-            rho_sub_eps, torch.tensor(1.1180339887498949e-4, device=device, dtype=dtype), atol=0.0, rtol=1e-2
-        )
+    def test_convention_cart2pol_rho_has_finite_origin_gradient(self, device):
+        xy = torch.zeros(2, device=device, dtype=torch.float64, requires_grad=True)
+        rho = kornia.geometry.conversions.cart2pol(xy[0], xy[1])[0]
+        rho.backward()
+
+        self.assert_close(rho, torch.tensor(0.0, device=device, dtype=torch.float64))
+        self.assert_close(xy.grad, torch.zeros_like(xy))
 
     def test_convention_positive_rotation_decreases_cart2pol_phi(self, device, dtype):
         # Cross-symbol convention pin: enforces the opposite-sense relation between
