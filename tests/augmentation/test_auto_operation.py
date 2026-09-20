@@ -368,6 +368,22 @@ def test_inverse_without_a_forward_pass_still_reports_missing_params(device, dty
 
 
 def test_operation_base_deepcopy_after_use() -> None:
+    operation = ops.Brightness()
+    state_dict = operation.state_dict()
+
+    assert isinstance(operation._probability, torch.nn.Parameter)
+    assert isinstance(operation.probability, torch.Tensor)
+    assert operation.probability.item() == operation.op.p
+    assert hasattr(operation, "temperature")
+    assert "_probability" in state_dict
+    assert "temperature" in state_dict
+
+    restored = ops.Brightness()
+    restored.load_state_dict(state_dict, strict=True)
+
+    assert restored.probability.item() == operation.probability.item()
+    assert torch.equal(restored.temperature, operation.temperature)
+
     x = torch.rand(2, 3, 32, 32)
 
     cases = [

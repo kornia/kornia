@@ -57,11 +57,17 @@ class OperationBase(nn.Module):
 
         self._init_magnitude(initial_magnitude)
 
+        # Keep the legacy probability state for API and checkpoint compatibility.
+        self.probability_range = (1e-7, 1 - 1e-7)
         self._is_batch_operation = is_batch_operation
         if is_batch_operation:
-            self._probability = self.op.p_batch
+            self._probability = nn.Parameter(torch.empty(1).fill_(self.op.p_batch))
         else:
-            self._probability = self.op.p
+            self._probability = nn.Parameter(torch.empty(1).fill_(self.op.p))
+
+        if temperature < 0:
+            raise ValueError(f"Expect temperature value greater than 0. Got {temperature}.")
+        self.register_buffer("temperature", torch.empty(1).fill_(temperature))
 
         self.symmetric_megnitude = symmetric_megnitude
         self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
@@ -188,6 +194,11 @@ class OperationBase(nn.Module):
         return mag
 
     @property
-    def probability(self) -> float:
-        """Return the configured operation probability."""
-        return self._probability
+    def probability(self) -> torch.Tensor:
+        """Return the operation probability after applying configured bounds.
+
+        Returns:
+            Probability tensor clamped to ``probability_range``.
+        """
+        p = self._probability.clamp(*self.probability_range)
+        return p
