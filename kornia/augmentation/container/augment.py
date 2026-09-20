@@ -575,7 +575,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if self.contains_video_sequential:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 elif self.contains_3d_augmentation:
-                    _, out_shape = self.autofill_dim(inp, dim_range=(5, 5))
+                    if len(inp.shape) == 4:
+                        raise RuntimeError(
+                            f"3D augmentations in AugmentationSequential expect input shape "
+                            f"(D, H, W) or (B, C, D, H, W), but got {inp.shape}."
+                        )
+                    _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 else:
                     _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
                 params = self.forward_parameters(out_shape)

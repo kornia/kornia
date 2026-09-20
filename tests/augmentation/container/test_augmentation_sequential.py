@@ -114,7 +114,10 @@ class TestAugmentationSequential:
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)
         aug_list = K.AugmentationSequential(K.RandomAffine3D(360.0, p=1.0), data_keys=["input"])
 
-        with pytest.raises(RuntimeError, match="input shape expected to be in"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"3D augmentations in AugmentationSequential expect input shape",
+        ):
             aug_list(input)
 
     def test_identity_matrix_3d(self, device, dtype):
