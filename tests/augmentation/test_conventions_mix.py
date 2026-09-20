@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 import warnings
 
 import pytest
@@ -73,7 +75,9 @@ class TestMixConventions(BaseTester):
         params["mixup_pairs"] = torch.tensor([2, 0, 3, 1])
         output, mixed_labels = aug(image, labels, params=params)
 
-        pairs = aug._params["mixup_pairs"].to(device)
+        # Build the oracle from the literal set above, not from aug._params: forward() stores the supplied
+        # dict by reference, so reading it back cannot tell whether the pairing was honoured.
+        pairs = torch.tensor([2, 0, 3, 1], device=device)
         expected = image * 0.75 + image.index_select(0, pairs) * 0.25
         self.assert_close(output, expected)
         assert mixed_labels.shape == (4, 3)
@@ -307,7 +311,7 @@ class TestMixConventions(BaseTester):
             "mix_pairs": torch.tensor([2, 0, 1]),
             "patch_coords": torch.tensor([[0, 2], [3, 0], [1, 1]]),
             "lam": torch.tensor([0.125, 0.5, 0.875]),
-            "dtype": torch.tensor(6),
+            "dtype": torch.tensor(DType.get(dtype).value),
         }
         output = aug(image, params=params)
 
@@ -360,7 +364,10 @@ class TestMixConventions(BaseTester):
             if key in supported:
                 factory(p)(image, annotation, data_keys=["input", key])
                 continue
-            with pytest.raises(class_error if key == "class" else NotImplementedError):
+            # `None` rather than "": MixAugmentationBaseV2._validate_data_key raises a bare
+            # NotImplementedError, so there is no message to match on that half.
+            message = "does not support" if key == "class" and class_error is RuntimeError else None
+            with pytest.raises(class_error if key == "class" else NotImplementedError, match=message):
                 factory(p)(image, annotation, data_keys=["input", key])
 
     @pytest.mark.parametrize("p", [0.0, 1.0])
@@ -479,4 +486,56 @@ class TestMixConventions(BaseTester):
             output, mixed = aug(image, labels, data_keys=["input", "class"])
             assert output.dtype == image_dtype and mixed.dtype == torch.float32
             assert mixed[..., 0].flatten().tolist() == [257.0, 999.0]
-            assert set(mixed[..., 1].flatten().tolist()) <= {257.0, 999.0}  # the paired label is not rounded either
+            # Exact equality, not containment: `<=` would also pass if the paired label were never used.
+        assert sorted(set(mixed[..., 1].flatten().tolist())) == [257.0, 999.0]
+
+    def test_convention_jigsaw_identity_permutation_transposes_the_grid(self, device, dtype):
+        # The destination cell is chosen column-major by an entry's position; the entry's value indexes the
+        # source patch row-major. The two orders differ, so the identity permutation is not a no-op.
+        image = torch.tensor([[[[0.0, 1.0], [2.0, 3.0]]]], device=device, dtype=dtype)
+        params = {"batch_prob": torch.ones(1), "permutation": torch.tensor([[0, 1, 2, 3]])}
+        self.assert_close(K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params), image.transpose(-1, -2))
+        params["permutation"] = torch.tensor([[0, 2, 1, 3]])
+        self.assert_close(K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params), image)
+
+    def test_convention_transplantation3d_is_a_mix_class_over_volumes(self, device, dtype):
+        # The base block's (B, C, H, W) working layout has one exception: the 3D transplantation class.
+        volume = torch.rand(2, 3, 4, 5, 6, device=device, dtype=dtype)
+        mask = torch.zeros(2, 4, 5, 6, device=device, dtype=torch.long)
+        mask[:, 1:3, 1:3, 1:3] = 1
+        output, _ = K.RandomTransplantation3D(p=1.0)(volume, mask, data_keys=["input", "mask"])
+        assert output.shape == volume.shape
+        # It is still a mix augmentation: no matrix and no inverse.
+        with pytest.raises(RuntimeError, match="Transformation matrices"):
+            _ = K.RandomTransplantation3D(p=1.0).transform_matrix
+
+    def test_convention_mosaic_start_ratio_range_is_a_sampling_range(self, device, dtype):
+        # Both entries are (low, high) bounds on the SAME ratio draw, not an (x, y) position.
+        image = torch.rand(8, 1, 6, 10, device=device, dtype=dtype)
+        aug = K.RandomMosaic(start_ratio_range=(0.3, 0.7), p=1.0)
+        aug(image)
+        top_left = aug._params["src"][:, 0]
+        ratios = torch.stack([top_left[:, 0] / 10, top_left[:, 1] / 6], dim=-1)
+        assert bool(((ratios >= 0.3 - 1e-5) & (ratios <= 0.7 + 1e-5)).all())
+        # Both entries are bounds on one draw, so both axes vary across the batch.
+        assert ratios[:, 0].unique().numel() > 1 and ratios[:, 1].unique().numel() > 1
+
+    @pytest.mark.device_agnostic
+    def test_convention_jigsaw_gate_is_drawn_per_sample(self):
+        # The gate pin above supplies `batch_prob`, so nothing measures which of p / p_batch it comes from.
+        aug = K.RandomJigsaw(grid=(2, 2), p=0.5)
+        assert aug.p == 0.5 and aug.p_batch == 1.0
+        subsets = 0
+        for _ in range(20):
+            gate = aug.forward_parameters(torch.Size([8, 1, 4, 4]))["batch_prob"] > 0.5
+            subsets += 0 < int(gate.sum()) < 8
+        assert subsets > 0  # a batch-wide gate can never select a strict subset
+
+    @pytest.mark.device_agnostic
+    def test_convention_patchmix_patch_stays_inside_the_image(self):
+        # The other patch pins supply or read back `patch_coords`, so the sampled range itself is unpinned.
+        aug = K.PatchMix(patch_size=4, p=1.0)
+        for _ in range(20):
+            coords = aug.forward_parameters(torch.Size([16, 1, 8, 10]))["patch_coords"]
+            assert int(coords[:, 0].max()) <= 10 - 4
+            assert int(coords[:, 1].max()) <= 8 - 4

@@ -360,3 +360,90 @@ class Test3DAugmentationConventions(BaseTester):
         assert rounded_up._params["ksize_factor"].tolist() == [5] * 6
         with pytest.raises(ValueError, match="smaller than or equal to"):
             K.RandomMotionBlur3D((7, 3), 35.0, 0.5)
+
+    @pytest.mark.device_agnostic
+    def test_convention_motion_blur3d_positive_roll_is_clockwise(self):
+        # #4408's split reaches motion blur too: the 3D roll mirrors the 2D angle.
+        def tilt(plane):
+            nonzero = (plane.abs() > 1e-4).nonzero().float()
+            centred = nonzero - nonzero.mean(0)
+            return float((centred[:, 0] * centred[:, 1]).sum())
+
+        volume = torch.zeros(1, 1, 3, 15, 15)
+        volume[0, 0, 1, 7, 7] = 1.0
+        image = torch.zeros(1, 1, 15, 15)
+        image[0, 0, 7, 7] = 1.0
+        rolled = K.RandomMotionBlur3D(9, ((0.0, 0.0), (0.0, 0.0), (30.0, 30.0)), 0.0, p=1.0)(volume)[0, 0, 1]
+        flat = K.RandomMotionBlur(9, (30.0, 30.0), 0.0, p=1.0)(image)[0, 0]
+        assert tilt(rolled) > 0  # rows increase with columns: clockwise as displayed
+        assert tilt(flat) < 0  # the 2D class turns the other way
+        assert tilt(rolled) == -tilt(flat)
+
+    @pytest.mark.device_agnostic
+    def test_convention_no_3d_constructor_exposes_p_batch(self):
+        import inspect
+
+        classes = (
+            K.RandomAffine3D,
+            K.CenterCrop3D,
+            K.RandomCrop3D,
+            K.RandomDepthicalFlip3D,
+            K.RandomHorizontalFlip3D,
+            K.RandomPerspective3D,
+            K.RandomRotation3D,
+            K.RandomVerticalFlip3D,
+            K.RandomEqualize3D,
+            K.RandomMotionBlur3D,
+        )
+        for cls in classes:
+            assert "p_batch" not in inspect.signature(cls.__init__).parameters
+        with pytest.raises(TypeError, match="p_batch"):
+            K.RandomHorizontalFlip3D(p=1.0, p_batch=0.5)
+
+    @pytest.mark.device_agnostic
+    def test_wart_random_crop3d_accepts_a_one_voxel_oversized_crop_4688(self):
+        volume = torch.ones(1, 1, 4, 5, 6)
+        output = K.RandomCrop3D((5, 5, 6), p=1.0)(volume)
+        assert output.shape == (1, 1, 5, 5, 6)
+        assert float(output.sum(dim=(1, 3, 4))[0, -1]) == 0.0  # the appended slab is empty
+        with pytest.raises(ValueError, match="cannot be smaller than crop size"):
+            K.RandomCrop3D((6, 5, 6), p=1.0)(volume)
+        # CenterCrop3D rejects the same one-voxel request.
+        with pytest.raises(AssertionError, match="Crop size must be smaller"):
+            K.CenterCrop3D((5, 5, 6), p=1.0)(volume)
+
+    @pytest.mark.device_agnostic
+    def test_convention_perspective3d_identity_is_only_float32_grid_precise(self):
+        volume = torch.rand(1, 1, 4, 5, 6, dtype=torch.float64)
+        assert float((K.RandomRotation3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max()) == 0.0
+        residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
+        assert 0.0 < residual < 1e-5  # the grid is built in float32, so this is not float64 roundoff
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop3d_offset_reaches_both_ends(self):
+        # The offset pin overwrites params["src"], so the sampler's inclusive range is never measured.
+        aug = K.RandomCrop3D((2, 3, 4), p=1.0)
+        starts = set()
+        for _ in range(20):
+            src = aug.forward_parameters(torch.Size([8, 1, 4, 5, 6]))["src"]
+            starts.update(int(value) for value in src[:, 0, 0])
+        assert starts == {0, 1, 2}  # width 6, crop width 4 -> the inclusive range [0, 2]
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop3d_fixed_padding_feeds_pad_if_needed(self):
+        # No other pin exercises `padding` and `pad_if_needed` together, which is where the axis
+        # bookkeeping for the second padding pass lives.
+        volume = torch.rand(1, 1, 4, 5, 6)
+        aug = K.RandomCrop3D((12, 3, 3), padding=(0, 0, 0, 0, 3, 3), pad_if_needed=True, p=1.0)
+        assert aug._compute_padding(tuple(volume.shape), aug.flags) == [[0, 0, 0, 0, 3, 3], [0, 0, 0, 0, 2, 2]]
+        assert aug.precrop_padding(volume).shape[-3:] == (14, 5, 6)
+
+    @pytest.mark.device_agnostic
+    def test_convention_motion_blur3d_rejects_a_mixed_replayed_kernel_size(self):
+        # The kernel-size pin measures the generator; the consumer's rejection of a mixed replay is separate.
+        volume = torch.rand(2, 1, 5, 5, 5)
+        aug = K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)
+        params = aug.forward_parameters(volume.shape)
+        params["ksize_factor"] = torch.tensor([3, 7], dtype=torch.int32)
+        with pytest.raises(RuntimeError):
+            aug(volume, params=params)

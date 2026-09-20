@@ -73,6 +73,7 @@ class TestAutoAugmentConventions(BaseTester):
         degrees = AutoAugment(policy=[[("rotate", 1.0, 9)]]).forward_parameters(torch.Size([64, 1, 8, 6]))
         degrees = degrees[0].data[0].data["degrees"]
         assert (degrees >= 24.0).all() and (degrees <= 30.0).all()
+        assert degrees.min() < 25.0 and degrees.max() > 29.0  # bounds alone pass for a collapsed interval
         for magnitude in (-1, 10):
             with pytest.raises(ValueError, match=r"in \[0, 9\]"):
                 AutoAugment(policy=[[("rotate", 1.0, magnitude)]])
@@ -245,6 +246,10 @@ class TestAutoAugmentConventions(BaseTester):
         posterize = ops.Posterize(initial_magnitude=0.5, magnitude_range=(0.0, 8.0), symmetric_megnitude=True)
         bits = posterize.forward_parameters(torch.Size([32, 1, 1, 1]))["bits_factor"]
         self.assert_close(bits, torch.zeros_like(bits), rtol=0, atol=0)
+        # A zero is sign-blind, so it cannot show that the mapping runs BEFORE the sign is chosen.
+        nonzero = ops.Posterize(initial_magnitude=5.5, magnitude_range=(0.0, 8.0), symmetric_megnitude=True)
+        signed = nonzero.forward_parameters(torch.Size([64, 1, 1, 1]))["bits_factor"]
+        assert set(signed.tolist()) == {5, -5}
 
     @pytest.mark.device_agnostic
     def test_convention_operation_probability_and_magnitude_clamps(self):
@@ -356,3 +361,85 @@ class TestAutoAugmentConventions(BaseTester):
         policy(torch.rand(2, 3, 8, 8))
         with pytest.raises(RuntimeError, match="graph leaves"):
             copy.deepcopy(policy)
+
+    @pytest.mark.device_agnostic
+    def test_convention_randaugment_shear_passes_through_the_180_mapping(self):
+        # The wrapper's magnitude mapping is the identity for every default entry but shear and posterize.
+        shear = RandAugment(n=1, m=15, policy=[[("shear_x", -0.3, 0.3)]])
+        drawn = shear.forward_parameters(torch.Size([8, 1, 8, 6]))[0].data[0].data["shear_x"]
+        self.assert_close(drawn.abs(), torch.full_like(drawn, 27.0))
+        # 0.15 is low + (high - low) * m / 30, the value before the mapping.
+        assert not torch.allclose(drawn.abs(), torch.full_like(drawn, 0.15))
+        rotate = RandAugment(n=1, m=15, policy=[[("rotate", -30.0, 30.0)]])
+        degrees = rotate.forward_parameters(torch.Size([8, 1, 8, 6]))[0].data[0].data["degrees"]
+        self.assert_close(degrees.abs(), torch.full_like(degrees, 15.0))
+
+    @pytest.mark.device_agnostic
+    def test_convention_trivialaugment_fixes_candidate_probability_at_one(self):
+        aug = TrivialAugment(policy=[[("rotate", -30.0, 30.0)], [("brightness", 0.1, 1.9)]])
+        assert {(module[0].op.p, module[0].op.p_batch) for _, module in aug.named_children()} == {(1.0, 1.0)}
+        gates = set()
+        for _ in range(16):
+            gates.update(aug.forward_parameters(torch.Size([8, 3, 8, 6]))[0].data[0].data["batch_prob"].tolist())
+        assert gates == {1.0}
+        # Only the magnitude is drawn per row.
+        torch.manual_seed(17)
+        magnitudes = (
+            TrivialAugment(policy=[[("rotate", -30.0, 30.0)]])
+            .forward_parameters(torch.Size([8, 1, 8, 6]))[0]
+            .data[0]
+            .data["degrees"]
+        )
+        assert magnitudes.unique().numel() == 8
+
+    @pytest.mark.device_agnostic
+    def test_wart_trivialaugment_shear_bypass_drops_the_180_factor_4441(self):
+        torch.manual_seed(17)
+        bypassed = (
+            TrivialAugment(policy=[[("shear_x", -0.3, 0.3)]])
+            .forward_parameters(torch.Size([64, 1, 8, 6]))[0]
+            .data[0]
+            .data["shear_x"]
+        )
+        assert bool((bypassed.abs() <= 0.3).all()) and bypassed.abs().max() > 0.05
+        # The same policy entry through RandAugment, which does apply the mapping.
+        mapped = (
+            RandAugment(n=1, m=29, policy=[[("shear_x", -0.3, 0.3)]])
+            .forward_parameters(torch.Size([8, 1, 8, 6]))[0]
+            .data[0]
+            .data["shear_x"]
+        )
+        self.assert_close(mapped.abs(), torch.full_like(mapped, 0.29 * 180))
+
+    @pytest.mark.device_agnostic
+    def test_wart_operation_wrappers_cannot_be_pickled_4469(self):
+        import pickle
+
+        failed = set()
+        for name in ops.__all__:
+            operation = getattr(ops, name)()
+            pickle.loads(pickle.dumps(operation.op))  # noqa: S301 - the wrapped augmentation always pickles
+            try:
+                pickle.loads(pickle.dumps(operation))  # noqa: S301
+            except AttributeError:
+                failed.add(name)
+        # Only Posterize passes a staticmethod rather than a local closure.
+        assert failed == set(ops.__all__) - {"Posterize"}
+
+    @pytest.mark.device_agnostic
+    def test_convention_operation_keeps_its_initial_probability(self):
+        # Every other probability pin overwrites `_probability` before reading it back.
+        operation = ops.Invert(initial_probability=0.25)
+        self.assert_close(operation.probability.detach(), torch.tensor([0.25]), rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    def test_convention_policy_sequential_sequence_follows_supplied_params(self):
+        # The supplied-path pin measures forward outputs, which index by name and so route around
+        # get_forward_sequence; get_transformation_matrix zips against it and does not.
+        policy = PolicySequential(
+            ops.Invert(initial_probability=1.0), ops.Solarize(initial_magnitude=0.5, initial_probability=1.0)
+        )
+        generated = policy.forward_parameters(torch.Size([1, 1, 1, 1]))
+        reversed_names = [name for name, _ in policy.get_forward_sequence(list(reversed(generated)))]
+        assert reversed_names == [param.name for param in reversed(generated)]
+        assert [name for name, _ in policy.get_forward_sequence(generated[:1])] == [generated[0].name]
