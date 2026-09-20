@@ -40,7 +40,9 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
         normalized: whether the output is normalized.
 
     Return:
-        the derivatives of the input feature map. with shape :math:`(B, C, 2, H, W)`.
+        the derivatives of the input feature map. with shape :math:`(B, C, 2, H, W)` holding
+        :math:`(dx, dy)` for ``order=1`` and :math:`(B, C, 3, H, W)` holding :math:`(dxx, dxy, dyy)`
+        for ``order=2``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_edges.html>`__.
@@ -104,8 +106,9 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
         order: the order of the derivatives.
 
     Return:
-        the spatial gradients of the input feature map with shape math:`(B, C, 3, D, H, W)`
-        or :math:`(B, C, 6, D, H, W)`.
+        the spatial gradients of the input feature map with shape :math:`(B, C, 3, D, H, W)` holding
+        :math:`(dx, dy, dz)` for ``order=1`` or :math:`(B, C, 6, D, H, W)` holding
+        :math:`(dxx, dyy, dzz, dxy, dyz, dxz)` for ``order=2``.
 
     Examples:
         >>> input = torch.rand(1, 4, 2, 4, 4)
@@ -138,9 +141,6 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
 
         tmp_kernel = kernel.repeat(c, 1, 1, 1, 1)
 
-        # convolve input torch.Tensor with grad kernel
-        kernel_flip = tmp_kernel.flip(-3)
-
         # Pad with "replicate for spatial dims, but with torch.zeros for channel
         spatial_pad = [
             kernel.size(2) // 2,
@@ -151,7 +151,7 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
             kernel.size(4) // 2,
         ]
         out_ch: int = 6 if order == 2 else 3
-        out = F.conv3d(F.pad(input, spatial_pad, "replicate"), kernel_flip, padding=0, groups=c).view(
+        out = F.conv3d(F.pad(input, spatial_pad, "replicate"), tmp_kernel, padding=0, groups=c).view(
             b, c, out_ch, d, h, w
         )
     return out
