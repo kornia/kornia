@@ -86,6 +86,15 @@ class RandomJigsaw(MixAugmentationBaseV2):
         self._param_generator = rg.JigsawGenerator(grid, ensure_perm)
         self.flags = {"grid": grid}
 
+    def transform_tensor(
+        self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
+    ) -> torch.Tensor:
+        input = super().transform_tensor(input, shape=shape, match_channel=match_channel)
+        h, w = input.shape[-2:]
+        if h % self.flags["grid"][0] or w % self.flags["grid"][1]:
+            raise RuntimeError(f"Input height and width {(h, w)} must be divisible by grid {self.flags['grid']}.")
+        return input
+
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
@@ -93,9 +102,6 @@ class RandomJigsaw(MixAugmentationBaseV2):
         # where-blends this result with the non-transformed branch per `batch_prob`.
         b, c, h, w = input.shape
         perm = params["permutation"]
-        # Note: with a 100x100 image and a grid size of 3x3, it could work if
-        #       we make h = piece_size_h * self.flags["grid"][0] with one pixel loss, then resize to 100 x 100.
-        #       Probably worth to check if we should tolerate such "errorness" or to raise it as an error.
         piece_size_h, piece_size_w = input.shape[-2] // self.flags["grid"][0], input.shape[-1] // self.flags["grid"][1]
         # Convert to C BxN H' W'
         input = (

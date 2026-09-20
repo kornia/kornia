@@ -34,9 +34,9 @@ the right shape.
 ## Regenerating the snapshot
 
 ```bash
-pixi run -e default install-docs && pixi run build-docs   # once, so operators get cross-referenced
+pixi run -e default install-docs && pixi run -e default build-docs   # once, so operators get cross-referenced
 python docs/export_support/run.py                         # ~2 h on 8 CPU cores; resumable
-pixi run build-docs
+pixi run -e default build-docs
 ```
 
 `run.py` writes per-group results and logs to `docs/export_support/results/` (git-ignored) and

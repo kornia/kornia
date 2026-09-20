@@ -140,8 +140,7 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         """
         if name in ["vit_b", "vit_l", "vit_h", "mobile_sam"]:
             return Sam.from_config(SamConfig(name))
-        else:
-            raise ValueError(f"Invalid SAM model name: {name}")
+        raise ValueError(f"Invalid SAM model name: {name}")
 
     @staticmethod
     def from_config(config: SamConfig) -> Sam:

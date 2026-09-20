@@ -140,7 +140,8 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         height, width = params["image_shape"]
 
         out_labels = []
-        calc_dtype = input.dtype if input.dtype in (torch.float32, torch.float64) else torch.float32
+        image_dtype = DType.to_torch(int(params["dtype"].item()))
+        calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
             labels_permute = input.index_select(dim=0, index=pair.to(input.device))
             w, h = infer_bbox_shape(crop)
@@ -151,9 +152,9 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             out_labels.append(
                 torch.stack(
                     [
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        labels_permute.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        lam.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
+                        input.to(device=input.device, dtype=calc_dtype),
+                        labels_permute.to(device=input.device, dtype=calc_dtype),
+                        lam.to(device=input.device, dtype=calc_dtype),
                     ],
                     1,
                 )
@@ -165,13 +166,15 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         out_labels = []
-        lam = torch.zeros((len(input)), device=input.device, dtype=DType.to_torch(int(params["dtype"].item())))
+        image_dtype = DType.to_torch(int(params["dtype"].item()))
+        calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
+        lam = torch.zeros((len(input)), device=input.device, dtype=calc_dtype)
         for _ in range(self._param_generator.num_mix):
             out_labels.append(
                 torch.stack(
                     [
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
+                        input.to(device=input.device, dtype=calc_dtype),
+                        input.to(device=input.device, dtype=calc_dtype),
                         lam,
                     ],
                     1,

@@ -614,7 +614,10 @@ class TestConventionAugmentationBase2D(BaseTester):
         rows = []
         for seed in range(8):
             torch.manual_seed(seed)
-            kwargs = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            kwargs: dict = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            # PatchMix's default patch_size of 16 does not fit this 6x8 input.
+            if augmentation_cls is K.PatchMix:
+                kwargs = {"patch_size": 4}
             params = augmentation_cls(p=0.5, **kwargs).forward_parameters((4, 3, 6, 8))
             rows.append(params["batch_prob"].tolist())
         assert all(len(set(row)) == 1 for row in rows)

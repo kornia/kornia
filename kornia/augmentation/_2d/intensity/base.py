@@ -84,11 +84,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           replayed ``params``, replaces the drawn order for that call; a fixed order ignores both.
         - where a class documents bounds for a parameter, an explicit range outside them usually raises at
           construction. These checks run on the forward pass instead: :class:`RandomGamma`'s non-negativity checks
-          on ``gamma`` and ``gain``, which live in :func:`kornia.enhance.adjust_gamma`;
-          :class:`RandomSolarize`'s ``additions`` at the closed bounds ``-0.5`` and ``0.5``
-          (`#4605 <https://github.com/kornia/kornia/issues/4605>`_), and
-          :class:`RandomGaussianBlur`'s ``sigma`` at ``0`` and even ``kernel_size``, which the constructors
-          admit and :func:`kornia.enhance.solarize` and :func:`kornia.filters.gaussian_blur2d` reject;
+          on ``gamma`` and ``gain``, which live in :func:`kornia.enhance.adjust_gamma`, and
+          :class:`RandomGaussianBlur`'s ``sigma`` at ``0`` and even ``kernel_size``, which the constructor
+          admits and :func:`kornia.filters.gaussian_blur2d` rejects;
           :class:`RandomMedianBlur`'s even ``kernel_size``, which raises a raw torch error the same way;
           :class:`RandomRain`'s drop-size bounds; a tuple ``kernel_size`` for :class:`RandomMotionBlur` whose
           drawn odd size is below ``3`` -- an even bound is rounded up to the next odd size rather than

@@ -179,7 +179,7 @@ For development, Kornia uses [pixi](https://pixi.sh) for fast Python package man
 
   # Create the Pixi environment and install development dependencies
   pixi install
-  pixi run install
+  pixi run -e default install
 
   # Run tests
   pixi run test

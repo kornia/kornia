@@ -88,7 +88,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     ```bash
     # Create the default Pixi environment, then install development dependencies
     pixi install
-    pixi run install
+    pixi run -e default install
 
     # For specific Python versions
     pixi install -e py312  # Python 3.12
@@ -108,8 +108,8 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
     ```bash
     # Installation
-    pixi run install          # Install dev dependencies
-    pixi run install-docs     # Install dev + docs dependencies
+    pixi run -e default install # Install dev dependencies
+    pixi run -e default install-docs # Install dev + docs dependencies
 
     # Testing
     pixi run test             # Run tests (configure via KORNIA_TEST_* env vars)
@@ -134,7 +134,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi run doctest          # Run doctests
 
     # Documentation
-    pixi run build-docs       # Build documentation
+    pixi run -e default build-docs # Build documentation
 
     # Utilities
     pixi run clean            # Clean Python cache files
@@ -158,7 +158,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi run test
     ```
 
-    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run install`.
+    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run -e default install`.
 
     **CUDA:** The CUDA environment uses PyTorch with CUDA 12.1. Run `pixi run -e cuda install` to set it up.
 
@@ -185,7 +185,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
 1. Set up your development environment (see [above](#developing-kornia))
 2. Edit files in `docs/`
-3. Build docs: `pixi run build-docs`
+3. Build docs: `pixi run -e default build-docs`
 4. Preview: `open docs/build/html/index.html`
 5. Submit a PR following the [Pull Request](#pull-request) guidelines
 

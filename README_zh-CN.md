@@ -92,7 +92,7 @@
 
   # 创建 Pixi 环境并安装开发依赖
   pixi install
-  pixi run install
+  pixi run -e default install
 
   # 运行测试
   pixi run test

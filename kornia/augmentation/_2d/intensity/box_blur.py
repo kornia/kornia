@@ -54,10 +54,8 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
           rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
           a constant image survives either up to the rounding of the kernel weights. ``border_type`` defaults
-          to ``"reflect"``, as the function does, but ``normalized=True`` does **not** match
-          :func:`kornia.filters.box_blur`'s own ``separable=False``, so the default class output differs from
-          the default function output in the last bits -- about ``1.2e-07`` on a ``[0, 1]`` image. Where
-          :class:`RandomGaussianBlur` passes its function's own defaults through, this one does not.
+          to ``"reflect"``, as the function does, and ``normalized=True`` matches
+          :func:`kornia.filters.box_blur`'s ``separable=True`` default.
         - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
           average of input values and stays between the input's own extremes, up to the rounding of the kernel
           weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below

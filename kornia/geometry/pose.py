@@ -98,10 +98,9 @@ class NamedPose:
             raise ValueError(f"Cannot compose {self} with {other}")
         if isinstance(other.pose, Se2):
             return NamedPose(self._dst_from_src._mul_se2(other.pose), other._frame_src, self._frame_dst)
-        elif isinstance(other.pose, Se3):
+        if isinstance(other.pose, Se3):
             return NamedPose(self._dst_from_src._mul_se3(other.pose), other._frame_src, self._frame_dst)
-        else:
-            raise ValueError(f"Pose must be either Se2 or Se3, got {type(self._dst_from_src)}")
+        raise ValueError(f"Pose must be either Se2 or Se3, got {type(self._dst_from_src)}")
 
     @property
     def pose(self) -> Se2 | Se3:
@@ -160,9 +159,9 @@ class NamedPose:
         """
         if isinstance(rotation, (So3, Quaternion)):
             return cls(Se3(rotation, translation), frame_src, frame_dst)
-        elif isinstance(rotation, So2):
+        if isinstance(rotation, So2):
             return cls(Se2(rotation, translation), frame_src, frame_dst)
-        elif isinstance(rotation, torch.Tensor):
+        if isinstance(rotation, torch.Tensor):
             check_matrix_shape(rotation)
             dim = rotation.shape[-1]
             RT = torch.eye(dim + 1, device=rotation.device, dtype=rotation.dtype)
@@ -170,7 +169,7 @@ class NamedPose:
             RT[..., :dim, dim] = translation
             if dim == 2:
                 return cls(Se2.from_matrix(RT), frame_src, frame_dst)
-            elif dim == 3:
+            if dim == 3:
                 return cls(Se3.from_matrix(RT), frame_src, frame_dst)
         else:
             raise ValueError(f"R must be either So2, So3, Quaternion, or Tensor, got {type(rotation)}")
@@ -204,7 +203,7 @@ class NamedPose:
         dim = matrix.shape[-1]
         if dim == 3:
             return cls(Se2.from_matrix(matrix), frame_src, frame_dst)
-        elif dim == 4:
+        if dim == 4:
             return cls(Se3.from_matrix(matrix), frame_src, frame_dst)
         return None
 
