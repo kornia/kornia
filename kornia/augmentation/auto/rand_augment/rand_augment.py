@@ -165,7 +165,10 @@ class RandAugment(PolicyAugmentBase):
             mag = None
             if op.magnitude_range is not None:
                 minval, maxval = op.magnitude_range
-                mag = m * float(maxval - minval) + minval
+                if op._factor_name == "bits_factor":
+                    mag = (1 - m) * float(maxval - minval) + minval
+                else:
+                    mag = m * float(maxval - minval) + minval
 
                 # RandAugment magnitudes for translation are specified as fractions
                 # of the image dimensions, while RandomTranslate stores pixel

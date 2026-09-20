@@ -132,10 +132,10 @@ class TestRandAugment(BaseTester):
     @pytest.mark.parametrize(
         ("m", "expected_bits"),
         [
-            (3, 4),
-            (7, 4),
-            (8, 5),
-            (29, 7),
+            (3, 7),
+            (7, 7),
+            (8, 6),
+            (29, 4),
         ],
     )
     def test_posterize_default_range(self, m, expected_bits):
