@@ -61,9 +61,9 @@ class TestNormalize(BaseTester):
         self.assert_close(f(data), expected)
 
     def test_empty_batch(self, device, dtype):
-        data = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
-        mean = torch.tensor([0.5], device=device, dtype=dtype)
-        std = torch.tensor([0.5], device=device, dtype=dtype)
+        data = torch.rand(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        mean = torch.tensor([0.5], device=device, dtype=dtype, requires_grad=True)
+        std = torch.tensor([0.5], device=device, dtype=dtype, requires_grad=True)
 
         output = kornia.enhance.normalize(data, mean, std)
         augmentation_output = kornia.augmentation.Normalize(mean, std, p=1.0)(data)
@@ -72,6 +72,15 @@ class TestNormalize(BaseTester):
         assert output.device == data.device
         assert output.dtype == data.dtype
         assert augmentation_output.shape == data.shape
+
+        output.sum().backward()
+
+        assert data.grad is not None
+        assert mean.grad is not None
+        assert std.grad is not None
+        assert data.grad.abs().sum() == 0
+        assert mean.grad.abs().sum() == 0
+        assert std.grad.abs().sum() == 0
 
     def test_broadcast_normalize(self, device, dtype):
         # prepare input data

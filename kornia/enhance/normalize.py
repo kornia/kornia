@@ -176,13 +176,10 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
-    if shape[0] == 0:
-        return data
-
     mean = mean[..., None]
     std = std[..., None]
 
-    out: torch.Tensor = (data.reshape(shape[0], shape[1], -1) - mean) / std
+    out: torch.Tensor = (data.flatten(2) - mean) / std
 
     return out.reshape(shape)
 
