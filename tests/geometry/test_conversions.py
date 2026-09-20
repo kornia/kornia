@@ -2806,11 +2806,11 @@ class TestPolCartConversions(BaseTester):
         self.assert_close(rho, torch.tensor(5.0, device=device, dtype=dtype))
 
     def test_convention_cart2pol_rho_has_finite_origin_gradient(self, device):
-        xy = torch.zeros(2, device=device, dtype=torch.float64, requires_grad=True)
+        xy = torch.zeros(2, device=device, dtype=torch.float32, requires_grad=True)
         rho = kornia.geometry.conversions.cart2pol(xy[0], xy[1])[0]
         rho.backward()
 
-        self.assert_close(rho, torch.tensor(0.0, device=device, dtype=torch.float64))
+        self.assert_close(rho, torch.tensor(0.0, device=device, dtype=torch.float32))
         self.assert_close(xy.grad, torch.zeros_like(xy))
 
     def test_convention_positive_rotation_decreases_cart2pol_phi(self, device, dtype):
