@@ -140,21 +140,28 @@ class RandomRain(IntensityAugmentationBase2D):
         # all are set to one constant, so write order cannot change the result.
         #
         # The line shape differs per sample (its height, width and step count are all drawn), so the
-        # shapes are padded to the longest line in the batch and a mask drops the padding.
+        # shapes are padded to the longest line in the batch and a mask drops the padding. The staging
+        # buffers are pinned to the CPU explicitly rather than left to the default device, so a
+        # `torch.set_default_device` in the caller cannot turn the host loop into per-sample device
+        # launches, or a copy from `meta` that cannot be made.
         longest_line = max(max(h, abs(w)) for h, w in zip(heights, widths))
-        lines = torch.zeros(batch_size, 2, longest_line, dtype=torch.long)
+        lines = torch.zeros(batch_size, 2, longest_line, dtype=torch.long, device="cpu")
         # One row per sample, packed so the host-side integers cross to the device in a single copy:
         # [admissible start rows, admissible start cols, col shift, line length, drop count].
         # The admissible start region: a drop may start anywhere its far end stays inside the image.
         # The far end is the line's last offset -- the end point is included once there are at least
         # two steps, and a single-pixel drop is the start alone. Derived from the Python ints rather
         # than read off `x[-1]`/`y[-1]`, which would sync the device per sample.
-        meta = torch.empty(batch_size, 5, dtype=torch.long)
+        meta = torch.empty(batch_size, 5, dtype=torch.long, device="cpu")
         for i, (height_of_drop, width_of_drop) in enumerate(zip(heights, widths)):
             # Generate how our drop will look like into the image
             size_of_line = max(height_of_drop, abs(width_of_drop))
-            lines[i, 0, :size_of_line] = torch.linspace(0, height_of_drop, steps=size_of_line, dtype=torch.long)
-            lines[i, 1, :size_of_line] = torch.linspace(0, width_of_drop, steps=size_of_line, dtype=torch.long)
+            lines[i, 0, :size_of_line] = torch.linspace(
+                0, height_of_drop, steps=size_of_line, dtype=torch.long, device="cpu"
+            )
+            lines[i, 1, :size_of_line] = torch.linspace(
+                0, width_of_drop, steps=size_of_line, dtype=torch.long, device="cpu"
+            )
             last_dy, last_dx = (height_of_drop, width_of_drop) if size_of_line > 1 else (0, 0)
             meta[i, 0] = image_height - last_dy
             meta[i, 1] = image_width - abs(last_dx)
