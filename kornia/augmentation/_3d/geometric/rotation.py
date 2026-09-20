@@ -63,9 +63,11 @@ class RandomRotation3D(GeometricAugmentationBase3D):
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
-        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. Unlike
-          :class:`RandomAffine3D`, a positive angle follows the displayed rotation convention used by the
-          other rotation entry points.
+        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
+          roll turns a displayed ``H x W`` slice clockwise, as :func:`kornia.geometry.transform.rotate3d` and the
+          2D :class:`~kornia.augmentation.RandomAffine` do. :class:`RandomAffine3D`, the 2D
+          :class:`~kornia.augmentation.RandomRotation`, and :func:`kornia.geometry.transform.rotate` turn it
+          counter-clockwise (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - the default interpolation is bilinear with ``align_corners=False``; zero angles reproduce the input
           up to floating-point roundoff.
 

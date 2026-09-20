@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 
@@ -362,6 +364,27 @@ class TestMixConventions(BaseTester):
                 K.RandomJigsaw(grid=grid, p=p)(image)
 
     @pytest.mark.device_agnostic
+    def test_convention_mix_class_handlers_ignore_a_replayed_partial_gate(self):
+        image = torch.arange(3.0).view(3, 1, 1, 1).expand(3, 1, 4, 4).clone()
+        labels = torch.tensor([10, 20, 30])
+        aug = K.RandomMixUpV2(p=1.0, lambda_val=(0.25, 0.25), data_keys=["input", "class"])
+        aug(image, labels)
+        params = dict(aug._params)
+        params["mixup_pairs"] = torch.tensor([1, 2, 0])
+        params["batch_prob"] = torch.tensor([1.0, 0.0, 1.0])
+        output, mixed = aug(image, labels, params=params)
+        self.assert_close(output[:, 0, 0, 0], torch.tensor([0.25, 1.0, 1.5]))  # row 1 keeps its image
+        self.assert_close(mixed, torch.tensor([[10.0, 20.0, 0.25], [20.0, 30.0, 0.25], [30.0, 10.0, 0.25]]))
+
+    @pytest.mark.device_agnostic
+    def test_convention_cutmix_compatibility_lambda_warns(self):
+        with pytest.warns(DeprecationWarning, match="use_correct_lambda"):
+            K.RandomCutMixV2()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            K.RandomCutMixV2(use_correct_lambda=True)
+
+    @pytest.mark.device_agnostic
     def test_wart_mixup_and_cutmix_apply_p_to_rows_a_second_time_4649(self):
         # #4649: inside a selected batch, rows are dropped again with probability 1 - p.
         mixup = K.RandomMixUpV2(p=0.5, lambda_val=(0.5, 0.5))
@@ -435,6 +458,7 @@ class TestMixConventions(BaseTester):
         self.assert_close(results[1][1][~selected], placeholder.expand(2, -1, -1))
         with pytest.raises(TypeError, match="NoneType"):
             K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
+        self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)  # no selection, no raise
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])

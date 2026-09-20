@@ -62,8 +62,12 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
           would select a sample. The concrete class blocks state the supported non-image keys.
         - ``batch_prob`` is sampled with the subclass parameters and gates the final image result. A selected
           image uses the mixed result and an unselected image keeps its input values, except where a concrete
-          class changes the output size (see :class:`~kornia.augmentation.RandomMosaic`). The label and box
-          handlers use the same gate. When no sample is selected, the image transform is skipped.
+          class changes the output size (see :class:`~kornia.augmentation.RandomMosaic`). The box
+          handlers use the same gate, and when no sample is selected every transform is skipped. The class
+          handlers of :class:`~kornia.augmentation.RandomMixUpV2` and :class:`~kornia.augmentation.RandomCutMixV2`
+          do not read ``batch_prob``: their sampled gate is batch-wide, so labels and images agree, but a replayed
+          ``params`` whose ``batch_prob`` selects only some rows leaves the unselected images unchanged while
+          still labelling those rows as mixed.
 
     """
 

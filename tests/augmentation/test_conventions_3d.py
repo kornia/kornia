@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+import kornia
 import kornia.augmentation as K
 
 from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_nearest_3d_grid_sample
@@ -90,8 +91,8 @@ class Test3DAugmentationConventions(BaseTester):
         assert center.flags["resample"].name == crop.flags["resample"].name == "BILINEAR"
         assert center(volume).shape == crop(volume).shape == (1, 1, 2, 3, 4)
         self.assert_close(center(volume), volume[..., 1:3, 1:4, 1:5])
-        assert K.CenterCrop3D((2, 3, 4), p=0.0)(volume).shape == volume.shape
-        assert K.RandomCrop3D((2, 3, 4), p=0.0)(volume).shape == volume.shape
+        self.assert_close(K.CenterCrop3D((2, 3, 4), p=0.0)(volume), volume, rtol=0, atol=0)
+        self.assert_close(K.RandomCrop3D((2, 3, 4), p=0.0)(volume), volume, rtol=0, atol=0)
         padded = K.RandomCrop3D((2, 3, 4), padding=(1, 2, 3, 4, 5, 6), p=1.0).precrop_padding(volume)
         assert padded.shape[-3:] == (15, 12, 9)
         self.assert_close(padded[..., 5:9, 3:8, 1:7], volume)
@@ -158,8 +159,28 @@ class Test3DAugmentationConventions(BaseTester):
         volume = torch.arange(60, device=device, dtype=dtype).reshape(1, 1, 3, 4, 5)
         self.assert_close(K.RandomPerspective3D(0.0, p=1.0)(volume), volume)
 
+    @pytest.mark.device_agnostic
+    def test_wart_positive_roll_direction_splits_the_rotation_entry_points_4408(self):
+        # An off-centre marker in a 7 x 7 slice: a counter-clockwise quarter turn sends (row 1, col 4) to (2, 1),
+        # a clockwise one to (4, 5).
+        image = torch.zeros(1, 1, 7, 7)
+        image[0, 0, 1, 4] = 1
+        volume = image[:, :, None].repeat(1, 1, 7, 1, 1)
+        zero, quarter = (0.0, 0.0), (90.0, 90.0)
+
+        def marker(plane):
+            return divmod(int(plane.flatten().argmax()), 7)
+
+        assert marker(kornia.geometry.transform.rotate(image, torch.tensor([90.0]))[0, 0]) == (2, 1)
+        assert marker(K.RandomRotation(quarter, p=1.0)(image)[0, 0]) == (2, 1)
+        assert marker(K.RandomAffine3D((zero, zero, quarter), p=1.0)(volume)[0, 0, 3]) == (2, 1)
+        assert marker(K.RandomAffine(quarter, p=1.0)(image)[0, 0]) == (4, 5)
+        assert marker(K.RandomRotation3D((zero, zero, quarter), p=1.0)(volume)[0, 0, 3]) == (4, 5)
+        angles = [torch.tensor([value]) for value in (0.0, 0.0, 90.0)]
+        assert marker(kornia.geometry.transform.rotate3d(volume, *angles)[0, 0, 3]) == (4, 5)
+
     def test_wart_random_affine3d_rotation_sign_4408(self, device, dtype):
-        # #4408: the affine composer negates the angle relative to RandomRotation3D's displayed convention.
+        # #4408: the affine composer negates the angle relative to RandomRotation3D; the pixel directions are pinned below.
         if not supports_bilinear_3d_grid_sample(device, dtype):
             pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
         volume = torch.zeros(1, 1, 5, 5, 5, device=device, dtype=dtype)
@@ -279,6 +300,10 @@ class Test3DAugmentationConventions(BaseTester):
             K.CenterCrop3D((5, 6, 7), p=0.0)(volume)
         with pytest.raises(ValueError, match="cannot be smaller than crop size"):
             K.RandomCrop3D((9, 9, 9), padding=1, p=0.0)(volume)
+        # (6, 5, 6) fits the padded (6, 7, 8) volume but not the (4, 5, 6) input: validation sees the padded one.
+        self.assert_close(K.RandomCrop3D((6, 5, 6), padding=1, p=0.0)(volume), volume, rtol=0, atol=0)
+        with pytest.raises(ValueError, match="cannot be smaller than crop size"):
+            K.RandomCrop3D((6, 5, 6), p=0.0)(volume)
 
     @pytest.mark.parametrize(
         "padding,size,marker",

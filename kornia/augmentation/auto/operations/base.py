@@ -59,7 +59,7 @@ class OperationBase(nn.Module):
           ``operation.op.forward_parameters`` directly, bypassing this wrapper's magnitude mapping. This is a
           distinct direct-use behavior, tracked in `#4441
           <https://github.com/kornia/kornia/issues/4441>`_.
-        - The concrete operation classes in :mod:`kornia.augmentation.auto.operations.ops` only configure this
+        - The concrete operation classes in ``kornia.augmentation.auto.operations.ops`` only configure this
           wrapper around public 2D augmentations; their input, dtype, RNG, replay, and serialization contracts
           are those of their wrapped augmentation and :doc:`/get-started/conventions`.
 

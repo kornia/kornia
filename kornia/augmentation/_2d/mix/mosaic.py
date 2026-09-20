@@ -81,7 +81,8 @@ class RandomMosaic(MixAugmentationBaseV2):
     Convention:
         - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
           and the default ``cropping_mode="slice"`` the output preserves the input's ``(H, W)`` even when they
-          differ; ``cropping_mode="resample"`` needs an explicit ``output_size`` and otherwise raises ``TypeError``
+          differ; ``cropping_mode="resample"`` needs an explicit ``output_size``; without one it raises ``TypeError``
+          once the gate selects a sample, and a call that selects none returns the input
           (`#4652 <https://github.com/kornia/kornia/issues/4652>`_). ``start_ratio_range`` draws a pair
           used as ``(x / W, y / H)`` for the crop's top-left corner. These are the repaired axis conventions from
           `#4438 <https://github.com/kornia/kornia/issues/4438>`_.

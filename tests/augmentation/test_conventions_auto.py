@@ -158,6 +158,9 @@ class TestAutoAugmentConventions(BaseTester):
         self.assert_close(ordered.transform_matrix, expected_matrix)
         recomputed = ordered[0].get_transformation_matrix(marker, params=ordered_params[0].data, recompute=True)
         self.assert_close(recomputed, expected_matrix)
+        # The inverse undoes the translation before the rotation. Undoing them in forward order would leave the
+        # marker, which sits on the rotation centre here, at (2, 1) instead.
+        self.assert_close(ordered.inverse(ordered_output, params=ordered_params), marker)
 
         chained = RandAugment(n=2, m=15, policy=[[("rotate", -30.0, 30.0)], [("translate_x", -0.5, 0.5)]])
         chained_params = chained.forward_parameters(marker.shape)
@@ -288,6 +291,10 @@ class TestAutoAugmentConventions(BaseTester):
         aug = RandAugment(n=1, m=3, policy=[[("rotate", -30.0, 30.0)]])
         degrees = aug.forward_parameters(torch.Size([64, 1, 8, 6]))[0].data[0].data["degrees"]
         self.assert_close(degrees.abs(), torch.full_like(degrees, 3.0))
+        # A range that does not start at zero separates ``low + (high - low) * m / 30`` from ``high * m / 30``.
+        aug = RandAugment(n=1, m=6, policy=[[("brightness", 0.5, 1.5)]])
+        factor = aug.forward_parameters(torch.Size([8, 3, 8, 6]))[0].data[0].data["brightness_factor"]
+        self.assert_close(factor, torch.full_like(factor, 0.7))
 
     @pytest.mark.device_agnostic
     def test_convention_autoaugment_posterize_rounds_its_interval(self):
