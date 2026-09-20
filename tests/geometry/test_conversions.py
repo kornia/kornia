@@ -2800,6 +2800,17 @@ class TestPolCartConversions(BaseTester):
         rho_origin = kornia.geometry.conversions.cart2pol(zero, zero)[0]
         self.assert_close(rho_origin, zero, atol=0.0, rtol=0.0)
 
+        # Use float64 for the tiny-radius regression so the sqrt(x**2) round-trip
+        # is not dominated by float32 precision.
+        x = torch.tensor(5.0e-5, device=device, dtype=torch.float64)
+        y = torch.tensor(0.0, device=device, dtype=torch.float64)
+        rho_sub_eps = kornia.geometry.conversions.cart2pol(x, y)[0]
+        self.assert_close(rho_sub_eps, x, rtol=1e-12, atol=1e-15)
+
+        x = torch.tensor(1.0e-4, device=device, dtype=torch.float64)
+        rho_at_eps = kornia.geometry.conversions.cart2pol(x, y)[0]
+        self.assert_close(rho_at_eps, x, rtol=1e-12, atol=1e-15)
+
         x = torch.tensor(3.0, device=device, dtype=dtype)
         y = torch.tensor(4.0, device=device, dtype=dtype)
         rho = kornia.geometry.conversions.cart2pol(x, y)[0]
