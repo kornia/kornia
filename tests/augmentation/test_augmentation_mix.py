@@ -374,21 +374,26 @@ class TestRandomMosaic(BaseTester):
         assert bool((output_boxes[..., 1] <= 4).all())
         assert bool((output_boxes[..., 3] <= 4).all())
 
-    def test_resample_output_size_none_does_not_crash_4652(self, device, dtype):
+    def test_resample_output_size_none_matches_slice_4652(self, device, dtype):
         torch.manual_seed(2)
 
         input = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
 
-        aug = RandomMosaic(
+        slice_output = RandomMosaic(
+            cropping_mode="slice",
+            output_size=None,
+            p=1.0,
+            data_keys=["input"],
+        )(input)
+
+        resample_output = RandomMosaic(
             cropping_mode="resample",
             output_size=None,
             p=1.0,
             data_keys=["input"],
-        )
+        )(input)
 
-        output = aug(input)
-
-        assert output.shape == (4, 1, 12, 16)
+        assert resample_output.shape == slice_output.shape == input.shape
 
     def test_partial_batch_does_not_add_phantom_boxes_4652(self, device, dtype):
         torch.manual_seed(2)
