@@ -47,20 +47,16 @@ class PatchMix(MixAugmentationBaseV2):
             or broadcast it to the batch form ``False``.
 
     Convention:
-        - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``. A larger
-          value is not rejected: the patch is truncated at the image border, and once it exceeds a side by more than
-          one pixel, as the default ``16`` does on a smaller image, negative coordinates are drawn and an arbitrary
-          smaller rectangle is copied
-          (`#4650 <https://github.com/kornia/kornia/issues/4650>`_).
-          Each output sample copies that rectangle
-          from its paired input at the same sampled top-left coordinate; the output image retains its input shape.
-          The sampled ``lam`` is stored in ``_params`` but is not used to blend the image or produce labels.
-        - ``p`` is a batch-wide gate. With ``same_on_batch=True``, the pairing scores are tied before they are
-          sorted, so the resulting pairing order is backend- and input-size-dependent; the output follows the
-          recorded ``_params["mix_pairs"]`` rather than promising self-pairing (`#4650
-          <https://github.com/kornia/kornia/issues/4650>`_). This class implements image input only;
-          requesting a class, mask, box, or keypoint key reaches the base's unsupported handler, with the
-          no-selection exception described on the base.
+        - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``; a larger
+          value, such as the default ``16`` on a smaller image, raises ``ValueError`` when parameters are drawn,
+          whatever the gate. Each output sample copies that square from its paired input, ``_params["mix_pairs"]``,
+          at the same sampled ``(x, y)`` top-left coordinate, ``_params["patch_coords"]``; the output image retains
+          its input shape. The sampled ``lam`` is stored in ``_params`` but is not used to blend the image or
+          produce labels.
+        - ``p`` is a batch-wide gate. ``same_on_batch=True`` shares the patch coordinate across the batch; the
+          pairing is still drawn per call as one permutation of the batch, which may pair a sample with itself.
+          This class implements image input only; requesting a class, mask, box, or keypoint key raises
+          ``NotImplementedError`` whatever the gate, as described on the base.
 
     Examples:
         >>> aug = PatchMix(alpha=1.0, patch_size=4)

@@ -57,11 +57,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
           ``transform_matrix`` property raises ``RuntimeError``. ``inverse()`` takes keyword arguments only and
           raises ``RuntimeError`` as well, so a positional ``inverse(output)`` fails earlier with ``TypeError``.
         - ``data_keys`` chooses which positional inputs are dispatched. It does not promise that every concrete
-          mix augmentation implements every key: unsupported masks, boxes, keypoints, or classes raise
-          ``NotImplementedError`` (or a class-specific error) when the gate selects at least one sample. When it
-          selects none, an unsupported box, keypoint, or class annotation is returned unchanged instead; only an
-          unsupported mask raises regardless of the gate (`#4651 <https://github.com/kornia/kornia/issues/4651>`_).
-          The concrete class blocks state the supported non-image keys.
+          mix augmentation implements every key: an unsupported mask, box, keypoint, or class key raises
+          ``NotImplementedError`` (or a class-specific error) before anything is sampled, whether or not the gate
+          would select a sample. The concrete class blocks state the supported non-image keys.
         - ``batch_prob`` is sampled with the subclass parameters and gates the final image result. A selected
           image uses the mixed result and an unselected image keeps its input values, except where a concrete
           class changes the output size (see :class:`~kornia.augmentation.RandomMosaic`). The label and box

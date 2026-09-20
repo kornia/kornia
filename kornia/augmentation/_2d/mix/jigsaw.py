@@ -50,19 +50,15 @@ class RandomJigsaw(MixAugmentationBaseV2):
             to the batch form ``False``.
 
     Convention:
-        - ``grid=(rows, columns)`` partitions each image independently. Callers must ensure both image dimensions
-          are exactly divisible by their corresponding grid entries. This is not validated: when the gate selects
-          a sample, a non-divisible input can raise ``RuntimeError`` or silently lose data and change its channel
-          count (for example, ``(1, 3, 3, 4)`` with ``grid=(2, 2)`` becomes ``(1, 2, 3, 4)``).
-          A call that selects no samples returns the input
-          (`#4651 <https://github.com/kornia/kornia/issues/4651>`_).
-          For divisible inputs the output preserves the input shape. The sampled permutation is laid into the
+        - ``grid=(rows, columns)`` partitions each image independently. Both image dimensions must be exactly
+          divisible by their corresponding grid entries; any other input raises ``RuntimeError``, whether or not
+          the gate selects a sample. The output preserves the input shape. The sampled permutation is laid into the
           destination grid by columns: for a ``2 x 2`` grid, entries ``[0, 2]`` become the top row and entries
           ``[1, 3]`` the bottom row.
         - ``p`` is a per-sample gate. With ``same_on_batch=True`` the batch shares one gate draw and one patch
           permutation; with it false, each sample receives an independent gate and permutation. This class
-          implements image mixing only; requesting another data key reaches the base's unsupported handler, with
-          the no-selection exception described on the base.
+          implements image mixing only; requesting another data key raises ``NotImplementedError`` whatever the
+          gate, as described on the base.
 
     Examples:
         >>> jigsaw = RandomJigsaw((4, 4))

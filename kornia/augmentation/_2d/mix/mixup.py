@@ -78,9 +78,9 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     Convention:
         - With ``data_keys=["input", "class"]``, the class output is ``(B, 3)``: its columns are the original
           label, the label selected by ``_params["mixup_pairs"]``, and the sampled lambda. The image is
-          ``input * (1 - lambda) + paired_input * lambda``. Labels must be one-dimensional and are cast to the
-          image dtype, so integer class labels are returned as floating labels and large ones are rounded in half
-          precision (`#4657 <https://github.com/kornia/kornia/issues/4657>`_).
+          ``input * (1 - lambda) + paired_input * lambda``. Labels must be one-dimensional and are returned as
+          floating values in the image dtype, except that a ``float16`` or ``bfloat16`` image yields ``float32``
+          labels so integer class ids up to ``2 ** 24`` stay exact.
         - ``p`` is a batch-wide gate for this class, and the generator applies it a second time per row: inside a
           selected batch each row's lambda is kept with probability ``p`` and zeroed otherwise. A row passes both
           gates with probability ``p ** 2``; its image can still be unchanged if lambda is zero or it is paired

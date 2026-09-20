@@ -259,11 +259,18 @@ class Test3DAugmentationConventions(BaseTester):
         self.assert_close(affine.transform_matrix[0, :3, :3], matrix.transpose(-1, -2))
 
     @pytest.mark.device_agnostic
-    def test_wart_random_crop3d_returns_the_padded_volume_when_gated_off_4654(self):
+    def test_convention_random_crop3d_returns_the_unpadded_input_when_gated_off(self):
+        # Fixed by #4667: a gated-off call used to return the padded volume (#4654).
         volume = torch.rand(1, 1, 4, 5, 6)
-        assert K.RandomCrop3D((2, 3, 4), padding=2, p=0.0)(volume).shape == (1, 1, 8, 9, 10)
-        assert K.RandomCrop3D((6, 7, 9), pad_if_needed=True, p=0.0)(volume).shape == (1, 1, 8, 9, 12)
-        assert K.RandomCrop3D((2, 3, 4), p=0.0)(volume).shape == volume.shape
+        for kwargs in (
+            {"size": (2, 3, 4), "padding": 2},
+            {"size": (6, 7, 9), "pad_if_needed": True},
+            {"size": (2, 3, 4)},
+        ):
+            augmentation = K.RandomCrop3D(p=0.0, **kwargs)
+            self.assert_close(augmentation(volume), volume, rtol=0, atol=0)
+            self.assert_close(augmentation.transform_matrix, torch.eye(4)[None])
+        assert K.RandomCrop3D((2, 3, 4), padding=2, p=1.0)(volume).shape == (1, 1, 2, 3, 4)
 
     @pytest.mark.device_agnostic
     def test_convention_crop3d_validates_size_before_a_disabled_gate(self):
@@ -292,24 +299,21 @@ class Test3DAugmentationConventions(BaseTester):
         self.assert_close(augmentation.transform_matrix, torch.eye(4, device=device, dtype=dtype)[None])
 
     @pytest.mark.device_agnostic
-    def test_wart_motion_blur3d_kernel_range_is_per_sample_4653(self):
+    def test_convention_motion_blur3d_kernel_range_is_drawn_once_per_call_bounds_included(self):
+        # Fixed by #4662 and #4674: the size used to be drawn per sample, which raised for B > 1, and never
+        # reached the upper bound (#4653).
         volume = torch.rand(6, 1, 4, 5, 6)
         sizes = set()
-        failures = 0
-        for seed in range(20):
+        for seed in range(40):
             torch.manual_seed(seed)
             augmentation = K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)
-            raised = False
-            try:
-                augmentation(volume)
-            except RuntimeError as error:
-                assert "cannot be converted to Scalar" in str(error)
-                raised = True
+            assert augmentation(volume).shape == volume.shape
             drawn = augmentation._params["ksize_factor"]
-            assert raised == (drawn.unique().numel() > 1)
-            failures += raised
+            assert drawn.shape == (6,) and drawn.unique().numel() == 1
             sizes.update(drawn.tolist())
-        assert failures > 10
-        assert sizes == {3, 5}  # the upper bound 7 is never drawn
-        torch.manual_seed(0)
-        assert K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0, same_on_batch=True)(volume).shape == volume.shape
+        assert sizes == {3, 5, 7}
+        rounded_up = K.RandomMotionBlur3D((4, 4), 35.0, 0.5, p=1.0)
+        rounded_up(volume)
+        assert rounded_up._params["ksize_factor"].tolist() == [5] * 6
+        with pytest.raises(ValueError, match="smaller than or equal to"):
+            K.RandomMotionBlur3D((7, 3), 35.0, 0.5)

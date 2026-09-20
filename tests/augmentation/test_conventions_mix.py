@@ -24,6 +24,11 @@ from kornia.constants import DType
 from testing.base import BaseTester
 
 
+def _label_dtype(image_dtype: torch.dtype) -> torch.dtype:
+    # Half-precision images return float32 labels, so that integer class ids are not rounded.
+    return image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
+
+
 class TestMixConventions(BaseTester):
     def test_convention_mix_base_has_no_matrix_or_inverse(self):
         aug = K.RandomMixUpV2()
@@ -70,9 +75,11 @@ class TestMixConventions(BaseTester):
         expected = image * 0.75 + image.index_select(0, pairs) * 0.25
         self.assert_close(output, expected)
         assert mixed_labels.shape == (4, 3)
-        self.assert_close(mixed_labels[:, 0], labels.to(dtype))
-        self.assert_close(mixed_labels[:, 1], labels.index_select(0, pairs).to(dtype))
-        self.assert_close(mixed_labels[:, 2], torch.full((4,), 0.25, device=device, dtype=dtype))
+        label_dtype = _label_dtype(dtype)
+        assert output.dtype == dtype and mixed_labels.dtype == label_dtype
+        self.assert_close(mixed_labels[:, 0], labels.to(label_dtype))
+        self.assert_close(mixed_labels[:, 1], labels.index_select(0, pairs).to(label_dtype))
+        self.assert_close(mixed_labels[:, 2], torch.full((4,), 0.25, device=device, dtype=label_dtype))
 
     @pytest.mark.parametrize("num_mix", [1, 2])
     def test_convention_cutmix_class_axis_is_num_mix_then_batch(self, num_mix, device, dtype):
@@ -103,10 +110,12 @@ class TestMixConventions(BaseTester):
         self.assert_close(output, expected)
 
         assert mixed_labels.shape == (num_mix, 3, 3)
-        self.assert_close(mixed_labels[:, :, 0], labels.to(dtype).expand(num_mix, -1))
+        label_dtype = _label_dtype(dtype)
+        assert output.dtype == dtype and mixed_labels.dtype == label_dtype
+        self.assert_close(mixed_labels[:, :, 0], labels.to(label_dtype).expand(num_mix, -1))
         for mix, pairs in enumerate(aug._params["mix_pairs"].to(device)):
-            self.assert_close(mixed_labels[mix, :, 1], labels.index_select(0, pairs).to(dtype))
-        expected_lambdas = image.new_tensor([1 - 6 / 42, 1 - 6 / 42])[:num_mix]
+            self.assert_close(mixed_labels[mix, :, 1], labels.index_select(0, pairs).to(label_dtype))
+        expected_lambdas = torch.tensor([1 - 6 / 42, 1 - 6 / 42], device=device, dtype=label_dtype)[:num_mix]
         self.assert_close(mixed_labels[:, :, 2], expected_lambdas[:, None].expand(-1, 3))
 
     @pytest.mark.parametrize(("use_correct_lambda", "expected_lambda"), [(False, 0.25), (True, 0.75)])
@@ -126,7 +135,8 @@ class TestMixConventions(BaseTester):
         aug = K.RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=use_correct_lambda)
         _, mixed_labels = aug(image, labels, params=params)
 
-        self.assert_close(mixed_labels[0, :, 2], torch.full((2,), expected_lambda, device=device, dtype=dtype))
+        expected = torch.full((2,), expected_lambda, device=device, dtype=_label_dtype(dtype))
+        self.assert_close(mixed_labels[0, :, 2], expected)
 
     @pytest.mark.parametrize(
         ("factory", "label_shape"),
@@ -142,10 +152,11 @@ class TestMixConventions(BaseTester):
 
         self.assert_close(output, image)
         assert mixed_labels.shape == label_shape
-        expected_labels = labels.to(dtype).expand(label_shape[:-1])
+        label_dtype = _label_dtype(dtype)
+        expected_labels = labels.to(label_dtype).expand(label_shape[:-1])
         self.assert_close(mixed_labels[..., 0], expected_labels)
         self.assert_close(mixed_labels[..., 1], expected_labels)
-        self.assert_close(mixed_labels[..., 2], torch.zeros(label_shape[:-1], device=device, dtype=dtype))
+        self.assert_close(mixed_labels[..., 2], torch.zeros(label_shape[:-1], device=device, dtype=label_dtype))
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(
@@ -315,30 +326,40 @@ class TestMixConventions(BaseTester):
             assert bool((batch_prob == batch_prob[0]).all())
 
     @pytest.mark.device_agnostic
-    def test_wart_unsupported_key_passes_silently_without_selection_4651(self):
-        # #4651: the unsupported-key handlers and the Jigsaw reshape are only reached when a sample is selected.
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    @pytest.mark.parametrize(
+        ("factory", "supported", "class_error"),
+        [
+            (lambda p: K.RandomMixUpV2(p=p), {"class"}, NotImplementedError),
+            (lambda p: K.RandomCutMixV2(p=p, use_correct_lambda=True), {"class"}, NotImplementedError),
+            (lambda p: K.RandomJigsaw(grid=(2, 2), p=p), set(), NotImplementedError),
+            (lambda p: K.PatchMix(patch_size=4, p=p), set(), NotImplementedError),
+            (lambda p: K.RandomMosaic(p=p), {"bbox_xyxy"}, RuntimeError),
+        ],
+    )
+    def test_convention_unsupported_key_raises_whatever_the_gate(self, factory, supported, class_error, p):
+        # Fixed by #4676: these used to pass through silently whenever the gate selected no sample (#4651).
         image = torch.rand(4, 1, 8, 8)
-        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4)
-        with pytest.raises(NotImplementedError):
-            K.RandomMixUpV2(p=1.0)(image, boxes, data_keys=["input", "bbox_xyxy"])
-        _, returned = K.RandomMixUpV2(p=0.0)(image, boxes, data_keys=["input", "bbox_xyxy"])
-        self.assert_close(returned, boxes)
-        _, labels = K.RandomJigsaw(p=0.0, grid=(2, 2))(image, torch.arange(4), data_keys=["input", "class"])
-        assert torch.equal(labels, torch.arange(4))
-        with pytest.raises(NotImplementedError):
-            K.RandomMixUpV2(p=0.0)(image, torch.ones_like(image), data_keys=["input", "mask"])
-        indivisible = torch.rand(2, 1, 9, 13)
-        self.assert_close(K.RandomJigsaw(grid=(2, 3), p=0.0)(indivisible), indivisible)
-        with pytest.raises(RuntimeError, match="invalid for input of size"):
-            K.RandomJigsaw(grid=(2, 3), p=1.0)(indivisible)
+        annotations = {
+            "bbox_xyxy": torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4),
+            "keypoints": torch.rand(4, 2, 2),
+            "mask": torch.ones_like(image),
+            "class": torch.arange(4),
+        }
+        for key, annotation in annotations.items():
+            if key in supported:
+                factory(p)(image, annotation, data_keys=["input", key])
+                continue
+            with pytest.raises(class_error if key == "class" else NotImplementedError):
+                factory(p)(image, annotation, data_keys=["input", key])
 
-    def test_wart_jigsaw_nondivisible_input_can_silently_lose_a_channel_4651(self, device, dtype):
-        # The missing divisibility check can also let reshape infer fewer channels, instead of raising.
-        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 3, 3, 4)
-        params = {"batch_prob": torch.ones(1), "permutation": torch.tensor([[0, 1, 2, 3]])}
-        output = K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params)
-        assert output.shape == (1, 2, 3, 4)
-        self.assert_close(K.RandomJigsaw(grid=(2, 2), p=0.0)(image), image)
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_convention_jigsaw_rejects_a_nondivisible_input_whatever_the_gate(self, p, device, dtype):
+        # Fixed by #4676: (1, 3, 3, 4) with grid=(2, 2) used to come back as (1, 2, 3, 4), and p=0 returned the input.
+        for shape, grid in (((1, 3, 3, 4), (2, 2)), ((2, 1, 9, 13), (2, 3)), ((2, 1, 8, 13), (2, 3))):
+            image = torch.rand(shape, device=device, dtype=dtype)
+            with pytest.raises(RuntimeError, match="must be divisible by grid"):
+                K.RandomJigsaw(grid=grid, p=p)(image)
 
     @pytest.mark.device_agnostic
     def test_wart_mixup_and_cutmix_apply_p_to_rows_a_second_time_4649(self):
@@ -360,32 +381,35 @@ class TestMixConventions(BaseTester):
             assert 0.3 < rows.float().mean() < 0.7
 
     @pytest.mark.device_agnostic
-    def test_wart_patchmix_oversized_patch_and_same_on_batch_ties_4650(self):
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_convention_patchmix_rejects_a_patch_larger_than_the_image(self, p):
+        # Fixed by #4680: the default patch_size=16 used to draw negative corners on this image (#4650).
         image = torch.rand(4, 1, 8, 10)
-        aug = K.PatchMix(p=1.0)  # the default patch_size=16 exceeds both image sides
-        output = aug(image)
-        assert (aug._params["patch_coords"] < 0).all()
-        changed = (output != image)[:, 0]
-        assert changed.any(-1).sum(-1).max() < 8 and changed.any(-2).sum(-1).max() < 10
-        # same_on_batch ties the pair scores. argsort does not promise how equal scores are ordered, especially
-        # for large inputs, so assert the output follows the recorded pairing instead of platform-specific identity.
-        shared_image = torch.arange(1000, dtype=torch.float32).reshape(1000, 1, 1, 1).expand(-1, 1, 8, 10).clone()
-        shared = K.PatchMix(patch_size=4, p=1.0, same_on_batch=True)
-        shared_output = shared(shared_image)
-        pairs = shared._params["mix_pairs"]
-        assert torch.equal(pairs.sort().values, torch.arange(1000))
-        x, y = shared._params["patch_coords"].unbind(-1)
-        columns = torch.arange(10).view(1, 1, 10)
-        rows = torch.arange(8).view(1, 8, 1)
-        inside_patch = (
-            (columns >= x[:, None, None])
-            & (columns < x[:, None, None] + 4)
-            & (rows >= y[:, None, None])
-            & (rows < y[:, None, None] + 4)
-        )
+        for patch_size in (9, 16):
+            with pytest.raises(ValueError, match="`patch_size` to fit the input"):
+                K.PatchMix(patch_size=patch_size, p=p)(image)
+        assert K.PatchMix(patch_size=8, p=p)(image).shape == image.shape  # min(H, W) itself is accepted
+
+    @pytest.mark.device_agnostic
+    def test_convention_patchmix_same_on_batch_shares_the_patch_but_not_the_pairing(self):
+        # Fixed by #4680: a shared pairing draw used to argsort to the identity, so every image patched itself.
         # Each donor's pixel value is its batch index, providing an oracle independent of patch-copy slicing.
-        expected = torch.where(inside_patch[:, None], pairs[:, None, None, None].to(shared_image), shared_image)
-        self.assert_close(shared_output, expected, rtol=0, atol=0)
+        image = torch.arange(64, dtype=torch.float32).reshape(64, 1, 1, 1).expand(-1, 1, 8, 10).clone()
+        aug = K.PatchMix(patch_size=4, p=1.0, same_on_batch=True)
+        output = aug(image)
+        pairs = aug._params["mix_pairs"]
+        assert torch.equal(pairs.sort().values, torch.arange(64))
+        assert not torch.equal(pairs, torch.arange(64))
+        coords = aug._params["patch_coords"]
+        assert bool((coords == coords[0]).all())
+        x, y = (int(value) for value in coords[0])
+        expected = image.clone()
+        expected[:, :, y : y + 4, x : x + 4] = pairs.to(image)[:, None, None, None]
+        self.assert_close(output, expected, rtol=0, atol=0)
+        # Without same_on_batch the coordinate is per sample as well.
+        independent = K.PatchMix(patch_size=4, p=1.0)
+        independent(image)
+        assert independent._params["patch_coords"].unique(dim=0).shape[0] > 1
 
     @pytest.mark.device_agnostic
     def test_wart_mosaic_output_size_boxes_and_resample_default_4652(self):
@@ -413,10 +437,14 @@ class TestMixConventions(BaseTester):
             K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
 
     @pytest.mark.device_agnostic
-    def test_wart_mix_labels_round_in_bfloat16_4657(self):
-        image = torch.rand(2, 1, 4, 4, dtype=torch.bfloat16)
+    @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_convention_mix_labels_stay_exact_for_half_precision_images(self, image_dtype, p):
+        # Fixed by #4661: labels used to be cast to the image dtype, so bfloat16 returned [256, 1000] here (#4657).
+        image = torch.rand(2, 1, 4, 4, dtype=image_dtype)
         labels = torch.tensor([257, 999])
-        for aug in (K.RandomMixUpV2(p=1.0), K.RandomCutMixV2(p=1.0, use_correct_lambda=True)):
-            _, mixed = aug(image, labels, data_keys=["input", "class"])
-            assert mixed.dtype == torch.bfloat16
-            assert mixed[..., 0].flatten().tolist() == [256.0, 1000.0]
+        for aug in (K.RandomMixUpV2(p=p), K.RandomCutMixV2(p=p, use_correct_lambda=True)):
+            output, mixed = aug(image, labels, data_keys=["input", "class"])
+            assert output.dtype == image_dtype and mixed.dtype == torch.float32
+            assert mixed[..., 0].flatten().tolist() == [257.0, 999.0]
+            assert set(mixed[..., 1].flatten().tolist()) <= {257.0, 999.0}  # the paired label is not rounded either

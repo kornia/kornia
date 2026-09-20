@@ -76,8 +76,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           padding a ``3 x 3 x 3`` input by ``1`` and cropping the full ``5 x 5 x 5`` volume records an identity
           matrix even though the original voxel ``(1, 1, 1)`` moves to ``(2, 2, 2)``.
         - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped.
-          With ``padding`` or ``pad_if_needed`` a valid gated-off call returns the padded volume rather than the input
-          (`#4654 <https://github.com/kornia/kornia/issues/4654>`_).
+          A valid gated-off call returns the input itself -- unpadded, at the input shape rather than ``size`` --
+          with an identity ``transform_matrix``.
           Defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:

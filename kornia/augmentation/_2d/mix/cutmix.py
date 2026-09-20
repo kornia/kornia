@@ -73,9 +73,9 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     Convention:
         - With ``data_keys=["input", "class"]``, the class output is ``(num_mix, B, 3)``. Its last axis holds
           the original label, the label selected by that mix's permutation, and the area fraction returned as
-          lambda. Labels must be one-dimensional and are cast to the image dtype, which rounds large integer labels
-          in half precision
-          (`#4657 <https://github.com/kornia/kornia/issues/4657>`_).
+          lambda. Labels must be one-dimensional and are returned as floating values in the image dtype, except that
+          a ``float16`` or ``bfloat16`` image yields ``float32`` labels so integer class ids up to
+          ``2 ** 24`` stay exact.
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
         - ``p`` is a batch-wide gate, and the generator applies it a second time per row and mix: inside a selected
