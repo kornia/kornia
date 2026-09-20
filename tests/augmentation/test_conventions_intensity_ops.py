@@ -131,19 +131,20 @@ class TestBlurConventions(BaseTester):
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `(1, 5)` keeps row sums
     # [0, 0, 0, 9, 0, 0, 0] and `(5, 1)` gives [0, 0, 0, 0, 0, 0, 0]; with the bar on row 2 the
     # surviving sum moves to index 2, and on the transposed 9x7 bar the roles of the two kernels swap.
-    def test_convention_median_blur_border_median_uses_reflect_padding(self, device, dtype):
-        # A constant-ones image: reflect padding reflects the boundary ones into the padding window,
-        # so corner, edge, and center windows all hold only ones and their medians evaluate to 1.
+    def test_convention_median_blur_border_median_uses_constant_padding(self, device, dtype):
+        # A constant-ones image: constant zero padding makes the corner median zero,
+        # while edge and center windows still have enough ones for a median of 1.
         ones = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomMedianBlur((3, 3), p=1.0)(ones)
-        assert float(out[0, 0, 0, 0]) == 1.0 and float(out[0, 0, 0, 1]) == 1.0
+        assert float(out[0, 0, 0, 0]) == 0.0 and float(out[0, 0, 0, 1]) == 1.0
         assert float(out[0, 0, 1, 1]) == 1.0
-        # 5x5 on a 6x6 image: reflect padding preserves the constant value across the border,
-        # so the top row consists entirely of ones.
+        # 5x5 on a 6x6 image: the top row's window holds 3 image rows; with constant zero padding,
+        # columns 2 and 3 hold 15 ones (median 1), while columns 1 and 4 hold 12 and corners hold 9
+        # (median 0), producing zero medians near the corners and one in the middle.
         torch.manual_seed(_FORWARD_SEED)
         wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6, device=device, dtype=dtype))
-        self.assert_close(wide[0, 0, 0], ones.new_tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
+        self.assert_close(wide[0, 0, 0], ones.new_tensor([0.0, 0.0, 1.0, 1.0, 0.0, 0.0]))
 
     def test_convention_box_blur_even_kernel_is_accepted_and_off_centre(self, device, dtype):
         # Snippet used to generate expected:
@@ -195,12 +196,6 @@ class TestBlurConventions(BaseTester):
         large = torch.rand(2, 3, 32, 32).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match="is invalid for input of size"):
             _sync(even(large).device)
-        # The 1x1 image cannot be reflect-padded with the radius required by the (4, 4) kernel,
-        # which raises before the view: the claim is "raises for every image", not "raises the
-        # same error for every image".
-        small = torch.rand(2, 3, 1, 1).to(device=device, dtype=dtype)
-        with pytest.raises(RuntimeError, match="Padding size should be less"):
-            _sync(even(small).device)
 
     # Row 6c-20 (issue #4433, closed by #4486, which documents the mapping): RandomBoxBlur's
     # ``normalized`` flag is not a normalization switch -- it is forwarded as box_blur's
@@ -582,12 +577,10 @@ class TestBlurConventions(BaseTester):
             _sync(K.RandomSharpness(1.0, p=1.0)(small).device)
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomSharpness(1.0, p=1.0)(square).shape == square.shape
-        # RandomMedianBlur now uses reflect padding by default and rejects the one-row image,
+        # RandomMedianBlur keeps constant padding as its default and accepts the one-row image,
         # while RandomMotionBlur continues to accept it.
-        if reflect_ok:
-            torch.manual_seed(_FORWARD_SEED)
-            with pytest.raises(RuntimeError, match="Padding size should be less"):
-                _sync(K.RandomMedianBlur(p=1.0)(thin).device)
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomMedianBlur(p=1.0)(thin).shape == thin.shape
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)(thin).shape == thin.shape
 
