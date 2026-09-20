@@ -154,6 +154,10 @@ class TestParamValidation:
             # rather than the endpoint. Now it gets the same message as every other non-finite range.
             ((0.0, float("nan")), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
             ((float("-inf"), 1.0), 0, (-10, 10), "joint", ValueError, "must be finite"),
+            # `check=None` skips the bounds check, not the finiteness rule, exactly as it does
+            # for a scalar: an infinite draw range is a NaN at forward time whatever the domain.
+            ((0.0, float("inf")), 0, (0, float("inf")), None, ValueError, "must be finite"),
+            (float("inf"), 0, (0, float("inf")), None, ValueError, "must be finite"),
         ],
     )
     def test_range_bound_errors(self, factor, center, bounds, check, expected_exception, match_msg):
