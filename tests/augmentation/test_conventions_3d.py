@@ -405,7 +405,10 @@ class Test3DAugmentationConventions(BaseTester):
         volume = torch.ones(1, 1, 4, 5, 6)
         output = K.RandomCrop3D((5, 5, 6), p=1.0)(volume)
         assert output.shape == (1, 1, 5, 5, 6)
-        assert float(output.sum(dim=(1, 3, 4))[0, -1]) == 0.0  # the appended slab is empty
+        # The appended slab carries no input signal. It is compared against a real slice rather than
+        # against zero: torch 2.5.1 and 2.9.1 leave ~1e-6 of grid_sample roundoff there, 2.14 leaves 0.
+        slices = output.sum(dim=(1, 3, 4))[0]
+        assert float(slices[-1]) < 1e-3 * float(slices[0])
         with pytest.raises(ValueError, match="cannot be smaller than crop size"):
             K.RandomCrop3D((6, 5, 6), p=1.0)(volume)
         # CenterCrop3D rejects the same one-voxel request.
@@ -415,9 +418,13 @@ class Test3DAugmentationConventions(BaseTester):
     @pytest.mark.device_agnostic
     def test_convention_perspective3d_identity_is_only_float32_grid_precise(self):
         volume = torch.rand(1, 1, 4, 5, 6, dtype=torch.float64)
-        assert float((K.RandomRotation3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max()) == 0.0
+        rotation = float((K.RandomRotation3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
         residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
-        assert 0.0 < residual < 1e-5  # the grid is built in float32, so this is not float64 roundoff
+        # The rotation path is exact to float64 roundoff (0 on torch 2.14, ~2e-16 on 2.5.1 and 2.9.1);
+        # the perspective path is off by ~1e-7 because its sampling grid is built in float32.
+        assert rotation < 1e-12
+        assert residual > 100 * max(rotation, 1e-18)
+        assert residual < 1e-5
 
     @pytest.mark.device_agnostic
     def test_convention_random_crop3d_offset_reaches_both_ends(self):
