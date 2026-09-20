@@ -17,13 +17,40 @@
 
 import math
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from torch.distributions import Beta, Uniform
 
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.keypoints import Keypoints
+
+
+def _pad_with_fill(
+    input: torch.Tensor, padding: List[int], fill: Union[float, Sequence[float]], mode: str
+) -> torch.Tensor:
+    """Pad ``input`` with a scalar or with one constant per channel.
+
+    ``torch.nn.functional.pad`` only accepts a scalar ``value``, so a sequence ``fill`` is applied by padding
+    with zeros and writing the per-channel constants into the region the padding added. A sequence is only
+    meaningful for ``mode="constant"``.
+    """
+    if isinstance(fill, (int, float)):
+        return F.pad(input, padding, value=float(fill), mode=mode)
+
+    if mode != "constant":
+        raise ValueError(f"A sequence `fill` needs `padding_mode='constant'`, got '{mode}'.")
+
+    channels = input.shape[1]
+    values = torch.as_tensor(list(fill), device=input.device, dtype=input.dtype).flatten()
+    if values.numel() != channels:
+        raise ValueError(f"`fill` must hold one value per channel: got {values.numel()} for {channels} channels.")
+
+    padded = F.pad(input, padding, value=0.0, mode=mode)
+    # 1 where a voxel came from the input, 0 where the padding added one. Negative padding crops both alike.
+    inside = F.pad(torch.ones_like(input[:, :1]), padding, value=0.0, mode=mode)
+    return torch.where(inside.bool(), padded, values.view(1, channels, *([1] * (padded.ndim - 2))))
 
 
 def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int = 0) -> None:

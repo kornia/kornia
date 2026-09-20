@@ -17,15 +17,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.utils._crop import _compiled_slice_resize
-from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.helpers import _constant_tensor, _pad_with_fill
 from kornia.constants import Resample
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
@@ -49,9 +48,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         pad_if_needed: It will F.pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
-        fill: Pixel fill value for constant fill. Default is 0. If a tuple of
-            length 3, it is used to fill R, G, B channels respectively.
-            This value is only used when the padding_mode is constant.
+        fill: Pixel fill value for constant fill. Default is 0. A sequence gives one value per channel,
+            so it must be as long as the input's channel dimension. This value is only used when the
+            padding_mode is constant, and a sequence requires it.
         padding_mode: Type of padding. Should be: constant, reflect, replicate.
         resample: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
@@ -140,7 +139,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         size: Tuple[int, int],
         padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False,
-        fill: int = 0,
+        fill: Union[float, Sequence[float]] = 0,
         padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
@@ -200,7 +199,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             padding = self.compute_padding(input.shape)
 
         if any(padding):
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            input = _pad_with_fill(input, padding, flags["fill"], flags["padding_mode"])
 
         return input
 

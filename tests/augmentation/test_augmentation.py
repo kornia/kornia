@@ -3390,6 +3390,24 @@ class TestRandomRotation(BaseTester):
 
 
 class TestRandomCrop(BaseTester):
+    def test_fill_accepts_one_value_per_channel(self, device, dtype):
+        image = torch.zeros(1, 3, 2, 2, device=device, dtype=dtype)
+        fill = (0.25, 0.5, 0.75)
+        padded = RandomCrop((4, 4), padding=1, fill=fill, p=1.0).precrop_padding(image)
+        assert padded.shape == (1, 3, 4, 4)
+        expected = image.new_tensor(fill).view(1, 3, 1, 1)
+        self.assert_close(padded[:, :, 0, 0], expected[:, :, 0, 0])
+        self.assert_close(padded[:, :, -1, -1], expected[:, :, 0, 0])
+        self.assert_close(padded[:, :, 1:3, 1:3], image)
+        scalar = RandomCrop((4, 4), padding=1, fill=7.0, p=1.0).precrop_padding(image)
+        self.assert_close(scalar[:, :, 0, 0], torch.full((1, 3), 7.0, device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    def test_fill_sequence_is_validated(self):
+        image = torch.zeros(1, 3, 2, 2)
+        with pytest.raises(ValueError, match="one value per channel"):
+            RandomCrop((4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(image)
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
