@@ -245,6 +245,24 @@ class Test3DAugmentationConventions(BaseTester):
         self.assert_close(output, expected)
 
     @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        ("axis", "line"),
+        [(0, (2, 2, slice(1, 4))), (1, (slice(1, 4), 2, 2)), (2, (2, slice(1, 4), 2))],
+        ids=["yaw-about-x", "pitch-about-y", "roll-about-z"],
+    )
+    def test_convention_motion_blur3d_kernel_uses_the_yaw_pitch_roll_order(self, axis, line):
+        # The zero-angle kernel is a line along x (W). A quarter turn about x leaves it in place, one about y
+        # stands it along D, and one about z lays it along H -- so the three angle slots are distinguishable.
+        volume = torch.zeros(1, 1, 5, 5, 5)
+        volume[..., 2, 2, 2] = 1
+        angle = [(0.0, 0.0)] * 3
+        angle[axis] = (90.0, 90.0)
+        output = K.RandomMotionBlur3D(3, tuple(angle), (0.0, 0.0), p=1.0)(volume)
+        expected = torch.zeros_like(volume)
+        expected[(0, 0, *line)] = 1 / 3
+        self.assert_close(output, expected, atol=1e-4, rtol=0)
+
+    @pytest.mark.device_agnostic
     def test_convention_3d_augmentations_have_no_direct_inverse(self):
         augmentations = (
             K.RandomAffine3D((0.0, 0.0, 0.0)),

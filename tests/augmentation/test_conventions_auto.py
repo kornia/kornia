@@ -88,6 +88,14 @@ class TestAutoAugmentConventions(BaseTester):
         for _ in range(8):
             params = aug.forward_parameters(torch.Size([2, 1, 8, 6]))
             assert len({param.name for param in params}) == 3
+        # The drawn order is the execution order, not the policy-list order: 64 draws of 3 children reach more than
+        # one of the six orders, and each parameter list replays its own order.
+        orders = {tuple(param.name for param in aug.forward_parameters(torch.Size([2, 1, 8, 6]))) for _ in range(64)}
+        assert len(orders) > 1
+        image = torch.rand(2, 1, 8, 6)
+        aug(image)
+        drawn = [param.name for param in aug._params]
+        assert [name for name, _ in aug.get_forward_sequence(aug._params)] == drawn
 
     @pytest.mark.device_agnostic
     def test_convention_autoaugment_magnitude_bin_samples_its_adjacent_interval(self):
