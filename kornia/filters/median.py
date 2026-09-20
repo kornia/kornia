@@ -68,7 +68,7 @@ def _median_network(size: int) -> tuple[tuple[int, int, bool, bool], ...]:
 _MEDIAN_NETWORKS = {3: _median_network(9), 5: _median_network(25)}
 
 
-def _median_blur_network(input: torch.Tensor, size: int, border_type: str) -> torch.Tensor:
+def _median_blur_network(input: torch.Tensor, size: int, border_type: str = "constant") -> torch.Tensor:
     """Select a small-window median without materializing patches or sorting them."""
     radius = size // 2
     padded = F.pad(input, (radius, radius, radius, radius), mode=border_type)
@@ -94,7 +94,7 @@ def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]
     return (ky - 1) // 2, (kx - 1) // 2
 
 
-def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect") -> torch.Tensor:
+def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "constant") -> torch.Tensor:
     r"""Blur an image using the median filter.
 
     .. image:: _static/img/median_blur.png
@@ -103,7 +103,8 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
         input: the input image with shape :math:`(B,C,H,W)`.
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before filtering.
-        The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
+            The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
+            Default: `'constant'`.
 
     Returns:
         the blurred input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -155,13 +156,16 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
     b, c, h, w = input.shape
 
     # map the local window to single vector
-    input = F.pad(input, (padding[1], padding[1], padding[0], padding[0]), mode=border_type)
-    features: torch.Tensor = F.conv2d(
-        input.reshape(b * c, 1, h + 2 * padding[0], w + 2 * padding[1]),
-        kernel,
-        padding=0,
-        stride=1,
-    )
+    if border_type == "constant":
+        features: torch.Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
+    else:
+        padded = F.pad(input, (padding[1], padding[1], padding[0], padding[0]), mode=border_type)
+        features = F.conv2d(
+            padded.reshape(b * c, 1, h + 2 * padding[0], w + 2 * padding[1]),
+            kernel,
+            padding=0,
+            stride=1,
+        )
 
     features = features.view(b, c, ky * kx, h, w)  # BxCx(K_h * K_w)xHxW
 
@@ -179,6 +183,7 @@ class MedianBlur(nn.Module):
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before filtering.
             The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
+            Default: `'constant'`.
 
     Returns:
         the blurred input torch.Tensor.
@@ -196,7 +201,7 @@ class MedianBlur(nn.Module):
 
     """
 
-    def __init__(self, kernel_size: tuple[int, int] | int, border_type: str = "reflect") -> None:
+    def __init__(self, kernel_size: tuple[int, int] | int, border_type: str = "constant") -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.border_type = border_type
