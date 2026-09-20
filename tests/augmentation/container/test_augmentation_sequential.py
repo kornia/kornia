@@ -748,12 +748,7 @@ class TestConventionAugmentationSequential(BaseTester):
         assert not torch.equal(out_masks[1], output[1:])
 
     def test_mix_augmentation_inverse_raises_4693(self, device, dtype):
-        image = torch.stack(
-            [
-                torch.full((2, 4, 6), float(i + 1), device=device, dtype=dtype)
-                for i in range(3)
-            ]
-        )
+        image = torch.stack([torch.full((2, 4, 6), float(i + 1), device=device, dtype=dtype) for i in range(3)])
         mask = torch.zeros(3, 4, 6, device=device, dtype=torch.long)
 
         for i in range(3):
@@ -773,12 +768,7 @@ class TestConventionAugmentationSequential(BaseTester):
             seq.inverse(*output)
 
     def test_mix_augmentation_3d_inverse_raises_4693(self, device, dtype):
-        image = torch.stack(
-            [
-                torch.full((2, 3, 4, 5), float(i + 1), device=device, dtype=dtype)
-                for i in range(3)
-            ]
-        )
+        image = torch.stack([torch.full((2, 3, 4, 5), float(i + 1), device=device, dtype=dtype) for i in range(3)])
         mask = torch.zeros(3, 3, 4, 5, device=device, dtype=torch.long)
 
         for i in range(3):
