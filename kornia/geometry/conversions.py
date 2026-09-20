@@ -210,12 +210,8 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
     squared_radius = x**2 + y**2
-    safe_squared_radius = torch.where(
-        squared_radius > eps, squared_radius, torch.ones_like(squared_radius)
-    )
-    rho = torch.where(
-        squared_radius > eps, torch.sqrt(safe_squared_radius), torch.zeros_like(squared_radius)
-    )
+    safe_squared_radius = torch.where(squared_radius > eps, squared_radius, torch.ones_like(squared_radius))
+    rho = torch.where(squared_radius > eps, torch.sqrt(safe_squared_radius), torch.zeros_like(squared_radius))
     phi = torch.atan2(y, x)
     return rho, phi
 
