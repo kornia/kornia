@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple, Union
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -33,6 +35,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
 
     Args:
         p: probability of applying the transformation for the whole batch.
+            When skipped, the input is returned without padding or cropping.
         size: Desired output size (out_d, out_h, out_w) of the crop.
             Must be Tuple[int, int, int], then out_d = size[0], out_h = size[1], out_w = size[2].
         padding: Optional padding on each border of the image.
@@ -108,8 +111,10 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         }
         self._param_generator = rg.CropGenerator3D(size, None)
 
-    def precrop_padding(self, input: torch.Tensor, flags: Optional[Dict[str, Any]] = None) -> torch.Tensor:
-        flags = self.flags if flags is None else flags
+    def _compute_padding(self, shape: Tuple[int, ...], flags: Dict[str, Any]) -> List[List[int]]:
+        """Compute successive padding steps without modifying the input volume."""
+        padding_steps: List[List[int]] = []
+        depth, height, width = shape[-3:]
         padding = flags["padding"]
         if padding is not None:
             if isinstance(padding, int):
@@ -120,18 +125,26 @@ class RandomCrop3D(GeometricAugmentationBase3D):
                 padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]
             else:
                 raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {padding}.")
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            padding_steps.append(padding)
+            depth += padding[4] + padding[5]
+            height += padding[2] + padding[3]
+            width += padding[0] + padding[1]
 
-        if flags["pad_if_needed"] and input.shape[-3] < flags["size"][0]:
-            padding = [0, 0, 0, 0, flags["size"][0] - input.shape[-3], flags["size"][0] - input.shape[-3]]
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+        if flags["pad_if_needed"] and depth < flags["size"][0]:
+            padding_steps.append([0, 0, 0, 0, flags["size"][0] - depth, flags["size"][0] - depth])
 
-        if flags["pad_if_needed"] and input.shape[-2] < flags["size"][1]:
-            padding = [0, 0, (flags["size"][1] - input.shape[-2]), flags["size"][1] - input.shape[-2], 0, 0]
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+        if flags["pad_if_needed"] and height < flags["size"][1]:
+            padding_steps.append([0, 0, flags["size"][1] - height, flags["size"][1] - height, 0, 0])
 
-        if flags["pad_if_needed"] and input.shape[-1] < flags["size"][2]:
-            padding = [flags["size"][2] - input.shape[-1], flags["size"][2] - input.shape[-1], 0, 0, 0, 0]
+        if flags["pad_if_needed"] and width < flags["size"][2]:
+            padding_steps.append([flags["size"][2] - width, flags["size"][2] - width, 0, 0, 0, 0])
+
+        return padding_steps
+
+    def precrop_padding(self, input: torch.Tensor, flags: Optional[Dict[str, Any]] = None) -> torch.Tensor:
+        flags = self.flags if flags is None else flags
+        # Keep fixed and automatic padding separate to preserve non-constant boundary values.
+        for padding in self._compute_padding(tuple(input.shape), flags):
             input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         return input
@@ -153,13 +166,16 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
 
+        input = self.precrop_padding(input, flags)
         return crop_by_transform_mat3d(
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None, **kwargs: Any
-    ) -> torch.Tensor:
-        # TODO: need to align 2D implementations
-        input = self.precrop_padding(input)
-        return super().forward(input, params)
+    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        # Sample crop coordinates on the padded canvas, while keeping the skip path unpadded.
+        padded_shape = list(batch_shape)
+        for padding in self._compute_padding(batch_shape, self.flags):
+            padded_shape[-3] += padding[4] + padding[5]
+            padded_shape[-2] += padding[2] + padding[3]
+            padded_shape[-1] += padding[0] + padding[1]
+        return super().forward_parameters(tuple(padded_shape))
