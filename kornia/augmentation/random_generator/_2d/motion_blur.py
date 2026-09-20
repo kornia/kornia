@@ -76,14 +76,15 @@ class MotionBlurGenerator(RandomGeneratorBase):
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
-            self.ksize_sampler = UniformDistribution(self.kernel_size // 2, self.kernel_size // 2, validate_args=False)
-        elif isinstance(self.kernel_size, tuple):
+            ksize_bound = torch.as_tensor(self.kernel_size // 2, device=device, dtype=dtype)
+            self.ksize_sampler = UniformDistribution(ksize_bound, ksize_bound, validate_args=False)
+        elif isinstance(self.kernel_size, (tuple, list)):
             # kernel_size is fixed across the batch
             if len(self.kernel_size) != 2:
                 raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {self.kernel_size}.")
-            self.ksize_sampler = UniformDistribution(
-                self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False
-            )
+            ksize_min = torch.as_tensor(self.kernel_size[0] // 2, device=device, dtype=dtype)
+            ksize_max = torch.as_tensor((self.kernel_size[1] + 1) // 2, device=device, dtype=dtype)
+            self.ksize_sampler = UniformDistribution(ksize_min, ksize_max, validate_args=False)
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
 

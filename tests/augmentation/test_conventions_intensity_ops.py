@@ -393,16 +393,20 @@ class TestBlurConventions(BaseTester):
     # executed 2026-09-16 (torch 2.14.0, cpu) -> `[3]`, `[3, 5]`, `[5, 7, 9]`; `idx` over 400 seeds at
     # B = 6 lands on every row (`{0: 67, 1: 71, 2: 66, 3: 57, 4: 83, 5: 56}`).
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize(("kernel_size", "drawn"), [((3, 5), [3]), ((3, 7), [3, 5]), ((5, 11), [5, 7, 9])])
-    def test_wart_random_motion_blur_upper_bound_is_never_drawn_4599(self, kernel_size, drawn):
+    @pytest.mark.parametrize(
+        ("kernel_size", "drawn"),
+        [
+            ((3, 5), [3, 5]),
+            ((3, 7), [3, 5, 7]),
+            ((5, 11), [5, 7, 9, 11]),
+        ],
+    )
+    def test_random_motion_blur_upper_bound_is_drawn_4599(self, kernel_size, drawn):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomMotionBlur(kernel_size, (0.0, 0.0), (0.0, 0.0), p=1.0)
         factors = aug.forward_parameters((20000, 1, 8, 8))["ksize_factor"]
-        assert sorted(set(factors[factors != kernel_size[1]].tolist())) == drawn
-        # The requested upper bound is odd and admissible, and it is practically absent: at most a rounding
-        # handful of 20000 draws, where a uniform draw over the odd sizes would give thousands.
-        assert kernel_size[1] % 2 == 1 and kernel_size[1] not in drawn
-        assert int((factors == kernel_size[1]).sum()) < 5
+        assert sorted(set(factors.tolist())) == drawn
+        assert int((factors == kernel_size[1]).sum()) > 1000
 
     # Issue #4599, the other half: the per-sample draw is real, and a random index selects which one
     # the batch gets -- so `_params["ksize_factor"]` holds B different values while one kernel is used.
