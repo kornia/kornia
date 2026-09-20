@@ -1042,10 +1042,9 @@ class TestConventionAugmentationBase2D(BaseTester):
             ("RandomCrop", IndexError, "list index out of range"),
             ("LongestMaxSize", KeyError, "output_size"),
             ("RandomAutoContrast", ValueError, "Invalid input tensor, it is empty."),
-            ("Normalize", RuntimeError, "cannot reshape tensor of 0 elements"),
         ],
     )
-    def test_wart_zero_batch_raises_in_four_exception_families_4429(self, name, error, message, device, dtype):
+    def test_wart_zero_batch_raises_in_three_exception_families_4429(self, name, error, message, device, dtype):
         # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". These representative
         # augmentations raise through distinct failure paths; RandomAutoContrast is a deliberate validation
         # error and the others expose implementation details.
@@ -1057,7 +1056,6 @@ class TestConventionAugmentationBase2D(BaseTester):
             "RandomCrop": lambda: K.RandomCrop((4, 6), p=1.0),
             "LongestMaxSize": lambda: K.LongestMaxSize(16, p=1.0),
             "RandomAutoContrast": lambda: K.RandomAutoContrast(p=1.0),
-            "Normalize": lambda: K.Normalize(0.5, 0.5, p=1.0),
         }
         with pytest.raises(error, match=re.escape(message)):
             builders[name]()(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
@@ -1079,11 +1077,6 @@ class TestConventionAugmentationBase2D(BaseTester):
                 lambda: K.RandomAutoContrast(p=1.0),
                 (0, 3, 6, 8),
                 marks=pytest.mark.xfail(strict=True, raises=ValueError, reason="Tracked in #4429"),
-            ),
-            pytest.param(
-                lambda: K.Normalize(0.5, 0.5, p=1.0),
-                (0, 3, 6, 8),
-                marks=pytest.mark.xfail(strict=True, raises=RuntimeError, reason="Tracked in #4429"),
             ),
         ],
     )

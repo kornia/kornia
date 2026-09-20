@@ -176,6 +176,9 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
+    if shape[0] == 0:
+        return data
+
     mean = mean[..., None]
     std = std[..., None]
 

@@ -60,6 +60,19 @@ class TestNormalize(BaseTester):
         f = kornia.enhance.Normalize(mean, std)
         self.assert_close(f(data), expected)
 
+    def test_empty_batch(self, device, dtype):
+        data = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
+        mean = torch.tensor([0.5], device=device, dtype=dtype)
+        std = torch.tensor([0.5], device=device, dtype=dtype)
+
+        output = kornia.enhance.normalize(data, mean, std)
+        augmentation_output = kornia.augmentation.Normalize(mean, std, p=1.0)(data)
+
+        assert output.shape == data.shape
+        assert output.device == data.device
+        assert output.dtype == data.dtype
+        assert augmentation_output.shape == data.shape
+
     def test_broadcast_normalize(self, device, dtype):
         # prepare input data
         data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
