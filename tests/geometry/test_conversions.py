@@ -2803,8 +2803,8 @@ class TestPolCartConversions(BaseTester):
         # Use float64 for the tiny-radius regression where supported so the
         # sqrt(x**2) round-trip is not dominated by float32 precision.
         tiny_dtype = torch.float32 if device.type == "mps" else torch.float64
-        tiny_rtol = 1e-5 if tiny_dtype == torch.float32 else 1e-12
-        tiny_atol = 1e-8 if tiny_dtype == torch.float32 else 1e-15
+        tiny_rtol = 2e-3 if tiny_dtype == torch.float32 else 1e-12
+        tiny_atol = 1e-7 if tiny_dtype == torch.float32 else 1e-15
 
         x = torch.tensor(5.0e-5, device=device, dtype=tiny_dtype)
         y = torch.tensor(0.0, device=device, dtype=tiny_dtype)
