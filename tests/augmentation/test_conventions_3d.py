@@ -180,7 +180,7 @@ class Test3DAugmentationConventions(BaseTester):
         assert marker(kornia.geometry.transform.rotate3d(volume, *angles)[0, 0, 3]) == (4, 5)
 
     def test_wart_random_affine3d_rotation_sign_4408(self, device, dtype):
-        # #4408: the affine composer negates the angle relative to RandomRotation3D; the pixel directions are pinned below.
+        # #4408: the affine composer negates the angle relative to RandomRotation3D; pixel directions are pinned above.
         if not supports_bilinear_3d_grid_sample(device, dtype):
             pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
         volume = torch.zeros(1, 1, 5, 5, 5, device=device, dtype=dtype)

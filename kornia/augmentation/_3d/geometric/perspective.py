@@ -50,7 +50,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
         - ``distortion_scale=0`` generates identical source and destination corners. The default bilinear,
-          ``align_corners=False`` perspective warp nevertheless does not reproduce its input, not even a constant volume;
+          ``align_corners=False`` perspective warp nevertheless does not reproduce its input, even a constant one;
           use ``align_corners=True`` for an identity warp. The false-setting normalization defect is tracked in
           `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
         - the default interpolation is bilinear and the default ``align_corners`` is ``False``.
