@@ -572,8 +572,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if not isinstance(inp, torch.Tensor):
                     raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
-                if self.contains_video_sequential or self.contains_3d_augmentation:
+                if self.contains_video_sequential:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
+                elif self.contains_3d_augmentation:
+                    _, out_shape = self.autofill_dim(inp, dim_range=(5, 5))
                 else:
                     _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
                 params = self.forward_parameters(out_shape)
