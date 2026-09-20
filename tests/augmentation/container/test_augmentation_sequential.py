@@ -747,6 +747,56 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(out_masks[1], output[:1])
         assert not torch.equal(out_masks[1], output[1:])
 
+    def test_mix_augmentation_inverse_raises_4693(self, device, dtype):
+        image = torch.stack(
+            [
+                torch.full((2, 4, 6), float(i + 1), device=device, dtype=dtype)
+                for i in range(3)
+            ]
+        )
+        mask = torch.zeros(3, 4, 6, device=device, dtype=torch.long)
+
+        for i in range(3):
+            mask[i, :2, :3] = i + 1
+
+        seq = K.AugmentationSequential(
+            K.RandomTransplantation(p=1.0),
+            data_keys=["input", "mask"],
+        )
+
+        torch.manual_seed(7)
+        output = seq(image, mask)
+
+        assert not torch.equal(output[0], image)
+
+        with pytest.raises(RuntimeError, match="Inverse for RandomTransplantation is not supported"):
+            seq.inverse(*output)
+
+    def test_mix_augmentation_3d_inverse_raises_4693(self, device, dtype):
+        image = torch.stack(
+            [
+                torch.full((2, 3, 4, 5), float(i + 1), device=device, dtype=dtype)
+                for i in range(3)
+            ]
+        )
+        mask = torch.zeros(3, 3, 4, 5, device=device, dtype=torch.long)
+
+        for i in range(3):
+            mask[i, :2, :2, :3] = i + 1
+
+        seq = K.AugmentationSequential(
+            K.RandomTransplantation3D(p=1.0),
+            data_keys=["input", "mask"],
+        )
+
+        torch.manual_seed(7)
+        output = seq(image, mask)
+
+        assert not torch.equal(output[0], image)
+
+        with pytest.raises(RuntimeError, match="Inverse for RandomTransplantation3D is not supported"):
+            seq.inverse(*output)
+
     def test_mix_children_dispatch_annotation_keys_4493(self, device, dtype):
         # Regression (#4493): mix children used to fall through Mask/Box/KeypointSequentialOps to a silent
         # passthrough, so annotations desynchronized from the mixed image. The container now dispatches to

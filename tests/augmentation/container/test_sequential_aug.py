@@ -70,7 +70,8 @@ class TestSequential:
             )
             out = aug(inp)
             assert out.shape == inp.shape
-            aug.inverse(inp)
+            with pytest.raises(RuntimeError, match="Inverse for RandomMixUpV2 is not supported"):
+                aug.inverse(inp)
             reproducibility_test(inp, aug)
 
 
