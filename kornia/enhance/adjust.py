@@ -1095,7 +1095,8 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     .. note::
        The input is expected in :math:`[0, 1]`, and each channel's whole :math:`(D, H, W)` volume is
        equalized from one 256-bin histogram. The lookup step is an integer division by 255, so a volume
-       with no more than 255 voxels per channel is returned unchanged; just above that, whether it changes
+       with no more than 255 voxels per channel is returned unchanged up to floating-point roundoff; just
+       above that, whether it changes
        depends on the values. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
        raise a ``RuntimeError`` naming the range. The check runs on CPU and CUDA (via
        ``torch._assert_async``); on MPS it is skipped.

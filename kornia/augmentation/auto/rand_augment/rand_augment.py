@@ -58,10 +58,13 @@ class RandAugment(PolicyAugmentBase):
         - ``m`` must be strictly between ``0`` and ``30``. For every magnitude-bearing selected operation it
           sets a per-row magnitude to ``low + (high - low) * m / 30`` over that operation's magnitude range. For a
           symmetric operation that range is ``(0, max)`` and each row independently gets a positive or negative
-          sign, so ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. The value is written into the
-          wrapped parameter as is: ``posterize`` truncates it to integer bits (``0`` for ``m < 7.5`` with the
-          default entry, an all-black image) and ``translate_x`` / ``translate_y`` take it as pixels, not as a
-          fraction of the image size (`#4655 <https://github.com/kornia/kornia/issues/4655>`_).
+          sign, so ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. That value then passes through
+          the wrapper's magnitude mapping, which is the identity for every default entry except three:
+          ``shear_x`` / ``shear_y`` multiply it by ``180``, so ``m=15`` on the default ``("shear_x", -0.3, 0.3)``
+          shears by ``27`` degrees and not by ``0.15``; ``posterize`` truncates it to integer bits (``0`` for
+          ``m < 7.5`` with the default entry, an all-black image); and ``translate_x`` / ``translate_y`` take it
+          as pixels, not as a fraction of the image size
+          (`#4655 <https://github.com/kornia/kornia/issues/4655>`_).
 
     Args:
         n: the number of augmentations to apply sequentially. Must be at least ``1`` and at

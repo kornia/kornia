@@ -52,9 +52,11 @@ class RandomJigsaw(MixAugmentationBaseV2):
     Convention:
         - ``grid=(rows, columns)`` partitions each image independently. Both image dimensions must be exactly
           divisible by their corresponding grid entries; any other input raises ``RuntimeError``, whether or not
-          the gate selects a sample. The output preserves the input shape. The sampled permutation is laid into the
-          destination grid by columns: for a ``2 x 2`` grid, entries ``[0, 2]`` become the top row and entries
-          ``[1, 3]`` the bottom row.
+          the gate selects a sample. The output preserves the input shape. An entry's position selects the
+          destination cell in column-major order -- for a ``2 x 2`` grid, entries ``[0, 2]`` become the top row
+          and entries ``[1, 3]`` the bottom row -- while the entry's value indexes the source patch in row-major
+          order. The two orders differ, so the identity permutation transposes the patch grid rather than
+          reproducing the image; the image-preserving permutation is ``[0, 2, 1, 3]`` for a ``2 x 2`` grid.
         - ``p`` is a per-sample gate. With ``same_on_batch=True`` the batch shares one gate draw and one patch
           permutation; with it false, each sample receives an independent gate and permutation. This class
           implements image mixing only; requesting another data key raises ``NotImplementedError`` whatever the

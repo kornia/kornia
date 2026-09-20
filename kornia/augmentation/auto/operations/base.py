@@ -60,8 +60,11 @@ class OperationBase(nn.Module):
           distinct direct-use behavior, tracked in `#4441
           <https://github.com/kornia/kornia/issues/4441>`_.
         - The concrete operation classes in ``kornia.augmentation.auto.operations.ops`` only configure this
-          wrapper around public 2D augmentations; their input, dtype, RNG, replay, and serialization contracts
-          are those of their wrapped augmentation and :doc:`/get-started/conventions`.
+          wrapper around public 2D augmentations; their input, dtype, RNG, and replay contracts are those of
+          their wrapped augmentation and :doc:`/get-started/conventions`. Serialization is the exception: this
+          wrapper stores its magnitude mapping as a local closure, so every concrete operation except
+          ``Posterize`` fails to pickle even though all the wrapped augmentations pickle
+          (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
 
     """
 

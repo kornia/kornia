@@ -33,7 +33,8 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
-        angle: angle of the motion blur in degrees (anti-clockwise rotation).
+        angle: ``(yaw, pitch, roll)`` of the motion blur in degrees; a positive roll turns the kernel
+            clockwise as displayed, unlike the 2D generator.
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),

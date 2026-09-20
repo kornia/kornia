@@ -26,7 +26,7 @@ from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
 class RandomPerspective3D(GeometricAugmentationBase3D):
-    r"""Apply andom perspective transformation to 3D volumes (5D torch.Tensor).
+    r"""Apply random perspective transformation to 3D volumes (5D torch.Tensor).
 
     Args:
         p: probability of the image being perspectively transformed.
@@ -51,8 +51,10 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
 
         - ``distortion_scale=0`` generates identical source and destination corners. The default bilinear,
           ``align_corners=False`` perspective warp nevertheless does not reproduce its input, even a constant one;
-          use ``align_corners=True`` for an identity warp. The false-setting normalization defect is tracked in
-          `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
+          use ``align_corners=True`` for an identity warp up to float32 grid precision: the sampling grid is
+          built by :func:`kornia.utils.create_meshgrid3d` in float32, so a ``float64`` volume is reproduced only
+          to about ``1e-7`` while the affine and rotation paths are exact. The false-setting normalization defect
+          is tracked in `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
         - the default interpolation is bilinear and the default ``align_corners`` is ``False``.
 
     Examples:

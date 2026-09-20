@@ -39,8 +39,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         size: Desired output size (out_d, out_h, out_w) of the crop.
             Must be Tuple[int, int, int], then out_d = size[0], out_h = size[1], out_w = size[2].
         padding: Optional padding on each border of the image.
-            Default is None, i.e no padding. If a sequence of length 6 is provided, it is used to F.pad
-            left, top, right, bottom, front, back borders respectively.
+            Default is None, i.e no padding. If a sequence of length 6 is provided, it is passed to F.pad as
+            left, right, top, bottom, front, back borders respectively.
             If a sequence of length 3 is provided, it is used to F.pad left/right,
             top/bottom, front/back borders, respectively.
         pad_if_needed: It will F.pad the image if smaller than the
@@ -75,9 +75,12 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           left, top, and front padding to an original ``(x, y, z)`` point before applying this matrix. For example,
           padding a ``3 x 3 x 3`` input by ``1`` and cropping the full ``5 x 5 x 5`` volume records an identity
           matrix even though the original voxel ``(1, 1, 1)`` moves to ``(2, 2, 2)``.
-        - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped.
-          A valid gated-off call returns the input itself -- unpadded, at the input shape rather than ``size`` --
-          with an identity ``transform_matrix``.
+        - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped,
+          but it is off by one: a crop exactly one voxel larger than the padded volume along an axis is accepted
+          and the output gains a zero slab, while two or more raise ``ValueError``
+          (`#4688 <https://github.com/kornia/kornia/issues/4688>`_). :class:`CenterCrop3D` rejects the
+          one-voxel case. A valid gated-off call returns the input itself -- unpadded, at the input shape rather
+          than ``size`` -- with an identity ``transform_matrix``.
           Defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:

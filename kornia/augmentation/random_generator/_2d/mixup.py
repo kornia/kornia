@@ -38,8 +38,8 @@ class MixupGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B,).
-            - mixup_lambdas (torch.Tensor): element-wise probabilities with a shape of (B,).
+            - mixup_pairs (torch.Tensor): pairing indices with a shape of (B,).
+            - mixup_lambdas (torch.Tensor): the sampled mixing coefficients with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,

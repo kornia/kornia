@@ -42,12 +42,17 @@ class AugmentationBase3D(_AugmentationBase):
           prepending batch and, for rank three, channel dimensions; ``keepdim=True`` restores that original
           rank. The dtype guard accepts only ``float16``, ``bfloat16``, ``float32``, and ``float64``.
         - ``p`` gates samples and ``p_batch`` gates a whole call; ``same_on_batch=True`` shares the generated
-          values. Parameters use the common augmentation RNG and ``forward(x, params=...)`` replays a complete
-          generated dictionary. See :class:`~kornia.augmentation.AugmentationBase2D` for the shared sampling,
-          seeding, and serialization contract.
+          values. No concrete 3D constructor exposes ``p_batch``
+          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_); :class:`CenterCrop3D` and
+          :class:`RandomCrop3D` instead map their own ``p`` onto the call-wide gate. Parameters use the common
+          augmentation RNG and ``forward(x, params=...)`` replays a complete generated dictionary. See
+          :doc:`/get-started/conventions` for the canonical sampling, seeding, and serialization contract.
         - rigid subclasses expose the last sampled ``(B, 4, 4)`` ``transform_matrix``. The 3D bases do not
-          implement ``inverse``: direct calls have no ``inverse`` method, and a geometric 3D child makes an
+          implement ``inverse``: their subclasses have no ``inverse`` method, and a geometric 3D child makes an
           :class:`~kornia.augmentation.container.AugmentationSequential` inverse raise.
+          :class:`~kornia.augmentation.RandomTransplantation3D` is the exception: it also derives from
+          :class:`~kornia.augmentation.MixAugmentationBaseV2` and so carries that class's ``inverse``, which
+          raises ``RuntimeError``.
 
     """
 

@@ -39,7 +39,7 @@ class PatchMixGenerator(RandomGeneratorBase):
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B).
+            - mix_pairs (torch.Tensor): pairing indices with a shape of (B).
             - patch_coords (torch.Tensor): top-left coordinates of the patch (B, 2).
             - lam (torch.Tensor): mixing parameter (B).
 

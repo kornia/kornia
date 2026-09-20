@@ -53,6 +53,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         - Image inputs are floating tensors of shape ``(H, W)``, ``(C, H, W)``, or ``(B, C, H, W)``. They are
           promoted to ``(B, C, H, W)`` before a mix operation; ``keepdim=True`` restores the rank of an unbatched
           input. The base accepts ``float16``, ``bfloat16``, ``float32``, and ``float64`` only.
+          :class:`~kornia.augmentation.RandomTransplantation3D` is the exception: it also derives from
+          :class:`~kornia.augmentation.AugmentationBase3D` and works on ``(B, C, D, H, W)`` volumes.
         - A mix operation is not geometric: it has neither a transformation matrix nor an inverse. Its
           ``transform_matrix`` property raises ``RuntimeError``. ``inverse()`` takes keyword arguments only and
           raises ``RuntimeError`` as well, so a positional ``inverse(output)`` fails earlier with ``TypeError``.

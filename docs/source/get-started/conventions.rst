@@ -203,7 +203,9 @@ covers a slightly different extent of the source image.
    :func:`kornia.geometry.transform.warp_perspective3d` normalize with the corner-aligned
    convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
    ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
-   volume by up to ``55.1`` there, against exactly ``0`` at ``align_corners=True``. Pass
+   volume by up to ``55.1`` there, against exactly ``0`` at ``align_corners=True`` in
+   ``float32``; the grid is built in ``float32``, so a ``float64`` volume is reproduced
+   only to about ``1e-6`` even there. Pass
    ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
    `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
@@ -435,10 +437,11 @@ Serializing an augmentation
   reflect the loaded range. Reconstruct the augmentation to change what it
   samples (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - With numeric constructor ranges, the 3D geometric and intensity
-  augmentations and the five mix classes ``RandomCutMixV2``, ``RandomJigsaw``,
-  ``RandomMixUpV2``, ``RandomMosaic`` and ``PatchMix`` have empty
-  ``state_dict()`` objects. Pickle and deepcopy preserve their configuration
-  and recorded parameters after a forward call; passing the restored
+  augmentations and every mix class -- ``RandomCutMixV2``, ``RandomJigsaw``,
+  ``RandomMixUpV2``, ``RandomMosaic``, ``PatchMix``, ``RandomTransplantation``
+  and ``RandomTransplantation3D`` -- have empty ``state_dict()`` objects.
+  Pickle and deepcopy preserve their configuration and recorded parameters
+  after a forward call; passing the restored
   ``_params`` replays that transform on the same input. An empty
   ``state_dict()`` cannot save those parameters or reconstruct the constructor
   configuration. Tensor or ``nn.Parameter`` arguments can have different
