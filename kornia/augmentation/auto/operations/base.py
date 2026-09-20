@@ -233,5 +233,4 @@ class OperationBase(nn.Module):
         Returns:
             Probability tensor clamped to ``probability_range``.
         """
-        p = self._probability.clamp(*self.probability_range)
-        return p
+        return self._probability.clamp(*self.probability_range)

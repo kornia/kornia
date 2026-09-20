@@ -96,11 +96,10 @@ class RandomJigsaw(MixAugmentationBaseV2):
         )
         perm = (perm + torch.arange(0, b, device=perm.device)[:, None] * perm.shape[1]).view(-1)
         input = input[:, perm, :, :]
-        input = (
+        return (
             input.reshape(-1, b, self.flags["grid"][1], h, piece_size_w)
             .permute(0, 1, 2, 4, 3)
             .reshape(-1, b, w, h)
             .permute(0, 1, 3, 2)
             .permute(1, 0, 2, 3)
         )
-        return input

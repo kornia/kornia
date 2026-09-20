@@ -77,8 +77,7 @@ class CutmixGenerator(RandomGeneratorBase):
             raise AssertionError(f"`num_mix` must be an integer greater than 1. Got {num_mix}.")
 
     def __repr__(self) -> str:
-        repr = f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
-        return repr
+        return f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if self.beta is None:

@@ -118,8 +118,7 @@ class AffineGenerator3D(RandomGeneratorBase):
         self.scale = scale
 
     def __repr__(self) -> str:
-        repr = f"degrees={self.degrees}, shears={self.shears}, translate={self.translate}, scale={self.scale}"
-        return repr
+        return f"degrees={self.degrees}, shears={self.shears}, translate={self.translate}, scale={self.scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype, "degrees", (-360, 360))

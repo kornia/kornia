@@ -59,8 +59,7 @@ class PatchMixGenerator(RandomGeneratorBase):
         self.p = p
 
     def __repr__(self) -> str:
-        repr = f"alpha={self.alpha}, patch_size={self.patch_size}, p={self.p}"
-        return repr
+        return f"alpha={self.alpha}, patch_size={self.patch_size}, p={self.p}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.beta_sampler = Beta(
