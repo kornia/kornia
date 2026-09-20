@@ -214,9 +214,7 @@ class RandomMosaic(MixAugmentationBaseV2):
                 padding_mode = flags["padding_mode"]
 
             output_size = (
-                tuple(params["batch_shapes"][0, -2:].tolist())
-                if flags["output_size"] is None
-                else flags["output_size"]
+                tuple(params["batch_shapes"][0, -2:].tolist()) if flags["output_size"] is None else flags["output_size"]
             )
             return crop_by_transform_mat(
                 input,
