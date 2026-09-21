@@ -497,12 +497,14 @@ class TestTransplantationConventions(BaseTester):
             later(image, mask)
 
     @pytest.mark.device_agnostic
-    def test_wart_container_inverse_returns_its_input_4693(self):
-        image, mask = _labelled_batch(batch=3)
-        container = K.AugmentationSequential(K.RandomTransplantation(p=1.0), data_keys=["image", "mask"])
+    @pytest.mark.parametrize(
+        "cls, spatial", [(K.RandomTransplantation, (4, 6)), (K.RandomTransplantation3D, (3, 4, 6))], ids=["2d", "3d"]
+    )
+    def test_convention_container_inverse_raises_4693(self, cls, spatial):
+        image, mask = _labelled_batch(batch=3, spatial=spatial)
+        container = K.AugmentationSequential(cls(p=1.0), data_keys=["image", "mask"])
         torch.manual_seed(7)
         out_image, out_mask = container(image, mask)
         assert not torch.equal(out_mask, mask)  # the forward really did transplant
-        inverted_image, _ = container.inverse(out_image, out_mask)
-        self.assert_close(inverted_image, out_image, rtol=0, atol=0)  # handed straight back
-        assert not torch.equal(inverted_image, image)  # the original is not restored
+        with pytest.raises(RuntimeError, match=f"Inverse for {cls.__name__} is not supported"):
+            container.inverse(out_image, out_mask)

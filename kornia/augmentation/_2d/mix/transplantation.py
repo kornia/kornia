@@ -118,11 +118,10 @@ class RandomTransplantation(MixAugmentationBaseV2):
           applies the transplant, one input at a time. Outputs come back in input order, a single one as a bare
           tensor.
         - like every mix augmentation it is not geometric: ``transform_matrix`` and ``inverse()`` both raise
-          ``RuntimeError``. Inside :class:`~kornia.augmentation.container.AugmentationSequential` that refusal
-          is lost and the inverse returns its input unchanged
-          (`#4693 <https://github.com/kornia/kornia/issues/4693>`_). The container also hands a mask on as
-          ``(B, 1, H, W)`` once any other augmentation has run, which the rank rule above refuses, so the
-          transplant only works there as the first step
+          ``RuntimeError``, and the ``inverse()`` of a
+          :class:`~kornia.augmentation.container.AugmentationSequential` holding one raises the same error. The
+          container hands a mask on as ``(B, 1, H, W)`` once any other augmentation has run, which the rank rule
+          above refuses, so the transplant only works there as the first step
           (`#4707 <https://github.com/kornia/kornia/issues/4707>`_).
 
     Examples:
