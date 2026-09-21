@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import torch
@@ -30,8 +31,12 @@ from kornia.core.exceptions import ShapeError
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
-from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
-from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
+from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, projection_valid_mask, unproject_points
+from .conversions import (
+    denormalize_points_with_intrinsics,
+    normalize_pixel_coordinates,
+    normalize_points_with_intrinsics,
+)
 from .linalg import convert_points_to_homogeneous, transform_points
 
 """nn.Module containing operators to work on RGB-Depth images."""
@@ -46,6 +51,7 @@ __all__ = [
     "depth_warp",
     "unproject_meshgrid",
     "warp_frame_depth",
+    "warp_frame_depth_with_mask",
 ]
 
 
@@ -474,6 +480,107 @@ def warp_frame_depth(
     points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
 
     return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)
+
+
+def warp_frame_depth_with_mask(
+    image_src: torch.Tensor,
+    depth_dst: torch.Tensor,
+    src_trans_dst: torch.Tensor,
+    camera_matrix: torch.Tensor,
+    normalize_points: bool = False,
+    eps: float = 1e-8,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Warp a source image onto a destination depth grid and return geometric validity.
+
+    Args:
+        image_src: Finite source image (B,C,Hsrc,Wsrc), with a real floating dtype.
+        depth_dst: Destination depth (B,1,Hdst,Wdst), in camera-frame z units by default.
+            Missing (nonfinite or nonpositive) depths are invalid, even if a translation
+            would otherwise move their substituted 3D point in front of the camera.
+        src_trans_dst: Finite affine transformation (B,4,4) mapping destination-camera
+            coordinates into source-camera coordinates; the final row must be (0,0,0,1).
+        camera_matrix: Shared pinhole intrinsics (B,3,3) for both grids, with positive
+            finite focal lengths, zero skew and final row (0,0,1). Its unprojection rays
+            must be representable. Inputs must share dtype and device.
+        normalize_points: If true, depth represents Euclidean ray length instead of z.
+        eps: Nonnegative finite minimum source-camera z, in the depth's length units.
+
+    Returns:
+        Warped image (B,C,Hdst,Wdst), preserving image dtype, and boolean mask
+        (B,1,Hdst,Wdst). Invalid output pixels are exactly zero.
+
+    Note:
+        A valid sample has positive finite original depth, a finite source-camera point
+        with z greater than eps, and a computable projection inside the source pixel-centre
+        rectangle [0,Wsrc-1] x [0,Hsrc-1]. The source and destination spatial sizes may differ.
+        Bilinear sampling uses align_corners=True. The mask does not test occlusion or
+        visibility against a source depth map. Intrinsics and transforms are caller
+        preconditions, not inferred or repaired.
+
+        Invalid coordinates are replaced before differentiated projection and sampling;
+        half inputs compute in float32. Gradients are meaningful within fixed validity
+        regions where the underlying arithmetic is representable. The existing
+        warp_frame_depth API and its border-padding behavior are unchanged.
+    """
+    for name, value in (
+        ("image_src", image_src),
+        ("depth_dst", depth_dst),
+        ("src_trans_dst", src_trans_dst),
+        ("camera_matrix", camera_matrix),
+    ):
+        if not isinstance(value, torch.Tensor) or not value.is_floating_point():
+            raise TypeError(f"{name} must be a real floating Tensor.")
+        if value.dtype != image_src.dtype or value.device != image_src.device:
+            raise ValueError("All inputs must have the same dtype and device.")
+    if image_src.ndim != 4 or depth_dst.ndim != 4 or depth_dst.shape[1] != 1:
+        raise ValueError("image_src and depth_dst must have shapes (B,C,H,W) and (B,1,H,W).")
+    batch = image_src.shape[0]
+    if depth_dst.shape[0] != batch or src_trans_dst.shape != (batch, 4, 4) or camera_matrix.shape != (batch, 3, 3):
+        raise ValueError("Batch sizes must match; transform and intrinsics must be (B,4,4) and (B,3,3).")
+    if min(image_src.shape[1], image_src.shape[2], image_src.shape[3], depth_dst.shape[2], depth_dst.shape[3]) < 1:
+        raise ValueError("Channel and spatial dimensions must be nonempty.")
+    if not math.isfinite(eps) or eps < 0:
+        raise ValueError("eps must be finite and nonnegative.")
+    height, width = depth_dst.shape[-2:]
+    source_h, source_w = image_src.shape[-2:]
+    work_dtype = torch.float64 if image_src.dtype == torch.float64 else torch.float32
+    image, depth = image_src.to(work_dtype), depth_dst.to(work_dtype)[:, 0, :, :, None]
+    transform, intrinsics = src_trans_dst.to(work_dtype), camera_matrix.to(work_dtype)
+    if batch == 0:
+        zero = image.flatten()[:0].sum() + depth.flatten()[:0].sum()
+        zero = zero + transform.flatten()[:0].sum() + intrinsics.flatten()[:0].sum()
+        output = (image.new_empty((0, image.shape[1], height, width)) + zero).to(image_src.dtype)
+        return output, torch.empty((0, 1, height, width), device=image.device, dtype=torch.bool)
+
+    rays = unproject_meshgrid(height, width, intrinsics, normalize_points, image.device, work_dtype)
+    rotation = transform[:, None, :3, :3].transpose(-1, -2)
+    translation = transform[:, None, None, :3, 3]
+    original_valid = torch.isfinite(depth[..., 0]) & (depth[..., 0] > 0)
+
+    # The detached candidate path decides eligibility before any dangerous live multiply
+    # or divide. In particular, a huge but finite depth can overflow unprojection or pose.
+    candidate_depth = torch.where(original_valid[..., None], depth.detach(), 0.0)
+    candidate_dst = rays.detach() * candidate_depth
+    candidate_src = candidate_dst @ rotation.detach() + translation.detach()
+    point_valid = original_valid & projection_valid_mask(candidate_src, eps)
+    safe_point = torch.cat((torch.zeros_like(candidate_src[..., :2]), torch.ones_like(candidate_src[..., 2:])), -1)
+    candidate_src = torch.where(point_valid[..., None], candidate_src, safe_point)
+    normalized = candidate_src[..., :2] / candidate_src[..., 2:]
+    candidate_pixels = denormalize_points_with_intrinsics(normalized, intrinsics.detach()[:, None, None])
+    x, y = candidate_pixels[..., 0], candidate_pixels[..., 1]
+    valid = point_valid & torch.isfinite(candidate_pixels).all(-1)
+    valid = valid & torch.isfinite(candidate_src[..., 2].reciprocal())
+    valid = valid & (x >= 0) & (x <= source_w - 1) & (y >= 0) & (y <= source_h - 1)
+
+    safe_depth = torch.where(valid[..., None], depth, 0.0)
+    points_src = (rays * safe_depth) @ rotation + translation
+    points_src = torch.where(valid[..., None], points_src, safe_point)
+    pixels = denormalize_points_with_intrinsics(points_src[..., :2] / points_src[..., 2:], intrinsics[:, None, None])
+    grid = normalize_pixel_coordinates(pixels, source_h, source_w)
+    grid = torch.where(valid[..., None], grid, torch.zeros_like(grid))
+    sampled = F.grid_sample(image, grid, align_corners=True, mode="bilinear", padding_mode="zeros")
+    mask = valid[:, None]
+    return torch.where(mask, sampled, 0.0).to(image_src.dtype), mask
 
 
 class DepthWarper(nn.Module):

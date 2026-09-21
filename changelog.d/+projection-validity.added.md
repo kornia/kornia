@@ -1,0 +1,1 @@
+Added `projection_valid_mask` for camera-frame geometry and `warp_frame_depth_with_mask` for depth warping with explicit per-pixel validity and zero-filled invalid samples. Existing projection and warp APIs retain their behavior.

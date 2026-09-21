@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import torch
 import torch.nn.functional as F
 
@@ -124,3 +126,34 @@ def unproject_points(
         xyz = F.normalize(xyz, dim=-1, p=2.0)
 
     return xyz * depth
+
+
+def projection_valid_mask(points_in_camera: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    """Return whether camera-frame points have finite coordinates and depth greater than eps.
+
+    Args:
+        points_in_camera: Real floating-point coordinates of shape (...,3), in the camera
+            frame. Positive z points in front of the camera.
+        eps: Finite nonnegative absolute z threshold, in the same length units as the points.
+            Half-precision coordinates are compared in float32 to avoid rounding this threshold.
+
+    Returns:
+        Boolean tensor of shape (...), preserving device and every leading dimension.
+
+    Note:
+        This geometric predicate does not check intrinsics, image bounds, occlusion or
+        numerical representability of a subsequent perspective divide. It does not change
+        the historical behavior of project_points for zero or negative depth.
+    """
+    if not isinstance(points_in_camera, torch.Tensor):
+        raise TypeError("points_in_camera must be a Tensor.")
+    if not points_in_camera.is_floating_point():
+        raise TypeError("points_in_camera must have a real floating dtype.")
+    if points_in_camera.ndim < 1 or points_in_camera.shape[-1] != 3:
+        raise ValueError("points_in_camera must have shape (..., 3).")
+    if not math.isfinite(eps) or eps < 0:
+        raise ValueError("eps must be finite and nonnegative.")
+    work = points_in_camera
+    if work.dtype in (torch.float16, torch.bfloat16):
+        work = work.float()
+    return torch.isfinite(work).all(dim=-1) & (work[..., 2] > eps)

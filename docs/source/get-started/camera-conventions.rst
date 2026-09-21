@@ -264,13 +264,25 @@ because the window origin is the lower-left corner: in a 5 × 3 image the centre
 expressed in OpenGL window coordinates is half-pixel with ``y`` up: flip it with ``cy → H - cy``, then subtract
 ``0.5`` from both coordinates — the COLMAP rule — to obtain Kornia's integer-centre principal point.
 
-Three camera-adjacent warps sample with ``align_corners=True``:
+These camera-adjacent warps sample with ``align_corners=True``:
 
 - :func:`kornia.geometry.calibration.undistort_image` has no ``align_corners`` parameter and remaps with
   ``align_corners=True``.
 - :func:`kornia.geometry.depth.warp_frame_depth` has no ``align_corners`` parameter and samples with
   ``align_corners=True``.
+- :func:`kornia.geometry.depth.warp_frame_depth_with_mask` uses the source image dimensions to normalize
+  projected pixels and explicitly zeroes samples outside its pixel-centre rectangle.
 - :class:`kornia.geometry.depth.DepthWarper` and :func:`kornia.geometry.depth.depth_warp` do expose it,
   defaulting to ``True``.
 
 The library-wide table of ``align_corners`` defaults is on :doc:`conventions`.
+
+Explicit projection validity
+----------------------------
+
+:func:`kornia.geometry.camera.projection_valid_mask` checks finite camera-frame coordinates and
+``z > eps``. It does not use camera intrinsics, image bounds, or an occlusion model.
+:func:`kornia.geometry.depth.warp_frame_depth_with_mask` additionally checks the original destination
+depth and the projected source pixel. Invalid depth stays invalid after a pose transformation, and
+an out-of-bounds sample is exactly zero rather than a partial blend with padding. Both APIs are
+additive; existing projection and warp functions retain their behavior.
