@@ -178,7 +178,12 @@ class RandomMosaic(MixAugmentationBaseV2):
             out_boxes._data[~to_apply, :num_boxes] = input._data[~to_apply]
             out_boxes._data[~to_apply, num_boxes:] = 0.0
             padding = out_boxes._data.shape[1] - num_boxes
-            out_boxes._N = [0 if bool(selected) else padding for selected in to_apply]
+            merged_padding = out_boxes._N if out_boxes._N is not None else [0] * len(to_apply)
+            input_padding = input._N if input._N is not None else [0] * len(to_apply)
+            out_boxes._N = [
+                merged if bool(selected) else own + padding
+                for selected, merged, own in zip(to_apply, merged_padding, input_padding)
+            ]
 
         return out_boxes
 
