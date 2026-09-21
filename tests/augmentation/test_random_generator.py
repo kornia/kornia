@@ -30,6 +30,7 @@ from kornia.augmentation.random_generator import (
     MotionBlurGenerator,
     PerspectiveGenerator,
     PlainUniformGenerator,
+    PlanckianJitterGenerator,
     PosterizeGenerator,
     ProbabilityGenerator,
     RandomGaussianBlurGenerator,
@@ -1779,3 +1780,30 @@ class TestGaussianBlurGenBufferHygiene:
         gen = RandomGaussianBlurGenerator(sigma=(0.1, 2.0))
         assert "sigma" not in dict(gen.named_buffers())
         assert gen.sigma == (0.1, 2.0)
+
+
+class TestPlanckianJitterGenerator:
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_index_sampler_stays_float32_for_half_precision(self, dtype):
+        # The draw is truncated to a table index. Half-precision torch.rand on MPS
+        # can return exactly 1.0, which gave an index one past the end (#4553).
+        generator = PlanckianJitterGenerator([0, 25])
+        generator.set_rng_device_and_dtype(torch.device("cpu"), dtype)
+        assert generator.pl_idx_dist.low.dtype == torch.float32
+        assert generator.pl_idx_dist.high.dtype == torch.float32
+        assert generator.pl_idx_dist.low.device.type == "cpu"
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_index_sampler_follows_full_precision_dtype(self, dtype):
+        generator = PlanckianJitterGenerator([0, 25])
+        generator.set_rng_device_and_dtype(torch.device("cpu"), dtype)
+        assert generator.pl_idx_dist.low.dtype == dtype
+
+    def test_half_precision_indices_in_range(self):
+        generator = PlanckianJitterGenerator([0, 25])
+        generator.set_rng_device_and_dtype(torch.device("cpu"), torch.float16)
+        torch.manual_seed(0)
+        idx = generator(torch.Size([4096, 3, 4, 4]))["idx"]
+        assert idx.dtype == torch.long
+        assert int(idx.min()) >= 0
+        assert int(idx.max()) < 25
