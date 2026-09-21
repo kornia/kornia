@@ -122,5 +122,4 @@ class RandomSnow(IntensityAugmentationBase2D):
         new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
         input_HLS = input_HLS * (1 - mask) + new_light
 
-        output = hls_to_rgb(input_HLS)
-        return output
+        return hls_to_rgb(input_HLS)

@@ -715,8 +715,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 new_arg.append(a_new)
             return new_arg
 
-        arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
-        return arg
+        return arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
 
     def _postproc_mask(self, arg: MaskDataType) -> MaskDataType:
         if isinstance(arg, list):
@@ -726,8 +725,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 new_arg.append(a_new)
             return new_arg
 
-        arg = arg.to(self.mask_dtype) if self.mask_dtype else arg.to(torch.float)
-        return arg
+        return arg.to(self.mask_dtype) if self.mask_dtype else arg.to(torch.float)
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
         if DataKey.get(dcate) in [DataKey.BBOX]:

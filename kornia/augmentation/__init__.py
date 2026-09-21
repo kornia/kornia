@@ -193,6 +193,8 @@ __all__ = [
     "RandomSolarize",
     "RandomThinPlateSpline",
     "RandomTranslate",
+    "RandomTransplantation",
+    "RandomTransplantation3D",
     "RandomVerticalFlip",
     "RandomVerticalFlip3D",
     "Resize",
