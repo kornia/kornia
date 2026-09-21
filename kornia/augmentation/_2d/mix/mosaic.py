@@ -123,6 +123,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
 
+        original_boxes = input.clone()
         maybe_out_boxes: Optional[Boxes] = None
         # ``batch_shapes`` and ``src_box`` are full-batch sized.
         # Subset them to match ``idx`` (the to_apply indices).
@@ -155,6 +156,10 @@ class RandomMosaic(MixAugmentationBaseV2):
         out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
         out_boxes.clamp(offset, offset_end, inplace=True)
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
+
+        if not to_apply.all():
+            out_boxes._data[~to_apply] = original_boxes._data[~to_apply]
+
         return out_boxes
 
     def apply_transform_keypoint(

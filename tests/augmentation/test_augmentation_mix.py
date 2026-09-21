@@ -423,6 +423,61 @@ class TestRandomMosaic(BaseTester):
         torch.testing.assert_close(output_boxes[0], boxes[0])
         torch.testing.assert_close(output_boxes[2], boxes[2])
 
+    def test_partial_batch_preserves_unselected_out_of_bounds_boxes_4679(self, device, dtype):
+        input = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        boxes = torch.tensor(
+            [
+                [[2.0, 1.0, 30.0, 20.0]],
+                [[1.0, 1.0, 4.0, 4.0]],
+                [[3.0, 2.0, 25.0, 18.0]],
+                [[1.0, 1.0, 4.0, 4.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        aug = RandomMosaic(
+            p=0.0,
+            data_keys=["input", "bbox_xyxy"],
+        )
+
+        params = aug._param_generator(torch.Size(input.shape))
+        params["batch_prob"] = torch.tensor([0.0, 1.0, 0.0, 1.0], device=device)
+
+        box_object = Boxes.from_tensor(boxes, mode="xyxy")
+        output = aug.apply_transform_boxes(box_object, params, aug.flags).to_tensor("xyxy")
+
+        torch.testing.assert_close(output[0], boxes[0])
+        torch.testing.assert_close(output[2], boxes[2])
+
+    def test_partial_batch_preserves_unselected_filtered_boxes_4679(self, device, dtype):
+        input = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        boxes = torch.tensor(
+            [
+                [[1.0, 1.0, 4.0, 4.0]],
+                [[1.0, 1.0, 4.0, 4.0]],
+                [[1.0, 1.0, 2.0, 2.0]],
+                [[1.0, 1.0, 4.0, 4.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        aug = RandomMosaic(
+            p=0.0,
+            min_bbox_size=19.0,
+            data_keys=["input", "bbox_xyxy"],
+        )
+
+        params = aug._param_generator(torch.Size(input.shape))
+        params["batch_prob"] = torch.tensor([0.0, 1.0, 0.0, 1.0], device=device)
+
+        box_object = Boxes.from_tensor(boxes, mode="xyxy")
+        output = aug.apply_transform_boxes(box_object, params, aug.flags).to_tensor("xyxy")
+
+        torch.testing.assert_close(output[0], boxes[0])
+        torch.testing.assert_close(output[2], boxes[2])
+
     @pytest.mark.parametrize(("keepdim", "expected_shape"), [(False, (1, 1, 6, 8)), (True, (1, 6, 8))])
     def test_non_square_unbatched_keepdim_4438(self, keepdim, expected_shape):
         torch.manual_seed(0)
