@@ -246,10 +246,14 @@ def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
     return math.sqrt(torch.finfo(dtype).eps) / 4
 
 
-# Two accepted quartic candidates this close, relative to their size, are the same root. A polished
-# simple root repeats to within a few eps; polished copies of a genuine double root can sit up to
-# ~sqrt(eps) apart, and are told from a spurious repeat by the derivative below, not by distance.
-_QUARTIC_COINCIDENT_ROOT_REL = 1e-3
+# Two accepted quartic candidates are the same root when they sit within each other's error bound:
+# the Newton step |p / p'| of a polished candidate at a simple root is a first-order estimate of its
+# distance to the nearest root, so a spurious repeat that stopped short of the root still reaches it,
+# while two distinct roots, however close, do not (a float64 quartic with roots 0.01 and 0.0109
+# keeps both). A candidate at a multiple root contributes nothing to the bound: p' vanishes there and
+# its Newton step is not an error estimate. The factor covers the first-order truncation and the
+# ulp floor, and was measured against 4, 16 and 64: 4 loses no root that 16 or 64 keep.
+_QUARTIC_COINCIDENCE_FACTOR = 4.0
 
 # A polished candidate whose derivative, relative to the size of the derivative's terms, exceeds this
 # sits at a simple root. Measured over 100k-row families: polished genuine double roots stay below
@@ -522,9 +526,15 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         4.0 * abs_root**3 + 3.0 * torch.abs(A_e) * abs_root**2 + 2.0 * torch.abs(B_e) * abs_root + torch.abs(C_e),
     )
     is_simple = abs_derivative / derivative_scale > _QUARTIC_SIMPLE_ROOT_DERIVATIVE
-    coincide = torch.abs(root_candidates.unsqueeze(-1) - root_candidates.unsqueeze(-2)) <= (
-        _QUARTIC_COINCIDENT_ROOT_REL * torch.maximum(torch.ones_like(abs_root), abs_root)
-    ).unsqueeze(-1)
+    eps = torch.finfo(root_candidates.dtype).eps
+    root_error = torch.where(
+        is_simple,
+        torch.abs(root_residual) / torch.maximum(abs_derivative, eps * derivative_scale),
+        torch.zeros_like(root_candidates),
+    )
+    ulp_floor = eps * torch.maximum(abs_root.unsqueeze(-1), abs_root.unsqueeze(-2))
+    coincidence = _QUARTIC_COINCIDENCE_FACTOR * (root_error.unsqueeze(-1) + root_error.unsqueeze(-2) + ulp_floor)
+    coincide = torch.abs(root_candidates.unsqueeze(-1) - root_candidates.unsqueeze(-2)) <= coincidence
     earlier = torch.tril(torch.ones(4, 4, dtype=torch.bool, device=root_candidates.device), diagonal=-1)
     accepted = root_candidates != 0
     repeats_earlier = (coincide & earlier & accepted.unsqueeze(-1) & accepted.unsqueeze(-2)).any(dim=-1)

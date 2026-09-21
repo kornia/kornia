@@ -817,6 +817,19 @@ class TestQuarticSolver(BaseTester):
         expected = torch.tensor([-1.666164, 0.081621], device=device, dtype=dtype)
         self.assert_close(torch.sort(nonzero).values, expected, rtol=1e-3, atol=1e-4)
 
+    def test_close_distinct_simple_roots_are_both_kept_4474(self, device, dtype):
+        # Roots 0.01, 0.0109, 10, 20 (review of #4669): a fixed coincidence window took the two small
+        # roots for one and replaced 0.01 with the placeholder. The window is now each candidate's
+        # own error bound, which two distinct roots do not share however close they are.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Root accuracy assertions are limited to float32 and float64.")
+        coeffs = torch.tensor([[1.0, -30.0209, 200.627109, -4.18327, 0.0218]], device=device, dtype=dtype)
+        roots = torch.sort(solver.solve_quartic(coeffs), dim=-1).values
+        expected = torch.tensor([[0.01, 0.0109, 10.0, 20.0]], device=device, dtype=dtype)
+        # float32 cannot separate the pair better than ~1%; float64 places both exactly.
+        tol = 2e-2 if dtype == torch.float32 else 1e-6
+        self.assert_close(roots, expected, rtol=tol, atol=0.0)
+
     def test_double_root_is_still_reported_twice_4474(self, device, dtype):
         # (x - 2)^2 (x + 1)(x + 3) and (x^2 - 1)^2: the repeat rule must leave a genuine double
         # root alone, whether it comes from one quadratic or one copy from each.
