@@ -38,6 +38,8 @@ __all__ = ["CutmixGenerator"]
 class CutmixGenerator(RandomGeneratorBase):
     r"""Generate cutmix indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomCutMixV2`.
+
     Args:
         p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
@@ -50,8 +52,9 @@ class CutmixGenerator(RandomGeneratorBase):
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
-            - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+            - mix_pairs (torch.Tensor): pairing indices with a shape of (num_mix, B).
+            - crop_src (torch.Tensor): cut-box vertices with a shape of (num_mix, B, 4, 2).
+            - image_shape (torch.Tensor): the input ``(H, W)``.
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -77,8 +80,7 @@ class CutmixGenerator(RandomGeneratorBase):
             raise AssertionError(f"`num_mix` must be an integer greater than 1. Got {num_mix}.")
 
     def __repr__(self) -> str:
-        repr = f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
-        return repr
+        return f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if self.beta is None:

@@ -144,8 +144,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         # small tensors instead of two image-sized ones.
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
-        transformed = torch.where(mask == 1.0, values, input)
-        return transformed
+        return torch.where(mask == 1.0, values, input)
 
     def apply_transform_mask(
         self,
@@ -163,5 +162,4 @@ class RandomErasing(IntensityAugmentationBase2D):
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
-        transformed = torch.where(mask == 1.0, values, input)
-        return transformed
+        return torch.where(mask == 1.0, values, input)

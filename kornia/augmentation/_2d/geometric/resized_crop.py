@@ -145,8 +145,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
             transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
-            transform = transform.expand(input.shape[0], -1, -1)
-            return transform
+            return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(

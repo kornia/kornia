@@ -242,7 +242,9 @@ Several constructors accept ``nn.Parameter`` ranges and can propagate gradients 
 are not necessarily connected to cached samplers after ``load_state_dict``; reconstruct those configurations
 to change their sampling ranges (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 
-The ``kornia.augmentation.auto`` policies cannot be pickled (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+A ``kornia.augmentation.auto`` policy can be pickled only when every operation wrapper in it can, so the
+default policies cannot (`#4469 <https://github.com/kornia/kornia/issues/4469>`_); an empty
+``AutoAugment(policy=[[]])`` and a policy holding only ``posterize`` entries can.
 
 The built-in 2D intensity augmentations, flips, ``Resize`` (including ``LongestMaxSize`` and
 ``SmallestMaxSize``), and slice-mode ``RandomResizedCrop`` compute their transformation matrix

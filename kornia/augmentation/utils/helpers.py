@@ -43,7 +43,11 @@ def _pad_with_fill(
         raise ValueError(f"A sequence `fill` needs `padding_mode='constant'`, got '{mode}'.")
 
     channels = input.shape[1]
-    values = torch.as_tensor(list(fill), device=input.device, dtype=input.dtype).flatten()
+    # Built in-graph rather than lifted from a host list, so a compiled CUDA call issues no host-device copy.
+    if isinstance(fill, (list, tuple)):
+        values = _constant_tensor(fill, device=input.device, dtype=input.dtype).flatten()
+    else:
+        values = torch.as_tensor(fill, device=input.device, dtype=input.dtype).flatten()
     if values.numel() != channels:
         raise ValueError(f"`fill` must hold one value per channel: got {values.numel()} for {channels} channels.")
 

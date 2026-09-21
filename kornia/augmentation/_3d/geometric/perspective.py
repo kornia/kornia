@@ -26,7 +26,7 @@ from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
 class RandomPerspective3D(GeometricAugmentationBase3D):
-    r"""Apply andom perspective transformation to 3D volumes (5D torch.Tensor).
+    r"""Apply random perspective transformation to 3D volumes (5D torch.Tensor).
 
     Args:
         p: probability of the image being perspectively transformed.
@@ -38,13 +38,23 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``distortion_scale=0`` generates identical source and destination corners. The default bilinear,
+          ``align_corners=False`` perspective warp nevertheless does not reproduce its input, even a constant one;
+          use ``align_corners=True`` for an identity warp up to float32 grid precision: the sampling grid is
+          built by :func:`kornia.geometry.grid.create_meshgrid3d` in float32, so a ``float64`` volume is
+          reproduced only to that precision -- about ``1e-7`` for a small volume in ``[0, 1]``, growing with
+          its size -- while the affine and rotation paths are exact to ``float64`` roundoff. The false-setting
+          normalization defect is tracked in `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
+        - the default interpolation is bilinear and the default ``align_corners`` is ``False``.
 
     Examples:
         >>> import torch
