@@ -29,6 +29,24 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     return kernel.view(h * w, 1, h, w)
 
 
+def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, width: int, dilate: bool) -> torch.Tensor:
+    """Running max (``dilate``) or min over the ``k_h * k_w`` shifted views of ``padded`` plus their offsets.
+
+    The ``shift`` engine: output pixel ``(y, x)`` reduces ``padded[y + i, x + j] + offsets[i, j]`` over the
+    kernel positions, the same max-plus expression ``unfold`` evaluates, without materialising the window
+    tensor. The only intermediate is one output-sized tensor, and ``torch.compile`` fuses the loop.
+    """
+    kh, kw = offsets.shape
+    output = padded[..., 0:height, 0:width] + offsets[0, 0]
+    for i in range(kh):
+        for j in range(kw):
+            if i == 0 and j == 0:
+                continue
+            shifted = padded[..., i : i + height, j : j + width] + offsets[i, j]
+            output = torch.maximum(output, shifted) if dilate else torch.minimum(output, shifted)
+    return output
+
+
 def _resolve_engine(engine: str, tensor: torch.Tensor) -> str:
     """Map ``engine="auto"`` to the faster engine for ``tensor``'s device; leave any other value alone.
 
@@ -74,11 +92,13 @@ def dilation(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
-            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
-            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
-            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
-            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
+            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"``
+            on every other device, where eager ``"convolution"`` measured several times faster.
+            ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
+            convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
+            output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
+            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
 
     Returns:
         Dilated image with shape :math:`(B, C, H, W)`.
@@ -140,8 +160,12 @@ def dilation(
             bias=neighborhood.view(-1).flip(0).to(dtype=output.dtype),
         ).max(dim=1)
         output = output.view(B, C, H, W)
+    elif engine == "shift":
+        output = _shift_reduce(
+            output, neighborhood.flip((0, 1)).to(dtype=output.dtype), tensor.shape[-2], tensor.shape[-1], True
+        )
     else:
-        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution' or 'unfold'")
+        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
     return output.view_as(tensor)
 
 
@@ -175,11 +199,13 @@ def erosion(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if border_type is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
-            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
-            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
-            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
-            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
+            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"``
+            on every other device, where eager ``"convolution"`` measured several times faster.
+            ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
+            convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
+            output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
+            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
 
     Returns:
         Eroded image with shape :math:`(B, C, H, W)`.
@@ -241,8 +267,12 @@ def erosion(
             bias=-neighborhood.view(-1).to(dtype=output.dtype),
         ).min(dim=1)
         output = output.view(B, C, H, W)
+    elif engine == "shift":
+        output = _shift_reduce(
+            output, (-neighborhood).to(dtype=output.dtype), tensor.shape[-2], tensor.shape[-1], False
+        )
     else:
-        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution' or 'unfold'")
+        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
 
     return output
 
@@ -277,11 +307,13 @@ def opening(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
-            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
-            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
-            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
-            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
+            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"``
+            on every other device, where eager ``"convolution"`` measured several times faster.
+            ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
+            convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
+            output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
+            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
 
     Returns:
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
@@ -358,11 +390,13 @@ def closing(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
-            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
-            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
-            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
-            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
+            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"``
+            on every other device, where eager ``"convolution"`` measured several times faster.
+            ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
+            convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
+            output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
+            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
 
     Returns:
        Closed image with shape :math:`(B, C, H, W)`.
@@ -441,11 +475,13 @@ def gradient(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
-            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
-            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
-            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
-            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
+            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"``
+            on every other device, where eager ``"convolution"`` measured several times faster.
+            ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
+            convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
+            output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
+            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
 
     Returns:
        Gradient image with shape :math:`(B, C, H, W)`.
@@ -513,11 +549,13 @@ def top_hat(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
-            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
-            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
-            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
-            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
+            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"``
+            on every other device, where eager ``"convolution"`` measured several times faster.
+            ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
+            convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
+            output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
+            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
 
     Returns:
        Top hat transformed image with shape :math:`(B, C, H, W)`.
@@ -588,11 +626,13 @@ def bottom_hat(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
-            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
-            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
-            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
-            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
+            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"``
+            on every other device, where eager ``"convolution"`` measured several times faster.
+            ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
+            convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
+            output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
+            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
 
     Returns:
        Top hat transformed image with shape :math:`(B, C, H, W)`.

@@ -185,3 +185,44 @@ class TestErode(BaseTester):
         expected = erosion(tensor, kernel, engine=expected_engine)
         assert torch.equal(erosion(tensor, kernel), expected)
         assert torch.equal(erosion(tensor, kernel, engine="auto"), expected)
+
+    @pytest.mark.parametrize("kernel_shape", [(1, 1), (3, 3), (3, 5), (4, 2)])
+    @pytest.mark.parametrize("origin", ["center", "first", "last"])
+    @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate"])
+    @pytest.mark.parametrize("non_flat", [False, True])
+    def test_shift_engine_matches_unfold(self, device, dtype, kernel_shape, origin, border_type, non_flat):
+        # engine="shift" reduces the same max-plus terms as engine="unfold" in a different order;
+        # max and min are exact in any order, so the outputs are bitwise equal (#4729).
+        kh, kw = kernel_shape
+        origin_yx = {"center": None, "first": [0, 0], "last": [kh - 1, kw - 1]}[origin]
+        anchor = origin_yx if origin_yx is not None else [kh // 2, kw // 2]
+        tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype) * 10 - 5
+        kernel = (torch.rand(kh, kw, device=device) > 0.3).to(dtype)
+        kernel[anchor[0], anchor[1]] = 1.0
+        structuring_element = (torch.rand(kh, kw, device=device) * 2 - 1).to(dtype) if non_flat else None
+        border_value = 0.5 if border_type == "constant" else 0.0
+        kwargs = {
+            "structuring_element": structuring_element,
+            "origin": origin_yx,
+            "border_type": border_type,
+            "border_value": border_value,
+        }
+
+        expected = erosion(tensor, kernel, engine="unfold", **kwargs)
+        actual = erosion(tensor, kernel, engine="shift", **kwargs)
+
+        assert actual.dtype == tensor.dtype
+        assert torch.equal(actual, expected)
+
+    def test_shift_engine_gradcheck(self, device):
+        tensor = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
+        kernel = torch.ones(3, 3, device=device, dtype=torch.float64)
+        kernel[0, 2] = 0.0
+        self.gradcheck(lambda t: erosion(t, kernel, engine="shift"), (tensor,))
+
+    def test_shift_engine_jit(self, device, dtype):
+        op_script = torch.jit.script(erosion)
+        tensor = torch.rand(1, 2, 7, 7, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        assert torch.equal(op_script(tensor, kernel, engine="shift"), erosion(tensor, kernel, engine="shift"))
