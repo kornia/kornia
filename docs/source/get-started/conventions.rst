@@ -452,11 +452,9 @@ Serializing an augmentation
   default policies currently cannot
   (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). An empty
   ``AutoAugment(policy=[[]])`` has no wrappers and can be pickled, and so can
-  a policy holding only ``posterize`` entries. ``copy.deepcopy`` raises
-  ``RuntimeError`` once a policy has rebuilt its probability samplers with
-  gradients enabled: after a ``RandAugment`` forward pass, or after
-  ``.train()`` / ``.eval()`` on any of the three policies, even one that was
-  never called (`#4656 <https://github.com/kornia/kornia/issues/4656>`_).
+  a policy holding only ``posterize`` entries. ``copy.deepcopy`` works on all
+  three policies, before and after a forward pass or a ``.train()`` /
+  ``.eval()`` call, and the copy replays the original's recorded ``_params``.
   A normal forward draws fresh parameters; replay requires passing the
   saved parameters and controlling any application-time randomness.
 - Built-in lazy matrices keep only the input's shape, dtype and device

@@ -390,8 +390,8 @@ class Test3DAugmentationConventions(BaseTester):
                     yield sub
                 yield from concrete(sub)
 
-        # Enumerate the subclasses rather than a hand-written list: RandomTransplantation3D is missing from
-        # kornia.augmentation.__all__ and is the one 3D class that does take p_batch.
+        # Enumerate the subclasses rather than a hand-written list or `__all__`: RandomTransplantation3D was
+        # missing from kornia.augmentation.__all__ until #4695, and is the one 3D class that does take p_batch.
         classes = set(concrete(K.AugmentationBase3D))
         assert {K.RandomAffine3D, K.CenterCrop3D, K.RandomEqualize3D, K.RandomTransplantation3D} <= classes
         exposing = {cls.__name__ for cls in classes if "p_batch" in inspect.signature(cls.__init__).parameters}

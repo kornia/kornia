@@ -45,7 +45,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
           :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`.
           It consequently samples the wrapped operation's native
           magnitude instead of the ``OperationBase`` magnitude mapping; the gate comes from the wrapped
-          augmentation's ``p`` on both paths (`#4656 <https://github.com/kornia/kornia/issues/4656>`_). Tracked
+          augmentation's ``p`` on both paths. The magnitude bypass is tracked
           in `#4441 <https://github.com/kornia/kornia/issues/4441>`_. Policy augmentations use their own
           samplers where needed.
 

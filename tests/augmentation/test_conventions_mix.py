@@ -403,23 +403,58 @@ class TestMixConventions(BaseTester):
             K.RandomCutMixV2(use_correct_lambda=True)
 
     @pytest.mark.device_agnostic
-    def test_wart_mixup_and_cutmix_apply_p_to_rows_a_second_time_4649(self):
-        # #4649: inside a selected batch, rows are dropped again with probability 1 - p.
+    def test_convention_mixup_and_cutmix_apply_p_once_per_batch_4649(self):
+        from kornia.geometry.bbox import infer_bbox_shape
+
+        # ``p`` selects the whole batch; inside a selected batch no row (or mix) is dropped a second time.
         mixup = K.RandomMixUpV2(p=0.5, lambda_val=(0.5, 0.5))
-        cutmix = K.RandomCutMixV2(p=0.5, cut_size=(0.5, 0.5), use_correct_lambda=True)
-        image = torch.rand(8, 1, 8, 8)
-        mixup_rows, cutmix_rows = [], []
-        for seed in range(40):
+        cutmix = K.RandomCutMixV2(p=0.5, cut_size=(0.5, 0.5), num_mix=2, use_correct_lambda=True)
+        shape = torch.Size([8, 1, 8, 8])
+
+        def mixup_rows(params):
+            return params["mixup_lambdas"] > 0
+
+        def cutmix_rows(params):  # one (B, 4, 2) box set per mix
+            sides = [torch.stack(infer_bbox_shape(boxes)) for boxes in params["crop_src"]]
+            return (torch.stack(sides) > 0).flatten()
+
+        for aug, mixed in ((mixup, mixup_rows), (cutmix, cutmix_rows)):
+            rows = []
+            for seed in range(40):
+                torch.manual_seed(seed)
+                params = aug.forward_parameters(shape)
+                gate = params["batch_prob"]
+                assert bool((gate == gate[0]).all())  # all ones or all zeros
+                if gate[0] > 0:
+                    rows.append(mixed(params))
+            assert 10 <= len(rows) <= 30  # the batch gate itself still fires at rate p
+            assert bool(torch.cat(rows).all())
+
+    @pytest.mark.device_agnostic
+    def test_convention_cutmix_same_on_batch_shares_cut_geometry(self):
+        from kornia.geometry.bbox import infer_bbox_shape
+
+        # The default ``cut_size`` lets the sizes vary, so sharing is what makes the boxes equal: a fixed
+        # ``cut_size`` would pass with ``same_on_batch=False`` as well.
+        shape = torch.Size([8, 1, 64, 48])
+        for seed in range(10):
             torch.manual_seed(seed)
-            params = mixup.forward_parameters(image.shape)
-            if params["batch_prob"].all():
-                mixup_rows.append(params["mixup_lambdas"] > 0)
-            output = cutmix(image)
-            if cutmix._params["batch_prob"].all():
-                cutmix_rows.append((output != image).flatten(1).any(1))
-        for rows in (torch.cat(mixup_rows), torch.cat(cutmix_rows)):
-            assert rows.numel() >= 64
-            assert 0.3 < rows.float().mean() < 0.7
+            shared = K.RandomCutMixV2(p=1.0, num_mix=2, same_on_batch=True, use_correct_lambda=True)
+            crop_src = shared.forward_parameters(shape)["crop_src"]
+            self.assert_close(crop_src, crop_src[0, 0].expand_as(crop_src), rtol=0, atol=0)
+            independent = K.RandomCutMixV2(p=1.0, num_mix=2, same_on_batch=False, use_correct_lambda=True)
+            heights, widths = infer_bbox_shape(independent.forward_parameters(shape)["crop_src"].flatten(0, 1))
+            assert heights.unique().numel() > 1 and widths.unique().numel() > 1
+
+    @pytest.mark.device_agnostic
+    def test_wart_cutmix_placement_is_one_shared_draw_4712(self):
+        # #4712: with the size fixed, only the placement could differ, and it never does with same_on_batch=False.
+        shape = torch.Size([8, 1, 64, 48])
+        for seed in range(10):
+            torch.manual_seed(seed)
+            aug = K.RandomCutMixV2(p=1.0, cut_size=(0.5, 0.5), num_mix=2, same_on_batch=False, use_correct_lambda=True)
+            crop_src = aug.forward_parameters(shape)["crop_src"]
+            self.assert_close(crop_src, crop_src[0, 0].expand_as(crop_src), rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])

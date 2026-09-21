@@ -340,18 +340,24 @@ class TestAutoAugmentConventions(BaseTester):
         self.assert_close(bits, torch.full_like(bits, 5), rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
-    def test_wart_randaugment_posterize_and_translate_units_4655(self):
-        image = torch.rand(4, 3, 32, 32)
-        posterize = RandAugment(n=1, m=7, policy=[[("posterize", 0.0, 4)]])
-        output = posterize(image)
-        assert posterize._params[0].data[0].data["bits_factor"].tolist() == [0, 0, 0, 0]
-        self.assert_close(output, torch.zeros_like(image))
-        translate = RandAugment(n=1, m=29, policy=[[("translate_x", -0.5, 0.5)]])
-        pixels = translate.forward_parameters(image.shape)[0].data[0].data["translate_x"]
-        self.assert_close(pixels.abs(), torch.full_like(pixels, 0.5 * 29 / 30))
+    def test_convention_randaugment_posterize_and_translate_units_4655(self):
+        from kornia.enhance import posterize as posterize_bits
+
+        image = torch.rand(4, 3, 20, 32)
+        # The range runs backwards, high - (high - low) * m / 30, and is then truncated: a larger m keeps fewer bits.
+        for m, bits in ((7, 7), (15, 6), (29, 4)):
+            posterize = RandAugment(n=1, m=m, policy=[[("posterize", 4.0, 8.0)]])
+            output = posterize(image)
+            assert posterize._params[0].data[0].data["bits_factor"].tolist() == [bits] * 4
+            self.assert_close(output, posterize_bits(image, bits), rtol=0, atol=0)
+        # A translate range is a fraction of the width (x) or the height (y); H != W tells the two apart.
+        for name, pixels in (("translate_x", 0.05 * 32), ("translate_y", 0.05 * 20)):
+            translate = RandAugment(n=1, m=15, policy=[[(name, -0.1, 0.1)]])
+            drawn = translate.forward_parameters(image.shape)[0].data[0].data[name]
+            self.assert_close(drawn.abs(), torch.full_like(drawn, pixels))
 
     @pytest.mark.device_agnostic
-    def test_wart_operation_probability_parameter_is_inert_4656(self):
+    def test_convention_operation_probability_parameter_is_inert_4656(self):
         import copy
 
         gates = []
@@ -369,20 +375,17 @@ class TestAutoAugmentConventions(BaseTester):
         operation(torch.rand(8, 3, 4, 4)).sum().backward()
         assert operation._probability.grad is None
         assert operation._magnitude.grad is not None
-        policy = RandAugment(n=2, m=15)
-        copy.deepcopy(policy)
-        policy(torch.rand(2, 3, 8, 8))
-        with pytest.raises(RuntimeError, match="graph leaves"):
+        # The parameter is kept in the state dict, and no sampler is stored on the wrapper or the wrapped op.
+        assert "_probability" in operation.state_dict()
+        assert not hasattr(operation.op, "_p_gen") and not hasattr(operation.op, "_p_batch_gen")
+        # So a policy deep-copies after a forward and after train() / eval(), and the copy replays the original.
+        image = torch.rand(2, 3, 8, 8)
+        for policy in (AutoAugment(), TrivialAugment(), RandAugment(n=2, m=15)):
             copy.deepcopy(policy)
-        # A forward is not the only trigger: train() / eval() rebuild the samplers on every policy, used or not,
-        # while AutoAugment and TrivialAugment survive a forward because theirs bypasses the wrapper.
-        for unused in (AutoAugment(), TrivialAugment(), RandAugment(n=2, m=15)):
-            copy.deepcopy(unused)
-            with pytest.raises(RuntimeError, match="graph leaves"):
-                copy.deepcopy(unused.eval())
-        for forwarded in (AutoAugment(), TrivialAugment()):
-            forwarded(torch.rand(2, 3, 8, 8))
-            copy.deepcopy(forwarded)
+            copy.deepcopy(policy.eval())
+            copy.deepcopy(policy.train())
+            output = policy(image)
+            self.assert_close(copy.deepcopy(policy)(image, params=policy._params), output, rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_convention_randaugment_shear_passes_through_the_180_mapping(self):
@@ -504,6 +507,7 @@ class TestAutoAugmentConventions(BaseTester):
         from kornia.augmentation.auto.rand_augment.rand_augment import default_policy
 
         checked = []
+        height, width = 8, 6
         for subpolicy in default_policy:
             name = subpolicy[0][0]
             aug = RandAugment(n=1, m=10, policy=[subpolicy])
@@ -515,8 +519,11 @@ class TestAutoAugmentConventions(BaseTester):
             if name in ("shear_x", "shear_y"):
                 expected *= 180
             elif name == "posterize":
-                expected = math.floor(expected)  # 4 * 10 / 30 = 1.33 -> 1 bit: truncation, not rounding
-            drawn = aug.forward_parameters(torch.Size([8, 1, 8, 6]))[0].data[0].data[operation._factor_name]
+                # The range runs backwards: 8 - 4 * 10 / 30 = 6.67 -> 6 bits, truncation and not rounding.
+                expected = math.floor(high - (high - low) * 10 / 30)
+            elif name in ("translate_x", "translate_y"):
+                expected *= width if name == "translate_x" else height  # a fraction of that side, in pixels
+            drawn = aug.forward_parameters(torch.Size([8, 1, height, width]))[0].data[0].data[operation._factor_name]
             self.assert_close(drawn.abs().float(), torch.full((8,), float(expected)))
             checked.append(name)
         assert len(checked) == 12 and {"shear_x", "shear_y", "posterize", "translate_x", "translate_y"} <= set(checked)

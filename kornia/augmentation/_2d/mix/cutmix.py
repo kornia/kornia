@@ -78,11 +78,13 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           ``2 ** 24`` stay exact.
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
-        - ``p`` is a batch-wide gate, and the generator applies it a second time per row and mix: inside a selected
-          batch each cut is kept with probability ``p`` and zeroed otherwise. Each cut passes both gates with
-          probability ``p ** 2``; it can still leave the image unchanged through self-pairing or a zero-sized cut.
-          With ``same_on_batch=True`` the inner gate is shared across rows and mixes
-          (`#4649 <https://github.com/kornia/kornia/issues/4649>`_).
+        - ``p`` is a batch-wide gate and is applied once: one draw per call selects the whole batch with probability
+          ``p``, so ``_params["batch_prob"]`` is all ones or all zeros. Every row and mix of a selected batch receives
+          a cut and none is dropped again. With ``same_on_batch=False`` each row and mix draws its own cut size, but
+          the placement comes from one uniform draw per axis that all of them share
+          (`#4712 <https://github.com/kornia/kornia/issues/4712>`_); ``same_on_batch=True`` shares the size as well,
+          so all rows and mixes receive one geometry. A cut can still leave the image unchanged through self-pairing
+          or a zero-sized cut.
           At ``p=0`` the image is unchanged and each class row contains the original
           label twice with lambda zero. The current ``cut_size`` interpretation and its rejection of a minimum of
           ``1`` are described in its argument above; this is the repaired behavior from
@@ -122,7 +124,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         use_correct_lambda: bool = False,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
+        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=1.0)
 
         self.use_correct_lambda = use_correct_lambda
         if not self.use_correct_lambda:

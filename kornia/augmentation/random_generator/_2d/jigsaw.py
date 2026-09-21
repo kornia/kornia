@@ -54,8 +54,7 @@ class JigsawGenerator(RandomGeneratorBase):
         self.ensure_perm = ensure_perm
 
     def __repr__(self) -> str:
-        repr = f"grid={self.grid}"
-        return repr
+        return f"grid={self.grid}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self._device = device
