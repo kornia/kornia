@@ -126,7 +126,8 @@ class TestInitCameraIntrinsicsZhang(BaseTester):
             with pytest.raises(ValueError):
                 init_camera_intrinsics_zhang(homographies, (480, 640), degeneracy_rtol=rtol)
 
-    def test_inconsistent_constraints(self, device, zhang_dtype):
+    @pytest.mark.parametrize("degeneracy_rtol", [None, 1e-4])
+    def test_inconsistent_constraints(self, device, zhang_dtype, degeneracy_rtol):
         h = torch.tensor(
             [
                 [
@@ -138,8 +139,14 @@ class TestInitCameraIntrinsicsZhang(BaseTester):
             device=device,
             dtype=zhang_dtype,
         )
+        # These inconsistent homographies are in normalized image coordinates. Put
+        # them at pixel scale so float32 rank checks do not mask the intended
+        # positive-definiteness rejection. The explicit rtol also covers that
+        # stricter diagnostic on CPU, where the initializer computes in float64.
+        normalized_to_pixels = h.new_tensor([[320.0, 0.0, 319.5], [0.0, 320.0, 239.5], [0.0, 0.0, 1.0]])
+        h = normalized_to_pixels @ h
         with pytest.raises(ValueError, match=r"positive-definite.*batch"):
-            init_camera_intrinsics_zhang(h, (480, 640))
+            init_camera_intrinsics_zhang(h, (480, 640), degeneracy_rtol=degeneracy_rtol)
 
     def test_singular_homography(self, device, zhang_dtype):
         _, h = _scene(device, zhang_dtype)
