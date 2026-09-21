@@ -25,7 +25,6 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation.random_generator import RectangleEraseGenerator
 from kornia.color import rgb_to_hsv
-from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import BaseError, ImageError, ShapeError
 from kornia.enhance import (
     AdjustBrightnessAccumulative,
@@ -37,6 +36,7 @@ from kornia.enhance import (
     equalize_clahe,
     normalize_min_max,
     posterize,
+    solarize,
 )
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
@@ -233,24 +233,17 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert set().union(*groups) == set(_INTENSITY_FACTORIES) and len(_INTENSITY_FACTORIES) == 35
         if name in _REJECTS_AUDIT_FIXTURES and device.type == "cuda":
             # torch._assert_async on a false condition is a device-side assert on CUDA, which poisons
-            # the context for every later test in the process.  On MPS the check is skipped by design
-            # and the raw histogram gather raises instead (an AcceleratorError, a RuntimeError subclass).
+            # the context for every later test in the process.  On MPS kornia checks the same
+            # condition (#4600), so the named error is raised there as on the CPU.
             pytest.skip("CUDA: the value assert is a device-side assert that invalidates the context")
         if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         fixtures = _out_of_range_fixtures(device, dtype)
         if name in _REJECTS_AUDIT_FIXTURES:
-            # The rejection has to be the VALUE check, not any RuntimeError: on the CPU the message
-            # names the range, and on MPS the check is skipped so the raw gather error surfaces (#4600) --
-            # from torch 2.14; 2.5.1 and 2.9.1 leave the MPS gather unchecked and return silently.
-            if device.type == "mps" and not torch_version_ge(2, 14):
-                for image in fixtures.values():
-                    out = _run(name, image)
-                    assert bool(torch.isfinite(out).all())
-                return
-            rejection = r"\[0, 1\]" if device.type == "cpu" else "out of bounds"
+            # The rejection has to be the VALUE check, not any RuntimeError: its message names the
+            # range, on the CPU and on MPS alike (#4600).
             for image in fixtures.values():
-                with pytest.raises(RuntimeError, match=rejection):
+                with pytest.raises(RuntimeError, match=r"\[0, 1\]"):
                     _run(name, image)
             return
         # A clamped output is exactly 0.0 or 1.0, and the pass-through outputs sit near 2.0 or
@@ -558,22 +551,18 @@ class TestIntensityValueRangeConventions(BaseTester):
     #       torch.manual_seed(0); K.RandomEqualize(p=1.0)(x)
     # executed 2026-09-15 (torch 2.14.0, cpu) -> the last two raise `RuntimeError: equalize expects
     # input values in [0, 1]. Scale the image into that range first, for example image / 255.0 for
-    # 8-bit data.`, the first two return a 64-level image.  MPS skips the value check, and the same two
-    # inputs raise the raw `gather: index ... is out of bounds` there (an AcceleratorError, which is a
-    # RuntimeError).  The guard compares `input * 255` in the input's dtype, so `1.00390625` (1 + 1/256,
-    # under one code above 1) is admitted in float32 and float64 but rounds onto 256 and raises in float16.
+    # 8-bit data.`, the first two return a 64-level image.  MPS runs the same check and raises the
+    # same message (#4600).  The guard compares `input * 255` in the input's dtype, so
+    # `1.00390625` (1 + 1/256, under one code above 1) is admitted in float32 and float64 but rounds onto
+    # 256 and raises in float16.
     def test_convention_random_equalize_rejects_out_of_range_with_named_range(self, device, dtype):
         if device.type == "cuda":
             pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
-        # Only kornia's own check names the range; MPS skips it and surfaces torch's gather error from
-        # torch 2.14 (2.5.1 and 2.9.1 leave the MPS gather unchecked and return the image silently).
-        match = r"\[0, 1\]" if device.type == "cpu" else "out of bounds"
+        # Only kornia's own check names the range; it runs on MPS as well, so it raises there too.
+        match = r"\[0, 1\]"
         ramp = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8).to(device=device, dtype=dtype)
         for image in (ramp * 2.0, ramp - 1.0):
             torch.manual_seed(_FORWARD_SEED)
-            if device.type == "mps" and not torch_version_ge(2, 14):
-                assert bool(torch.isfinite(K.RandomEqualize(p=1.0)(image)).all())
-                continue
             with pytest.raises(RuntimeError, match=match):
                 _sync(K.RandomEqualize(p=1.0)(image).device)
         # Less than one 8-bit code outside the range is admitted at either end: `ramp - 0.003` has
@@ -606,8 +595,8 @@ class TestIntensityValueRangeConventions(BaseTester):
     #   torch.manual_seed(0); y = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(v); y.sum().backward()
     #   print(torch.equal(y, v), v.grad.flatten().tolist())
     # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32) -> both
-    # classes raise (`equalize expects input values in [0, 1]`, `index ... is out of bounds`), then
-    # `True [nan, 1.0, 1.0, nan, 1.0, 1.0]`.
+    # classes raise (`equalize expects input values in [0, 1]`, `index ... is out of bounds`; on mps the
+    # named message since #4600), then `True [nan, 1.0, 1.0, nan, 1.0, 1.0]`.
     def test_wart_p_gate_computes_the_skipped_samples_4576(self, device, dtype):
         if device.type == "cuda":
             pytest.skip("not on CUDA: the value asserts are device-side asserts that poison the context")
@@ -617,12 +606,8 @@ class TestIntensityValueRangeConventions(BaseTester):
             torch.manual_seed(_FORWARD_SEED)
             # It has to be the value check that fires, not merely some RuntimeError: the claim is that
             # the transform ran on a sample `p=0.0` was supposed to skip.
-            gate_rejection = r"\[0, 1\]|out of bounds" if device.type == "cpu" else "out of bounds"
-            if device.type == "mps" and not torch_version_ge(2, 14):
-                # The transform still runs on the skipped samples, but 2.5.1 leaves the MPS gather
-                # unchecked, so the out-of-range rows come back silently instead of raising.
-                assert bool(torch.isfinite(cls(p=0.0)(image)).all())
-                continue
+            # MPS runs the value check too since #4600, so only the named error qualifies there.
+            gate_rejection = r"\[0, 1\]|out of bounds" if device.type == "cpu" else r"\[0, 1\]"
             with pytest.raises(RuntimeError, match=gate_rejection):
                 _sync(cls(p=0.0)(image).device)
         values = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1)
@@ -1584,8 +1569,7 @@ class TestIntensityColourConventions(BaseTester):
     # bits out of bounds. Expected inside (0, 8)`, `RuntimeError: Gamma must be non-negative.`,
     # `ValueError: brightness out of bounds. Expected inside (0.0, 2.0)`, `ValueError: contrast out
     # of bounds. Expected inside (0, inf)`, `ValueError: saturation out of bounds. Expected inside
-    # (0, inf)`, `ValueError: hue out of bounds. Expected inside (-0.5, 0.5)`, `RuntimeError: The addition
-    # must be in the open range (-0.5, 0.5).` (for 0.5 and -0.5; #4605), `BaseError: sigma must be positive` and
+    # (0, inf)`, `ValueError: hue out of bounds. Expected inside (-0.5, 0.5)`, `BaseError: sigma must be positive` and
     # `BaseError: Height of drop should be greater than zero and less than image height.`; then
     # `BaseError: Kernel size must be an odd integer bigger than 0` (Gaussian (4, 4)), `... bigger than 2`
     # (motion (1, 1)), `BaseError: Invalid value in num_drop_channels` and `IndexError: index 25 is out
@@ -1628,18 +1612,6 @@ class TestIntensityColourConventions(BaseTester):
                 r"saturation out of bounds\. Expected inside \(0, inf\)",
             ),
             ("hue_above_half", "construction", ValueError, r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\)"),
-            (
-                "solarize_additions_at_half",
-                "forward",
-                RuntimeError,
-                r"The addition must be in the open range \(-0\.5, 0\.5\)",
-            ),
-            (
-                "solarize_additions_at_minus_half",
-                "forward",
-                RuntimeError,
-                r"The addition must be in the open range \(-0\.5, 0\.5\)",
-            ),
             ("gaussian_blur_sigma_zero", "forward", BaseError, r"sigma must be positive"),
             ("gaussian_blur_even_kernel", "forward", BaseError, r"Kernel size must be an odd integer bigger than 0"),
             ("median_blur_even_kernel", "forward", RuntimeError, r"is invalid for input of size"),
@@ -1703,10 +1675,6 @@ class TestIntensityColourConventions(BaseTester):
     def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
         if case in ("gamma_negative", "gain_negative") and device.type != "cpu":
             pytest.skip("CPU only: on CUDA the value assert is a device-side assert; MPS skips the check")
-        # The solarize check runs on the CPU-drawn additions, so unlike the gamma check it raises for an
-        # MPS image as well; CUDA stays out, like every value assert here.
-        if case.startswith("solarize_additions") and device.type == "cuda":
-            pytest.skip("not on CUDA: value asserts are kept out of the shared CUDA process")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),
@@ -1722,10 +1690,6 @@ class TestIntensityColourConventions(BaseTester):
             "hue_scalar_above_half": lambda: K.RandomHue(0.6, p=1.0),
             "brightness_scalar_above_two": lambda: K.RandomBrightness(3.0, p=1.0),
             "solarize_scalar_threshold_above_half": lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
-            # The construction check is the closed [-0.5, 0.5]; kornia.enhance.solarize rejects the
-            # ends on the forward pass, so this one constructs and raises like the gamma case.
-            "solarize_additions_at_half": lambda: K.RandomSolarize((0.5, 0.5), (0.5, 0.5), p=1.0),
-            "solarize_additions_at_minus_half": lambda: K.RandomSolarize((0.5, 0.5), (-0.5, -0.5), p=1.0),
             # The constructor admits sigma 0; gaussian_blur2d rejects it on the forward pass.
             "gaussian_blur_sigma_zero": lambda: K.RandomGaussianBlur((3, 3), (0.0, 0.0), p=1.0),
             # The documented "greater than zero" is checked against the image on the forward pass.
@@ -1765,6 +1729,19 @@ class TestIntensityColourConventions(BaseTester):
         with pytest.raises(error, match=match):
             # The sync is what surfaces an MPS kernel error inside this block rather than later.
             _sync(aug(image).device)
+
+    # Issue #4605: RandomSolarize admits the closed [-0.5, 0.5] for `additions`, and
+    # kornia.enhance.solarize now accepts the same interval, so an endpoint range is applied on the
+    # forward pass instead of raising `The addition must be in the open range (-0.5, 0.5)`.
+    @pytest.mark.parametrize("addition", [0.5, -0.5])
+    def test_convention_random_solarize_applies_an_additions_endpoint_4605(self, device, dtype, addition):
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: value asserts are kept out of the shared CUDA process")
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
+        aug = K.RandomSolarize((0.5, 0.5), (addition, addition), p=1.0)
+        out = aug(image)
+        self.assert_close(out, solarize(image, 0.5, addition))
 
     # Row 6c-45, the bound that never raises: RandomPlanckianJitter's `select_from` is used as a Python
     # index into its table, so a negative entry down to -25 selects a row from the end instead of being
@@ -1832,30 +1809,19 @@ class TestIntensityColourConventions(BaseTester):
     # RandomClahe rejects an out-of-[0, 1] input with a message naming `equalize_clahe` and the range
     # (the fix for #4564; the raw indexing error of the histogram gather used to be all a caller got).
     # Not on CUDA, where an out-of-range index is a device-side assert that poisons the context.  On MPS
-    # the check is SKIPPED BY DESIGN -- `_assert_async_value_check` returns early there, because
-    # materializing the condition would drain the queued stream -- so MPS keeps the old behaviour and the
-    # pin keeps its two torch legs: 2.14 raises the raw `gather` error (#4600), 2.5.1 returns silently.
+    # `_lookup_value_check` runs the same condition, so the same named error is raised (#4600).
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); x = torch.rand(1, 3, 16, 16) * 2
     #   torch.manual_seed(0); K.RandomClahe(p=1.0)(x)
     # executed 2026-09-16 (torch 2.14.0) -> cpu `RuntimeError: equalize_clahe expects input values in
-    # [0, 1]. Scale the image into that range first, ...`; mps `AcceleratorError: gather: index 487 is
-    # out of bounds for dimension 5 with size 256`.
+    # [0, 1]. Scale the image into that range first, ...`; mps the same message since #4600 (before it,
+    # `AcceleratorError: gather: index 487 is out of bounds for dimension 5 with size 256`).
     def test_convention_random_clahe_out_of_range_error_names_the_range_4564(self, device, dtype):
         if device.type == "cuda":
             pytest.skip("not on CUDA: the index error is a device-side assert that poisons the context")
         torch.manual_seed(_FIXTURE_SEED)
         image = (torch.rand(1, 3, 16, 16) * 2).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        if device.type == "mps":
-            # The value check is skipped on MPS, so the outcome is torch's, not kornia's.
-            if not torch_version_ge(2, 14):
-                out = K.RandomClahe(p=1.0)(image)
-                assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
-            else:
-                with pytest.raises(RuntimeError, match="out of bounds"):
-                    _sync(K.RandomClahe(p=1.0)(image).device)
-            return
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]") as info:
             _sync(K.RandomClahe(p=1.0)(image).device)
         # `match` alone would be satisfied by a message that never mentions how to fix it.

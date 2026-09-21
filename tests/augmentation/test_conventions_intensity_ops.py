@@ -29,7 +29,8 @@ from torch.distributions import Distribution
 import kornia.augmentation as K
 from kornia.constants import BorderType, Resample
 from kornia.core.exceptions import BaseError, ImageError, ShapeError
-from kornia.filters import box_blur, motion_blur
+from kornia.filters import box_blur
+from kornia.filters.kernels import gaussian
 
 from testing.base import (
     DYNAMO_UNAVAILABLE_REASON,
@@ -375,87 +376,36 @@ class TestBlurConventions(BaseTester):
         assert aug.flags["border_type"] == BorderType.CONSTANT
         assert aug.flags["resample"] == Resample.NEAREST
 
-    # Issue #4599: `kernel_size` is drawn once per SAMPLE and then one entry -- the one at a uniformly
-    # drawn `_params["idx"]`, not the first -- is applied to the whole batch; and because the draw is
-    # `UniformDistribution(ks[0] // 2, ks[1] // 2)` truncated with `.int()`, the range's upper bound is
-    # practically never reached.  `(3, 5)` is therefore a constant 3 -- "practically": the float32 draw
-    # rounds onto the bound about once in 2**24 (seed 204 draws one 5 in 50000), so the pin is that the
-    # bound is vanishingly rare, not impossible.  RandomRain had the same wart and no longer does
-    # (#4567): it draws over `[lo, hi + 1)`, floors, and clamps that rounding escape back onto the closed
-    # range -- the remedy this one still needs.
-    # Snippet used to generate expected:
-    #   import collections
-    #   for ks in ((3, 5), (3, 7), (5, 11)):
-    #       torch.manual_seed(0)
-    #       v = K.RandomMotionBlur(ks, (0., 0.), (0., 0.), p=1.).forward_parameters((20000, 1, 8, 8))
-    #       print(ks, sorted(collections.Counter(v["ksize_factor"].tolist())))
-    # executed 2026-09-16 (torch 2.14.0, cpu) -> `[3]`, `[3, 5]`, `[5, 7, 9]`; `idx` over 400 seeds at
-    # B = 6 lands on every row (`{0: 67, 1: 71, 2: 66, 3: 57, 4: 83, 5: 56}`).
+    # Issue #4599: truncating the half-size float draw makes the odd upper bound practically
+    # unreachable (apart from float32 rounding). Sample independent calls because the kernel size
+    # is shared within each batch. The range-sampling defect is separate from #4671.
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(("kernel_size", "drawn"), [((3, 5), [3]), ((3, 7), [3, 5]), ((5, 11), [5, 7, 9])])
     def test_wart_random_motion_blur_upper_bound_is_never_drawn_4599(self, kernel_size, drawn):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomMotionBlur(kernel_size, (0.0, 0.0), (0.0, 0.0), p=1.0)
-        factors = aug.forward_parameters((20000, 1, 8, 8))["ksize_factor"]
+        factors = torch.cat([aug.forward_parameters((1, 1, 8, 8))["ksize_factor"] for _ in range(20000)])
         assert sorted(set(factors[factors != kernel_size[1]].tolist())) == drawn
         # The requested upper bound is odd and admissible, and it is practically absent: at most a rounding
         # handful of 20000 draws, where a uniform draw over the odd sizes would give thousands.
         assert kernel_size[1] % 2 == 1 and kernel_size[1] not in drawn
         assert int((factors == kernel_size[1]).sum()) < 5
 
-    # Issue #4599, the other half: the per-sample draw is real, and a random index selects which one
-    # the batch gets -- so `_params["ksize_factor"]` holds B different values while one kernel is used.
-    @pytest.mark.device_agnostic
-    def test_wart_random_motion_blur_applies_one_randomly_indexed_kernel_size_4599(self):
-        picked = set()
-        distinct = 0
-        for seed in range(64):
-            torch.manual_seed(seed)
-            params = K.RandomMotionBlur((3, 21), (0.0, 0.0), (0.0, 0.0), p=1.0).forward_parameters((6, 3, 8, 8))
-            assert params["ksize_factor"].shape == (6,)
-            assert params["idx"].shape == (1,)
-            picked.add(int(params["idx"][0]))
-            distinct += len(set(params["ksize_factor"].tolist())) > 1
-        # Every row of the batch can be the one applied, so it is not "the first sample's".
-        assert picked == set(range(6))
-        # And the draw really is per sample: a constant `ksize_factor` would make `idx` immaterial.
-        assert distinct > 60
-        # The kernel that is applied is the one at `idx`, not the first sample's: `_params` alone cannot
-        # see that (`kernel_size_list[0]` in apply_transform left this pin green), so compare the output
-        # with the functional at `ksize_factor[idx]` on seeds where that differs from `ksize_factor[0]`.
-        torch.manual_seed(_FIXTURE_SEED)
-        image = torch.rand(6, 3, 8, 8)
-        checked = 0
+    # Issue #4671: the stored sizes describe the shared kernel actually applied to every image.
+    def test_convention_random_motion_blur_stored_kernel_sizes_match_impulse_widths_4671(self, device, dtype):
+        image = torch.zeros(8, 1, 17, 17, device=device, dtype=dtype)
+        image[:, :, 8, 8] = 1
+        aug = K.RandomMotionBlur((3, 9), (0.0, 0.0), (0.0, 0.0), p=1.0)
+        drawn = set()
         for seed in range(8):
             torch.manual_seed(seed)
-            aug = K.RandomMotionBlur((3, 21), (-45.0, 45.0), (-1.0, 1.0), p=1.0)
-            out = aug(image)
-            params = aug._params
-            idx = int(params["idx"][0])
-            applied, first = int(params["ksize_factor"][idx]), int(params["ksize_factor"][0])
-            reference = motion_blur(
-                image,
-                applied,
-                params["angle_factor"],
-                params["direction_factor"],
-                border_type="constant",
-                mode="nearest",
-            )
-            assert torch.equal(out, reference)
-            if applied != first:
-                assert not torch.equal(
-                    out,
-                    motion_blur(
-                        image,
-                        first,
-                        params["angle_factor"],
-                        params["direction_factor"],
-                        border_type="constant",
-                        mode="nearest",
-                    ),
-                )
-                checked += 1
-        assert checked >= 3
+            output = aug(image)
+            # A horizontal, uniform blur spreads an impulse across exactly kernel_size pixels.
+            widths = (output[:, 0, 8] != 0).sum(-1)
+            assert widths.tolist() == aug._params["ksize_factor"].tolist()
+            assert widths.unique().numel() == 1
+            drawn.update(widths.tolist())
+        assert len(drawn) > 1
 
     # Row 6c-24, the resampling caveat: the kernel's weights are laid on a line and then rotated, so
     # with ``border_type="reflect"`` a "nearest" or "bilinear" rotation keeps them non-negative and the
@@ -1606,68 +1556,87 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         reloaded = torch.load(buffer, weights_only=False)
         assert torch.equal(reloaded(constant), expected)
 
-    # Issue #4589: the constructor's own check admits `0 <= sigma <= 1`, but filters.kernels.gaussian
-    # normalizes by `gauss.sum()`, which underflows to zero at sigma 0, so the kernel is 0 / 0 and the
-    # whole output is NaN.  An even-length axis carries a half-pixel offset, so no sample sits at the mean
-    # and a small non-zero sigma does it too -- with center 0.5, 4x4 is NaN at sigma 0.005 where 3x3 is not.
+    # The kernel is finite at every admitted `sigma`, including the `0` the constructor's own check
+    # admits (the fix for #4589: `filters.kernels.gaussian` used to normalize by `gauss.sum()`, which
+    # underflowed to zero once every sample was far enough from the mean, making the kernel `0 / 0` and
+    # the whole output NaN).  The fix measures each sample's squared distance from the NEAREST sample
+    # rather than from the mean, so the nearest one always weighs `exp(0) = 1` and the sum cannot
+    # underflow.  This pin covers the three legs the wart pin it replaces used to record as NaN:
+    # `sigma=0` at any size, an even axis at a small non-zero sigma (the half-pixel offset leaves no
+    # sample at the mean), and a small `sigma * axis` product at any size.
     # Snippet used to generate expected:
-    #   torch.manual_seed(0); print(K.RandomGaussianIllumination(p=1.0, sigma=0.0)(torch.rand(1, 3, 4, 4)))
-    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> every element NaN; the default
-    # sigma=(0.2, 1.0) is finite over 200 seeds at sizes 1..4.  The even/odd leg needs `center` pinned:
-    # with the drawn centre the odd size is NaN on some draws too, and with centre 0.5 a 4x4 image is NaN
-    # at sigma 0.005 on all 30 seeds tried while 3x3 and 5x5 are finite on all of them.
+    #   for n, sg in ((4, 0.005), (8, 0.005), (8, 0.002), (64, 0.0005), (64, 0.00055)):
+    #       torch.manual_seed(0)
+    #       print(K.RandomGaussianIllumination(p=1.0, sigma=(sg, sg), center=(0.5, 0.5))(
+    #           torch.full((1, 3, n, n), 0.5)).isfinite().all())
+    #   print(gaussian(5, torch.tensor([[0.0]])), gaussian(4, torch.tensor([[0.0]])))
+    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> finite at all five; the limit kernel
+    # is `[0, 0, 1, 0, 0]` for an odd window and `[0, 0.5, 0.5, 0]` for an even one, where the two
+    # samples either side of the mean tie at half a pixel.
     @pytest.mark.parametrize("size", [3, 4])
-    def test_wart_random_gaussian_illumination_zero_sigma_is_nan_4589(self, device, dtype, size):
+    def test_convention_random_gaussian_illumination_is_finite_at_every_sigma(self, device, dtype, size):
         image = torch.full((1, 3, size, size), 0.5, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        assert bool(K.RandomGaussianIllumination(p=1.0, sigma=0.0)(image).isnan().all())
-        # The even axis loses the on-grid sample to the half-pixel offset, so it is NaN at a small
-        # non-zero sigma that the odd one survives.
+        assert bool(K.RandomGaussianIllumination(p=1.0, sigma=0.0)(image).isfinite().all())
+        # The even axis loses the on-grid sample to the half-pixel offset; it is finite now as well.
         for sigma in (0.005, 0.01):
             torch.manual_seed(_FORWARD_SEED)
             small = K.RandomGaussianIllumination(p=1.0, sigma=(sigma, sigma), center=(0.5, 0.5))(image)
-            if sigma == 0.005 and size % 2 == 0:
-                assert bool(small.isnan().all())
-            else:
-                assert bool(small.isfinite().all())
-        # Evenness is not the variable: `sigma` is relative, so it is `sigma * axis` -- the kernel's
-        # absolute width -- that underflows, at about 0.034 in the float32 the parameters are drawn in.
-        # An `8 x 8` image is finite at the sigma that kills `4 x 4`, and a `64 x 64` one dies at a
-        # proportionally smaller sigma.  The even/odd leg above runs only at sizes 3 and 4 and cannot
-        # see either half.
-        # Snippet used to generate expected:
-        #   for n, sg in ((4, 0.005), (8, 0.005), (8, 0.002), (64, 0.0005), (64, 0.00055)):
-        #       torch.manual_seed(0)
-        #       K.RandomGaussianIllumination(p=1.0, sigma=(sg, sg), center=(0.5, 0.5))(
-        #           torch.full((1, 3, n, n), 0.5))
-        # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes -- the parameters are float32 in
-        # every one of them) -> NaN, finite, NaN, NaN, finite.  `n * sigma` is 0.020, 0.040, 0.016,
-        # 0.032 and 0.035 respectively, so the cut is on the product and not on `n`.
-        for axis, small_sigma, nan_expected in ((4, 0.005, True), (8, 0.005, False), (8, 0.002, True)):
+            assert bool(small.isfinite().all()), (size, sigma)
+        # It is the kernel's ABSOLUTE width -- `sigma * axis`, since `sigma` is relative -- that used to
+        # underflow, at about 0.034 in the float32 the parameters are drawn in.  These five products
+        # (0.020, 0.040, 0.016, 0.032, 0.035) straddle that threshold; all five are finite now.
+        for axis, small_sigma in ((4, 0.005), (8, 0.005), (8, 0.002), (64, 0.0005), (64, 0.00055)):
             square = torch.full((1, 3, axis, axis), 0.5, device=device, dtype=dtype)
             torch.manual_seed(_FORWARD_SEED)
             out = K.RandomGaussianIllumination(p=1.0, sigma=(small_sigma, small_sigma), center=(0.5, 0.5))(square)
-            assert bool(out.isnan().all()) is nan_expected, (axis, small_sigma)
-        # The parameter dtype, not the image dtype, sets the threshold: float64 parameters move it.
-        # MPS has no float64, so this leg is CPU/CUDA only.
-        if device.type != "mps":
-            wide = torch.full((1, 3, 4, 4), 0.5, device=device, dtype=dtype)
-            for param_sigma, nan_expected in ((0.005, False), (0.003, True)):
-                aug = K.RandomGaussianIllumination(p=1.0, sigma=(param_sigma, param_sigma), center=(0.5, 0.5))
-                aug.set_rng_device_and_dtype(device, torch.float64)
-                torch.manual_seed(_FORWARD_SEED)
-                assert bool(aug(wide).isnan().all()) is nan_expected, param_sigma
-        # And with the DRAWN centre an odd axis is safe from 5 up, where 1 and 3 are not.
-        for odd, safe in ((3, False), (5, True), (7, True)):
-            hits = 0
+            assert bool(out.isfinite().all()), (axis, small_sigma)
+        # And with the DRAWN centre, which the wart pin recorded as NaN on some seeds at 1 and 3.
+        for odd in (1, 3, 5, 7):
             for seed in range(16):
                 torch.manual_seed(seed)
                 odd_image = torch.full((1, 3, odd, odd), 0.5, device=device, dtype=dtype)
-                hits += bool(K.RandomGaussianIllumination(p=1.0, sigma=(0.005, 0.005))(odd_image).isnan().any())
-            assert (hits == 0) is safe, (odd, hits)
-        # The documented default is unaffected, so the wart is the admitted extreme and not the class.
+                assert bool(K.RandomGaussianIllumination(p=1.0, sigma=(0.005, 0.005))(odd_image).isfinite().all()), (
+                    odd,
+                    seed,
+                )
+        # The documented default was never affected and must stay unaffected.
         torch.manual_seed(_FORWARD_SEED)
         assert bool(K.RandomGaussianIllumination(p=1.0)(image).isfinite().all())
+
+    # At `sigma=0` the kernel is the unit impulse: all the weight on the sample nearest the mean, which
+    # for an even window is the two samples that tie half a pixel either side of it.  This is the limit
+    # the `masked_fill` encodes, and it is the part of the #4589 fix that is a NEW contract rather than
+    # the removal of a NaN, so it is pinned separately from the finiteness above.
+    @pytest.mark.device_agnostic
+    def test_convention_gaussian_kernel_at_zero_sigma_is_the_unit_impulse(self):
+        odd = gaussian(5, torch.tensor([[0.0]]))
+        assert odd.flatten().tolist() == [0.0, 0.0, 1.0, 0.0, 0.0]
+        even = gaussian(4, torch.tensor([[0.0]]))
+        assert even.flatten().tolist() == [0.0, 0.5, 0.5, 0.0]
+        # Every window sums to 1, so the impulse is a normalized kernel and not a degenerate one.
+        for window in (1, 2, 3, 4, 5, 8, 9):
+            assert float(gaussian(window, torch.tensor([[0.0]])).sum()) == pytest.approx(1.0)
+
+    # An ODD window is bit-identical to the pre-fix formula at every ordinary sigma -- the shift cancels
+    # exactly, because the nearest sample sits at distance 0 and subtracting 0 is exact.  An EVEN window
+    # is not: the nearest samples sit at 0.25 (half a pixel squared), the subtraction is inexact, and the
+    # kernel moves by up to half a float32 eps.  That is a rounding difference and not a behaviour change,
+    # but it is the reason an even-window kernel is not byte-comparable across this fix.
+    # Snippet used to generate expected:
+    #   compare gaussian(ws, sigma) against `exp(-x**2 / (2*sigma**2))` normalized, for ws 1..31 and
+    #   sigma in (0.1, 0.3, 0.5, 0.8, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0)
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> odd 160 of 160 bit-identical; even 134 of 150 differ,
+    # worst absolute delta 5.96e-08, which is 0.5 * float32 eps.
+    @pytest.mark.device_agnostic
+    def test_convention_gaussian_odd_window_is_unchanged_by_the_nearest_sample_shift(self):
+        for window in (1, 3, 5, 7, 9, 15, 31):
+            for sigma in (0.1, 0.5, 1.0, 3.0, 10.0):
+                sigma_t = torch.tensor([[sigma]])
+                x = (torch.arange(window, dtype=sigma_t.dtype) - window // 2).expand(1, -1)
+                reference = torch.exp(-x.pow(2.0) / (2 * sigma_t.pow(2.0)))
+                reference = reference / reference.sum(-1, keepdim=True)
+                assert torch.equal(gaussian(window, sigma_t), reference), (window, sigma)
 
     # `.compile()` on RandomGaussianIllumination swaps in a compiled transform that neither pickle nor
     # torch.save can serialize, while deepcopy still works; the linear classes keep pickling.  Measured
