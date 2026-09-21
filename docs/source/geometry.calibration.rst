@@ -129,11 +129,90 @@ Perspective-n-Point (PnP)
 Planar intrinsic initialization
 --------------------------------
 
-.. autofunction:: init_camera_intrinsics_zhang
+Use :func:`init_camera_intrinsics_zhang` when corresponding points on a known metric plane
+are available and a PyTorch pipeline needs an initial pinhole intrinsic matrix. It implements
+the linear stage of Zhang's method :cite:`zhang2000calibration` with zero skew. It estimates
+the two focal lengths and the principal point; target detection, distortion estimation,
+poses, and nonlinear reprojection refinement are outside its scope.
 
-For well-conditioned correspondences on a metric plane, first estimate each plane-to-pixel
-homography with :func:`kornia.geometry.find_homography_dlt` (explicitly selecting ``solver="svd"``),
-then group the homographies by camera as ``(B,V,3,3)``. The initializer assumes an ideal,
-zero-skew pinhole camera and estimates the principal point. It does not estimate distortion,
-detect a calibration target, refine reprojection error, or return poses. Use diverse tilted views;
-repeated views and fronto-parallel translations cannot identify the required constraints.
+The `author's expanded report
+<https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr98-71.pdf>`_,
+Sections 2.3 and 3.1, derives the planar constraints and linear solution. For homography
+columns :math:`h_1,h_2` and :math:`B=K^{-\mathsf{T}}K^{-1}`, the constraints are
+
+.. math::
+
+    h_1^{\mathsf{T}} B h_2 = 0, \qquad
+    h_1^{\mathsf{T}} B h_1 = h_2^{\mathsf{T}} B h_2.
+
+This implementation imposes :math:`B_{12}=0` for zero skew, giving a five-column
+linear system. It solves that system by SVD, checks degeneracy and positive definiteness,
+and recovers :math:`K` through Cholesky factorization. The factorization and image-coordinate
+preconditioning are implementation choices; the API does not implement every stage of the paper.
+
+From planar correspondences to intrinsics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For well-conditioned correspondences, first estimate each plane-to-pixel homography with
+:func:`~kornia.geometry.homography.find_homography_dlt`, explicitly selecting ``solver="svd"``, then
+group the homographies by camera as ``(B,V,3,3)``. Both board axes must use the same length
+unit, image coordinates are pixel ``(x,y)``, and each camera must retain the same intrinsics
+across its views.
+
+This self-contained synthetic example projects an 8-by-6 metric grid into six tilted views.
+Only the resulting image observations and board coordinates enter the estimation step.
+The known matrix is used to check the result, not supplied to the initializer.
+
+.. code-block:: python
+
+    import torch
+    from kornia.geometry.calibration import init_camera_intrinsics_zhang
+    from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+    from kornia.geometry.homography import find_homography_dlt
+
+    dtype = torch.float64
+    known_k = torch.tensor(
+        [[800.0, 0.0, 312.0], [0.0, 820.0, 245.0], [0.0, 0.0, 1.0]], dtype=dtype
+    )
+    rotations = axis_angle_to_rotation_matrix(torch.tensor(
+        [[0.3, -0.2, 0.1], [-0.3, 0.2, -0.1], [0.1, 0.4, 0.2],
+         [-0.4, -0.3, 0.1], [0.4, 0.2, -0.2], [0.1, -0.4, 0.3]], dtype=dtype
+    ))
+    translation = torch.tensor([0.02, -0.03, 0.9], dtype=dtype)[None, :, None]
+    h_true = known_k @ torch.cat((rotations[:, :, :2], translation.expand(6, -1, -1)), dim=-1)
+    y, x = torch.meshgrid(torch.arange(6, dtype=dtype), torch.arange(8, dtype=dtype), indexing="ij")
+    board_xy = torch.stack(((x - 3.5) * 0.03, (y - 2.5) * 0.03), dim=-1).reshape(-1, 2)
+    board_h = torch.cat((board_xy, torch.ones_like(board_xy[:, :1])), dim=-1)
+    pixels_h = board_h @ h_true.transpose(-1, -2)
+    image_xy = (pixels_h[..., :2] / pixels_h[..., 2:])[None]  # (B=1, V=6, N=48, 2)
+
+    # Estimation: replace image_xy with matching ideal-camera pixel observations.
+    batch, views, count, _ = image_xy.shape
+    homographies = find_homography_dlt(
+        board_xy[None].expand(batch * views, -1, -1),
+        image_xy.reshape(batch * views, count, 2),
+        solver="svd",
+    ).reshape(batch, views, 3, 3)
+    initial_k = init_camera_intrinsics_zhang(homographies, (480, 640))
+    torch.testing.assert_close(initial_k[0], known_k, atol=0.02, rtol=0)
+
+This checks an ideal, distortion-free synthetic case, not real-camera accuracy. Noisy
+observations and lens distortion can bias a linear initial estimate. Diverse tilted views
+are needed; repeated views and fronto-parallel translations can be degenerate. One invalid
+camera in a batch raises an error for the entire call. The current API requires at least
+three views; the zero-skew problem can theoretically be solved from two suitable views.
+
+Comparison with OpenCV initialization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``image_size`` is ``(height,width)`` and supplies a numerical preconditioner, not a
+principal-point prior. Both focal lengths and the principal point remain free. In contrast,
+`OpenCV initCameraMatrix2D
+<https://docs.opencv.org/4.13.0/d9/d0c/group__calib3d.html>`_ takes planar correspondences
+and ``(width,height)``, fixes the initial principal point at the image center, and defaults
+to ``aspectRatio=1``. Its ``aspectRatio=0`` mode frees the focal-length ratio but still
+does not implement this API's principal-point estimation. ``calibrateCamera`` additionally
+estimates distortion and poses and performs nonlinear refinement. Neither API is an exact
+output-equivalence reference for this initializer.
+
+.. autofunction:: init_camera_intrinsics_zhang
