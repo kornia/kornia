@@ -67,10 +67,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           out-of-range image even at ``p=0.0`` -- and a skipped sample's gradient can be NaN where the
           transform's derivative is infinite (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
-          per sample where the class's own docstring says so. One class draws per sample and then
-          applies one draw to the whole batch: :class:`RandomMotionBlur` fills ``_params["ksize_factor"]``
-          with one kernel size per sample and blurs the batch with the one at ``_params["idx"]``, an index
-          drawn uniformly over the batch rather than the first sample's. :class:`RandomDissolving`
+          per sample where the class's own docstring says so. :class:`RandomMotionBlur` instead draws
+          one kernel size for the whole batch and repeats it in ``_params["ksize_factor"]`` with shape
+          ``(B,)``; its angle and direction remain per sample unless ``same_on_batch=True``. :class:`RandomDissolving`
           hard-codes ``same_on_batch=True``. Several classes also draw a whole-image field --
           ``gaussian_noise``, ``gradient``, ``plasma``, and :class:`RandomSaltAndPepperNoise`'s boolean
           ``mask_salt`` and ``mask_pepper`` -- whose stored shape normally follows the original batched

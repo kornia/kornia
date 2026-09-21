@@ -32,7 +32,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
     Args:
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
+            If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
@@ -44,7 +44,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
+            - ksize_factor (torch.Tensor): one shared kernel size repeated to a shape of (B,).
             - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
             - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
 
@@ -97,7 +97,9 @@ class MotionBlurGenerator(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.angle, self.direction])
         angle_factor = _adapted_rsampling((batch_size,), self.angle_sampler, same_on_batch)
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
-        ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
+        # A ranged kernel size is shared by the batch; angle and direction can still vary per sample.
+        ksize_same_on_batch = same_on_batch or isinstance(self.kernel_size, tuple)
+        ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, ksize_same_on_batch).int() * 2 + 1
 
         return {
             "ksize_factor": ksize_factor.to(device=_device, dtype=torch.int32),
