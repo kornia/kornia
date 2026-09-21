@@ -232,21 +232,12 @@ def image_histogram2d(
     if bandwidth is None:
         bandwidth = (max - min) / n_bins
 
+    auto_centers = centers is None
     if centers is None:
-        # Build the bin-index arange at a fixed float32 regardless of image.dtype -- a
-        # low-precision image.dtype (float16/bfloat16) can't exactly represent integers past
-        # 2048 (float16) / has limited integer range (bfloat16's 8-bit mantissa), so building
-        # the arange directly at image.dtype silently collapses distinct bin indices together
-        # once n_bins is large enough: torch.arange(4096, dtype=torch.float16) has only 3073
-        # distinct values, not 4096 (confirmed directly), which collapsed centers[i] == centers[j]
-        # for i != j and gave those bins numerically identical (redundant) histogram output.
-        # `centers` stays an internal float32 working buffer for the rest of this function --
-        # `image.unsqueeze(0) - centers` below promotes through ordinary PyTorch type promotion,
-        # so u/kernel_values/hist/pdf all become float32 too unless explicitly cast back down.
-        # That cast happens once, right before `hist` is returned (see below) -- NOT here, which
-        # would re-round centers straight back down to float16 and reproduce the exact collapse
-        # this fix exists to prevent.
-        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=torch.float32) + 0.5)
+        # Build the bin-center grid at a dtype that represents the bin indices exactly: image.dtype alone collapses
+        # distinct centers for float16/bfloat16, and a fixed float32 would downgrade a float64 image.
+        compute_dtype = torch.promote_types(image.dtype, torch.float32)
+        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=compute_dtype) + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
 
     u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
@@ -266,12 +257,10 @@ def image_histogram2d(
         raise ValueError(f"Kernel must be 'triangular', 'gaussian', 'uniform' or 'epanechnikov'. Got {kernel}.")
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
-    # Restore the caller's input dtype here, once, at the public return boundary -- everything
-    # upstream of this point (centers, u, kernel_values) deliberately ran at float32 regardless
-    # of image.dtype (see the `centers is None` branch above); before this cast, a float16/
-    # bfloat16 input silently came back as a float32 hist/pdf, a real behavior change this
-    # dtype-precision fix must not itself introduce.
-    hist = hist.to(image.dtype)
+    if auto_centers and image.is_floating_point():
+        # The wider centers promoted the result; hand back the image's own dtype as before. An integer image or explicit
+        # `centers` keep the promoted dtype they always had (casting a KDE result into an integer dtype would wrap).
+        hist = hist.to(image.dtype)
 
     if return_pdf:
         normalization = torch.sum(hist, dim=-1, keepdim=True) + eps
