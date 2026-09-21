@@ -234,6 +234,7 @@ class TestTransplantationConventions(BaseTester):
         aug = K.RandomTransplantation(p=1.0, excluded_labels=[0, top])
         out_image, out_mask = aug(image, mask)
         assert aug._params["acceptor_indices"].tolist() == [1]
+        assert aug._params["batch_prob"].tolist() == [0.0, 1.0]  # the gate agrees with the pruned acceptors
         assert aug._params["selected_labels"].tolist() == [7]
         assert aug._params["selected_labels"].dtype is mask_dtype
         assert torch.equal(out_mask[0], mask[0])  # image 0 received nothing from the all-excluded image 1
@@ -247,8 +248,8 @@ class TestTransplantationConventions(BaseTester):
         image = torch.rand(3, 1, 4, 6)
         aug = K.RandomTransplantation(p=1.0, excluded_labels=[0])
         out_image, out_mask = aug(image, mask)
-        assert bool((aug._params["batch_prob"] > 0.5).all())  # the gate selected everything ...
-        assert aug._params["acceptor_indices"].numel() == 0  # ... and nothing had a donor with a label to give
+        assert aug._params["acceptor_indices"].numel() == 0  # no donor had a label to give ...
+        assert not bool((aug._params["batch_prob"] > 0.5).any())  # ... so the p=1 gate was closed for all three
         assert aug._params["selected_labels"].shape == (0,)
         assert aug._params["selected_labels"].dtype is mask_dtype  # not the float32 of a bare torch.empty(0)
         assert aug._params["selection"].shape == (0, 4, 6)
@@ -319,13 +320,19 @@ class TestTransplantationConventions(BaseTester):
         assert "selected_labels" in redrawn and aug._params is redrawn
 
     @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("excluded_donor", [False, True])
     @pytest.mark.parametrize("also_dropped", ["donor_indices", "acceptor_indices"])
-    def test_convention_labels_are_not_drawn_beside_an_explicit_selection(self, also_dropped):
+    def test_convention_labels_are_not_drawn_beside_an_explicit_selection(self, also_dropped, excluded_donor):
         # With an index key missing the parameters are derived again, but a given selection is never
-        # second-guessed: no label is drawn, the RNG is left alone and the same positions move.
+        # second-guessed: no label is drawn, the RNG is left alone and the same positions move. With a donor
+        # that has no eligible label its acceptor was dropped, and the rebuilt indices must still line up.
         image, mask = _multi_label_batch()
+        excluded = None
+        if excluded_donor:
+            mask[1] = 0  # image 1 donates to image 2 and holds only the excluded label
+            excluded = [0]
         torch.manual_seed(0)
-        aug = K.RandomTransplantation(p=1.0)
+        aug = K.RandomTransplantation(p=1.0, excluded_labels=excluded)
         expected_image, _ = aug(image, mask)
         partial = {k: v.clone() for k, v in aug._params.items() if k not in ("selected_labels", also_dropped)}
         torch.manual_seed(5)
@@ -333,6 +340,7 @@ class TestTransplantationConventions(BaseTester):
         replayed_image, _ = aug(image, mask, params=partial)
         assert torch.equal(torch.get_rng_state(), before)
         assert "selected_labels" not in partial and also_dropped in partial
+        assert partial["acceptor_indices"].tolist() == ([0, 1, 3] if excluded_donor else [0, 1, 2, 3])
         self.assert_close(replayed_image, expected_image, rtol=0, atol=0)
 
     @pytest.mark.device_agnostic

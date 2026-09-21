@@ -99,7 +99,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
         - one label is drawn uniformly from the donor's distinct labels, minus ``excluded_labels``, with
           ``torch.randperm`` on the global CPU generator whatever the mask's device; the draw is over labels,
           not over area. A donor with no eligible label has nothing to give, so its acceptor is dropped from
-          ``acceptor_indices`` and receives nothing, while the rest of the batch is transplanted.
+          ``acceptor_indices``, its ``batch_prob`` entry is cleared and it receives nothing, while the rest of
+          the batch is transplanted.
         - ``_params`` holds ``batch_prob``, ``forward_input_shape`` (the mask's shape), ``acceptor_indices``,
           ``donor_indices``, ``selected_labels`` and ``selection``. ``selection`` is what the transform reads:
           row ``d`` marks the positions moved from ``donor_indices[d]`` into ``acceptor_indices[d]``, and a
@@ -321,8 +322,15 @@ class RandomTransplantation(MixAugmentationBaseV2):
                 # A donor without an eligible label has nothing to give, so its acceptor is not an acceptor.
                 # Dropping the pair keeps `selected_labels` aligned with the donors it is zipped against below;
                 # merely skipping the label would shift every later label onto the wrong donor. No placeholder
-                # label can stand in for "nothing": every value of a bounded dtype may occur in a mask.
+                # label can stand in for "nothing": every value of a bounded dtype may occur in a mask. The gate
+                # is closed for the dropped acceptors too, so a replay that rebuilds `acceptor_indices` from
+                # `batch_prob` stays aligned with the pruned rows.
                 keep = torch.tensor(eligible, dtype=torch.long, device=params["donor_indices"].device)
+                dropped = torch.ones(len(params["acceptor_indices"]), dtype=torch.bool, device=keep.device)
+                dropped[keep] = False
+                batch_prob = params["batch_prob"].clone()
+                batch_prob[params["acceptor_indices"][dropped]] = 0
+                params["batch_prob"] = batch_prob
                 params["acceptor_indices"] = params["acceptor_indices"][keep]
                 params["donor_indices"] = params["donor_indices"][keep]
 
