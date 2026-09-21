@@ -79,22 +79,17 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     Convention:
         - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
-          and the default ``cropping_mode="slice"`` the output preserves the input's ``(H, W)`` even when they
-          differ; ``cropping_mode="resample"`` needs an explicit ``output_size``; without one it raises ``TypeError``
-          once the gate selects a sample, and a call that selects none returns the input
-          (`#4652 <https://github.com/kornia/kornia/issues/4652>`_). ``start_ratio_range`` draws a pair
-          used as ``(x / W, y / H)`` for the crop's top-left corner. These are the repaired axis conventions from
+          the output preserves the input's ``(H, W)`` even when they differ, in both ``cropping_mode="slice"`` and
+          ``cropping_mode="resample"``. ``start_ratio_range`` draws a pair used as ``(x / W, y / H)`` for the crop's
+          top-left corner. These are the repaired axis conventions from
           `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
         - ``p`` is per sample and this class fixes ``same_on_batch=False``. It composes ``mosaic_grid[0]`` tiles
           along width and ``mosaic_grid[1]`` tiles along height, then crops each result. It supports
           ``"bbox"``, ``"bbox_xyxy"``, and ``"bbox_xywh"`` in addition to image inputs; it does not support
           masks, keypoints, or class labels.
         - With an explicit ``output_size`` an unselected sample is zero-padded or cropped to that size rather than
-          returned unchanged. Boxes are not rescaled or clipped to ``output_size``, and whenever any sample is
-          selected an unselected sample's own boxes are clipped to the input extent, replaced by a
-          ``[0, 0, 1, 1]`` placeholder when smaller than ``min_bbox_size``, and padded with that placeholder to
-          the grid's box count, although that sample is not mixed
-          (`#4652 <https://github.com/kornia/kornia/issues/4652>`_).
+          returned unchanged. The boxes of a selected sample are translated with its tiles, not rescaled, and
+          clipped to the output window ``[0, W_out] x [0, H_out]``.
 
     """
 

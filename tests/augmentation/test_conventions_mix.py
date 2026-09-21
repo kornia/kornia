@@ -488,38 +488,31 @@ class TestMixConventions(BaseTester):
         assert independent._params["patch_coords"].unique(dim=0).shape[0] > 1
 
     @pytest.mark.device_agnostic
-    def test_wart_mosaic_output_size_boxes_and_resample_default_4652(self):
-        image = torch.rand(4, 1, 6, 8)
-        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4)
-        assert K.RandomMosaic(output_size=(4, 10), p=0.0)(image).shape == (4, 1, 4, 10)
-        # Replay one recorded draw under both settings, with a hand-set gate that selects rows 1 and 3 only.
-        reference = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])
-        reference(image, boxes)
-        params = dict(reference._params)
-        params["batch_prob"] = torch.tensor([0.0, 1.0, 0.0, 1.0])
-        selected = params["batch_prob"] > 0
-        results = [
-            K.RandomMosaic(output_size=output_size, p=1.0, data_keys=["input", "bbox_xyxy"])(
-                image, boxes, params=params
-            )
-            for output_size in (None, (4, 10))
-        ]
-        assert results[0][0].shape == (4, 1, 6, 8) and results[1][0].shape == (4, 1, 4, 10)
-        self.assert_close(results[0][1], results[1][1])  # the boxes ignore output_size
-        assert results[1][1][selected][..., 3].max() > 4  # a box bottom below the 4-pixel-high output
-        placeholder = torch.tensor([[1.0, 1.0, 4.0, 4.0]] + [[0.0, 0.0, 1.0, 1.0]] * 3)
-        self.assert_close(results[1][1][~selected], placeholder.expand(2, -1, -1))
-        # An unselected row keeps its image, yet its own boxes are clipped to the input extent and dropped to the
-        # placeholder below min_bbox_size.
-        loose = torch.tensor([[[2.0, 1.0, 30.0, 20.0], [1.0, 1.0, 5.0, 6.0]]] * 4)
-        strict = K.RandomMosaic(p=1.0, min_bbox_size=19.0, data_keys=["input", "bbox_xyxy"])
-        output, filtered = strict(image, loose, params=params)
-        self.assert_close(output[~selected], image[~selected])
-        own = torch.tensor([[2.0, 1.0, 8.0, 6.0], [0.0, 0.0, 1.0, 1.0]])  # clipped to W=8, H=6; the small one dropped
-        self.assert_close(filtered[~selected][:, :2], own.expand(2, -1, -1))
-        with pytest.raises(TypeError, match="NoneType"):
-            K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
-        self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)  # no selection, no raise
+    def test_convention_mosaic_boxes_follow_output_size_and_resample_defaults_to_input_size(self):
+        # Fixed by #4679 (#4652): boxes used to be clipped to the input extent rather than to ``output_size``, and
+        # ``cropping_mode="resample"`` without an ``output_size`` raised ``TypeError`` once a sample was selected.
+        image = torch.rand(3, 1, 6, 8)
+        assert K.RandomMosaic(output_size=(4, 10), p=0.0)(image).shape == (3, 1, 4, 10)
+        # Full-tile boxes on a (6, 8) input; the crop starts at (x, y) = (4, 3) of the (12, 16) canvas and is
+        # (4, 10) high and wide, so each tile's box is clipped to the output window [0, 10] x [0, 4].
+        boxes = torch.tensor([[[0.0, 0.0, 8.0, 6.0]]] * 3)
+        aug = K.RandomMosaic(output_size=(4, 10), start_ratio_range=(0.5, 0.5), p=1.0, data_keys=["input", "bbox_xyxy"])
+        output, output_boxes = aug(image, boxes)
+        assert output.shape == (3, 1, 4, 10)
+        # The input extent would give [0, 3, 4, 6], [4, 0, 8, 3] and [4, 3, 8, 6] instead.
+        expected = torch.tensor(
+            [[0.0, 0.0, 4.0, 3.0], [0.0, 3.0, 4.0, 4.0], [4.0, 0.0, 10.0, 3.0], [4.0, 3.0, 10.0, 4.0]]
+        )
+        self.assert_close(output_boxes, expected.expand(3, -1, -1))
+        # Without output_size, resample crops to the input size and agrees with slice on the same draw.
+        sliced = K.RandomMosaic(start_ratio_range=(0.5, 0.5), p=1.0)
+        expected_image = sliced(image)
+        resampled = K.RandomMosaic(start_ratio_range=(0.5, 0.5), p=1.0, cropping_mode="resample")(
+            image, params=sliced._params
+        )
+        assert resampled.shape == image.shape
+        self.assert_close(resampled, expected_image)
+        self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
