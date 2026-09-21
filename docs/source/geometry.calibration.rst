@@ -125,3 +125,15 @@ Perspective-n-Point (PnP)
 -------------------------
 
 .. autofunction:: solve_pnp_dlt
+
+Planar intrinsic initialization
+--------------------------------
+
+.. autofunction:: init_camera_intrinsics_zhang
+
+For well-conditioned correspondences on a metric plane, first estimate each plane-to-pixel
+homography with :func:`kornia.geometry.find_homography_dlt` (explicitly selecting ``solver="svd"``),
+then group the homographies by camera as ``(B,V,3,3)``. The initializer assumes an ideal,
+zero-skew pinhole camera and estimates the principal point. It does not estimate distortion,
+detect a calibration target, refine reprojection error, or return poses. Use diverse tilted views;
+repeated views and fronto-parallel translations cannot identify the required constraints.
