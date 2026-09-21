@@ -76,7 +76,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           matrix even though the original voxel ``(1, 1, 1)`` moves to ``(2, 2, 2)``.
         - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped,
           but it is off by one: a crop exactly one voxel larger than the padded volume along an axis is accepted
-          and the output gains a zero slab, while two or more raise ``ValueError``
+          and the output gains a slab that is zero up to resampling roundoff, while two or more raise
+          ``ValueError``
           (`#4688 <https://github.com/kornia/kornia/issues/4688>`_). :class:`CenterCrop3D` rejects the
           one-voxel case. A valid gated-off call returns the input itself -- unpadded, at the input shape rather
           than ``size`` -- with an identity ``transform_matrix``.
