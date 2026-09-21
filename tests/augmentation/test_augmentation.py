@@ -1340,6 +1340,10 @@ class TestColorJiggle(BaseTester):
         expected = op(image, params=params)
         params["order"] = torch.tensor([3, 2, 1, 0], device=device, dtype=torch.long)
         self.assert_close(op(image, params=params), expected)
+        # The fixed order dispatches through torch.cond, the sampled order through Python branches.
+        params["order"] = torch.tensor([0, 1, 2, 3], device=device, dtype=torch.long)
+        sampled = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0)
+        assert torch.equal(sampled(image, params=params), expected)
         with pytest.raises(ValueError, match=r"entries must be in 0\.\.3"):
             ColorJiggle(order=(0, 1, 9))
 

@@ -205,6 +205,8 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
 
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
+    if factor.shape[-3] != 1:
+        raise ValueError(f"Factor must hold one value per image, not per channel. Got shape {factor.shape}")
 
     # Scaling saturation in HSV keeps value (the maximum RGB channel) and hue fixed, so it is
     # equivalent to scaling each channel's distance from the minimum RGB channel. Expressing that

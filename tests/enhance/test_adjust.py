@@ -162,6 +162,11 @@ class TestAdjustSaturation(BaseTester):
         expected = kornia.color.hsv_to_rgb(kornia.enhance.adjust_saturation_raw(kornia.color.rgb_to_hsv(image), 0.5))
         self.assert_close(kornia.enhance.adjust_saturation(image, 0.5), expected)
 
+    def test_per_channel_factor_raises(self, device, dtype):
+        image = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            kornia.enhance.adjust_saturation(image, torch.ones(2, 3, device=device, dtype=dtype))
+
     @pytest.mark.device_agnostic
     def test_tied_extrema_use_symmetric_subgradient(self):
         image = torch.tensor([0.8, 0.8, 0.2], dtype=torch.float64).view(1, 3, 1, 1).requires_grad_()

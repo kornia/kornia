@@ -23,7 +23,6 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
-from kornia.core.utils import is_compiling
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -32,9 +31,9 @@ def _contiguous_output(output: torch.Tensor) -> torch.Tensor:
 
 
 def _identity(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    # torch.cond rejects an output that aliases an input. The copy is only used by the compiled
-    # path when a sampled factor is neutral; eager execution keeps returning the input directly.
-    # Use one layout for every branch so their forward and backward metadata agree under Inductor.
+    # torch.cond rejects an output that aliases an input, so a neutral factor returns a copy. Every
+    # branch returns a contiguous tensor: their forward and backward metadata must agree under Inductor,
+    # which rejects preserve_format branches for channels-last and transposed inputs.
     return input.contiguous().clone()
 
 
@@ -54,7 +53,7 @@ def _adjust_hue(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
     return _contiguous_output(adjust_hue(input, factor * 2 * pi))
 
 
-def _apply_transform_compiled(
+def _apply_transform_cond(
     index: int,
     input: torch.Tensor,
     brightness: torch.Tensor,
@@ -122,8 +121,12 @@ class ColorJiggle(IntensityAugmentationBase2D):
           ``ColorJiggle(0, 0, 0, 0)`` and a brightness- or contrast-only configuration accept any channel
           count, including the ``C = 1`` and ``C = 4`` on which :class:`ColorJitter` raises.
         - a fixed ``order`` makes a three-channel transform ``torch.compile`` fullgraph-safe while preserving
-          lazy neutral-factor skips. The default sampled tensor order, and neutral one- and four-channel
-          configurations, keep the Python dispatch path.
+          lazy neutral-factor skips: eager and compiled calls both dispatch each step through ``torch.cond``,
+          and the result is contiguous even for a channels-last input. The default sampled tensor order, and
+          neutral one- and four-channel configurations, keep the Python dispatch path. Differentiating a
+          compiled fixed-order transform needs torch ``2.7`` or newer with the ``inductor`` backend: on
+          ``2.5.1`` and ``2.6.0`` the forward pass compiles but the backward pass raises, while the
+          ``aot_eager`` backend works on each.
         - the ``[0, 2]`` bound applies to both argument forms: an explicit ``brightness`` range reaching
           above ``2``, such as ``(0.0, 3.0)``, and a scalar whose implied ``[1 - x, 1 + x]`` does, such as
           ``1.5``, are both rejected at construction with
@@ -199,13 +202,14 @@ class ColorJiggle(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # Every torch.cond branch is traced, including branches that are not selected at runtime.
-        # Restrict the compiled dispatcher to RGB inputs so tracing the hue/saturation branches
-        # cannot reject the neutral one- and four-channel configurations accepted by eager mode.
-        if is_compiling() and self._fixed_order is not None and input.shape[-3] == 3:
+        # A fixed order runs the same torch.cond dispatcher in eager and compiled mode. Every torch.cond
+        # branch is traced, including branches that are not selected at runtime, so the dispatcher is
+        # restricted to RGB inputs: tracing the hue/saturation branches would otherwise reject the neutral
+        # one- and four-channel configurations accepted by the Python dispatch below.
+        if self._fixed_order is not None and input.shape[-3] == 3:
             jittered = input
             for idx in self._fixed_order:
-                jittered = _apply_transform_compiled(
+                jittered = _apply_transform_cond(
                     idx,
                     jittered,
                     params["brightness_factor"],
