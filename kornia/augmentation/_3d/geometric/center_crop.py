@@ -39,13 +39,19 @@ class CenterCrop3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, out_d, out_h, out_w)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``size`` is ``(D, H, W)``. The crop is shared across the batch; its ``p`` is the call-wide gate, so a
+          valid ``p=0`` request returns the un-cropped input and ``p=1`` returns the requested crop. Size validation
+          still runs when the call is skipped, so an oversized crop raises even at ``p=0``.
+        - defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:
         >>> import torch

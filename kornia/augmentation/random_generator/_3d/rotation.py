@@ -27,6 +27,8 @@ from kornia.core.utils import _extract_device_dtype
 class RotationGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ``rotate`` for a random 3D rotate transform.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomRotation3D`.
+
     Args:
         degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).

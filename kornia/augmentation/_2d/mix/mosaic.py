@@ -45,15 +45,16 @@ class RandomMosaic(MixAugmentationBaseV2):
          1. Concate selected images into a super-image.
          2. Crop out the outcome image according to the top-left corner and crop size.
 
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
     Args:
-        output_size: the output torch.Tensor width and height after mosaicing.
-        start_ratio_range: top-left (x, y) position for cropping the mosaic images.
+        output_size: the output ``(height, width)`` after mosaicing.
+        start_ratio_range: the ``(low, high)`` range from which both top-left crop ratios ``(x / W, y / H)`` are drawn.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
         min_bbox_size: minimum area of bounding boxes. Default to 0.
-        data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints",
-            "class", "label".
+        data_keys: the input type sequential for applying augmentations. Only "input", "image", "bbox",
+            "bbox_xyxy" and "bbox_xywh" are implemented; see the Convention block.
         p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
@@ -75,6 +76,25 @@ class RandomMosaic(MixAugmentationBaseV2):
         >>> out = mosaic(input, boxes)
         >>> out[0].shape, out[1].shape
         (torch.Size([8, 3, 300, 300]), torch.Size([8, 8, 4]))
+
+    Convention:
+        - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
+          and the default ``cropping_mode="slice"`` the output preserves the input's ``(H, W)`` even when they
+          differ; ``cropping_mode="resample"`` needs an explicit ``output_size``; without one it raises ``TypeError``
+          once the gate selects a sample, and a call that selects none returns the input
+          (`#4652 <https://github.com/kornia/kornia/issues/4652>`_). ``start_ratio_range`` draws a pair
+          used as ``(x / W, y / H)`` for the crop's top-left corner. These are the repaired axis conventions from
+          `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
+        - ``p`` is per sample and this class fixes ``same_on_batch=False``. It composes ``mosaic_grid[0]`` tiles
+          along width and ``mosaic_grid[1]`` tiles along height, then crops each result. It supports
+          ``"bbox"``, ``"bbox_xyxy"``, and ``"bbox_xywh"`` in addition to image inputs; it does not support
+          masks, keypoints, or class labels.
+        - With an explicit ``output_size`` an unselected sample is zero-padded or cropped to that size rather than
+          returned unchanged. Boxes are not rescaled or clipped to ``output_size``, and whenever any sample is
+          selected an unselected sample's own boxes are clipped to the input extent, replaced by a
+          ``[0, 0, 1, 1]`` placeholder when smaller than ``min_bbox_size``, and padded with that placeholder to
+          the grid's box count, although that sample is not mixed
+          (`#4652 <https://github.com/kornia/kornia/issues/4652>`_).
 
     """
 

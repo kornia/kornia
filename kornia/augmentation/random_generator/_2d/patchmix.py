@@ -30,14 +30,17 @@ __all__ = ["PatchMixGenerator"]
 class PatchMixGenerator(RandomGeneratorBase):
     r"""Generate patchmix indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.PatchMix`.
+
     Args:
-        alpha (float): hyperparameter for generating cut size from beta distribution.
+        alpha (float): parameter of the ``Beta(alpha, alpha)`` draw returned as ``lam``. It does not affect
+            the patch, whose side is always ``patch_size``.
         patch_size (int): size of the patch to be swapped.
-        p (float): probability of applying patchmix.
+        p (float): stored for ``repr`` only; the augmentation draws the gate itself.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B).
+            - mix_pairs (torch.Tensor): pairing indices with a shape of (B).
             - patch_coords (torch.Tensor): top-left coordinates of the patch (B, 2).
             - lam (torch.Tensor): mixing parameter (B).
 

@@ -50,6 +50,22 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 class RandAugment(PolicyAugmentBase):
     """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects ``n`` distinct one-operation candidate sub-policies uniformly without replacement, then
+          applies them in the order drawn. ``n`` must be in ``[1, len(policy)]``.
+        - ``m`` must be strictly between ``0`` and ``30``. For every magnitude-bearing selected operation it
+          sets a per-row magnitude to ``low + (high - low) * m / 30`` over that operation's magnitude range. For a
+          symmetric operation that range is ``(0, max)`` and each row independently gets a positive or negative
+          sign, so ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. That value then passes through
+          the wrapper's magnitude mapping, which is the identity for every default entry except three:
+          ``shear_x`` / ``shear_y`` multiply it by ``180``, so ``m=15`` on the default ``("shear_x", -0.3, 0.3)``
+          shears by ``27`` degrees and not by ``0.15``; ``posterize`` truncates it to integer bits (``0`` for
+          ``m < 7.5`` with the default entry, an all-black image); and ``translate_x`` / ``translate_y`` take it
+          as pixels, not as a fraction of the image size
+          (`#4655 <https://github.com/kornia/kornia/issues/4655>`_).
+
     Args:
         n: the number of augmentations to apply sequentially. Must be at least ``1`` and at
             most the number of sub-policies in ``policy``, since they are sampled without
@@ -60,8 +76,8 @@ class RandAugment(PolicyAugmentBase):
                                     attribute.
                                     If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
-                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
-                                    modules will trigger errors.
+                                    If `rigid`, the result is the same for a policy: every operation wrapper
+                                    contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:
