@@ -111,8 +111,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
-        transform = transform.expand(input.shape[0], -1, -1)
-        return transform
+        return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(
         self,

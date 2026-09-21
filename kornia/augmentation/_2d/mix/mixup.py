@@ -128,15 +128,14 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         input_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
         lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(input.device, dtype=input.dtype)
-        inputs = input * (1 - lam) + input_permute * lam
-        return inputs
+        return input * (1 - lam) + input_permute * lam
 
     def apply_non_transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         image_dtype = DType.to_torch(int(params["dtype"].item()))
         calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
-        out_labels = torch.stack(
+        return torch.stack(
             [
                 input.to(device=input.device, dtype=calc_dtype),
                 input.to(device=input.device, dtype=calc_dtype),
@@ -144,7 +143,6 @@ class RandomMixUpV2(MixAugmentationBaseV2):
             ],
             -1,
         )
-        return out_labels
 
     def apply_transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
@@ -153,7 +151,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
         image_dtype = DType.to_torch(int(params["dtype"].item()))
         calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
-        out_labels = torch.stack(
+        return torch.stack(
             [
                 input.to(device=input.device, dtype=calc_dtype),
                 labels_permute.to(device=input.device, dtype=calc_dtype),
@@ -161,4 +159,3 @@ class RandomMixUpV2(MixAugmentationBaseV2):
             ],
             -1,
         )
-        return out_labels

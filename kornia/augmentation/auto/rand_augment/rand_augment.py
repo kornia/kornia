@@ -123,8 +123,7 @@ class RandAugment(PolicyAugmentBase):
             Tensor of indices into this module's children.
         """
         perm = torch.randperm(len(self._modules))
-        idx = perm[:n]
-        return idx
+        return perm[:n]
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         """Build a :class:`PolicySequential` for one RandAugment candidate op.

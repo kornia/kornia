@@ -65,8 +65,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.degrees = degrees
 
     def __repr__(self) -> str:
-        repr = f"degrees={self.degrees}"
-        return repr
+        return f"degrees={self.degrees}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype, "degrees", (-360, 360))
