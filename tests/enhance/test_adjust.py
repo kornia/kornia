@@ -1363,3 +1363,31 @@ class TestPosterize(BaseTester):
         op = kornia.enhance.posterize
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img, 3), op_optimized(img, 3))
+
+
+class TestFactorBroadcast(BaseTester):
+    """A factor carrying more dimensions than the image used to spin forever while broadcasting."""
+
+    @pytest.mark.parametrize(
+        "op",
+        [
+            kornia.enhance.adjust_saturation_raw,
+            kornia.enhance.adjust_saturation_with_gray_subtraction,
+            kornia.enhance.adjust_hue_raw,
+            kornia.enhance.adjust_contrast,
+            kornia.enhance.adjust_contrast_with_mean_subtraction,
+            kornia.enhance.adjust_brightness,
+            kornia.enhance.adjust_brightness_accumulative,
+        ],
+    )
+    def test_factor_with_more_dims_raises(self, device, dtype, op):
+        img = torch.rand(3, 4, 4, device=device, dtype=dtype)
+        factor = torch.ones(2, 1, 1, 1, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            op(img, factor)
+
+    def test_factor_with_fewer_dims_still_broadcasts(self, device, dtype):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
+        out = kornia.enhance.adjust_brightness(img, factor)
+        assert out.shape == img.shape
