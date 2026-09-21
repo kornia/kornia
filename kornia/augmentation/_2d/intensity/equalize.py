@@ -52,9 +52,10 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
-        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values it cannot equalize. On
-        CPU and CUDA the check is ``torch._assert_async``; on MPS the condition is read on the host, which
-        costs one device sync per call, and under ``torch.compile`` on MPS the check is skipped.
+        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values it cannot equalize. The
+        check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older MPS
+        release the condition is read on the host instead, which costs one device sync per call and is
+        skipped under ``torch.compile``.
 
     Examples:
         >>> rng = torch.manual_seed(0)

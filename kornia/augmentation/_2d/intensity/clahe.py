@@ -56,9 +56,9 @@ class RandomClahe(IntensityAugmentationBase2D):
           :func:`kornia.enhance.equalize`. As for :class:`RandomEqualize`, the rejection is not exactly at
           the boundary: the check guards the 256-entry lookup indexed with ``(input * 255).long()``, so a
           value less than one 8-bit code outside ``[0, 1]``, at either end, is still admitted, up to the
-          rounding of ``input * 255`` in the input's dtype. The check runs on the CPU and on CUDA via
-          ``torch._assert_async``. On MPS the condition is read on the host, which costs one device sync
-          per call, and under ``torch.compile`` on MPS the check is skipped.
+          rounding of ``input * 255`` in the input's dtype. The check is ``torch._assert_async``, which
+          has an MPS kernel from torch ``2.13``. On an older MPS release the condition is read on the host
+          instead, which costs one device sync per call and is skipped under ``torch.compile``.
 
     Convention:
         - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. Both eager and

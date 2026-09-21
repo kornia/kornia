@@ -21,9 +21,17 @@ import pytest
 import torch
 
 from kornia import enhance
+from kornia.core._compat import torch_version_ge
 from kornia.geometry import rotate
 
 from testing.base import BaseTester
+
+
+def _sync(device) -> None:
+    # MPS dispatches asynchronously, so a kernel error raised by the forward under test would
+    # otherwise surface inside an unrelated later test.
+    if device.type == "mps":
+        torch.mps.synchronize()
 
 
 class TestEqualization(BaseTester):
@@ -172,14 +180,15 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
     def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
         # kornia#4564: the tile-LUT gather used to fail with a raw
-        # "index ... is out of bounds for dimension 5 with size 256". On MPS the lookup is range-checked
-        # on the host, so the same named error is raised there too (kornia#4600).
+        # "index ... is out of bounds for dimension 5 with size 256". MPS range-checks it too
+        # (kornia#4600): from torch 2.13 the assert is asynchronous there, so the message arrives at
+        # the sync.
         if device.type == "cuda":
             pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * scale + shift
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
-            enhance.equalize_clahe(x)
+            _sync(enhance.equalize_clahe(x).device)
 
     def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
         # The check covers exactly the domain the gather can index, so a hair above 1 keeps working.
@@ -192,6 +201,20 @@ class TestEqualization(BaseTester):
         torch._dynamo.reset()
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
         self.assert_close(compiled(x), enhance.equalize_clahe(x))
+
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+        # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
+        # compiling if the asynchronous assert is traced, because a host read cannot be.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
+        torch._dynamo.reset()
+        compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
 
     @pytest.fixture()
     def img(self, device, dtype):

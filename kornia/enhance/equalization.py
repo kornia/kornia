@@ -406,9 +406,9 @@ def equalize_clahe(
     .. note::
        The input is expected in :math:`[0, 1]`; each tile is equalized from a 256-bin lookup table.
        Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
-       naming the range. The check runs on CPU and CUDA via ``torch._assert_async``; on MPS the
-       condition is read on the host, one device sync per call, and is skipped only under
-       ``torch.compile``, as for :func:`kornia.enhance.equalize`.
+       naming the range. The check is ``torch._assert_async``, which has an MPS kernel from torch
+       ``2.13``; on an older MPS release the condition is read on the host instead, one device sync per
+       call, and is skipped there under ``torch.compile``, as for :func:`kornia.enhance.equalize`.
 
     """
     if not isinstance(clip_limit, float):
@@ -437,9 +437,9 @@ def _equalize_clahe(
         raise ValueError(f"Input grid_size elements must be positive. Got {grid_size}")
 
     # The tile LUTs are gathered below with ``(interp_tiles * 255).long()``, which is in bounds
-    # only for values in (-1/255, 256/255). Check that domain without ``.item()`` on CPU and CUDA, so
-    # there is no device sync and fullgraph still compiles; on MPS it costs one host sync (see
-    # ``_lookup_value_check``). Inputs the lookup can index are unchanged.
+    # only for values in (-1/255, 256/255). Check that domain without ``.item()``, so there is no
+    # device sync and fullgraph still compiles; on MPS before torch 2.13 it costs one host sync instead
+    # (see ``_lookup_value_check``). Inputs the lookup can index are unchanged.
     _lookup_value_check(
         ((input * 255.0 > -1.0) & (input * 255.0 < 256.0)).all(),
         "equalize_clahe expects input values in [0, 1]. Scale the image into that range first, "

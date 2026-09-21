@@ -232,8 +232,8 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert set().union(*groups) == set(_INTENSITY_FACTORIES) and len(_INTENSITY_FACTORIES) == 35
         if name in _REJECTS_AUDIT_FIXTURES and device.type == "cuda":
             # torch._assert_async on a false condition is a device-side assert on CUDA, which poisons
-            # the context for every later test in the process.  On MPS the condition is read on the
-            # host (#4600), so the named error is raised there as on the CPU.
+            # the context for every later test in the process.  On MPS kornia checks the same
+            # condition (#4600), so the named error is raised there as on the CPU.
             pytest.skip("CUDA: the value assert is a device-side assert that invalidates the context")
         if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
@@ -550,14 +550,14 @@ class TestIntensityValueRangeConventions(BaseTester):
     #       torch.manual_seed(0); K.RandomEqualize(p=1.0)(x)
     # executed 2026-09-15 (torch 2.14.0, cpu) -> the last two raise `RuntimeError: equalize expects
     # input values in [0, 1]. Scale the image into that range first, for example image / 255.0 for
-    # 8-bit data.`, the first two return a 64-level image.  MPS reads the same check on the host and
-    # raises the same message (#4600).  The guard compares `input * 255` in the input's dtype, so
+    # 8-bit data.`, the first two return a 64-level image.  MPS runs the same check and raises the
+    # same message (#4600).  The guard compares `input * 255` in the input's dtype, so
     # `1.00390625` (1 + 1/256, under one code above 1) is admitted in float32 and float64 but rounds onto
     # 256 and raises in float16.
     def test_convention_random_equalize_rejects_out_of_range_with_named_range(self, device, dtype):
         if device.type == "cuda":
             pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
-        # Only kornia's own check names the range; on MPS it is read on the host, so it raises there too.
+        # Only kornia's own check names the range; it runs on MPS as well, so it raises there too.
         match = r"\[0, 1\]"
         ramp = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8).to(device=device, dtype=dtype)
         for image in (ramp * 2.0, ramp - 1.0):
@@ -605,7 +605,7 @@ class TestIntensityValueRangeConventions(BaseTester):
             torch.manual_seed(_FORWARD_SEED)
             # It has to be the value check that fires, not merely some RuntimeError: the claim is that
             # the transform ran on a sample `p=0.0` was supposed to skip.
-            # On MPS the check is read on the host (#4600), so only the named error qualifies there.
+            # MPS runs the value check too since #4600, so only the named error qualifies there.
             gate_rejection = r"\[0, 1\]|out of bounds" if device.type == "cpu" else r"\[0, 1\]"
             with pytest.raises(RuntimeError, match=gate_rejection):
                 _sync(cls(p=0.0)(image).device)
@@ -1816,7 +1816,7 @@ class TestIntensityColourConventions(BaseTester):
     # RandomClahe rejects an out-of-[0, 1] input with a message naming `equalize_clahe` and the range
     # (the fix for #4564; the raw indexing error of the histogram gather used to be all a caller got).
     # Not on CUDA, where an out-of-range index is a device-side assert that poisons the context.  On MPS
-    # `_lookup_value_check` reads the condition on the host, so the same named error is raised (#4600).
+    # `_lookup_value_check` runs the same condition, so the same named error is raised (#4600).
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); x = torch.rand(1, 3, 16, 16) * 2
     #   torch.manual_seed(0); K.RandomClahe(p=1.0)(x)

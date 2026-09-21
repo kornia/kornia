@@ -21,8 +21,16 @@ from torch import Tensor
 
 import kornia
 from kornia.constants import pi
+from kornia.core._compat import torch_version_ge
 
 from testing.base import BaseTester
+
+
+def _sync(device) -> None:
+    # MPS dispatches asynchronously, so a kernel error raised by the forward under test would
+    # otherwise surface inside an unrelated later test.
+    if device.type == "mps":
+        torch.mps.synchronize()
 
 
 class TestInvert(BaseTester):
@@ -899,13 +907,13 @@ class TestEqualize(BaseTester):
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
     def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
         # kornia#4431: an input the 256-bin lookup cannot index used to fail with a raw
-        # "index 259 is out of bounds" from the gather. On MPS the lookup is range-checked on the host,
-        # so the same named error is raised there too (kornia#4600).
+        # "index 259 is out of bounds" from the gather. MPS range-checks it too (kornia#4600): from
+        # torch 2.13 the assert is asynchronous there, so the message arrives at the sync.
         if device.type == "cuda":
             pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * scale + shift
         with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
-            kornia.enhance.equalize(x)
+            _sync(kornia.enhance.equalize(x).device)
 
     def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
         # The check covers exactly the values that crashed, so a hair above 1 keeps working.
@@ -918,6 +926,19 @@ class TestEqualize(BaseTester):
         torch._dynamo.reset()
         compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
         self.assert_close(compiled(x), kornia.enhance.equalize(x))
+
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+        # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
+        # compiling if the asynchronous assert is traced, because a host read cannot be.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
 
     @pytest.mark.skip(reason="args and kwargs in decorator")
     def test_jit(self, device, dtype):
@@ -944,13 +965,13 @@ class TestEqualize(BaseTester):
 class TestEqualize3D(BaseTester):
     @pytest.mark.parametrize("scale, shift", [(1.5, 0.0), (1.0, -0.5)])
     def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
-        # kornia#4432: the 3D path shares the lookup and failed the same way.
-        if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        # kornia#4432: the 3D path shares the lookup, so it shares the MPS fix too (kornia#4600).
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(1, 1, 5, 7, 9, device=device, dtype=dtype) * scale + shift
         with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
-            kornia.enhance.equalize3d(x)
+            _sync(kornia.enhance.equalize3d(x).device)
 
     def test_at_most_255_voxels_per_channel_is_unchanged(self, device, dtype):
         # As the docstring states: the lookup step is an integer division by 255.
