@@ -1293,6 +1293,37 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
         self.assert_close(actual, expected)
 
+    def test_float16_gradient_eye3_4623(self, device):
+        # Issue #4623: float16 gradient of rotation_matrix_to_quaternion at eye(3) must be finite and value-correct.
+        expected_grad = torch.tensor(
+            [0.125, -0.25, 0.25, 0.25, 0.125, -0.25, -0.25, 0.25, 0.125], device=device, dtype=torch.float16
+        ).reshape(3, 3)
+        matrix_f16 = torch.eye(3, device=device, dtype=torch.float16, requires_grad=True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f16).sum().backward()
+        assert torch.isfinite(matrix_f16.grad).all()
+        self.assert_close(matrix_f16.grad, expected_grad, atol=1e-3, rtol=1e-3)
+
+    def test_float16_gradient_diag180_4623(self, device):
+        # Issue #4623: float16 gradient of rotation_matrix_to_quaternion at 180° rot (diag(1,-1,-1)) must be finite.
+        expected_grad = torch.tensor(
+            [0.125, 0.25, 0.25, 0.25, -0.125, -0.25, 0.25, 0.25, -0.125], device=device, dtype=torch.float16
+        ).reshape(3, 3)
+        diag_val = torch.tensor([1.0, -1.0, -1.0], device=device, dtype=torch.float16)
+        matrix_f16 = torch.diag(diag_val).requires_grad_(True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f16).sum().backward()
+        assert torch.isfinite(matrix_f16.grad).all()
+        self.assert_close(matrix_f16.grad, expected_grad, atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.parametrize("index", [0, 1, 2])
+    @pytest.mark.parametrize("diagonal", [(1.0, 1.0, 1.0), (1.0, -1.0, -1.0)])
+    def test_nan_matrix_propagates_nan_4623(self, device, dtype, index, diagonal):
+        # A NaN radicand must not be treated as the non-positive safe arm of the #4623 sqrt guard:
+        # an invalid (NaN) matrix returns NaN, never a finite, valid-looking quaternion.
+        matrix = torch.diag(torch.tensor(diagonal, device=device, dtype=dtype))
+        matrix[index, index] = float("nan")
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
+        assert torch.isnan(quaternion).all()
+
     def test_convention_w_is_not_canonicalised_to_non_negative(self, device, dtype):
         # Convention pin: rotation_matrix_to_quaternion picks ONE of the two quaternions that
         # represent the input rotation, and the rule is NOT "return w >= 0". The branch is selected
@@ -1673,6 +1704,38 @@ class TestQuaternionToRotationMatrix(BaseTester):
         out = kornia.geometry.conversions.normalize_quaternion(torch.zeros(4, device=device, dtype=dtype), eps=0.0)
 
         assert torch.isnan(out).all(), "kornia#3952: the eps=0 division by the zero norm is no longer NaN"
+
+    def test_float16_gradient_normalize_quaternion_zeros4_4623(self, device):
+        # Issue #4623: float16 gradient of normalize_quaternion at zeros(4) must be finite and zero.
+        q_f16 = torch.zeros(4, device=device, dtype=torch.float16, requires_grad=True)
+        kornia.geometry.conversions.normalize_quaternion(q_f16).sum().backward()
+        assert torch.isfinite(q_f16.grad).all()
+        self.assert_close(q_f16.grad, torch.zeros(4, device=device, dtype=torch.float16), atol=1e-3, rtol=1e-3)
+
+    def test_normalize_quaternion_eps_zero_gradient_4623(self, device, dtype):
+        # Issue #4623: normalize_quaternion(q, eps=0.0) on non-zero q must give finite, correct gradients across dtypes.
+        q = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype, requires_grad=True)
+        out = kornia.geometry.conversions.normalize_quaternion(q, eps=0.0)
+        out.sum().backward()
+        expected = torch.tensor(
+            [0.12171695447104882, 0.06085847723552441, -2.7755575615628914e-17, -0.06085847723552441],
+            device=device,
+            dtype=dtype,
+        )
+        assert torch.isfinite(q.grad).all()
+        self.assert_close(q.grad, expected, atol=1e-3, rtol=1e-3)
+
+        # Confirm zeros(4) with eps=0.0 still returns all-NaN on the forward pass (pre-existing issue #3952 behavior).
+        zero_out = kornia.geometry.conversions.normalize_quaternion(torch.zeros(4, device=device, dtype=dtype), eps=0.0)
+        assert torch.isnan(zero_out).all()
+
+    @pytest.mark.parametrize("eps", [1e-12, 0.0])
+    def test_normalize_quaternion_nan_propagates_4623(self, device, dtype, eps):
+        # A NaN norm is not a zero norm: NaN in gives NaN out, and the downstream rotation
+        # matrix stays NaN instead of becoming the identity.
+        q = torch.tensor([float("nan"), 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        assert torch.isnan(kornia.geometry.conversions.normalize_quaternion(q, eps=eps)).all()
+        assert torch.isnan(kornia.geometry.conversions.quaternion_to_rotation_matrix(q)).all()
 
     def test_wart_zero_quaternion_becomes_the_identity_matrix_3952(self, device, dtype):
         # Wart pin for the downstream consequence of kornia#3952: because normalize_quaternion
@@ -2478,6 +2541,25 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion=quaternion)
         # evaluate function gradient
         self.gradcheck(kornia.geometry.conversions.rotation_matrix_to_axis_angle, (rotation_matrix,))
+
+    def test_float16_gradient_eye3_4623(self, device):
+        # Issue #4623: rotation_matrix_to_axis_angle inherits finite float16 gradient at eye(3).
+        expected_grad = torch.tensor(
+            [0.0, -0.5, 0.5, 0.5, 0.0, -0.5, -0.5, 0.5, 0.0], device=device, dtype=torch.float16
+        ).reshape(3, 3)
+        matrix_f16 = torch.eye(3, device=device, dtype=torch.float16, requires_grad=True)
+        kornia.geometry.conversions.rotation_matrix_to_axis_angle(matrix_f16).sum().backward()
+        assert torch.isfinite(matrix_f16.grad).all()
+        self.assert_close(matrix_f16.grad, expected_grad, atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.parametrize("index", [0, 1, 2])
+    @pytest.mark.parametrize("diagonal", [(1.0, 1.0, 1.0), (1.0, -1.0, -1.0)])
+    def test_nan_matrix_propagates_nan_4623(self, device, dtype, index, diagonal):
+        # An invalid (NaN) matrix returns a NaN axis-angle, never the zero rotation.
+        matrix = torch.diag(torch.tensor(diagonal, device=device, dtype=dtype))
+        matrix[index, index] = float("nan")
+        axis_angle = kornia.geometry.conversions.rotation_matrix_to_axis_angle(matrix)
+        assert torch.isnan(axis_angle).all()
 
     def test_rotation_matrix_to_axis_angle(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(

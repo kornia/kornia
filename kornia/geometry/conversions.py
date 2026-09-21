@@ -605,11 +605,13 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
-        eps: lower bound the square root radicands are clamped to, so a slightly
-            non-orthogonal input does not produce NaN. A dtype whose resolution
-            swallows ``eps`` gets a floor of zero instead — ``1e-8`` flushes to
-            ``0.0`` in ``float16`` — so pass a larger ``eps`` there. The
-            divisions are separately guarded against a zero denominator.
+        eps: floor on each square-root radicand. It is never added to the
+            radicand: a radicand above ``eps`` is used as is, and one at or
+            below it (for example the negative radicand of a discarded branch
+            on a slightly non-orthogonal input) gives ``2 * sqrt(eps)`` with a
+            zero gradient. For an exact rotation matrix the selected radicand is
+            at least ``1``, so ``eps`` does not change the result. The divisions
+            are separately guarded against a zero denominator.
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -638,8 +640,21 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     trace: torch.Tensor = m00 + m11 + m22
 
+    # eps floors the radicand instead of being added to it, so it never shifts a valid result (#3951).
+    radicand_floor: float = max(eps, 0.0)
+
+    def _safe_sqrt_sq(r: torch.Tensor) -> torch.Tensor:
+        # 2 * sqrt(max(r, eps)) with a finite backward everywhere: sqrt is only ever differentiated at a
+        # radicand above the floor (or at a substituted 1), and a radicand at or below the floor takes the
+        # constant 2 * sqrt(eps) from the other where arm. No clamp: its derivative at the bound depends on the
+        # torch version. A NaN radicand is passed through, so an invalid matrix never becomes a finite quaternion.
+        mask = r > radicand_floor
+        safe_r = torch.where(mask, r, torch.ones_like(r))
+        out = torch.where(mask, torch.sqrt(safe_r) * 2.0, torch.full_like(r, 2.0 * radicand_floor**0.5))
+        return torch.where(torch.isnan(r), r, out)
+
     def trace_positive_cond() -> torch.Tensor:
-        sq = torch.sqrt((trace + 1.0).clamp(min=eps)) * 2.0  # sq = 4 * qw.
+        sq = _safe_sqrt_sq(trace + 1.0)  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
@@ -647,7 +662,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_1() -> torch.Tensor:
-        sq = torch.sqrt((1.0 + m00 - m11 - m22).clamp(min=eps)) * 2.0  # sq = 4 * qx.
+        sq = _safe_sqrt_sq(1.0 + m00 - m11 - m22)  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
         qy = safe_zero_division(m01 + m10, sq)
@@ -655,7 +670,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_2() -> torch.Tensor:
-        sq = torch.sqrt((1.0 + m11 - m00 - m22).clamp(min=eps)) * 2.0  # sq = 4 * qy.
+        sq = _safe_sqrt_sq(1.0 + m11 - m00 - m22)  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
         qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
@@ -663,7 +678,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_3() -> torch.Tensor:
-        sq = torch.sqrt((1.0 + m22 - m00 - m11).clamp(min=eps)) * 2.0  # sq = 4 * qz.
+        sq = _safe_sqrt_sq(1.0 + m22 - m00 - m11)  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
         qx = safe_zero_division(m02 + m20, sq)
         qy = safe_zero_division(m12 + m21, sq)
@@ -726,9 +741,18 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    # Exact smallest positive float16 subnormal, kept literal for TorchScript support.
-    safe_eps = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
-    return F.normalize(quaternion, p=2.0, dim=-1, eps=safe_eps)
+    safe_eps: float = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
+    norm = torch.linalg.vector_norm(quaternion, ord=2, dim=-1, keepdim=True)
+    # Only an exactly-zero norm takes the constant arms below; a NaN norm compares unequal to zero and goes
+    # through the division, so NaN in gives NaN out. The eps floor is a value floor selected by torch.where,
+    # so its derivative does not depend on the torch version the way clamp's derivative at the bound does.
+    mask = norm != 0.0
+    safe_norm = torch.where(mask, norm, torch.ones_like(norm))
+    denom = torch.where(safe_norm < safe_eps, torch.full_like(safe_norm, safe_eps), safe_norm)
+    out = quaternion / denom
+    if eps == 0.0:
+        return torch.where(mask, out, torch.full_like(quaternion, float("nan")))
+    return torch.where(mask, out, torch.zeros_like(quaternion))
 
 
 # based on:
