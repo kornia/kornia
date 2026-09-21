@@ -271,14 +271,16 @@ class TestRANSACFundamental(BaseTester):
 
 
 class TestRANSACLocalOptimization(BaseTester):
-    def test_polish_step_uses_verify_best_model(self, device, dtype):
+    @pytest.mark.parametrize("good_idx", [1, 2])
+    def test_polish_step_uses_verify_best_model(self, device, dtype, good_idx):
         """Regression test for RANSAC.forward()'s local-optimization loop.
 
-        It must adopt the model verify() actually selects as best-scoring, not blindly take index 0 of whatever the
-        polisher solver returns. This is only observable when a polisher returns more than one candidate, so the
-        polisher is patched to return two: a deliberately bad matrix at index 0 and the least-squares fit of the data
-        at index 1. The correspondences are structured and noisy and the score is "msac", so a refit can strictly
-        beat the minimal-sample model and the local-optimization branch actually adopts a candidate.
+        It must adopt the model verify() actually selects as best-scoring, not blindly take a fixed index of whatever
+        the polisher solver returns. This is only observable when a polisher returns more than one candidate, so the
+        polisher is patched to return three: two deliberately bad matrices and the least-squares fit of the data, placed
+        at ``good_idx`` so that neither the first nor the last position alone satisfies the test. The minimal solver is
+        patched to a plausible but worse fit, so the local-optimization branch adopts a candidate by construction
+        rather than depending on how the random minimal samples fall.
         """
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("find_fundamental needs linalg_eigh, which has no float16/bfloat16 kernel")
@@ -288,19 +290,22 @@ class TestRANSACLocalOptimization(BaseTester):
         ph = torch.cat([points1, torch.ones(60, 1, device=device, dtype=dtype)], 1) @ H.T
         points2 = ph[:, :2] / ph[:, 2:] + 0.3 * torch.randn(60, 2, device=device, dtype=dtype)
 
-        ransac = RANSAC("fundamental", inl_th=1.0, batch_size=64, max_iter=2, max_lo_iters=1, score_type="msac").to(
-            device=device, dtype=dtype
-        )
-
         good_fit = find_fundamental(points1[None], points2[None])
-        bad_fit = torch.eye(3, device=device, dtype=dtype)[None]
+        # A plausible but worse starting model: the least-squares fit to a much noisier copy of the data.
+        worse_fit = find_fundamental(points1[None], points2[None] + torch.randn_like(points2[None]))
+        bad_fits = [
+            torch.eye(3, device=device, dtype=dtype)[None],
+            torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)[None],
+        ]
+        candidates = torch.cat([*bad_fits[:good_idx], good_fit, *bad_fits[good_idx:]], dim=0)
         calls = []
 
         def fake_polisher(kp1, kp2, weights):
             calls.append(1)
-            # index 0: bad, index 1: the actual best fit for this data
-            return torch.cat([bad_fit, good_fit], dim=0)
+            return candidates
 
+        ransac = RANSAC("fundamental", inl_th=1.0, batch_size=4, max_iter=1, max_lo_iters=1, score_type="msac")
+        ransac.minimal_solver = lambda kp1, kp2, w: worse_fit.expand(kp1.shape[0], 3, 3).clone()
         ransac.polisher_solver = fake_polisher
 
         Fm, _ = ransac(points1, points2)
