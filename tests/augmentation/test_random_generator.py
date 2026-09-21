@@ -1461,10 +1461,28 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             drawn = gen(torch.Size([4]))["ksize_factor"]
         assert drawn.tolist() == [expected] * 4
 
+    def test_a_list_kernel_size_range_is_drawn_like_a_tuple_4599(self, device, dtype):
+        # A two-element list is a range exactly as a tuple is: one kernel size shared by the batch, and
+        # every odd size in the closed range drawn, the upper bound included.  A list used to raise
+        # TypeError, and the shared-draw condition checked `tuple` only.
+        torch.manual_seed(0)
+        gen = MotionBlurGenerator(
+            kernel_size=[3, 9], angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0])
+        )
+        gen.set_rng_device_and_dtype(device, dtype)
+        seen = set()
+        for _ in range(200):
+            drawn = gen(torch.Size([8]))["ksize_factor"]
+            assert drawn.unique().numel() == 1, drawn.tolist()
+            seen.add(int(drawn[0]))
+        assert seen == {3, 5, 7, 9}
+        with pytest.raises(ValueError, match=r"`kernel_size`\[0\] should be smaller than or equal to"):
+            MotionBlurGenerator(kernel_size=[9, 3], angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0]))
+
     def test_a_reversed_kernel_size_range_is_refused_4599(self, device, dtype):
-        # `half_hi = max(half_lo, ...)` turns a reversed pair into a draw above BOTH bounds --
-        # `(20, 3)` drew a constant 21 -- so the ordering has to be refused, as #4568 refuses it for
-        # RandomRain's closed integer ranges.
+        # A reversed pair used to be drawn silently as if ordered -- `(20, 3)` drew 3..19 -- and
+        # `half_hi = max(half_lo, ...)` would turn it into a draw above BOTH bounds, so the ordering is
+        # refused, as #4568 refuses it for RandomRain's closed integer ranges.
         # the generator builds its samplers in __post_init__, so this is a construction-time raise
         with pytest.raises(ValueError, match=r"`kernel_size`\[0\] should be smaller than or equal to"):
             MotionBlurGenerator(kernel_size=(20, 3), angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0]))
