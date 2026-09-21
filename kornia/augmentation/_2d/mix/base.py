@@ -279,6 +279,11 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             in_tensor = self.transform_tensor(in_tensor)
             self._params = self.forward_parameters(in_tensor.shape)
             self._params.update({"dtype": torch.full((), DType.get(in_tensor.dtype).value, dtype=torch.long)})
+        elif "dtype" not in params and DataKey.INPUT in keys:
+            # A supplied dictionary, such as one from ``forward_parameters()``, has no ``"dtype"``, which the class
+            # handlers read: take it from the input, as above, in a copy that leaves the caller's dictionary alone.
+            input_dtype = input[keys.index(DataKey.INPUT)].dtype
+            self._params = {**params, "dtype": torch.full((), DType.get(input_dtype).value, dtype=torch.long)}
         else:
             self._params = params
 

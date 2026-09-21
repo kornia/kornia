@@ -543,6 +543,24 @@ class TestMixConventions(BaseTester):
             assert mixed[..., 0].flatten().tolist() == [257.0, 999.0]
             assert mixed[..., 1].flatten().tolist() == ([999.0, 257.0] if p == 1.0 else [257.0, 999.0])
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float16])
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_convention_mix_forward_parameters_replay_with_class_4706(self, image_dtype, p):
+        # A forward_parameters() dictionary has no "dtype"; forward takes it from the input, so replaying it with
+        # the "class" key matches the call that sampled the same draws, instead of raising KeyError.
+        image = torch.rand(2, 1, 4, 4, dtype=image_dtype)
+        labels = torch.tensor([1, 2])
+        for aug in (K.RandomMixUpV2(p=p), K.RandomCutMixV2(p=p, use_correct_lambda=True)):
+            torch.manual_seed(0)
+            sampled, sampled_labels = aug(image, labels, data_keys=["input", "class"])
+            torch.manual_seed(0)
+            params = aug.forward_parameters(image.shape)
+            output, mixed = aug(image, labels, params=params, data_keys=["input", "class"])
+            assert "dtype" not in params  # the caller's dictionary is left as it was
+            assert torch.equal(output, sampled) and torch.equal(mixed, sampled_labels)
+            assert mixed.dtype == _label_dtype(image_dtype)
+
     def test_convention_jigsaw_identity_permutation_transposes_the_grid(self, device, dtype):
         # The destination cell is chosen column-major by an entry's position; the entry's value indexes the
         # source patch row-major. The two orders differ, so the identity permutation is not a no-op.
