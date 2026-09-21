@@ -92,8 +92,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib
-import platform
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -107,20 +105,20 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import (
-    add_contribute_args,
-    collect_load_metrics,
-    contribute_result,
-    print_preflight,
+    Backend,
+    KorniaRows,
+    add_flagship_args,
+    batch_list,
+    finish_run,
+    image_batch,
+    image_row_fields,
+    optional_import,
     run_batch_sweep,
-    run_metadata,
-    save_json,
-    versions_line,
-    warm_up_cpu,
+    setup_run,
+    start_run,
 )
 
 import kornia.filters as KF
-
-Backend = Optional[Callable[[], object]]
 
 AVAILABLE_OPS = (
     "gaussian_blur2d",
@@ -137,24 +135,6 @@ AVAILABLE_OPS = (
     "motion_blur",
     "otsu_threshold",
 )
-
-
-def optional_import(name: str) -> tuple[Optional[ModuleType], Optional[str]]:
-    """Import an optional benchmark dependency and retain a concise failure reason."""
-    try:
-        return importlib.import_module(name), None
-    except Exception as error:
-        return None, f"{type(error).__name__}: {error}"
-
-
-def parse_ops(value: str) -> frozenset[str] | None:
-    """Parse a comma-separated operation selection, validating benchmark row names."""
-    selected = frozenset(name.strip() for name in value.split(",") if name.strip())
-    unknown = selected.difference(AVAILABLE_OPS)
-    if unknown:
-        available = ", ".join(AVAILABLE_OPS)
-        raise argparse.ArgumentTypeError(f"unknown operation(s): {', '.join(sorted(unknown))}. Available: {available}")
-    return selected or None
 
 
 def build_specialized_ops(
@@ -296,44 +276,11 @@ def build_ops(
     skr: Optional[ModuleType] = None,
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
     """Build {op: {backend: zero-arg callable}} with the documented per-backend regimes."""
-    rng = np.random.default_rng(0)
-    imgs_u8 = [(rng.random((h, w, 3)) * 255).astype(np.uint8) for _ in range(b)]
+    imgs_u8, batch_f = image_batch(b, h, w, device, dtype)
     imgs_f = [im.astype(np.float32) / 255.0 for im in imgs_u8]
     imgs_gray_f = [im.mean(axis=-1) for im in imgs_f]
     imgs_gray_u8 = [np.rint(im.mean(axis=-1)).astype(np.uint8)[..., None] for im in imgs_u8]
-    batch_f = (
-        torch.stack([torch.from_numpy(im).permute(2, 0, 1) for im in imgs_u8]).to(device=device, dtype=dtype).div(255)
-    )
-
-    compile_failures: dict[str, str] = {}
-
-    def kornia_row(label: str, fn: Callable[[], object]) -> dict[str, Backend]:
-        row: dict[str, Backend] = {"kornia (eager)": fn}
-        if do_compile and label not in skip_compile:
-            torch._dynamo.reset()
-            compiled = torch.compile(fn)
-            try:
-                compiled()  # warmup: compile + autotune before the timed region
-                if device.type == "cuda":
-                    torch.cuda.synchronize()  # surface async kernel faults HERE, not at the next op
-                row["kornia (compiled)"] = compiled
-            except Exception as e:
-                errors = str(e)
-                if device.type == "cuda":
-                    try:
-                        torch.cuda.synchronize()  # a FAILED warmup may still have launched kernels
-                    except Exception as sync_err:
-                        errors += " | " + str(sync_err)
-                if "illegal memory access" in errors:
-                    raise SystemExit(
-                        f"FATAL: CUDA context poisoned during torch.compile warmup of '{label}' "
-                        "(illegal memory access); no later measurement would be trustworthy. "
-                        f"Rerun with --skip-compile-ops {label} to keep it eager-only, or without "
-                        "--compile; CUDA_LAUNCH_BLOCKING=1 localizes the kernel."
-                    ) from e
-                row["kornia (compiled)"] = None
-                compile_failures[label] = type(e).__name__
-        return row
+    kornia_row = KorniaRows(device, do_compile, skip_compile)
 
     def alb(t: object) -> Backend:
         return lambda: [t(image=im)["image"] for im in imgs_u8]
@@ -458,40 +405,14 @@ def build_ops(
         )
     )
 
-    return ops, compile_failures
+    return ops, kornia_row.compile_failures
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--batches", type=str, default="1,8,32", help="comma-separated batch sizes to sweep")
-    parser.add_argument("--size", type=int, default=256)
-    parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float16", "bfloat16"])
-    parser.add_argument("--threads", type=int, default=4)
-    parser.add_argument("--compile", action="store_true", help="also time torch.compile'd kornia")
-    parser.add_argument(
-        "--ops",
-        type=parse_ops,
-        default=None,
-        help="comma-separated benchmark rows to run (default: all)",
-    )
-    parser.add_argument(
-        "--skip-compile-ops",
-        type=str,
-        default="",
-        help="comma-separated op names to keep eager-only (workaround for faulting compiled kernels)",
-    )
-    parser.add_argument("--json", type=str, default=None, help="write machine-readable results to this path")
-    add_contribute_args(parser)
+    add_flagship_args(parser, ops=AVAILABLE_OPS)
     args = parser.parse_args()
-    skip_compile = frozenset(s.strip() for s in args.skip_compile_ops.split(",") if s.strip())
-
-    torch.set_num_threads(args.threads)
-    warm_up_cpu()
-    torch.manual_seed(0)
-    device = torch.device(args.device)
-    dtype = getattr(torch, args.dtype)
-    sync = torch.mps.synchronize if device.type == "mps" else None  # Timer only syncs CUDA
+    device, dtype, sync = setup_run(args)
 
     cv2, cv2_error = optional_import("cv2")
     A, albumentations_error = optional_import("albumentations")
@@ -501,34 +422,28 @@ def main() -> None:
     skf, skimage_filters_error = optional_import("skimage.filters")
     skr, skimage_restoration_error = optional_import("skimage.restoration")
 
-    meta = run_metadata(device)
-    meta["load"] = collect_load_metrics()
-    if args.contribute:
-        print_preflight(meta["load"])
-    print(f"# flagship filters benchmark — commit {meta['git_commit']} — {platform.platform()}")
-    print(versions_line(meta))
-    print(f"# kornia source: {Path(KF.__file__).resolve()}")
-    if device.type == "cuda":
-        print(f"# CUDA device: {meta['cuda_device']} (CUDA {meta['cuda_version']})")
-    print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput img/s")
-    print(
-        "# kornia/torchvision: batched float BCHW; "
-        "albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU), except kornia-rs Sobel float32; "
-        "scikit-image: normalized float HWC per-image loop except uint8 rank mean"
-    )
-    unavailable = [
+    libs = [
         (cv2, "opencv", cv2_error),
         (A, "albumentations", albumentations_error),
         (tvf, "torchvision", torchvision_error),
         (pil if pilf is not None else None, "PIL", pil_error or pilf_error),
     ]
-    for present, name, error in unavailable:
-        if present is None:
-            print(f"# NOTE: {name} not available ({error}) — its column is skipped")
+    missing = [(name, error) for present, name, error in libs if present is None]
     if skf is None and skr is None:
-        error = skimage_filters_error or skimage_restoration_error
-        print(f"# NOTE: scikit-image not available ({error}) — its column is skipped")
-    else:
+        missing.append(("scikit-image", skimage_filters_error or skimage_restoration_error))
+    meta = start_run(
+        "flagship filters",
+        args,
+        device,
+        units="img/s",
+        regimes=[
+            "kornia/torchvision: batched float BCHW; "
+            "albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU), except kornia-rs Sobel float32; "
+            "scikit-image: normalized float HWC per-image loop except uint8 rank mean"
+        ],
+        missing=missing,
+    )
+    if skf is not None or skr is not None:
         if skf is None:
             print(f"# NOTE: scikit-image filters not available ({skimage_filters_error}) — affected rows are skipped")
         if skr is None:
@@ -538,10 +453,6 @@ def main() -> None:
             )
     if krs_fn("gaussian_blur") is None:
         print("# NOTE: kornia-rs filter APIs not available — its column is skipped")
-    if skip_compile:
-        print(f"# NOTE: --skip-compile-ops keeps eager-only: {', '.join(sorted(skip_compile))}")
-    if args.ops:
-        print(f"# selected rows: {', '.join(sorted(args.ops))}")
 
     backends = [
         "kornia (eager)",
@@ -554,7 +465,7 @@ def main() -> None:
         "PIL",
     ]
     results = run_batch_sweep(
-        [int(x) for x in args.batches.split(",") if x.strip()],
+        batch_list(args),
         lambda b: build_ops(
             b,
             args.size,
@@ -567,20 +478,18 @@ def main() -> None:
             tvf,
             pil,
             pilf,
-            skip_compile,
+            args.skip_compile_ops,
             args.ops,
             skf,
             skr,
         ),
         backends,
-        row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},
+        row_fields=image_row_fields(args),
         sync=sync,
+        units="img/s",
+        min_run_time=args.min_run_time,
     )
-    if args.json:
-        out = save_json(args.json, meta, results)
-        print(f"# results written to {out}")
-    if args.contribute:
-        contribute_result(args.contribute, "filters", meta, results, slug_override=args.machine_slug)
+    finish_run(args, "filters", meta, results)
 
 
 if __name__ == "__main__":
