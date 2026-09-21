@@ -47,8 +47,9 @@ class OperationBase(nn.Module):
           augmentation's own float ``p`` and ``p_batch``, the sampled ``batch_prob`` is a hard ``0`` or ``1``, and
           the probability parameter receives no gradient, while the magnitude does. ``forward_parameters`` draws
           the wrapped augmentation's parameters and substitutes the supplied or learned magnitude. The wrapper
-          stores no sampler on itself or on the wrapped augmentation, so ``copy.deepcopy`` works before and after a
-          forward pass or a ``train()`` / ``eval()`` call.
+          builds no probability sampler, on itself or on the wrapped augmentation, which keeps its own parameter
+          samplers; ``copy.deepcopy`` therefore works before and after a forward pass or a ``train()`` / ``eval()``
+          call.
         - ``forward`` linearly blends the wrapped augmentation's output with the input using ``batch_prob``.
           With supplied fractional gates, the wrapped augmentation first keeps rows whose gate is at most ``0.5``
           unchanged, unless both its ``p`` and ``p_batch`` equal ``1``. Only that unconditional configuration

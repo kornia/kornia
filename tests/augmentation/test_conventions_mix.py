@@ -432,9 +432,29 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_cutmix_same_on_batch_shares_cut_geometry(self):
-        aug = K.RandomCutMixV2(p=1.0, cut_size=(0.5, 0.5), num_mix=2, same_on_batch=True, use_correct_lambda=True)
-        crop_src = aug.forward_parameters(torch.Size([8, 1, 8, 8]))["crop_src"]
-        self.assert_close(crop_src, crop_src[0, 0].expand_as(crop_src), rtol=0, atol=0)
+        from kornia.geometry.bbox import infer_bbox_shape
+
+        # The default ``cut_size`` lets the sizes vary, so sharing is what makes the boxes equal: a fixed
+        # ``cut_size`` would pass with ``same_on_batch=False`` as well.
+        shape = torch.Size([8, 1, 64, 48])
+        for seed in range(10):
+            torch.manual_seed(seed)
+            shared = K.RandomCutMixV2(p=1.0, num_mix=2, same_on_batch=True, use_correct_lambda=True)
+            crop_src = shared.forward_parameters(shape)["crop_src"]
+            self.assert_close(crop_src, crop_src[0, 0].expand_as(crop_src), rtol=0, atol=0)
+            independent = K.RandomCutMixV2(p=1.0, num_mix=2, same_on_batch=False, use_correct_lambda=True)
+            heights, widths = infer_bbox_shape(independent.forward_parameters(shape)["crop_src"].flatten(0, 1))
+            assert heights.unique().numel() > 1 and widths.unique().numel() > 1
+
+    @pytest.mark.device_agnostic
+    def test_wart_cutmix_placement_is_one_shared_draw_4712(self):
+        # #4712: with the size fixed, only the placement could differ, and it never does with same_on_batch=False.
+        shape = torch.Size([8, 1, 64, 48])
+        for seed in range(10):
+            torch.manual_seed(seed)
+            aug = K.RandomCutMixV2(p=1.0, cut_size=(0.5, 0.5), num_mix=2, same_on_batch=False, use_correct_lambda=True)
+            crop_src = aug.forward_parameters(shape)["crop_src"]
+            self.assert_close(crop_src, crop_src[0, 0].expand_as(crop_src), rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
