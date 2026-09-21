@@ -41,11 +41,14 @@ class OperationBase(nn.Module):
     Convention:
         - this wrapper owns a probability parameter and, when configured, one learnable magnitude. The
           ``probability`` property clamps to the closed interval ``[1e-7, 1 - 1e-7]`` and ``magnitude`` clamps to
-          the wrapped generator's configured range. ``forward_parameters`` builds a (relaxed) Bernoulli sampler
-          from that probability, but nothing reads it: the gate is drawn from the wrapped augmentation's own float
-          ``p`` and ``p_batch``, the sampled ``batch_prob`` is a hard ``0`` or ``1``, and the probability parameter
-          receives no gradient (`#4656 <https://github.com/kornia/kornia/issues/4656>`_). It then draws the wrapped
-          augmentation's parameters and substitutes the supplied or learned magnitude.
+          the wrapped generator's configured range. The probability parameter is initialized from the wrapped
+          augmentation's ``p`` (``p_batch`` for a batch operation) and kept in ``state_dict()`` for API and
+          checkpoint compatibility; it does not take part in sampling. The gate is drawn from the wrapped
+          augmentation's own float ``p`` and ``p_batch``, the sampled ``batch_prob`` is a hard ``0`` or ``1``, and
+          the probability parameter receives no gradient, while the magnitude does. ``forward_parameters`` draws
+          the wrapped augmentation's parameters and substitutes the supplied or learned magnitude. The wrapper
+          stores no sampler on itself or on the wrapped augmentation, so ``copy.deepcopy`` works before and after a
+          forward pass or a ``train()`` / ``eval()`` call.
         - ``forward`` linearly blends the wrapped augmentation's output with the input using ``batch_prob``.
           With supplied fractional gates, the wrapped augmentation first keeps rows whose gate is at most ``0.5``
           unchanged, unless both its ``p`` and ``p_batch`` equal ``1``. Only that unconditional configuration

@@ -81,11 +81,10 @@ class RandomMixUpV2(MixAugmentationBaseV2):
           ``input * (1 - lambda) + paired_input * lambda``. Labels must be one-dimensional and are returned as
           floating values in the image dtype, except that a ``float16`` or ``bfloat16`` image yields ``float32``
           labels so integer class ids up to ``2 ** 24`` stay exact.
-        - ``p`` is a batch-wide gate for this class, and the generator applies it a second time per row: inside a
-          selected batch each row's lambda is kept with probability ``p`` and zeroed otherwise. A row passes both
-          gates with probability ``p ** 2``; its image can still be unchanged if lambda is zero or it is paired
-          with itself. With ``same_on_batch=True`` the inner gate is also shared across rows
-          (`#4649 <https://github.com/kornia/kornia/issues/4649>`_).
+        - ``p`` is a batch-wide gate for this class and is applied once: one draw per call selects the whole batch
+          with probability ``p``, so ``_params["batch_prob"]`` is all ones or all zeros. Every row of a selected
+          batch draws its lambda from ``lambda_val`` and none is dropped again; a row's image can still be unchanged
+          if its lambda is zero or it is paired with itself.
           At ``p=0`` the image is unchanged and the class output holds
           the original label twice with a zero lambda. ``same_on_batch=True`` shares lambda draws, but it does not
           constrain the pairing indices: they can differ across rows and can select the original sample.
