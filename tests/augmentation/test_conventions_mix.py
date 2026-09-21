@@ -431,6 +431,12 @@ class TestMixConventions(BaseTester):
             assert bool(torch.cat(rows).all())
 
     @pytest.mark.device_agnostic
+    def test_convention_cutmix_same_on_batch_shares_cut_geometry(self):
+        aug = K.RandomCutMixV2(p=1.0, cut_size=(0.5, 0.5), num_mix=2, same_on_batch=True, use_correct_lambda=True)
+        crop_src = aug.forward_parameters(torch.Size([8, 1, 8, 8]))["crop_src"]
+        self.assert_close(crop_src, crop_src[0, 0].expand_as(crop_src), rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_patchmix_rejects_a_patch_larger_than_the_image(self, p):
         # Fixed by #4680: the default patch_size=16 used to draw negative corners on this image (#4650).

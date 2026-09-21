@@ -79,9 +79,10 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
         - ``p`` is a batch-wide gate and is applied once: one draw per call selects the whole batch with probability
-          ``p``, so ``_params["batch_prob"]`` is all ones or all zeros. Every row and mix of a selected batch draws
-          its own cut and none is dropped again; a cut can still leave the image unchanged through self-pairing or a
-          zero-sized cut.
+          ``p``, so ``_params["batch_prob"]`` is all ones or all zeros. Every row and mix of a selected batch receives
+          a cut and none is dropped again. With ``same_on_batch=False`` the cut geometries are not required to match;
+          ``same_on_batch=True`` shares one geometry across all rows and mixes. A cut can still leave the image
+          unchanged through self-pairing or a zero-sized cut.
           At ``p=0`` the image is unchanged and each class row contains the original
           label twice with lambda zero. The current ``cut_size`` interpretation and its rejection of a minimum of
           ``1`` are described in its argument above; this is the repaired behavior from
