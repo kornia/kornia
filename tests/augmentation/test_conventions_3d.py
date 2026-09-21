@@ -380,25 +380,28 @@ class Test3DAugmentationConventions(BaseTester):
         assert tilt(rolled) == -tilt(flat)
 
     @pytest.mark.device_agnostic
-    def test_convention_no_3d_constructor_exposes_p_batch(self):
+    def test_convention_only_transplantation3d_exposes_p_batch(self):
         import inspect
 
-        classes = (
-            K.RandomAffine3D,
-            K.CenterCrop3D,
-            K.RandomCrop3D,
-            K.RandomDepthicalFlip3D,
-            K.RandomHorizontalFlip3D,
-            K.RandomPerspective3D,
-            K.RandomRotation3D,
-            K.RandomVerticalFlip3D,
-            K.RandomEqualize3D,
-            K.RandomMotionBlur3D,
-        )
-        for cls in classes:
-            assert "p_batch" not in inspect.signature(cls.__init__).parameters
+        def concrete(cls):
+            for sub in cls.__subclasses__():
+                # Library classes only: other test modules define their own 3D subclasses in the same process.
+                if sub.__module__.startswith("kornia.") and not sub.__name__.endswith("Base3D"):
+                    yield sub
+                yield from concrete(sub)
+
+        # Enumerate the subclasses rather than a hand-written list: RandomTransplantation3D is missing from
+        # kornia.augmentation.__all__ and is the one 3D class that does take p_batch.
+        classes = set(concrete(K.AugmentationBase3D))
+        assert {K.RandomAffine3D, K.CenterCrop3D, K.RandomEqualize3D, K.RandomTransplantation3D} <= classes
+        exposing = {cls.__name__ for cls in classes if "p_batch" in inspect.signature(cls.__init__).parameters}
+        assert exposing == {"RandomTransplantation3D"}
         with pytest.raises(TypeError, match="p_batch"):
             K.RandomHorizontalFlip3D(p=1.0, p_batch=0.5)
+        volume = torch.rand(4, 1, 3, 4, 5)
+        mask = torch.randint(0, 3, (4, 3, 4, 5))
+        skipped, _ = K.RandomTransplantation3D(p=1.0, p_batch=0.0)(volume, mask, data_keys=["input", "mask"])
+        self.assert_close(skipped, volume, rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_wart_random_crop3d_accepts_a_one_voxel_oversized_crop_4688(self):
@@ -454,3 +457,65 @@ class Test3DAugmentationConventions(BaseTester):
         params["ksize_factor"] = torch.tensor([3, 7], dtype=torch.int32)
         with pytest.raises(RuntimeError):
             aug(volume, params=params)
+
+    @pytest.mark.device_agnostic
+    def test_wart_random_affine3d_two_value_scale_is_not_isotropic_4704(self):
+        # Documented as isotropic; the 2D class draws one value per sample, the 3D class one per axis.
+        flat = K.RandomAffine(0.0, scale=(0.5, 2.0), p=1.0).forward_parameters(torch.Size([64, 1, 6, 7]))["scale"]
+        assert bool((flat[:, 0] == flat[:, 1]).all())
+        aug = K.RandomAffine3D(0.0, scale=(0.5, 2.0), p=1.0)
+        aug(torch.rand(64, 1, 5, 6, 7))
+        scale = aug._params["scale"]
+        assert scale.shape == (64, 3)
+        assert not bool((scale[:, 0] == scale[:, 1]).any()) and not bool((scale[:, 1] == scale[:, 2]).any())
+        self.assert_close(aug.transform_matrix[:, :3, :3].diagonal(dim1=-2, dim2=-1), scale)
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_affine3d_six_pair_shears_keep_their_lower_bound(self):
+        # The Args text used to negate the lower bound of each pair.
+        pairs = ((1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12))
+        params = K.RandomAffine3D(0.0, shears=pairs, p=1.0).forward_parameters(torch.Size([64, 1, 4, 5, 6]))
+        for key, (low, high) in zip(("sxy", "sxz", "syx", "syz", "szx", "szy"), pairs):
+            assert low <= float(params[key].min()) and float(params[key].max()) <= high
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop3d_padding_modes_are_those_of_f_pad(self):
+        volume = torch.rand(2, 1, 4, 5, 6)
+        for mode in ("constant", "reflect", "replicate", "circular"):
+            assert K.RandomCrop3D((5, 6, 7), padding=1, padding_mode=mode, p=1.0)(volume).shape == (2, 1, 5, 6, 7)
+        for mode in ("edge", "symmetric"):
+            with pytest.raises(NotImplementedError, match="Unrecognised padding mode"):
+                K.RandomCrop3D((5, 6, 7), padding=1, padding_mode=mode, p=1.0)(volume)
+
+    @pytest.mark.device_agnostic
+    def test_convention_3d_generator_keys_match_their_returns_sections(self):
+        from kornia.augmentation import random_generator as rg
+
+        shape = torch.Size([3, 1, 4, 5, 6])
+        assert rg.AffineGenerator3D(10.0)(shape)["angles"].shape == (3, 3)
+        perspective = rg.PerspectiveGenerator3D(0.3)(shape)
+        assert set(perspective) == {"start_points", "end_points"}
+        assert perspective["start_points"].shape == perspective["end_points"].shape == (3, 8, 3)
+        blur = rg.MotionBlurGenerator3D(3, 35.0, 0.5)(shape)
+        assert blur["angle_factor"].shape == (3, 3) and blur["ksize_factor"].shape == (3,)
+        # "odd and at least 3": a kernel of one voxel is rejected.
+        with pytest.raises(AssertionError, match="must be odd and greater than 3"):
+            K.RandomMotionBlur3D(1, 35.0, 0.5, p=1.0)(torch.rand(1, 1, 5, 5, 5))
+
+    @pytest.mark.device_agnostic
+    def test_convention_identity_warp_error_grows_with_size_outside_full_precision(self):
+        # "Up to roundoff" is a float32 / float64 statement: in half precision the sampling grid is rounded.
+        large = torch.rand(1, 1, 32, 48, 96)
+        assert float((K.RandomRotation3D(0.0, p=1.0)(large) - large).abs().max()) < 1e-3
+        if supports_bilinear_3d_grid_sample(torch.device("cpu"), torch.bfloat16):
+            half = large.to(torch.bfloat16)
+            for aug in (K.RandomRotation3D(0.0, p=1.0), K.RandomAffine3D(0.0, p=1.0)):
+                assert float((aug(half) - half).abs().max()) > 0.1
+        # The float32 grid of the perspective path shows at float64 too, and also grows with the volume.
+        small64 = torch.rand(1, 1, 4, 5, 6, dtype=torch.float64)
+        large64 = torch.rand(1, 1, 8, 16, 32, dtype=torch.float64)
+        residuals = [
+            float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
+            for volume in (small64, large64)
+        ]
+        assert residuals[0] < residuals[1] < 1e-4

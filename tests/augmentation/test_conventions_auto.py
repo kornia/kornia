@@ -361,6 +361,15 @@ class TestAutoAugmentConventions(BaseTester):
         policy(torch.rand(2, 3, 8, 8))
         with pytest.raises(RuntimeError, match="graph leaves"):
             copy.deepcopy(policy)
+        # A forward is not the only trigger: train() / eval() rebuild the samplers on every policy, used or not,
+        # while AutoAugment and TrivialAugment survive a forward because theirs bypasses the wrapper.
+        for unused in (AutoAugment(), TrivialAugment(), RandAugment(n=2, m=15)):
+            copy.deepcopy(unused)
+            with pytest.raises(RuntimeError, match="graph leaves"):
+                copy.deepcopy(unused.eval())
+        for forwarded in (AutoAugment(), TrivialAugment()):
+            forwarded(torch.rand(2, 3, 8, 8))
+            copy.deepcopy(forwarded)
 
     @pytest.mark.device_agnostic
     def test_convention_randaugment_shear_passes_through_the_180_mapping(self):
@@ -423,8 +432,16 @@ class TestAutoAugmentConventions(BaseTester):
                 pickle.loads(pickle.dumps(operation))  # noqa: S301
             except AttributeError:
                 failed.add(name)
-        # Only Posterize passes a staticmethod rather than a local closure.
+        # With default arguments only Posterize avoids a local closure: it passes a named mapping and no sign flip.
         assert failed == set(ops.__all__) - {"Posterize"}
+        # It is the configuration, not the class: ShearX / ShearY pass a named mapping too, and pickle without
+        # the sign flip, while the sign flip makes Posterize unpicklable.
+        for operation in (ops.ShearX(symmetric_megnitude=False), ops.ShearY(symmetric_megnitude=False)):
+            pickle.loads(pickle.dumps(operation))  # noqa: S301
+        with pytest.raises(AttributeError, match="local object"):
+            pickle.dumps(ops.Posterize(symmetric_megnitude=True))
+        with pytest.raises(AttributeError, match="local object"):
+            pickle.dumps(ops.Rotate(symmetric_megnitude=False))  # no named mapping: the identity closure
 
     @pytest.mark.device_agnostic
     def test_convention_operation_keeps_its_initial_probability(self):
@@ -443,3 +460,22 @@ class TestAutoAugmentConventions(BaseTester):
         reversed_names = [name for name, _ in policy.get_forward_sequence(list(reversed(generated)))]
         assert reversed_names == [param.name for param in reversed(generated)]
         assert [name for name, _ in policy.get_forward_sequence(generated[:1])] == [generated[0].name]
+
+    @pytest.mark.device_agnostic
+    def test_convention_rigid_matrix_mode_accepts_intensity_operations(self):
+        # "rigid" rejects non-rigid modules in other containers; a policy has none, since every wrapper has a matrix.
+        image = torch.rand(2, 3, 8, 6)
+        for mode in ("silence", "rigid"):
+            intensity = AutoAugment(policy=[[("invert", 1.0, None)]], transformation_matrix_mode=mode)
+            intensity(image)
+            self.assert_close(intensity.transform_matrix, torch.eye(3).expand(2, 3, 3))
+            mixed = AutoAugment(policy=[[("rotate", 1.0, 9), ("invert", 1.0, None)]], transformation_matrix_mode=mode)
+            mixed(image)
+            assert not torch.allclose(mixed.transform_matrix, torch.eye(3).expand(2, 3, 3))
+
+    @pytest.mark.device_agnostic
+    def test_convention_policy_sequential_takes_operations_positionally(self):
+        operations = [ops.Invert(initial_probability=1.0), ops.Solarize(initial_magnitude=0.5, initial_probability=1.0)]
+        assert len(PolicySequential(*operations)) == 2
+        with pytest.raises(ValueError, match="must be Kornia Operations"):
+            PolicySequential(operations)

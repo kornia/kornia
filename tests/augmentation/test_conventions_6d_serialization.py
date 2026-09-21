@@ -80,12 +80,43 @@ class TestConventionMix3DSerialization(BaseTester):
             for key in reference_params:
                 self.assert_close(restored_params[key], reference_params[key], rtol=0, atol=0)
 
+    @pytest.mark.parametrize(
+        "name,shape", [("RandomTransplantation", (3, 2, 6, 8)), ("RandomTransplantation3D", (3, 2, 4, 6, 8))]
+    )
+    def test_convention_transplantation_pickle_and_deepcopy_preserve_replay(self, name, shape):
+        # The serialization bullet names both transplantation classes; they take a mask, so they need their own case.
+        torch.manual_seed(17)
+        augmentation = getattr(K, name)(p=1.0)
+        image = torch.rand(shape)
+        mask = torch.randint(0, 3, (shape[0], *shape[2:]))
+        expected, _ = augmentation(image, mask, data_keys=["input", "mask"])
+        assert not torch.equal(expected, image)
+        assert not augmentation.state_dict()
+        for restored in (pickle.loads(pickle.dumps(augmentation)), copy.deepcopy(augmentation)):  # noqa: S301
+            assert restored._params is not augmentation._params
+            assert restored._params.keys() == augmentation._params.keys()
+            for key in augmentation._params:
+                self.assert_close(restored._params[key], augmentation._params[key], rtol=0, atol=0)
+            replayed, _ = restored(image, mask, params=restored._params, data_keys=["input", "mask"])
+            self.assert_close(replayed, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("name", ["AutoAugment", "RandAugment", "TrivialAugment"])
     def test_wart_auto_policies_cannot_be_pickled_4469(self, name):
         kwargs = {"n": 2, "m": 15} if name == "RandAugment" else {}
         augmentation = getattr(A, name)(**kwargs)
         with pytest.raises(AttributeError, match="local object"):
             pickle.dumps(augmentation)
+
+    @pytest.mark.parametrize("name", ["AutoAugment", "RandAugment", "TrivialAugment"])
+    def test_convention_a_posterize_only_policy_can_be_pickled(self, name):
+        # A policy pickles when every wrapper in it does; Posterize passes a named mapping and no sign flip.
+        entry = ("posterize", 1.0, 3) if name == "AutoAugment" else ("posterize", 0.0, 4)
+        kwargs = {"n": 1, "m": 15} if name == "RandAugment" else {}
+        augmentation = getattr(A, name)(policy=[[entry]], **kwargs)
+        image = torch.rand(2, 3, 4, 4)
+        expected = augmentation(image)
+        restored = pickle.loads(pickle.dumps(augmentation))  # noqa: S301
+        self.assert_close(restored(image, params=restored._params), expected, rtol=0, atol=0)
 
     def test_convention_empty_autoaugment_policy_can_be_pickled(self):
         # With no operation wrappers, there is no local magnitude function blocking pickle.

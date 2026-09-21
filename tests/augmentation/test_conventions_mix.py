@@ -471,6 +471,14 @@ class TestMixConventions(BaseTester):
         assert results[1][1][selected][..., 3].max() > 4  # a box bottom below the 4-pixel-high output
         placeholder = torch.tensor([[1.0, 1.0, 4.0, 4.0]] + [[0.0, 0.0, 1.0, 1.0]] * 3)
         self.assert_close(results[1][1][~selected], placeholder.expand(2, -1, -1))
+        # An unselected row keeps its image, yet its own boxes are clipped to the input extent and dropped to the
+        # placeholder below min_bbox_size.
+        loose = torch.tensor([[[2.0, 1.0, 30.0, 20.0], [1.0, 1.0, 5.0, 6.0]]] * 4)
+        strict = K.RandomMosaic(p=1.0, min_bbox_size=19.0, data_keys=["input", "bbox_xyxy"])
+        output, filtered = strict(image, loose, params=params)
+        self.assert_close(output[~selected], image[~selected])
+        own = torch.tensor([[2.0, 1.0, 8.0, 6.0], [0.0, 0.0, 1.0, 1.0]])  # clipped to W=8, H=6; the small one dropped
+        self.assert_close(filtered[~selected][:, :2], own.expand(2, -1, -1))
         with pytest.raises(TypeError, match="NoneType"):
             K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
         self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)  # no selection, no raise
@@ -482,12 +490,20 @@ class TestMixConventions(BaseTester):
         # Fixed by #4661: labels used to be cast to the image dtype, so bfloat16 returned [256, 1000] here (#4657).
         image = torch.rand(2, 1, 4, 4, dtype=image_dtype)
         labels = torch.tensor([257, 999])
-        for aug in (K.RandomMixUpV2(p=p), K.RandomCutMixV2(p=p, use_correct_lambda=True)):
-            output, mixed = aug(image, labels, data_keys=["input", "class"])
+        cases = (
+            (K.RandomMixUpV2(p=p), "mixup_pairs", torch.tensor([1, 0])),
+            (K.RandomCutMixV2(p=p, use_correct_lambda=True), "mix_pairs", torch.tensor([[1, 0]])),
+        )
+        for aug, key, swapped in cases:
+            # Supply the swap: with a sampled pairing both columns can legitimately hold [257, 999], and then
+            # nothing shows that the paired label was used, let alone kept exact.
+            aug(image, labels, data_keys=["input", "class"])
+            params = dict(aug._params)
+            params[key] = swapped
+            output, mixed = aug(image, labels, params=params, data_keys=["input", "class"])
             assert output.dtype == image_dtype and mixed.dtype == torch.float32
             assert mixed[..., 0].flatten().tolist() == [257.0, 999.0]
-            # Exact equality, not containment: `<=` would also pass if the paired label were never used.
-        assert sorted(set(mixed[..., 1].flatten().tolist())) == [257.0, 999.0]
+            assert mixed[..., 1].flatten().tolist() == ([999.0, 257.0] if p == 1.0 else [257.0, 999.0])
 
     def test_convention_jigsaw_identity_permutation_transposes_the_grid(self, device, dtype):
         # The destination cell is chosen column-major by an entry's position; the entry's value indexes the
@@ -497,6 +513,29 @@ class TestMixConventions(BaseTester):
         self.assert_close(K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params), image.transpose(-1, -2))
         params["permutation"] = torch.tensor([[0, 2, 1, 3]])
         self.assert_close(K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params), image)
+        # "Transposes" is the square case. On any grid the image-preserving permutation is the transposed index
+        # grid, and the identity permutation reproduces the image only when the grid has a single row or column.
+        for grid in ((2, 3), (3, 2), (1, 3), (3, 1)):
+            cells = torch.arange(grid[0] * grid[1], device=device, dtype=dtype).view(grid)
+            picture = cells.repeat_interleave(2, 0).repeat_interleave(2, 1)[None, None]
+            aug = K.RandomJigsaw(grid=grid, p=1.0)
+            params["permutation"] = torch.arange(grid[0] * grid[1])[None]
+            identity_is_a_noop = torch.equal(aug(picture, params=params), picture)
+            assert identity_is_a_noop == (1 in grid)
+            params["permutation"] = torch.arange(grid[0] * grid[1]).view(grid).T.flatten()[None]
+            self.assert_close(aug(picture, params=params), picture)
+
+    @pytest.mark.device_agnostic
+    def test_wart_jigsaw_ensure_perm_rejects_the_wrong_permutation_4703(self):
+        # ensure_perm rejects arange(N), which is a real shuffle on a 2 x 2 grid, and still draws [0, 2, 1, 3],
+        # which is the no-op. 400 draws miss one of the 23 remaining permutations with probability 2e-8.
+        aug = K.RandomJigsaw(grid=(2, 2), p=1.0, ensure_perm=True)
+        drawn = set()
+        for _ in range(50):
+            permutation = aug.forward_parameters(torch.Size([8, 1, 4, 4]))["permutation"]
+            drawn.update(tuple(row) for row in permutation.tolist())
+        assert (0, 1, 2, 3) not in drawn
+        assert (0, 2, 1, 3) in drawn
 
     def test_convention_transplantation3d_is_a_mix_class_over_volumes(self, device, dtype):
         # The base block's (B, C, H, W) working layout has one exception: the 3D transplantation class.
@@ -508,6 +547,13 @@ class TestMixConventions(BaseTester):
         # It is still a mix augmentation: no matrix and no inverse.
         with pytest.raises(RuntimeError, match="Transformation matrices"):
             _ = K.RandomTransplantation3D(p=1.0).transform_matrix
+        # Both transplantation classes override forward: the spatial rank is free, so the 2D class takes the
+        # same volume, and neither promotes an unbatched image.
+        flat, _ = K.RandomTransplantation(p=1.0)(volume, mask, data_keys=["input", "mask"])
+        assert flat.shape == volume.shape
+        for cls in (K.RandomTransplantation, K.RandomTransplantation3D):
+            with pytest.raises(Exception, match="must match except for the channel"):
+                cls(p=1.0)(volume[0], mask[0], data_keys=["input", "mask"])
 
     def test_convention_mosaic_start_ratio_range_is_a_sampling_range(self, device, dtype):
         # Both entries are (low, high) bounds on the SAME ratio draw, not an (x, y) position.
