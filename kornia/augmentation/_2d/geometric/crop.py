@@ -87,6 +87,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         or two-value shorthand is expanded. ``pad_if_needed=True`` takes the per-side maximum of that padding and
         the positive crop-minus-input size difference on each axis. Without explicit padding this is symmetric;
         asymmetric explicit padding can remain asymmetric after the merge.
+        In :class:`~kornia.augmentation.container.AugmentationSequential`, a per-channel ``fill`` applies to the
+        image while mask padding defaults to zero because the mask can have a different channel count. Set a mask
+        ``fill`` through ``extra_args[DataKey.MASK]`` to override that default. A scalar ``fill`` retains the
+        previous behavior and applies to both the image and mask.
 
         With ``pad_if_needed=False``, an oversized request does not raise. Slice mode resizes the available slice
         to the requested size. Resample mode instead uses a mis-scaled warp that can blend in zero padding; when
