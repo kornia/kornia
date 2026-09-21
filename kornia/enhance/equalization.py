@@ -230,8 +230,7 @@ def _compute_luts(
     luts = luts.clamp(0, num_bins - 1)
     if not diff:
         luts = luts.floor()  # to get the same values as converting to int maintaining the type
-    luts = luts.view((b, gh, gw, c, num_bins))
-    return luts
+    return luts.view((b, gh, gw, c, num_bins))
 
 
 def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
