@@ -447,14 +447,26 @@ class TestMixConventions(BaseTester):
             assert heights.unique().numel() > 1 and widths.unique().numel() > 1
 
     @pytest.mark.device_agnostic
-    def test_wart_cutmix_placement_is_one_shared_draw_4712(self):
-        # #4712: with the size fixed, only the placement could differ, and it never does with same_on_batch=False.
+    def test_convention_cutmix_placement_is_drawn_per_cut_4712(self):
+        from kornia.geometry.bbox import infer_bbox_shape
+
+        # #4712: one uniform draw per axis used to place every cut of the batch. With the size fixed, only the
+        # placement can differ, so equal boxes here would mean the placement is shared again.
         shape = torch.Size([8, 1, 64, 48])
         for seed in range(10):
             torch.manual_seed(seed)
             aug = K.RandomCutMixV2(p=1.0, cut_size=(0.5, 0.5), num_mix=2, same_on_batch=False, use_correct_lambda=True)
-            crop_src = aug.forward_parameters(shape)["crop_src"]
-            self.assert_close(crop_src, crop_src[0, 0].expand_as(crop_src), rtol=0, atol=0)
+            crop_src = aug.forward_parameters(shape)["crop_src"]  # (num_mix, B, 4, 2)
+            heights, widths = infer_bbox_shape(crop_src.flatten(0, 1))
+            assert heights.unique().numel() == 1 and widths.unique().numel() == 1  # the sizes are pinned...
+            top_left = crop_src[:, :, 0, :]
+            assert top_left[0].unique(dim=0).shape[0] > 1  # ...and rows of one mix land in different places,
+            assert top_left[1].unique(dim=0).shape[0] > 1
+            assert bool((top_left[0] != top_left[1]).any())  # as do the two mixes of one row.
+            # Every cut still fits: the far corner is inclusive and one pixel is reserved on each axis.
+            assert bool((crop_src >= 0).all())
+            assert bool((crop_src[..., 2, 0] < shape[-1] - 1).all())
+            assert bool((crop_src[..., 2, 1] < shape[-2] - 1).all())
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
