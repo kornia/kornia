@@ -203,7 +203,9 @@ covers a slightly different extent of the source image.
    :func:`kornia.geometry.transform.warp_perspective3d` normalize with the corner-aligned
    convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
    ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
-   volume by up to ``55.1`` there, against exactly ``0`` at ``align_corners=True``. Pass
+   volume by up to ``55.1`` there, against roundoff at ``align_corners=True``: exactly
+   ``0`` in ``float32`` on torch 2.14 and about ``2e-6`` on torch 2.5.1. The grid is built
+   in ``float32``, so a ``float64`` volume is reproduced only to about ``1e-6`` even there. Pass
    ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
    `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
@@ -434,10 +436,25 @@ Serializing an augmentation
   does not update the cached sampling distributions; ``repr`` may or may not
   reflect the loaded range. Reconstruct the augmentation to change what it
   samples (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+- With numeric constructor ranges, the 3D geometric and intensity
+  augmentations and every mix class -- ``RandomCutMixV2``, ``RandomJigsaw``,
+  ``RandomMixUpV2``, ``RandomMosaic``, ``PatchMix``, ``RandomTransplantation``
+  and ``RandomTransplantation3D`` -- have empty ``state_dict()`` objects.
+  Pickle and deepcopy preserve their configuration and recorded parameters
+  after a forward call; passing the restored
+  ``_params`` replays that transform on the same input. An empty
+  ``state_dict()`` cannot save those parameters or reconstruct the constructor
+  configuration. Tensor or ``nn.Parameter`` arguments can have different
+  registration behavior.
 - Pickle and deepcopy can retain recorded parameters and transform state,
-  but support is configuration-dependent. The ``kornia.augmentation.auto``
-  policies cannot currently be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+  but support is configuration-dependent. A ``kornia.augmentation.auto``
+  policy can be pickled only when every operation wrapper in it can, so the
+  default policies currently cannot
+  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). An empty
+  ``AutoAugment(policy=[[]])`` has no wrappers and can be pickled, and so can
+  a policy holding only ``posterize`` entries. ``copy.deepcopy`` works on all
+  three policies, before and after a forward pass or a ``.train()`` /
+  ``.eval()`` call, and the copy replays the original's recorded ``_params``.
   A normal forward draws fresh parameters; replay requires passing the
   saved parameters and controlling any application-time randomness.
 - Built-in lazy matrices keep only the input's shape, dtype and device

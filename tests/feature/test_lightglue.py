@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import unittest.mock
+
 import pytest
 import torch
 
@@ -110,6 +112,21 @@ def test_normalize_keypoints_range():
     out = normalize_keypoints(kpts, size)
     assert out.min() >= -1.0 - 1e-3
     assert out.max() <= 1.0 + 1e-3
+
+
+def test_normalize_keypoints_autocast_promotes_to_f32():
+    """Under CPU autocast, bf16 keypoints are promoted to fp32 for normalization.
+
+    On the main branch (before #4624) the decorator-based ``@AMP_CUSTOM_FWD_F32``
+    with ``device_type="cuda"`` did not fire under CPU autocast, so bf16 inputs
+    remained bf16.  This head's per-tensor inline autocast guard correctly promotes.
+    """
+    kpts = torch.randn(1, 5, 2, dtype=torch.bfloat16)
+    size = torch.tensor([[100, 200]])
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        out = normalize_keypoints(kpts, size)
+    assert out.dtype == torch.float32
+    assert out.shape == kpts.shape
 
 
 def test_pad_to_length_no_pad():
@@ -278,7 +295,7 @@ class TestTokenConfidence(BaseTester):
 # ---------------------------------------------------------------------------
 
 
-def _make_lightglue(device, dtype, input_dim=64, n_layers=2):
+def _make_lightglue(device, dtype, input_dim=64, n_layers=2, mp=False):
     """Instantiate a small LightGlue with random weights (features=None)."""
     return (
         LightGlue(
@@ -290,6 +307,7 @@ def _make_lightglue(device, dtype, input_dim=64, n_layers=2):
             depth_confidence=-1,
             width_confidence=-1,
             flash=False,
+            mp=mp,
         )
         .to(device, dtype)
         .eval()
@@ -407,6 +425,36 @@ class TestLightGlue(BaseTester):
         with torch.no_grad():
             out = lg(data)
         assert isinstance(out, dict)
+
+    def test_mp_forward_uses_input_device_type(self, device, dtype):
+        """With ``mp=True``, ``forward`` derives the autocast ``device_type`` from the
+        keypoints device (the computation device), not from a hardcoded ``\"cuda\"`` nor
+        from the first tensor encountered while scanning the input dict (regression for
+        #4624).
+        """
+        if dtype == torch.float16:
+            pytest.skip("LightGlue requires float32 or float64")
+        lg = _make_lightglue(device, dtype, mp=True)
+        data = _make_data(device, dtype)
+        # Put a non-keypoint tensor (image_size) first so a naive "first tensor wins"
+        # resolver would select it instead of the keypoints device.
+        data["image0"] = {
+            "image_size": data["image0"].pop("image_size"),
+            **data["image0"],
+        }
+        seen: dict[str, str] = {}
+        real_ac = torch.autocast
+
+        def _spy(*args: object, **kwargs: object):
+            seen["device_type"] = kwargs.get("device_type", "")
+            return real_ac(*args, **kwargs)
+
+        with unittest.mock.patch("kornia.feature.lightglue.torch.autocast", side_effect=_spy):
+            with torch.no_grad():
+                out = lg(data)
+
+        assert seen["device_type"] == data["image0"]["keypoints"].device.type
+        assert "matches0" in out
 
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):

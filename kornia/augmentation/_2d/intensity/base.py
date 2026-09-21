@@ -67,10 +67,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           out-of-range image even at ``p=0.0`` -- and a skipped sample's gradient can be NaN where the
           transform's derivative is infinite (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
-          per sample where the class's own docstring says so. One class draws per sample and then
-          applies one draw to the whole batch: :class:`RandomMotionBlur` fills ``_params["ksize_factor"]``
-          with one kernel size per sample and blurs the batch with the one at ``_params["idx"]``, an index
-          drawn uniformly over the batch rather than the first sample's. :class:`RandomDissolving`
+          per sample where the class's own docstring says so. :class:`RandomMotionBlur` instead draws
+          one kernel size for the whole batch and repeats it in ``_params["ksize_factor"]`` with shape
+          ``(B,)``; its angle and direction remain per sample unless ``same_on_batch=True``. :class:`RandomDissolving`
           hard-codes ``same_on_batch=True``. Several classes also draw a whole-image field --
           ``gaussian_noise``, ``gradient``, ``plasma``, and :class:`RandomSaltAndPepperNoise`'s boolean
           ``mask_salt`` and ``mask_pepper`` -- whose stored shape normally follows the original batched
@@ -84,11 +83,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           replayed ``params``, replaces the drawn order for that call; a fixed order ignores both.
         - where a class documents bounds for a parameter, an explicit range outside them usually raises at
           construction. These checks run on the forward pass instead: :class:`RandomGamma`'s non-negativity checks
-          on ``gamma`` and ``gain``, which live in :func:`kornia.enhance.adjust_gamma`;
-          :class:`RandomSolarize`'s ``additions`` at the closed bounds ``-0.5`` and ``0.5``
-          (`#4605 <https://github.com/kornia/kornia/issues/4605>`_), and
-          :class:`RandomGaussianBlur`'s ``sigma`` at ``0`` and even ``kernel_size``, which the constructors
-          admit and :func:`kornia.enhance.solarize` and :func:`kornia.filters.gaussian_blur2d` reject;
+          on ``gamma`` and ``gain``, which live in :func:`kornia.enhance.adjust_gamma`, and
+          :class:`RandomGaussianBlur`'s ``sigma`` at ``0`` and even ``kernel_size``, which the constructor
+          admits and :func:`kornia.filters.gaussian_blur2d` rejects;
           :class:`RandomMedianBlur`'s even ``kernel_size``, which raises a raw torch error the same way;
           :class:`RandomRain`'s drop-size bounds; a tuple ``kernel_size`` for :class:`RandomMotionBlur` whose
           drawn odd size is below ``3`` -- an even bound is rounded up to the next odd size rather than

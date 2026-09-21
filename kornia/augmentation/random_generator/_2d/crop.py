@@ -224,8 +224,7 @@ class ResizedCropGenerator(CropGenerator):
         self.output_size = output_size
 
     def __repr__(self) -> str:
-        repr = f"scale={self.scale}, resize_to={self.ratio}, output_size={self.output_size}"
-        return repr
+        return f"scale={self.scale}, resize_to={self.ratio}, output_size={self.output_size}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
