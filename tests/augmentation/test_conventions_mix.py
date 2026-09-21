@@ -570,16 +570,27 @@ class TestMixConventions(BaseTester):
             self.assert_close(aug(picture, params=params), picture)
 
     @pytest.mark.device_agnostic
-    def test_wart_jigsaw_ensure_perm_rejects_the_wrong_permutation_4703(self):
-        # ensure_perm rejects arange(N), which is a real shuffle on a 2 x 2 grid, and still draws [0, 2, 1, 3],
-        # which is the no-op. 400 draws miss one of the 23 remaining permutations with probability 2e-8.
+    def test_convention_jigsaw_ensure_perm_rejects_the_image_preserving_permutation_4703(self):
+        # ensure_perm rejects [0, 2, 1, 3], the no-op on a 2 x 2 grid, and still draws arange(N), which is a real
+        # shuffle there. 400 draws miss one of the 23 remaining permutations with probability 2e-8.
         aug = K.RandomJigsaw(grid=(2, 2), p=1.0, ensure_perm=True)
         drawn = set()
         for _ in range(50):
             permutation = aug.forward_parameters(torch.Size([8, 1, 4, 4]))["permutation"]
             drawn.update(tuple(row) for row in permutation.tolist())
-        assert (0, 1, 2, 3) not in drawn
-        assert (0, 2, 1, 3) in drawn
+        assert (0, 2, 1, 3) not in drawn
+        assert (0, 1, 2, 3) in drawn
+        assert len(drawn) == 23
+        # On a single-row or single-column grid the image-preserving permutation is arange(N), so the only
+        # permutation left for two patches is the swap.
+        for grid in ((1, 2), (2, 1)):
+            permutation = K.RandomJigsaw(grid=grid, p=1.0).forward_parameters(torch.Size([8, 1, 4, 4]))["permutation"]
+            assert permutation.tolist() == [[1, 0]] * 8
+        # The guarantee as stated: with ensure_perm the output never equals the input.
+        cells = torch.arange(4.0).view(2, 2)
+        picture = cells.repeat_interleave(2, 0).repeat_interleave(2, 1)[None, None].repeat(64, 1, 1, 1)
+        output = aug(picture)
+        assert not (output == picture).flatten(1).all(1).any()
 
     def test_convention_transplantation3d_is_a_mix_class_over_volumes(self, device, dtype):
         # The base block's (B, C, H, W) working layout has one exception: the 3D transplantation class.

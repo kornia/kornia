@@ -48,6 +48,8 @@ class JigsawGenerator(RandomGeneratorBase):
 
     def __init__(self, grid: Tuple[int, int] = (4, 4), ensure_perm: bool = True) -> None:
         super().__init__()
+        if ensure_perm and grid[0] * grid[1] == 1:
+            raise ValueError(f"ensure_perm=True needs at least two patches, but grid={grid} has only one.")
         self.grid = grid
         self.ensure_perm = ensure_perm
 
@@ -63,14 +65,20 @@ class JigsawGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
 
         perm_times = self.grid[0] * self.grid[1]
+        # RandomJigsaw fills destination cells column-major but indexes source patches row-major, so the
+        # image-preserving permutation is the transposed index grid, not arange(perm_times).
+        identity = torch.arange(perm_times, device=self._device).view(self.grid).T.flatten()
         # Generate mosiac order in one shot
         if batch_size == 0:
             rand_ids = torch.zeros([0, perm_times], device=self._device)
         elif same_on_batch:
-            rand_ids = randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device)
+            rand_ids = randperm(perm_times, ensure_perm=self.ensure_perm, identity=identity, device=self._device)
             rand_ids = torch.stack([rand_ids] * batch_size)
         else:
             rand_ids = torch.stack(
-                [randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device) for _ in range(batch_size)]
+                [
+                    randperm(perm_times, ensure_perm=self.ensure_perm, identity=identity, device=self._device)
+                    for _ in range(batch_size)
+                ]
             )
         return {"permutation": rand_ids}
