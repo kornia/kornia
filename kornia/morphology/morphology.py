@@ -29,6 +29,21 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     return kernel.view(h * w, 1, h, w)
 
 
+def _resolve_engine(engine: str, tensor: torch.Tensor) -> str:
+    """Map ``engine="auto"`` to the faster engine for ``tensor``'s device; leave any other value alone.
+
+    ``unfold`` materialises a :math:`(B, C, H, W, k_h, k_w)` window tensor and reduces it; ``convolution``
+    gathers the same windows with a one-hot ``conv2d`` and reduces over its output channels. Both evaluate
+    the same max-plus expression. Measured on an Apple M1 (kornia#4525, ``benchmarks/morphology/engines.py``):
+    on CPU ``unfold`` is faster at every kernel size above 3 in float32 and 2-100x faster in float16, and the
+    float32 CPU convolution rounds its output by up to ~4e-3; on MPS eager ``convolution`` is 2-16x faster and
+    bitwise identical. Tied maxima route the gradient to different pixels in the two engines.
+    """
+    if engine == "auto":
+        return "unfold" if tensor.device.type == "cpu" else "convolution"
+    return engine
+
+
 def dilation(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
@@ -37,7 +52,7 @@ def dilation(
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = "unfold",
+    engine: str = "auto",
 ) -> torch.Tensor:
     r"""Return the dilated image applying the same kernel in each channel.
 
@@ -59,7 +74,11 @@ def dilation(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
+        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
+            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
+            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
+            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
+            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
 
     Returns:
         Dilated image with shape :math:`(B, C, H, W)`.
@@ -105,6 +124,7 @@ def dilation(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
+    engine = _resolve_engine(engine, tensor)
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
@@ -121,7 +141,7 @@ def dilation(
         ).max(dim=1)
         output = output.view(B, C, H, W)
     else:
-        raise NotImplementedError(f"engine {engine} is unknown, use 'convolution' or 'unfold'")
+        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution' or 'unfold'")
     return output.view_as(tensor)
 
 
@@ -133,7 +153,7 @@ def erosion(
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = "unfold",
+    engine: str = "auto",
 ) -> torch.Tensor:
     r"""Return the eroded image applying the same kernel in each channel.
 
@@ -155,7 +175,11 @@ def erosion(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if border_type is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``convolution`` is faster and less memory hungry, and ``unfold`` is more stable numerically
+        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
+            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
+            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
+            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
+            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
 
     Returns:
         Eroded image with shape :math:`(B, C, H, W)`.
@@ -201,6 +225,7 @@ def erosion(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
+    engine = _resolve_engine(engine, tensor)
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.min(output - neighborhood, 4)
@@ -217,7 +242,7 @@ def erosion(
         ).min(dim=1)
         output = output.view(B, C, H, W)
     else:
-        raise NotImplementedError(f"engine {engine} is unknown, use 'convolution' or 'unfold'")
+        raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution' or 'unfold'")
 
     return output
 
@@ -230,7 +255,7 @@ def opening(
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = "unfold",
+    engine: str = "auto",
 ) -> torch.Tensor:
     r"""Return the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
@@ -252,7 +277,11 @@ def opening(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
+        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
+            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
+            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
+            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
+            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
 
     Returns:
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
@@ -307,7 +336,7 @@ def closing(
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = "unfold",
+    engine: str = "auto",
 ) -> torch.Tensor:
     r"""Return the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
@@ -329,7 +358,11 @@ def closing(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
+        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
+            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
+            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
+            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
+            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
 
     Returns:
        Closed image with shape :math:`(B, C, H, W)`.
@@ -385,7 +418,7 @@ def gradient(
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = "unfold",
+    engine: str = "auto",
 ) -> torch.Tensor:
     r"""Return the morphological gradient of an image.
 
@@ -408,7 +441,11 @@ def gradient(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
+        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
+            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
+            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
+            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
+            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
 
     Returns:
        Gradient image with shape :math:`(B, C, H, W)`.
@@ -451,7 +488,7 @@ def top_hat(
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = "unfold",
+    engine: str = "auto",
 ) -> torch.Tensor:
     r"""Return the top hat transformation of an image.
 
@@ -476,7 +513,11 @@ def top_hat(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
+        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
+            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
+            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
+            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
+            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
 
     Returns:
        Top hat transformed image with shape :math:`(B, C, H, W)`.
@@ -522,7 +563,7 @@ def bottom_hat(
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = "unfold",
+    engine: str = "auto",
 ) -> torch.Tensor:
     r"""Return the bottom hat transformation of an image.
 
@@ -547,7 +588,11 @@ def bottom_hat(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
+        engine: ``"unfold"``, ``"convolution"`` or ``"auto"`` (default). Both engines compute the same
+            max-plus expression. ``"auto"`` picks ``"unfold"`` on CPU and ``"convolution"`` on every other
+            device, where eager ``"convolution"`` measured several times faster. ``"convolution"``
+            runs through the backend's ``conv2d`` and inherits its precision: a float32 convolution that
+            computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the output.
 
     Returns:
        Top hat transformed image with shape :math:`(B, C, H, W)`.

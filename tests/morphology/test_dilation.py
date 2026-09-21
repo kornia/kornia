@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.morphology import dilation
+from kornia.morphology.morphology import _resolve_engine
 
 from testing.base import BaseTester, assert_close
 from testing.parametrized_tester import parametrized_test
@@ -182,3 +183,18 @@ class TestDilate(BaseTester):
 
         assert result.dtype == dtype
         self.assert_close(result, dilation(tensor, kernel.to(dtype), engine="convolution"))
+
+    def test_auto_engine(self, device, dtype):
+        # engine="auto", the default, runs "unfold" on CPU and "convolution" on every other device,
+        # where it is the faster engine (#4525). An explicit engine is passed through unchanged.
+        tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
+        kernel = torch.ones(3, 5, device=device, dtype=dtype)
+        kernel[0, 0] = 0.0
+        expected_engine = "unfold" if device.type == "cpu" else "convolution"
+
+        assert _resolve_engine("auto", tensor) == expected_engine
+        assert _resolve_engine("unfold", tensor) == "unfold"
+        assert _resolve_engine("convolution", tensor) == "convolution"
+        expected = dilation(tensor, kernel, engine=expected_engine)
+        assert torch.equal(dilation(tensor, kernel), expected)
+        assert torch.equal(dilation(tensor, kernel, engine="auto"), expected)
