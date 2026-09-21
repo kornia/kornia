@@ -111,6 +111,44 @@ class TestAutoAugment(BaseTester):
 
 
 class TestRandAugment(BaseTester):
+    @pytest.mark.parametrize(
+        ("factor", "policy"),
+        [
+            ("translate_x", [[("translate_x", -0.5, 0.5)]]),
+            ("translate_y", [[("translate_y", -0.5, 0.5)]]),
+        ],
+    )
+    def test_translation_magnitude_is_scaled_to_pixels(self, factor, policy):
+        aug = RandAugment(n=1, m=29, policy=policy)
+        batch_shape = torch.Size([4, 3, 24, 40])
+        params = aug.forward_parameters(batch_shape)
+
+        magnitude = params[0].data[0].data[factor]
+        dimension = 40 if factor == "translate_x" else 24
+        expected = torch.full_like(magnitude, (29 / 30) * 0.5 * dimension)
+
+        assert torch.allclose(magnitude.abs(), expected)
+
+    @pytest.mark.parametrize(
+        ("m", "expected_bits"),
+        [
+            (3, 7),
+            (7, 7),
+            (8, 6),
+            (29, 4),
+        ],
+    )
+    def test_posterize_default_range(self, m, expected_bits):
+        posterize_policy = next(policy for policy in randaug_config if policy[0][0] == "posterize")
+        aug = RandAugment(n=1, m=m, policy=[posterize_policy])
+        batch_shape = torch.Size([4, 3, 32, 32])
+        params = aug.forward_parameters(batch_shape)
+
+        bits = params[0].data[0].data["bits_factor"]
+        expected = torch.full_like(bits, expected_bits)
+
+        assert torch.equal(bits, expected)
+
     @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
     def test_smoke(self, policy):
         if policy is None:

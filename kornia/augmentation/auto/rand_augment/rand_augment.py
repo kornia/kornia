@@ -32,7 +32,7 @@ default_policy: List[SUBPOLICY_CONFIG] = [
     [("equalize", 0, 1)],
     [("invert", 0, 1)],
     [("rotate", -30.0, 30.0)],
-    [("posterize", 0.0, 4)],
+    [("posterize", 4.0, 8.0)],
     [("solarize", 0.0, 1.0)],
     [("solarize_add", 0.0, 0.43)],
     [("color", 0.1, 1.9)],
@@ -181,7 +181,19 @@ class RandAugment(PolicyAugmentBase):
             mag = None
             if op.magnitude_range is not None:
                 minval, maxval = op.magnitude_range
-                mag = m * float(maxval - minval) + minval
+                if op._factor_name == "bits_factor":
+                    mag = (1 - m) * float(maxval - minval) + minval
+                else:
+                    mag = m * float(maxval - minval) + minval
+
+                # RandAugment magnitudes for translation are specified as fractions
+                # of the image dimensions, while RandomTranslate stores pixel
+                # translations in its sampled parameters.
+                if op._factor_name == "translate_x":
+                    mag = mag * batch_shape[-1]
+                elif op._factor_name == "translate_y":
+                    mag = mag * batch_shape[-2]
+
             mod_param = op.forward_parameters(batch_shape, mag=mag)
             # Compose it
             param = ParamItem(name, [ParamItem(next(iter(module.named_children()))[0], mod_param)])
