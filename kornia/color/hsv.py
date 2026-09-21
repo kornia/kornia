@@ -58,7 +58,9 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     deltac = max_rgb - min_rgb
 
     v = max_rgb
-    s = deltac / (max_rgb + eps)
+    # Guard black pixels before division: eps can underflow in float16, including in backward.
+    s_divisor = torch.where(max_rgb == 0, torch.ones_like(max_rgb), max_rgb + eps)
+    s = deltac / s_divisor
 
     deltac = torch.where(deltac == 0, torch.ones_like(deltac), deltac)
     rc, gc, bc = torch.unbind((max_rgb.unsqueeze(-3) - image), dim=-3)

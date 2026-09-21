@@ -404,9 +404,6 @@ class TestDeviceAgnosticAugmentationParameters(BaseTester):
         self.assert_close(matrix[1], torch.eye(4, device=device, dtype=dtype))
 
     def test_mix_augmentation_blends_cpu_params_with_accelerator_input(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RandomMixUpV2 promotes half inputs because mixup_lambdas are float32")
-
         input = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 2, 2)
         augmentation = RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input"])
         params = self._cpu_partial_batch_params(augmentation, input)
@@ -617,7 +614,10 @@ class TestConventionAugmentationBase2D(BaseTester):
         rows = []
         for seed in range(8):
             torch.manual_seed(seed)
-            kwargs = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            kwargs: dict = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            # PatchMix's default patch_size of 16 does not fit this 6x8 input.
+            if augmentation_cls is K.PatchMix:
+                kwargs = {"patch_size": 4}
             params = augmentation_cls(p=0.5, **kwargs).forward_parameters((4, 3, 6, 8))
             rows.append(params["batch_prob"].tolist())
         assert all(len(set(row)) == 1 for row in rows)

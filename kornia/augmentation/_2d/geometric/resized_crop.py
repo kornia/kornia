@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -22,7 +24,9 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils._crop import _compiled_slice_resize
 from kornia.constants import Resample
+from kornia.core.utils import is_compiling
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
@@ -73,8 +77,15 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
 
         Slice mode calls index cropping with the configured interpolation and ``align_corners``; resample mode
         calls ``crop_by_transform_mat`` with zero padding. Both default to bilinear sampling and
-        ``align_corners=True``. Only resample mode supports :meth:`inverse`; its inverse
+        ``align_corners=True``. Under ``torch.compile``, slice mode uses tensor indexing and
+        interpolation so newly sampled crop coordinates do not trigger recompilation.
+        Only resample mode supports :meth:`inverse`; its inverse
         resamples onto the original canvas and cannot recover information discarded by cropping or interpolation.
+
+    Note:
+        Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
+        not bitwise. Eager execution retains native slicing and resizing for performance;
+        the tensorized compiled path avoids recompilation as crop coordinates change.
 
     Example:
         >>> rng = torch.manual_seed(0)
@@ -134,8 +145,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
             transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
-            transform = transform.expand(input.shape[0], -1, -1)
-            return transform
+            return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
@@ -158,6 +168,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            if is_compiling():
+                return _compiled_slice_resize(
+                    input, params["src"], flags["size"], flags["resample"].name.lower(), flags["align_corners"]
+                )
             return crop_by_indices(
                 input,
                 params["src"],

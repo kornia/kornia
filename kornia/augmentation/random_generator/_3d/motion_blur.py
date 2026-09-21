@@ -27,11 +27,14 @@ from kornia.core.utils import _extract_device_dtype
 class MotionBlurGenerator3D(RandomGeneratorBase):
     r"""Get parameters for motion blur.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomMotionBlur3D`.
+
     Args:
-        kernel_size: motion kernel size (odd and positive).
+        kernel_size: motion kernel size (odd and at least 3).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
-        angle: angle of the motion blur in degrees (anti-clockwise rotation).
+            If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
+        angle: ``(yaw, pitch, roll)`` of the motion blur in degrees; a positive roll turns the kernel
+            clockwise as displayed, unlike the 2D generator.
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
@@ -43,7 +46,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
     Returns:
         A dict of parameters to be passed for transformation.
             - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
+            - angle_factor (torch.Tensor): element-wise ``(yaw, pitch, roll)`` angle factors with a shape of (B, 3).
             - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
 
     Note:
@@ -70,23 +73,35 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         self.direction = direction
 
     def __repr__(self) -> str:
-        repr = f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}"
-        return repr
+        return f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        angle: torch.Tensor = _tuple_range_reader(self.angle, 3, device=device, dtype=dtype)
+        angle: torch.Tensor = _tuple_range_reader(
+            self.angle, 3, device=device, dtype=dtype, name="angle", bounds=(-360, 360)
+        )
         direction = _range_bound(self.direction, "direction", center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
             self.ksize_sampler = UniformDistribution(self.kernel_size // 2, self.kernel_size // 2, validate_args=False)
+            self._ksize_half_max = self.kernel_size // 2
         elif isinstance(self.kernel_size, tuple):
             # kernel_size is fixed across the batch
             if len(self.kernel_size) != 2:
                 raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {self.kernel_size}.")
-            self.ksize_sampler = UniformDistribution(
-                self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False
-            )
+            # Draw the half-size h of the odd kernel 2h + 1 on [lo, hi + 1) and floor it, so every h in the
+            # closed [lo, hi] is equally likely.  hi is the largest odd size not above the upper bound --
+            # taking `+ 1` off `ks[1] // 2` instead admitted the size `ks[1] + 1` for an even `ks[1]`, so
+            # (3, 4) drew 5.  `max(half_lo, ...)` keeps a range holding no odd size, such as (4, 4),
+            # rounding up to 5 as before, matching the 2D generator after #4610.
+            if self.kernel_size[0] > self.kernel_size[1]:
+                raise ValueError(
+                    f"`kernel_size`[0] should be smaller than or equal to `kernel_size`[1]. Got {self.kernel_size}."
+                )
+            half_lo = self.kernel_size[0] // 2
+            half_hi = max(half_lo, (self.kernel_size[1] - 1) // 2)
+            self.ksize_sampler = UniformDistribution(half_lo, half_hi + 1, validate_args=False)
+            self._ksize_half_max = half_hi
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
 
@@ -106,7 +121,16 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         angle_factor = torch.stack([yaw_factor, pitch_factor, roll_factor], 1)
 
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
-        ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
+
+        if isinstance(self.kernel_size, tuple):
+            # A ranged kernel size is sampled once per call and shared across the batch.
+            ksize_half = _adapted_rsampling((1,), self.ksize_sampler, same_on_batch).floor()
+            # A float32 draw can round up onto the open upper end, hi + 1; keep it inside the closed range.
+            ksize_factor = ksize_half.clamp_max(self._ksize_half_max).int() * 2 + 1
+            ksize_factor = ksize_factor.expand(batch_size)
+        else:
+            ksize_half = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).floor()
+            ksize_factor = ksize_half.clamp_max(self._ksize_half_max).int() * 2 + 1
 
         return {
             "ksize_factor": ksize_factor.to(device=_device, dtype=torch.int32),

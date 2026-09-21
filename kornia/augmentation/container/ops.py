@@ -150,8 +150,7 @@ class AugmentationSequentialOps:
             if isinstance(self.data_keys, list):
                 return self.data_keys
             raise ValueError("nn.Sequential ops needs data keys to be able to process.")
-        else:
-            return [DataKey.get(inp) for inp in data_keys]
+        return [DataKey.get(inp) for inp in data_keys]
 
     def _get_op(self, data_key: DataKey) -> Type[SequentialOpsInterface[Any]]:
         """Return the corresponding operation given a data key."""
@@ -330,6 +329,8 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            input = module.inverse(**extra_args)
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d inverse operations are not yet supported. You are welcome to file a PR in our repo."

@@ -31,6 +31,8 @@ class RandomGamma(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomGamma.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         gamma: the gamma factor to apply.
@@ -41,6 +43,23 @@ class RandomGamma(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the output is ``clamp(gain * input ** gamma, 0, 1)``. The clamp is not optional, so unlike
+          :class:`RandomBrightness` and :class:`RandomContrast` this class has no ``clip_output`` escape
+          hatch for keeping a value the power produced outside ``[0, 1]``.
+        - ``gamma`` and ``gain`` must both be non-negative, and neither is bounded at construction: both
+          checks live inside :func:`kornia.enhance.adjust_gamma` and so run on the forward pass. A negative
+          ``gain`` raises ``Gain must be non-negative``, exactly as a negative ``gamma`` raises
+          ``Gamma must be non-negative``. kornia skips that check for an MPS image, so there
+          a negative ``gamma`` is evaluated using the same power, gain and clamp formula above. Its output
+          depends on both the input and ``gain``.
+
+    .. warning::
+        On an input with negative values the power itself is NaN unless ``gamma`` is an integer, and the
+        clamp does not remove the NaN. At an integer ``gamma`` the output is finite instead, and at the
+        class default ``gamma=1.0`` the clamp floors the negative product, so every negative value comes
+        back as ``0``. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_gamma`

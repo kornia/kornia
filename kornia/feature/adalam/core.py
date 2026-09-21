@@ -387,8 +387,7 @@ def adalam_core(
             idxs, out_scores = _no_match(scores1)
         if return_dist:
             return idxs, out_scores
-        else:
-            return idxs
+        return idxs
 
     # Format neighborhoods for parallel RANSACs
     im1loc, im2loc, ransidx, tokp1, tokp2 = extract_local_patterns(

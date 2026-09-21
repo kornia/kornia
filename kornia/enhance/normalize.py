@@ -179,9 +179,9 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     mean = mean[..., None]
     std = std[..., None]
 
-    out: torch.Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
+    out: torch.Tensor = (data.reshape(shape[0], shape[1], -1) - mean) / std
 
-    return out.view(shape)
+    return out.reshape(shape)
 
 
 class Denormalize(nn.Module):
@@ -379,9 +379,9 @@ def normalize_min_max(
     shape = input.shape
     B, C = shape[0], shape[1]
 
-    x_reshaped = input.view(B, C, -1)
+    x_reshaped = input.reshape(B, C, -1)
     x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
     x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
 
     x_out = (max_val - min_val) * (x_reshaped - x_min) / (x_max - x_min + eps) + min_val
-    return x_out.view(shape)
+    return x_out.reshape(shape)

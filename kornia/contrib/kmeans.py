@@ -55,6 +55,10 @@ class KMeans:
         # cluster_centers should have only 2 dimensions
         if cluster_centers is not None:
             KORNIA_CHECK_SHAPE(cluster_centers, ["C", "D"])
+            KORNIA_CHECK(
+                cluster_centers.shape[0] == num_clusters,
+                f"cluster_centers has {cluster_centers.shape[0]} rows but num_clusters={num_clusters}",
+            )
 
         self.num_clusters = num_clusters
         self._cluster_centers = cluster_centers
@@ -87,8 +91,7 @@ class KMeans:
             return self._final_cluster_centers
         if isinstance(self._cluster_centers, torch.Tensor):
             return self._cluster_centers
-        else:
-            raise TypeError("Model has not been fit to a dataset")
+        raise TypeError("Model has not been fit to a dataset")
 
     @property
     def cluster_assignments(self) -> torch.Tensor:
@@ -104,8 +107,7 @@ class KMeans:
         """
         if isinstance(self._final_cluster_assignments, torch.Tensor):
             return self._final_cluster_assignments
-        else:
-            raise TypeError("Model has not been fit to a dataset")
+        raise TypeError("Model has not been fit to a dataset")
 
     def _initialise_cluster_centers(self, X: torch.Tensor, num_clusters: int) -> torch.Tensor:
         """Chooses num_cluster points from X as the initial cluster centers.
@@ -177,14 +179,29 @@ class KMeans:
 
             previous_centers = current_centers.clone()
 
-            for index in range(self.num_clusters):
-                selected = torch.nonzero(cluster_assignment == index).squeeze()
-                selected = torch.index_select(X, 0, selected)
-                # edge case when a certain cluster centre has no points assigned to it
-                # just choose a random point as it's update
-                if selected.shape[0] == 0:
-                    selected = X[torch.randint(len(X), (1,), device=X.device)]
-                current_centers[index] = selected.mean(dim=0)
+            # Vectorized per-cluster mean via a one-hot assignment matrix, instead of looping over
+            # clusters with torch.nonzero/index_select (each iteration's dynamic output shape
+            # forces a host sync). One-hot + matmul routes the reduction through a GEMM kernel;
+            # scatter_add_ into the small (num_clusters, D) destination measured ~10x slower on
+            # MPS for this shape (many threads racing to accumulate into few destination rows).
+            #
+            # Counts stay int64 (exact) and the sum accumulates in at least float32: X.dtype
+            # itself overflows to inf in float16 past 65504, and loses precision in bfloat16,
+            # for perfectly ordinary inputs (e.g. float16 image color quantization).
+            one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters)
+            cluster_counts = one_hot.sum(0)
+            work_dtype = torch.float32 if X.dtype in (torch.float16, torch.bfloat16) else X.dtype
+            X_work = X.to(work_dtype)
+            cluster_sums = one_hot.to(work_dtype).t() @ X_work
+
+            # edge case when a certain cluster centre has no points assigned to it:
+            # just choose a random point as its update. A random index is drawn for every
+            # cluster unconditionally and masked with torch.where, so the branch never depends
+            # on a data-dependent Python bool (no host sync either way).
+            empty_mask = (cluster_counts == 0).unsqueeze(1)
+            means = cluster_sums / cluster_counts.clamp(min=1).unsqueeze(1).to(work_dtype)
+            random_points = X_work[torch.randint(len(X), (self.num_clusters,), device=X.device)]
+            current_centers = torch.where(empty_mask, random_points, means).to(X.dtype)
 
             # sum of distance of how much the newly computed clusters have moved from their previous positions
             center_shift = torch.sum(torch.sqrt(torch.sum((current_centers - previous_centers) ** 2, dim=1)))

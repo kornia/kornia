@@ -51,14 +51,13 @@ def get_model_from_type(
     """Get camera model from model type."""
     if model_type == CameraModelType.PINHOLE:
         return PinholeModel(image_size, params)
-    elif model_type == CameraModelType.BROWN_CONRADY:
+    if model_type == CameraModelType.BROWN_CONRADY:
         return BrownConradyModel(image_size, params)
-    elif model_type == CameraModelType.KANNALA_BRANDT_K3:
+    if model_type == CameraModelType.KANNALA_BRANDT_K3:
         return KannalaBrandtK3(image_size, params)
-    elif model_type == CameraModelType.ORTHOGRAPHIC:
+    if model_type == CameraModelType.ORTHOGRAPHIC:
         return Orthographic(image_size, params)
-    else:
-        raise ValueError("Invalid Camera Model Type")
+    raise ValueError("Invalid Camera Model Type")
 
 
 CameraDistortionType = Union[AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform]

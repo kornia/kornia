@@ -23,7 +23,7 @@ Use Pixi for project tasks and environment selection. The tasks call `uv`, and P
 
 ```bash
 pixi install
-pixi run install
+pixi run -e default install
 pixi install -e py312
 pixi run -e py312 install
 pixi install -e py313
@@ -41,7 +41,7 @@ pixi run typecheck
 pixi run toml-fmt
 pixi run doctest
 pixi run doctest-weights
-pixi run build-docs
+pixi run -e default build-docs
 ```
 
 The `py312` and `py313` features select isolated `.venv-py312` and `.venv-py313` project environments automatically for install and test tasks.

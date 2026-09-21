@@ -17,9 +17,11 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 from kornia.core._compat import torch_version
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
+from kornia.filters.kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
 from testing.base import BaseTester
 
@@ -142,6 +144,22 @@ class TestSpatialGradient(BaseTester):
 
         edges = spatial_gradient(inp, normalized=True)
         self.assert_close(edges, expected)
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_sobel_preserves_nonfinite_kernel_behavior(self, normalized, device, dtype):
+        inp = torch.zeros(1, 1, 3, 3, device=device, dtype=dtype)
+        inp[..., 0, 0] = float("nan")
+        inp[..., 1, 1] = float("inf")
+
+        kernel = get_spatial_gradient_kernel2d("sobel", 1, device=device, dtype=dtype)
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
+        expected = F.conv2d(F.pad(inp, [1, 1, 1, 1], "replicate"), kernel[:, None])
+        actual = spatial_gradient(inp, normalized=normalized).reshape_as(expected)
+
+        assert torch.equal(torch.isnan(actual), torch.isnan(expected))
+        assert torch.equal(torch.isinf(actual), torch.isinf(expected))
+        self.assert_close(torch.nan_to_num(actual), torch.nan_to_num(expected))
 
     def test_edges_sep(self, device, dtype):
         inp = torch.tensor(

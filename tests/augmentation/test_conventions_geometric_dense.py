@@ -34,11 +34,6 @@ class TestDenseGeometricConventions(BaseTester):
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("2D bilinear grid sampling is unavailable for this device/dtype")
 
-    @staticmethod
-    def require_tps(dtype):
-        if dtype == torch.float16:
-            pytest.skip("#4557: the TPS kernel epsilon underflows in float16, producing non-finite weights")
-
     @pytest.mark.parametrize("align_corners", [False, True])
     def test_convention_elastic_zero_displacement(self, device, dtype, align_corners):
         image = torch.arange(35, device=device, dtype=dtype).reshape(1, 1, 5, 7) / 35
@@ -108,15 +103,12 @@ class TestDenseGeometricConventions(BaseTester):
 
     @pytest.mark.parametrize("align_corners", [False, True])
     def test_convention_thin_plate_spline_identity_grid_3928(self, device, dtype, align_corners):
-        self.require_tps(dtype)
         image = torch.ones(1, 1, 3, 3, device=device, dtype=dtype)
         aug = K.RandomThinPlateSpline(scale=0, align_corners=align_corners, p=1)
         self.assert_close(aug(image), image)
 
     @pytest.mark.parametrize("kind", ["elastic", "fisheye", "tps"])
     def test_convention_dense_shape_and_matrix_interface(self, device, dtype, kind):
-        if kind == "tps":
-            self.require_tps(dtype)
         aug = {
             "elastic": lambda: K.RandomElasticTransform(kernel_size=(3, 3), p=1),
             "fisheye": lambda: K.RandomFisheye(
@@ -125,6 +117,9 @@ class TestDenseGeometricConventions(BaseTester):
             "tps": lambda: K.RandomThinPlateSpline(scale=0, p=1),
         }[kind]()
         image = torch.ones(2, 1, 5, 7, device=device, dtype=dtype)
-        assert aug(image).shape == image.shape
+        output = aug(image)
+        assert output.shape == image.shape
+        if kind == "tps":
+            assert torch.isfinite(output).all()
         assert not hasattr(aug, "transform_matrix")
         assert not hasattr(aug, "inverse")

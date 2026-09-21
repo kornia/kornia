@@ -29,6 +29,8 @@ from kornia.core.check import KORNIA_CHECK
 class RandomRain(IntensityAugmentationBase2D):
     r"""Add Random Rain to the image.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         number_of_drops: number of drops per image
@@ -40,6 +42,36 @@ class RandomRain(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - the input must have one or three channels; any other channel count raises on the forward pass.
+        - ``drop_height`` runs down rows and ``drop_width`` along columns: both name image axes, not
+          drop-local ones, and a negative ``drop_width`` slants the drop the other way across the columns.
+        - a drop is written as the fixed value ``200 / 255``, not as a function of the image, so the rain is
+          darker than every pixel above ``200 / 255`` that it falls on, inside ``[0, 1]`` or not. Every other
+          pixel is carried through unclamped.
+        - both sizes must be strictly smaller than the image on their own axis. Once the larger of the two
+          sizes is at least ``2``, a drop of size ``h`` spans ``h + 1`` rows or columns end to end, so a size
+          one short of the image already reaches from edge to edge; a drop whose sizes are both at most ``1``
+          is a single pixel. ``span`` is an extent, not a count: the drop is a ``linspace`` of
+          ``max(drop_height, abs(drop_width))`` steps truncated to integers, so when the two sizes differ the
+          painted cells have gaps inside that span -- ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10``
+          image paints rows ``[0, 1, 2, 3, 5]``. A size as large as the image's, or a ``drop_height`` below
+          ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
+        - every start position that keeps the whole drop inside the image is equally likely, so the last row
+          and the last column are reachable. Reachable by a start, not necessarily painted: the gaps inside a
+          drop's span described above can still leave a column untouched -- ``drop_height=5`` with
+          ``drop_width=9`` on a ``6 x 10`` image has one legal start and never paints column ``8``.
+        - the three integer ranges are closed and uniform: every integer from the lower to the upper bound
+          is drawn with the same probability, so the default ``drop_height=(5, 20)`` reaches ``20``, the
+          default ``drop_width=(-5, 5)`` reaches ``-5`` and ``5``, and ``0`` carries no more weight than
+          any other width. Both upper bounds are live against the size rule above, which they were not
+          when they were practically never drawn: with the defaults an image 20 pixels tall, or 5 pixels
+          wide, now raises on some seeds -- and on every seed once it is 5 pixels tall or shorter, where
+          no drawable height is legal. A range that is reversed, fractional or non-finite raises
+          ``ValueError`` at construction.
+        - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
+          the same coordinates; left at ``False`` each sample draws its own.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
@@ -47,7 +79,7 @@ class RandomRain(IntensityAugmentationBase2D):
         >>> rain(input)
         tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
-                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.3489, 0.4017, 0.7843, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
 
@@ -85,29 +117,87 @@ class RandomRain(IntensityAugmentationBase2D):
             bool(torch.all(torch.abs(params["drop_width_factor"]) < image.shape[3])),
             "Width of drop should be less than image width.",
         )
-        modeified_img = image.clone()
-        for i in range(image.shape[0]):
-            number_of_drops: int = int(params["number_of_drops_factor"][i])
-            # We generate torch.Tensor with maximum number of drops, and then remove unnecessary drops.
+        output = image.clone()
+        batch_size, _, image_height, image_width = image.shape
+        coordinates: torch.Tensor = params["coordinates_factor"]  # (B, max drops, 2) in [0, 1]
+        max_drops = coordinates.shape[1]
+        if batch_size == 0 or max_drops == 0:
+            return output
 
-            coordinates_of_drops: torch.Tensor = params["coordinates_factor"][i][:number_of_drops]
-            height_of_drop: int = int(params["drop_height_factor"][i])
-            width_of_drop: int = int(params["drop_width_factor"][i])
+        # The three per-sample integers are read once for the whole batch: one device sync per
+        # parameter instead of three per sample. `int()` truncates exactly as `int(params[...][i])`
+        # did per element.
+        drops_per_sample = [int(v) for v in params["number_of_drops_factor"].tolist()]
+        heights = [int(v) for v in params["drop_height_factor"].tolist()]
+        widths = [int(v) for v in params["drop_width_factor"].tolist()]
 
-            # Generate start coordinates for each drop
-            random_y_coords = coordinates_of_drops[:, 0] * (image.shape[2] - height_of_drop - 1)
-            if width_of_drop > 0:
-                random_x_coords = coordinates_of_drops[:, 1] * (image.shape[3] - width_of_drop - 1)
-            else:
-                random_x_coords = coordinates_of_drops[:, 1] * (image.shape[3] + width_of_drop - 1) - width_of_drop
-
-            coords = torch.cat([random_y_coords[None], random_x_coords[None]], dim=0).to(image.device, dtype=torch.long)
-
+        # Every drop of every sample is rasterised in one batched computation and written with ONE
+        # indexed assignment (#4530). Before, each sample paid `size_of_line` separate `index_put_`
+        # launches, one per step of the line, plus its own host-to-device copies: ~100 writes and
+        # 204 adds at batch 8. The per-sample work that remains below runs on the host and touches
+        # no device: it builds the line shape for each sample exactly as before, with the same
+        # `torch.linspace` in the same dtype, so the pixels are the ones the step loop painted, and
+        # all are set to one constant, so write order cannot change the result.
+        #
+        # The line shape differs per sample (its height, width and step count are all drawn), so the
+        # shapes are padded to the longest line in the batch and a mask drops the padding. The staging
+        # buffers are pinned to the CPU explicitly rather than left to the default device, so a
+        # `torch.set_default_device` in the caller cannot turn the host loop into per-sample device
+        # launches, or a copy from `meta` that cannot be made.
+        longest_line = max(max(h, abs(w)) for h, w in zip(heights, widths))
+        lines = torch.zeros(batch_size, 2, longest_line, dtype=torch.long, device="cpu")
+        # One row per sample, packed so the host-side integers cross to the device in a single copy:
+        # [admissible start rows, admissible start cols, col shift, line length, drop count].
+        # The admissible start region: a drop may start anywhere its far end stays inside the image.
+        # The far end is the line's last offset -- the end point is included once there are at least
+        # two steps, and a single-pixel drop is the start alone. Derived from the Python ints rather
+        # than read off `x[-1]`/`y[-1]`, which would sync the device per sample.
+        meta = torch.empty(batch_size, 5, dtype=torch.long, device="cpu")
+        for i, (height_of_drop, width_of_drop) in enumerate(zip(heights, widths)):
             # Generate how our drop will look like into the image
-            size_of_line: int = max(height_of_drop, abs(width_of_drop))
-            x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
-            y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
-            # Draw lines
-            for k in range(x.shape[0]):
-                modeified_img[i, :, coords[0] + x[k], coords[1] + y[k]] = 200 / 255
-        return modeified_img
+            size_of_line = max(height_of_drop, abs(width_of_drop))
+            lines[i, 0, :size_of_line] = torch.linspace(
+                0, height_of_drop, steps=size_of_line, dtype=torch.long, device="cpu"
+            )
+            lines[i, 1, :size_of_line] = torch.linspace(
+                0, width_of_drop, steps=size_of_line, dtype=torch.long, device="cpu"
+            )
+            last_dy, last_dx = (height_of_drop, width_of_drop) if size_of_line > 1 else (0, 0)
+            meta[i, 0] = image_height - last_dy
+            meta[i, 1] = image_width - abs(last_dx)
+            meta[i, 2] = max(-last_dx, 0)
+            meta[i, 3] = size_of_line
+            meta[i, 4] = drops_per_sample[i]
+
+        # Start coordinates, computed on the device the draw lives on so the float product rounds as
+        # it always has, then moved once. The clamp is for the MPS half `rand` that can return exactly
+        # 1.0 (#4553): it keeps such a draw on the last admissible start instead of one past it.
+        meta_c = meta.to(coordinates.device)
+        rows_c, cols_c, shift_c = meta_c[:, 0:1], meta_c[:, 1:2], meta_c[:, 2:3]
+        start_rows = torch.minimum((coordinates[..., 0] * rows_c).long(), rows_c - 1)
+        start_cols = torch.minimum((coordinates[..., 1] * cols_c).long(), cols_c - 1) + shift_c
+
+        # Two device copies for the whole batch: the host-built shapes and metadata as one flat
+        # buffer, and the two start-coordinate grids as one stacked tensor.
+        device = image.device
+        host = torch.cat([lines.reshape(-1), meta.reshape(-1)]).to(device)
+        lines = host[: lines.numel()].view(batch_size, 2, longest_line)
+        meta = host[lines.numel() :].view(batch_size, 5)
+        starts = torch.stack([start_rows, start_cols]).to(device)
+        # (B, max drops, longest line): every start offset by every step of its sample's line.
+        drop_rows = starts[0].unsqueeze(2) + lines[:, 0].unsqueeze(1)
+        drop_cols = starts[1].unsqueeze(2) + lines[:, 1].unsqueeze(1)
+
+        # Keep drop j of sample i only while j < its drawn drop count (the generator allocates the
+        # batch maximum), and step k only while k < its line length (padding above). The mask is
+        # resolved with a single `nonzero` (one device sync) and the batch index is recovered from
+        # the flat position arithmetically, rather than boolean-indexing three tensors, which would
+        # call `nonzero` three times.
+        drop_valid = torch.arange(max_drops, device=device).unsqueeze(0) < meta[:, 4:5]
+        step_valid = torch.arange(longest_line, device=device).unsqueeze(0) < meta[:, 3:4]
+        valid = drop_valid.unsqueeze(2) & step_valid.unsqueeze(1)
+        flat = valid.reshape(-1).nonzero().squeeze(1)
+        batch_index = torch.div(flat, max_drops * longest_line, rounding_mode="floor")
+
+        output[batch_index, :, drop_rows.reshape(-1)[flat], drop_cols.reshape(-1)[flat]] = 200 / 255
+        return output

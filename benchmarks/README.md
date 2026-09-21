@@ -10,10 +10,14 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | --- | --- |
 | [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
-| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. |
+| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL/scikit-image. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
+
+[`feature/sift_scale_space.py`](feature/sift_scale_space.py) compares complete SIFT
+extraction, matching and homography quality on CPU, CUDA or MPS;
+[device results and usage](feature/sift_summary.md).
 
 ## Methodology contract
 
@@ -23,6 +27,21 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   `torch.utils.benchmark.Timer.blocked_autorange`, which warms up, runs many repeats, and
   reports **median** wall clock; `time_us` additionally returns the **IQR** as the spread.
   Never time a single call.
+- **Thread consistency:** `time_us` uses the current `torch.get_num_threads()` for timing,
+  matching warmup and metadata. Older results collected before this fix timed PyTorch at
+  `Timer`'s default of one thread even when metadata named a larger thread count; do not
+  interpret those historical files as measurements at the advertised count.
+  When comparing against a revision with the old timer, use one thread in both runs
+  or apply the timer correction to the baseline as well.
+- **Sustained CPU warm-up:** call `common.warm_up_cpu()` once after setting the thread count.
+  Hybrid CPUs (performance + efficiency cores) keep lightly loaded threads on efficiency cores
+  until they have carried sustained load, and WSL2 cannot pin them. On an i7-14700K this moved a
+  5x5 oneDNN convolution from 0.56 ms to 0.22 ms while a slice-based filter barely changed, so
+  an unwarmed A/B can pick the wrong implementation. The filters and augmentation flagships do
+  this, including accelerator runs because they also time CPU-only library baselines.
+- **Checkout provenance:** the filters and augmentation flagship scripts import Kornia from
+  their own checkout and print the source path. Direct script execution must not silently benchmark an
+  installed wheel or another editable checkout while recording the current tree's commit.
 - **Device sync inside the timed region:** `blocked_autorange` syncs CUDA; for MPS pass
   `sync=torch.mps.synchronize` to `time_us`. A hand-rolled `time.time()` around a GPU call
   measures launch latency, not work.
@@ -31,6 +50,15 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
 - **Recorded metadata:** embed `common.run_metadata(device)` in every result file — date, git
   commit, platform, Python/torch/kornia versions, device (CUDA name + version when
   applicable), thread count, and baseline-library versions.
+- **Version + commit identify a run, not its date:** a `<kornia-version>` directory spans many
+  commits, so a snapshot can carry the current version and a recent timestamp and still measure an
+  implementation that no longer exists. Quote `kornia` and `git_commit` together whenever a number
+  is cited; the performance page and the llms digest both print the commit for this reason.
+- **Supersede stale snapshots:** when a merged change alters the speed of ops a committed snapshot
+  measures, re-measure that machine. When the hardware is not available, move the run to
+  `benchmarks/results/superseded/<version>/` and add a row to that directory's README naming the
+  change that superseded it. Leaving it published turns a kornia change into an apparent hardware
+  difference, because the page invites column-by-column reading within one table.
 - **Machine-readable export:** support `--json PATH` and write via `common.save_json` —
   strict-valid JSON (`NaN` → `null`), shape `{"metadata": {...}, "results": [...]}`.
 - **Equal footing + honest regimes:** identical transform parameters and interpolation across
@@ -89,6 +117,18 @@ One file per run:
 4. Missing optional libraries must degrade to a skip note, never a crash.
 5. Document the regimes in the module docstring; keep the honest framing.
 
+The filters flagship includes optional scikit-image baselines. To exercise every
+current baseline, install the benchmark-only dependencies with
+`uv pip install --upgrade --prerelease allow scikit-image kornia-rs`; this currently
+selects scikit-image 0.26 and kornia-rs 0.1.15rc5. Its module docstring lists
+differences in padding, kernel support, normalization, and clipping; empty cells
+indicate an unavailable dependency or a missing native counterpart.
+The kornia-rs adapters detect APIs individually: stable 0.1.14 supplies Gaussian
+and box blur; 0.1.15rc5 also supplies median, Sobel, and grayscale bilateral.
+The latter has a separate row because its Python API only accepts grayscale.
+See [median parallelism notes](filters/median_parallelism.md) for the CPU/CUDA/MPS
+implementation audit and related PyTorch issues and pull requests.
+
 ## Contributing results (any machine)
 
 1. Check out the release tag you are measuring.
@@ -118,6 +158,9 @@ envelope, metadata, privacy and row-type rules as a release snapshot, without th
 version-directory rules; `load` is optional there because a base revision's harness may predate
 it. The report states what was measured, on which commits, with which command, in the style of
 the sample-results sections below.
+
+PR #4638 keeps its historical measurements in an [immutable archive](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks),
+with figures embedded in the PR description. Local reruns should write JSON outside the checkout.
 
 ## Sample results — geometry flagship ops
 
