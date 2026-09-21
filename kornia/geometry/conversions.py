@@ -645,9 +645,13 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
     trace: torch.Tensor = m00 + m11 + m22
 
     def _safe_sqrt_sq(r: torch.Tensor) -> torch.Tensor:
+        # 2 * sqrt(r) with a finite backward everywhere: sqrt is only ever differentiated at a positive
+        # substituted argument, and a non-positive radicand takes its value (zero) from the other where arm.
+        # A NaN radicand is passed through unchanged, so an invalid matrix never becomes a finite quaternion.
         mask = r > 0.0
         safe_r = torch.where(mask, r, torch.ones_like(r))
-        return torch.where(mask, torch.sqrt(safe_r) * 2.0, torch.zeros_like(r))
+        out = torch.where(mask, torch.sqrt(safe_r) * 2.0, torch.zeros_like(r))
+        return torch.where(torch.isnan(r), r, out)
 
     def trace_positive_cond() -> torch.Tensor:
         sq = _safe_sqrt_sq(trace + 1.0 + eps)  # sq = 4 * qw.
@@ -739,9 +743,12 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 
     safe_eps: float = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
     norm = torch.linalg.vector_norm(quaternion, ord=2, dim=-1, keepdim=True)
-    mask = norm > 0.0
+    # Only an exactly-zero norm takes the constant arms below; a NaN norm compares unequal to zero and goes
+    # through the division, so NaN in gives NaN out. The eps floor is a value floor selected by torch.where,
+    # so its derivative does not depend on the torch version the way clamp's derivative at the bound does.
+    mask = norm != 0.0
     safe_norm = torch.where(mask, norm, torch.ones_like(norm))
-    denom = torch.where(mask, torch.clamp(safe_norm, min=safe_eps), torch.ones_like(norm))
+    denom = torch.where(safe_norm < safe_eps, torch.full_like(safe_norm, safe_eps), safe_norm)
     out = quaternion / denom
     if eps == 0.0:
         return torch.where(mask, out, torch.full_like(quaternion, float("nan")))
