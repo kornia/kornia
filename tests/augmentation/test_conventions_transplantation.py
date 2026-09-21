@@ -36,6 +36,14 @@ def _labelled_batch(batch: int = 4, spatial: tuple[int, ...] = (4, 6), channels:
     return image, mask
 
 
+def _multi_label_batch(batch: int = 4, size: int = 6, labels: int = 5):
+    """Every donor holds several labels, so a redraw is distinguishable from a replay; channels differ too."""
+    generator = torch.Generator().manual_seed(1234)
+    mask = torch.randint(0, labels, (batch, size, size + 1), generator=generator)
+    image = torch.rand(batch, 3, size, size + 1, generator=generator)
+    return image, mask
+
+
 class TestTransplantationConventions(BaseTester):
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("n_spatial", [0, 1, 2, 3])
@@ -45,6 +53,39 @@ class TestTransplantationConventions(BaseTester):
         mask = torch.randint(0, 3, (3, *spatial))
         out_image, out_mask = K.RandomTransplantation(p=1.0)(image, mask)
         assert out_image.shape == image.shape and out_mask.shape == mask.shape
+
+    @pytest.mark.device_agnostic
+    def test_convention_the_first_mask_drives_the_transplant(self):
+        first = torch.stack([torch.full((4, 6), i + 1, dtype=torch.long) for i in range(3)])
+        second = torch.zeros_like(first)
+        second[:, 2:] = 1  # read as the driver, this one would move only its lower half
+        aug = K.RandomTransplantation(p=1.0)
+        out_first, out_second = aug(first, second, data_keys=["mask", "mask"])
+        assert bool(aug._params["selection"].all())
+        assert torch.equal(out_first, first.roll(1, dims=0))
+        assert torch.equal(out_second, second)  # moved at the first mask's positions: identical rows, no change
+
+    def test_convention_transplant_follows_the_device_and_dtype_of_its_inputs(self, device, dtype):
+        image, mask = _labelled_batch(batch=4)
+        image, mask = image.to(device=device, dtype=dtype), mask.to(device)
+        aug = K.RandomTransplantation(p=1.0, excluded_labels=[0])  # the exclusion list starts on the CPU
+        out_image, out_mask = aug(image, mask)
+        assert out_image.dtype is dtype and out_image.device == image.device and out_mask.device == mask.device
+        assert torch.equal(out_image, image.roll(1, dims=0)) and torch.equal(out_mask, mask.roll(1, dims=0))
+        assert aug._params["selection"].device == mask.device
+        assert aug._params["selected_labels"].device == mask.device
+
+    def test_convention_label_draw_uses_the_cpu_generator_whatever_the_device(self, device):
+        _, mask = _multi_label_batch()
+        torch.manual_seed(11)
+        on_cpu = K.RandomTransplantation(p=1.0)
+        on_cpu(mask, data_keys=["mask"])
+        torch.manual_seed(11)
+        state = torch.get_rng_state()
+        on_device = K.RandomTransplantation(p=1.0)
+        on_device(mask.to(device), data_keys=["mask"])
+        assert not torch.equal(torch.get_rng_state(), state)  # the CPU generator moved
+        assert on_device._params["selected_labels"].cpu().tolist() == on_cpu._params["selected_labels"].tolist()
 
     @pytest.mark.device_agnostic
     def test_convention_first_axis_is_always_the_batch(self):
@@ -87,16 +128,25 @@ class TestTransplantationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_donor_need_not_be_an_acceptor(self):
-        aug = K.RandomTransplantation(p=0.5)
-        for seed in range(40):
-            torch.manual_seed(seed)
-            params = aug.forward_parameters(torch.Size([5, 4, 5]))
-            acceptors = torch.where(params["batch_prob"] > 0.5)[0]
-            if acceptors.numel() and acceptors.numel() < 5:
-                donors = (acceptors - 1) % 5
-                if not set(donors.tolist()) <= set(acceptors.tolist()):
-                    return
-        pytest.fail("no draw produced a donor outside the acceptor set")
+        # A hand-written gate selects images 1 and 3 only. Their donors are 0 and 2 -- the previous image of the
+        # FULL batch, neither of them an acceptor -- and not 3 and 1, the previous ACCEPTOR.
+        image, mask = _labelled_batch(batch=5)
+        aug = K.RandomTransplantation(p=1.0)
+        out_image, out_mask = aug(image, mask, params={"batch_prob": torch.tensor([0.0, 1.0, 0.0, 1.0, 0.0])})
+        assert aug._params["acceptor_indices"].tolist() == [1, 3]
+        assert aug._params["donor_indices"].tolist() == [0, 2]
+        assert [int(out_mask[i].flatten()[0]) for i in range(5)] == [1, 1, 3, 3, 5]
+        self.assert_close(out_image[1], image[0], rtol=0, atol=0)
+        self.assert_close(out_image[3], image[2], rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    def test_convention_a_donor_gives_its_original_content_and_every_channel_moves(self):
+        # Image i is its own index in every position, offset per channel. With every image an acceptor, a
+        # transplant chained through already-written acceptors would hand image 0's content down the batch.
+        _, mask = _labelled_batch(batch=4)
+        image = torch.stack([torch.stack([torch.full((4, 6), 10.0 * i + c) for c in range(3)]) for i in range(4)])
+        out_image, _ = K.RandomTransplantation(p=1.0)(image, mask)
+        self.assert_close(out_image, image.roll(1, dims=0), rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_convention_single_image_batch_is_its_own_donor_and_an_identity(self):
@@ -127,15 +177,19 @@ class TestTransplantationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_excluded_label_is_never_transplanted(self):
-        mask = torch.zeros(3, 4, 6, dtype=torch.long)
+        mask = torch.zeros(3, 5, 7, dtype=torch.long)
         for i in range(3):
-            mask[i, :2, :3] = i + 1
-        image = torch.rand(3, 1, 4, 6)
+            mask[i, i : i + 2, i : i + 3] = i + 1  # a different place per image, so the moved region shows
+        image = torch.rand(3, 1, 5, 7)
         torch.manual_seed(0)
         aug = K.RandomTransplantation(p=1.0, excluded_labels=[0])
         _, out_mask = aug(image, mask)
         assert aug._params["selected_labels"].tolist() == [3, 1, 2]
-        assert int((out_mask == 0).sum()) == int((mask == 0).sum())
+        expected = mask.clone()
+        for i in range(3):
+            donor = (i - 1) % 3
+            expected[i][mask[donor] == donor + 1] = donor + 1
+        assert torch.equal(out_mask, expected)
 
     @pytest.mark.device_agnostic
     def test_convention_a_donor_without_an_eligible_label_only_skips_its_own_acceptor(self):
@@ -148,26 +202,67 @@ class TestTransplantationConventions(BaseTester):
         image = torch.stack([torch.full((2, 4, 6), float(i + 1)) for i in range(3)])
         torch.manual_seed(0)
         aug = K.RandomTransplantation(p=1.0, excluded_labels=[9])
-        aug(image, mask)
+        out_image, out_mask = aug(image, mask)
         params = aug._params
-        assert len(params["selected_labels"]) == len(params["acceptor_indices"]) == 3
-        for d in range(3):
+        # Acceptor 0 is dropped -- its donor, image 2, is entirely the excluded label -- and the rest stay aligned.
+        assert params["acceptor_indices"].tolist() == [1, 2]
+        assert params["donor_indices"].tolist() == [0, 1]
+        assert len(params["selected_labels"]) == len(params["selection"]) == 2
+        for d in range(2):
             donor_mask = mask[int(params["donor_indices"][d])]
+            assert int(params["selected_labels"][d]) in (5, 7)
             assert torch.equal(params["selection"][d], donor_mask == int(params["selected_labels"][d]))
-        assert int(params["selection"][0].sum()) == 0  # donor 2 is entirely the excluded label
-        assert int(params["selection"][1].sum()) > 0
-        assert int(params["selection"][2].sum()) > 0
+            assert bool(params["selection"][d].any())
+        assert torch.equal(out_mask[0], mask[0])
+        self.assert_close(out_image[0], image[0], rtol=0, atol=0)
+        # Acceptor 2 takes ITS OWN donor's region: image 1 is label 7 throughout, so all of image 2 becomes 7.
+        assert bool((out_mask[2] == 7).all())
+        self.assert_close(out_image[2], image[1], rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
-    def test_convention_every_donor_excluded_is_a_clean_no_op(self):
-        mask = torch.zeros(3, 4, 6, dtype=torch.long)
+    @pytest.mark.parametrize(
+        "mask_dtype, top",
+        [(torch.uint8, 255), (torch.int8, 127), (torch.float16, 2048.0), (torch.float32, float("inf"))],
+    )
+    def test_convention_excluded_label_never_leaks_at_the_top_of_the_mask_dtype(self, mask_dtype, top):
+        # Image 1 holds only excluded labels, one of them the largest its dtype can tell apart from `top + 1`.
+        # No value of a bounded dtype can stand in for "nothing", so that acceptor is dropped instead.
+        mask = torch.zeros(2, 4, 4, dtype=mask_dtype)
+        mask[0, :2, :2] = 7
+        mask[1, 2:, 1:] = top
+        image = torch.stack([torch.full((1, 4, 4), float(i + 1)) for i in range(2)])
+        aug = K.RandomTransplantation(p=1.0, excluded_labels=[0, top])
+        out_image, out_mask = aug(image, mask)
+        assert aug._params["acceptor_indices"].tolist() == [1]
+        assert aug._params["selected_labels"].tolist() == [7]
+        assert aug._params["selected_labels"].dtype is mask_dtype
+        assert torch.equal(out_mask[0], mask[0])  # image 0 received nothing from the all-excluded image 1
+        self.assert_close(out_image[0], image[0], rtol=0, atol=0)
+        assert int((out_mask[1] == 7).sum()) == 4  # image 1 still received label 7 from image 0
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("mask_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool, torch.float16])
+    def test_convention_every_donor_excluded_is_a_clean_no_op(self, mask_dtype):
+        mask = torch.zeros(3, 4, 6, dtype=mask_dtype)
         image = torch.rand(3, 1, 4, 6)
         aug = K.RandomTransplantation(p=1.0, excluded_labels=[0])
         out_image, out_mask = aug(image, mask)
-        assert aug._params["selected_labels"].dtype == mask.dtype
-        assert not bool(aug._params["selection"].any())
+        assert bool((aug._params["batch_prob"] > 0.5).all())  # the gate selected everything ...
+        assert aug._params["acceptor_indices"].numel() == 0  # ... and nothing had a donor with a label to give
+        assert aug._params["selected_labels"].shape == (0,)
+        assert aug._params["selected_labels"].dtype is mask_dtype  # not the float32 of a bare torch.empty(0)
+        assert aug._params["selection"].shape == (0, 4, 6)
         self.assert_close(out_image, image, rtol=0, atol=0)
         assert torch.equal(out_mask, mask)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("excluded", [None, [0]])
+    def test_convention_zero_sized_spatial_axis_is_a_no_op(self, excluded):
+        # An empty mask has no label at all, so nothing is eligible: empty in, empty out, no raise.
+        mask = torch.zeros(2, 0, 4, dtype=torch.long)
+        image = torch.rand(2, 3, 0, 4)
+        out_image, out_mask = K.RandomTransplantation(p=1.0, excluded_labels=excluded)(image, mask)
+        assert out_image.shape == image.shape and out_mask.shape == mask.shape
 
     @pytest.mark.device_agnostic
     def test_convention_params_keys_and_selection_semantics(self):
@@ -198,11 +293,15 @@ class TestTransplantationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_replay_reproduces_and_selected_labels_alone_is_inert(self):
-        image, mask = _labelled_batch(batch=4)
+        image, mask = _multi_label_batch()
         torch.manual_seed(0)
         aug = K.RandomTransplantation(p=1.0)
         expected_image, expected_mask = aug(image, mask)
         full = copy.deepcopy(dict(aug._params))
+        # The fixture discriminates: a fresh draw under the replay's seed picks other labels and moves other pixels.
+        torch.manual_seed(999)
+        fresh_image, _ = K.RandomTransplantation(p=1.0)(image, mask)
+        assert not torch.equal(fresh_image, expected_image)
         torch.manual_seed(999)
         replayed_image, replayed_mask = aug(image, mask, params=copy.deepcopy(full))
         self.assert_close(replayed_image, expected_image, rtol=0, atol=0)
@@ -212,21 +311,68 @@ class TestTransplantationConventions(BaseTester):
         again_image, _ = aug(image, mask, params=without_labels)
         self.assert_close(again_image, expected_image, rtol=0, atol=0)
         assert "selected_labels" not in without_labels
-        # Dropping both selected_labels and selection redraws from the RNG.
+        # Dropping both selected_labels and selection redraws from the RNG, into the caller's own dict.
         redrawn = {k: v for k, v in copy.deepcopy(full).items() if k not in ("selected_labels", "selection")}
-        torch.manual_seed(1)
-        aug(image, mask, params=redrawn)
-        assert "selected_labels" in redrawn
+        torch.manual_seed(999)
+        redrawn_image, _ = aug(image, mask, params=redrawn)
+        self.assert_close(redrawn_image, fresh_image, rtol=0, atol=0)
+        assert "selected_labels" in redrawn and aug._params is redrawn
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("also_dropped", ["donor_indices", "acceptor_indices"])
+    def test_convention_labels_are_not_drawn_beside_an_explicit_selection(self, also_dropped):
+        # With an index key missing the parameters are derived again, but a given selection is never
+        # second-guessed: no label is drawn, the RNG is left alone and the same positions move.
+        image, mask = _multi_label_batch()
+        torch.manual_seed(0)
+        aug = K.RandomTransplantation(p=1.0)
+        expected_image, _ = aug(image, mask)
+        partial = {k: v.clone() for k, v in aug._params.items() if k not in ("selected_labels", also_dropped)}
+        torch.manual_seed(5)
+        before = torch.get_rng_state()
+        replayed_image, _ = aug(image, mask, params=partial)
+        assert torch.equal(torch.get_rng_state(), before)
+        assert "selected_labels" not in partial and also_dropped in partial
+        self.assert_close(replayed_image, expected_image, rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    def test_convention_a_missing_selection_is_rebuilt_from_the_given_labels(self):
+        # The given labels are used as they are: `excluded_labels` is not consulted, and a list shorter than the
+        # acceptors leaves the trailing acceptors untouched.
+        mask = torch.zeros(3, 4, 6, dtype=torch.long)
+        for i in range(3):
+            mask[i, i, :] = i + 1  # a different row per image, so the moved region names its donor
+        image = torch.stack([torch.full((1, 4, 6), float(i + 1)) for i in range(3)])
+        aug = K.RandomTransplantation(p=1.0, excluded_labels=[0])
+        params = {"batch_prob": torch.ones(3), "selected_labels": torch.tensor([0, 1])}
+        _, out_mask = aug(image, mask, params=params)
+        assert params["selection"].flatten(1).sum(1).tolist() == [18, 6, 0]
+        assert torch.equal(params["selection"][0], mask[2] == 0)  # the EXCLUDED label 0 of donor 2 was moved
+        assert torch.equal(params["selection"][1], mask[0] == 1)
+        assert torch.equal(out_mask[2], mask[2])  # no third label: acceptor 2 is untouched
+        assert int((out_mask[1] == 1).sum()) == 6 and int((out_mask[0] == 3).sum()) == 0
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_image_dtype_guard_and_free_mask_dtype(self, p):
         mask = torch.randint(0, 3, (2, 4, 5))
-        with pytest.raises(TypeError, match="float16"):
-            K.RandomTransplantation(p=p)(torch.ones(2, 1, 4, 5, dtype=torch.int64), mask)
-        for dtype in (torch.int64, torch.int32, torch.bool, torch.uint8, torch.float32):
-            _, out_mask = K.RandomTransplantation(p=p)(torch.rand(2, 1, 4, 5), mask.to(dtype))
-            assert out_mask.dtype is dtype
+        for image_dtype in (torch.int64, torch.int32, torch.uint8, torch.bool):
+            with pytest.raises(TypeError, match="Expected input of"):
+                K.RandomTransplantation(p=p)(torch.ones(2, 1, 4, 5, dtype=image_dtype), mask)
+        signed = (torch.int8, torch.int16, torch.int32, torch.int64)
+        floating = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+        for dtype in (torch.bool, torch.uint8, *signed, *floating):
+            aug = K.RandomTransplantation(p=p, excluded_labels=[0])
+            _, out_mask = aug(torch.rand(2, 1, 4, 5), mask.to(dtype))
+            assert out_mask.dtype is dtype and aug._params["selected_labels"].dtype is dtype
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    def test_convention_each_floating_image_dtype_is_accepted_and_kept(self, image_dtype):
+        image, mask = _labelled_batch(batch=3)
+        out_image, _ = K.RandomTransplantation(p=1.0)(image.to(image_dtype), mask)
+        assert out_image.dtype is image_dtype
+        assert torch.equal(out_image, image.to(image_dtype).roll(1, dims=0))
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
@@ -244,9 +390,20 @@ class TestTransplantationConventions(BaseTester):
             K.RandomTransplantation(p=p)(image, mask, annotations[key], data_keys=["input", "mask", key])
 
     @pytest.mark.device_agnostic
-    def test_convention_a_mask_key_is_required(self):
+    def test_convention_a_mask_key_is_required_only_to_derive_the_parameters(self):
         with pytest.raises(ValueError, match="MASK"):
             K.RandomTransplantation(p=1.0)(torch.rand(2, 1, 4, 5), data_keys=["input"])
+        # With complete parameters no mask is looked up: this is the call AugmentationSequential makes per input.
+        image, mask = _multi_label_batch()
+        torch.manual_seed(0)
+        aug = K.RandomTransplantation(p=1.0)
+        expected_image, expected_mask = aug(image, mask)
+        recorded = copy.deepcopy(dict(aug._params))
+        image_only = K.RandomTransplantation(p=1.0)(image, params=copy.deepcopy(recorded), data_keys=["input"])
+        self.assert_close(image_only, expected_image, rtol=0, atol=0)
+        # Outputs follow the input order, whatever it is.
+        swapped = K.RandomTransplantation(p=1.0)(mask, image, params=recorded, data_keys=["mask", "input"])
+        assert torch.equal(swapped[0], expected_mask) and torch.equal(swapped[1], expected_image)
 
     @pytest.mark.device_agnostic
     def test_convention_mask_only_call_returns_a_bare_tensor(self):
@@ -276,13 +433,17 @@ class TestTransplantationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_serialization_is_state_free_and_replays(self):
-        image, mask = _labelled_batch(batch=3)
+        image, mask = _multi_label_batch()
         torch.manual_seed(0)
         aug = K.RandomTransplantation(p=1.0, excluded_labels=[0])
         expected_image, _ = aug(image, mask)
+        torch.manual_seed(999)
+        fresh_image, _ = K.RandomTransplantation(p=1.0, excluded_labels=[0])(image, mask)
+        assert not torch.equal(fresh_image, expected_image)  # a redraw under the replay's seed would show
         assert not aug.state_dict() and not list(aug.parameters()) and not list(aug.buffers())
         for restored in (pickle.loads(pickle.dumps(aug)), copy.deepcopy(aug)):  # noqa: S301
             assert torch.equal(restored.excluded_labels, aug.excluded_labels)
+            torch.manual_seed(999)
             replayed, _ = restored(image, mask, params=copy.deepcopy(dict(restored._params)))
             self.assert_close(replayed, expected_image, rtol=0, atol=0)
 
@@ -311,6 +472,21 @@ class TestTransplantationConventions(BaseTester):
         assert torch.equal(out_mask, mask)
         assert inner._params["batch_prob"].numel() == 1  # a one-element gate for a batch of 3
         assert inner._params["donor_indices"].tolist() == [0]
+
+    @pytest.mark.device_agnostic
+    def test_wart_container_runs_the_transplant_only_as_the_first_step_4707(self):
+        image, mask = _labelled_batch(batch=3)
+        first = K.AugmentationSequential(
+            K.RandomTransplantation(p=1.0), K.RandomHorizontalFlip(p=0.0), data_keys=["image", "mask"]
+        )
+        _, out_mask = first(image, mask)
+        assert out_mask.shape == (3, 1, 4, 6)  # the later step promoted the mask ...
+        assert not torch.equal(out_mask[:, 0], mask)
+        later = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=0.0), K.RandomTransplantation(p=1.0), data_keys=["image", "mask"]
+        )
+        with pytest.raises(BaseError, match="one additional dimension"):  # ... and that layout is refused
+            later(image, mask)
 
     @pytest.mark.device_agnostic
     def test_wart_container_inverse_returns_its_input_4693(self):
