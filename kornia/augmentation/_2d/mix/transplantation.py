@@ -101,14 +101,14 @@ class RandomTransplantation(MixAugmentationBaseV2):
           not over area. A donor with no eligible label has nothing to give, so its acceptor is dropped from
           ``acceptor_indices``, its ``batch_prob`` entry is cleared and it receives nothing, while the rest of
           the batch is transplanted.
-        - ``_params`` holds ``batch_prob``, ``forward_input_shape`` (the mask's shape), ``acceptor_indices``,
-          ``donor_indices``, ``selected_labels`` and ``selection``. ``selection`` is what the transform reads:
-          row ``d`` marks the positions moved from ``donor_indices[d]`` into ``acceptor_indices[d]``, and a
-          drawn ``selected_labels`` has one entry per row. A recorded ``_params`` passed back is used as given
-          and completed in place, so it replays the same positions on any input of the same shape. Labels are
-          drawn only when ``selected_labels`` and ``selection`` are both missing. A missing ``selection`` alone
-          is rebuilt from the given labels against the current mask, without consulting ``excluded_labels``,
-          and a label list shorter than the acceptors leaves the trailing acceptors untouched.
+        - ``_params`` holds ``batch_prob``, ``forward_input_shape`` (the mask's shape in a direct call, the image's
+          inside a container), ``acceptor_indices``, ``donor_indices``, ``selected_labels`` and ``selection``.
+          ``selection`` is what the transform reads: row ``d`` marks the positions moved from ``donor_indices[d]``
+          into ``acceptor_indices[d]``, and a drawn ``selected_labels`` has one entry per row. A recorded ``_params``
+          passed back is used as given and completed in place, so it replays the same positions on any input of the
+          same shape. Labels are drawn only when ``selected_labels`` and ``selection`` are both missing. A missing
+          ``selection`` alone is rebuilt from the given labels against the current mask, without consulting
+          ``excluded_labels``, and a label list shorter than the acceptors leaves the trailing acceptors untouched.
         - image inputs accept ``float16``, ``bfloat16``, ``float32`` and ``float64`` only, checked whatever the
           gate; a mask keeps its own dtype, which may be ``bool``, ``uint8``, a signed integer or one of those
           four floating dtypes. Only ``"input"`` / ``"image"`` and ``"mask"`` are implemented -- any other data

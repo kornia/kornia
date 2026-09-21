@@ -280,6 +280,10 @@ class TestTransplantationConventions(BaseTester):
             "selected_labels",
             "selection",
         }
+        assert params["forward_input_shape"].tolist() == [4, 4, 6]  # the mask's shape in a direct call ...
+        container = K.AugmentationSequential(K.RandomTransplantation(p=1.0), data_keys=["image", "mask"])
+        container(image, mask)
+        assert container._params[0].data["forward_input_shape"].tolist() == [4, 2, 4, 6]  # ... the image's here
         assert params["selection"].dtype is torch.bool
         assert params["selection"].shape == (4, 4, 6)
         # A hand-written selection controls exactly which positions move.
