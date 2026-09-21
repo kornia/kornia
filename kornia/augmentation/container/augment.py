@@ -132,18 +132,19 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           the mask, the keypoints and all three box spellings alike, and ``bbox_xywh`` keeps its ``w`` and
           ``h``. Labels are passed through untouched by a geometric step.
         - mask resampling normally uses nearest interpolation, but this does not guarantee label preservation:
-          padding can introduce a fill value. Masks are converted to this call's image working dtype wherever
-          they sit in ``data_keys`` or dictionary insertion order, and each mask output comes back in the dtype
-          of its own argument (per element for a list), ``bool`` included, so masks of different dtypes do not
-          affect each other. The conversion through the image working dtype can still round integer labels that
-          dtype cannot represent exactly, for example ``2049`` through ``float16``. Tracked in
-          `#4478 <https://github.com/kornia/kornia/issues/4478>`_.
+          padding can introduce a fill value. Masks are converted to the image working dtype: that of the most
+          recent image argument before the mask, or of the call's first image when none precedes it, which can
+          happen in dictionary insertion order (a list ``data_keys`` must start with the image). Each mask output
+          comes back in the dtype of its own argument (per element for a list), ``bool`` included, so masks of
+          different dtypes do not affect each other. The conversion through the image working dtype can still
+          round integer labels that dtype cannot represent exactly, for example ``2049`` through ``float16``.
+          Tracked in `#4478 <https://github.com/kornia/kornia/issues/4478>`_.
         - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
           has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
           children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
           list can become desynchronized from the image when the gate differs across samples. A list longer
-          than the batch raises ``IndexError``. Use separate ``mask`` data keys with a common dtype for
-          separate full-batch masks. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
+          than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
+          Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - supported geometric data-key handlers share the recorded transform, subject to the mask limitations
           above. Custom rigid subclasses are not dispatched solely because they supply a matrix
           (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid child has no transform matrix,

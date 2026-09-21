@@ -861,6 +861,22 @@ class TestConventionAugmentationSequential(BaseTester):
         assert torch.equal(out_second, second.flip(-1))
         integer_output = out_first if mask_dtypes[0] == torch.int64 else out_second
         assert integer_output.unique().tolist() == [0, 2, 3, 5]  # the labels survive next to a boolean mask
+        assert seq.mask_dtype == mask_dtypes[1]  # the attribute still records the last mask argument's dtype
+
+    @pytest.mark.parametrize("mask_dtypes", [(torch.int64, torch.bool), (torch.bool, torch.int64)])
+    def test_convention_each_list_mask_element_keeps_its_own_dtype_4478(self, mask_dtypes, device, dtype):
+        # Convention pin for kornia#4478: a list mask comes back per element in each entry's own dtype. Until the
+        # fix every element was cast to the list's first dtype, so a boolean entry after an integer one came back
+        # int64 as [1, 1, 1, 0]. Both orders are covered, so the pin fails whichever element used to win.
+        image = torch.arange(16, device=device, dtype=dtype).reshape(2, 1, 2, 4)
+        labels = torch.tensor([0, 2, 3, 5], device=device).reshape(1, 1, 1, 4).expand(1, 1, 2, 4)
+        entries = [labels.to(mask_dtype) for mask_dtype in mask_dtypes]
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        _, out = seq(image, entries)
+        assert [m.dtype for m in out] == list(mask_dtypes)
+        for out_entry, entry in zip(out, entries):
+            assert torch.equal(out_entry, entry.flip(-1))
+        assert seq.mask_dtype == mask_dtypes[0]  # the attribute records the first element of the last list mask
 
     @pytest.mark.parametrize("key", ["bbox_xyxy", "bbox_xywh"])
     @pytest.mark.parametrize("suffix", ["", "_2", "-a"])
