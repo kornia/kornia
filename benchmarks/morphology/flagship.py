@@ -15,28 +15,35 @@
 # limitations under the License.
 #
 
-"""Flagship morphology benchmark: kornia.morphology vs OpenCV, albumentations and scikit-image.
+"""Flagship morphology benchmark: kornia.morphology vs torchmorph, OpenCV, albumentations and scikit-image.
 
 Covers the two primitives and the two most used compound operators, all with a 5x5 square
 structuring element:
 
-=================  ====================================  ================================  ==========================
-kornia.morphology  OpenCV (uint8 HWC per-image loop)     albumentations ``Morphological``  scikit-image (per channel)
-=================  ====================================  ================================  ==========================
-``dilation``       ``cv2.dilate``                        ``operation="dilation"``          ``morphology.dilation``
-``erosion``        ``cv2.erode``                         ``operation="erosion"``           ``morphology.erosion``
-``opening``        ``cv2.morphologyEx(MORPH_OPEN)``      —                                 ``morphology.opening``
-``gradient``       ``cv2.morphologyEx(MORPH_GRADIENT)``  —                                 ``dilation - erosion``
-=================  ====================================  ================================  ==========================
+========  ==========================  ================================  ==============  ==========================
+kornia    torchmorph (CUDA only)      OpenCV (per-image loop)           albumentations  scikit-image (per channel)
+========  ==========================  ================================  ==============  ==========================
+dilation  ``grey_dilation``           ``cv2.dilate``                    ``"dilation"``  ``morphology.dilation``
+erosion   ``grey_erosion``            ``cv2.erode``                     ``"erosion"``   ``morphology.erosion``
+opening   ``grey_opening``            ``morphologyEx(MORPH_OPEN)``      —               ``morphology.opening``
+gradient  ``morphological_gradient``  ``morphologyEx(MORPH_GRADIENT)``  —               ``dilation - erosion``
+========  ==========================  ================================  ==============  ==========================
+
+The kornia column names ``kornia.morphology`` functions and the albumentations column the
+``operation`` of its ``Morphological`` transform.
 
 Regimes (see ``benchmarks/README.md``): kornia runs a batched float BCHW tensor on CPU or GPU with
-its default ``unfold`` engine and is differentiable; OpenCV runs single uint8 HWC images on CPU in
+its default ``unfold`` engine and is differentiable; `torchmorph <https://github.com/intcomp/torchmorph>`_
+runs the same batched BCHW tensor through its custom CUDA kernels, which exist only for CUDA, so its
+column is skipped on every other device; it computes in float32 (a float16 or bfloat16 input is
+upcast inside the call) and is not differentiable. OpenCV runs single uint8 HWC images on CPU in
 a Python loop, its native regime, and filters all channels in one call; albumentations'
 ``Morphological`` runs the same loop through its transform call, with its elliptical element
 replaced by the 5x5 square (albumentations offers only dilation and erosion); scikit-image runs the
 same uint8 images one channel at a time, because its grayscale morphology is 2-D. Borders are each
 library's default: kornia's ``geodesic`` border and OpenCV's default border value both leave
-out-of-image pixels out of the max/min; scikit-image reflects at the border (``mode="reflect"``).
+out-of-image pixels out of the max/min; torchmorph and scikit-image follow SciPy and reflect at the
+border (``mode="reflect"``). torchmorph's flat ``size=5`` element is the same 5x5 square.
 scikit-image has no gradient operator, so its row is ``dilation - erosion`` in int16, which is the
 definition. Throughput is img/s.
 
@@ -99,6 +106,7 @@ def build_ops(
     cv2: Optional[ModuleType],
     skm: Optional[ModuleType],
     A: Optional[ModuleType],
+    tm: Optional[ModuleType],
     skip_compile: frozenset[str] = frozenset(),
     selected: Optional[frozenset[str]] = None,
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
@@ -133,12 +141,23 @@ def build_ops(
         "opening": (lambda ch: skm.opening(ch, footprint)) if skm else None,
         "gradient": sk_gradient if skm else None,
     }
+    tm_ops = (
+        {
+            "dilation": tm.grey_dilation,
+            "erosion": tm.grey_erosion,
+            "opening": tm.grey_opening,
+            "gradient": tm.morphological_gradient,
+        }
+        if tm
+        else {}
+    )
     alb_ops = {name: square_morphological(A, name, kernel_np) for name in ("dilation", "erosion")} if A else {}
     for name in OPS:
         if not include(name):
             continue
         row = kornia_row(name, getattr(KM, name), batch_f, kernel)
-        cv_fn, sk_fn = cv_ops[name], sk_ops[name]
+        cv_fn, sk_fn, tm_fn = cv_ops[name], sk_ops[name], tm_ops.get(name)
+        row["torchmorph"] = (lambda tm_fn=tm_fn: tm_fn(batch_f, size=KERNEL_SIZE)) if tm_fn else None
         row["opencv"] = (lambda cv_fn=cv_fn: [cv_fn(im) for im in imgs_u8]) if cv_fn else None
         alb_t = alb_ops.get(name)
         row["albumentations"] = (lambda alb_t=alb_t: [alb_t(image=im)["image"] for im in imgs_u8]) if alb_t else None
@@ -157,8 +176,15 @@ def main() -> None:
     cv2, cv2_error = optional_import("cv2")
     skm, skm_error = optional_import("skimage.morphology")
     A, a_error = optional_import("albumentations")
+    # torchmorph ships CUDA kernels only and rejects any other tensor, so it is not even imported off CUDA.
+    tm, tm_error = optional_import("torchmorph") if device.type == "cuda" else (None, "CUDA only")
 
-    libs = [(skm, "scikit-image", skm_error), (cv2, "opencv", cv2_error), (A, "albumentations", a_error)]
+    libs = [
+        (tm, "torchmorph", tm_error),
+        (skm, "scikit-image", skm_error),
+        (cv2, "opencv", cv2_error),
+        (A, "albumentations", a_error),
+    ]
     meta = start_run(
         "flagship morphology",
         args,
@@ -166,17 +192,19 @@ def main() -> None:
         units="img/s",
         regimes=[
             f"{KERNEL_SIZE}x{KERNEL_SIZE} square element; kornia: batched float BCHW; "
+            "torchmorph: batched float32 BCHW (CUDA only); "
             "opencv/albumentations: uint8 HWC per-image loop (CPU); scikit-image: uint8 per-image, per-channel loop"
         ],
         missing=[(name, err) for lib, name, err in libs if lib is None],
     )
-    backends = ["kornia (eager)", "kornia (compiled)", "albumentations", "scikit-image", "opencv"]
+    backends = ["kornia (eager)", "kornia (compiled)", "torchmorph", "albumentations", "scikit-image", "opencv"]
     results = run_batch_sweep(
         batch_list(args),
         lambda b: build_ops(
-            b, args.size, args.size, device, dtype, args.compile, cv2, skm, A, args.skip_compile_ops, args.ops
+            b, args.size, args.size, device, dtype, args.compile, cv2, skm, A, tm, args.skip_compile_ops, args.ops
         ),
         backends,
+        torch_backends=("kornia (", "torchmorph"),
         row_fields=image_row_fields(args),
         sync=sync,
         units="img/s",

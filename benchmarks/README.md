@@ -23,7 +23,7 @@ otherwise reach for. All flagships share one command line, one console layout an
 | [`io`](io/flagship.py) | JPEG and PNG decode to an RGB uint8 tensor | torchvision, OpenCV, PIL |
 | [`losses`](losses/flagship.py) | binary focal, focal, Dice, SSIM, total variation (forward + backward) | torchvision |
 | [`metrics`](metrics/flagship.py) | PSNR, SSIM, mean IoU | scikit-image, OpenCV |
-| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | albumentations, scikit-image, OpenCV |
+| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | torchmorph (CUDA only), albumentations, scikit-image, OpenCV |
 
 Modules without a flagship: `models`, `tracking` and the model wrappers in `contrib` need
 downloaded weights (learned local features are covered by `feature/local_features.py`); `nerf`,
