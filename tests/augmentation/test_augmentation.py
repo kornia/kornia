@@ -4238,10 +4238,12 @@ class TestRandomClahe(BaseTester):
 
     @pytest.mark.parametrize("batch_prob", [(True, True), (False, True), (False, False)])
     @pytest.mark.parametrize("slow_and_differentiable", [False, True])
-    def test_per_sample_clip_limit_replay(self, batch_prob, slow_and_differentiable, device, dtype):
+    @pytest.mark.parametrize("limits", [(0.5, 40.0), (7.0, 7.0), (0.0, -1.0)])
+    def test_per_sample_clip_limit_replay(self, batch_prob, slow_and_differentiable, limits, device, dtype):
         torch.manual_seed(0)
         input_data = torch.rand(2, 1, 32, 32).pow(3).to(device=device, dtype=dtype)
-        clip_limits = torch.tensor([0.5, 40.0])
+        input_data.requires_grad_(slow_and_differentiable)
+        clip_limits = torch.tensor(limits)
         aug = RandomClahe(
             clip_limit=(0.5, 40.0),
             grid_size=(2, 2),
@@ -4262,7 +4264,14 @@ class TestRandomClahe(BaseTester):
         )
         expected = torch.where(torch.tensor(batch_prob, device=device).view(-1, 1, 1, 1), transformed, input_data)
 
-        self.assert_close(aug(input_data, params=params), expected)
+        actual = aug(input_data, params=params)
+        self.assert_close(actual, expected)
+        if slow_and_differentiable:
+            weights = torch.rand_like(actual)
+            self.assert_close(
+                torch.autograd.grad(actual, input_data, weights)[0],
+                torch.autograd.grad(expected, input_data, weights)[0],
+            )
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -4376,6 +4385,14 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
 
 class TestRandomGaussianIllumination(BaseTester):
+    @pytest.mark.parametrize("sigma", [0.0, 0.001, 0.02])
+    @pytest.mark.parametrize("size", [1, 2, 3, 4, 8, 32])
+    def test_a_small_sigma_it_admits_returns_a_finite_image_4589(self, sigma, size, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(4, 3, size, size, device=device, dtype=dtype)
+        out = RandomGaussianIllumination(sigma=sigma, p=1.0)(img)
+        assert torch.isfinite(out).all()
+
     def _roundtrip(self, aug, serializer):
         if serializer == "pickle":
             return pickle.loads(pickle.dumps(aug))  # noqa: S301
@@ -5864,6 +5881,48 @@ class TestRandomRain(BaseTester):
             assert output_data.shape == batch_shape
         else:
             assert (*(1,) * (4 - len(batch_shape)), *batch_shape) == output_data.shape
+
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize(
+        "drop_height,drop_width,number_of_drops",
+        [((1, 1), (0, 0), (1, 1)), ((1, 2), (-3, -2), (1, 3)), ((3, 3), (2, 3), (5, 10)), ((5, 20), (-5, 5), (20, 40))],
+    )
+    def test_batched_rasterisation_matches_per_drop_reference_4530(
+        self, device, dtype, same_on_batch, drop_height, drop_width, number_of_drops
+    ):
+        # The drops are rasterised for the whole batch in one indexed write (#4530). This pins that
+        # against the straightforward formulation it replaced: one write per step of every drop of
+        # every sample. Both are fed the same params, so only the drawing code is compared, and the
+        # comparison is exact: a vectorised rewrite that moved a single pixel would fail here.
+        torch.manual_seed(0)
+        image = torch.rand(4, 3, 24, 30, device=device, dtype=dtype)
+        aug = RandomRain(
+            p=1.0,
+            drop_height=drop_height,
+            drop_width=drop_width,
+            number_of_drops=number_of_drops,
+            same_on_batch=same_on_batch,
+        )
+        torch.manual_seed(1)
+        params = aug.forward_parameters(image.shape)
+
+        reference = image.clone()
+        for i in range(image.shape[0]):
+            n = int(params["number_of_drops_factor"][i])
+            h, w = int(params["drop_height_factor"][i]), int(params["drop_width_factor"][i])
+            size = max(h, abs(w))
+            x = torch.linspace(0, h, steps=size, dtype=torch.long).to(device)
+            y = torch.linspace(0, w, steps=size, dtype=torch.long).to(device)
+            last_dy, last_dx = (h, w) if size > 1 else (0, 0)
+            rows, cols = image.shape[2] - last_dy, image.shape[3] - abs(last_dx)
+            coords = params["coordinates_factor"][i][:n]
+            r0 = (coords[:, 0] * rows).long().clamp(max=rows - 1).to(device)
+            c0 = (coords[:, 1] * cols).long().clamp(max=cols - 1).to(device) + max(-last_dx, 0)
+            for k in range(size):
+                reference[i, :, r0 + x[k], c0 + y[k]] = 200 / 255
+
+        out = aug.apply_transform(image, params, {})
+        assert torch.equal(out, reference)
 
     def test_smoke(self, device, dtype):
         input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)

@@ -298,7 +298,7 @@ profile manifest.
 | `complex128` (cdouble) | `TypeError: Cannot convert a MPS Tensor to float64 dtype` (`NotImplementedError: … not implemented for 'ComplexDouble'` before 2.14) | all |
 | `torch.autocast("mps")` | Converts output to float16 instead of preserving original dtype | all |
 | `torch.linalg.eigvals` (non-symmetric) | `NotImplementedError: The operator 'aten::_linalg_eigvals' is not currently implemented for the MPS device` | all, 2.14.0 included |
-| **batched** `torch.linalg.svd` / `svdvals` / `lstsq` whose input holds 8192 elements or more | `RuntimeError: Failed to created pipeline state object … XPC_ERROR_CONNECTION_INTERRUPTED` | 2.14.0 |
+| `torch.linalg.svd` / `svdvals` / `lstsq` whose input holds 8192 elements or more | `RuntimeError: Failed to created pipeline state object … XPC_ERROR_CONNECTION_INTERRUPTED` | 2.14.0 |
 | `F.grid_sample` with `padding_mode="border"` on 2D | `RuntimeError: MPS: Unsupported Border padding mode` | <= 2.9.1 |
 | `F.grid_sample` with `mode="nearest"` on 5-D (3D volumes) | `RuntimeError: grid_sampler_3d: Unsupported Nearest interpolation` | <= 2.9.1 |
 | `grid_sample` backward (2D and 3D) | `NotImplementedError: The operator 'aten::grid_sampler_2d_backward' …` | <= 2.9.1 |
@@ -310,16 +310,23 @@ backward passes, and for the two `grid_sample` forward modes above. That took th
 baseline from 200 entries to 14. The intermediate 2.10-2.13 releases were not checked, and
 kornia still supports torch 2.5.1, so the workarounds for those rows stay.
 
-The new native SVD path carries its own ceiling: a **batched** `svd`, `svdvals` or `lstsq` fails
-to build a Metal pipeline once its input holds 8192 elements or more (batch x rows x cols). The
-threshold is inclusive and it is the first failing size, not the last working one -- measured
-`(511, 4, 4)` = 8176 passes, `(512, 4, 4)` = 8192 raises. A single unbatched matrix is unaffected
-at any size: `(1, 128, 128)` holds 16384 elements and succeeds, because torch stages a lone large
-matrix on the CPU (`matrix too large to stage in MPS threadgroup memory ... falling back to CPU`).
-That ceiling is why `RANSAC`'s batched minimal solvers still raise on MPS
-([#4201](https://github.com/kornia/kornia/issues/4201)). It is *not* why they are absent from the
-baseline below -- see the next section: they are skipped, because they abort the process before
-they can raise.
+The new native SVD path carries its own ceiling: `svd`, `svdvals` or `lstsq` fails to build a
+Metal pipeline once its input holds 8192 elements or more (batch x rows x cols). The threshold
+is inclusive and it is the first failing size, not the last working one -- measured
+`(511, 4, 4)` = 8176 passes, `(512, 4, 4)` = 8192 raises. The boundary is a byte count, not
+an element count: 8192 float32 elements are exactly 32768 bytes, the MPS threadgroup limit,
+and torch's own "matrix too large to stage in MPS threadgroup memory ... falling back to CPU"
+check triggers on *greater than* that limit, so an input sitting exactly on it neither falls
+back nor compiles. Shape is irrelevant -- `(128, 64)`, `(64, 128)`, `(8192, 1)` and `(1, 8192)`
+all raise, and 8191 and 8193 elements both pass -- which is why the guard counts elements and
+does not inspect batch rank. That ceiling is why `RANSAC`'s
+batched minimal solvers used to raise on MPS
+([#4201](https://github.com/kornia/kornia/issues/4201)). `_torch_svd_cast` and
+`_torch_linalg_svdvals` now route such inputs through the CPU, so the fundamental and
+homography solvers no longer hit it; `find_essential` still raises, for an unrelated
+reason -- `run_5point` calls `torch.linalg.eigvals`, which has no MPS kernel. The ceiling
+is *not* why those solvers are absent from the baseline below -- see the next section:
+they are skipped, because they abort the process before they can raise.
 
 **How Kornia handles these automatically.** The test infrastructure in `conftest.py` and `testing/base.py` skips known-unsupported test classes at collection time so you don't need per-test guards for the common cases:
 

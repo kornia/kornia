@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -22,9 +24,10 @@ import torch.nn.functional as F
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils._crop import _compiled_slice_resize
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import Resample
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
@@ -46,8 +49,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         pad_if_needed: It will F.pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
-        fill: Pixel fill value for constant fill. Default is 0. If a tuple of
-            length 3, it is used to fill R, G, B channels respectively.
+        fill: Pixel fill value for constant fill. Default is 0.
             This value is only used when the padding_mode is constant.
         padding_mode: Type of padding. Should be: constant, reflect, replicate.
         resample: the interpolation mode.
@@ -97,11 +99,18 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         Slice mode calls ``crop_by_indices`` with that
         function's bilinear/``align_corners=None`` defaults, ignoring this class's ``resample`` and
-        ``align_corners`` flags. Resample mode uses ``crop_by_transform_mat`` with the configured interpolation and
+        ``align_corners`` flags. Under ``torch.compile``, tensor indexing and interpolation keep newly sampled
+        crop coordinates from triggering recompilation. Resample mode uses ``crop_by_transform_mat`` with the configured
+        interpolation and
         ``align_corners``; it maps constant, replicate, and reflect pre-padding to zero, border, and reflection
         sampler padding respectively. Only
         resample mode supports :meth:`inverse`; inverse removes pre-crop padding but cannot restore cropped or
         interpolated content.
+
+    Note:
+        Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
+        not bitwise. Eager execution retains native slicing and resizing for performance;
+        the tensorized compiled path avoids recompilation as crop coordinates change.
 
     Examples:
         >>> import torch
@@ -302,6 +311,8 @@ class RandomCrop(GeometricAugmentationBase2D):
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            if is_compiling():
+                return _compiled_slice_resize(input, params["src"], flags["size"], "bilinear", None)
             return crop_by_indices(input, params["src"], flags["size"])
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 

@@ -95,6 +95,12 @@ def gaussian(
     Returns:
         A tensor with shape :math:`(B, \text{kernel_size})`, with Gaussian values.
 
+    .. note::
+        A ``sigma`` of zero -- and any ``sigma`` too small for the window to hold a representable
+        weight -- returns the unit-impulse limit of the kernel: all the mass on the sample nearest
+        the mean, split evenly between the two centre taps when ``window_size`` is even. The
+        gradient with respect to ``sigma`` is zero there, matching the continuous limit.
+
     """
     if isinstance(sigma, float):
         sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
@@ -115,7 +121,24 @@ def gaussian(
     if window_size % 2 == 0:
         x = x + 0.5
 
-    gauss = torch.exp(-x.pow(2.0) / (2 * sigma.pow(2.0)))
+    # Measure the squared distance from the nearest sample rather than from the mean. The shift
+    # cancels in the normalization, but the nearest sample now always weighs exp(0) = 1, so a
+    # small sigma (or a mean far off the grid) cannot underflow every sample to 0 and divide 0 / 0.
+    dist = x.pow(2.0)
+    if window_size > 0:
+        dist = dist - dist.min(-1, keepdim=True)[0]
+
+    # A zero denominator is the unit-impulse limit of the kernel: sigma == 0 exactly, or a sigma
+    # whose square underflows the dtype (float16 below ~1e-4). Either way the nearest samples
+    # divide 0 / 0. Repairing that after the fact leaves the division on the graph and the sigma
+    # gradient still comes back NaN, so divide by a stand-in and select the impulse out of that
+    # finite arm instead. The gradient is then the 0 of the continuous sigma -> 0 limit. A NaN
+    # sigma is not caught by the comparison and still propagates, as it did before.
+    denominator = 2 * sigma.pow(2.0)
+    is_impulse = denominator == 0
+    safe_denominator = torch.where(is_impulse, torch.ones_like(denominator), denominator)
+    gauss = torch.exp(-dist / safe_denominator)
+    gauss = torch.where(is_impulse, (dist == 0).to(dist.dtype), gauss)
 
     return gauss / gauss.sum(-1, keepdim=True)
 
@@ -575,6 +598,14 @@ def get_gaussian_kernel1d(
         >>> get_gaussian_kernel1d(5, torch.tensor([[1.5], [0.7]]))
         tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
                 [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
+
+        A ``sigma`` of zero, or one too small for the window to hold a representable weight,
+        returns the unit impulse rather than a kernel of NaN:
+
+        >>> get_gaussian_kernel1d(5, 0.0)
+        tensor([[0., 0., 1., 0., 0.]])
+        >>> get_gaussian_kernel1d(4, 0.0, force_even=True)
+        tensor([[0.0000, 0.5000, 0.5000, 0.0000]])
 
     """
     _check_kernel_size(kernel_size, allow_even=force_even)

@@ -23,7 +23,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.enhance import equalize_clahe
+from kornia.enhance.equalization import _equalize_clahe
 
 
 class RandomClahe(IntensityAugmentationBase2D):
@@ -56,17 +56,17 @@ class RandomClahe(IntensityAugmentationBase2D):
           :func:`kornia.enhance.equalize`. As for :class:`RandomEqualize`, the rejection is not exactly at
           the boundary: the check guards the 256-entry lookup indexed with ``(input * 255).long()``, so a
           value less than one 8-bit code outside ``[0, 1]``, at either end, is still admitted, up to the
-          rounding of ``input * 255`` in the input's dtype. The check runs on the CPU and on CUDA. **It is
-          skipped on MPS by design** -- materializing the condition there would drain the queued stream on
-          every call -- so an MPS image keeps the pre-existing behaviour: torch ``2.14`` raises the raw
-          ``gather`` error (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1``
-          leaves the gather unchecked and returns an in-range image as if the input had been valid.
+          rounding of ``input * 255`` in the input's dtype. The check is ``torch._assert_async``, which
+          has an MPS kernel from torch ``2.13``. On an older MPS release the condition is read on the host
+          instead, which costs one device sync per call and is skipped under ``torch.compile``.
 
     Convention:
-        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. When every
-          draw is equal -- which ``same_on_batch=True`` guarantees, and an unlucky batch can produce on
-          its own -- the batch takes a single :func:`kornia.enhance.equalize_clahe` call instead of one
-          per image; the result is the same either way.
+        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. Both eager and
+          compiled execution batch the per-image limits as tensors, so newly sampled limits reuse the same
+          graph without converting draws to Python scalars. Batched differentiable histogram arithmetic
+          can differ from separate per-image calls by floating-point rounding.
+          On MPS, clip limits stored on the device are copied to CPU for float64 threshold arithmetic,
+          then thresholds are copied back; this preserves scalar rounding but adds transfer overhead.
 
     .. warning::
         ``grid_size`` is unvalidated past its positivity check. Its two
@@ -125,13 +125,4 @@ class RandomClahe(IntensityAugmentationBase2D):
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        clip_limits = params["clip_limit_factor"]
-        if bool(torch.all(clip_limits == clip_limits[0])):
-            return equalize_clahe(input, float(clip_limits[0]), flags["grid_size"], flags["slow_and_differentiable"])
-
-        return torch.stack(
-            [
-                equalize_clahe(image, float(clip_limit), flags["grid_size"], flags["slow_and_differentiable"])
-                for image, clip_limit in zip(input, clip_limits)
-            ]
-        )
+        return _equalize_clahe(input, params["clip_limit_factor"], flags["grid_size"], flags["slow_and_differentiable"])

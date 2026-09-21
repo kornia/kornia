@@ -234,6 +234,38 @@ def test_scan_installed_keeps_first_path_entry_when_locations_disagree(tmp_path)
     assert duplicates == {}
 
 
+class _Distribution:
+    def __init__(self, name, version, path):
+        self.metadata = {"Name": name}
+        self.version = version
+        self.path = path
+
+    def locate_file(self, suffix):
+        return self.path / suffix
+
+
+def test_scan_installed_uses_the_first_sys_path_entry(monkeypatch, tmp_path):
+    first = _Distribution("packaging", "25.0", tmp_path / "venv")
+    shadowed = _Distribution("packaging", "26.0", tmp_path / "pixi")
+    monkeypatch.setattr(check_torch_env, "distributions", lambda: [first, shadowed])
+
+    installed, duplicates = scan_installed()
+
+    assert installed == {"packaging": "25.0"}
+    assert duplicates == {}
+
+
+def test_scan_installed_reports_conflicting_metadata_in_one_path(monkeypatch, tmp_path):
+    first = _Distribution("packaging", "25.0", tmp_path / "venv")
+    conflicting = _Distribution("packaging", "26.0", tmp_path / "venv")
+    monkeypatch.setattr(check_torch_env, "distributions", lambda: [first, conflicting])
+
+    installed, duplicates = scan_installed()
+
+    assert installed == {"packaging": "25.0"}
+    assert duplicates == {"packaging": ["25.0", "26.0"]}
+
+
 class TestMain:
     """`main` is the surface the workflow greps and gates on; the helpers above are not.
 

@@ -99,13 +99,11 @@ class ModelBaseMixin:
         """
         if output_type == "torch":
             return output
-        elif output_type == "pil":
+        if output_type == "pil":
             if isinstance(output, list):
                 return [tensor_to_image(t) for t in output]
-            else:
-                return tensor_to_image(output)
-        else:
-            raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
+            return tensor_to_image(output)
+        raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
 
     def save(self, output: Union[torch.Tensor, List[torch.Tensor]], directory: str, is_batch: bool = False) -> None:
         """Save the output tensor to a directory.

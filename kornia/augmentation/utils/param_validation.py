@@ -78,7 +78,9 @@ def _range_bound(
     ``ValueError`` the explicit range would. The scalar must be finite: ``inf``, ``nan``, and a finite
     magnitude too large to represent in ``dtype`` (which converts to ``inf``) all raise ``ValueError``,
     while a negative value reports "must be non negative" from the earlier check. A pair is taken as the
-    range itself and checked against ``bounds`` with ``check``.
+    range itself, must likewise be finite, and is checked against ``bounds`` with ``check``. Finiteness
+    is required of the range, not of ``bounds``: the domain is legitimately unbounded (the default is
+    ``(0, inf)``), but a draw range that is not finite produces ``NaN`` at forward time.
     """
     if device is None:
         device = torch.device("cpu")
@@ -103,6 +105,15 @@ def _range_bound(
         factor_bound = factor_bound.clamp(min=bounds[0]).to(device=device, dtype=dtype)
     else:
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
+        # The same finiteness rule as the scalar branch above, for the same reason: this is the
+        # draw range handed to UniformDistribution, and an infinite one yields `inf * 0 -> NaN`
+        # pixels at forward time (#4635). `bounds` is the permitted DOMAIN and stays unbounded —
+        # the default is `(0, inf)` — so the check is on the range, never on the domain.
+        # Without it an `inf` endpoint slipped through exactly when `bounds[1]` was itself `inf`,
+        # since the joint check then compares `inf >= inf`. A `nan` endpoint was already rejected,
+        # but reported as "out of bounds", which named the domain rather than the real problem.
+        if not bool(torch.isfinite(factor_bound).all()):
+            raise ValueError(f"If {name} is a range, it must be finite. Got {factor_bound}.")
 
     if check is not None:
         if check == "joint":

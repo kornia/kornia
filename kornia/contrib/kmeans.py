@@ -91,8 +91,7 @@ class KMeans:
             return self._final_cluster_centers
         if isinstance(self._cluster_centers, torch.Tensor):
             return self._cluster_centers
-        else:
-            raise TypeError("Model has not been fit to a dataset")
+        raise TypeError("Model has not been fit to a dataset")
 
     @property
     def cluster_assignments(self) -> torch.Tensor:
@@ -108,8 +107,7 @@ class KMeans:
         """
         if isinstance(self._final_cluster_assignments, torch.Tensor):
             return self._final_cluster_assignments
-        else:
-            raise TypeError("Model has not been fit to a dataset")
+        raise TypeError("Model has not been fit to a dataset")
 
     def _initialise_cluster_centers(self, X: torch.Tensor, num_clusters: int) -> torch.Tensor:
         """Chooses num_cluster points from X as the initial cluster centers.
