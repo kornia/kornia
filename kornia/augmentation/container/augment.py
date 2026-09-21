@@ -565,21 +565,24 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
+        if DataKey.INPUT in self.transform_op.data_keys:
+            inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
+            if not isinstance(inp, torch.Tensor):
+                raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
+            if self.contains_3d_augmentation and len(inp.shape) == 4:
+                raise RuntimeError(
+                    f"3D augmentations in AugmentationSequential expect input shape "
+                    f"(D, H, W) or (B, C, D, H, W), but got {inp.shape}."
+                )
+
         if params is None:
             # image data must exist if params is not provided.
             if DataKey.INPUT in self.transform_op.data_keys:
                 inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
-                if not isinstance(inp, torch.Tensor):
-                    raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 elif self.contains_3d_augmentation:
-                    if len(inp.shape) == 4:
-                        raise RuntimeError(
-                            f"3D augmentations in AugmentationSequential expect input shape "
-                            f"(D, H, W) or (B, C, D, H, W), but got {inp.shape}."
-                        )
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 else:
                     _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
