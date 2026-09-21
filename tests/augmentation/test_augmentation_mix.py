@@ -680,6 +680,13 @@ class TestRandomJigsaw(BaseTester):
         with pytest.raises(RuntimeError, match="must be divisible by grid"):
             aug(image, params=params)
 
+    def test_single_cell_grid(self, device, dtype):
+        # A 1 x 1 grid has one permutation, the one ensure_perm rejects; drawing used to loop forever.
+        with pytest.raises(ValueError, match="at least two patches"):
+            RandomJigsaw(grid=(1, 1))
+        image = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        self.assert_close(RandomJigsaw(grid=(1, 1), p=1.0, ensure_perm=False)(image), image)
+
     def test_smoke(self, device, dtype):
         f = RandomJigsaw(data_keys=["input"])
         repr = "RandomJigsaw(grid=(4, 4), p=0.5, p_batch=1.0, same_on_batch=False, grid=(4, 4))"

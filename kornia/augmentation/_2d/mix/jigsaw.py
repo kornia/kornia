@@ -41,7 +41,8 @@ class RandomJigsaw(MixAugmentationBaseV2):
             each output will mix image patches in a 2x2 grid.
         ensure_perm: reject the image-preserving permutation ``arange(N).view(rows, columns).T.flatten()`` when
             drawing, so a selected sample is never returned unchanged. For a single-row or single-column grid that
-            permutation is ``[0, ..., N - 1]``; see the Convention block.
+            permutation is ``[0, ..., N - 1]``; see the Convention block. A ``1 x 1`` grid has no other
+            permutation, so it raises ``ValueError`` unless ``ensure_perm=False``.
         data_keys: the input type sequential for applying augmentations. Only "input" and "image" are
             implemented; see the Convention block.
         p: probability of applying the transformation to each sample.

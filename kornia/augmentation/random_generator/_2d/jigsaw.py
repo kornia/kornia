@@ -48,6 +48,8 @@ class JigsawGenerator(RandomGeneratorBase):
 
     def __init__(self, grid: Tuple[int, int] = (4, 4), ensure_perm: bool = True) -> None:
         super().__init__()
+        if ensure_perm and grid[0] * grid[1] == 1:
+            raise ValueError(f"ensure_perm=True needs at least two patches, but grid={grid} has only one.")
         self.grid = grid
         self.ensure_perm = ensure_perm
 
