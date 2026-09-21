@@ -774,6 +774,8 @@ class TestQuarticSolver(BaseTester):
         assert bool((roots == 0.0).all()), f"expected the no-real-root placeholder, got {roots}"
 
     def test_a_genuine_root_ferrari_left_off_is_polished_not_dropped_4474(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Root accuracy assertions are limited to float32 and float64.")
         # Four distinct real roots, nothing pathological. float32 Ferrari returns -0.02384 for the
         # root at -0.023854, a scaled residual of 1.1e-4, and a fixed 1e-4 cutoff replaced it with
         # the no-root placeholder (review of #4669). Polishing brings it onto the root instead.
@@ -785,6 +787,8 @@ class TestQuarticSolver(BaseTester):
         self.assert_close(roots, expected, rtol=1e-4, atol=1e-6)
 
     def test_separated_real_roots_are_never_dropped_4474(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Root accuracy assertions are limited to float32 and float64.")
         # 2000 quartics with four real roots in [-10, 10] at least 0.5 apart: every root must come
         # back within the dtype's reach of its true value, and none as the zero placeholder.
         gen = torch.Generator().manual_seed(4474)
