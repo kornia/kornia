@@ -1241,7 +1241,7 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
     def test_identity_default_eps(self, device, dtype):
         # The default eps used to be added under the square root, so the identity came out as
-        # (1.0000000012499999, 0, 0, 0) in float64. eps must only clamp the radicand, never shift it.
+        # (1.0000000012499999, 0, 0, 0) in float64. eps must only floor the radicand, never shift it.
         matrix = torch.eye(3, device=device, dtype=dtype)
         expected = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
@@ -1263,7 +1263,8 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
     def test_gradient_no_nan_near_identity(self, device):
         # torch.where runs every branch, so a slightly non-orthogonal input drove a discarded
-        # branch's radicand negative and leaked NaN out of its backward. The clamp stops that.
+        # branch's radicand negative and leaked NaN out of its backward. The radicand floor, applied
+        # by safe-argument substitution rather than a clamp, stops that.
         # float64 is hardcoded (the NaN is invisible at lower precision) and the dtype fixture
         # dropped, so this runs in every configuration -- including --device=mps, which has no
         # float64 at all and would report a TypeError indistinguishable from a real failure.
@@ -1275,6 +1276,26 @@ class TestRotationMatrixToQuaternion(BaseTester):
         kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix).sum().backward()
         assert matrix.grad is not None
         assert not matrix.grad.isnan().any()
+
+    def test_float16_gradient_finite_at_a_zero_discarded_radicand(self, device):
+        # The 90-degree turn about x selects the trace > 0 branch, but the discarded cond_2 and
+        # cond_3 radicands are exactly 0. torch.where differentiates every branch, so the radicand
+        # floor must keep sqrt's derivative away from 0 by substitution: a clamp(min=eps) does not,
+        # because the default eps = 1e-8 is 0 in float16 and clamp's derivative AT the bound passes
+        # the gradient through on torch 2.5.1 and 2.9.1 (it is 0 on 2.14), so inf reaches the where.
+        # Expected gradient of the output sum is analytic, not measured: on this branch it is
+        # +-sqrt(2)/4 = +-0.35355339 at the off-diagonal entries and 0 on the diagonal (checked
+        # against float64 central differences, h = 1e-6).
+        r = 2.0**0.5 / 4.0
+        expected_grad = torch.tensor([0.0, -r, r, r, 0.0, -r, -r, r, 0.0], device=device, dtype=torch.float16).reshape(
+            3, 3
+        )
+        matrix = torch.tensor(
+            ((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0)), device=device, dtype=torch.float16
+        ).requires_grad_(True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix).sum().backward()
+        assert torch.isfinite(matrix.grad).all()
+        self.assert_close(matrix.grad, expected_grad, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device):
         dtype = torch.float64
@@ -1338,8 +1359,8 @@ class TestRotationMatrixToQuaternion(BaseTester):
         # quaternion has the opposite sign of w, which is exactly what a canonicalising
         # implementation would not reproduce.
         # Expected values are the true unit quaternions (computed with stdlib below), not the
-        # function's own output: the returned components carry an extra ~1e-9 from the default
-        # eps added inside the sqrt, which bare assert_close absorbs and no pin here asserts.
+        # function's own output (which, before #3951 was fixed, carried an extra ~1e-9 from the
+        # default eps added inside the sqrt).
         # Snippet used to generate the matrices and the expected quaternions (stdlib only):
         #   import math
         #   n = math.sqrt(14.0)
@@ -1402,7 +1423,7 @@ class TestRotationMatrixToQuaternion(BaseTester):
         # Contract: the quaternion returned for an exact rotation matrix is a unit quaternion to
         # the precision of the input dtype. Before #3951 was fixed this never held in float64 --
         # the default eps = 1e-8 was added *inside* the sqrt that builds the components, inflating
-        # every result. The radicand is now clamped to eps instead, so eps cannot reach the value:
+        # every result. eps now only floors the radicand, so it cannot reach a valid value:
         #   rotation_matrix_to_quaternion(eye(3))  -> [1.0, 0.0, 0.0, 0.0]  (exactly unit)
         # and the worst |‖q‖ - 1| over 20000 random float64 rotations is 6.661338e-16, three ulp.
         # atol 1e-12 sits four orders above that noise floor and three below the 1.25e-09 inflation
