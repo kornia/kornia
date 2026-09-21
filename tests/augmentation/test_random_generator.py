@@ -15,11 +15,14 @@
 # limitations under the License.
 #
 
+from typing import Any
+from unittest.mock import patch
+
 import pytest
 import torch
 from torch import Tensor
 
-from kornia.augmentation import RandomGaussianBlur
+from kornia.augmentation import RandomGaussianBlur, RandomMotionBlur
 from kornia.augmentation.random_generator import (
     AffineGenerator,
     ColorJiggleGenerator,
@@ -1436,6 +1439,59 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
         assert_close(res["ksize_factor"], expected["ksize_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["angle_factor"], expected["angle_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["direction_factor"], expected["direction_factor"], rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("kernel_size, expected", [((3, 5), 5), ((5, 11), 11), ((11, 41), 41)])
+    def test_kernel_size_draw_rounded_onto_the_open_end_stays_in_range_4599(self, kernel_size, expected, device, dtype):
+        # The half-size sampler is uniform on [lo, hi + 1); the top float32 draw is
+        # lo + (1 - 2**-24) * (hi + 1 - lo), which for these ranges lands exactly on hi + 1 and would
+        # floor one odd size above the cap.  Drive the real sampler to that draw rather than swapping
+        # in one production cannot build, so the pin records that the escape exists as well as that
+        # the clamp catches it.  It is reachable from the default sampler about once in 2**24 draws.
+        gen = MotionBlurGenerator(
+            kernel_size=kernel_size, angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0])
+        )
+        gen.set_rng_device_and_dtype(device, dtype)
+        top = torch.nextafter(torch.ones(1, dtype=torch.float32), torch.zeros(1, dtype=torch.float32)).item()
+        real_rand = torch.rand
+
+        def _top_draw(*args: Any, **kwargs: Any) -> torch.Tensor:
+            return torch.full_like(real_rand(*args, **kwargs), top)
+
+        with patch("torch.rand", _top_draw):
+            drawn = gen(torch.Size([4]))["ksize_factor"]
+        assert drawn.tolist() == [expected] * 4
+
+    def test_a_list_kernel_size_range_is_drawn_like_a_tuple_4599(self, device, dtype):
+        # A two-element list is a range exactly as a tuple is: one kernel size shared by the batch, and
+        # every odd size in the closed range drawn, the upper bound included.  A list used to raise
+        # TypeError, and the shared-draw condition checked `tuple` only.
+        torch.manual_seed(0)
+        gen = MotionBlurGenerator(
+            kernel_size=[3, 9], angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0])
+        )
+        gen.set_rng_device_and_dtype(device, dtype)
+        seen = set()
+        for _ in range(200):
+            drawn = gen(torch.Size([8]))["ksize_factor"]
+            assert drawn.unique().numel() == 1, drawn.tolist()
+            seen.add(int(drawn[0]))
+        assert seen == {3, 5, 7, 9}
+        with pytest.raises(ValueError, match=r"`kernel_size`\[0\] should be smaller than or equal to"):
+            MotionBlurGenerator(kernel_size=[9, 3], angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0]))
+
+    def test_a_reversed_kernel_size_range_is_refused_4599(self, device, dtype):
+        # A reversed pair used to be drawn silently as if ordered -- `(20, 3)` drew 3..19 -- and
+        # `half_hi = max(half_lo, ...)` would turn it into a draw above BOTH bounds, so the ordering is
+        # refused, as #4568 refuses it for RandomRain's closed integer ranges.
+        # the generator builds its samplers in __post_init__, so this is a construction-time raise
+        with pytest.raises(ValueError, match=r"`kernel_size`\[0\] should be smaller than or equal to"):
+            MotionBlurGenerator(kernel_size=(20, 3), angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0]))
+        with pytest.raises(ValueError, match=r"`kernel_size`\[0\] should be smaller than or equal to"):
+            RandomMotionBlur((20, 3), (0.0, 0.0), (0.0, 0.0), p=1.0)
+        # the degenerate equal pair is not reversed and still draws
+        ok = MotionBlurGenerator(kernel_size=(5, 5), angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0]))
+        ok.set_rng_device_and_dtype(device, dtype)
+        assert ok(torch.Size([4]))["ksize_factor"].tolist() == [5, 5, 5, 5]
 
 
 class TestRandomPosterizeGen(RandomGeneratorBaseTests):

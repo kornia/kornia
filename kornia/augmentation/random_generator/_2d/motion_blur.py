@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Dict, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import torch
 
@@ -32,7 +32,8 @@ class MotionBlurGenerator(RandomGeneratorBase):
     Args:
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
+            If Tuple[int, int] or a two-element list, it will randomly generate one odd value from the closed
+            range for the whole batch.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
@@ -57,7 +58,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        kernel_size: Union[int, Tuple[int, int]],
+        kernel_size: Union[int, Tuple[int, int], List[int]],
         angle: Union[torch.Tensor, float, Tuple[float, float]],
         direction: Union[torch.Tensor, float, Tuple[float, float]],
     ) -> None:
@@ -76,13 +77,26 @@ class MotionBlurGenerator(RandomGeneratorBase):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
             self.ksize_sampler = UniformDistribution(self.kernel_size // 2, self.kernel_size // 2, validate_args=False)
-        elif isinstance(self.kernel_size, tuple):
+            self._ksize_half_max = self.kernel_size // 2
+        elif isinstance(self.kernel_size, (tuple, list)):
             # kernel_size is fixed across the batch
             if len(self.kernel_size) != 2:
-                raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {self.kernel_size}.")
-            self.ksize_sampler = UniformDistribution(
-                self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False
-            )
+                raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple or list. Got {self.kernel_size}.")
+            # Draw the half-size h of the odd kernel 2h + 1 on [lo, hi + 1) and floor it, so every h in the
+            # closed [lo, hi] is equally likely; truncating a draw on [lo, hi) never reached hi.
+            # hi is the largest odd size not above the upper bound, and never below lo, which keeps an
+            # even-only range such as (4, 4) drawing 5 as before.
+            # A reversed pair is refused: the old sampler silently drew it as if ordered (`(20, 3)` drew
+            # 3..19), and the `max(half_lo, ...)` below would turn it into a draw above *both* bounds.
+            # #4568 set the precedent for RandomRain's closed integer ranges.
+            if self.kernel_size[0] > self.kernel_size[1]:
+                raise ValueError(
+                    f"`kernel_size`[0] should be smaller than or equal to `kernel_size`[1]. Got {self.kernel_size}."
+                )
+            half_lo = self.kernel_size[0] // 2
+            half_hi = max(half_lo, (self.kernel_size[1] - 1) // 2)
+            self.ksize_sampler = UniformDistribution(half_lo, half_hi + 1, validate_args=False)
+            self._ksize_half_max = half_hi
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
 
@@ -97,8 +111,10 @@ class MotionBlurGenerator(RandomGeneratorBase):
         angle_factor = _adapted_rsampling((batch_size,), self.angle_sampler, same_on_batch)
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
         # A ranged kernel size is shared by the batch; angle and direction can still vary per sample.
-        ksize_same_on_batch = same_on_batch or isinstance(self.kernel_size, tuple)
-        ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, ksize_same_on_batch).int() * 2 + 1
+        ksize_same_on_batch = same_on_batch or isinstance(self.kernel_size, (tuple, list))
+        ksize_half = _adapted_rsampling((batch_size,), self.ksize_sampler, ksize_same_on_batch).floor()
+        # A float32 draw can round up onto the open upper end, hi + 1; keep it inside the closed range.
+        ksize_factor = ksize_half.clamp_max(self._ksize_half_max).int() * 2 + 1
 
         return {
             "ksize_factor": ksize_factor.to(device=_device, dtype=torch.int32),
