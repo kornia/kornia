@@ -49,7 +49,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         fill: Voxel fill value for constant fill. Default is 0. A sequence gives one value per channel,
             so it must be as long as the input's channel dimension. This value is only used when the
             padding_mode is constant, and a sequence requires it.
-        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
+        padding_mode: Type of padding, passed to F.pad. Should be: constant, reflect, replicate or circular.
+            Default is constant.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
