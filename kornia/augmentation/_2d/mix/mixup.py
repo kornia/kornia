@@ -120,7 +120,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = rg.MixupGenerator(lambda_val, p=p)
+        self._param_generator = rg.MixupGenerator(lambda_val, p=1.0)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None

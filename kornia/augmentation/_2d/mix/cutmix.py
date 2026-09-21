@@ -122,7 +122,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         use_correct_lambda: bool = False,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
+        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=1.0)
 
         self.use_correct_lambda = use_correct_lambda
         if not self.use_correct_lambda:
