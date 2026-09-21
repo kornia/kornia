@@ -71,8 +71,8 @@ class TestRenderGaussian2d(BaseTester):
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("normalized", [False, True])
     @pytest.mark.parametrize("axis", ["x", "y"])
-    # 2049.3 is above float16's exact-integer limit (2048); 1500.2 is below it, where only bfloat16 (limit 256) collapses.
-    # A single mean is not enough: for bfloat16 in normalized mode the collapse is invisible at 2049.3 (1 px) but 7 px at 1500.2.
+    # 2049.3 is above float16's exact-integer limit (2048); 1500.2 is below it, where only bfloat16 (limit 256)
+    # collapses. One mean is not enough: bfloat16 in normalized mode is 1 px off at 2049.3 but 7 px off at 1500.2.
     @pytest.mark.parametrize("mu", [2049.3, 1500.2])
     def test_large_grid_peak_not_distorted(self, device, dtype, normalized, axis, mu):
         """The coordinate grid must not collapse in half precision (float16 above 2048, bfloat16 above ~256)."""
@@ -100,9 +100,9 @@ class TestRenderGaussian2d(BaseTester):
         line = heatmap[0, 5] if axis == "x" else heatmap[0, :, 5]
         # Guard against a vacuous pass: an all-zero line satisfies `line[expected] == line.max()` as 0 == 0.
         assert line.max() > 0, "heatmap rounded entirely to zero, so the peak position is not being tested"
-        # A collapsed coordinate grid does not move the peak to one wrong pixel, it smears the maximum over a plateau of
-        # tied pixels, so `line[expected] == line.max()` would accept any plateau that merely contains `expected`.
-        # Require every tied maximum to sit within one pixel of it (a tie between two neighbours is legitimate rounding).
+        # A collapsed coordinate grid does not move the peak to one wrong pixel, it smears the maximum over a
+        # plateau of tied pixels, so `line[expected] == line.max()` alone accepts any plateau containing `expected`.
+        # Require every tied maximum to sit within one pixel of it (a tie between two neighbours is legitimate).
         assert line[expected] == line.max()
         tied = (line == line.max()).nonzero().flatten()
         assert (tied - expected).abs().max() <= 1, f"peak plateau {tied.tolist()} is not centred on pixel {expected}"
