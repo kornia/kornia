@@ -50,9 +50,11 @@ def init_camera_intrinsics_zhang(
 ) -> Tensor:
     """Initialize zero-skew pinhole camera intrinsics from multiple planar homographies.
 
-    Implements the linear constraints in Zhang, *A Flexible New Technique for Camera
-    Calibration*, IEEE TPAMI 22(11), 2000, https://doi.org/10.1109/34.888718.
-    Zero skew is imposed in the linear system, leaving four intrinsic parameters to estimate.
+    Implements the linear initialization stage of :cite:`zhang2000calibration`,
+    https://doi.org/10.1109/34.888718. Zero skew is imposed in the linear system, leaving
+    four intrinsic parameters to estimate. The five-column constraint system estimates
+    ``B = K^{-T} K^{-1}`` with ``B12 = 0``; a Cholesky factorization recovers the intrinsic
+    matrix. This factorization and numerical conditioning are implementation choices.
 
     Args:
         homographies: Plane-to-pixel homographies (B,V,3,3), with at least three views of
@@ -80,6 +82,8 @@ def init_camera_intrinsics_zhang(
         calibration pipeline. It estimates neither distortion nor extrinsics and cannot
         identify every violation of that camera model. Board axes must use the same length
         unit; arbitrary projective or anisotropic board coordinates change the solution.
+        The API requires at least three views. With the zero-skew constraint, two suitable
+        views can theoretically suffice; the three-view requirement is this API's contract.
 
         CPU and CUDA float32 inputs compute in float64; MPS retains float32. The small
         constraint matrix is decomposed directly, without squaring its condition number
