@@ -172,8 +172,8 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
 
         Only geometric operations are invertible. A policy draw that contains an intensity operation is
         not round-trippable, and inverting it would return a tensor that still carries that operation --
-        for a draw with no geometry at all, the input unchanged. This raises instead, as
-        :meth:`kornia.augmentation.MixAugmentationBaseV2.inverse` already does for the mix classes.
+        for a draw with no geometry at all, the input unchanged. This raises instead, as ``inverse`` on
+        :class:`~kornia.augmentation.MixAugmentationBaseV2` already does for the mix classes.
 
         Args:
             input: Tensor produced by a forward pass.

@@ -250,6 +250,19 @@ class TestAutoAugmentConventions(BaseTester):
         nonzero = ops.Posterize(initial_magnitude=5.5, magnitude_range=(0.0, 8.0), symmetric_megnitude=True)
         signed = nonzero.forward_parameters(torch.Size([64, 1, 1, 1]))["bits_factor"]
         assert set(signed.tolist()) == {5, -5}
+        # Every built-in mapping is odd (identity, x * 180, truncation), so {5, -5} holds for either order. A
+        # mapping that is not odd separates them: sign after gives {13, -13}, sign before would give {13, 7}.
+        from kornia.augmentation import RandomRotation
+        from kornia.augmentation.auto.operations.base import OperationBase
+
+        shifted = OperationBase(
+            RandomRotation((0.0, 30.0), p=1.0),
+            initial_magnitude=[("degrees", 3.0)],
+            magnitude_fn=lambda magnitude: magnitude + 10.0,
+            symmetric_megnitude=True,
+        )
+        degrees = shifted.forward_parameters(torch.Size([64, 1, 4, 4]))["degrees"]
+        assert set(degrees.tolist()) == {13.0, -13.0}
 
     @pytest.mark.device_agnostic
     def test_convention_operation_probability_and_magnitude_clamps(self):
@@ -387,6 +400,9 @@ class TestAutoAugmentConventions(BaseTester):
     def test_convention_trivialaugment_fixes_candidate_probability_at_one(self):
         aug = TrivialAugment(policy=[[("rotate", -30.0, 30.0)], [("brightness", 0.1, 1.9)]])
         assert {(module[0].op.p, module[0].op.p_batch) for _, module in aug.named_children()} == {(1.0, 1.0)}
+        # "Each candidate": every entry of the default policy as well, not only the two above.
+        defaults = [(module[0].op.p, module[0].op.p_batch) for _, module in TrivialAugment().named_children()]
+        assert len(defaults) == 12 and set(defaults) == {(1.0, 1.0)}
         gates = set()
         for _ in range(16):
             gates.update(aug.forward_parameters(torch.Size([8, 3, 8, 6]))[0].data[0].data["batch_prob"].tolist())
@@ -479,3 +495,28 @@ class TestAutoAugmentConventions(BaseTester):
         assert len(PolicySequential(*operations)) == 2
         with pytest.raises(ValueError, match="must be Kornia Operations"):
             PolicySequential(operations)
+
+    @pytest.mark.device_agnostic
+    def test_convention_randaugment_formula_holds_for_every_default_entry(self):
+        # "The identity for every default entry except three": the whole default policy, not a sample of it.
+        import math
+
+        from kornia.augmentation.auto.rand_augment.rand_augment import default_policy
+
+        checked = []
+        for subpolicy in default_policy:
+            name = subpolicy[0][0]
+            aug = RandAugment(n=1, m=10, policy=[subpolicy])
+            operation = aug[0][0]
+            if operation._factor_name is None:
+                continue  # auto_contrast, equalize and invert carry no magnitude
+            low, high = (float(bound) for bound in operation.magnitude_range)
+            expected = low + (high - low) * 10 / 30
+            if name in ("shear_x", "shear_y"):
+                expected *= 180
+            elif name == "posterize":
+                expected = math.floor(expected)  # 4 * 10 / 30 = 1.33 -> 1 bit: truncation, not rounding
+            drawn = aug.forward_parameters(torch.Size([8, 1, 8, 6]))[0].data[0].data[operation._factor_name]
+            self.assert_close(drawn.abs().float(), torch.full((8,), float(expected)))
+            checked.append(name)
+        assert len(checked) == 12 and {"shear_x", "shear_y", "posterize", "translate_x", "translate_y"} <= set(checked)

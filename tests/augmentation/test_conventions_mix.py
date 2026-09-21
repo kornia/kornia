@@ -367,8 +367,11 @@ class TestMixConventions(BaseTester):
             # `None` rather than "": MixAugmentationBaseV2._validate_data_key raises a bare
             # NotImplementedError, so there is no message to match on that half.
             message = "does not support" if key == "class" and class_error is RuntimeError else None
+            state = torch.get_rng_state().clone()
             with pytest.raises(class_error if key == "class" else NotImplementedError, match=message):
                 factory(p)(image, annotation, data_keys=["input", key])
+            # "Before anything is sampled": a handler fallback raises the same bare error, but only after the draw.
+            assert torch.equal(state, torch.get_rng_state())
 
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_jigsaw_rejects_a_nondivisible_input_whatever_the_gate(self, p, device, dtype):
@@ -513,6 +516,12 @@ class TestMixConventions(BaseTester):
         self.assert_close(K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params), image.transpose(-1, -2))
         params["permutation"] = torch.tensor([[0, 2, 1, 3]])
         self.assert_close(K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params), image)
+        # Every permutation above is its own inverse, so "the value indexes the source" and "the value indexes
+        # the destination" agree on all of them. A 3-cycle tells them apart.
+        strip = torch.arange(6, device=device, dtype=dtype).view(1, 1, 2, 3)
+        params["permutation"] = torch.tensor([[1, 2, 0, 3, 4, 5]])
+        cycled = K.RandomJigsaw(grid=(2, 3), p=1.0)(strip, params=params)
+        assert cycled[0, 0].tolist() == [[1.0, 0.0, 4.0], [2.0, 3.0, 5.0]]
         # "Transposes" is the square case. On any grid the image-preserving permutation is the transposed index
         # grid, and the identity permutation reproduces the image only when the grid has a single row or column.
         for grid in ((2, 3), (3, 2), (1, 3), (3, 1)):
@@ -565,6 +574,8 @@ class TestMixConventions(BaseTester):
         assert bool(((ratios >= 0.3 - 1e-5) & (ratios <= 0.7 + 1e-5)).all())
         # Both entries are bounds on one draw, so both axes vary across the batch.
         assert ratios[:, 0].unique().numel() > 1 and ratios[:, 1].unique().numel() > 1
+        # "Draws a pair": the two ratios are separate draws, not one value used twice.
+        assert not torch.allclose(ratios[:, 0], ratios[:, 1])
 
     @pytest.mark.device_agnostic
     def test_convention_jigsaw_gate_is_drawn_per_sample(self):
@@ -581,7 +592,10 @@ class TestMixConventions(BaseTester):
     def test_convention_patchmix_patch_stays_inside_the_image(self):
         # The other patch pins supply or read back `patch_coords`, so the sampled range itself is unpinned.
         aug = K.PatchMix(patch_size=4, p=1.0)
+        xs, ys = set(), set()
         for _ in range(20):
             coords = aug.forward_parameters(torch.Size([16, 1, 8, 10]))["patch_coords"]
-            assert int(coords[:, 0].max()) <= 10 - 4
-            assert int(coords[:, 1].max()) <= 8 - 4
+            xs.update(coords[:, 0].tolist())
+            ys.update(coords[:, 1].tolist())
+        # Reach as well as containment: every inside corner is drawn, and nothing else.
+        assert xs == set(range(10 - 4 + 1)) and ys == set(range(8 - 4 + 1))

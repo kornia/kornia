@@ -426,18 +426,21 @@ class Test3DAugmentationConventions(BaseTester):
         # The rotation path is exact to float64 roundoff (0 on torch 2.14, ~2e-16 on 2.5.1 and 2.9.1);
         # the perspective path is off by ~1e-7 because its sampling grid is built in float32.
         assert rotation < 1e-12
-        assert residual > 100 * max(rotation, 1e-18)
-        assert residual < 1e-5
+        # An absolute window rather than a multiple of `rotation`: where the rotation is exactly 0 a relative
+        # bound collapses to "> 1e-16", under one float64 ULP. 1e-9 has two orders of headroom on either side.
+        assert 1e-9 < residual < 1e-5
 
     @pytest.mark.device_agnostic
     def test_convention_random_crop3d_offset_reaches_both_ends(self):
         # The offset pin overwrites params["src"], so the sampler's inclusive range is never measured.
         aug = K.RandomCrop3D((2, 3, 4), p=1.0)
-        starts = set()
+        starts = [set(), set(), set()]
         for _ in range(20):
             src = aug.forward_parameters(torch.Size([8, 1, 4, 5, 6]))["src"]
-            starts.update(int(value) for value in src[:, 0, 0])
-        assert starts == {0, 1, 2}  # width 6, crop width 4 -> the inclusive range [0, 2]
+            for axis in range(3):
+                starts[axis].update(int(value) for value in src[:, 0, axis])
+        # x: 6 - 4, y: 5 - 3, z: 4 - 2 -> the inclusive range [0, 2] on every axis, each with its own bound.
+        assert starts == [{0, 1, 2}] * 3
 
     @pytest.mark.device_agnostic
     def test_convention_random_crop3d_fixed_padding_feeds_pad_if_needed(self):
@@ -447,6 +450,15 @@ class Test3DAugmentationConventions(BaseTester):
         aug = K.RandomCrop3D((12, 3, 3), padding=(0, 0, 0, 0, 3, 3), pad_if_needed=True, p=1.0)
         assert aug._compute_padding(tuple(volume.shape), aug.flags) == [[0, 0, 0, 0, 3, 3], [0, 0, 0, 0, 2, 2]]
         assert aug.precrop_padding(volume).shape[-3:] == (14, 5, 6)
+        # Six different paddings and three different deficits, so that each axis has to read its own pair.
+        aug = K.RandomCrop3D((16, 14, 12), padding=(1, 2, 3, 4, 5, 6), pad_if_needed=True, p=1.0)
+        assert aug._compute_padding(tuple(volume.shape), aug.flags) == [
+            [1, 2, 3, 4, 5, 6],
+            [0, 0, 0, 0, 1, 1],
+            [0, 0, 2, 2, 0, 0],
+            [3, 3, 0, 0, 0, 0],
+        ]
+        assert aug.precrop_padding(volume).shape[-3:] == (17, 16, 15)
 
     @pytest.mark.device_agnostic
     def test_convention_motion_blur3d_rejects_a_mixed_replayed_kernel_size(self):
@@ -519,3 +531,10 @@ class Test3DAugmentationConventions(BaseTester):
             for volume in (small64, large64)
         ]
         assert residuals[0] < residuals[1] < 1e-4
+
+    @pytest.mark.device_agnostic
+    def test_convention_center_crop3d_centres_each_axis_with_its_own_offset(self):
+        # Offsets (z, y, x) = (1, 2, 4), all different: a (1, 1, 1) fixture cannot tell the axes apart.
+        volume = torch.arange(6 * 8 * 12.0).reshape(1, 1, 6, 8, 12)
+        output = K.CenterCrop3D((4, 4, 4), resample="nearest", p=1.0)(volume)
+        self.assert_close(output, volume[..., 1:5, 2:6, 4:8], rtol=0, atol=0)
