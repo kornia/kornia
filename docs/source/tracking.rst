@@ -6,5 +6,7 @@ kornia.tracking
 
 .. currentmodule:: kornia.tracking
 
+.. autofunction:: track_points_lk
+
 .. autoclass:: HomographyTracker
    :members:
