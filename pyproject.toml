@@ -213,6 +213,14 @@ select = [
   "PIE",  # flake8-pie
   "PL",  # Pylint
   "PYI",  # flake8-pyi
+  "RET501",  # unnecessary-return-none
+  "RET502",  # implicit-return-value
+  "RET503",  # implicit-return
+  # "RET504",  # unnecessary-assign
+  "RET505",  # superfluous-else-return
+  "RET506",  # superfluous-else-raise
+  "RET507",  # superfluous-else-continue
+  "RET508",  # superfluous-else-break
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
@@ -339,6 +347,28 @@ max-statements = 64  # Recommended: 50
   "B017",  # Check for Exception since KORNIA_CHECK raises it
   "D",  # Don't enforce documentation rules
 ]  # allow assert, random, ignore BLE, mutable class attr
+
+# Changelog fragments are assembled only when preparing a release.
+[tool.towncrier]
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+title_format = "## [{version}] - {project_date}"
+issue_format = "[#{issue}](https://github.com/kornia/kornia/pull/{issue})"
+# Setting ignore enables strict filename validation; tolerate Finder metadata only.
+ignore = [".DS_Store"]
+issue_pattern = "[0-9]+"
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Bug fixes"
+
+[[tool.towncrier.type]]
+directory = "breaking"
+name = "Breaking changes"
 
 [tool.ty.src]
 include = ["kornia"]

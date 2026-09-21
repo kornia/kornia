@@ -31,7 +31,7 @@ from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
 
 from testing.augmentation.utils import reproducibility_test
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_close
 
 
 def _find_all_ops() -> List[OperationBase]:
@@ -111,6 +111,44 @@ class TestAutoAugment(BaseTester):
 
 
 class TestRandAugment(BaseTester):
+    @pytest.mark.parametrize(
+        ("factor", "policy"),
+        [
+            ("translate_x", [[("translate_x", -0.5, 0.5)]]),
+            ("translate_y", [[("translate_y", -0.5, 0.5)]]),
+        ],
+    )
+    def test_translation_magnitude_is_scaled_to_pixels(self, factor, policy):
+        aug = RandAugment(n=1, m=29, policy=policy)
+        batch_shape = torch.Size([4, 3, 24, 40])
+        params = aug.forward_parameters(batch_shape)
+
+        magnitude = params[0].data[0].data[factor]
+        dimension = 40 if factor == "translate_x" else 24
+        expected = torch.full_like(magnitude, (29 / 30) * 0.5 * dimension)
+
+        assert torch.allclose(magnitude.abs(), expected)
+
+    @pytest.mark.parametrize(
+        ("m", "expected_bits"),
+        [
+            (3, 7),
+            (7, 7),
+            (8, 6),
+            (29, 4),
+        ],
+    )
+    def test_posterize_default_range(self, m, expected_bits):
+        posterize_policy = next(policy for policy in randaug_config if policy[0][0] == "posterize")
+        aug = RandAugment(n=1, m=m, policy=[posterize_policy])
+        batch_shape = torch.Size([4, 3, 32, 32])
+        params = aug.forward_parameters(batch_shape)
+
+        bits = params[0].data[0].data["bits_factor"]
+        expected = torch.full_like(bits, expected_bits)
+
+        assert torch.equal(bits, expected)
+
     @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
     def test_smoke(self, policy):
         if policy is None:
@@ -256,3 +294,150 @@ def test_operation_preserves_input_dtype(device, low_dtype):
         assert out.dtype == low_dtype, f"{type(op).__name__}: {out.dtype} != {low_dtype}"
         checked += 1
     assert checked, f"no op could run in {low_dtype} on this build"
+
+
+@pytest.mark.parametrize(
+    ("op", "factor"),
+    [
+        (ops.Rotate, "degrees"),
+        (ops.ShearX, "shear_x"),
+        (ops.ShearY, "shear_y"),
+        (ops.TranslateX, "translate_x"),
+        (ops.TranslateY, "translate_y"),
+    ],
+)
+def test_symmetric_magnitude_negates_rather_than_zeroing(op, factor):
+    # ``symmetric_megnitude`` multiplied the magnitude by a bool mask, so half the draws
+    # came out as 0 instead of -m: these five ops only ever ran in the positive direction
+    # -- only counter-clockwise, only right, only down -- and were a silent no-op the rest
+    # of the time. They are the only ops that set the flag, and ``RandAugment`` is the only
+    # composer that samples through it. Sampling is device-independent, so this runs on CPU.
+    operation = op(None, 1.0)
+    torch.manual_seed(42)
+    mags = torch.cat([operation.forward_parameters(torch.Size([64, 3, 8, 8]))[factor] for _ in range(8)])
+    assert (mags < 0).any(), f"{factor}: no negative magnitude in {mags.numel()} draws"
+    assert (mags > 0).any(), f"{factor}: no positive magnitude in {mags.numel()} draws"
+    assert not (mags == 0).any(), f"{factor}: {(mags == 0).sum()} of {mags.numel()} draws were zeroed"
+
+
+# AutoAugment sub-policies are ``(name, probability, magnitude_bin)``; the other two are
+# ``(name, min_magnitude, max_magnitude)``. RandAugment and TrivialAugment allow only one
+# operation per sub-policy, so a mixed draw has to come from two of them -- and cannot
+# happen at all under TrivialAugment, which draws exactly one operation.
+_AA_GEOMETRIC, _AA_INTENSITY = ("translate_x", 1.0, 5), ("solarize", 1.0, 5)
+_GEOMETRIC, _INTENSITY = ("translate_x", -0.5, 0.5), ("solarize", 0.0, 1.0)
+
+
+@pytest.mark.parametrize(
+    ("intensity_only", "mixed", "geometry_only"),
+    [
+        (
+            lambda: AutoAugment(policy=[[_AA_INTENSITY]]),
+            lambda: AutoAugment(policy=[[_AA_GEOMETRIC, _AA_INTENSITY]]),
+            lambda: AutoAugment(policy=[[_AA_GEOMETRIC]]),
+        ),
+        (
+            lambda: RandAugment(n=1, m=15, policy=[[_INTENSITY]]),
+            lambda: RandAugment(n=2, m=15, policy=[[_GEOMETRIC], [_INTENSITY]]),
+            lambda: RandAugment(n=1, m=15, policy=[[_GEOMETRIC]]),
+        ),
+        (
+            lambda: TrivialAugment(policy=[[_INTENSITY]]),
+            None,
+            lambda: TrivialAugment(policy=[[_GEOMETRIC]]),
+        ),
+    ],
+    ids=["AutoAugment", "RandAugment", "TrivialAugment"],
+)
+def test_inverse_refuses_a_non_invertible_draw(intensity_only, mixed, geometry_only, device, dtype):
+    # ``inverse`` can only undo geometric operations. The sub-policy is redrawn on every
+    # forward pass, so a draw holding an intensity operation used to come back through
+    # ``inverse`` with that operation still applied -- and on a draw with no geometry at
+    # all, as the input unchanged, with no error and no warning. It refuses now, the way
+    # ``MixAugmentationBaseV2.inverse`` already does.
+    x = torch.rand(2, 3, 8, 6, device=device, dtype=dtype)
+
+    aug = intensity_only()
+    with pytest.raises(RuntimeError, match="is not supported"):
+        aug.inverse(aug(x))
+
+    if mixed is not None:
+        # half-undoing a mixed draw is the same trap, so it is refused too
+        aug = mixed()
+        with pytest.raises(RuntimeError, match="is not supported"):
+            aug.inverse(aug(x))
+
+    # a geometry-only draw still inverts. A ramp is what bilinear resampling reproduces
+    # exactly, so replaying the same draw backwards has to return it -- everywhere except
+    # the pixels the draw pushed out of frame, which the same round trip over ``ones``
+    # marks for us. Half precision cannot hold that tolerance (``1 - 1e-4`` even rounds to
+    # ``1.0`` there), so the value check runs in float32 or wider; the refusals above keep
+    # the fixture dtype.
+    aug = geometry_only()
+    value_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    ramp = 0.5 * (
+        torch.linspace(0, 1, 8, device=device, dtype=value_dtype)[:, None]
+        + torch.linspace(0, 1, 6, device=device, dtype=value_dtype)
+    ).expand(2, 3, 8, 6)
+    params = aug.forward_parameters(ramp.shape)
+    kept = aug.inverse(aug(torch.ones_like(ramp), params=params), params=params) > 1 - 1e-4
+    assert kept.any(), "the drawn geometry pushed the whole image out of frame"
+    round_trip = aug.inverse(aug(ramp, params=params), params=params)
+    assert_close(round_trip[kept], ramp[kept], rtol=1e-4, atol=1e-4)
+
+
+def test_inverse_ignores_an_operation_its_gate_skipped(device, dtype):
+    # an intensity operation whose probability gate skipped every sample left the input
+    # untouched, so the draw is pure geometry and inverts; applied on any row, it refuses
+    x = torch.rand(2, 3, 8, 6, device=device, dtype=dtype)
+    aug = AutoAugment(policy=[[("translate_x", 1.0, 5), ("solarize", 0.0, 5)]])
+    assert aug.inverse(aug(x)).shape == x.shape
+
+    aug = AutoAugment(policy=[[("translate_x", 1.0, 5), ("solarize", 1.0, 5)]])
+    with pytest.raises(RuntimeError, match="applied RandomSolarize"):
+        aug.inverse(aug(x))
+
+
+def test_inverse_without_a_forward_pass_still_reports_missing_params(device, dtype):
+    # the refusal must not shadow the pre-existing error for an un-run policy
+    x = torch.rand(2, 3, 8, 6, device=device, dtype=dtype)
+    with pytest.raises(ValueError, match="No parameters available"):
+        RandAugment(n=1, m=5).inverse(x)
+
+
+def test_operation_base_deepcopy_after_use() -> None:
+    operation = ops.Brightness()
+    state_dict = operation.state_dict()
+
+    assert isinstance(operation._probability, torch.nn.Parameter)
+    assert isinstance(operation.probability, torch.Tensor)
+    assert operation.probability.item() == operation.op.p
+    assert hasattr(operation, "temperature")
+    assert "_probability" in state_dict
+    assert "temperature" in state_dict
+
+    restored = ops.Brightness()
+    restored.load_state_dict(state_dict, strict=True)
+
+    assert restored.probability.item() == operation.probability.item()
+    assert torch.equal(restored.temperature, operation.temperature)
+
+    x = torch.rand(2, 3, 32, 32)
+
+    cases = [
+        (RandAugment(n=2, m=15), "forward"),
+        (AutoAugment(), "train"),
+        (AutoAugment(), "eval"),
+        (TrivialAugment(), "train"),
+        (AugmentationSequential(RandAugment(n=2, m=15)), "forward"),
+    ]
+
+    for aug, action in cases:
+        if action == "forward":
+            aug(x)
+        elif action == "train":
+            aug.train()
+        else:
+            aug.eval()
+
+        copy.deepcopy(aug)

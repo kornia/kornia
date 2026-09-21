@@ -22,19 +22,22 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 
 class PerspectiveGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomPerspective3D`.
+
     Args:
         distortion_scale: controls the degree of distortion and ranges from 0 to 1.
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - src (torch.Tensor): perspective source bounding boxes with a shape of (B, 8, 3).
-            - dst (torch.Tensor): perspective target bounding boxes with a shape (B, 8, 3).
+            - start_points (torch.Tensor): perspective source bounding boxes with a shape of (B, 8, 3).
+            - end_points (torch.Tensor): perspective target bounding boxes with a shape (B, 8, 3).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -48,8 +51,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         self.distortion_scale = distortion_scale
 
     def __repr__(self) -> str:
-        repr = f"distortion_scale={self.distortion_scale}"
-        return repr
+        return f"distortion_scale={self.distortion_scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
@@ -70,14 +72,14 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
 
-        start_points: torch.Tensor = torch.tensor(
+        start_points: torch.Tensor = _constant_tensor(
             [
                 [
-                    [0.0, 0, 0],
+                    [0, 0, 0],
                     [width - 1, 0, 0],
                     [width - 1, height - 1, 0],
                     [0, height - 1, 0],
-                    [0.0, 0, depth - 1],
+                    [0, 0, depth - 1],
                     [width - 1, 0, depth - 1],
                     [width - 1, height - 1, depth - 1],
                     [0, height - 1, depth - 1],
@@ -98,7 +100,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
             device=_device, dtype=_dtype
         )
 
-        pts_norm = torch.tensor(
+        pts_norm = _constant_tensor(
             [[[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]]],
             device=_device,
             dtype=_dtype,

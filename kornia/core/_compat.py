@@ -217,13 +217,13 @@ def deprecated(
             class_wrapper.__doc__ = func.__doc__
             class_wrapper.__annotations__ = getattr(func, "__annotations__", {})
             return class_wrapper
-        else:
-            # For functions, use @wraps normally
-            @wraps(func)
-            def wrapper(*args: Any, **kwargs: Any) -> Any:
-                _emit_deprecation_warning(name, replace_with, version, extra_reason)
-                return func(*args, **kwargs)
 
-            return wrapper
+        # For functions, use @wraps normally
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            _emit_deprecation_warning(name, replace_with, version, extra_reason)
+            return func(*args, **kwargs)
+
+        return wrapper
 
     return _deprecated

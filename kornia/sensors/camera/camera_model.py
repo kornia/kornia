@@ -51,14 +51,13 @@ def get_model_from_type(
     """Get camera model from model type."""
     if model_type == CameraModelType.PINHOLE:
         return PinholeModel(image_size, params)
-    elif model_type == CameraModelType.BROWN_CONRADY:
+    if model_type == CameraModelType.BROWN_CONRADY:
         return BrownConradyModel(image_size, params)
-    elif model_type == CameraModelType.KANNALA_BRANDT_K3:
+    if model_type == CameraModelType.KANNALA_BRANDT_K3:
         return KannalaBrandtK3(image_size, params)
-    elif model_type == CameraModelType.ORTHOGRAPHIC:
+    if model_type == CameraModelType.ORTHOGRAPHIC:
         return Orthographic(image_size, params)
-    else:
-        raise ValueError("Invalid Camera Model Type")
+    raise ValueError("Invalid Camera Model Type")
 
 
 CameraDistortionType = Union[AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform]
@@ -158,6 +157,9 @@ class CameraModelBase:
           the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`. The two type systems
           are kept separate by design -- this one takes ``Vector`` objects, that one plain tensors -- which is
           recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
+
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the shared pixel-centre,
+        depth and intrinsics conventions across the camera APIs.
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
@@ -307,6 +309,8 @@ class PinholeModel(CameraModelBase):
     r"""Class to represent Pinhole Camera Model.
 
     See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
+    See :doc:`camera and world conventions </get-started/camera-conventions>` for the corresponding camera
+    frame, depth, pixel-centre and intrinsics conventions.
 
     The pinhole camera model describes the mathematical relationship between
     the coordinates of a point in three-dimensional space and its projection
@@ -369,6 +373,9 @@ class PinholeModel(CameraModelBase):
               ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``, the half-pixel rule, which is the rule
               :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale` applies as well.
 
+            See :doc:`camera and world conventions </get-started/camera-conventions>` for image resizing and
+            the matching intrinsics scaling convention.
+
         .. warning::
             ``cx' = s * cx`` disagrees with the integer pixel centres the rest of the library enumerates, and
             a tensor ``scale_factor`` rebuilds ``image_size`` with 0-dim tensors in the promoted dtype
@@ -400,7 +407,11 @@ class PinholeModel(CameraModelBase):
 
 
 class BrownConradyModel(CameraModelBase):
-    """Brown Conrady Camera Model."""
+    """Brown Conrady Camera Model.
+
+    See :doc:`camera and world conventions </get-started/camera-conventions>` for shared intrinsics,
+    pixel-centre and camera-frame conventions.
+    """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct BrownConradyModel class.
@@ -419,7 +430,11 @@ class BrownConradyModel(CameraModelBase):
 
 
 class KannalaBrandtK3(CameraModelBase):
-    """Kannala Brandt K3 Camera Model."""
+    """Kannala Brandt K3 Camera Model.
+
+    See :doc:`camera and world conventions </get-started/camera-conventions>` for shared intrinsics,
+    pixel-centre and camera-frame conventions.
+    """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct KannalaBrandtK3 class.
@@ -435,7 +450,11 @@ class KannalaBrandtK3(CameraModelBase):
 
 
 class Orthographic(CameraModelBase):
-    """Orthographic Camera Model."""
+    """Orthographic Camera Model.
+
+    See :doc:`camera and world conventions </get-started/camera-conventions>` for shared intrinsics,
+    pixel-centre and camera-frame conventions.
+    """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct Orthographic class.
@@ -457,6 +476,8 @@ class CameraModel:
     r"""Class to represent camera models.
 
     See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
+    See :doc:`camera and world conventions </get-started/camera-conventions>` for the corresponding camera
+    frame, depth, pixel-centre and intrinsics conventions.
 
     Example:
         >>> # Pinhole Camera Model

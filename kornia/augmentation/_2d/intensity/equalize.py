@@ -28,6 +28,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomEqualize.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: Probability to equalize an image.
         same_on_batch: apply the same transformation across the batch.
@@ -38,9 +40,22 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - this class raises on an out-of-``[0, 1]`` input instead of transforming it. See
+          :class:`~kornia.augmentation.IntensityAugmentationBase2D` for the policies used by the other
+          intensity augmentations. :class:`RandomClahe` also raises out of range, with a message naming
+          :func:`kornia.enhance.equalize_clahe` and the range.
+        - the rejection is not exactly at the boundary: the check guards the 256-entry lookup indexed with
+          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]``, at either end, is
+          still admitted, up to the rounding of ``input * 255`` in the input's dtype: in ``float16``,
+          ``1.00390625`` already raises.
+
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
-        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values it cannot equalize.
+        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values it cannot equalize. The
+        check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older MPS
+        release the condition is read on the host instead, which costs one device sync per call and is
+        skipped under ``torch.compile``.
 
     Examples:
         >>> rng = torch.manual_seed(0)

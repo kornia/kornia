@@ -72,8 +72,7 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr_buf = f"gain={self.gain}, center={self.center}, sigma={self.sigma}, sign={self.sign}"
-        return repr_buf
+        return f"gain={self.gain}, center={self.center}, sigma={self.sigma}, sign={self.sign}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""
@@ -115,11 +114,9 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
         center_y = torch.round(height * _adapted_rsampling((batch_size, 1), self.center_sampler, same_on_batch))
 
-        sign = torch.where(
-            _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0,
-            torch.tensor(1.0, device=_device, dtype=_dtype),
-            torch.tensor(-1.0, device=_device, dtype=_dtype),
-        )
+        sign = (_adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0).to(
+            device=_device, dtype=_dtype
+        ) * 2 - 1
 
         # Generate random gaussian for create a 2D gaussian image.
         gauss_x = gaussian(width, sigma_x, mean=center_x, device=_device, dtype=_dtype).unsqueeze(1)

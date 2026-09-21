@@ -81,6 +81,9 @@ def unproject_meshgrid(
           :func:`~kornia.geometry.depth.depth_to_3d_v2` needs when its depth is a Euclidean ray length rather
           than a camera-frame ``z``.
 
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for pixel centres,
+        camera-frame depth and the intrinsics convention used by these rays.
+
     Args:
         height: height of image.
         width: width of image.
@@ -112,7 +115,7 @@ def unproject_meshgrid(
     points_xyz = convert_points_to_homogeneous(points_xy)  # HxWx3
 
     if normalize_points:
-        points_xyz = F.normalize(points_xyz, dim=-1, p=2)
+        points_xyz = F.normalize(points_xyz, dim=-1, p=2.0)
 
     return points_xyz
 
@@ -151,6 +154,9 @@ def depth_to_3d_v2(
         - passing ``xyz_grid`` skips the grid construction and uses the given rays instead; the two forms give
           the same result when ``xyz_grid`` is what
           :func:`~kornia.geometry.depth.unproject_meshgrid` returns for the same camera.
+
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the pixel-centre,
+        camera-frame depth and intrinsics conventions used here.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
@@ -212,6 +218,9 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
           of as ``z``, so the returned point has that norm rather than that ``z``.
         - an integer ``depth`` map is promoted through arithmetic with ``camera_matrix``: with floating-point
           intrinsics the point cloud follows their dtype (for example, ``float32`` or ``float64``).
+
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the pixel-centre,
+        camera-frame depth and intrinsics conventions used here.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
@@ -413,6 +422,9 @@ def warp_frame_depth(
           can be nonzero; samples whose entire interpolation footprint is outside return 0.
         - the result carries ``image_src``'s channel count, whatever it is: the output is :math:`(B, D, H, W)`.
 
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera-frame,
+        depth and intrinsics conventions composed by this warp.
+
     .. warning::
         :class:`~kornia.geometry.depth.DepthWarper` performs the same warp under the **opposite** naming: the
         frame this function calls ``dst`` (the one holding the depth) is that class's ``src``, and the image it
@@ -502,6 +514,9 @@ class DepthWarper(nn.Module):
         - :func:`~kornia.geometry.depth.depth_warp` is the functional form of this class -- it builds one,
           calls :meth:`compute_projection_matrix` and forwards -- and returns a result equal to it bit for bit.
           It exposes ``align_corners`` only; ``mode`` and ``padding_mode`` keep their defaults there.
+
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera/world-frame,
+        intrinsics and pixel-centre conventions used by this class.
 
     .. warning::
         :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the **opposite** naming.
@@ -784,6 +799,23 @@ def depth_warp(
     return warper(depth_src, patch_dst)
 
 
+def _per_sample_camera_parameter(parameter: float | torch.Tensor, disparity: torch.Tensor) -> float | torch.Tensor:
+    """Shape a per-batch-element ``(B,)`` camera parameter so each value meets its own disparity sample.
+
+    A Python number, a scalar tensor and a ``(1,)`` tensor already broadcast over the whole disparity and are
+    returned untouched, so every input accepted before ``(B,)`` support existed takes the same path as it did.
+    A ``(B,)`` tensor pairs element ``b`` with ``disparity[b]``, which needs a batch axis: ``disparity`` must
+    have rank 3 or more and a leading size of ``B``. Anything else raises ``ShapeError``.
+    """
+    if not isinstance(parameter, torch.Tensor) or parameter.ndim == 0 or parameter.shape == (1,):
+        return parameter
+    if parameter.ndim == 1 and disparity.ndim >= 3:
+        KORNIA_CHECK_SHAPE(parameter, [str(disparity.shape[0])])
+        return parameter.reshape(disparity.shape[0], *([1] * (disparity.ndim - 1)))
+    KORNIA_CHECK_SHAPE(parameter, ["1"])
+    return parameter
+
+
 def depth_from_disparity(
     disparity: torch.Tensor, baseline: float | torch.Tensor, focal: float | torch.Tensor
 ) -> torch.Tensor:
@@ -794,8 +826,11 @@ def depth_from_disparity(
           two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a baseline of
           0.5 and a focal length of 100 gives a depth of 25.
         - ``baseline`` and ``focal`` are each a Python ``int`` or ``float``, a scalar tensor, or a tensor of
-          shape :math:`(1,)`; one value is shared by the whole batch. Per-batch-element :math:`(B,)` tensors
-          with :math:`B > 1` raise ``ShapeError``.
+          shape :math:`(1,)`, all of which share one value across the whole disparity; or a per-batch-element
+          tensor of shape :math:`(B,)`, which pairs element ``b`` with ``disparity[b]``. A :math:`(B,)` tensor
+          needs a batch axis, so ``disparity`` must be at least :math:`(B, H, W)` with a leading size of ``B``;
+          any other size raises ``ShapeError``. The two may mix, for example a per-sample ``baseline`` with
+          one shared ``focal``.
         - ``disparity`` is :math:`(*, H, W)` and the result has its shape. Its sign is not checked, so a
           negative disparity gives a negative depth.
 
@@ -810,8 +845,10 @@ def depth_from_disparity(
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.
-        baseline: Distance between the two lenses, as an int, float, or tensor of shape ``()`` or ``(1,)``.
-        focal: Focal length, as an int, float, or tensor of shape ``()`` or ``(1,)``.
+        baseline: Distance between the two lenses, as an int, float, or tensor of shape ``()`` or ``(1,)``,
+            or of shape ``(B,)`` for one value per batch element.
+        focal: Focal length, as an int, float, or tensor of shape ``()`` or ``(1,)``, or of shape ``(B,)`` for
+            one value per batch element.
 
     Return:
         Depth map of the shape :math:`(*, H, W)`.
@@ -835,10 +872,7 @@ def depth_from_disparity(
         f"Input focal should be an int, float or torch.Tensor. Got {type(focal)}",
     )
 
-    if isinstance(baseline, torch.Tensor) and baseline.ndim != 0:
-        KORNIA_CHECK_SHAPE(baseline, ["1"])
-
-    if isinstance(focal, torch.Tensor) and focal.ndim != 0:
-        KORNIA_CHECK_SHAPE(focal, ["1"])
+    baseline = _per_sample_camera_parameter(baseline, disparity)
+    focal = _per_sample_camera_parameter(focal, disparity)
 
     return baseline * focal / (disparity + 1e-8)

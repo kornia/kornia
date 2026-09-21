@@ -34,6 +34,7 @@ jobs:
   slow:
     # Only run tests with slow marker which aren't dynamo tests
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -66,6 +67,7 @@ jobs:
   dynamo:
     # Run all dynamo (torch.compile) related tests
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -98,6 +100,7 @@ jobs:
   overall:
     # Run all tests which didn't have a slow marker or are dynamo tests
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -129,6 +132,7 @@ jobs:
 
   report:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 15
     needs: [slow, dynamo, overall]
     steps:
       - name: Checkout repository

@@ -593,9 +593,7 @@ class TestPinholeCamera(BaseTester):
     def test_pinhole_camera_scale_does_not_alias_the_source(self, device, dtype):
         """scale() returns a new camera, so writing to it must not reach the source.
 
-        The intrinsics were already cloned; the extrinsics were handed over by
-        reference, and the constructor stores what it is given. Setting tx on
-        the scaled camera therefore moved the source camera too.
+        Regression for the former extrinsics alias between the returned camera and the source.
         """
         batch_size = 2
         height, width = 4, 6
@@ -717,10 +715,8 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(back, X)
 
     def test_convention_clone_is_a_deep_copy(self, device, dtype):
-        # Convention pin: clone() is the ONLY deep copy on PinholeCamera -- a new
-        # object, new intrinsics and extrinsics tensors with different storage, and mutating the clone leaves the
-        # source untouched. scale() also returns a camera with its own tensors; scale_() and the tx / ty / tz
-        # setters are the ones that still write through to the caller (kornia#4264).
+        # Convention pin: clone() returns a new object with independent parameter storage, and mutating the clone
+        # leaves the source untouched. Constructor inputs and scale() results are independently owned as well.
         # Snippet used to generate expected: build a tx = 2 camera, clone it, set clone.tx = 9; executed
         # 2026-09-05 (torch 2.14.0, every dtype) -> source tx [2.0], clone tx [9.0].
         cam = kornia.geometry.camera.PinholeCamera(
@@ -775,44 +771,51 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(scaled.cy, torch.tensor([1.5], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(scaled.fx, torch.tensor([50.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_wart_constructor_and_scale_inplace_write_through_to_the_caller_4264(self, device, dtype):
-        # Wart pin for kornia#4264: the class stores the tensors it is constructed from instead of copying
-        # them, so every mutating accessor writes into the CALLER's tensors -- the constructor keeps the
-        # caller's ``intrinsics`` / ``extrinsics`` objects, the ``tx`` setter writes into the caller's
-        # extrinsics, and the in-place ``scale_`` rewrites the caller's intrinsics and image size.
-        # The fourth leg of #4264 -- ``scale()`` handing ``self.extrinsics`` to the new camera by reference --
-        # is repaired, and is pinned the other way up by
-        # ``test_pinhole_camera_scale_does_not_alias_the_source``; it is deliberately not asserted here.
-        # Snippet used to generate expected: cam.intrinsics is K and cam.extrinsics is E -> True; after
-        # ``cam.tx = 5.0`` E[0, 0, 3] reads 5.0; after ``cam.scale_(0.5)`` K[0, 0, 2] reads 2.0 (from 4.0),
-        # K[0, 0, 0] reads 50.0 and the caller's height/width read [3.0] / [4.0] (from [6.0] / [8.0]);
-        # executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype).
-        # Pins the CURRENT behavior; NOT a contract; delete when the rest of #4264 is repaired.
-        # The constructor stores, rather than copies, all four arguments.
+    def test_constructor_owns_input_storage_4264(self, device, dtype):
+        # Regression for kornia#4264: mutating a camera must not write through to constructor inputs.
         K = _k44(device, dtype)
         E = _e44(device, dtype, tx=1.0)
         height = torch.tensor([6.0], device=device, dtype=dtype)
         width = torch.tensor([8.0], device=device, dtype=dtype)
+        K_before, E_before = K.clone(), E.clone()
+        height_before, width_before = height.clone(), width.clone()
         source = kornia.geometry.camera.PinholeCamera(K, E, height, width)
-        assert source.intrinsics is K
-        assert source.extrinsics is E
-        # The tx setter writes into the caller's extrinsics tensor.
-        source.tx = 5.0
-        self.assert_close(E[0, 0, 3], torch.tensor(5.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        # scale_ rewrites the caller's intrinsics and image-size tensors in place.
-        source.scale_(torch.tensor([0.5], device=device, dtype=dtype))
-        self.assert_close(K[0, 0, 2], torch.tensor(2.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(K[0, 0, 0], torch.tensor(50.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(height, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_wart_scale_inplace_rejects_integer_image_size_4265(self, device, dtype):
-        # Wart pin for kornia#4265: the constructor accepts int64 height/width --
-        # that is what the class docstring's own example builds -- and a floating factor promotes them, but the
-        # in-place twin scale_() writes the float result back into the int64 storage and raises.
-        # Snippet used to generate expected: cam.scale_(0.5) on an int64 height executed 2026-09-05 (torch 2.14.0,
-        # every dtype) -> RuntimeError("result type Float can't be cast to the desired output type Long").
-        # Pins the CURRENT behavior; NOT a contract; delete when #4265 is repaired.
+        for owned, caller in (
+            (source.intrinsics, K),
+            (source.extrinsics, E),
+            (source.height, height),
+            (source.width, width),
+        ):
+            assert owned is not caller
+            assert owned.data_ptr() != caller.data_ptr()
+            assert owned.dtype == caller.dtype
+            assert owned.device == caller.device
+            self.assert_close(owned, caller, atol=0.0, rtol=0.0)
+
+        source.tx = 5.0
+        source.ty = 6.0
+        source.tz = 7.0
+        source.scale_(torch.tensor([0.5], device=device, dtype=dtype))
+
+        self.assert_close(source.tx, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(source.ty, torch.tensor([6.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(source.tz, torch.tensor([7.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(source.fx, torch.tensor([50.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(source.cx, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(source.height, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(source.width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+        self.assert_close(K, K_before, atol=0.0, rtol=0.0)
+        self.assert_close(E, E_before, atol=0.0, rtol=0.0)
+        self.assert_close(height, height_before, atol=0.0, rtol=0.0)
+        self.assert_close(width, width_before, atol=0.0, rtol=0.0)
+
+    def test_scale_inplace_promotes_integer_image_size_4265(self, device, dtype):
+        # Regression for kornia#4265: the constructor accepts int64 height/width --
+        # that is what the class docstring's own example builds. A floating factor now
+        # promotes int64 to float in both scale() and scale_() after this repair (#4371).
+        # Integer factor preserves int64. Pins the repaired contract after #4371.
         K = _k44(device, dtype)
         cam = kornia.geometry.camera.PinholeCamera(
             K,
@@ -831,14 +834,20 @@ class TestPinholeCamera(BaseTester):
             self.assert_close(inplace.width, scaled.width)
             self.assert_close(inplace.intrinsics, scaled.intrinsics)
         assert cam.scale(torch.tensor([0.5], device=device, dtype=dtype)).height.is_floating_point()
-        with pytest.raises(RuntimeError, match="can't be cast to the desired output type"):
-            cam.scale_(0.5)
+        # scale_(0.5) now promotes int64 height/width to float instead of raising (#4371).
+        # Both the plain Python float (the issue's own call shape) and a tensor factor promote.
+        inplace = cam.scale_(0.5)
+        assert inplace is cam
+        assert cam.height.is_floating_point()
+        # int64 height/width * Python float 0.5 promotes to the default floating dtype
+        # (e.g. float32), not necessarily the camera's intrinsics dtype. Construct the
+        # expected values from the promoted tensors rather than the fixture dtype.
+        self.assert_close(cam.height, cam.height.new_tensor([3.0]), atol=0.0, rtol=0.0)
+        self.assert_close(cam.width, cam.width.new_tensor([4.0]), atol=0.0, rtol=0.0)
         expected_K = _k44(device, dtype)
         expected_K[:, :2, :3] *= 0.5
-        self.assert_close(K, expected_K, atol=0.0, rtol=0.0)
+        self.assert_close(K, _k44(device, dtype), atol=0.0, rtol=0.0)
         self.assert_close(cam.intrinsics, expected_K, atol=0.0, rtol=0.0)
-        self.assert_close(cam.height, torch.tensor([6], device=device))
-        self.assert_close(cam.width, torch.tensor([8], device=device))
 
     @pytest.mark.parametrize("shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)])
     @pytest.mark.parametrize("parameter", ["intrinsics", "extrinsics"])
@@ -910,6 +919,16 @@ class TestPinholeCamera(BaseTester):
             torch.zeros(0, 1, 3, device=device, dtype=dtype), _k44(device, dtype)[:, :3, :3].contiguous()
         )
         assert empty.shape == (0, 1, 2)
+
+    def test_project_an_empty_batch_with_a_point_axis_4466(self, device, dtype):
+        # Regression for kornia#4466: an empty camera batch projected (0, 3) points but raised
+        # ZeroDivisionError on (0, N, 3), inside transform_points.
+        trans = torch.eye(4, device=device, dtype=dtype).expand(0, 4, 4)
+        empty = torch.zeros(0, device=device, dtype=dtype)
+        camera = kornia.geometry.camera.PinholeCamera(trans, trans, empty, empty)
+
+        assert camera.project(torch.zeros(0, 3, device=device, dtype=dtype)).shape == (0, 2)
+        assert camera.project(torch.zeros(0, 1, 3, device=device, dtype=dtype)).shape == (0, 1, 2)
 
     @pytest.mark.parametrize("batch_sizes", [(1, 2, 1, 1), (0, 1, 0, 0)])
     def test_constructor_rejects_mismatched_batch_sizes_4281(self, batch_sizes, device, dtype):

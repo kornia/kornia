@@ -28,6 +28,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -36,6 +37,8 @@ __all__ = ["CutmixGenerator"]
 
 class CutmixGenerator(RandomGeneratorBase):
     r"""Generate cutmix indexes and lambdas for a batch of inputs.
+
+    See the Convention block on :class:`~kornia.augmentation.RandomCutMixV2`.
 
     Args:
         p (float): probability of applying cutmix.
@@ -49,8 +52,9 @@ class CutmixGenerator(RandomGeneratorBase):
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
-            - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+            - mix_pairs (torch.Tensor): pairing indices with a shape of (num_mix, B).
+            - crop_src (torch.Tensor): cut-box vertices with a shape of (num_mix, B, 4, 2).
+            - image_shape (torch.Tensor): the input ``(H, W)``.
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -76,8 +80,7 @@ class CutmixGenerator(RandomGeneratorBase):
             raise AssertionError(f"`num_mix` must be an integer greater than 1. Got {num_mix}.")
 
     def __repr__(self) -> str:
-        repr = f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
-        return repr
+        return f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if self.beta is None:
@@ -170,5 +173,5 @@ class CutmixGenerator(RandomGeneratorBase):
         return {
             "mix_pairs": mix_pairs.to(device=_device, dtype=torch.long),
             "crop_src": crop_src.floor().to(device=_device, dtype=_dtype),
-            "image_shape": torch.as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
+            "image_shape": _constant_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
         }

@@ -747,6 +747,18 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
+    @pytest.mark.parametrize("range_name", ["degrees", "translate", "scale", "shear"])
+    def test_tensor_range_keeps_placement(self, range_name, device, dtype):
+        ranges = {"degrees": 30.0, "translate": (0.1, 0.1), "scale": (0.8, 1.2), "shear": (0.0, 5.0, 0.0, 5.0)}
+        # Any tensor-valued range, including an optional one, controls returned placement.
+        ranges[range_name] = torch.tensor(ranges[range_name], device="cpu", dtype=dtype)
+        generator = AffineGenerator(**ranges)
+        generator.set_rng_device_and_dtype(device, torch.float32)
+        params = generator((4, 3, 8, 9))
+        for name, value in params.items():
+            assert value.device == torch.device("cpu"), name
+            assert value.dtype == dtype, name
+
     @pytest.mark.parametrize("batch_size", [0, 1, 4])
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [300])
@@ -942,6 +954,31 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         assert_close(res["dst"], expected["dst"])
 
 
+class TestCropIntSizeMessages:
+    # #4417: `RandomCrop(4)` and `RandomResizedCrop(4)` are rejected (whether to accept an int is the window
+    # decision), but the errors used to be about a torch.Tensor shape and `len()` of an int. They now name the
+    # argument, the expected form and the value passed.
+    def test_random_crop_int_size_names_the_argument(self, device, dtype):
+        from kornia.augmentation import RandomCrop
+
+        x = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(AssertionError, match=r"`size` must be a \(height, width\) pair of integers.*Got 4\."):
+            RandomCrop(4)(x)
+
+    def test_random_crop_tensor_size_message_is_unchanged(self, device, dtype):
+        gen = CropGenerator(torch.tensor([[4, 4, 4]], device=device, dtype=dtype))
+        with pytest.raises(AssertionError, match=r"If `size` is a torch.Tensor, it must be shaped as \(B, 2\)"):
+            gen(torch.Size([1, 1, 8, 8]))
+
+    def test_random_resized_crop_int_size_names_the_argument(self):
+        from kornia.augmentation import RandomResizedCrop
+
+        with pytest.raises(
+            TypeError, match=r"`size` on RandomResizedCrop\) must be a \(height, width\).*Got 4 of type int"
+        ):
+            RandomResizedCrop(4)
+
+
 class TestRandomCropSizeGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("size", [(200, 200)])
@@ -1041,6 +1078,23 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 
 
 class TestRandomRectangleGen(RandomGeneratorBaseTests):
+    @staticmethod
+    def _assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, dtype):
+        for name in ("xs", "ys", "widths", "heights", "values"):
+            value = params[name]
+            assert value.shape == (batch_size,), name
+            assert value.device == device, name
+            assert value.dtype == dtype, name
+            assert bool(torch.isfinite(value).all()), name
+        xs = params["xs"].to(torch.float64)
+        ys = params["ys"].to(torch.float64)
+        widths = params["widths"].to(torch.float64)
+        heights = params["heights"].to(torch.float64)
+        assert bool((xs >= 0).all() and (ys >= 0).all())
+        assert bool((widths >= 1).all() and (heights >= 1).all())
+        assert bool((xs + widths <= width).all())
+        assert bool((ys + heights <= height).all())
+
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [300])
@@ -1145,6 +1199,100 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         assert_close(res["ys"], expected["ys"])
         assert_close(res["values"], expected["values"])
 
+    @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_positions_stay_in_bounds(self, device, parameter_dtype):
+        if device.type != "cpu":
+            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
+        batch_size, height, width = 65536, 16, 16
+        scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
+        ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
+        generator = RectangleEraseGenerator(scale=scale, ratio=ratio, value=0.25)
+        assert generator.uniform_sampler.low.dtype == torch.float32
+        assert generator.uniform_sampler.low.device == device
+        torch.manual_seed(0)
+        params = generator(torch.Size([batch_size, 1, height, width]))
+        self._assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, parameter_dtype)
+
+    @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_positions_stay_in_bounds_on_wide_image(self, device, parameter_dtype):
+        if device.type != "cpu":
+            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
+        batch_size, height, width = 1024, 4, 4096
+        scale = torch.tensor((0.001, 0.001), device=device, dtype=parameter_dtype)
+        ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
+        generator = RectangleEraseGenerator(scale=scale, ratio=ratio, value=0.25)
+        torch.manual_seed(0)
+        params = generator(torch.Size([batch_size, 1, height, width]))
+        self._assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, parameter_dtype)
+
+    @pytest.mark.parametrize("parameter_dtype", [torch.float32, torch.float64])
+    def test_float_positions_stay_in_bounds(self, device, parameter_dtype):
+        if device.type != "cpu":
+            pytest.skip("This control records CPU sampler parity.")
+        batch_size, height, width = 32, 11, 19
+        scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
+        ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
+        torch.manual_seed(0)
+        params = RectangleEraseGenerator(scale=scale, ratio=ratio, value=0.25)(
+            torch.Size([batch_size, 1, height, width])
+        )
+        self._assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, parameter_dtype)
+
+    @pytest.mark.parametrize(
+        "requested_sampler_dtype, expected_sampler_dtype",
+        [
+            (torch.float16, torch.float32),
+            (torch.bfloat16, torch.float32),
+            (torch.float32, torch.float32),
+            (torch.float64, torch.float64),
+        ],
+    )
+    def test_tuple_position_sampler_uses_safe_bounds(self, device, requested_sampler_dtype, expected_sampler_dtype):
+        if device.type != "cpu":
+            pytest.skip("This control records CPU sampler parity.")
+        generator = RectangleEraseGenerator(scale=(0.25, 0.25), ratio=(1.0, 1.0))
+        generator.set_rng_device_and_dtype(device, requested_sampler_dtype)
+        assert generator.uniform_sampler.low.dtype == expected_sampler_dtype
+        assert generator.uniform_sampler.high.dtype == expected_sampler_dtype
+        assert generator.uniform_sampler.low.device == device
+        assert generator.uniform_sampler.high.device == device
+
+    @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
+    def test_half_position_sampler_uses_selected_device(self, device, parameter_dtype):
+        generator = RectangleEraseGenerator(
+            scale=torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype),
+            ratio=torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype),
+        )
+        generator.set_rng_device_and_dtype(device, parameter_dtype)
+        assert generator.uniform_sampler.low.dtype == torch.float32
+        assert generator.uniform_sampler.high.dtype == torch.float32
+        assert generator.uniform_sampler.low.device == device
+        assert generator.uniform_sampler.high.device == device
+
+    def test_tuple_positions_stay_in_bounds(self, device):
+        if device.type != "cpu":
+            pytest.skip("This control records CPU sampler parity.")
+        batch_size, height, width = 32, 11, 19
+        torch.manual_seed(0)
+        params = RectangleEraseGenerator(scale=(0.25, 0.25), ratio=(1.0, 1.0), value=0.25)(
+            torch.Size([batch_size, 1, height, width])
+        )
+        self._assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, torch.float32)
+
+    @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_same_on_batch_preserves_rectangle(self, device, parameter_dtype):
+        if device.type != "cpu":
+            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
+        height, width = 16, 16
+        scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
+        ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
+        generator = RectangleEraseGenerator(scale=scale, ratio=ratio, value=0.25)
+        torch.manual_seed(0)
+        params = generator(torch.Size([2, 1, height, width]), same_on_batch=True)
+        self._assert_rectangle_parameters_in_bounds(params, 2, height, width, device, parameter_dtype)
+        for name in ("xs", "ys", "widths", "heights", "values"):
+            assert torch.equal(params[name][0], params[name][1]), name
+
 
 class TestCenterCropGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 2])
@@ -1201,6 +1349,26 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 
 
 class TestRandomMotionBlur(RandomGeneratorBaseTests):
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_shared_kernel_size_4671(self, same_on_batch, device, dtype):
+        torch.manual_seed(0)
+        gen = MotionBlurGenerator(
+            (3, 9),
+            torch.tensor([-45.0, 45.0], device=device, dtype=dtype),
+            torch.tensor([-1.0, 1.0], device=device, dtype=dtype),
+        )
+        params = gen(torch.Size([8]), same_on_batch=same_on_batch)
+        sizes = params["ksize_factor"]
+        assert sizes.shape == (8,)
+        assert sizes.device == device
+        assert sizes.dtype == torch.int32
+        assert sizes.unique().numel() == 1
+        for name in ("angle_factor", "direction_factor"):
+            assert params[name].shape == (8,)
+            assert params[name].device == device
+            assert params[name].dtype == dtype
+            assert (params[name].unique().numel() == 1) == same_on_batch
+
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("kernel_size", [3, (3, 5)])
     @pytest.mark.parametrize("angle", [torch.tensor([10, 30])])

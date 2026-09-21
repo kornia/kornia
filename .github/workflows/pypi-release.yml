@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -33,6 +34,7 @@ jobs:
 
   upload-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build
     if: github.event_name == 'release'
     permissions:
@@ -51,6 +53,7 @@ jobs:
 
   publish-pypi:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build
     if: github.event_name == 'release'
     permissions:

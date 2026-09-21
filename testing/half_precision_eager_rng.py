@@ -149,7 +149,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
         (
             *_audited(
                 "tests/augmentation/container/test_augmentation_sequential.py",
-                48,
+                49,
                 "torch.randn",
                 2,
                 (
@@ -159,7 +159,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/augmentation/test_param_validation.py",
-                110,
+                111,
                 "torch.rand",
                 1,
                 ("tests/augmentation/test_param_validation.py::TestParamValidation::test_tuple_range_reader_errors",),
@@ -188,7 +188,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/geometry/subpix/test_dsnt.py",
-                73,
+                112,
                 "torch.randn",
                 1,
                 (

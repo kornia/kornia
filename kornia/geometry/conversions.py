@@ -181,30 +181,20 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
           ``phi = -170`` degrees rotated by ``theta = 30`` returns
           ``phi = +160``, not ``-200``. At the origin ``phi`` carries no
           direction and the relation does not apply
-        - ``rho`` is ``sqrt(x ** 2 + y ** 2 + eps)``, not
-          ``sqrt(x ** 2 + y ** 2)`` — see the warning below
+        - ``rho`` is the Euclidean radius ``sqrt(x ** 2 + y ** 2)``.
+          ``eps`` only protects the gradient near the origin and does not
+          perturb the returned radius
 
-    .. warning::
-        ``eps`` is added *inside* the square root, so the expression evaluated
-        is ``sqrt(x ** 2 + y ** 2 + eps)`` and ``rho`` is biased high. Whether
-        that bias survives the rounding of the working dtype depends on where
-        it is measured. Away from the origin it is usually invisible:
-        ``cart2pol(3., 4.)`` returns ``5.000000001`` in ``float64`` but rounds
-        back to exactly ``5.`` in ``float32`` and ``float16``. At the origin it
-        is the whole answer: ``cart2pol(torch.tensor(0.), torch.tensor(0.))``
-        returns ``rho = 9.9999997e-05`` in ``float32`` and ``1e-04`` in
-        ``float64`` rather than ``0`` (in ``float16``, ``eps`` underflows the
-        sum and ``rho`` is ``0.``). Tracked in
-        `#3939 <https://github.com/kornia/kornia/issues/3939>`_.
+    .. note::
+        ``eps`` defines the neighborhood around the origin where the gradient
+        is stabilized. It does not change the forward value of ``rho``.
 
     Args:
         x: torch.Tensor of arbitrary shape.
         y: torch.Tensor of same arbitrary shape.
-        eps: added inside the square root when computing ``rho``. A positive
-            ``eps`` that is representable in the working dtype keeps the
-            gradient of ``rho`` finite at the origin, where it is ``nan`` with
-            ``eps=0``. The default ``1e-8`` underflows in ``float16`` (see the
-            warning above), so there the origin gradient is still ``nan``.
+        eps: squared-radius threshold used to stabilize the gradient near the
+            origin. It does not perturb the forward value of ``rho``. The
+            default ``1e-8`` underflows in ``float16``.
 
     Returns:
         - rho: torch.Tensor with same shape as input.
@@ -219,7 +209,10 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
-    rho = torch.sqrt(x**2 + y**2 + eps)
+    squared_radius = x**2 + y**2
+    safe_squared_radius = torch.where(squared_radius > eps, squared_radius, torch.ones_like(squared_radius))
+    safe_rho = torch.sqrt(safe_squared_radius)
+    rho = torch.sqrt(squared_radius).detach() + safe_rho - safe_rho.detach()
     phi = torch.atan2(y, x)
     return rho, phi
 
@@ -403,6 +396,11 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
           function since 0.7.0; it emits a ``DeprecationWarning`` and forwards
           to this function, returning an equal result — see the alias warning
           below
+        - differentiable at the identity rotation. The ``sqrt`` whose
+          derivative is unbounded there never sees its zero radicand, so the
+          gradient is the analytic limit of the surrounding map rather than
+          ``nan``. The guard is elementwise, and away from the identity it
+          moves no forward bit
 
     .. warning::
         Calling any of this module's four deprecated aliases
@@ -441,7 +439,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
     def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor) -> torch.Tensor:
-        theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to ensure no nan gradients
+        theta = torch.sqrt(theta2)
         wxyz = axis_angle / theta.unsqueeze(-1)  # (*, 3)
         wx, wy, wz = wxyz.unbind(dim=-1)  # (*,)
 
@@ -507,13 +505,15 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         return rot
 
     theta2 = (axis_angle * axis_angle).sum(dim=-1)
+    mask = theta2 > 1e-6
 
-    rot_normal = _compute_rotation_matrix(axis_angle, theta2)  # (*,3,3)
+    # Rows on the Taylor branch feed the discarded Rodrigues branch a stand-in theta2 of 1, so its backward never
+    # differentiates sqrt at 0. A clamp floor is no guard here: 1e-12 underflows to 0 in float16.
+    safe_theta2 = torch.where(mask, theta2, torch.ones_like(theta2))
+    rot_normal = _compute_rotation_matrix(axis_angle, safe_theta2)  # (*,3,3)
     rot_taylor = _compute_rotation_matrix_taylor(axis_angle)  # (*,3,3)
 
-    mask = (theta2 > 1e-6)[..., None, None]  # shape (*,1,1)
-
-    rotation_matrix = torch.where(mask, rot_normal, rot_taylor)
+    rotation_matrix = torch.where(mask[..., None, None], rot_normal, rot_taylor)
 
     return rotation_matrix
 
@@ -1460,6 +1460,9 @@ def normalize_pixel_coordinates(
     r"""Map pixel coordinates so that the first and last pixel of each axis become -1 and 1.
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre,
+        normalized-coordinate and ``align_corners`` conventions.
+
         - ``pixel_coordinates`` is :math:`(*, 2)` in ``(x, y)`` order: ``x``
           indexes columns and is scaled by ``width``, ``y`` indexes rows and is
           scaled by ``height``. The positional argument order is the other way
@@ -1558,6 +1561,9 @@ def denormalize_pixel_coordinates(
     The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre,
+        normalized-coordinate and ``align_corners`` conventions.
+
         - the inverse of
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`,
           ``x = (width - 1) * (x_norm + 1) / 2``, with the same ``(x, y)``
@@ -1827,7 +1833,10 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
 
 def normalize_homography(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
+    dst_pix_trans_src_pix: torch.Tensor,
+    dsize_src: tuple[int, int],
+    dsize_dst: tuple[int, int],
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
@@ -1855,9 +1864,10 @@ def normalize_homography(
         - batching is per sample: element ``i`` of the output depends only on
           element ``i`` of the input
         - the :math:`[-1, 1]` frames are
-          :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
-          **corner-aligned** ones, inherited unconditionally — see the
-          convention warning below
+          :func:`~kornia.geometry.conversions.normal_transform_pixel`'s, under
+          the convention ``align_corners`` selects: **corner-aligned** by
+          default (``True``), half-pixel for ``False`` — see the convention
+          warning below
         - the shape guard accepts a :math:`(3, 3)` or a :math:`(B, 3, 3)`
           matrix and nothing else. An unbatched ``(3, 3)`` is promoted to
           ``(1, 3, 3)`` — the returned matrix is batched even though the input
@@ -1943,26 +1953,37 @@ def normalize_homography(
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     .. warning::
-        The :math:`[-1, 1]` frames are corner-aligned
-        (``align_corners=True``) and there is no way to select the half-pixel
-        convention: :func:`~kornia.geometry.conversions.denormalize_homography`,
-        :func:`~kornia.geometry.conversions.normalize_homography3d` and
-        :func:`~kornia.geometry.transform.warp_perspective` all inherit it. That
-        is a separate fact from why an identity ``warp_perspective`` called with
-        ``align_corners=False`` does not reproduce its input — on a 4x4
-        ``arange`` image the maximum deviation is ``11.25``, against ``1.4e-05``
-        at ``align_corners=True``. This function is not that cause: for equal
-        source and destination sizes, an identity homography normalizes back to
-        the identity to within a single ``float32`` rounding step — the
-        deviation is exactly ``0`` at most equal sizes and ``5.96e-08`` at the
-        rest, with the ``4x4`` case above among the latter; which size lands
-        where is a property of the inverse-and-matmul chain and not a rule
-        about the scale, so read the size you care about rather than a pattern
-        off these — and ``warp_perspective``'s
-        ``11.25`` comes from its own ``create_meshgrid``-built, corner-aligned
-        grid being sampled by ``grid_sample`` under the ``align_corners=False``
-        half-pixel convention. Recorded in
+        The :math:`[-1, 1]` frames follow this function's own ``align_corners``,
+        which defaults to ``True`` (corner-aligned) — **not** the ``False`` that
+        :py:func:`torch.nn.functional.grid_sample` and
+        :func:`~kornia.geometry.transform.homography_warp` default to. The
+        value passed here must match the ``grid_sample`` call that consumes the
+        result; a mismatch applies a spurious sub-pixel scale and shift.
+        :func:`~kornia.geometry.transform.warp_perspective`,
+        :func:`~kornia.geometry.transform.warp_affine` and
+        :func:`~kornia.geometry.transform.homography_warp` forward their own
+        flag, so they are consistent under both settings. Before that was the
+        case, an identity ``warp_perspective`` at ``align_corners=False``
+        deviated from its input by ``11.25`` on a 4x4 ``arange`` image, against
+        ``1.4e-05`` at ``align_corners=True``; the cause was the corner-aligned
+        grid being sampled under the half-pixel convention, not this function.
+        For equal source and destination sizes an identity homography
+        normalizes back to the identity to within a single ``float32`` rounding
+        step under either convention — exactly ``0`` at most sizes and
+        ``5.96e-08`` at the rest. *Which* sizes land where differs between the
+        two conventions, because it is a property of the inverse-and-matmul
+        chain rather than of the scale, so read the size you care about rather
+        than a pattern off any list. At the default ``align_corners=True``,
+        swept over equal sizes 2..32, the residual is ``5.96e-08`` at 4, 6, 7,
+        11, 13, 14, 21, 25 and 27 and exactly ``0`` everywhere else; ``4x4`` is
+        in that first group, which is where the ``1.4e-05`` figure above comes
+        from. Recorded in
         `#3904 <https://github.com/kornia/kornia/issues/3904>`_.
+        :func:`~kornia.geometry.conversions.normalize_homography3d` still has
+        no ``align_corners`` parameter and is corner-aligned unconditionally, so
+        :func:`~kornia.geometry.transform.warp_affine3d` keeps this mismatch at
+        ``align_corners=False``. Tracked in
+        `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -1970,6 +1991,11 @@ def normalize_homography(
           is promoted to :math:`(1, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention the
+          normalized :math:`[-1, 1]` coordinates follow, forwarded to
+          :func:`normal_transform_pixel`. Must match the ``align_corners`` of the
+          ``grid_sample`` call that ultimately consumes the result, otherwise the warp
+          picks up a spurious sub-pixel scale and shift.
 
     Returns:
         the normalized homography of shape :math:`(B, 3, 3)`.
@@ -1986,12 +2012,16 @@ def normalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w, align_corners=align_corners).to(
+        dst_pix_trans_src_pix
+    )
 
     # Closed-form 3x3 inverse of the (well-conditioned) pixel-normalization matrix: cusolver-free,
     # so homography normalization runs on the Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
     src_pix_trans_src_norm = _inverse_3x3_closed_form(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w, align_corners=align_corners).to(
+        dst_pix_trans_src_pix
+    )
 
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
@@ -2004,6 +2034,7 @@ def normal_transform_pixel(
     eps: float = 1e-14,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
@@ -2013,9 +2044,11 @@ def normal_transform_pixel(
           ``x`` indexing columns and scaled by ``width`` and ``y`` indexing rows
           and scaled by ``height``. The positional argument order is the other
           way round, ``(height, width)``
-        - the mapping is **corner-aligned**: scale ``2 / (size - 1)``, offset
-          ``-1``, so the pixel *centres* ``0`` and ``size - 1`` map to exactly
-          ``-1`` and ``+1``. ``normal_transform_pixel(4, 5)`` has rows
+        - the mapping is **corner-aligned by default**: scale ``2 / (size - 1)``,
+          offset ``-1``, so the pixel *centres* ``0`` and ``size - 1`` map to
+          exactly ``-1`` and ``+1``. ``align_corners=False`` selects the
+          half-pixel mapping instead; see the ``align_corners`` bullet below.
+          ``normal_transform_pixel(4, 5)`` has rows
           ``[0.5, 0.0, -1.0]`` and ``[0.0, 0.6667, -1.0]``, and sends the pixels
           ``(0, 0)``, ``(4, 3)`` and ``(2, 1.5)`` to ``(-1, -1)``, ``(1, 1)``
           and ``(0, 0)``
@@ -2061,26 +2094,42 @@ def normal_transform_pixel(
           ``2 * 2 ** -10`` rather than ``2 * 2 ** -23`` for ``TF32``
           ``float32`` — which is what the pin enforces there, so such a
           configuration widens the bound rather than exceeding it
-        - the convention is applied **unconditionally** — there is no
-          ``align_corners`` parameter — and
-          :func:`~kornia.geometry.conversions.normalize_homography` and its
-          siblings inherit it; see the convention warning there
+        - the convention is selected by ``align_corners`` (``True`` by
+          default). ``False`` is the half-pixel mapping with scale ``2 / size``
+          and offset ``1 / size - 1``, so that :math:`\pm 1` fall on the outer
+          pixel *edges*. :func:`~kornia.geometry.conversions.normalize_homography`
+          and :func:`~kornia.geometry.conversions.denormalize_homography` forward
+          their own ``align_corners`` here, while
+          :func:`~kornia.geometry.conversions.normal_transform_pixel3d` is still
+          corner-aligned unconditionally; see the convention warning there
         - a singleton axis maps its only pixel to the centre of the normalized
-          range: that axis uses scale ``1`` and offset ``0``. The unit scale is
-          an invertible extension outside the lone valid coordinate, allowing
-          homography composition to handle one-pixel source and destination
-          sizes. Zero and negative sizes raise ``ValueError``
+          range. Under ``align_corners=True`` that axis uses scale ``1`` and
+          offset ``0`` — an invertible extension outside the lone valid
+          coordinate, allowing homography composition to handle one-pixel
+          source and destination sizes. Under ``align_corners=False`` the
+          general formula already lands there (scale ``2``, offset ``0``) and no
+          special case is needed. Zero and negative sizes raise ``ValueError``
         - with ``dtype=None`` the matrix is built from Python floats, so it
           takes ``torch.get_default_dtype()``: ``float32`` by default, and
           ``float64`` under ``torch.set_default_dtype(torch.float64)``. An
           explicit ``dtype=`` overrides that
 
     .. warning::
-        An integer ``dtype`` truncates the scale instead of raising:
-        ``normal_transform_pixel(4, 5, dtype=torch.int64)`` returns
-        ``[[0, 0, -1], [0, 0, -1], [0, 0, 1]]``, which maps every pixel to the
-        constant ``(-1, -1)``. Tracked in
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        An integer ``dtype`` is rejected:
+        ``normal_transform_pixel(4, 5, dtype=torch.int64)`` raises
+        ``ValueError``. The scale ``2 / (size - 1)`` is fractional for every
+        dimension larger than 3 pixels, so an integer dtype would truncate it
+        to ``0`` and return ``[[0, 0, -1], [0, 0, -1], [0, 0, 1]]``, mapping
+        every pixel to the constant ``(-1, -1)``. The accepted dtypes are a
+        property of the function rather than of ``height`` and ``width``: a
+        dimension of 3 pixels or fewer makes the scale integral, and the
+        rejection is uniform rather than depending on the image size. Any
+        floating point dtype, including the ``float8`` formats, and any complex
+        dtype are accepted. The rejection is unconditional — it is not a ``KORNIA_CHECK``, so
+        ``disable_checks()``, ``python -O`` and ``KORNIA_CHECKS=0`` do not
+        switch it off. One clause of
+        `#3959 <https://github.com/kornia/kornia/issues/3959>`_, which stays
+        open for the other functions it covers.
 
     .. note::
         Legacy ``torch.jit.trace`` graphs assume positive runtime sizes because
@@ -2098,6 +2147,11 @@ def normal_transform_pixel(
         eps: deprecated compatibility parameter. It is ignored.
         device: device to place the result on.
         dtype: dtype of the result. ``None`` means ``torch.get_default_dtype()``.
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention to
+          normalize to. ``True`` maps pixel centers :math:`[0, size-1]` to
+          :math:`[-1, 1]`; ``False`` uses the half-pixel mapping
+          :math:`x_{norm} = (2x + 1) / W - 1`, where :math:`\pm 1` are the outer pixel
+          *edges*.
 
     Returns:
         normalized transform with shape :math:`(1, 3, 3)`.
@@ -2111,6 +2165,34 @@ def normal_transform_pixel(
     """
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
+    # A normalization matrix scales by 2/(size - 1), which is fractional for every
+    # dimension larger than 3 pixels. An integer dtype truncates those scales to 0 and
+    # yields a rank-deficient matrix that maps the whole image to a single point. The
+    # accepted dtypes are a property of the function rather than of height and width, so
+    # the rejection is uniform: a dimension of 3 pixels or fewer makes the scale integral
+    # and would survive, and accepting integers only there would make the domain depend
+    # on the image.
+    # Raised directly rather than through KORNIA_CHECK, which disable_checks(),
+    # python -O and KORNIA_CHECKS=0 all switch off: a domain restriction whose
+    # alternative is silently wrong output cannot be optional.
+    # A zero-element probe rather than dtype.is_floating_point, because TorchScript cannot
+    # access dtype attributes and this runs inside the scripted warp_affine path. The probe
+    # answers for any dtype, including the float8 formats and whatever torch adds next. The
+    # membership test in front of it is a fast path, not the domain, and it carries the
+    # complex dtypes so that a `complex32` call does not emit torch's experimental-ComplexHalf
+    # warning from an allocation the caller never asked for.
+    if dtype is not None and dtype not in (
+        torch.float16,
+        torch.float32,
+        torch.float64,
+        torch.bfloat16,
+        torch.complex32,
+        torch.complex64,
+        torch.complex128,
+    ):
+        probe = torch.empty(0, dtype=dtype)
+        if not (probe.is_floating_point() or probe.is_complex()):
+            raise ValueError(f"dtype must be a floating point or complex type. Got {dtype}.")
     if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-14:
         warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel`.", FutureWarning, stacklevel=2)
 
@@ -2118,10 +2200,22 @@ def normal_transform_pixel(
         # Eager and TorchScript take the scalar branch, which is an order of magnitude
         # cheaper on this hot path. Graph capture takes the tensor form below so symbolic
         # sizes retain the singleton decision.
-        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
-        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
-        tx = 0.0 if width == 1 else -1.0
-        ty = 0.0 if height == 1 else -1.0
+        if align_corners:
+            sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+            sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+            tx = 0.0 if width == 1 else -1.0
+            ty = 0.0 if height == 1 else -1.0
+        else:
+            # Half-pixel mapping. It is finite for a size of 1 and lands that pixel on the
+            # centre (scale 2, offset 0), so it needs no singleton special case. The offset is
+            # written as a single division rather than ``1 / size - 1`` so that the graph-capture
+            # branch below, which evaluates it in float32 instead of Python doubles, rounds once
+            # and stays bit-identical to this one; the two-step form differs by one float32 step
+            # at 5 of the first 4999 sizes.
+            sx = 2.0 / width
+            sy = 2.0 / height
+            tx = (1.0 - width) / width
+            ty = (1.0 - height) / height
         tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
     else:
         # Low-precision floating types cannot represent every practical image size exactly
@@ -2137,12 +2231,19 @@ def normal_transform_pixel(
         one = torch.ones((), device=device, dtype=work_dtype)
         zero = torch.zeros((), device=device, dtype=work_dtype)
 
-        # A singleton axis has no extent. Map its only pixel to the normalized centre
-        # while keeping the homogeneous transform invertible for homography composition.
-        sx_t = torch.where(width_t == 1, one, 2.0 / (width_t - 1.0))
-        sy_t = torch.where(height_t == 1, one, 2.0 / (height_t - 1.0))
-        tx_t = torch.where(width_t == 1, zero, -one)
-        ty_t = torch.where(height_t == 1, zero, -one)
+        if align_corners:
+            # A singleton axis has no extent. Map its only pixel to the normalized centre
+            # while keeping the homogeneous transform invertible for homography composition.
+            sx_t = torch.where(width_t == 1, one, 2.0 / (width_t - 1.0))
+            sy_t = torch.where(height_t == 1, one, 2.0 / (height_t - 1.0))
+            tx_t = torch.where(width_t == 1, zero, -one)
+            ty_t = torch.where(height_t == 1, zero, -one)
+        else:
+            # Single division, matching the scalar branch above bit for bit.
+            sx_t = 2.0 / width_t
+            sy_t = 2.0 / height_t
+            tx_t = (one - width_t) / width_t
+            ty_t = (one - height_t) / height_t
 
         # Construct the matrix in one shot (no in-place mutation).
         tr_mat = torch.stack(
@@ -2166,8 +2267,9 @@ def normal_transform_pixel3d(
         - the 3-D counterpart of
           :func:`~kornia.geometry.conversions.normal_transform_pixel`: same
           corner-aligned ``2 / (size - 1)`` scaling with offset ``-1``, same
-          unconditional application, same ``dtype=None`` /
-          ``torch.get_default_dtype()`` rule, and likewise **never batched**.
+          ``dtype=None`` / ``torch.get_default_dtype()`` rule, and likewise
+          **never batched**. Unlike the 2-D function it has no ``align_corners``
+          parameter, so it applies that scaling unconditionally.
           Singleton axes use the same invertible centre mapping, and zero or
           negative sizes raise ``ValueError``. Only the lines below differ
         - the result has shape :math:`(1, 4, 4)` and acts on homogeneous
@@ -2185,11 +2287,12 @@ def normal_transform_pixel3d(
           grid built for one silently permutes axes when fed to the other
 
     .. warning::
-        The integer-``dtype`` behaviour of
-        :func:`~kornia.geometry.conversions.normal_transform_pixel` applies
-        here per axis: ``normal_transform_pixel3d(2, 4, 5,
-        dtype=torch.int64)`` returns a matrix with diagonal ``[0, 0, 2]``.
-        Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        As in :func:`~kornia.geometry.conversions.normal_transform_pixel`, an
+        integer ``dtype`` is rejected: ``normal_transform_pixel3d(2, 4, 5,
+        dtype=torch.int64)`` raises ``ValueError`` rather than returning a
+        matrix with diagonal ``[0, 0, 2]``. Unconditional and uniform over
+        sizes, for the reason given there. One clause of
+        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     .. note::
         Legacy ``torch.jit.trace`` graphs assume positive runtime sizes for the
@@ -2220,6 +2323,23 @@ def normal_transform_pixel3d(
     """
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
+    # As in 2-D: an integer dtype truncates the 2/(size - 1) scales to 0 and returns a
+    # rank-deficient matrix, so the dtype is rejected rather than silently truncated, and
+    # uniformly rather than only for the sizes where the scale happens to be integral.
+    # Raised directly, not through KORNIA_CHECK, which python -O and disable_checks()
+    # switch off; the probe and its fast path are as in 2-D.
+    if dtype is not None and dtype not in (
+        torch.float16,
+        torch.float32,
+        torch.float64,
+        torch.bfloat16,
+        torch.complex32,
+        torch.complex64,
+        torch.complex128,
+    ):
+        probe = torch.empty(0, dtype=dtype)
+        if not (probe.is_floating_point() or probe.is_complex()):
+            raise ValueError(f"dtype must be a floating point or complex type. Got {dtype}.")
     if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-14:
         warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel3d`.", FutureWarning, stacklevel=2)
 
@@ -2269,7 +2389,10 @@ def normal_transform_pixel3d(
 
 
 def denormalize_homography(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
+    dst_pix_trans_src_pix: torch.Tensor,
+    dsize_src: tuple[int, int],
+    dsize_dst: tuple[int, int],
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
 
@@ -2281,12 +2404,13 @@ def denormalize_homography(
           source pixels to destination pixels. Everything else — the
           ``(height, width)`` ``dsize`` tuples, ``dsize_src`` on the right and
           ``dsize_dst`` on the left, ``(x, y, 1)`` column vectors, per-sample
-          batching, the corner-aligned frames — is as documented there, and so
+          batching, the ``align_corners``-selected frames — is as documented
+          there, and so
           is the shape guard: this function carries the same one and rejects
           the same shapes. That function's dtype-pass-through
           (`#3958 <https://github.com/kornia/kornia/issues/3958>`_), int64-handling
           (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
-          function's own clause there) and corner-alignment (`#3904
+          function's own clause there) and ``align_corners`` (`#3904
           <https://github.com/kornia/kornia/issues/3904>`_) warnings apply
           here too. The exception is the closed-form-inverse warning: in eager
           mode this function inverts through ``torch.linalg.inv`` rather than
@@ -2330,6 +2454,9 @@ def denormalize_homography(
           which is promoted to :math:`(1, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention the
+          incoming normalized coordinates follow. Must match the value used to produce
+          them, so that this function inverts :func:`normalize_homography`.
 
     Returns:
         the denormalized homography of shape :math:`(B, 3, 3)`.
@@ -2346,9 +2473,13 @@ def denormalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w, align_corners=align_corners).to(
+        dst_pix_trans_src_pix
+    )
 
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w, align_corners=align_corners).to(
+        dst_pix_trans_src_pix
+    )
     dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
@@ -2365,12 +2496,13 @@ def normalize_homography3d(
           :func:`~kornia.geometry.conversions.normalize_homography`: same
           composition ``N_dst @ H @ inv(N_src)``, same source-to-destination
           direction re-expressed in normalized frames, same ``dsize_src`` on the
-          right and ``dsize_dst`` on the left, and the same corner-aligned
-          frames — with
+          right and ``dsize_dst`` on the left, and corner-aligned frames — with
           :func:`~kornia.geometry.conversions.normal_transform_pixel3d` in place
-          of the 2-D helper. It is **not** the 2-D function with wider matrices,
-          though: the shapes, the missing inverse and — least visibly — the
-          inversion routine all differ, as the bullets below record
+          of the 2-D helper. Unlike the 2-D function it has no ``align_corners``
+          parameter, so its frames are corner-aligned unconditionally. It is
+          **not** the 2-D function with wider matrices, though: the shapes, the
+          missing inverse and — least visibly — the inversion routine all
+          differ, as the bullets below record
         - **the two do not invert their normalization matrix by the same
           routine**, and the difference reaches callers. This function inverts
           with ``torch.linalg.inv``;
@@ -2444,6 +2576,9 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
     """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera intrinsics and
+        pixel-centre conventions used by these coordinates.
+
         - ``point_2d`` is :math:`(*, 2)` in pixel ``(u, v)`` order and
           ``camera_matrix`` is a row-major pinhole :math:`(*, 3, 3)` with
           ``fx = K[0, 0]``, ``fy = K[1, 1]``, ``cx = K[0, 2]``, ``cy = K[1, 2]``
@@ -2489,6 +2624,9 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
     """Denormalize points with intrinsics. Useful for converting normalized camera points back to pixels.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera intrinsics and
+        pixel-centre conventions used by these coordinates.
+
         - the inverse of
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`,
           which documents the ``K`` layout: ``u = x * fx + cx`` and
@@ -2650,6 +2788,9 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
+        frames and camera-to-world extrinsics convention.
+
         - the input is a **camera-to-world** pose :math:`(B, 4, 4)`: its 3x3
           block maps camera axes into the world and its last column is the
           camera centre in world coordinates
@@ -2733,6 +2874,9 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
+        frames and camera-to-world extrinsics convention.
+
         - the split-argument form of
           :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`,
           which documents the flip, the two camera frames, the involution and
@@ -2779,6 +2923,9 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
+        frames and camera-to-world extrinsics convention.
+
         - the same map as
           :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`,
           which carries the canonical block: ``diag(1, -1, -1, 1)`` is its own
@@ -2821,6 +2968,9 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
+        frames and camera-to-world extrinsics convention.
+
         - the split-argument form of
           :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4`
           and, because ``diag(1, -1, -1, 1)`` is its own inverse, bitwise the
@@ -2863,6 +3013,9 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     long-url: https://colmap.github.io/format.html#output-format
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-to-world versus
+        world-to-camera extrinsics and camera-centre semantics.
+
         - the returned pair is exactly ``(R^T, -R^T @ t)`` — the **rigid**
           inverse, computed by transposition and never by a matrix inverse. For
           a proper rotation that is the true inverse as a map, and in floating
@@ -2946,6 +3099,9 @@ def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     r"""Convert worldtocam frame used in Colmap to camtoworld.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-to-world versus
+        world-to-camera extrinsics and camera-centre semantics.
+
         - bitwise the **same function** as
           :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`,
           which carries the canonical block: for a proper rotation
@@ -2992,6 +3148,9 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     Both poses in quaternion representation.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera frames and
+        extrinsics conventions composed by this conversion.
+
         (every measured figure in this block — the 16-digit "as computed"
         literals included — is a sample of one build, torch 2.9.1 on cpu, not
         a bound; trailing digits and turnover points may move with the

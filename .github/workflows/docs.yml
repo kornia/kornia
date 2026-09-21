@@ -45,6 +45,7 @@ jobs:
   docs:
     name: docs
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       # On direct pull_request events the `inputs` context is empty (the workflow_call
       # defaults do NOT apply), so fall back explicitly — otherwise fromJSON('') fails

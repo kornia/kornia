@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover
     from _pytest.runner import CallInfo  # type: ignore[no-redef]
 
 import kornia
+from kornia.core.download import load_state_dict_from_url
 
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
@@ -46,6 +47,7 @@ from testing.half_precision_ci import (
     seed_test_rng,
 )
 from testing.known_failures import mark_known_failures
+from testing.reference_data import TEST_DATA_URLS
 
 try:
     import torch._dynamo
@@ -1044,32 +1046,12 @@ def add_doctest_deps(doctest_namespace):
     doctest_namespace["kornia"] = kornia
 
 
-# Test data commit hashes from kornia/data_test repository
-_DATA_TEST_SHA = {
-    "loftr": "cb8f42bf28b9f347df6afba5558738f62a11f28a",
-    "adalam": "f7d8da661701424babb64850e03c5e8faec7ea62",
-    "disk": "8b98f44abbe92b7a84631ed06613b08fee7dae14",
-    "xfeat": "279e95e411f2d3926953dea3842347242190f4da",
-}
-
-# URLs for test data files
-_TEST_DATA_URLS: dict[str, str] = {
-    "loftr_homo": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['loftr']}/loftr_outdoor_and_homography_data.pt?raw=true",
-    "loftr_fund": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['loftr']}/loftr_indoor_and_fundamental_data.pt?raw=true",
-    "adalam_idxs": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['adalam']}/adalam_test.pt?raw=true",
-    "lightglue_idxs": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['adalam']}/adalam_test.pt?raw=true",
-    "disk_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['disk']}/knchurch_disk.pt?raw=true",
-    "xfeat_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['xfeat']}/xfeat_reference.pt?raw=true",
-    "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
-}
-
-
 @pytest.fixture(scope="session")
 def data(request):
     """Load test data from remote URL.
 
     Use with @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     """
-    if request.param not in _TEST_DATA_URLS:
-        raise ValueError(f"Unknown test data: {request.param}. Available: {list(_TEST_DATA_URLS.keys())}")
-    return torch.hub.load_state_dict_from_url(_TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))
+    if request.param not in TEST_DATA_URLS:
+        raise ValueError(f"Unknown test data: {request.param}. Available: {list(TEST_DATA_URLS.keys())}")
+    return load_state_dict_from_url(TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))

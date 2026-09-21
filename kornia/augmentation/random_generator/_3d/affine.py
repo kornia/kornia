@@ -26,11 +26,14 @@ from kornia.augmentation.utils import (
     _singular_range_check,
     _tuple_range_reader,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 
 class AffineGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ```3d affine``` transformation random affine transform.
+
+    See the Convention block on :class:`~kornia.augmentation.RandomAffine3D`.
 
     Args:
         degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
@@ -56,7 +59,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.
-            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
+            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (shear[i, 0], shear[i, 1])
             will be applied.
 
     Returns:
@@ -64,7 +67,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             - translations (torch.Tensor): element-wise translations with a shape of (B, 3).
             - center (torch.Tensor): element-wise center with a shape of (B, 3).
             - scale (torch.Tensor): element-wise scales with a shape of (B, 3).
-            - angle (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
+            - angles (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
             - sxy (torch.Tensor): element-wise x-y-facet shears with a shape of (B,).
             - sxz (torch.Tensor): element-wise x-z-facet shears with a shape of (B,).
             - syx (torch.Tensor): element-wise y-x-facet shears with a shape of (B,).
@@ -117,14 +120,13 @@ class AffineGenerator3D(RandomGeneratorBase):
         self.scale = scale
 
     def __repr__(self) -> str:
-        repr = f"degrees={self.degrees}, shears={self.shears}, translate={self.translate}, scale={self.scale}"
-        return repr
+        return f"degrees={self.degrees}, shears={self.shears}, translate={self.translate}, scale={self.scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
+        degrees = _tuple_range_reader(self.degrees, 3, device, dtype, "degrees", (-360, 360))
         shear: Optional[torch.Tensor] = None
         if self.shears is not None:
-            shear = _tuple_range_reader(self.shears, 6, device, dtype)
+            shear = _tuple_range_reader(self.shears, 6, device, dtype, "shears", (-360, 360))
             self.sxy_sampler = UniformDistribution(shear[0, 0], shear[0, 1], validate_args=False)
             self.sxz_sampler = UniformDistribution(shear[1, 0], shear[1, 1], validate_args=False)
             self.syx_sampler = UniformDistribution(shear[2, 0], shear[2, 1], validate_args=False)
@@ -213,7 +215,9 @@ class AffineGenerator3D(RandomGeneratorBase):
             translations = torch.zeros((batch_size, 3), device=_device, dtype=_dtype)
 
         # center should be in x,y,z
-        center: torch.Tensor = torch.tensor([width, height, depth], device=_device, dtype=_dtype).view(1, 3) / 2.0 - 0.5
+        center: torch.Tensor = (
+            _constant_tensor([width, height, depth], device=_device, dtype=_dtype).view(1, 3) / 2.0 - 0.5
+        )
         center = center.expand(batch_size, -1)
 
         if self.shears is not None:
@@ -224,7 +228,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             szx = _adapted_rsampling((batch_size,), self.szx_sampler, same_on_batch)
             szy = _adapted_rsampling((batch_size,), self.szy_sampler, same_on_batch)
         else:
-            sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
+            sxy = sxz = syx = syz = szx = szy = torch.zeros(batch_size, device=_device, dtype=_dtype)
 
         return {
             "translations": torch.as_tensor(translations, device=_device, dtype=_dtype),

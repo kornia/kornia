@@ -24,6 +24,24 @@ from testing.base import BaseTester
 
 
 class TestNormalize(BaseTester):
+    @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (2, 3, 2, 4, 5)])
+    def test_noncontiguous(self, shape, device, dtype):
+        data = torch.rand(shape, device=device, dtype=dtype).transpose(-1, -2)
+        mean = torch.tensor([0.25, 0.5, 0.75], device=device, dtype=dtype)
+        std = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype)
+        broadcast_shape = (1, 3) + (1,) * (data.ndim - 2)
+        expected = (data - mean.reshape(broadcast_shape)) / std.reshape(broadcast_shape)
+
+        assert not data.is_contiguous()
+        self.assert_close(kornia.enhance.normalize(data, mean, std), expected)
+        self.assert_close(kornia.enhance.Normalize(mean, std)(data), expected)
+
+    def test_noncontiguous_gradcheck(self, device):
+        data = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64).transpose(-1, -2)
+        mean = torch.tensor([0.25, 0.5], device=device, dtype=torch.float64)
+        std = torch.tensor([0.5, 2.0], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.enhance.Normalize(mean, std), (data,))
+
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
@@ -373,6 +391,21 @@ class TestDenormalize(BaseTester):
 
 
 class TestNormalizeMinMax(BaseTester):
+    @pytest.mark.parametrize("shape", [(4, 5), (3, 4, 5), (2, 3, 4, 5), (2, 2, 3, 4, 5)])
+    def test_noncontiguous(self, shape, device, dtype):
+        data = torch.rand(shape, device=device, dtype=dtype).transpose(-1, -2)
+        low = data.amin(dim=(-2, -1), keepdim=True)
+        high = data.amax(dim=(-2, -1), keepdim=True)
+        expected = 3.0 * (data - low) / (high - low + 1e-6) - 1.0
+
+        assert not data.is_contiguous()
+        actual = kornia.enhance.normalize_min_max(data, min_val=-1.0, max_val=2.0)
+        self.assert_close(actual, expected)
+
+    def test_noncontiguous_gradcheck(self, device):
+        data = torch.arange(12, device=device, dtype=torch.float64).reshape(1, 1, 3, 4).transpose(-1, -2)
+        self.gradcheck(kornia.enhance.normalize_min_max, (data,))
+
     def test_smoke(self, device, dtype):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         assert kornia.enhance.normalize_min_max(x) is not None

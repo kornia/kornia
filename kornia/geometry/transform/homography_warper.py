@@ -82,6 +82,9 @@ class HomographyWarper(BaseWarper):
         X_{src} = H_{src}^{\{dst\}} * X_{dst}
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
+        coordinates and sampling conventions.
+
         - align_corners: ``False`` by default, matching :func:`homography_warp`
         - See the convention block of :func:`homography_warp`.
 
@@ -112,8 +115,11 @@ class HomographyWarper(BaseWarper):
         self.padding_mode = padding_mode
         self.normalized_coordinates = normalized_coordinates
         self.align_corners = align_corners
-        # create base grid to compute the flow
-        self.grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
+        # create base grid to compute the flow, under the same normalization convention that
+        # forward() will hand to grid_sample, so the precomputed path matches the direct one
+        self.grid = create_meshgrid(
+            height, width, normalized_coordinates=normalized_coordinates, align_corners=align_corners
+        )
 
         # initialice the warped destination grid
         self._warped_grid = None

@@ -190,6 +190,77 @@ class TestAugmentationBase2D(BaseTester):
             self.gradcheck(augmentation, ((input, input_param)))
 
 
+class TestAugmentationPartialTo(BaseTester):
+    @pytest.mark.parametrize("generator_only", [False, True])
+    def test_invalid_dtype_preserves_samplers(self, device, dtype, generator_only):
+        aug = K.RandomAffine(30.0, p=1.0).to(device=device, dtype=dtype)
+        generator = aug._param_generator
+        module = generator if generator_only else aug
+        sampler = generator.degree_sampler
+        with pytest.raises(TypeError, match="only accepts floating point or complex dtypes"):
+            module.to(torch.int64)
+        assert module.device == device
+        assert module.dtype == dtype
+        assert generator.degree_sampler is sampler
+        assert generator.dtype == dtype
+        assert generator((4, 3, 8, 9))["angle"].is_floating_point()
+
+    @pytest.mark.parametrize("generator_only", [False, True])
+    def test_move_builds_samplers_once(self, device, generator_only):
+        aug = K.RandomAffine(30.0, p=1.0)
+        generator = aug._param_generator
+        module = generator if generator_only else aug
+        # Use the unindexed device spelling to exercise CUDA's canonicalization to cuda:0.
+        with patch.object(generator, "make_samplers", wraps=generator.make_samplers) as make_samplers:
+            module.to(device.type, dtype=torch.float64 if device.type != "mps" else torch.float16)
+        assert make_samplers.call_count == 1
+
+    @pytest.mark.parametrize("move", ["to", "convenience", "container"])
+    def test_generator_moves_buffers_and_samplers(self, device, move):
+        generator = K.RandomRotation((10.0, 20.0))._param_generator
+        target_dtype = torch.float16 if device.type == "mps" else torch.float64
+        if move == "to":
+            assert generator.to(device=device, dtype=target_dtype) is generator
+        elif move == "convenience":
+            if device.type in ("cpu", "cuda"):
+                getattr(generator, device.type)()
+            else:
+                generator.to(device)
+            generator.half() if target_dtype == torch.float16 else generator.double()
+        else:
+            torch.nn.Sequential(generator).to(device=device, dtype=target_dtype)
+        assert generator.device == device
+        assert generator.dtype == target_dtype
+        assert generator.degrees.device == device
+        assert generator.degrees.dtype == target_dtype
+        assert generator.sampler_dict["degrees"].low.device == device
+        assert generator.sampler_dict["degrees"].low.dtype == target_dtype
+
+    @pytest.mark.parametrize("generator_only", [False, True])
+    def test_dtype_only_to_preserves_device(self, device, dtype, generator_only):
+        aug = K.RandomAffine(30.0, p=1.0)
+        module = aug._param_generator if generator_only else aug
+        module.to(device=device, dtype=torch.float32)
+        module.to(dtype=dtype)
+        assert module.device == device
+        assert module.dtype == dtype
+        generator = module if generator_only else module._param_generator
+        assert generator.degree_sampler.low.device == device
+        assert generator.degree_sampler.low.dtype == dtype
+
+    @pytest.mark.parametrize("generator_only", [False, True])
+    def test_device_only_to_preserves_dtype(self, device, dtype, generator_only):
+        aug = K.RandomAffine(30.0, p=1.0)
+        module = aug._param_generator if generator_only else aug
+        module.to(dtype=dtype)
+        module.to(device=device)
+        assert module.device == device
+        assert module.dtype == dtype
+        generator = module if generator_only else module._param_generator
+        assert generator.degree_sampler.low.device == device
+        assert generator.degree_sampler.low.dtype == dtype
+
+
 class TestGeometricAugmentationBase2D:
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
     def test_autocast(self, batch_prob, device, dtype):
@@ -333,9 +404,6 @@ class TestDeviceAgnosticAugmentationParameters(BaseTester):
         self.assert_close(matrix[1], torch.eye(4, device=device, dtype=dtype))
 
     def test_mix_augmentation_blends_cpu_params_with_accelerator_input(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RandomMixUpV2 promotes half inputs because mixup_lambdas are float32")
-
         input = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 2, 2)
         augmentation = RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input"])
         params = self._cpu_partial_batch_params(augmentation, input)
@@ -546,7 +614,10 @@ class TestConventionAugmentationBase2D(BaseTester):
         rows = []
         for seed in range(8):
             torch.manual_seed(seed)
-            kwargs = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            kwargs: dict = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            # PatchMix's default patch_size of 16 does not fit this 6x8 input.
+            if augmentation_cls is K.PatchMix:
+                kwargs = {"patch_size": 4}
             params = augmentation_cls(p=0.5, **kwargs).forward_parameters((4, 3, 6, 8))
             rows.append(params["batch_prob"].tolist())
         assert all(len(set(row)) == 1 for row in rows)
@@ -728,13 +799,15 @@ class TestConventionAugmentationBase2D(BaseTester):
                 float_mask.bool(), augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
             )
 
-    def test_wart_intensity_container_boxes_passthrough_but_direct_dispatch_raises_4480(self, device, dtype):
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_intensity_boxes_pass_through_direct_dispatch_and_container_4480(self, device, dtype, p):
         image = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         boxes = Boxes.from_tensor(torch.tensor([[[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
-        augmentation = K.RandomInvert(p=1.0)
+        augmentation = K.RandomInvert(p=p)
         augmentation(image)
-        with pytest.raises(NotImplementedError):
-            augmentation.transform_boxes(boxes, augmentation._params, augmentation.flags)
+        direct = augmentation.transform_boxes(boxes, augmentation._params, augmentation.flags)
+        assert direct.mode == boxes.mode
+        self.assert_close(direct.data, boxes.data)
         container = K.AugmentationSequential(K.RandomInvert(p=1.0), data_keys=["input", "bbox_xyxy"])
         _, output_boxes = container(image, boxes)
         self.assert_close(output_boxes.data, boxes.data)

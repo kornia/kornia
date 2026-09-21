@@ -47,7 +47,9 @@ def elastic_transform2d(
           grid (positive x-noise shifts image content left)
         - displacements are smoothed with a Gaussian (``kernel_size``,
           ``sigma``) and scaled by ``alpha``
-        - align_corners: ``False`` by default
+        - align_corners: ``False`` by default; it selects the normalization of the sampling
+          grid as well as the ``grid_sample`` call, so zero ``noise`` is an identity under
+          either setting
         - padding_mode: ``'zeros'`` by default
 
     Args:

@@ -735,7 +735,8 @@ add("filters.Sobel", g, KF.Sobel(), [IMG])
 add("filters.Sobel[unnormalized]", g, KF.Sobel(normalized=False), [IMG])
 add("filters.Laplacian", g, KF.Laplacian(5), [IMG])
 add("filters.Laplacian[unnormalized,replicate]", g, KF.Laplacian(3, border_type="replicate", normalized=False), [IMG])
-add("filters.BoxBlur", g, KF.BoxBlur((3, 5)), [IMG])
+# Preserve both paths covered by the historical snapshot after the default changes.
+add("filters.BoxBlur", g, KF.BoxBlur((3, 5), separable=False), [IMG])
 add("filters.BoxBlur[separable]", g, KF.BoxBlur((3, 5), separable=True), [IMG])
 add("filters.GaussianBlur2d", g, KF.GaussianBlur2d((5, 5), (1.5, 1.5)), [IMG])
 add(

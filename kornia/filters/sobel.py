@@ -55,10 +55,33 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
-    # allocate kernel
-    kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
-    if normalized:
-        kernel = normalize_kernel2d(kernel)
+    # The first-order Sobel kernels are fixed. Construct them directly instead
+    # of allocating one kernel, transposing it, stacking both directions, and
+    # normalizing at runtime. Keep the generic construction for integer and
+    # complex inputs, whose division semantics are part of the public API.
+    if mode == "sobel" and order == 1 and input.is_floating_point():
+        if normalized:
+            kernel = torch.tensor(
+                [
+                    [[-0.125, 0.0, 0.125], [-0.25, 0.0, 0.25], [-0.125, 0.0, 0.125]],
+                    [[-0.125, -0.25, -0.125], [0.0, 0.0, 0.0], [0.125, 0.25, 0.125]],
+                ],
+                device=input.device,
+                dtype=input.dtype,
+            )
+        else:
+            kernel = torch.tensor(
+                [
+                    [[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]],
+                    [[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]],
+                ],
+                device=input.device,
+                dtype=input.dtype,
+            )
+    else:
+        kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
 
     # prepare kernel
     b, c, h, w = input.shape

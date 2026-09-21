@@ -123,6 +123,20 @@ class TestDepthTo3d(BaseTester):
         out_uncached = kornia.geometry.depth.depth_to_3d_v2(depth, camera_matrix)
         self.assert_close(out_cached, out_uncached)
 
+    @pytest.mark.parametrize("normalize_points", [False, True])
+    def test_jit(self, normalize_points, device, dtype):
+        depth = torch.rand(2, 1, 3, 4, device=device, dtype=dtype).add_(1)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
+        expected = kornia.geometry.depth.depth_to_3d(depth, camera_matrix, normalize_points).permute(0, 2, 3, 1)
+
+        grid_jit = torch.jit.script(kornia.geometry.unproject_meshgrid)
+        grid = grid_jit(3, 4, camera_matrix, normalize_points, device, dtype)
+        self.assert_close(grid * depth[:, 0, ..., None], expected)
+
+        depth_to_3d_jit = torch.jit.script(kornia.geometry.depth.depth_to_3d_v2)
+        self.assert_close(depth_to_3d_jit(depth[:, 0], camera_matrix, normalize_points), expected)
+        self.assert_close(depth_to_3d_jit(depth[:, 0], camera_matrix, normalize_points, grid), expected)
+
     def test_unproject_meshgrid(self, device, dtype):
         # TODO: implement me with batch
         camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
@@ -531,6 +545,17 @@ class TestDepthToNormals(BaseTester):
 
 
 class TestWarpFrameDepth(BaseTester):
+    @pytest.mark.parametrize("normalize_points", [False, True])
+    def test_jit(self, normalize_points, device, dtype):
+        image = torch.rand(2, 3, 3, 4, device=device, dtype=dtype)
+        depth = torch.rand(2, 1, 3, 4, device=device, dtype=dtype).add_(1)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
+        transform = torch.eye(4, device=device, dtype=dtype).repeat(2, 1, 1)
+        op = kornia.geometry.depth.warp_frame_depth
+        op_jit = torch.jit.script(op)
+        expected = op(image, depth, transform, camera_matrix, normalize_points)
+        self.assert_close(op_jit(image, depth, transform, camera_matrix, normalize_points), expected)
+
     def test_smoke(self, device, dtype):
         image_src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         depth_dst = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
@@ -1058,7 +1083,9 @@ class TestDepthFromDisparity(BaseTester):
     def test_scalar_camera_parameters_reject_invalid(self, parameter_name, device, dtype):
         disparity = torch.ones(2, 1, 3, 4, device=device, dtype=dtype)
         parameters = {"baseline": 1.0, "focal": 1.0}
-        for shape in [(0,), (2,), (1, 1)]:
+        # (2,) would be a valid per-batch-element parameter for this batch-2 disparity, so the mismatched
+        # sizes are 0 and 3; (1, 1) has the wrong rank for either form.
+        for shape in [(0,), (3,), (1, 1)]:
             parameters[parameter_name] = torch.ones(shape, device=device, dtype=dtype)
             with pytest.raises(ShapeError):
                 kornia.geometry.depth.depth_from_disparity(disparity, **parameters)
@@ -1111,10 +1138,10 @@ class TestDepthFromDisparity(BaseTester):
         points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
         assert points3d.shape == shape
 
-    @pytest.mark.parametrize("parameter_shape", [(), (1,)])
+    @pytest.mark.parametrize("parameter_shape", [(), (1,), (2,)])
     def test_gradcheck(self, device, parameter_shape):
-        # generate input data
-        disparity = torch.rand(1, 1, 3, 4, device=device, dtype=torch.float64)
+        # generate input data; a batch of 2 so the (2,) case is a per-batch-element parameter
+        disparity = torch.rand(2, 1, 3, 4, device=device, dtype=torch.float64)
 
         baseline = torch.rand(parameter_shape, device=device, dtype=torch.float64)
 
@@ -1150,26 +1177,64 @@ class TestDepthFromDisparity(BaseTester):
             torch.full((1, 1, 1, 1), 25.0, device=device, dtype=dtype),
         )
 
-    def test_wart_depth_from_disparity_rejects_a_batched_baseline_4272(self, device, dtype):
-        # Per-batch calibration is still unsupported; scalar forms are covered by
-        # test_scalar_camera_parameters_4272. Delete this wart pin when #4272 adds batching.
-        disparity = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
-        focal = torch.tensor([100.0], device=device, dtype=dtype)
-        with pytest.raises(ShapeError, match="expected 1, got 2"):
-            depth_from_disparity(disparity, torch.tensor([0.5, 0.5], device=device, dtype=dtype), focal)
-        with pytest.raises(ShapeError, match="expected 1, got 2"):
-            depth_from_disparity(
-                disparity,
-                torch.tensor([0.5], device=device, dtype=dtype),
-                torch.tensor([100.0, 100.0], device=device, dtype=dtype),
-            )
-        assert depth_from_disparity(disparity, 1.0, 100.0).shape == (1, 1, 2, 3)
-        assert depth_from_disparity(disparity, torch.tensor([0.5], device=device, dtype=dtype), focal).shape == (
-            1,
+    @pytest.mark.parametrize("disparity_shape", [(2, 1, 2, 3), (2, 2, 3)])
+    @pytest.mark.parametrize("per_batch", ["baseline", "focal", "both"])
+    def test_convention_per_batch_camera_parameters_4272(self, disparity_shape, per_batch, device, dtype):
+        # Convention pin for kornia#4272: a (B,) baseline or focal pairs element b with disparity[b]. Until this
+        # landed only a shared value was accepted, and a (B,) tensor raised ShapeError. The expected result is
+        # built from the path that already worked, one sample at a time with (1,) parameters, so this asserts
+        # the pairing itself rather than a literal. The two samples use different camera values so a swapped or
+        # shared pairing gives different numbers; both a (B, 1, H, W) and a (B, H, W) disparity are covered.
+        disparity = torch.arange(1.0, 13.0, device=device, dtype=dtype).reshape(disparity_shape)
+        baselines = torch.tensor([0.5, 2.0], device=device, dtype=dtype)
+        focals = torch.tensor([100.0, 30.0], device=device, dtype=dtype)
+        shared_baseline = torch.tensor([0.5], device=device, dtype=dtype)
+        shared_focal = torch.tensor([100.0], device=device, dtype=dtype)
+
+        baseline = baselines if per_batch in ("baseline", "both") else shared_baseline
+        focal = focals if per_batch in ("focal", "both") else shared_focal
+        depth = depth_from_disparity(disparity, baseline, focal)
+
+        per_sample = torch.cat(
+            [
+                depth_from_disparity(
+                    disparity[b : b + 1],
+                    baselines[b : b + 1] if per_batch in ("baseline", "both") else shared_baseline,
+                    focals[b : b + 1] if per_batch in ("focal", "both") else shared_focal,
+                )
+                for b in range(2)
+            ]
+        )
+        assert depth.shape == disparity.shape
+        self.assert_close(depth, per_sample, atol=0.0, rtol=0.0)
+        # the two samples use different camera values, so a swapped pairing gives different numbers and the
+        # comparison above genuinely discriminates the pairing (flip is a no-op on the shared (1,) parameter)
+        swapped = depth_from_disparity(disparity, baseline.flip(0), focal.flip(0))
+        assert not torch.allclose(depth, swapped)
+
+    def test_convention_per_batch_camera_parameters_must_match_the_batch_4272(self, device, dtype):
+        # A (B,) parameter is only meaningful against a batch of the same size. A mismatched size raises, and so
+        # does a (B,) parameter for a disparity with no batch axis, where it would otherwise broadcast against
+        # the width instead. The size-1 and scalar forms are unaffected, and an empty batch stays empty.
+        disparity = torch.ones(2, 1, 2, 3, device=device, dtype=dtype)
+        three = torch.ones(3, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match="expected 2, got 3"):
+            depth_from_disparity(disparity, three, 100.0)
+        with pytest.raises(ShapeError, match="expected 2, got 3"):
+            depth_from_disparity(disparity, 0.5, three)
+        with pytest.raises(ShapeError, match="expected 1, got 3"):
+            depth_from_disparity(torch.ones(2, 3, device=device, dtype=dtype), three, 100.0)
+
+        assert depth_from_disparity(disparity, 1.0, 100.0).shape == (2, 1, 2, 3)
+        assert depth_from_disparity(disparity, torch.tensor([0.5], device=device, dtype=dtype), 100.0).shape == (
+            2,
             1,
             2,
             3,
         )
+        empty = torch.ones(0, 1, 2, 3, device=device, dtype=dtype)
+        nothing = torch.ones(0, device=device, dtype=dtype)
+        assert depth_from_disparity(empty, nothing, nothing).shape == (0, 1, 2, 3)
 
 
 class TestDepthFromPlaneEquation(BaseTester):

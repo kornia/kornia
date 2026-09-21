@@ -30,7 +30,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
 
     Args:
         p: probability of applying the transformation.
-        kernel_size: motion kernel size (odd and positive).
+        kernel_size: motion kernel size (odd and at least 3).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
         angle: Range of degrees to select from.
@@ -53,13 +53,26 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.IntensityAugmentationBase3D` for the shared 3D intensity contract.
+
+        - ``angle`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
+          roll turns the blur kernel clockwise as displayed, following :class:`RandomRotation3D` and opposite to
+          the 2D :class:`~kornia.augmentation.RandomMotionBlur`, whose positive angle turns it counter-clockwise
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_). Its default resampling is
+          nearest-neighbour, unlike the geometric 3D defaults.
+        - an integer ``kernel_size`` is one odd scalar applied to all three spatial axes. A tuple ``kernel_size``
+          is drawn once per call and shared across the batch, and each odd size inside the range is equally
+          likely, bounds included, so ``(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws ``3, 5, ..., 19``.
+          A range holding no odd size is rounded **up** out of the requested range instead, so ``(4, 4)`` draws
+          ``5``; a reversed pair such as ``(20, 3)`` raises a ``ValueError`` at construction.
+        - this class fixes ``p_batch=1``; its ``p`` remains the per-sample gate.
 
     Examples:
         >>> import torch
