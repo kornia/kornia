@@ -49,8 +49,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         fill: Pixel fill value for constant fill. Default is 0. If a tuple of
             length 3, it is used to fill R, G, B channels respectively.
             This value is only used when the padding_mode is constant.
-        padding_mode: Type of padding, passed to F.pad. Should be: constant, reflect, replicate or circular.
-            Default is constant.
+        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
