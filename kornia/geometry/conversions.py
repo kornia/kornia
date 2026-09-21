@@ -640,7 +640,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     trace: torch.Tensor = m00 + m11 + m22
 
-    # eps floors the radicand instead of being added to it, so it never shifts a valid result (#3951).
+    # eps floors the radicand instead of being added to it, so it never shifts a valid result.
     radicand_floor: float = max(eps, 0.0)
 
     def _safe_sqrt_sq(r: torch.Tensor) -> torch.Tensor:
