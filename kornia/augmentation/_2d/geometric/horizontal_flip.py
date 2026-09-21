@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 # from torch import Tensor (use torch.Tensor instead)
+from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.geometry.transform import hflip
 
@@ -46,6 +47,14 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for input, sampling, and replay,
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+          :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+          Coordinates are inclusive pixel centers: a selected flip maps
+          ``(x, y)`` to ``(W - 1 - x, y)`` and applies the exact discrete :func:`~kornia.geometry.transform.hflip`
+          operation, without resampling.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.hflip`.
@@ -77,6 +86,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     # it until `.transform_matrix` is read (see RigidAffineAugmentationBase2D).
     _compute_matrix_lazily = True
 
+    @_input_metadata_only
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:

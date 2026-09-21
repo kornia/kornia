@@ -144,13 +144,18 @@ def affine(
 
     .. image:: _static/img/warp_affine.png
 
+    Convention:
+        - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         tensor: The image tensor to be warped in shapes of
-            :math:`(H, W)`, :math:`(D, H, W)` and :math:`(B, C, H, W)`.
+            :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         matrix: The 2x3 affine transformation matrix.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -197,14 +202,19 @@ def affine3d(
 ) -> torch.Tensor:
     r"""Apply an affine transformation to the 3d volume.
 
+    Convention:
+        - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 3, 4)`
+        - align_corners: ``False`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         tensor: The image tensor to be warped in shapes of
-            :math:`(D, H, W)`, :math:`(C, D, H, W)` and :math:`(B, C, D, H, W)`.
+            :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`.
         matrix: The affine transformation matrix with shape :math:`(B, 3, 4)`.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-         `` 'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+         `` 'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -247,7 +257,7 @@ def affine3d(
 def rotate(
     tensor: torch.Tensor,
     angle: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: Union[torch.Tensor, None] = None,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
@@ -255,6 +265,12 @@ def rotate(
     r"""Rotate the tensor anti-clockwise about the center.
 
     .. image:: _static/img/rotate.png
+
+    Convention:
+        - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
+        - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -266,14 +282,14 @@ def rotate(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
         The rotated tensor with shape as input.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/rotate_affine.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/rotate_affine.html>`__.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -314,12 +330,18 @@ def rotate3d(
     yaw: torch.Tensor,
     pitch: torch.Tensor,
     roll: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: Union[torch.Tensor, None] = None,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Rotate 3D the tensor anti-clockwise about the centre.
+
+    Convention:
+        - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
+          slice (``z = 0``); defaults to the tensor center
+        - align_corners: ``False`` by default
+        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
@@ -330,12 +352,12 @@ def rotate3d(
         roll: The roll angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
-          must have a shape of (B, 2), where B is batch size and last
-          dimension contains cx and cy.
+          must have a shape of (B, 3), where B is batch size and last
+          dimension contains x, y and z.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -387,6 +409,11 @@ def translate(
 
     .. image:: _static/img/translate.png
 
+    Convention:
+        - ``translation`` is ``(dx, dy)`` in pixels
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
         translation: tensor containing the amount of pixels to
@@ -395,7 +422,7 @@ def translate(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -428,7 +455,7 @@ def translate(
 def scale(
     tensor: torch.Tensor,
     scale_factor: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: Union[torch.Tensor, None] = None,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
@@ -436,6 +463,11 @@ def scale(
     r"""Scale the tensor by a factor.
 
     .. image:: _static/img/scale.png
+
+    Convention:
+        - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -449,7 +481,7 @@ def scale(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -498,6 +530,11 @@ def shear(
 
     .. image:: _static/img/shear.png
 
+    Convention:
+        - ``shear`` is ``(shx, shy)``
+        - align_corners: ``False`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
         shear: tensor containing the angle to shear
@@ -506,7 +543,7 @@ def shear(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -560,6 +597,16 @@ def resize(
 
     .. image:: _static/img/resize.png
 
+    Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for sampling and ``align_corners``
+        conventions. When resizing camera images, see
+        :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
+
+        - input: :math:`(*, H, W)`; ``size`` is ``(h, w)``
+        - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
+          note :func:`warp_perspective`/:func:`rotate` default ``True``)
+        - ``side`` resizing preserves aspect ratio using the named side
+
     Args:
         input: The image tensor to be skewed with shape of :math:`(..., H, W)`.
             `...` means there can be any number of dimensions.
@@ -593,7 +640,13 @@ def resize(
 
     original_shape = input.shape
     h, w = input.shape[-2:]
+
     if isinstance(size, int):
+        if h <= 0 or w <= 0:
+            # An int size names one side and takes the other from the aspect ratio, which a
+            # degenerate input does not have. Reject it with the message the warping ops use,
+            # rather than letting the division below fail with a bare ZeroDivisionError.
+            raise ValueError(f"Input image size must be positive. Got height={h}, width={w}.")
         aspect_ratio = w / h
         size = _side_to_image_size(size, aspect_ratio, side)
     if len(original_shape) == 2:
@@ -609,19 +662,34 @@ def resize(
             batch_size *= d
         input = input.reshape(batch_size, *original_shape[-3:])
 
-    factors = (h / size[0], w / size[1])
-    antialias = antialias and (max(factors) > 1)
+    if size[0] == 0 or size[1] == 0:
+        # An output side of zero gives an empty image, matching warp_affine,
+        # warp_perspective and center_crop -- including when the input is empty as well,
+        # which is why this runs ahead of the positive-size check below. The result is
+        # built directly: the scale factors would divide by zero, and
+        # torch.nn.functional.interpolate rejects a zero-sized output outright.
+        #
+        # It is routed through the input so the empty result keeps its autograd link, the
+        # way _empty_warp_output_2d does for the warping ops. sum() promotes an integer
+        # input to int64, so the accumulation dtype is pinned to the input's.
+        zero = input.reshape(-1)[:1].sum(dtype=input.dtype) * 0
+        output = zero.reshape(*([1] * input.dim())).expand(*input.shape[:-2], size[0], size[1])
+    elif h <= 0 or w <= 0:
+        raise ValueError(f"Input image size must be positive. Got height={h}, width={w}.")
+    else:
+        factors = (h / size[0], w / size[1])
+        antialias = antialias and (max(factors) > 1)
 
-    if antialias:
-        sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
+        if antialias:
+            sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
 
-        ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
+            ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
-        ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
+            ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
 
-        input = gaussian_blur2d(input, ks, sigmas)
+            input = gaussian_blur2d(input, ks, sigmas)
 
-    output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
+        output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
 
     if len(original_shape) == 2:
         output = output[0, 0]
@@ -642,6 +710,11 @@ def resize_to_be_divisible(
     antialias: bool = False,
 ) -> torch.Tensor:
     """Resize the input tensor to be divisible by a certain factor.
+
+    Convention:
+        - align_corners: ``None`` by default; see the convention block of :func:`resize`
+        - rounds ``height``/``width`` to the nearest multiple of ``divisible_factor`` before
+          delegating to :func:`resize`
 
     Args:
         input (torch.Tensor): Input tensor to be resized.
@@ -678,15 +751,20 @@ def rescale(
 
     .. image:: _static/img/rescale.png
 
+    Convention:
+        - ``factor`` is ``(factor_h, factor_w)`` when a pair — height first (contrast
+          :func:`scale`, whose ``scale_factor`` is x-first)
+        - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
+          see the convention block of :func:`resize`)
+        - delegates to :func:`resize` after converting ``factor`` to an output ``size``
+
     Args:
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
-        factor: Desired scaling factor in each direction. If scalar, the value is used
-            for both the x- and y-direction.
+        factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
+            float, the value is used for both height and width (an ``int`` raises ``TypeError``).
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
-        side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
-            or ``'horz'``.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
 
@@ -713,6 +791,14 @@ def rescale(
 class Resize(nn.Module):
     r"""Resize the input torch.Tensor to the given size.
 
+    Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for sampling and ``align_corners``
+        conventions. When resizing camera images, see
+        :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
+
+        - align_corners: ``None`` by default, matching :func:`resize`
+        - See the convention block of :func:`resize`.
+
     Args:
         size: Desired output size. If size is a sequence like (h, w),
             output size will be matched to this. If size is an int, smaller edge of the image will
@@ -734,10 +820,6 @@ class Resize(nn.Module):
         >>> out = Resize((6, 8))(img)
         >>> print(out.shape)
         torch.Size([1, 3, 6, 8])
-
-    .. raw:: html
-
-        <gradio-app src="kornia/kornia-resize-antialias"></gradio-app>
 
     """
 
@@ -783,6 +865,10 @@ class Resize(nn.Module):
 class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
+    Convention:
+        - align_corners: ``True`` by default, matching :func:`affine`
+        - See the convention block of :func:`affine`.
+
     Args:
         angle: Angle in degrees for counter-clockwise rotation around the center. The tensor
             must have a shape of (B), where B is the batch size.
@@ -799,7 +885,7 @@ class Affine(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Raises:
@@ -896,14 +982,17 @@ class Affine(nn.Module):
 class Rescale(nn.Module):
     r"""Rescale the input torch.Tensor with the given factor.
 
+    Convention:
+        - align_corners: ``True`` by default (differs from function :func:`rescale`, whose default
+          is ``None``)
+        - See the convention block of :func:`rescale`.
+
     Args:
-        factor: Desired scaling factor in each direction. If scalar, the value is used
-            for both the x- and y-direction.
+        factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
+            float, the value is used for both height and width (an ``int`` raises ``TypeError``).
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
-        side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
-            or ``'horz'``.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
 
@@ -951,6 +1040,10 @@ class Rescale(nn.Module):
 class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
 
+    Convention:
+        - align_corners: ``True`` by default, matching :func:`rotate`
+        - See the convention block of :func:`rotate`.
+
     Args:
         angle: The angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
@@ -960,7 +1053,7 @@ class Rotate(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -978,14 +1071,14 @@ class Rotate(nn.Module):
     def __init__(
         self,
         angle: torch.Tensor,
-        center: Union[None, torch.Tensor] = None,
+        center: Union[torch.Tensor, None] = None,
         mode: str = "bilinear",
         padding_mode: str = "zeros",
         align_corners: bool = True,
     ) -> None:
         super().__init__()
         self.angle: torch.Tensor = angle
-        self.center: Union[None, torch.Tensor] = center
+        self.center: Union[torch.Tensor, None] = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1009,6 +1102,10 @@ class Rotate(nn.Module):
 class Translate(nn.Module):
     r"""Translate the tensor in pixel units.
 
+    Convention:
+        - align_corners: ``True`` by default, matching :func:`translate`
+        - See the convention block of :func:`translate`.
+
     Args:
         translation: tensor containing the amount of pixels to
           translate in the x and y direction. The tensor must have a shape of
@@ -1016,7 +1113,7 @@ class Translate(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -1062,6 +1159,10 @@ class Translate(nn.Module):
 class Scale(nn.Module):
     r"""Scale the tensor by a factor.
 
+    Convention:
+        - align_corners: ``True`` by default, matching :func:`scale`
+        - See the convention block of :func:`scale`.
+
     Args:
         scale_factor: The scale factor apply. The tensor
           must have a shape of (B) or (B, 2), where B is batch size.
@@ -1073,7 +1174,7 @@ class Scale(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -1091,14 +1192,14 @@ class Scale(nn.Module):
     def __init__(
         self,
         scale_factor: torch.Tensor,
-        center: Union[None, torch.Tensor] = None,
+        center: Union[torch.Tensor, None] = None,
         mode: str = "bilinear",
         padding_mode: str = "zeros",
         align_corners: bool = True,
     ) -> None:
         super().__init__()
         self.scale_factor: torch.Tensor = scale_factor
-        self.center: Union[None, torch.Tensor] = center
+        self.center: Union[torch.Tensor, None] = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1121,6 +1222,11 @@ class Scale(nn.Module):
 class Shear(nn.Module):
     r"""Shear the tensor.
 
+    Convention:
+        - align_corners: ``True`` by default (differs from function :func:`shear`, whose default is
+          ``False``)
+        - See the convention block of :func:`shear`.
+
     Args:
         shear: tensor containing the angle to shear
           in the x and y direction. The tensor must have a shape of
@@ -1128,7 +1234,7 @@ class Shear(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:

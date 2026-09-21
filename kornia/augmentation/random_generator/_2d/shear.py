@@ -25,8 +25,9 @@ from kornia.augmentation.utils import (
     _check_positive_int_or_traced,
     _common_param_check,
     _joint_range_check,
-    _range_bound,
+    _shear_bound,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["ShearGenerator"]
@@ -64,24 +65,10 @@ class ShearGenerator(RandomGeneratorBase):
         self.shear = shear
 
     def __repr__(self) -> str:
-        repr = f"shear={self.shear}"
-        return repr
+        return f"shear={self.shear}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
-        if shear.shape == torch.Size([2, 2]):
-            _shear = shear
-        else:
-            _shear = torch.stack(
-                [
-                    _range_bound(shear if shear.dim() == 0 else shear[:2], "shear-x", 0, (-360, 360)),
-                    (
-                        torch.tensor([0, 0], device=device, dtype=dtype)
-                        if shear.dim() == 0 or len(shear) == 2
-                        else _range_bound(shear[2:], "shear-y", 0, (-360, 360))
-                    ),
-                ]
-            )
+        _shear = _shear_bound(self.shear, device, dtype)
 
         _joint_range_check(_shear[0], "shear")
         _joint_range_check(_shear[1], "shear")
@@ -104,7 +91,7 @@ class ShearGenerator(RandomGeneratorBase):
         _check_positive_int_or_traced(width, "width")
         _check_positive_int_or_traced(height, "height")
 
-        center: torch.Tensor = torch.tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
+        center: torch.Tensor = _constant_tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
         center = center.expand(batch_size, -1)
 
         sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch)

@@ -24,9 +24,10 @@ from testing.base import BaseTester
 
 
 class TestKMeans(BaseTester):
-    @pytest.mark.parametrize("num_clusters", [3, 10, 1])
-    @pytest.mark.parametrize("tolerance", [10e-4, 10e-5, 10e-1])
-    @pytest.mark.parametrize("max_iterations", [10, 1000])
+    @pytest.mark.parametrize(
+        ("num_clusters", "tolerance", "max_iterations"),
+        [(3, 1e-4, 3), (10, 1e-3, 1000), (1, 1.0, 10)],
+    )
     def test_smoke(self, device, dtype, num_clusters, tolerance, max_iterations):
         N = 1000
         D = 2
@@ -46,7 +47,7 @@ class TestKMeans(BaseTester):
         assert out2.dtype == dtype
 
     @pytest.mark.parametrize("num_clusters", [3])
-    @pytest.mark.parametrize("tolerance", [10e-4])
+    @pytest.mark.parametrize("tolerance", [1e-3])
     @pytest.mark.parametrize("max_iterations", [100])
     def test_cardinality(self, device, dtype, num_clusters, tolerance, max_iterations):
         N = 1000
@@ -67,27 +68,79 @@ class TestKMeans(BaseTester):
 
         # case: cluster_center = 0:
         with pytest.raises(BaseError) as errinfo:
-            kornia.contrib.KMeans(0, None, 10e-4, 10, 0)
+            kornia.contrib.KMeans(0, None, 1e-3, 10, 0)
         assert "num_clusters can't be 0" in str(errinfo.value)
 
         # case: cluster centers is not a 2D tensor
         with pytest.raises(ShapeError) as errinfo:
             starting_centers = torch.rand((2, 3, 5), device=device, dtype=dtype)
-            kmeans = kornia.contrib.KMeans(None, starting_centers, 10e-4, 100, 0)
+            kmeans = kornia.contrib.KMeans(None, starting_centers, 1e-3, 100, 0)
         assert "Shape dimension mismatch" in str(errinfo.value)
 
         # case: input data is not a 2D tensor
         with pytest.raises(ShapeError) as errinfo:
-            kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
+            kmeans = kornia.contrib.KMeans(3, None, 1e-3, 100, 0)
             kmeans.fit(torch.rand((1000, 5, 60), dtype=dtype, device=device))
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         # case: column dimensions of cluster centers and data to be predicted do not match
         with pytest.raises(Exception) as errinfo:
-            kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
+            kmeans = kornia.contrib.KMeans(3, None, 1e-3, 100, 0)
             kmeans.fit(torch.rand((1000, 5), dtype=dtype))
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
         assert "7 != 5" in str(errinfo)
+
+        # case: num_clusters does not match the number of rows in an explicit cluster_centers
+        with pytest.raises(BaseError) as errinfo:
+            starting_centers = torch.rand((5, 2), device=device, dtype=dtype)
+            kornia.contrib.KMeans(3, starting_centers, 1e-3, 100, 0)
+        assert "cluster_centers has 5 rows but num_clusters=3" in str(errinfo.value)
+
+    def test_empty_cluster_reseeds_to_a_data_point(self, device, dtype):
+        # Both starting centers coincide, so every point ties to cluster 0 (argmin keeps the
+        # first index on a tie) and cluster 1 gets no points assigned to it for the one update.
+        x = torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], device=device, dtype=dtype)
+        starting_centers = torch.tensor([[0.5, 0.5], [0.5, 0.5]], device=device, dtype=dtype)
+
+        kmeans = kornia.contrib.KMeans(2, starting_centers, tolerance=None, max_iterations=1, seed=0)
+        kmeans.fit(x)
+        centers = kmeans.cluster_centers
+
+        self.assert_close(centers[0], x.mean(dim=0))
+        # the empty cluster is reseeded to *some* row of x, not left at the stale starting center
+        assert any(torch.allclose(centers[1], row) for row in x)
+
+    @pytest.mark.parametrize(
+        ("x", "starting_centers", "expected"),
+        [
+            (
+                (50 + torch.arange(3200) % 4).reshape(1600, 2).float(),
+                None,
+                torch.tensor([[51.0, 52.0]]),
+            ),
+            (
+                torch.cat([torch.full((400, 3), 200.0), torch.full((400, 3), 20.0)]),
+                torch.tensor([[190.0, 190.0, 190.0], [30.0, 30.0, 30.0]]),
+                torch.tensor([[200.0, 200.0, 200.0], [20.0, 20.0, 20.0]]),
+            ),
+        ],
+    )
+    def test_large_cluster_sum_stays_finite(self, device, dtype, x, starting_centers, expected):
+        # Regression test for accumulating sums/counts in X.dtype: in float16 a per-cluster sum
+        # over hundreds of points routinely exceeds 65504 and overflows to inf; in bfloat16 the
+        # count and sum both lose precision well before that. One update should still match the
+        # exact float64 mean.
+        x = x.to(device=device, dtype=dtype)
+        centers = starting_centers.to(device=device, dtype=dtype) if starting_centers is not None else None
+        num_clusters = expected.shape[0]
+
+        kmeans = kornia.contrib.KMeans(num_clusters, centers, tolerance=None, max_iterations=1, seed=0)
+        kmeans.fit(x)
+
+        assert torch.isfinite(kmeans.cluster_centers).all()
+        # exact in every dtype on the fixed implementation - a nonzero tolerance would let the
+        # pre-fix bfloat16 error (0.25, well under BaseTester's default bfloat16 tolerance) pass
+        self.assert_close(kmeans.cluster_centers, expected.to(device=device, dtype=dtype), rtol=0.0, atol=0.0)
 
     @staticmethod
     def _create_data(device, dtype):
@@ -109,7 +162,7 @@ class TestKMeans(BaseTester):
     def test_module(self, device, dtype):
         x = TestKMeans._create_data(device, dtype)
 
-        kmeans = kornia.contrib.KMeans(3, None, 10e-4, 10000, 2023)
+        kmeans = kornia.contrib.KMeans(3, None, 1e-3, 10000, 2023)
         kmeans.fit(x)
 
         centers = kmeans.cluster_centers
@@ -130,7 +183,7 @@ class TestKMeans(BaseTester):
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         x = TestKMeans._create_data(device, dtype)
-        kmeans_params = (3, None, 10e-4, 10000, 2023)
+        kmeans_params = (3, None, 1e-3, 10000, 2023)
         predict_param = torch.tensor([[-14, 16], [45, 12]], dtype=dtype, device=device)
 
         kmeans = kornia.contrib.KMeans(*kmeans_params)

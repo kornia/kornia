@@ -21,17 +21,19 @@ import json
 import logging
 import os
 import pprint
+import urllib.error
 from typing import Any, Optional
+from urllib.request import urlopen
 
 import kornia
 from kornia.config import kornia_config
 from kornia.core.external import numpy as np
-from kornia.core.external import onnx, requests
+from kornia.core.external import onnx
 from kornia.onnx.download import CachedDownloader
 
 __all__ = ["ONNXLoader", "add_metadata", "io_name_conversion"]
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class ONNXLoader(CachedDownloader):
@@ -103,7 +105,7 @@ class ONNXLoader(CachedDownloader):
                 )
             return onnx.load(file_path)  # type:ignore
 
-        elif model_name.startswith(("http://", "https://")):
+        if model_name.startswith(("http://", "https://")):
             cache_dir = kwargs.get("cache_dir", None) or kornia_config.hub_onnx_dir
             kwargs.update({"cache_dir": cache_dir})
             file_path = cls.download_to_cache(
@@ -124,7 +126,7 @@ class ONNXLoader(CachedDownloader):
                 )
             return onnx.load(file_path)  # type:ignore
 
-        elif os.path.exists(model_name):
+        if os.path.exists(model_name):
             return onnx.load(model_name)  # type:ignore
 
         raise ValueError(f"File {model_name} not found")
@@ -139,12 +141,12 @@ class ONNXLoader(CachedDownloader):
         """
         url = f"https://huggingface.co/api/models/kornia/ONNX_models/tree/main/{folder}"
 
-        response = requests.get(url, timeout=10)  # type:ignore
-
-        if response.status_code == 200:
-            return response.json()  # Returns the JSON content of the repo
-        else:
-            raise ValueError(f"Failed to fetch repository contents: {response.status_code}")
+        try:
+            # url is a fixed https:// literal built from a hardcoded Hugging Face API prefix.
+            with urlopen(url, timeout=10) as response:
+                return json.loads(response.read())  # Returns the JSON content of the repo
+        except urllib.error.HTTPError as e:
+            raise ValueError(f"Failed to fetch repository contents: {e.code}") from e
 
     @classmethod
     def list_operators(cls) -> None:

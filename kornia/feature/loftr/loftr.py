@@ -22,6 +22,7 @@ from typing import Any, Optional
 import torch
 from torch import nn
 
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.geometry import resize
 
 from .backbone import build_backbone
@@ -30,10 +31,19 @@ from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine
 
-urls: dict[str, str] = {}
-urls["outdoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"
-urls["indoor_new"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor_ds_new.ckpt"
-urls["indoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt"
+urls: dict[str, str | list[str]] = {}
+urls["outdoor"] = [
+    hf_url("loftr", "loftr_outdoor.ckpt"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
+]
+urls["indoor_new"] = [
+    hf_url("loftr", "loftr_indoor_ds_new.ckpt"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor_ds_new.ckpt",
+]
+urls["indoor"] = [
+    hf_url("loftr", "loftr_indoor.ckpt"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
+]
 
 # Comments: the config below is the one corresponding to the pretrained models
 # Some do not change there anything, unless you want to retrain it.
@@ -114,7 +124,7 @@ class LoFTR(nn.Module):
             if pretrained not in urls.keys():
                 raise ValueError(f"pretrained should be None or one of {urls.keys()}")
 
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls[pretrained], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls[pretrained], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"])
         self.eval()
 

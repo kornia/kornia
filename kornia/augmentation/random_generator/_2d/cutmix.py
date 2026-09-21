@@ -28,6 +28,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -37,18 +38,23 @@ __all__ = ["CutmixGenerator"]
 class CutmixGenerator(RandomGeneratorBase):
     r"""Generate cutmix indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomCutMixV2`.
+
     Args:
         p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
         beta (torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
-        cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
-            If None, it will be set to [0, 1], which means no restriction.
+        cut_size (torch.Tensor, optional): the ``[min, max]`` clamp, within [0, 1], applied to the
+            Beta-sampled mixing coefficient ``lambda``. The cut side is ``floor(sqrt(1 - lambda) * side)``,
+            so a larger ``cut_size`` gives a *smaller* cut. The minimum must be below 1: at 1, ``lambda`` is
+            always 1 and nothing is cut. If None, it will be set to [0, 1], which means no restriction.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
-            - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+            - mix_pairs (torch.Tensor): pairing indices with a shape of (num_mix, B).
+            - crop_src (torch.Tensor): cut-box vertices with a shape of (num_mix, B, 4, 2).
+            - image_shape (torch.Tensor): the input ``(H, W)``.
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -74,8 +80,7 @@ class CutmixGenerator(RandomGeneratorBase):
             raise AssertionError(f"`num_mix` must be an integer greater than 1. Got {num_mix}.")
 
     def __repr__(self) -> str:
-        repr = f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
-        return repr
+        return f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if self.beta is None:
@@ -88,6 +93,12 @@ class CutmixGenerator(RandomGeneratorBase):
             self._cut_size = torch.as_tensor(self.cut_size, device=device, dtype=dtype)
 
         _joint_range_check(self._cut_size, "cut_size", bounds=(0, 1))
+        if float(self._cut_size[0]) >= 1.0:
+            raise ValueError(
+                f"`cut_size` clamps the mixing coefficient lambda, and a minimum of 1 forces lambda = 1, which "
+                f"cuts nothing (cut side = floor(sqrt(1 - lambda) * side)). A larger cut_size gives a smaller "
+                f"cut, so lower the minimum. Got {self._cut_size.tolist()}."
+            )
 
         self.beta_sampler = Beta(self._beta, self._beta)
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
@@ -162,5 +173,5 @@ class CutmixGenerator(RandomGeneratorBase):
         return {
             "mix_pairs": mix_pairs.to(device=_device, dtype=torch.long),
             "crop_src": crop_src.floor().to(device=_device, dtype=_dtype),
-            "image_shape": torch.as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
+            "image_shape": _constant_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
         }

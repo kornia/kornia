@@ -83,6 +83,13 @@ class TestVflip(BaseTester):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.Vflip(), (input,))
 
+    def test_convention_rank1_raises(self, device, dtype):
+        # vflip flips dim -2; a rank-1 tensor has no such dim and raises IndexError, unlike
+        # hflip which only needs dim -1 (see TestHflip.test_convention_rank1_supported).
+        x = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        with pytest.raises(IndexError):
+            kornia.geometry.transform.vflip(x)
+
 
 class TestHflip(BaseTester):
     def smoke_test(self, device, dtype):
@@ -145,6 +152,19 @@ class TestHflip(BaseTester):
     def test_gradcheck(self, device):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.Hflip(), (input,))
+
+    def test_convention_rank1_supported(self, device, dtype):
+        # hflip flips dim -1 and enforces no rank floor: a bare rank-1 tensor (no H/W
+        # structure at all) works, while vflip/rot180 require rank >= 2 (see
+        # TestVflip/TestRot180.test_convention_rank1_raises). PyTorch currently accepts
+        # rank-0 input as a no-op, but that behavior is outside the documented contract
+        # and intentionally unpinned.
+        x = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        # Snippet used to generate expected (requires only this module): hflip reverses the
+        # last dimension, so for a rank-1 tensor that is simply the element order reversed.
+        # x.flip(-1) -> tensor([3., 2., 1., 0.])
+        expected = torch.tensor([3.0, 2.0, 1.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.hflip(x), expected)
 
 
 class TestRot180(BaseTester):
@@ -209,3 +229,10 @@ class TestRot180(BaseTester):
         )  # 3 x 3
 
         self.gradcheck(kornia.geometry.transform.Rot180(), (input,))
+
+    def test_convention_rank1_raises(self, device, dtype):
+        # rot180 flips dims -2 and -1; a rank-1 tensor has no dim -2 and raises IndexError,
+        # unlike hflip which only needs dim -1 (see TestHflip.test_convention_rank1_supported).
+        x = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        with pytest.raises(IndexError):
+            kornia.geometry.transform.rot180(x)

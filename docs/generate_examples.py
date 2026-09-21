@@ -18,19 +18,20 @@
 from __future__ import annotations
 
 import importlib
+import io
 import math
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.request import urlopen
 
-import cv2
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-import requests
 import torch
 import torch.nn.functional as F
-from kornia_moons.feature import visualize_LAF
+from matplotlib.axes import Axes
+from PIL import Image
 
 import kornia as K
 
@@ -41,8 +42,9 @@ def download_tutorials_examples(download_infos: dict[str, str], directory: Path)
     URL_BASE = "https://raw.githubusercontent.com/kornia/tutorials/master/"
     for filename, path in download_infos.items():
         url = URL_BASE + path
-        # perform request
-        response = requests.get(url, timeout=60).content
+        # perform request; S310 is safe here because the URL is the fixed https:// base above
+        with urlopen(url, timeout=60) as resp:  # noqa: S310
+            response = resp.read()
 
         path = directory / filename
         with open(path, "wb") as fp:
@@ -50,12 +52,12 @@ def download_tutorials_examples(download_infos: dict[str, str], directory: Path)
 
 
 def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **resize_kwargs) -> torch.Tensor:
-    # perform request
-    response = requests.get(url, timeout=60).content
-    # convert to array of ints
-    nparr = np.frombuffer(response, np.uint8)
-    # convert to image array and resize
-    img: np.ndarray = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)[..., :3]
+    # perform request; S310 is safe here because every caller passes a fixed https:// constant
+    with urlopen(url, timeout=60) as resp:  # noqa: S310
+        response = resp.read()
+    # decode to an HxWx3 RGB array; ``convert`` also drops the alpha of the RGBA sources.
+    # ``np.array`` rather than ``asarray``: the tensor must not alias PIL's read-only buffer.
+    img: np.ndarray = np.array(Image.open(io.BytesIO(response)).convert("RGB"))
     # convert the image to a tensor
     img_t: torch.Tensor = K.image.image_to_tensor(img, keepdim=False)  # 1xCxHXW
     img_t = img_t.float() / 255.0
@@ -64,6 +66,22 @@ def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **r
     else:
         img_t = K.geometry.resize(img_t, resize_to, **resize_kwargs)
     return img_t
+
+
+def write_png(path: Path, img: np.ndarray) -> None:
+    """Save an ``HxW`` grayscale, ``HxWx3`` RGB or ``HxWx4`` RGBA ``uint8`` array as a PNG."""
+    Image.fromarray(np.ascontiguousarray(img)).save(path)
+
+
+def draw_lafs(ax: Axes, lafs: torch.Tensor, color: str) -> None:
+    """Outline the local affine frames of the first image of ``lafs`` on an existing axes.
+
+    Reproduces ``kornia_moons.viz.visualize_LAF(..., draw_ori=False)``: the regions are drawn at
+    half the LAF scale, and the leading boundary point -- the LAF centre, which ``draw_ori`` would
+    join to the outline -- is dropped.
+    """
+    xs, ys = K.feature.laf.get_laf_pts_to_draw(K.feature.scale_laf(lafs, 0.5), 0)
+    ax.plot(xs[1:], ys[1:], color, linewidth=1)
 
 
 def transparent_pad(src: torch.Tensor, shape: tuple[int, int]) -> torch.Tensor:
@@ -89,7 +107,7 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
         rectangle2[..., n, 2] = keypoints[..., n, 0] + 2
         rectangle2[..., n, 3] = keypoints[..., n, 1] + 2
     color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
-    imgs_draw = K.utils.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
+    imgs_draw = K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
 
     return imgs_draw
 
@@ -119,6 +137,7 @@ def main():
         "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
     )
     MASK_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba_mask.png"
+    BASE_IMAGE_URL_CROWD: str = "https://raw.githubusercontent.com/kornia/data/main/crowd.jpg"  # face detection
 
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
@@ -220,7 +239,7 @@ def main():
         out = torch.cat([ori, *(out[i] for i in range(out.size(0)))], dim=-1)
         # save the output image
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{aug_name}.png", out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
@@ -242,8 +261,8 @@ def main():
 
         output = torch.cat([img_in[0], img_in[1], img_aug], dim=-1)
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
+        write_png(OUTPUT_PATH / f"{aug_name}.png", out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
@@ -263,8 +282,8 @@ def main():
 
         output = torch.cat([img_in[0], img_in[1], img_aug[0]], dim=-1)
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
+        write_png(OUTPUT_PATH / f"{aug_name}.png", out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
@@ -323,8 +342,8 @@ def main():
         output = torch.cat([inp[0], *(out[i] for i in range(out.size(0)))], dim=-1)
 
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
+        write_png(OUTPUT_PATH / f"{aug_name}.png", out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
@@ -354,10 +373,10 @@ def main():
             out = fn(K.color.rgb_to_grayscale(img2), *args)
         elif fn_name == "apply_colormap":
             gray_image = (K.color.rgb_to_grayscale(img2) * 255.0).round()
-            out = K.color.rgb_to_bgr(fn(gray_image, *args))
+            out = fn(gray_image, *args)
         elif fn_name == "ApplyColorMap":
             gray_image = (K.color.rgb_to_grayscale(img2) * 255.0).round()
-            out = K.color.rgb_to_bgr(fn(*args)(gray_image))
+            out = fn(*args)(gray_image)
         else:
             out = fn(img2, *args)
         # perform normalization to visualize
@@ -378,7 +397,7 @@ def main():
         else:
             out = torch.cat([img2[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{fn_name}.png", out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -389,12 +408,12 @@ def main():
     # ITERATE OVER THE COLORMAPS
     for colormap_name, args in colormaps_list.items():
         cm = K.color.ColorMap(base=colormap_name, num_colors=args[0])
-        out = K.color.rgb_to_bgr(K.color.apply_colormap(bar_img_gray, cm))[0]
+        out = K.color.apply_colormap(bar_img_gray, cm)[0]
 
         out = torch.cat([bar_img, out], dim=-1)
 
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{colormap_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{colormap_name}.png", out_np)
         sig = f"{colormap_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {colormap_name}. {sig}")
 
@@ -459,7 +478,7 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{fn_name}.png", out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -486,7 +505,7 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{fn_name}.png", out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -537,7 +556,7 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{fn_name}.png", out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -560,7 +579,7 @@ def main():
         # save the output image
         out = torch.cat([img1[0], mask[0], filtered[0]], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{fn_name}.png", out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -647,7 +666,7 @@ def main():
         else:
             out = torch.cat([*(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{fn_name}.png", out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -670,7 +689,9 @@ def main():
     kah = K.feature.KeyNetAffNetHardNet(512).eval()
     with torch.no_grad():
         lafs, _resps, _descs = kah(K.color.rgb_to_grayscale(img_outdoor))
-        fig1, ax = visualize_LAF(img_outdoor, lafs, color="lime", return_fig_ax=True, draw_ori=False)
+        fig1, ax = plt.subplots(1, 1)
+        ax.imshow(K.image.tensor_to_image(img_outdoor[0]))
+        draw_lafs(ax, lafs, color="lime")
         ax.set_title("KeyNetAffNet 512 LAFs")
         cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
         fig1.savefig(cur_fname)
@@ -699,6 +720,8 @@ def main():
         "DISK",
         "ALIKED",
         "XFeat",
+        "SIFTDescriptorFromPyramid",
+        "SIFTFeatureScaleSpace",
     ]
     # ITERATE OVER THE TRANSFORMS
     for fn_name in responses:
@@ -715,13 +738,12 @@ def main():
             img_in = torch.nn.functional.pad(img_outdoor, (0, pd_w, 0, pd_h), value=0.0)
             out, _ = fn.heatmap_and_dense_descriptors(img_in)
             out = K.color.grayscale_to_rgb(out)
-            img_in = K.color.rgb_to_bgr(img_in)
         elif fn_name == "ALIKED":
             fn = K.feature.ALIKED.from_pretrained()
             with torch.no_grad():
                 _, out = fn.extract_dense_map(img_outdoor)
             out = K.color.grayscale_to_rgb(out)
-            img_in = K.color.rgb_to_bgr(img_outdoor)
+            img_in = img_outdoor
         elif fn_name == "XFeat":
             fn = K.feature.XFeat.from_pretrained()
             with torch.no_grad():
@@ -731,7 +753,35 @@ def main():
             # upsample heatmap from preprocessed size back to original image size
             out = torch.nn.functional.interpolate(out, img_outdoor.shape[-2:], mode="bilinear", align_corners=False)
             out = K.color.grayscale_to_rgb(out)
-            img_in = K.color.rgb_to_bgr(img_outdoor)
+            img_in = img_outdoor
+        elif fn_name == "SIFTFeatureScaleSpace":
+            fn = K.feature.SIFTFeatureScaleSpace(num_features=2048, descriptor_backend="pyramid").eval()
+            with torch.no_grad():
+                lafs, scores, _ = fn(img_in)
+            h, w = img_in.shape[-2:]
+            valid = K.feature.laf_is_filled(lafs)[0]
+            xy = K.feature.get_laf_center(lafs)[0, valid].round().long()
+            heatmap = img_in.new_zeros(1, 1, h * w)
+            index = xy[:, 1].clamp(0, h - 1) * w + xy[:, 0].clamp(0, w - 1)
+            heatmap[0, 0].scatter_add_(0, index, scores[0, valid].abs())
+            out = K.color.grayscale_to_rgb(F.max_pool2d(heatmap.view(1, 1, h, w), 5, stride=1, padding=2))
+            img_in = K.color.grayscale_to_rgb(img_in)
+        elif fn_name == "SIFTDescriptorFromPyramid":
+            # A regular LAF grid turns the sparse descriptor into a compact score map:
+            # show distance to the centre descriptor on the same RGB canvas as other examples.
+            h, w = img_kornia.shape[-2:]
+            ys = torch.arange(12, h - 12, 12, device=img_kornia.device, dtype=img_kornia.dtype)
+            xs = torch.arange(12, w - 12, 12, device=img_kornia.device, dtype=img_kornia.dtype)
+            yy, xx = torch.meshgrid(ys, xs, indexing="ij")
+            xy = torch.stack([xx, yy], dim=-1).reshape(1, -1, 2)
+            scale = torch.full((*xy.shape[:2], 1, 1), 6.0, device=xy.device, dtype=xy.dtype)
+            lafs = K.feature.laf_from_center_scale_ori(xy, scale)
+            desc = K.feature.SIFTDescriptorFromPyramid().eval()(K.color.rgb_to_grayscale(img_kornia), lafs)
+            centre = desc[:, desc.shape[1] // 2 : desc.shape[1] // 2 + 1]
+            out = (desc - centre).square().sum(-1).sqrt().reshape(1, 1, yy.shape[0], yy.shape[1])
+            out = F.interpolate(out, (h, w), mode="bilinear", align_corners=False)
+            out = K.color.grayscale_to_rgb(out)
+            img_in = img_kornia
         else:
             fn = getattr(mod, fn_name)
             out = fn(img_in)
@@ -742,9 +792,28 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        write_png(OUTPUT_PATH / f"{fn_name}.png", out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for response function {fn_name}")
+
+    # Face detection with the pretrained YuNet model, for the landing-page "models" card. The
+    # checkpoint is ~400 KB, so this stays cheap in the docs build. ``img_crowd`` is RGB like the
+    # other tensors here, so the detector and the drawn boxes share the same tensor.
+    img_crowd = read_img_from_url(BASE_IMAGE_URL_CROWD, (480, 736))
+    face_detector = K.contrib.FaceDetector().eval()
+    with torch.no_grad():
+        detections = face_detector(img_crowd * 255.0)[0]
+    faces = [K.contrib.FaceDetectorResult(d) for d in detections]
+    confident = [torch.cat([f.top_left, f.bottom_right]) for f in faces if f.score > 0.7]
+    out = img_crowd.clone()
+    if confident:
+        boxes = torch.stack(confident)[None]
+        for pad in (0, 1, 2):  # three passes give a 3 px outline
+            out = K.image.draw_rectangle(
+                out, boxes + torch.tensor([-pad, -pad, pad, pad]), color=torch.tensor([0.4, 1.0, 0.2])
+            )
+    write_png(OUTPUT_PATH / "face_detection.png", K.image.tensor_to_image((out[0] * 255.0).byte()))
+    print(f"Generated image example for FaceDetector. {len(confident)} faces")
 
 
 if __name__ == "__main__":

@@ -35,13 +35,23 @@ def crop_and_resize3d(
 ) -> torch.Tensor:
     r"""Extract crops from 3D volumes (5D tensor) and resize them.
 
+    Convention:
+        - input: :math:`(B, C, D, H, W)`; ``size`` is ``(d, h, w)``
+        - ``boxes``: :math:`(B, 8, 3)` corner points in ``(x, y, z)`` order, front face
+          then back face, each face top-left, top-right, bottom-right, bottom-left —
+          same ``(x, y)``/inclusive-pixel convention as :func:`crop_and_resize`, with
+          ``z`` anchored at the top-left of the first depth slice (``z = 0``);
+          reproducing the exact integer-voxel slice requires ``align_corners=True`` —
+          the default ``False`` interpolates instead
+        - align_corners: ``False`` by default
+
     Args:
         tensor: the 3D volume tensor with shape (B, C, D, H, W).
         boxes: a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
-        size: a tuple with the height and width that will be
+        size: a tuple with the depth, height and width that will be
             used to resize the extracted patches.
         interpolation: Interpolation flag.
         align_corners: mode for grid_generation.
@@ -125,13 +135,17 @@ def crop_and_resize3d(
         device=tensor.device,
     ).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes3d(tensor, points_src, points_dst, interpolation, align_corners)
+    return _crop_by_boxes3d_to_size(tensor, points_src, points_dst, (dst_d, dst_h, dst_w), interpolation, align_corners)
 
 
 def center_crop3d(
     tensor: torch.Tensor, size: Tuple[int, int, int], interpolation: str = "bilinear", align_corners: bool = True
 ) -> torch.Tensor:
     r"""Crop the 3D volumes (5D tensor) at the center.
+
+    Convention:
+        - input: :math:`(B, C, D, H, W)`; ``size`` is ``(d, h, w)``
+        - align_corners: ``True`` by default
 
     Args:
         tensor: the 3D volume tensor with shape (B, C, D, H, W).
@@ -239,8 +253,13 @@ def center_crop3d(
         device=tensor.device,
     ).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes3d(
-        tensor, points_src.to(tensor.dtype), points_dst.to(tensor.dtype), interpolation, align_corners
+    return _crop_by_boxes3d_to_size(
+        tensor,
+        points_src.to(tensor.dtype),
+        points_dst.to(tensor.dtype),
+        (dst_d, dst_h, dst_w),
+        interpolation,
+        align_corners,
     )
 
 
@@ -251,12 +270,20 @@ def crop_by_boxes3d(
     interpolation: str = "bilinear",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    """Perform crop transform on 3D volumes (5D tensor) by bounding boxes.
+    r"""Perform crop transform on 3D volumes (5D tensor) by bounding boxes.
 
     Given an input tensor, this function selected the interested areas by the provided bounding boxes (src_box).
     Then the selected areas would be fitted into the targeted bounding boxes (dst_box) by a perspective transformation.
     So far, the ragged tensor is not supported by PyTorch right now. This function hereby requires the bounding boxes
     in a batch must be rectangles with same width, height and depth.
+
+    Convention:
+        - input: :math:`(B, C, D, H, W)`
+        - ``src_box``/``dst_box``: :math:`(B, 8, 3)` corner points in ``(x, y, z)``
+          order, front face then back face, each face top-left, top-right,
+          bottom-right, bottom-left — same convention as :func:`crop_and_resize3d`;
+          ``dst_box`` determines the output resolution
+        - align_corners: ``False`` by default
 
     Args:
         tensor : the 3D volume tensor with shape (B, C, D, H, W).
@@ -318,8 +345,32 @@ def crop_by_boxes3d(
                    [45., 46., 47.]]]]])
 
     """
-    validate_bbox3d(src_box)
-    validate_bbox3d(dst_box)
+    bbox = infer_bbox_shape3d(dst_box)
+    if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all()):
+        raise AssertionError(
+            "Cropping height, width and depth must be exact same in a batch."
+            f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
+        )
+
+    out_size = (int(bbox[0][0].item()), int(bbox[1][0].item()), int(bbox[2][0].item()))
+    return _crop_by_boxes3d_to_size(tensor, src_box, dst_box, out_size, interpolation, align_corners)
+
+
+def _crop_by_boxes3d_to_size(
+    tensor: torch.Tensor,
+    src_box: torch.Tensor,
+    dst_box: torch.Tensor,
+    out_size: Tuple[int, int, int],
+    interpolation: str = "bilinear",
+    align_corners: bool = False,
+) -> torch.Tensor:
+    # ``crop_by_boxes3d`` with the output size already known as Python ints. ``crop_and_resize3d`` and
+    # ``center_crop3d`` build ``dst_box`` from ``size``, so they take this path and never read the box
+    # values back from the device -- which also keeps them capturable by ``torch.onnx.export``.
+    # ``validate_bbox3d`` raises for every failure it detects except a non-finite coordinate, which is a
+    # ``False`` predicate result; these call sites rely on the raise, so they convert that ``False``.
+    if not (validate_bbox3d(src_box) and validate_bbox3d(dst_box)):
+        raise AssertionError("Boxes must have finite coordinates, got non-finite values.")
 
     if len(tensor.shape) != 5:
         raise AssertionError(f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}.")
@@ -330,19 +381,8 @@ def crop_by_boxes3d(
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
-    bbox = infer_bbox_shape3d(dst_box)
-    if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all()):
-        raise AssertionError(
-            "Cropping height, width and depth must be exact same in a batch."
-            f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
-        )
-
     patches: torch.Tensor = crop_by_transform_mat3d(
-        tensor,
-        dst_trans_src,
-        (int(bbox[0][0].item()), int(bbox[1][0].item()), int(bbox[2][0].item())),
-        mode=interpolation,
-        align_corners=align_corners,
+        tensor, dst_trans_src, out_size, mode=interpolation, align_corners=align_corners
     )
 
     return patches
@@ -358,9 +398,20 @@ def crop_by_transform_mat3d(
 ) -> torch.Tensor:
     """Perform crop transform on 3D volumes (5D tensor) given a perspective transformation matrix.
 
+    Convention:
+        - input: :math:`(B, C, D, H, W)`; ``out_size`` is ``(d, h, w)``
+        - ``transform`` is the source→destination **pixel** transform, accepted as
+          either :math:`(B, 3, 4)` affine or :math:`(B, 4, 4)` homogeneous — for the
+          homogeneous form only the top three rows are kept before this function passes
+          the result to :func:`warp_affine3d`, which itself requires :math:`(B, 3, 4)`
+          and rejects a :math:`(B, 4, 4)` input
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
-        tensor: the 2D image tensor with shape (B, C, H, W).
-        transform: a perspective transformation matrix with shape (B, 4, 4).
+        tensor: the 3D volume tensor with shape (B, C, D, H, W).
+        transform: the source->destination pixel transform, either affine with
+          shape (B, 3, 4) or homogeneous with shape (B, 4, 4).
         out_size: size of the output image (depth, height, width).
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.

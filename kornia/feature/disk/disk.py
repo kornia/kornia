@@ -21,9 +21,24 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.download import hf_url, load_state_dict_from_url
+
 from ._unets import Unet
 from .detector import heatmap_to_keypoints
 from .structs import DISKFeatures
+
+# Module level, like every other weight registry in kornia, so the CI weights
+# cache can enumerate it -- see tests/core/test_weights_prefetch.py.
+urls: dict[str, list[str]] = {
+    "depth": [
+        hf_url("disk", "depth-save.pth"),
+        "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
+    ],
+    "epipolar": [
+        hf_url("disk", "epipolar-save.pth"),
+        "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
+    ],
+}
 
 
 class DISK(nn.Module):
@@ -48,7 +63,7 @@ class DISK(nn.Module):
 
     """
 
-    def __init__(self, desc_dim: int = 128, unet: None | nn.Module = None) -> None:
+    def __init__(self, desc_dim: int = 128, unet: nn.Module | None = None) -> None:
         super().__init__()
 
         self.desc_dim = desc_dim
@@ -142,17 +157,12 @@ class DISK(nn.Module):
             The pretrained model.
 
         """
-        urls = {
-            "depth": "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
-            "epipolar": "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
-        }
-
         if checkpoint not in urls:
             raise ValueError(f"Unknown pretrained model: {checkpoint}")
 
         if device is None:
             device = torch.device("cpu")
-        pretrained_dict = torch.hub.load_state_dict_from_url(urls[checkpoint], map_location=device)
+        pretrained_dict = load_state_dict_from_url(urls[checkpoint], map_location=device)
 
         model: DISK = cls().to(device)
         model.load_state_dict(pretrained_dict["extractor"])

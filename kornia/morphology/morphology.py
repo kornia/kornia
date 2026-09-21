@@ -65,7 +65,7 @@ def dilation(
         Dilated image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -112,9 +112,12 @@ def dilation(
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         h_pad, w_pad = output.shape[-2:]
-        reshape_kernel = _neight2channels_like_kernel(kernel)
+        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
         output, _ = F.conv2d(
-            output.view(B * C, 1, h_pad, w_pad), reshape_kernel, padding=0, bias=neighborhood.view(-1).flip(0)
+            output.view(B * C, 1, h_pad, w_pad),
+            reshape_kernel,
+            padding=0,
+            bias=neighborhood.view(-1).flip(0).to(dtype=output.dtype),
         ).max(dim=1)
         output = output.view(B, C, H, W)
     else:
@@ -158,7 +161,7 @@ def erosion(
         Eroded image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -205,9 +208,12 @@ def erosion(
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         Hpad, Wpad = output.shape[-2:]
-        reshape_kernel = _neight2channels_like_kernel(kernel)
+        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
         output, _ = F.conv2d(
-            output.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0, bias=-neighborhood.view(-1)
+            output.view(B * C, 1, Hpad, Wpad),
+            reshape_kernel,
+            padding=0,
+            bias=-neighborhood.view(-1).to(dtype=output.dtype),
         ).min(dim=1)
         output = output.view(B, C, H, W)
     else:
@@ -252,7 +258,7 @@ def opening(
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -329,7 +335,7 @@ def closing(
        Closed image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -408,7 +414,7 @@ def gradient(
        Gradient image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -476,7 +482,7 @@ def top_hat(
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -547,7 +553,7 @@ def bottom_hat(
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)

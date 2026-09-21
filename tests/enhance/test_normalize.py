@@ -24,6 +24,24 @@ from testing.base import BaseTester
 
 
 class TestNormalize(BaseTester):
+    @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (2, 3, 2, 4, 5)])
+    def test_noncontiguous(self, shape, device, dtype):
+        data = torch.rand(shape, device=device, dtype=dtype).transpose(-1, -2)
+        mean = torch.tensor([0.25, 0.5, 0.75], device=device, dtype=dtype)
+        std = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype)
+        broadcast_shape = (1, 3) + (1,) * (data.ndim - 2)
+        expected = (data - mean.reshape(broadcast_shape)) / std.reshape(broadcast_shape)
+
+        assert not data.is_contiguous()
+        self.assert_close(kornia.enhance.normalize(data, mean, std), expected)
+        self.assert_close(kornia.enhance.Normalize(mean, std)(data), expected)
+
+    def test_noncontiguous_gradcheck(self, device):
+        data = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64).transpose(-1, -2)
+        mean = torch.tensor([0.25, 0.5], device=device, dtype=torch.float64)
+        std = torch.tensor([0.5, 2.0], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.enhance.Normalize(mean, std), (data,))
+
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
@@ -120,7 +138,7 @@ class TestNormalize(BaseTester):
         # prepare input data
         mean = torch.tensor(2, device=device, dtype=dtype)
         std = torch.tensor(3, device=device, dtype=dtype)
-        data = torch.ones(2, 3, 256, 313, device=device, dtype=dtype)
+        data = torch.ones(2, 3, 16, 17, device=device, dtype=dtype)
 
         # expected output
         expected = (data - mean) / std
@@ -143,7 +161,7 @@ class TestNormalize(BaseTester):
     )
     def test_random_normalize_different_parameter_types(self, mean, std):
         f = kornia.enhance.Normalize(mean=mean, std=std)
-        data = torch.ones(2, 3, 256, 313)
+        data = torch.ones(2, 3, 16, 17)
         if isinstance(mean, float):
             expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:
@@ -166,11 +184,105 @@ class TestNormalize(BaseTester):
         pass
 
 
+class TestNormalizeConstantsAreBuffers(BaseTester):
+    """`mean`/`std`/`factor` must move with the module.
+
+    They were plain tensor attributes, so `.to(device)` left them behind. Eager
+    tolerates the mix -- a broadcastable CPU tensor combines with a CUDA/MPS one
+    -- which is why it went unnoticed, but `torch.export` traces with fake
+    tensors and refuses it, so exporting from an accelerator failed.
+    """
+
+    @staticmethod
+    def _modules():
+        return {
+            "Normalize": kornia.enhance.Normalize(torch.zeros(3), torch.ones(3)),
+            "Denormalize": kornia.enhance.Denormalize(torch.zeros(3), torch.ones(3)),
+            "Denormalize-float": kornia.enhance.Denormalize(0.0, 255.0),
+            "Rescale": kornia.enhance.Rescale(2.0),
+        }
+
+    def test_constants_are_registered_buffers(self, device, dtype):
+        for name, module in self._modules().items():
+            assert list(module.buffers()), f"{name} registered no buffers"
+
+    @pytest.mark.parametrize(
+        "name,attrs",
+        [
+            ("Normalize", ("mean", "std")),
+            ("Denormalize", ("mean", "std")),
+            ("Denormalize-float", ("mean", "std")),
+            ("Rescale", ("factor",)),
+        ],
+    )
+    def test_to_moves_the_constants(self, name, attrs, device, dtype):
+        """dtype stands in for device, so the check runs on CPU-only CI.
+
+        Asserted on the attributes by name rather than by iterating buffers:
+        iterating would pass vacuously on a module that registered none, which
+        is exactly the bug.
+        """
+        moved = self._modules()[name].to(torch.float64)
+        for attr in attrs:
+            value = getattr(moved, attr)
+            assert isinstance(value, torch.Tensor), f"{name}.{attr} is not a tensor"
+            assert value.dtype == torch.float64, f"{name}.{attr} stayed {value.dtype} after .to(float64)"
+
+    def test_the_constants_stay_out_of_the_state_dict(self, device, dtype):
+        """They are constructor arguments, not learned state.
+
+        Registering them persistently would make every existing checkpoint
+        report unexpected keys, so they are non-persistent buffers.
+        """
+        for name, module in self._modules().items():
+            assert module.state_dict() == {}, f"{name} state_dict is not empty"
+
+    def test_denormalize_coerces_scalars(self, device, dtype):
+        """A float cannot be a buffer, and Normalize already coerced its own."""
+        module = kornia.enhance.Denormalize(0.0, 255.0)
+        assert isinstance(module.mean, torch.Tensor)
+        assert isinstance(module.std, torch.Tensor)
+
+    def test_forward_is_unchanged(self, device, dtype):
+        x = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        mean = torch.zeros(3, device=device, dtype=dtype)
+        std = 2.0 * torch.ones(3, device=device, dtype=dtype)
+        self.assert_close(
+            kornia.enhance.Normalize(mean, std)(x),
+            kornia.enhance.normalize(x, mean, std),
+        )
+        self.assert_close(
+            kornia.enhance.Denormalize(mean, std)(x),
+            kornia.enhance.denormalize(x, mean, std),
+        )
+        self.assert_close(kornia.enhance.Rescale(2.0)(x), x * 2.0)
+
+    def test_smoke(self, device, dtype):
+        pass
+
+    def test_cardinality(self, device, dtype):
+        pass
+
+    def test_exception(self, device, dtype):
+        pass
+
+    def test_gradcheck(self, device):
+        pass
+
+    def test_module(self, device, dtype):
+        pass
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        pass
+
+
 class TestDenormalize(BaseTester):
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
-        repr = "Denormalize(mean=[0.5], std=[0.1])"
+        # Tensors, matching TestNormalize above: Denormalize now coerces its
+        # arguments so they can be registered as buffers and move with `.to()`.
+        repr = "Denormalize(mean=tensor([0.5000]), std=tensor([0.1000]))"
         assert str(kornia.enhance.Denormalize(mean, std)) == repr
 
     def test_denormalize(self, device, dtype):
@@ -279,6 +391,21 @@ class TestDenormalize(BaseTester):
 
 
 class TestNormalizeMinMax(BaseTester):
+    @pytest.mark.parametrize("shape", [(4, 5), (3, 4, 5), (2, 3, 4, 5), (2, 2, 3, 4, 5)])
+    def test_noncontiguous(self, shape, device, dtype):
+        data = torch.rand(shape, device=device, dtype=dtype).transpose(-1, -2)
+        low = data.amin(dim=(-2, -1), keepdim=True)
+        high = data.amax(dim=(-2, -1), keepdim=True)
+        expected = 3.0 * (data - low) / (high - low + 1e-6) - 1.0
+
+        assert not data.is_contiguous()
+        actual = kornia.enhance.normalize_min_max(data, min_val=-1.0, max_val=2.0)
+        self.assert_close(actual, expected)
+
+    def test_noncontiguous_gradcheck(self, device):
+        data = torch.arange(12, device=device, dtype=torch.float64).reshape(1, 1, 3, 4).transpose(-1, -2)
+        self.gradcheck(kornia.enhance.normalize_min_max, (data,))
+
     def test_smoke(self, device, dtype):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         assert kornia.enhance.normalize_min_max(x) is not None
@@ -324,7 +451,6 @@ class TestNormalizeMinMax(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(x), op_jit(x))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.normalize_min_max, (x,))

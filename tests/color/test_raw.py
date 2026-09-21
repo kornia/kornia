@@ -136,13 +136,11 @@ class TestRawToRgb(BaseTester):
         assert_close(bgres[:, :, 1:5, 1:5], grres[:, :, 2:6, 1:5])
         assert_close(bgres[:, :, 1:5, 1:5], rgres[:, :, 2:6, 2:6])
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.raw_to_rgb, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -179,13 +177,11 @@ class TestRgbToRaw(BaseTester):
 
         # Reverse test in rawtorgb is sufficient functional test
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_raw, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -240,12 +236,12 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 3, 2, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
-        assert "Input H&W must be evenly disible by 2. Got" in str(errinf)
+        assert "Input H&W must be evenly divisible by 2. Got" in str(errinf)
 
         with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 2, 3, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
-        assert "Input H&W must be evenly disible by 2. Got" in str(errinf)
+        assert "Input H&W must be evenly divisible by 2. Got" in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
             img = torch.ones(1, 4, 8, device=device, dtype=dtype)

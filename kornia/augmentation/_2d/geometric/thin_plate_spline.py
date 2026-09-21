@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import SamplePadding
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
@@ -30,10 +31,24 @@ class RandomThinPlateSpline(AugmentationBase2D):
 
     .. image:: _static/img/RandomThinPlateSpline.png
 
+    Convention:
+        See the shared contract on :class:`~kornia.augmentation.AugmentationBase2D`.
+        Five control points use normalized ``(x, y)`` coordinates: ``(-1, -1)``, ``(-1, 1)``,
+        ``(1, -1)``, ``(1, 1)``, and ``(0, 0)``. Each destination coordinate receives uniform
+        noise between ``-scale`` and ``scale``; zero scale leaves these points unchanged.
+        Sampling is bilinear with zero padding and ``align_corners=False`` by default; no
+        interpolation-mode argument is exposed. Output spatial size is unchanged, and there is
+        no ``transform_matrix`` or ``inverse`` interface. Spatial labels in containers have
+        additional limitations; see `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
+
+        With zero scale, the image warp is identity up to numerical precision for either ``align_corners``
+        setting with float16, float32, float64, and bfloat16 inputs.
+
     Args:
-        scale: the scale factor to apply to the destination points.
+        scale: the non-negative scale factor to apply to the destination points.
+            Zero leaves the control points unchanged.
         align_corners: Interpolation flag used by ``grid_sample``.
-        mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
+        padding_mode: Padding used by ``grid_sample``: 'zeros', 'border' or 'reflection'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -69,7 +84,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
             "align_corners": align_corners,
             "padding_mode": SamplePadding.get(padding_mode),
         }
-        self.dist = torch.distributions.Uniform(-scale, scale)
+        self.dist = None if scale == 0 else torch.distributions.Uniform(-scale, scale)
 
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, _, _, _ = shape
@@ -78,13 +93,15 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dtype = self.dtype
 
         # 5 TPS control points in normalized coordinates
-        src = torch.tensor(
+        src = _constant_tensor(
             [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]],
             device=device,
             dtype=dtype,
         ).expand(B, 5, 2)
 
-        if self.same_on_batch:
+        if self.dist is None:
+            noise = torch.zeros_like(src)
+        elif self.same_on_batch:
             noise = self.dist.rsample((1, 5, 2)).to(device=device, dtype=dtype)
             noise = noise.expand(B, 5, 2)
         else:

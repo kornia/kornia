@@ -33,6 +33,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomGaussianBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         kernel_size: the size of the kernel.
         sigma: the range for the standard deviation of the kernel.
@@ -43,11 +45,30 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
-        silence_instantiation_warning: if True, silence the warning at instantiation.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
+          :func:`kornia.filters.gaussian_blur2d`. An even entry is not rounded up -- the forward pass raises
+          the primitive's own "odd integer" error.
+        - ``sigma`` is drawn once per sample, as a single scalar used for both axes. Both axes get that sigma
+          even when a rectangular ``kernel_size`` gives them different supports, and a support short enough to
+          truncate the Gaussian narrows the blur along its axis.
+        - the defaults ``separable=True`` and ``border_type="reflect"`` are the function's own defaults.
+        - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
+          average of input values and stays between the input's own extremes, up to the rounding of the kernel
+          weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
+          the input's minimum for a positive image, and above its maximum for a negative one.
+
+    .. warning::
+        At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel's extent
+        along that axis raises a raw torch ``RuntimeError`` about the padding rather than a kornia error naming the
+        class or the shape. ``"constant"`` and ``"replicate"`` run on the same image; ``"circular"`` raises a padding
+        error of its own, also raw, once the kernel radius exceeds that axis. Tracked in `#4559
+        <https://github.com/kornia/kornia/issues/4559>`_.
 
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.

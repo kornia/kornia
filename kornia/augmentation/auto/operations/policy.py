@@ -27,13 +27,30 @@ from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import _transform_input, override_parameters
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 
 
 class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     """Policy tuple for applying multiple operations.
 
+    Convention:
+        - accepts only :class:`~kornia.augmentation.auto.operations.OperationBase` children. Generated parameters
+          apply every child in construction order. Supplied ``params`` define the execution path instead: their
+          order and membership select the referenced children, so they may replay a reordered or partial path.
+          ``forward`` stores the ``ParamItem`` objects for the path it executed in ``_params``; those parameters can
+          replay the same operations through ``forward(input, params=...)``.
+        - its transformation matrix is the ordered product of its geometric wrapped operations. Intensity
+          operations do not contribute to that matrix.
+        - direct ``forward_parameters`` delegates to each wrapped augmentation rather than to
+          :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`.
+          It consequently samples the wrapped operation's native
+          magnitude instead of the ``OperationBase`` magnitude mapping; the gate comes from the wrapped
+          augmentation's ``p`` on both paths. The magnitude bypass is tracked
+          in `#4441 <https://github.com/kornia/kornia/issues/4441>`_. Policy augmentations use their own
+          samplers where needed.
+
     Args:
-        operations: a list of operations to perform.
+        operations: the operations to perform, passed as positional arguments rather than as one list.
 
     """
 
@@ -163,6 +180,10 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     ) -> torch.Tensor:
         """Apply all operations using a prepared parameter list.
 
+        Leaves the policy in the same state as :meth:`forward` with these ``params``: the cached
+        transformation matrix is rebuilt from this call and ``_params`` records ``params``. This is the
+        entry point used when the policy is nested inside another container.
+
         Args:
             input: Input tensor.
             params: Parameters for each operation in this policy.
@@ -171,8 +192,11 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         Returns:
             Transformed tensor.
         """
+        self._reset_transform_matrix_state()
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
             self._update_transform_matrix_by_module(module)
+        if not is_exporting():
+            self._params = params
         return input

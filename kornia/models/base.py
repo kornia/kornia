@@ -26,6 +26,7 @@ from typing import Any, Generic, List, Optional, TypeVar, Union, cast
 import torch
 from torch import nn
 
+from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
 from kornia.image.utils import tensor_to_image
 from kornia.io import write_image
@@ -33,6 +34,45 @@ from kornia.io import write_image
 logger = logging.getLogger(__name__)
 
 ModelConfig = TypeVar("ModelConfig")
+
+
+def _to_writable_png(image: torch.Tensor) -> torch.Tensor:
+    """Convert a visualization tensor to the dtype ``write_image`` accepts for PNG.
+
+    ``visualize`` returns float images in ``[0, 1]``, but ``write_image`` writes
+    PNG only for ``uint8``/``uint16``; float32 is TIFF-only and every other
+    float dtype is rejected outright.
+
+    These are pictures for a human to look at, not data to round-trip, so the
+    conversion is to ``uint8`` -- the same thing ``ImageModule`` already does
+    before handing a tensor to PIL. Values are clamped first: a visualization
+    that overshoots ``[0, 1]`` would otherwise wrap and put black where it
+    should be white. Non-float images pass through untouched, so a ``uint8``
+    or ``uint16`` visualization is written as-is.
+    """
+    if not image.is_floating_point():
+        return image
+    return (image.detach().clamp(0.0, 1.0) * 255).round().to(torch.uint8)
+
+
+def _write_png_batch(path_stem: str, image: torch.Tensor) -> None:
+    """Write one image, or one file per item of a batch.
+
+    ``write_image`` takes ``(3, H, W)``, ``(1, H, W)`` or ``(H, W)``, but the
+    containers document their inputs as ``(B, 3, H, W)`` and passed the batch
+    straight through. The backend then rejects the rank with an error that
+    names neither -- ``TypeError: argument 'image': 'ndarray' object is not an
+    instance of 'ndarray'`` -- so a batch has to be split here.
+
+    A batch of one still gets an index suffix, so a caller does not have to
+    guess whether a file will be ``name.png`` or ``name_0.png``.
+    """
+    image = _to_writable_png(image)
+    if image.dim() == 4:
+        for i, item in enumerate(image):
+            write_image(f"{path_stem}_{i}.png", item)
+    else:
+        write_image(f"{path_stem}.png", image)
 
 
 class ModelBaseMixin:
@@ -59,13 +99,11 @@ class ModelBaseMixin:
         """
         if output_type == "torch":
             return output
-        elif output_type == "pil":
+        if output_type == "pil":
             if isinstance(output, list):
                 return [tensor_to_image(t) for t in output]
-            else:
-                return tensor_to_image(output)
-        else:
-            raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
+            return tensor_to_image(output)
+        raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
 
     def save(self, output: Union[torch.Tensor, List[torch.Tensor]], directory: str, is_batch: bool = False) -> None:
         """Save the output tensor to a directory.
@@ -80,9 +118,9 @@ class ModelBaseMixin:
         timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
         if isinstance(output, list):
             for i, out in enumerate(output):
-                write_image(os.path.join(directory, f"{self.name}_{timestamp}_{i}.png"), out)
+                _write_png_batch(os.path.join(directory, f"{self.name}_{timestamp}_{i}"), out)
         else:
-            write_image(os.path.join(directory, f"{self.name}_{timestamp}.png"), output)
+            _write_png_batch(os.path.join(directory, f"{self.name}_{timestamp}"), output)
         logger.info(f"Outputs are saved in {directory}")
 
     def _save_outputs(
@@ -104,16 +142,16 @@ class ModelBaseMixin:
         timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
         if isinstance(output, list):
             for i, out in enumerate(output):
-                write_image(os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}.png"), out)
+                _write_png_batch(os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}"), out)
         else:
-            write_image(os.path.join(directory, f"{self.name}{suffix}_{timestamp}.png"), output)
+            _write_png_batch(os.path.join(directory, f"{self.name}{suffix}_{timestamp}"), output)
         logger.info(f"Outputs are saved in {directory}")
 
 
 class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
     """Abstract model class with some utilities function."""
 
-    def load_checkpoint(self, checkpoint: str, device: Optional[torch.device] = None) -> None:
+    def load_checkpoint(self, checkpoint: str | list[str], device: Optional[torch.device] = None) -> None:
         """Load checkpoint from a given url or file.
 
         Args:
@@ -121,11 +159,11 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
             device: The desired device to load the weights and move the model
 
         """
-        if os.path.isfile(checkpoint):
+        if isinstance(checkpoint, str) and os.path.isfile(checkpoint):
             with open(checkpoint, "rb") as f:
                 state_dict = torch.load(f, map_location=device)
         else:
-            state_dict = torch.hub.load_state_dict_from_url(checkpoint, map_location=device)
+            state_dict = load_state_dict_from_url(checkpoint, map_location=device)
 
         self.load_state_dict(state_dict)
 

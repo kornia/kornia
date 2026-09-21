@@ -1,21 +1,27 @@
-# Contributing to Kornia
+# Contributing to kornia
 
-Welcome! This guide will help you contribute to Kornia.
+## Our social contract
 
-## Policies and Guidelines
+We (maintainers) develop kornia for ourselves and the computer vision community.
+If kornia is useful to you in any way — to import, to prototype, to use as a reference for your agent — that makes us happy.
+You are welcome to help us improve kornia: report a bug, implement a feature, propose an idea, answer a question, or simply tell others about the project.
+We try to do our best to accept your help — by reviewing PRs, fixing bugs, and so on — but we do not promise to review every PR, let alone quickly.
+We have jobs, families, health problems, and holidays, just like everyone else.
 
-- **AI Policy & Authorship**: See [AI_POLICY.md](AI_POLICY.md) for the complete policy. Summary:
-    - Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy.
-    - **Proof of Verification**: PRs must include local test logs proving execution.
-    - **Hallucination & Redundancy Ban**: Use existing `kornia` utilities and never reinvent the wheel, except for when the utility is not available.
-    - **The "Explain It" Standard**: You must be able to explain any code you submit.
-    - Violations result in immediate closure or rejection.
+You may use AI to do the work — so do we. There are no approved or disapproved amounts of AI use. Tell us how AI helped; we do the same.
+Above all, we ask you to care. Good work done with care makes the world better; sloppy work makes the world worse.
 
-- **15-Day Rule**: PRs with no activity for 15+ days will be automatically closed.
+The rest of this guide contains practical and technical guidance so nobody has to guess. If you have experience with open source, you probably already know most of it.
 
-- **Transparency**: All discussions must be public.
+## Practical guidelines
 
-We're all volunteers. These policies help us focus on high-impact work.
+- Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
+- Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
+- Look for an existing `kornia` utility before adding another implementation. Keep changes focused, follow nearby code, and update the documentation when public behavior changes.
+- Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
+- If you are contributing as part of an application, remember that we read the work and review conversation, not pull request counts.
+- Keep project decisions and review discussions in public GitHub issues, discussions, or pull requests so others can find and learn from them.
+- Pull requests are marked stale after 15 quiet days to keep the queue usable. **We do not close pull requests for inactivity** — the label is a triage signal and nothing else, and it clears itself as soon as you comment or push. Maintainers can add `pinned` when a pull request should be exempt from the sweep entirely. A quiet pull request is often waiting on us, so take the label as a nudge to ping us, not as a deadline.
 
 ## Ways to Contribute
 
@@ -33,22 +39,22 @@ We're all volunteers. These policies help us focus on high-impact work.
 3. **Fix bugs or add features:**
    - Check [help wanted issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) for starting points.
    - Follow the [development setup](#developing-kornia) below.
-   - See [Pull Request](#pull-request) section for PR requirements.
+   - See the [Pull Request](#pull-request) section for practical guidance.
 
 4. **Donate resources:**
    - [Open Collective](https://opencollective.com/kornia)
    - [GitHub Sponsors](https://github.com/sponsors/kornia)
    - We're looking for CUDA server donations for testing.
 
-# Developing Kornia
+## Developing kornia
 
-## Setup
+### Setup
 
 1. **Fork** the [repository](https://github.com/kornia/kornia/fork)
 
 2. **Clone your fork** and add upstream:
     ```bash
-    $ git clone git@github.com:<your Github username>/kornia.git
+    $ git clone git@github.com:<your GitHub username>/kornia.git
     $ cd kornia
     $ git remote add upstream https://github.com/kornia/kornia.git
     ```
@@ -80,45 +86,55 @@ We're all volunteers. These policies help us focus on high-impact work.
     **Set up the development environment:**
 
     ```bash
-    # Install all dependencies (defaults to Python 3.11)
+    # Create the default Pixi environment, then install development dependencies
     pixi install
+    pixi run -e default install
 
     # For specific Python versions
     pixi install -e py312  # Python 3.12
+    pixi run -e py312 install
     pixi install -e py313  # Python 3.13
+    pixi run -e py313 install
 
     # For CUDA development (requires reinstall of PyTorch)
     pixi run -e cuda install
     ```
 
+    The `py312` and `py313` environments use isolated `.venv-py312` and `.venv-py313` project environments automatically.
+
     **Available tasks:**
 
-    Kornia provides several tasks via pixi for common development workflows:
+    kornia provides several tasks via pixi for common development workflows:
 
     ```bash
     # Installation
-    pixi run install          # Install dev dependencies
-    pixi run install-docs     # Install dev + docs dependencies
+    pixi run -e default install # Install dev dependencies
+    pixi run -e default install-docs # Install dev + docs dependencies
 
     # Testing
     pixi run test             # Run tests (configure via KORNIA_TEST_* env vars)
     pixi run test-f32         # Run tests with float32
     pixi run test-f64         # Run tests with float64
     pixi run test-slow        # Run slow tests
-    pixi run test-quick       # Run quick tests (excludes jit, grad, nn)
+    pixi run test-quick       # Run quick tests (same as `pixi run test`)
+    pixi run test-module tests/<path>  # Run a focused test path
+    pixi run test-half        # Run CPU float16/bfloat16 tests
 
     # CUDA testing (requires cuda environment)
     pixi run -e cuda test-cuda      # Run tests on CUDA
     pixi run -e cuda test-cuda-f32  # Run CUDA tests with float32
     pixi run -e cuda test-cuda-f64  # Run CUDA tests with float64
+    pixi run -e cuda test-cuda-half # Run isolated CUDA float16/bfloat16 tests
 
     # Code quality
     pixi run lint             # Run ruff linting
+    pixi run pre-commit-all   # Run all repository pre-commit checks
+    pixi run pre-commit-install  # Install the pre-commit Git hook
     pixi run typecheck        # Run type checking with ty
     pixi run doctest          # Run doctests
 
     # Documentation
-    pixi run build-docs       # Build documentation
+    pixi run -e default build-docs # Build documentation
 
     # Utilities
     pixi run clean            # Clean Python cache files
@@ -142,7 +158,7 @@ We're all volunteers. These policies help us focus on high-impact work.
     pixi run test
     ```
 
-    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi install`.
+    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run -e default install`.
 
     **CUDA:** The CUDA environment uses PyTorch with CUDA 12.1. Run `pixi run -e cuda install` to set it up.
 
@@ -154,26 +170,26 @@ We're all volunteers. These policies help us focus on high-impact work.
     pixi run test
 
     # Run specific test file
-    pixi run test tests/<TEST_TO_RUN>.py
+    pixi run test-module tests/<TEST_TO_RUN>.py
 
     # For specific test with pytest options
-    pixi run test tests/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
+    pixi run test-module tests/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
     ```
 
     **dtype options:** `bfloat16`, `float16`, `float32`, `float64`, `all`
     **device options:** `cpu`, `cuda`, `tpu`, `mps`, `all`
 
-    We use [pre-commit](https://pre-commit.com) for code quality. Install it with `pre-commit install`. See [coding standards](#coding-standards) below.
+    We use [pre-commit](https://pre-commit.com) for code quality. Install its Git hook with `pixi run pre-commit-install`. See [coding standards](#coding-standards) below.
 
-# Contributing to Documentation
+## Contributing to Documentation
 
 1. Set up your development environment (see [above](#developing-kornia))
 2. Edit files in `docs/`
-3. Build docs: `make build-docs`
+3. Build docs: `pixi run -e default build-docs`
 4. Preview: `open docs/build/html/index.html`
 5. Submit a PR following the [Pull Request](#pull-request) guidelines
 
-# Coding Standards
+## Coding Standards
 
 - **Write small incremental changes:**
   - Commit small, logical changes
@@ -188,9 +204,9 @@ We're all volunteers. These policies help us focus on high-impact work.
     ```python
     from testing.base import BaseTester
 
+
     class TestMyFunction(BaseTester):
         # To compare the actual and expected tensors use `self.assert_close(...)`
-
 
         def test_smoke(self, device, dtype):
             # test the function with different parameters arguments, to check if the function at least runs with all the
@@ -241,6 +257,7 @@ We're all volunteers. These policies help us focus on high-impact work.
     ```python
     import pytest
 
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_smoke(batch_size, device, dtype):
         x = torch.rand(batch_size, 2, 3, device=device, dtype=dtype)
@@ -272,6 +289,7 @@ We're all volunteers. These policies help us focus on high-impact work.
     from __future__ import annotations
     import torch.nn as nn
 
+
     class MyModule(nn.Module):
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             return x
@@ -281,8 +299,8 @@ We're all volunteers. These policies help us focus on high-impact work.
   - Follow [PEP8](https://www.python.org/dev/peps/pep-0008/)
   - Use f-strings: [PEP 498](https://peps.python.org/pep-0498/)
   - Line length: 120 characters
-  - Comments must be written in English and verified by a human with a good understanding of the code
-  - Obvious or redundant comments are not allowed (see [Best Practices](#best-practices) for comment guidelines)
+  - Write comments in English so they are useful to the whole community
+  - Prefer comments that explain why; remove comments that merely repeat the code or no longer match it
   - W504 (line break after binary operator) is sometimes acceptable. Example:
 
     ```python
@@ -290,36 +308,51 @@ We're all volunteers. These policies help us focus on high-impact work.
                   A[:, :, 0:1, 1:2] * A[:, :, 1:2, 0:1])
     ```
 
-- **Third-party libraries:** Not allowed. Only PyTorch.
+- **Dependencies:** Avoid adding runtime dependencies. If one is useful, explain why existing dependencies are not enough and discuss the trade-off first.
 
-# Best Practices
+## Best Practices
 
-This section provides guidance for contributing to Kornia, with a focus on Python and PyTorch best practices, performance, and maintainability.
+This section provides guidance for contributing to kornia, with a focus on Python and PyTorch best practices, performance, and maintainability.
 
-## Before You Start
+### Before You Start
 
-1. **Discuss First**: Always discuss your proposed changes in Discord or via a GitHub issue before starting implementation. This ensures your work aligns with project goals and avoids duplicate effort.
+1. **Start Small**: If you're new to the project, a small bug fix or documentation improvement is a good way to learn the codebase and contribution process.
 
-2. **Start Small**: If you're new to the project, start with small bug fixes or documentation improvements to familiarize yourself with the codebase and contribution process.
+2. **Understand the Codebase**: Take time to explore existing code patterns, architecture, and conventions before implementing new features.
 
-3. **Understand the Codebase**: Take time to explore existing code patterns, architecture, and conventions before implementing new features.
+3. **Review Existing Utilities**: Before implementing new functionality, search the codebase for existing utilities in `kornia`.
 
-4. **Review Existing Utilities**: Before implementing new functionality, search the codebase for existing utilities in `kornia`. This aligns with the AI Policy's Hallucination & Redundancy Ban (see [Policies and Guidelines](#policies-and-guidelines)).
-
-## Development Workflow
+### Development Workflow
 
 1. **Keep PRs Focused**: Each PR should address a single concern. If you're working on multiple features, create separate PRs for each.
 
-2. **Test Locally First**: Always run all relevant tests locally before submitting (see [Pull Request](#pull-request) for requirements):
+2. **Test Locally**: Run the checks that are relevant to your change:
    ```bash
-   pixi run lint        # Check formatting and linting
-   pixi run test         # Run all tests
-   pixi run typecheck    # Verify type checking
+   pixi run lint          # Run the Ruff hooks
+   pixi run pre-commit-all  # Run the full repository checks
+   pixi run test          # Run all tests
+   pixi run typecheck     # Verify type checking
    ```
 
 3. **Update Documentation**: When adding new features or changing behavior, update docstrings for public APIs. For documentation contributions, see [Contributing to Documentation](#contributing-to-documentation).
 
-## Code Quality
+### Changelog entries
+
+For a user-visible change, add a short Markdown file such as `changelog.d/1234.fixed.md`,
+where `1234` is the PR number (not an issue number). Use `added`, `fixed`, or `breaking` for the type.
+Write what changes for the user; breaking changes must describe the old and new behavior.
+Only release PRs edit `CHANGELOG.md`: separate files prevent unrelated PRs
+from conflicting on the same lines.
+
+If the PR number is not known yet, use a unique name such as `+fix-camera-shape.fixed.md`
+and rename it to the PR number before merging. Internal refactors, tests, and CI-only changes can omit
+an entry; explain why in the PR description and ask a maintainer to apply `no-changelog`.
+CI still validates fragment names and rendering when this label is present.
+
+Run `pixi run changelog-preview` to preview the notes without changing any files.
+See [the fragment guide](changelog.d/README.md) for examples and release instructions.
+
+### Code Quality
 
 1. **Performance Considerations**:
    - Prefer in-place operations when possible (e.g., `tensor.add_(other)` vs `tensor = tensor.add(other)`)
@@ -336,12 +369,12 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
    - Avoid over-engineering; start simple and refactor when needed
 
 3. **Tensor Operations**:
-   - Use `kornia` utilities instead of reimplementing common operations (see [AI Policy](#policies-and-guidelines))
+   - Use `kornia` utilities instead of reimplementing common operations
    - Ensure operations are device-agnostic (work on CPU, CUDA, MPS, etc.)
    - Support multiple dtypes (float32, float64, float16, bfloat16) when applicable
    - Handle batched and non-batched inputs consistently
 
-## Testing Best Practices
+### Testing Best Practices
 
 - Write tests for happy paths, error cases, edge conditions, boundary conditions, and integration scenarios
 - Use `BaseTester` from `testing.base` for consistent test structure (see [Coding Standards](#coding-standards) for examples)
@@ -349,76 +382,41 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 - Make tests deterministic, fast, and independent
 - Use descriptive test names; test both forward pass and gradients when applicable
 
-## Review Process
+### Review Process
 
-- Review your own PR first: check for typos/formatting, verify tests pass, ensure documentation is updated, and confirm AI policy compliance
-- Respond promptly to review feedback
+- Review your own PR first: check for typos and formatting, run relevant tests, and update affected documentation
+- Respond to review feedback when you can
 - Be open to feedback and explain your decisions when questioned
-- See [Pull Request](#pull-request) section for review requirements
+- Remember that review is done by people with limited time and may not happen quickly
 
-## AI-Assisted Development
+### Working with AI
 
-- Understand every line of code you submit; you must be able to explain it during review (see [AI Policy](#policies-and-guidelines))
-- Review AI output thoroughly: check for unnecessary complexity, verify it follows project conventions, ensure it uses existing utilities, and test it
-- Be transparent in PR descriptions about what was AI-assisted and what you manually reviewed (see [Pull Request](#pull-request) for AI Usage Disclosure requirements)
-- **AI Usage Disclosure in PR Template**: When completing the PR template's "AI Usage Disclosure" section:
-  - Mark as **🟢 No AI used** only if you wrote all code manually without any AI assistance
-  - Mark as **🟡 AI-assisted** if you used AI tools (Copilot, Cursor, etc.) for boilerplate/refactoring but manually reviewed and tested every line
-  - Mark as **🔴 AI-generated** if an AI agent generated the code, PR description, or commit messages, or if you cannot explain the logic without referring to the AI's output. **Important**: PRs marked as AI-generated are subject to stricter scrutiny and may be immediately closed if the logic cannot be explained
+- AI tools are welcome. Read their output, check it in the same way you would check your own work, and tell us briefly how they helped.
+- Useful details include what the tool did, what you changed afterward, and what you checked yourself. We do not need a percentage or an authorship category.
 
-## Communication
+### Communication
 
-- Write clear, concise PR descriptions (see [Pull Request](#pull-request) for requirements)
-- Always link to related issues or discussions in your PR description
-- Ask questions in Discord or PR comments if unsure; it's better to clarify early than to rework later
+- Write a clear, concise pull request description
+- Link related issues or discussions when they exist
+- Ask questions in Discord, GitHub Discussions, or pull request comments when useful
 
-# Pull Request
+## Pull Request
 
-## Issue Approval and Assignment Workflow
+Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it.
 
-**Before submitting a PR, you must:**
+For bug fixes, a regression test that fails before the fix is especially helpful. For numerical or geometry changes, say where the expected behavior comes from. For new public APIs or behavior changes, an issue or discussion before a large implementation can uncover compatibility and design concerns early.
 
-1. **Open an issue first**: All PRs must be linked to an existing issue. If no issue exists for your work, create one using the appropriate template (bug report or feature request).
+Reviewers may ask for changes, tests, documentation, or a smaller scope. They may also decide that a contribution does not fit the project. We will try to explain why, but review is not guaranteed. Pull requests that have been quiet for a while may be closed and can be reopened later.
 
-2. **Wait for maintainer approval**: A maintainer must review and approve the issue before you start working on it. New issues are automatically labeled with `triage` and will receive a welcome message explaining this process.
+**PR checks and merge requirements:**
+- Code changes run the CPU test matrix, dynamo/compile tests, and type checking with `ty`
+- Pre-commit checks formatting, linting, license headers, spelling, and repository file hygiene
+- Documentation changes run the documentation build
+- Every non-draft pull request gets an automated Copilot review when opened or marked ready and needs one maintainer approval
+- Pull requests are squash-merged
 
-3. **Wait for assignment**: You must be assigned to the issue by a maintainer before submitting a PR. This ensures:
-   - The issue aligns with project goals
-   - No duplicate work is being done
-   - Proper coordination of contributions
+If a check fails because of your change, please fix it or explain what you found.
 
-4. **Do not start work until assigned**: PRs submitted without prior issue approval and assignment may be closed or receive warnings during automated validation.
-
-This workflow helps maintain quality, avoid conflicts, and ensure contributions align with the project's direction. The automated PR validation workflow will check these requirements and post warnings if they're not met.
-
-**Requirements:**
-- **Issue approval and assignment**: The linked issue must be approved by a maintainer and you must be assigned to it (see workflow above)
-- Link PR to an issue (use "Closes #123" or "Fixes #123")
-- Pass all local tests before submission
-- Provide proof of local test execution in the PR description (this is especially important for first-time contributors)
-- Fill the [pull request template](.github/pull_request_template.md)
-- **AI Policy Compliance**: Must comply with [AI_POLICY.md](AI_POLICY.md). This includes:
-  - Using existing `kornia` utilities instead of reinventing
-  - Being able to explain all submitted code
-  - Completing the AI Usage Disclosure in the PR template accurately (see [AI-Assisted Development](#ai-assisted-development) for guidance on when to mark as AI-generated)
-- 15-Day Rule: Inactive PRs (>15 days) will be closed
-- Transparency: Keep discussions public
-
-**Code review:**
-- By default, GitHub Copilot will check the PR against the AI Policy and the coding standards.
-- Code must be reviewed by the repository owner or a senior contributor, who have the final say on the quality and acceptance of the PR.
-
-**Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.
-
-**CI checks:**
-- All tests pass
-- Test coverage maintained
-- Type checking (ty)
-- Documentation builds successfully
-- Code formatting (ruff, docformatter via pre-commit)
-
-Fix any failing checks before your PR will be considered.
-
-# License
+## License
 
 By contributing, you agree to license your contributions under the Apache License. See [LICENSE](./LICENSE).

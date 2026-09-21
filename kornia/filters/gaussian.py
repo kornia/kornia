@@ -20,13 +20,69 @@ from __future__ import annotations
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .filter import filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
+
+# This build capability is immutable; querying it inside forward breaks Dynamo
+# full-graph capture. Cache it without changing any backend settings.
+_HAS_MKLDNN = torch.backends.mkldnn.is_available()
+
+
+def _gaussian_blur2d_cpu_eligible(input: torch.Tensor) -> bool:
+    """Select large native-precision images where weighted slices beat convolution."""
+    # Preserve convolution's autocast and legacy tracing behaviour. Small images are faster
+    # in one convolution; convolution also avoids a long chain of slice-backward operations.
+    # Eager slices beat oneDNN too, but Inductor compiles oneDNN's convolution better than
+    # the slices. On CUDA only Inductor's fused slices beat cuDNN; eager slices are slower.
+    if input.device.type == "cpu":
+        device_ok = not (_HAS_MKLDNN and is_compiling())
+    else:
+        device_ok = input.device.type == "cuda" and is_compiling()
+    return (
+        device_ok
+        and not torch.jit.is_tracing()
+        and input.dtype in (torch.float32, torch.float64)
+        and not is_autocast_enabled()
+        and not (torch.is_grad_enabled() and input.requires_grad)
+        and input.is_contiguous()
+        and input.shape[-2] * input.shape[-1] >= 256 * 256
+        and input.numel() >= 128 * 1024
+    )
+
+
+def _gaussian_blur2d_cpu(
+    input: torch.Tensor, kernel_x: torch.Tensor, kernel_y: torch.Tensor, border_type: str
+) -> torch.Tensor:
+    """Accumulate separable Gaussian taps without materializing convolution's im2col buffer.
+
+    Keep weights as tensors: scalar ``alpha`` values would lose derivatives with
+    respect to sigma and break forward-mode automatic differentiation.
+    """
+    # vmap has a batching rule for addcmul, but not its in-place variant.
+    # Compilers can fuse the functional accumulation without these allocations.
+    reuse_accumulator = not is_compiling() and not torch._C._are_functorch_transforms_active()
+    for axis, kernel in ((-1, kernel_x), (-2, kernel_y)):
+        size = input.shape[axis]
+        radius = kernel.shape[-1] // 2
+        padding = (radius, radius, 0, 0) if axis == -1 else (0, 0, radius, radius)
+        padded = F.pad(input, padding, mode=border_type)
+        output = padded.narrow(axis, 0, size) * kernel[:, 0, None, None, None]
+        for tap in range(1, kernel.shape[-1]):
+            values = padded.narrow(axis, tap, size)
+            weight = kernel[:, tap, None, None, None]
+            if reuse_accumulator:
+                output.addcmul_(values, weight)
+            else:
+                output = output.addcmul(values, weight)
+        input = output
+    return input
 
 
 def gaussian_blur2d(
@@ -62,7 +118,7 @@ def gaussian_blur2d(
         RuntimeError: if kernel_size is not a positive odd integer.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/gaussian_blur.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/gaussian_blur.html>`__.
 
     Examples:
         >>> import torch
@@ -100,7 +156,7 @@ def gaussian_blur2d(
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
     # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
-    if not torch.compiler.is_compiling():
+    if not is_compiling():
         # Only interpolate `sigma` into the message when the check actually fails: a plain
         # f-string here would format the whole `sigma` tensor (a costly tensor->str) on every
         # eager call even when it passes — which dominated the eager Gaussian-blur runtime.
@@ -112,7 +168,15 @@ def gaussian_blur2d(
         bs = sigma.shape[0]
         kernel_x = get_gaussian_kernel1d(kx, sigma[:, 1].view(bs, 1))
         kernel_y = get_gaussian_kernel1d(ky, sigma[:, 0].view(bs, 1))
-        out = filter2d_separable(input, kernel_x, kernel_y, border_type)
+        if (
+            _gaussian_blur2d_cpu_eligible(input)
+            and not (torch.is_grad_enabled() and sigma.requires_grad)
+            and bs in (1, input.shape[0])
+            and border_type in ("constant", "reflect", "replicate", "circular")
+        ):
+            out = _gaussian_blur2d_cpu(input, kernel_x, kernel_y, border_type)
+        else:
+            out = filter2d_separable(input, kernel_x, kernel_y, border_type)
     else:
         kernel = get_gaussian_kernel2d(kernel_size, sigma)
         out = filter2d(input, kernel, border_type)
@@ -195,6 +259,6 @@ class GaussianBlur2d(nn.Module):
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
 
 
-@deprecated(replace_with="gaussian_blur2d", version="6.9.10")
+@deprecated(replace_with="gaussian_blur2d", version="0.6.10")
 def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
     return gaussian_blur2d(*args, **kwargs)

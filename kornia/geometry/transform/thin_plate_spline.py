@@ -42,15 +42,19 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
     return square_dist
 
 
-def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+def _kernel_distance(squared_distances: torch.Tensor) -> torch.Tensor:
     r"""Compute the TPS kernel distance function: :math:`r^2 log(r)`, where `r` is the euclidean distance.
 
     Since
     :math: `\log(r) = 1/2 \log(r^2)`, this function takes the squared distance matrix and calculates
     :math: `0.5 r^2 log(r^2)`.
     """
-    # r^2 * log(r) = 1/2 * r^2 * log(r^2)
-    return 0.5 * squared_distances * squared_distances.add(eps).log()
+    safe = torch.where(squared_distances > 0, squared_distances, torch.ones_like(squared_distances))
+    return torch.where(
+        squared_distances > 0,
+        0.5 * squared_distances * safe.log(),
+        torch.zeros_like(squared_distances),
+    )
 
 
 def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -58,6 +62,34 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
 
     The input to this function is a torch.Tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
     torch.Tensor of target :math:`(x, y)` points :math:`(B, N, 2)`.
+
+    Convention:
+        - ``points_src``/``points_dst``: :math:`(B, N, 2)` in ``(x, y)`` order, in
+          whatever coordinate frame the caller supplies — the function performs no
+          normalization of its own
+        - returns kernel weights :math:`(B, N, 2)` and affine weights :math:`(B, 3, 2)`,
+          consumed by :func:`warp_points_tps`/:func:`warp_image_tps`; the identity
+          mapping (``points_src == points_dst``) yields kernel weights and an affine
+          that are mathematically zero/identity, realized only up to linear-solver
+          (LU) round-off — not bit-exact in general, and the residual size is
+          dtype- and backend-dependent
+        - neither :func:`warp_points_tps` nor :func:`warp_image_tps` calls this
+          function — the caller composes them explicitly; whichever tensor is
+          passed as this function's **second** positional argument is
+          ``kernel_centers`` for the returned ``kernel_weights``/``affine_weights``
+          pair, and must be passed as ``kernel_centers`` again to the warp
+          function; :func:`warp_points_tps` is typically composed in the
+          natural ``(points_src, points_dst)`` order, while :func:`warp_image_tps`
+          is typically composed **reversed** — ``get_tps_transform(points_dst,
+          points_src)`` — since image warping samples from output space back
+          into input space; the recipe for warping an image end-to-end (when
+          targeting :func:`warp_image_tps`, both ``points_dst`` and ``points_src``
+          here are normalized in the single frame selected by that function's
+          ``align_corners`` — see its Convention block for both formulas)::
+
+              kernel_weights, affine_weights = get_tps_transform(points_dst, points_src)
+              warped = warp_image_tps(image, kernel_centers=points_src,
+                                      kernel_weights=kernel_weights, affine_weights=affine_weights)
 
     Args:
         points_src: batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
@@ -124,10 +156,23 @@ def warp_points_tps(
     torch.Tensor[..., 0] contains the weights for the x-transform and torch.Tensor[..., 1] the weights
     for the y-transform.
 
+    Convention:
+        - points: :math:`(B, N, 2)` (or :math:`(B, K, 2)` for kernel centers) in
+          ``(x, y)`` order, in whatever coordinate frame the input points are already
+          in — this function performs no normalization of its own
+        - ``kernel_centers`` must be the ``points_dst`` argument (the second
+          positional argument) passed to :func:`get_tps_transform`; see its
+          Convention block for the full binding rule and recipe
+        - returns points warped in that same coordinate frame/units as the input, with
+          no renormalization; the output is **not** clamped — a valid TPS transform can
+          map an in-range point outside that frame (e.g. warping ``(0.75, 0)`` through a
+          transform that is exactly a 2x affine scale returns ``(1.5, 0)``, outside
+          :math:`[-1, 1]`)
+
     Args:
         points_src: torch.Tensor of source points :math:`(B, N, 2)`.
         kernel_centers: torch.Tensor of kernel center points :math:`(B, K, 2)`.
-        kernel_weights: torch.Tensor of kernl weights :math:`(B, K, 2)`.
+        kernel_weights: torch.Tensor of kernel weights :math:`(B, K, 2)`.
         affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
 
     Returns:
@@ -200,10 +245,31 @@ def warp_image_tps(
     The input `image` is a :math:`(B, C, H, W)` torch.Tensor. The kernel centers, kernel weight and affine weights
     are the same as in `warp_points_tps`.
 
+    Convention:
+        - image: :math:`(B, C, H, W)`; kernel/affine weights as returned by
+          :func:`get_tps_transform` called **reversed** —
+          ``get_tps_transform(points_dst, points_src)`` — see its Convention block
+        - ``kernel_centers`` must be the tensor passed as the **second** positional
+          argument to that reversed :func:`get_tps_transform` call (i.e.
+          ``points_src``); see :func:`get_tps_transform`'s Convention block for the
+          full binding rule and recipe
+        - control points on **both** sides — ``kernel_centers`` and both arguments
+          of the reversed :func:`get_tps_transform` call — live in the single
+          normalized grid_sample coordinate frame selected by ``align_corners``
+          below, where ``[-1, 1]`` is the in-bounds extent (values outside are
+          allowed, subject to ``padding_mode``) rather than a validity bound. At
+          the default ``align_corners=False`` that is the half-pixel mapping
+          :math:`x_{norm} = (2x+1)/W - 1`; ``align_corners=True`` selects the
+          corner-aligned :math:`x_{norm} = 2x/(W-1) - 1`. Pixel-space
+          (unnormalized) control points silently produce a wrong warp of the
+          correct shape, with no error raised
+        - align_corners: ``False`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         image: input image torch.Tensor :math:`(B, C, H, W)`.
         kernel_centers: kernel center points :math:`(B, K, 2)`.
-        kernel_weights: torch.Tensor of kernl weights :math:`(B, K, 2)`.
+        kernel_weights: torch.Tensor of kernel weights :math:`(B, K, 2)`.
         affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
         align_corners: interpolation flag used by `grid_sample`.
         padding_mode: padding flag used by `grid_sample`.
@@ -248,7 +314,9 @@ def warp_image_tps(
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
     batch_size, _, h, w = image.shape
-    coords: torch.Tensor = create_meshgrid(h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True)
+    coords: torch.Tensor = create_meshgrid(
+        h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True, align_corners=align_corners
+    )
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)

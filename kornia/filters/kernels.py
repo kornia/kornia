@@ -86,14 +86,20 @@ def gaussian(
 
     Args:
         window_size: the size which drives the filter amount.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
-        mean: Mean of the Gaussian function (center). If not provided, it defaults to window_size // 2.
-        If a tensor, should be in a shape :math:`(B, 1)`
+        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`.
+        mean: Mean of the Gaussian function (center). If not provided, it defaults to
+            ``window_size // 2``. If a tensor, should be in a shape :math:`(B, 1)`.
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
     Returns:
-        A tensor withshape :math:`(B, \text{kernel_size})`, with Gaussian values.
+        A tensor with shape :math:`(B, \text{kernel_size})`, with Gaussian values.
+
+    .. note::
+        A ``sigma`` of zero -- and any ``sigma`` too small for the window to hold a representable
+        weight -- returns the unit-impulse limit of the kernel: all the mass on the sample nearest
+        the mean, split evenly between the two centre taps when ``window_size`` is even. The
+        gradient with respect to ``sigma`` is zero there, matching the continuous limit.
 
     """
     if isinstance(sigma, float):
@@ -115,7 +121,24 @@ def gaussian(
     if window_size % 2 == 0:
         x = x + 0.5
 
-    gauss = torch.exp(-x.pow(2.0) / (2 * sigma.pow(2.0)))
+    # Measure the squared distance from the nearest sample rather than from the mean. The shift
+    # cancels in the normalization, but the nearest sample now always weighs exp(0) = 1, so a
+    # small sigma (or a mean far off the grid) cannot underflow every sample to 0 and divide 0 / 0.
+    dist = x.pow(2.0)
+    if window_size > 0:
+        dist = dist - dist.min(-1, keepdim=True)[0]
+
+    # A zero denominator is the unit-impulse limit of the kernel: sigma == 0 exactly, or a sigma
+    # whose square underflows the dtype (float16 below ~1e-4). Either way the nearest samples
+    # divide 0 / 0. Repairing that after the fact leaves the division on the graph and the sigma
+    # gradient still comes back NaN, so divide by a stand-in and select the impulse out of that
+    # finite arm instead. The gradient is then the 0 of the continuous sigma -> 0 limit. A NaN
+    # sigma is not caught by the comparison and still propagates, as it did before.
+    denominator = 2 * sigma.pow(2.0)
+    is_impulse = denominator == 0
+    safe_denominator = torch.where(is_impulse, torch.ones_like(denominator), denominator)
+    gauss = torch.exp(-dist / safe_denominator)
+    gauss = torch.where(is_impulse, (dist == 0).to(dist.dtype), gauss)
 
     return gauss / gauss.sum(-1, keepdim=True)
 
@@ -159,90 +182,88 @@ def gaussian_discrete_erf(
 
 
 def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
-    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
-    ax = torch.abs(x)
+    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
-    out = torch.zeros_like(x)
+    Both polynomial branches are evaluated on the full tensor and merged with ``torch.where`` (instead
+    of boolean-mask indexing) so that the kernel traces without data-dependent control flow.
+    """
+    ax = torch.abs(x)
     idx_a = ax < 3.75
 
-    if idx_a.any():
-        y = (x[idx_a] / 3.75) * (x[idx_a] / 3.75)
-        out[idx_a] = 1.0 + y * (
-            3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.360768e-1 + y * 0.45813e-2))))
-        )
+    # small-argument branch (|x| < 3.75)
+    y = (x / 3.75) * (x / 3.75)
+    out_a = 1.0 + y * (
+        3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.360768e-1 + y * 0.45813e-2))))
+    )
 
-    idx_b = ~idx_a
-    if idx_b.any():
-        y = 3.75 / ax[idx_b]
-        ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
-        coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
-        out[idx_b] = (ax[idx_b].exp() / ax[idx_b].sqrt()) * coef
+    # large-argument branch; clamp keeps the unused lanes finite (|x| = 0 would divide by zero)
+    ax_b = torch.where(idx_a, torch.full_like(ax, 3.75), ax)
+    y = 3.75 / ax_b
+    ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
+    coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
+    out_b = (ax_b.exp() / ax_b.sqrt()) * coef
 
-    return out
+    return torch.where(idx_a, out_a, out_b)
 
 
 def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
-    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
-    ax = torch.abs(x)
+    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
-    out = torch.zeros_like(x)
+    Branch-free like :func:`_modified_bessel_0`.
+    """
+    ax = torch.abs(x)
     idx_a = ax < 3.75
 
-    if idx_a.any():
-        y = (x[idx_a] / 3.75) * (x[idx_a] / 3.75)
-        ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
-        out[idx_a] = ax[idx_a] * (0.5 + y * (0.87890594 + y * ans))
+    # small-argument branch (|x| < 3.75)
+    y = (x / 3.75) * (x / 3.75)
+    ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
+    out_a = ax * (0.5 + y * (0.87890594 + y * ans))
 
-    idx_b = ~idx_a
-    if idx_b.any():
-        y = 3.75 / ax[idx_b]
-        ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
-        ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
-        ans = ans * ax[idx_b].exp() / ax[idx_b].sqrt()
-        out[idx_b] = torch.where(x[idx_b] < 0, -ans, ans)
+    # large-argument branch; clamp keeps the unused lanes finite (|x| = 0 would divide by zero)
+    ax_b = torch.where(idx_a, torch.full_like(ax, 3.75), ax)
+    y = 3.75 / ax_b
+    ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
+    ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
+    ans = ans * ax_b.exp() / ax_b.sqrt()
+    out_b = torch.where(x < 0, -ans, ans)
 
-    return out
+    return torch.where(idx_a, out_a, out_b)
 
 
 def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
     """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
+    # I_n(0) = 0 for n >= 1. The zero lanes are computed on a safe placeholder and masked out at the
+    # end instead of being compacted away, so the recurrence has no data-dependent control flow.
     is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
-    if is_zero_mask.all():
-        return x
+    x_nz = torch.where(is_zero_mask, torch.ones_like(x), x)
 
-    x_nz = x[~is_zero_mask]
-
-    batch_size = x_nz.shape[0]
     tox = 2.0 / x_nz.abs()
 
-    ans = torch.zeros(batch_size, device=x.device, dtype=x.dtype)
-    bip = torch.zeros(batch_size, device=x.device, dtype=x.dtype)
-    bi = torch.ones(batch_size, device=x.device, dtype=x.dtype)
+    ans = torch.zeros_like(x)
+    bip = torch.zeros_like(x)
+    bi = torch.ones_like(x)
 
     m = int(2 * (n + int(math.sqrt(40.0 * n))))
     for j in range(m, 0, -1):
         bim = torch.addcmul(bip, tox, bi, value=j)
         bip, bi = bi, bim
 
+        # Rescale only the lanes that grow past 1e10; the other lanes pass through unchanged.
         scale_mask = bi.abs() > 1.0e10
-        if scale_mask.any():
-            factor = torch.where(scale_mask, 1e-10, 1.0)
-            ans *= factor
-            bi *= factor
-            bip *= factor
+        ans = torch.where(scale_mask, ans * 1e-10, ans)
+        bi = torch.where(scale_mask, bi * 1e-10, bi)
+        bip = torch.where(scale_mask, bip * 1e-10, bip)
 
         if j == n:
             ans = bip
 
-    out_nz = ans * _modified_bessel_0(x_nz) / bi
+    out = ans * _modified_bessel_0(x_nz) / bi
     if (n % 2) == 1:
-        out_nz = torch.where(x_nz < 0.0, -out_nz, out_nz)
+        out = torch.where(x_nz < 0.0, -out, out)
 
-    out = torch.zeros_like(x)
-    out[~is_zero_mask] = out_nz
-    return out
+    return torch.where(is_zero_mask, torch.zeros_like(x), out)
 
 
 def gaussian_discrete(
@@ -578,6 +599,14 @@ def get_gaussian_kernel1d(
         tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
                 [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
 
+        A ``sigma`` of zero, or one too small for the window to hold a representable weight,
+        returns the unit impulse rather than a kernel of NaN:
+
+        >>> get_gaussian_kernel1d(5, 0.0)
+        tensor([[0., 0., 1., 0., 0.]])
+        >>> get_gaussian_kernel1d(4, 0.0, force_even=True)
+        tensor([[0.0000, 0.5000, 0.5000, 0.0000]])
+
     """
     _check_kernel_size(kernel_size, allow_even=force_even)
 
@@ -644,8 +673,8 @@ def get_gaussian_erf_kernel1d(
         1D tensor with gaussian filter coefficients. Shape :math:`(B, \text{kernel_size})`
 
     Examples:
-        >>> get_gaussian_erf_kernel1d(3, 2.5)
-        tensor([[0.3245, 0.3511, 0.3245]])
+        >>> get_gaussian_erf_kernel1d(3, 2.0)
+        tensor([[0.3195, 0.3611, 0.3195]])
         >>> get_gaussian_erf_kernel1d(5, 1.5)
         tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226]])
         >>> get_gaussian_erf_kernel1d(5, torch.tensor([[1.5], [2.1]]))
@@ -751,8 +780,8 @@ def get_gaussian_kernel3d(
                  [[0.0292, 0.0364, 0.0292],
                   [0.0364, 0.0455, 0.0364],
                   [0.0292, 0.0364, 0.0292]]]])
-        >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).sum()
-        tensor(1.)
+        >>> torch.allclose(get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).sum(), torch.tensor(1.0))
+        True
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).shape
         torch.Size([1, 3, 3, 3])
         >>> get_gaussian_kernel3d((3, 7, 5), torch.tensor([[1.5, 1.5, 1.5]])).shape
@@ -1034,16 +1063,16 @@ def get_hanning_kernel2d(
     return kernel2d
 
 
-@deprecated(replace_with="get_gaussian_kernel1d", version="6.9.10")
+@deprecated(replace_with="get_gaussian_kernel1d", version="0.6.10")
 def get_gaussian_kernel1d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
     return get_gaussian_kernel1d(*args, **kwargs)
 
 
-@deprecated(replace_with="get_gaussian_kernel2d", version="6.9.10")
+@deprecated(replace_with="get_gaussian_kernel2d", version="0.6.10")
 def get_gaussian_kernel2d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
     return get_gaussian_kernel2d(*args, **kwargs)
 
 
-@deprecated(replace_with="get_gaussian_kernel3d", version="6.9.10")
+@deprecated(replace_with="get_gaussian_kernel3d", version="0.6.10")
 def get_gaussian_kernel3d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
     return get_gaussian_kernel3d(*args, **kwargs)

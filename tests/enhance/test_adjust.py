@@ -21,8 +21,16 @@ from torch import Tensor
 
 import kornia
 from kornia.constants import pi
+from kornia.core._compat import torch_version_ge
 
 from testing.base import BaseTester
+
+
+def _sync(device) -> None:
+    # MPS dispatches asynchronously, so a kernel error raised by the forward under test would
+    # otherwise surface inside an unrelated later test.
+    if device.type == "mps":
+        torch.mps.synchronize()
 
 
 class TestInvert(BaseTester):
@@ -46,14 +54,12 @@ class TestInvert(BaseTester):
         out = kornia.enhance.invert(img, torch.tensor(255.0))
         self.assert_close(out, torch.zeros_like(out))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 1, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         max_val = torch.tensor(1.0, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.invert, (img, max_val))
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -146,6 +152,17 @@ class TestAdjustSaturation(BaseTester):
 
 
 class TestAdjustHue(BaseTester):
+    def test_black_pixels(self, device, dtype):
+        data = torch.tensor([0.75, 0.5, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).repeat(1, 1, 2, 2)
+        data[..., 0, 0] = 0.0
+        data.requires_grad_()
+
+        result = kornia.enhance.adjust_hue(data, 0.1)
+        assert torch.isfinite(result).all()
+        self.assert_close(result[..., 0, 0], torch.zeros_like(result[..., 0, 0]))
+        (gradient,) = torch.autograd.grad(result.sum(), data)
+        assert torch.isfinite(gradient).all()
+
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
@@ -358,6 +375,28 @@ class TestAdjustContrast(BaseTester):
 
         f = kornia.enhance.AdjustContrast(1.0)
         self.assert_close(f(data), expected)
+
+    def test_negative_factor_errors(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([-0.5], device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match="non-negative"):
+            kornia.enhance.adjust_contrast(img, factor)
+
+    def test_mps_skips_value_check(self, device, dtype):
+        # aten::_assert_async has no MPS kernel; its CPU fallback forces a full device sync per
+        # call. On MPS the value check is skipped entirely (see the note in the adjust_contrast
+        # docstring), so even an invalid factor must go through without raising, and the output
+        # must stay on the device with the requested dtype.
+        if device.type != "mps":
+            pytest.skip("pins the MPS-only no-CPU-fallback behavior")
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([-0.5], device=device, dtype=dtype)
+        out = kornia.enhance.adjust_contrast(img, factor)
+        assert out.shape == img.shape
+        assert out.device == img.device
+        assert out.dtype == img.dtype
 
     def test_factor_one_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -710,7 +749,6 @@ class TestAdjustSigmoid(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -763,7 +801,6 @@ class TestAdjustLog(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -867,6 +904,42 @@ class TestEqualize(BaseTester):
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.equalize, (inputs,), fast_mode=False)
 
+    @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+        # kornia#4431: an input the 256-bin lookup cannot index used to fail with a raw
+        # "index 259 is out of bounds" from the gather. MPS range-checks it too (kornia#4600): from
+        # torch 2.13 the assert is asynchronous there, so the message arrives at the sync.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * scale + shift
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(kornia.enhance.equalize(x).device)
+
+    def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
+        # The check covers exactly the values that crashed, so a hair above 1 keeps working.
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 1.0001
+        assert kornia.enhance.equalize(x).shape == x.shape
+
+    def test_dynamo_fullgraph(self, device, dtype):
+        # The range check must not reintroduce a graph break (#3842 removed an ``.item()`` check).
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
+        self.assert_close(compiled(x), kornia.enhance.equalize(x))
+
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+        # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
+        # compiling if the asynchronous assert is traced, because a host read cannot be.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
     @pytest.mark.skip(reason="args and kwargs in decorator")
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 3
@@ -890,6 +963,22 @@ class TestEqualize(BaseTester):
 
 
 class TestEqualize3D(BaseTester):
+    @pytest.mark.parametrize("scale, shift", [(1.5, 0.0), (1.0, -0.5)])
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+        # kornia#4432: the 3D path shares the lookup, so it shares the MPS fix too (kornia#4600).
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        torch.manual_seed(0)
+        x = torch.rand(1, 1, 5, 7, 9, device=device, dtype=dtype) * scale + shift
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(kornia.enhance.equalize3d(x).device)
+
+    def test_at_most_255_voxels_per_channel_is_unchanged(self, device, dtype):
+        # As the docstring states: the lookup step is an integer division by 255.
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 3, 5, 17, device=device, dtype=dtype) * 0.5
+        self.assert_close(kornia.enhance.equalize3d(x), x)
+
     @pytest.mark.parametrize("shape", [(3, 6, 10, 10), (2, 3, 6, 10, 10), (3, 2, 3, 6, 10, 10)])
     def test_shape_equalize3d(self, shape, device, dtype):
         inputs3d = torch.ones(*shape, device=device, dtype=dtype)
@@ -1045,14 +1134,12 @@ class TestSharpness(BaseTester):
         self.assert_close(TestSharpness.f(inputs, 0.8), expected_08, low_tolerance=True)
         self.assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, low_tolerance=True)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(TestSharpness.f, (inputs, 0.8))
 
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestSharpness.f
         op_script = torch.jit.script(TestSharpness.f)
@@ -1108,6 +1195,31 @@ class TestSolarize(BaseTester):
         with pytest.raises(TypeError):
             assert TestSolarize.f(img, 0.8, 1)
 
+    @pytest.mark.parametrize("addition", [0.5, -0.5])
+    def test_additions_closed_range_4605(self, device, dtype, addition):
+        # RandomSolarize admits the closed [-0.5, 0.5], and its sampler can draw an endpoint exactly.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        shifted = (img + addition).clamp(0.0, 1.0)
+        expected = torch.where(shifted >= 0.5, 1.0 - shifted, shifted)
+        self.assert_close(TestSolarize.f(img, 0.5, addition), expected)
+        # Both entries are asserted: checking only sample 0 leaves a 1-D `additions` broadcast from the
+        # first entry indistinguishable from a real per-sample dispatch.
+        per_sample = torch.tensor([addition, 0.0], device=device, dtype=dtype)
+        out = TestSolarize.f(img, 0.5, per_sample)
+        self.assert_close(out[0], expected[0])
+        unshifted = img[1].clamp(0.0, 1.0)
+        self.assert_close(out[1], torch.where(unshifted >= 0.5, 1.0 - unshifted, unshifted))
+
+    # `0.5 + 2 ** -24` is the next float32 above the bound, so the pin constrains it to one ulp
+    # rather than to the ~1700 an 0.5001 leaves.
+    @pytest.mark.parametrize("addition", [0.5 + 2**-24, -(0.5 + 2**-24), 0.5001, -0.5001])
+    def test_additions_outside_closed_range_raise_4605(self, device, addition):
+        if device.type != "cpu":
+            pytest.skip("CPU only: the value check is an async device assert elsewhere")
+        img = torch.rand(2, 3, 4, 5, device=device)
+        with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, addition)
+
     # TODO: add better cases
     def test_value(self, device, dtype):
         torch.manual_seed(0)
@@ -1135,7 +1247,6 @@ class TestSolarize(BaseTester):
         # TODO(jian): precision is very bad compared to PIL
         self.assert_close(TestSolarize.f(inputs, 0.5), expected, rtol=1e-2, atol=1e-2)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1143,7 +1254,6 @@ class TestSolarize(BaseTester):
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestSolarize.f
         op_script = torch.jit.script(op)
@@ -1201,11 +1311,17 @@ class TestPosterize(BaseTester):
     def test_exception(self, device, dtype):
         img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
 
+        # invalid input type
         with pytest.raises(TypeError):
-            assert TestPosterize.f([1.0], 0.0)
+            TestPosterize.f([1.0], 0)
 
+        # bits must be int or tensor
         with pytest.raises(TypeError):
-            assert TestPosterize.f(img, 1.0)
+            TestPosterize.f(img, 1.0)
+
+        # batch size mismatch between bits tensor and input
+        with pytest.raises(AssertionError):
+            TestPosterize.f(img, torch.tensor([1, 2, 3], device=device))
 
     # TODO(jian): add better cases
     @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
@@ -1227,7 +1343,6 @@ class TestPosterize(BaseTester):
         self.assert_close(TestPosterize.f(inputs, 8), inputs)
 
     @pytest.mark.skip(reason="IndexError: tuple index out of range")
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1235,7 +1350,6 @@ class TestPosterize(BaseTester):
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestPosterize.f
         op_script = torch.jit.script(op)

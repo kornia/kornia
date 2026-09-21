@@ -10,6 +10,7 @@ on:
       - 'COPYRIGHT'
   schedule:
     - cron: '0 4 * * *'
+  workflow_dispatch:
   workflow_call:
 
 permissions:
@@ -20,15 +21,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pinned-runner-macos-15:
+    name: Pinned runner availability (macos-15)
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.repository == 'kornia/kornia' &&
+      startsWith(github.workflow_ref, 'kornia/kornia/.github/workflows/scheduled_test_cpu.yml@')
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Confirm macos-15 runner availability
+        run: echo "macos-15 runner is available"
+
+  pinned-runner-windows-2022:
+    name: Pinned runner availability (windows-2022)
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.repository == 'kornia/kornia' &&
+      startsWith(github.workflow_ref, 'kornia/kornia/.github/workflows/scheduled_test_cpu.yml@')
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - name: Confirm windows-2022 runner availability
+        run: echo "windows-2022 runner is available"
+
   check-skip:
     # For scheduled runs, check if only documentation files changed
     # If so, skip the expensive test runs
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       should-skip: ${{ steps.check.outputs.should-skip }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2  # Need at least 2 commits to compare
 
@@ -68,21 +94,22 @@ jobs:
 
   pre-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [check-skip]
     if: needs.check-skip.outputs.should-skip == 'false'
     outputs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.9.6
+        uses: prefix-dev/setup-pixi@v0.10.2
         with:
           pixi-version: v0.40.0
           cache: true
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         id: cache-weights
         with:
           path: weights/
@@ -104,13 +131,35 @@ jobs:
       fail-fast: false
       matrix:
         pytorch-dtype: ["float32", "float64"]
+        python-version: ["3.11", "3.12", "3.13"]
+        pytorch-version: ["2.5.1", "2.6.0", "2.9.1", "2.14.0"]
 
     uses: ./.github/workflows/tests.yml
     with:
       os: "ubuntu-latest"
-      python-version: '["3.11", "3.12", "3.13"]'
-      pytorch-version: '["2.1.2", "2.2.2", "2.3.1", "2.4.0", "2.5.1", "2.9.1"]'
+      python-version: '["${{ matrix.python-version }}"]'
+      pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
+  tests-cpu-half-precision:
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        pytorch-dtype: ["float16", "bfloat16"]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.11"]'
+      pytorch-version: '["2.9.1"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -123,17 +172,39 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: ["windows-latest"]
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1"]
+        pytorch-version: ["2.5.1", "2.9.1", "2.14.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
           - python-version: "3.13"
             pytorch-version: "2.5.1"
+          # torch 2.5.1 wheels crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) on
+          # the windows-2025 runner image; run those legs on windows-2022 instead.
+          - os: windows-latest
+            pytorch-version: "2.5.1"
+        include:
+          - os: windows-2022
+            pytorch-dtype: "float32"
+            python-version: "3.11"
+            pytorch-version: "2.5.1"
+          - os: windows-2022
+            pytorch-dtype: "float64"
+            python-version: "3.11"
+            pytorch-version: "2.5.1"
+          - os: windows-2022
+            pytorch-dtype: "float32"
+            python-version: "3.12"
+            pytorch-version: "2.5.1"
+          - os: windows-2022
+            pytorch-dtype: "float64"
+            python-version: "3.12"
+            pytorch-version: "2.5.1"
 
     uses: ./.github/workflows/tests.yml
     with:
-      os: "windows-latest"
+      os: ${{ matrix.os }}
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
@@ -151,7 +222,7 @@ jobs:
       matrix:
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1"]
+        pytorch-version: ["2.5.1", "2.9.1", "2.14.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on macOS
           - python-version: "3.13"
@@ -198,6 +269,9 @@ jobs:
     uses: ./.github/workflows/docs.yml
     with:
       python-version: '["3.11"]'
+      # Post-merge run: the model doctests download on a cache miss instead of
+      # skipping, so main always exercises them for real.
+      download-weights: true
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |

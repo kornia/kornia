@@ -24,7 +24,7 @@ from testing.base import BaseTester
 
 
 class TestDiscreteSteerer(BaseTester):
-    @pytest.mark.parametrize("num_desc, desc_dim, steerer_power", [(1, 4, 1), (2, 128, 7), (32, 128, 11)])
+    @pytest.mark.parametrize("num_desc, desc_dim, steerer_power", [(1, 4, 1), (2, 128, 7), (4, 128, 11)])
     def test_shape(self, num_desc, desc_dim, steerer_power, device, dtype):
         desc = torch.rand(num_desc, desc_dim, device=device, dtype=dtype)
         generator = torch.rand(desc_dim, desc_dim, device=device, dtype=dtype)
@@ -35,7 +35,7 @@ class TestDiscreteSteerer(BaseTester):
     @pytest.mark.parametrize("normalize", [True, False])
     def test_steering(self, device, normalize):
         generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
-        desc = torch.rand(16, 2, device=device)
+        desc = torch.rand(4, 2, device=device)
         steerer = DiscreteSteerer(generator)
         desc_out = steerer.steer_descriptions(desc, steerer_power=3, normalize=normalize)
         if normalize:
@@ -52,7 +52,7 @@ class TestDiscreteSteerer(BaseTester):
             steerer_order=steerer_order,
         ).to(device)
         assert isinstance(steerer, DiscreteSteerer)
-        shape = (96, 256)
+        shape = (4, 256)
         desc = torch.randn(*shape, device=device)
         desc = steerer(desc)
         assert desc.shape == shape
@@ -60,14 +60,14 @@ class TestDiscreteSteerer(BaseTester):
     @pytest.mark.parametrize("steerer_power", [0, 1, 5, -1])
     def test_steerer_power_extremes(self, device, steerer_power):
         generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
-        desc = torch.rand(8, 2, device=device)
+        desc = torch.rand(4, 2, device=device)
         steerer = DiscreteSteerer(generator)
         out = steerer.steer_descriptions(desc, steerer_power=steerer_power)
         assert out.shape == desc.shape
 
     def test_normalization_preserves_norm(self, device):
         generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
-        desc = torch.rand(8, 2, device=device)
+        desc = torch.rand(4, 2, device=device)
         steerer = DiscreteSteerer(generator)
         out = steerer.steer_descriptions(desc, steerer_power=1, normalize=True)
         orig_norm = torch.norm(out, dim=-1)

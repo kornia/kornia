@@ -38,6 +38,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import load_state_dict_from_url
 from kornia.geometry.subpix import nms2d
 
 
@@ -74,15 +75,13 @@ class BasicLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the module forward pass.
+        r"""Run the module forward pass.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Output feature map with shape :math:`(B, C_{\text{out}}, H', W')`.
         """
         return self.layer(x)
 
@@ -314,7 +313,7 @@ class XFeat(nn.Module):
             XFeat model with pretrained weights loaded, set to eval mode.
         """
         model = cls(top_k=top_k, detection_threshold=detection_threshold)
-        state_dict = torch.hub.load_state_dict_from_url(cls.weights_url, file_name="xfeat.pt")
+        state_dict = load_state_dict_from_url(cls.weights_url, file_name="xfeat.pt")
         model.net.load_state_dict(state_dict)
         model.eval()
         return model

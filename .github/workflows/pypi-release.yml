@@ -11,11 +11,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.9.6
+        uses: prefix-dev/setup-pixi@v0.10.2
         with:
           pixi-version: v0.40.0
           cache: true
@@ -33,6 +34,7 @@ jobs:
 
   upload-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build
     if: github.event_name == 'release'
     permissions:
@@ -51,6 +53,7 @@ jobs:
 
   publish-pypi:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build
     if: github.event_name == 'release'
     permissions:

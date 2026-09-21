@@ -79,7 +79,6 @@ __all__ = [
     "IntegralTensor",
     "Invert",
     "JPEGCodecDifferentiable",
-    "JPEGCodecDifferentiable",
     "Normalize",
     "Rescale",
     "Threshold",

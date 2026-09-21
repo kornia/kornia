@@ -38,6 +38,24 @@ class TestPyrUp(BaseTester):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.pyrup, (img,), nondet_tol=1e-8)
 
+    def test_convention_align_corners_and_border_type_change_output(self, device, dtype):
+        # pyrup's align_corners (default False) and border_type (default 'reflect') defaults
+        # actually change the output values -- existing tests only check output shape. pyrup is
+        # an independent implementation (interpolate-then-blur, no delegation to pyrdown), so the
+        # sibling pin on TestPyrDown gives this op no coverage on its own.
+        x = torch.arange(0.0, 16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        out_ac_false = kornia.geometry.transform.pyrup(x, align_corners=False)
+        out_ac_true = kornia.geometry.transform.pyrup(x, align_corners=True)
+        out_default = kornia.geometry.transform.pyrup(x)
+        self.assert_close(out_default, out_ac_false, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_ac_false, out_ac_true, atol=1e-2, rtol=1e-2)
+
+        out_reflect = kornia.geometry.transform.pyrup(x, border_type="reflect")
+        out_constant = kornia.geometry.transform.pyrup(x, border_type="constant")
+        self.assert_close(out_default, out_reflect, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_reflect, out_constant, atol=1e-2, rtol=1e-2)
+
 
 class TestPyrDown(BaseTester):
     def test_shape(self, device, dtype):
@@ -65,6 +83,31 @@ class TestPyrDown(BaseTester):
     def test_gradcheck(self, device):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.pyrdown, (img,), nondet_tol=1e-8)
+
+    def test_convention_align_corners_and_border_type_change_output(self, device, dtype):
+        # pyrdown's align_corners (default False) and border_type (default 'reflect') defaults
+        # actually change the output values -- existing tests only check output shape, never a
+        # discriminating-literal comparison of the defaults against their alternatives.
+        x = torch.arange(0.0, 25.0, device=device, dtype=dtype).view(1, 1, 5, 5)
+
+        out_ac_false = kornia.geometry.transform.pyrdown(x, align_corners=False)
+        out_ac_true = kornia.geometry.transform.pyrdown(x, align_corners=True)
+        out_default = kornia.geometry.transform.pyrdown(x)
+        self.assert_close(out_default, out_ac_false, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_ac_false, out_ac_true, atol=1e-2, rtol=1e-2)
+
+        out_reflect = kornia.geometry.transform.pyrdown(x, border_type="reflect")
+        out_constant = kornia.geometry.transform.pyrdown(x, border_type="constant")
+        self.assert_close(out_default, out_reflect, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_reflect, out_constant, atol=1e-2, rtol=1e-2)
+
+    def test_convention_floor_not_ceil_on_odd_size(self, device, dtype):
+        # pyrdown uses floor(side / factor), diverging from OpenCV's ceil((side + 1) / 2) on
+        # odd/non-exactly-divisible sizes: 5x5 at the default factor=2.0 gives 2x2, not 3x3.
+        # (test_shape/test_shape_custom_factor only use exactly-divisible sizes, where floor and
+        # ceil agree.)
+        x = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
+        assert kornia.geometry.transform.pyrdown(x).shape == (1, 1, 2, 2)
 
 
 class TestScalePyramid(BaseTester):
@@ -127,6 +170,23 @@ class TestScalePyramid(BaseTester):
             return tuple(sp)
 
         self.gradcheck(sp_tuple, (img,), nondet_tol=1e-4)
+
+    def test_convention_octave0_sigmas_example(self, device, dtype):
+        # Pins the Convention block's worked example: with n_levels=1 (default
+        # extra_levels=3), init_sigma=0.25 below the assumed input blur (0.5) makes
+        # octave 0's first sigma the input blur itself, while octave 1+ starts from
+        # init_sigma as usual -- the two octaves diverge only in that first entry.
+        inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
+        _, sigmas, _ = sp(inp)
+        # Snippet used to generate expected (requires only this module):
+        # sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
+        # _, sigmas, _ = sp(torch.rand(1, 1, 32, 32))
+        # sigmas[0][0].tolist(), sigmas[1][0].tolist()
+        expected_octave0 = torch.tensor([0.5, 0.5, 1.0, 2.0], device=device, dtype=dtype)
+        expected_octave1 = torch.tensor([0.25, 0.5, 1.0, 2.0], device=device, dtype=dtype)
+        self.assert_close(sigmas[0][0], expected_octave0, rtol=1e-3, atol=1e-3)
+        self.assert_close(sigmas[1][0], expected_octave1, rtol=1e-3, atol=1e-3)
 
 
 class TestBuildPyramid(BaseTester):

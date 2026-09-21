@@ -27,8 +27,12 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import hf_url, load_state_dict_from_url
 
-url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
+url: str | list[str] = [
+    hf_url("dexined", "DexiNed_BIPED_10.pth"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+]
 
 
 def weight_init(m: nn.Module) -> None:
@@ -352,19 +356,20 @@ class DexiNed(nn.Module):
         else:
             self.apply(weight_init)
 
-    def load_from_file(self, path_file: str) -> None:
+    def load_from_file(self, path_file: str | list[str]) -> None:
         """Load pretrained DexiNed weights and switch the module to eval mode.
 
-        The checkpoint is loaded on CPU through ``torch.hub`` and then applied
-        with strict key matching. After loading, ``eval()`` is called so layers
-        such as batch normalization use inference behavior.
+        The checkpoint is loaded on CPU and then applied with strict key
+        matching. After loading, ``eval()`` is called so layers such as batch
+        normalization use inference behavior.
 
         Args:
             path_file: URL or local checkpoint identifier accepted by
-                :func:`torch.hub.load_state_dict_from_url`.
+                :func:`kornia.core.download.load_state_dict_from_url`, or a
+                list of candidate URLs tried in order (HF-first fallback).
         """
         # use torch.hub to load pretrained model
-        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
+        pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

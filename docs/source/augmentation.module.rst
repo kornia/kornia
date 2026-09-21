@@ -1,124 +1,25 @@
+:orphan:
+
 Image Augmentations
 ===================
 
 .. meta::
-   :name: description
-   :content: "The Image Augmentations module in Kornia provides a wide range of 2D and 3D data augmentation transforms. It includes intensity-based augmentations, geometric transformations, mix-based augmentations, and normalization operations for both 2D and 3D image tensors. Key functions include random color shifts, rotations, cropping, elastic transformations, and more."
+   :description: The Image Augmentations module in Kornia provides a wide range of 2D and 3D data augmentation transforms. It includes intensity-based augmentations, geometric transformations, mix-based augmentations, and normalization operations for both 2D and 3D image tensors. Key functions include random color shifts, rotations, cropping, elastic transformations, and more.
 
 .. currentmodule:: kornia.augmentation
 
-Transforms2D
-------------
+The augmentation operators, grouped by what they change. All of them accept ``(B, C, H, W)`` float tensors in
+``[0, 1]`` (``(B, C, D, H, W)`` for the 3D transforms), sample independent parameters per batch element, and can
+be combined with :class:`~kornia.augmentation.AugmentationSequential`.
 
-Set of operators to perform data augmentation on 2D image tensors.
+.. list-table::
+   :widths: 30 70
 
-Intensity
-~~~~~~~~~
-
-.. autoclass:: ColorJiggle
-.. autoclass:: ColorJitter
-.. autoclass:: RandomAutoContrast
-.. autoclass:: RandomBoxBlur
-.. autoclass:: RandomBrightness
-.. autoclass:: RandomChannelDropout
-.. autoclass:: RandomChannelShuffle
-.. autoclass:: RandomClahe
-.. autoclass:: RandomContrast
-.. autoclass:: RandomEqualize
-.. autoclass:: RandomDissolving
-.. autoclass:: RandomGamma
-.. autoclass:: RandomGaussianBlur
-.. autoclass:: RandomGaussianIllumination
-.. autoclass:: RandomGaussianNoise
-.. autoclass:: RandomGrayscale
-.. autoclass:: RandomHue
-.. autoclass:: RandomInvert
-.. autoclass:: RandomJPEG
-.. autoclass:: RandomLinearCornerIllumination
-.. autoclass:: RandomLinearIllumination
-.. autoclass:: RandomMedianBlur
-.. autoclass:: RandomMotionBlur
-.. autoclass:: RandomPlanckianJitter
-.. autoclass:: RandomPlasmaBrightness
-.. autoclass:: RandomPlasmaContrast
-.. autoclass:: RandomPlasmaShadow
-.. autoclass:: RandomPosterize
-.. autoclass:: RandomRain
-.. autoclass:: RandomRGBShift
-.. autoclass:: RandomSaltAndPepperNoise
-.. autoclass:: RandomSaturation
-.. autoclass:: RandomSharpness
-.. autoclass:: RandomSnow
-.. autoclass:: RandomSolarize
-
-
-Geometric
-~~~~~~~~~
-
-.. autoclass:: CenterCrop
-.. autoclass:: PadTo
-.. autoclass:: RandomAffine
-.. autoclass:: RandomCrop
-.. autoclass:: RandomElasticTransform
-.. autoclass:: RandomErasing
-.. autoclass:: RandomFisheye
-.. autoclass:: RandomHorizontalFlip
-.. autoclass:: RandomPerspective
-.. autoclass:: RandomResizedCrop
-.. autoclass:: RandomRotation90
-.. autoclass:: RandomRotation
-.. autoclass:: RandomShear
-.. autoclass:: RandomThinPlateSpline
-.. autoclass:: RandomVerticalFlip
-
-
-Mix
-~~~
-
-.. autoclass:: RandomCutMixV2
-.. autoclass:: RandomJigsaw
-.. autoclass:: RandomMixUpV2
-.. autoclass:: RandomMosaic
-.. autoclass:: RandomTransplantation
-
-Transforms3D
-------------
-
-Set of operators to perform data augmentation on 3D volumetric tensors.
-
-Geometric
-~~~~~~~~~
-
-.. autoclass:: CenterCrop3D
-.. autoclass:: RandomAffine3D
-.. autoclass:: RandomCrop3D
-.. autoclass:: RandomDepthicalFlip3D
-.. autoclass:: RandomHorizontalFlip3D
-.. autoclass:: RandomRotation3D
-.. autoclass:: RandomVerticalFlip3D
-
-Intensity
-~~~~~~~~~
-
-.. autoclass:: RandomEqualize3D
-.. autoclass:: RandomMotionBlur3D
-
-Mix
-~~~
-
-.. autoclass:: RandomTransplantation3D
-
-Normalizations
---------------
-
-Normalization operations are shape-agnostic for both 2D and 3D tensors.
-
-.. autoclass:: Denormalize
-.. autoclass:: Normalize
-
-Image Resize
-------------
-
-.. autoclass:: LongestMaxSize
-.. autoclass:: Resize
-.. autoclass:: SmallestMaxSize
+   * - :doc:`augmentation.intensity`
+     - 2D transforms that change pixel values but not their positions: color jitter, blur, noise, illumination, JPEG, weather effects.
+   * - :doc:`augmentation.geometric`
+     - 2D transforms that move pixels: crops, flips, affine, perspective, elastic, thin-plate-spline, erasing.
+   * - :doc:`augmentation.mix`
+     - 2D transforms that combine several images: CutMix, MixUp, Mosaic, Jigsaw, Transplantation.
+   * - :doc:`augmentation.transforms3d`
+     - Geometric, intensity and mix transforms for volumetric ``(B, C, D, H, W)`` data.

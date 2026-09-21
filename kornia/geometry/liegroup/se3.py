@@ -26,6 +26,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
+from kornia.core.tensor_wrapper import _unwrap
+from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -79,10 +81,10 @@ class Se3(nn.Module):
             raise TypeError(f"translation type is {type(translation)}")
         _t_data = translation.data if isinstance(translation, Vector3) else translation
         KORNIA_CHECK_SHAPE(_t_data, ["*", "3"])
-        self._translation: Vector3 | nn.Parameter
+        self._translation: Vector3 | torch.Tensor
         self._rotation: So3
         if isinstance(translation, torch.Tensor):
-            self._translation = nn.Parameter(translation)
+            register_module_state(self, "_translation", translation)
         else:
             self._translation = translation
         if isinstance(rotation, Quaternion):
@@ -116,12 +118,11 @@ class Se3(nn.Module):
         if isinstance(right, Se3):
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
             return self._mul_se3(right)
-        elif isinstance(right, (Vector3, torch.Tensor)):
+        if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
-            return so3 * right + t.data
-        else:
-            raise TypeError(f"Unsupported type: {type(right)}")
+            return so3 * right + _unwrap(t)
+        raise TypeError(f"Unsupported type: {type(right)}")
 
     @property
     def so3(self) -> So3:
@@ -175,14 +176,22 @@ class Se3(nn.Module):
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
-        theta = batched_dot_product(omega, omega).sqrt()
+        theta_sq = batched_dot_product(omega, omega)
+        nonzero = theta_sq > 0
+        # V is a 0/0 at omega = 0 and its sqrt has an unbounded derivative there, so although the
+        # where below already returns upsilon at the identity, autograd walked V anyway and
+        # 0 * nan = nan reached v.grad. Evaluate both on a substituted theta of 1 there; the
+        # where discards the value, only the gradient changes (kornia#4229's shape).
+        safe_theta_sq = torch.where(nonzero, theta_sq, torch.ones_like(theta_sq))
+        theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
+        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
         R = So3.exp(omega)
         V = (
             torch.eye(3, device=v.device, dtype=v.dtype)
-            + ((1 - torch.cos(theta)) / (theta**2))[..., None, None] * omega_hat
-            + ((theta - torch.sin(theta)) / (theta**3))[..., None, None] * omega_hat_sq
+            + ((1 - torch.cos(theta)) / (safe_theta**2))[..., None, None] * omega_hat
+            + ((theta - torch.sin(theta)) / (safe_theta**3))[..., None, None] * omega_hat_sq
         )
-        U = torch.where(theta[..., None] != 0.0, (upsilon[..., None, :] * V).sum(-1), upsilon)
+        U = torch.where(nonzero[..., None], (upsilon[..., None, :] * V).sum(-1), upsilon)
         return Se3(R, U)
 
     def log(self) -> torch.Tensor:
@@ -192,21 +201,33 @@ class Se3(nn.Module):
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity()
             >>> Se3(q, torch.zeros(3)).log()
-            tensor([0., 0., 0., 0., 0., 0.])
+            tensor([0., 0., 0., 0., 0., 0.], grad_fn=<CatBackward0>)
 
         """
         omega = self.r.log()
-        theta = batched_dot_product(omega, omega).clamp_min(1e-12).sqrt()
-        t = self.t.data
+        theta_sq = batched_dot_product(omega, omega)
+        nonzero = theta_sq > 0
+        # clamp_min(1e-12) bounds the value, not the gradient: on torch < 2.14 clamp passes the
+        # incoming gradient straight through at its bound, and 1e-12 underflows to 0 in float16
+        # anyway, so sqrt's unbounded derivative at 0 reached v.grad as nan (kornia#4229). Keep
+        # the floor on the branch that is selected -- byte-identical for every theta_sq > 0 --
+        # and take the exact zero elsewhere, where V_inv is the identity and both branches of
+        # the where below agree.
+        safe_theta_sq = torch.where(nonzero, theta_sq.clamp_min(1e-12), torch.ones_like(theta_sq))
+        theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
+        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
+        t = _unwrap(self.t)
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
         V_inv = (
             torch.eye(3, device=omega.device, dtype=omega.dtype)
             - 0.5 * omega_hat
-            + ((1 - theta * torch.cos(theta / 2) / (2 * torch.sin(theta / 2))) / theta.pow(2))[..., None, None]
+            + ((1 - safe_theta * torch.cos(safe_theta / 2) / (2 * torch.sin(safe_theta / 2))) / safe_theta.pow(2))[
+                ..., None, None
+            ]
             * omega_hat_sq
         )
-        t = torch.where(theta[..., None] != 0.0, (t[..., None, :] * V_inv).sum(-1), t)
+        t = torch.where(nonzero[..., None], (t[..., None, :] * V_inv).sum(-1), t)
         return torch.cat((t, omega), -1)
 
     @staticmethod
@@ -260,7 +281,7 @@ class Se3(nn.Module):
     def identity(
         cls,
         batch_size: Optional[int] = None,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se3:
         """Create a Se3 group representing an identity rotation and zero translation.
@@ -295,10 +316,10 @@ class Se3(nn.Module):
             tensor([[1., 0., 0., 1.],
                     [0., 1., 0., 1.],
                     [0., 0., 1., 1.],
-                    [0., 0., 0., 1.]])
+                    [0., 0., 0., 1.]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), self.t.data[..., None]), -1)
+        rt = torch.cat((self.r.matrix(), _unwrap(self.t)[..., None]), -1)
         rt_4x4 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
@@ -355,8 +376,7 @@ class Se3(nn.Module):
             >>> s_inv.r
             tensor([1., -0., -0., -0.])
             >>> s_inv.t
-            Parameter containing:
-            tensor([-1., -1., -1.], requires_grad=True)
+            tensor([-1., -1., -1.], grad_fn=<SliceBackward0>)
 
         """
         r_inv = self.r.inverse()
@@ -370,7 +390,7 @@ class Se3(nn.Module):
     def random(
         cls,
         batch_size: Optional[int] = None,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se3:
         """Create a Se3 group representing a random transformation.

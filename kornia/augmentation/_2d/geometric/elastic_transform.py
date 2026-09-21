@@ -30,15 +30,26 @@ class RandomElasticTransform(AugmentationBase2D):
 
     .. image:: _static/img/RandomElasticTransform.png
 
+    Convention:
+        See the shared contract on :class:`~kornia.augmentation.AugmentationBase2D`.
+        This is a dense backward sampling field, with no ``transform_matrix`` or ``inverse`` interface.
+        Noise has shape ``(B, 2, H, W)`` with channels ``(x, y)``; ``alpha`` scales displacement in
+        normalized sampling coordinates, whereas ``kernel_size`` and ``sigma`` use ``(y, x)`` order.
+        The default sampler is bilinear with zero padding and ``align_corners=False``. The displaced
+        grid is clamped to ``[-1, 1]`` before sampling. Zero ``alpha`` preserves the image up to
+        interpolation rounding for either ``align_corners`` value.
+        Spatial labels in containers have additional limitations; see
+        `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
+
     Args:
-        kernel_size: the size of the Gaussian kernel.
+        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
         sigma: The standard deviation of the Gaussian in the y and x directions,
           respectively. Larger sigma results in smaller pixel displacements.
         alpha: The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively.
+          in the x and y directions, respectively -- the opposite order to ``kernel_size`` and ``sigma``.
         align_corners: Interpolation flag used by `grid_sample`.
         resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
-        padding_mode: The padding used by ```grid_sample```. Either 'torch.zeros', 'border' or 'refection'.
+        padding_mode: The padding used by ``grid_sample``. Either 'zeros', 'border' or 'reflection'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

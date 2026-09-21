@@ -15,10 +15,88 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 
 from kornia.feature.dedode import DeDoDe
+from kornia.feature.dedode.decoder import ConvRefiner
+from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
+from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
+
+from testing.base import BaseTester
+
+
+class TestConvRefiner(BaseTester):
+    def test_amp_matches_input_device(self, device):
+        refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4).to(device)
+        autocast_enabled = []
+        # ``torch.is_autocast_enabled`` only accepts a device type from torch 2.4 onwards; the
+        # no-argument spelling reports the CUDA state on every torch kornia supports, which is
+        # the state the ``torch.autocast("cuda", ...)`` region inside ``ConvRefiner`` controls.
+        refiner.block1.register_forward_pre_hook(
+            lambda _module, _inputs: autocast_enabled.append(torch.is_autocast_enabled())
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            refiner(torch.rand(1, 4, 8, 8, device=device))
+
+        assert autocast_enabled == [device.type == "cuda"]
+        assert not any("device_type of 'cuda'" in str(w.message) for w in caught)
+
+
+class TestMemEffAttention(BaseTester):
+    def test_attn_bias_raises(self, device, dtype):
+        attention = MemEffAttention(dim=8, num_heads=2).to(device, dtype).eval()
+        x = torch.rand(1, 5, 8, device=device, dtype=dtype)
+
+        with pytest.raises(NotImplementedError, match="attn_bias is not supported"):
+            attention(x, attn_bias=torch.zeros(1, 2, 5, 5, device=device, dtype=dtype))
+
+
+class TestNestedTensorBlock(BaseTester):
+    def test_tensor_input(self, device, dtype):
+        block = NestedTensorBlock(dim=8, num_heads=2).to(device, dtype).eval()
+        x = torch.rand(1, 5, 8, device=device, dtype=dtype)
+
+        out = block(x)
+
+        assert out.shape == (1, 5, 8)
+        # the block is a residual one, so the output has to differ from the input by the
+        # attention and feed-forward branches actually having run.
+        assert not torch.allclose(out, x)
+
+    def test_list_input_raises(self, device, dtype):
+        block = NestedTensorBlock(dim=8, num_heads=2).to(device, dtype).eval()
+        x = torch.rand(1, 5, 8, device=device, dtype=dtype)
+
+        with pytest.raises(TypeError, match="nested-tensor list path was removed"):
+            block([x])
+
+
+class TestDinoVisionTransformer(BaseTester):
+    def test_forward_features_tensor(self, device, dtype):
+        model = DinoVisionTransformer(
+            img_size=8,
+            patch_size=4,
+            embed_dim=8,
+            depth=1,
+            num_heads=2,
+            mlp_ratio=2,
+            block_chunks=0,
+        ).to(device, dtype)
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        masks = torch.zeros(2, 4, device=device, dtype=torch.bool)
+
+        features = model.forward_features(x, masks)
+
+        assert set(features) == {"x_norm_clstoken", "x_norm_patchtokens", "x_prenorm", "masks"}
+        assert features["x_norm_clstoken"].shape == (2, 8)
+        assert features["x_norm_patchtokens"].shape == (2, 4, 8)
+        assert features["x_prenorm"].shape == (2, 5, 8)
+        assert features["masks"] is masks
 
 
 @pytest.mark.skip(reason="DeDoDe is ummaintained")

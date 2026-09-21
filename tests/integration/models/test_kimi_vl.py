@@ -27,8 +27,8 @@ import os
 
 import pytest
 import torch
-import torch.nn.functional as F
 
+from kornia.core import load_safetensors
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
 
@@ -45,9 +45,6 @@ def test_kimi_vl_official_weights():
     if not weights_dir:
         pytest.skip("KIMI_VL_WEIGHTS_DIR is not set; skipping test_kimi_vl_official_weights")
 
-    safetensors_torch = pytest.importorskip("safetensors.torch")
-    load_file = safetensors_torch.load_file
-
     index_path = os.path.join(weights_dir, "model.safetensors.index.json")
 
     if not os.path.exists(index_path):
@@ -62,7 +59,7 @@ def test_kimi_vl_official_weights():
     state_dict = {}
     for shard in shards:
         shard_path = os.path.join(weights_dir, shard)
-        shard_weights = load_file(shard_path)
+        shard_weights = load_safetensors(shard_path)
         for k in vision_keys:
             if k in shard_weights:
                 state_dict[k] = shard_weights[k]
@@ -70,6 +67,8 @@ def test_kimi_vl_official_weights():
     vision_config = MoonViTConfig(
         image_size=336,
         patch_size=14,
+        init_pos_emb_height=64,
+        init_pos_emb_width=64,
         hidden_size=1152,
         num_hidden_layers=27,
         num_attention_heads=16,
@@ -92,10 +91,7 @@ def test_kimi_vl_official_weights():
     new_state_dict["vision_encoder.patch_embed.bias"] = get_w("patch_embed.proj.bias")
 
     pos_embed = get_w("patch_embed.pos_emb.weight")
-    pos_embed_reshaped = pos_embed.permute(2, 0, 1).unsqueeze(0)
-    pos_embed_interp = F.interpolate(pos_embed_reshaped, size=(24, 24), mode="bicubic", align_corners=False)
-    pos_embed_final = pos_embed_interp.flatten(2).transpose(1, 2)
-    new_state_dict["vision_encoder.pos_embed"] = pos_embed_final
+    new_state_dict["vision_encoder.pos_embed"] = pos_embed.flatten(0, 1).unsqueeze(0)
 
     for i in range(config.vision_config.num_hidden_layers):
         prefix_official = f"encoder.blocks.{i}"

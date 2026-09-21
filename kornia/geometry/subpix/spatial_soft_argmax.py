@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.utils import is_exporting
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
@@ -357,7 +358,8 @@ def conv_soft_argmax2d(
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
-    if temperature <= 0:
+    # A tensor temperature is read here, which graph capture cannot do; skip the value check under export.
+    if not is_exporting() and temperature <= 0:
         raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
 
     b, c, h, w = input.shape
@@ -478,7 +480,8 @@ def conv_soft_argmax3d(
     if not len(input.shape) == 5:
         raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
-    if temperature <= 0:
+    # A tensor temperature is read here, which graph capture cannot do; skip the value check under export.
+    if not is_exporting() and temperature <= 0:
         raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
 
     b, c, d, h, w = input.shape
@@ -614,6 +617,62 @@ class SpatialSoftArgmax2d(nn.Module):
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
+def _solve_cramer_sym3x3_cuda(
+    dxx: torch.Tensor,
+    dyy: torch.Tensor,
+    dss: torch.Tensor,
+    dxy: torch.Tensor,
+    dxs: torch.Tensor,
+    dys: torch.Tensor,
+    r0: torch.Tensor,
+    r1: torch.Tensor,
+    r2: torch.Tensor,
+    eps: float = 1e-7,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Evaluate four Cramer determinants together, preserving scalar operation order.
+
+    Used only for CUDA float32/float64. Packing trades extra temporary storage for
+    fewer launches; the scalar implementation is faster on CPU and retains the
+    float16 solve's promotion behavior.
+
+    All inputs must be 1-D tensors of the same length: the packed layout indexes
+    a single batch dimension and silently reshapes anything wider.
+    """
+    system = torch.stack((dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2), 1)
+    # Row-major H followed by H with successive columns replaced by the RHS.
+    indices = torch.tensor(
+        (
+            (0, 3, 4, 3, 1, 5, 4, 5, 2),
+            (6, 3, 4, 7, 1, 5, 8, 5, 2),
+            (0, 6, 4, 3, 7, 5, 4, 8, 2),
+            (0, 3, 6, 3, 1, 7, 4, 5, 8),
+        ),
+        device=dxx.device,
+        dtype=torch.long,
+    ).flatten()
+    a, b, c, d, e, f, g, h, i = system.index_select(1, indices).reshape(-1, 4, 9).unbind(2)
+    determinants = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+    det = determinants[:, 0:1]
+    solved = det.abs() > eps
+    shifts = determinants[:, 1:] / torch.where(solved, det, torch.ones_like(det))
+    sx, sy, ss = shifts.unbind(1)
+    return sx, sy, ss, solved[:, 0]
+
+
+def _quadratic_derivatives3d(patch: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    """Pack x/y/scale finite differences from an N x 27 neighbourhood on CUDA."""
+    indices = torch.tensor(
+        (14, 16, 22, 12, 10, 4, 17, 23, 25, 15, 21, 19, 11, 5, 7, 9, 3, 1),
+        device=patch.device,
+        dtype=torch.long,
+    )
+    plus, minus, cross_a, cross_b, cross_c, cross_d = patch.index_select(1, indices).reshape(-1, 6, 3).unbind(1)
+    gradient = 0.5 * (plus - minus)
+    diagonal = plus - 2.0 * patch[:, 13:14] + minus
+    mixed = 0.25 * (cross_a - cross_b - cross_c + cross_d)
+    return (*gradient.unbind(1), *diagonal.unbind(1), *mixed.unbind(1))
+
+
 def _solve_cramer_sym3x3(
     dxx: torch.Tensor,
     dyy: torch.Tensor,
@@ -649,6 +708,25 @@ def _solve_cramer_sym3x3(
         systems (``|det| > eps``).  Outputs for unsolved entries are numerically
         meaningless and should be discarded by the caller.
     """
+    # The packed solve indexes one batch dimension, while the scalar code below
+    # is rank-agnostic. Dispatch only where the two agree, so a wider caller
+    # keeps its shape instead of being silently flattened on CUDA alone.
+    if dxx.is_cuda and dxx.ndim == 1 and dxx.dtype in (torch.float32, torch.float64):
+        return _solve_cramer_sym3x3_cuda(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2, eps)
+
+    # float16 cannot carry this solve. The determinant is a product of three
+    # second derivatives, so for a [0, 1] response it lands around 1e-4 and
+    # below — still above ``eps``, so ``solved`` admits it. The forward divides
+    # by it once and stays finite, but the backward of ``num / safe_det``
+    # scales by ``1 / safe_det**2``, and that square is not representable in
+    # float16 (finfo.tiny is 6.1e-5), so the gradient becomes inf and reduces
+    # to NaN. bfloat16 keeps float32's exponent range and is unaffected.
+    in_dtype = dxx.dtype
+    if in_dtype == torch.float16:
+        dxx, dyy, dss = dxx.float(), dyy.float(), dss.float()
+        dxy, dxs, dys = dxy.float(), dxs.float(), dys.float()
+        r0, r1, r2 = r0.float(), r1.float(), r2.float()
+
     cf00 = dyy * dss - dys * dys  # cofactor M00
     cf01 = dxy * dss - dys * dxs  # cofactor M01
     cf02 = dxy * dys - dyy * dxs  # cofactor M02
@@ -659,6 +737,9 @@ def _solve_cramer_sym3x3(
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
     sy = (dxx * (r1 * dss - dys * r2) - r0 * cf01 + dxs * (dxy * r2 - r1 * dxs)) / safe_det
     ss = (dxx * (dyy * r2 - r1 * dys) - dxy * (dxy * r2 - r1 * dxs) + r0 * cf02) / safe_det
+
+    if in_dtype == torch.float16:
+        sx, sy, ss = sx.to(in_dtype), sy.to(in_dtype), ss.to(in_dtype)
     return sx, sy, ss, solved
 
 
@@ -797,36 +878,39 @@ def conv_quad_interp3d(
     patch = inp_flat[center_flat.unsqueeze(1) + patch_offsets.unsqueeze(0)]  # (NU, 27)
 
     # Named patch elements.  Flat index: k = (dd+1)*9 + (dh+1)*3 + (dw+1), center k=13.
-    c000 = patch[:, 13]
-    p_xm = patch[:, 12]
-    p_xp = patch[:, 14]
-    p_ym = patch[:, 10]
-    p_yp = patch[:, 16]
-    p_sm = patch[:, 4]
-    p_sp = patch[:, 22]
-    p_xm_ym = patch[:, 9]
-    p_xp_ym = patch[:, 11]
-    p_xm_yp = patch[:, 15]
-    p_xp_yp = patch[:, 17]
-    p_xm_sm = patch[:, 3]
-    p_xp_sm = patch[:, 5]
-    p_xm_sp = patch[:, 21]
-    p_xp_sp = patch[:, 23]
-    p_ym_sm = patch[:, 1]
-    p_yp_sm = patch[:, 7]
-    p_ym_sp = patch[:, 19]
-    p_yp_sp = patch[:, 25]
+    if input.is_cuda and dtype in (torch.float32, torch.float64):
+        gx, gy, gs, dxx, dyy, dss, dxy, dxs, dys = _quadratic_derivatives3d(patch)
+    else:
+        c000 = patch[:, 13]
+        p_xm = patch[:, 12]
+        p_xp = patch[:, 14]
+        p_ym = patch[:, 10]
+        p_yp = patch[:, 16]
+        p_sm = patch[:, 4]
+        p_sp = patch[:, 22]
+        p_xm_ym = patch[:, 9]
+        p_xp_ym = patch[:, 11]
+        p_xm_yp = patch[:, 15]
+        p_xp_yp = patch[:, 17]
+        p_xm_sm = patch[:, 3]
+        p_xp_sm = patch[:, 5]
+        p_xm_sp = patch[:, 21]
+        p_xp_sp = patch[:, 23]
+        p_ym_sm = patch[:, 1]
+        p_yp_sm = patch[:, 7]
+        p_ym_sp = patch[:, 19]
+        p_yp_sp = patch[:, 25]
 
-    # ── Step 4: compute gradients + Hessian + solve (all unique positions) ───
-    gx = 0.5 * (p_xp - p_xm)
-    gy = 0.5 * (p_yp - p_ym)
-    gs = 0.5 * (p_sp - p_sm)
-    dxx = p_xp - 2.0 * c000 + p_xm
-    dyy = p_yp - 2.0 * c000 + p_ym
-    dss = p_sp - 2.0 * c000 + p_sm
-    dxy = 0.25 * (p_xp_yp - p_xm_yp - p_xp_ym + p_xm_ym)
-    dxs = 0.25 * (p_xp_sp - p_xm_sp - p_xp_sm + p_xm_sm)
-    dys = 0.25 * (p_yp_sp - p_ym_sp - p_yp_sm + p_ym_sm)
+        # ── Step 4: compute gradients + Hessian + solve (all unique positions) ───
+        gx = 0.5 * (p_xp - p_xm)
+        gy = 0.5 * (p_yp - p_ym)
+        gs = 0.5 * (p_sp - p_sm)
+        dxx = p_xp - 2.0 * c000 + p_xm
+        dyy = p_yp - 2.0 * c000 + p_ym
+        dss = p_sp - 2.0 * c000 + p_sm
+        dxy = 0.25 * (p_xp_yp - p_xm_yp - p_xp_ym + p_xm_ym)
+        dxs = 0.25 * (p_xp_sp - p_xm_sp - p_xp_sm + p_xm_sm)
+        dys = 0.25 * (p_yp_sp - p_ym_sp - p_yp_sm + p_ym_sm)
 
     sx_u, sy_u, ss_u, sol_u = _solve_cramer_sym3x3(dxx, dyy, dss, dxy, dxs, dys, -gx, -gy, -gs)
     # Precompute gradient·shift for the response correction (avoids storing gx/gy/gs tables).
@@ -1032,7 +1116,7 @@ def iterative_quad_interp3d(
             making the per-candidate gather+solve loop the dominant CPU cost.  Setting
             ``max_candidates = num_features * 5`` (say) dramatically reduces that work
             at the cost of occasionally missing a feature whose response rank would have
-            improved after refinement.
+            improved after refinement.  Must be non-negative; ``0`` refines nothing.
 
     Returns:
         A tuple ``(coords_max, y_max)`` where
@@ -1056,6 +1140,8 @@ def iterative_quad_interp3d(
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     if input.ndim != 5:
         raise ValueError(f"Invalid input shape, expected BxCxDxHxW. Got: {input.shape}")
+    if max_candidates is not None and max_candidates < 0:
+        raise ValueError(f"max_candidates must be non-negative. Got: {max_candidates}")
 
     B, C, D, H, W = input.shape
     device = input.device
@@ -1089,14 +1175,26 @@ def iterative_quad_interp3d(
     # few hundred features are ultimately needed.  The per-candidate patch gather
     # (random memory access into a multi-MB volume) is cache-miss dominated on CPU;
     # reducing N here gives a proportional speedup of the iteration loop below.
+    # The cap is per image, not over the flattened batch: a global topk would make
+    # one image's refined keypoints depend on which other images share its batch,
+    # so a quiet image next to a high-contrast one would get none. N <= the cap is
+    # the fast path, because then no row can be over it either.
     if max_candidates is not None and N > max_candidates:
         cand_vals = inp[bc_idx, d_idx, h_idx, w_idx]  # (N,) pre-refinement responses
-        _, keep = torch.topk(cand_vals, k=max_candidates)
+        # Sort by response, then stably by row: within each row the candidates
+        # stay in descending-response order, so a positional rank inside the row
+        # is the same ranking the global topk used, taken one image at a time.
+        by_value = torch.argsort(cand_vals, descending=True, stable=True)
+        grouped = by_value[torch.argsort(bc_idx[by_value], stable=True)]
+        counts = torch.bincount(bc_idx, minlength=B * C)
+        row_start = torch.cumsum(counts, 0) - counts
+        rank = torch.arange(N, device=device) - row_start[bc_idx[grouped]]
+        keep = grouped[rank < max_candidates]
         bc_idx = bc_idx[keep]
         d_idx = d_idx[keep]
         h_idx = h_idx[keep]
         w_idx = w_idx[keep]
-        N = max_candidates
+        N = int(keep.shape[0])
 
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)
 
@@ -1121,36 +1219,39 @@ def iterative_quad_interp3d(
 
         patch = inp_flat[(bc_base + d_s * HW + h_s * W + w_s).unsqueeze(1) + patch_offsets.unsqueeze(0)]
 
-        c000 = patch[:, 13]
-        p_xm = patch[:, 12]
-        p_xp = patch[:, 14]
-        p_ym = patch[:, 10]
-        p_yp = patch[:, 16]
-        p_sm = patch[:, 4]
-        p_sp = patch[:, 22]
-        p_xm_ym = patch[:, 9]
-        p_xp_ym = patch[:, 11]
-        p_xm_yp = patch[:, 15]
-        p_xp_yp = patch[:, 17]
-        p_xm_sm = patch[:, 3]
-        p_xp_sm = patch[:, 5]
-        p_xm_sp = patch[:, 21]
-        p_xp_sp = patch[:, 23]
-        p_ym_sm = patch[:, 1]
-        p_yp_sm = patch[:, 7]
-        p_ym_sp = patch[:, 19]
-        p_yp_sp = patch[:, 25]
+        if input.is_cuda and dtype in (torch.float32, torch.float64):
+            gx, gy, gs, dxx, dyy, dss, dxy, dxs, dys = _quadratic_derivatives3d(patch)
+        else:
+            c000 = patch[:, 13]
+            p_xm = patch[:, 12]
+            p_xp = patch[:, 14]
+            p_ym = patch[:, 10]
+            p_yp = patch[:, 16]
+            p_sm = patch[:, 4]
+            p_sp = patch[:, 22]
+            p_xm_ym = patch[:, 9]
+            p_xp_ym = patch[:, 11]
+            p_xm_yp = patch[:, 15]
+            p_xp_yp = patch[:, 17]
+            p_xm_sm = patch[:, 3]
+            p_xp_sm = patch[:, 5]
+            p_xm_sp = patch[:, 21]
+            p_xp_sp = patch[:, 23]
+            p_ym_sm = patch[:, 1]
+            p_yp_sm = patch[:, 7]
+            p_ym_sp = patch[:, 19]
+            p_yp_sp = patch[:, 25]
 
-        gx = 0.5 * (p_xp - p_xm)
-        gy = 0.5 * (p_yp - p_ym)
-        gs = 0.5 * (p_sp - p_sm)
+            gx = 0.5 * (p_xp - p_xm)
+            gy = 0.5 * (p_yp - p_ym)
+            gs = 0.5 * (p_sp - p_sm)
 
-        dxx = p_xp - 2.0 * c000 + p_xm
-        dyy = p_yp - 2.0 * c000 + p_ym
-        dss = p_sp - 2.0 * c000 + p_sm
-        dxy = 0.25 * (p_xp_yp - p_xm_yp - p_xp_ym + p_xm_ym)
-        dxs = 0.25 * (p_xp_sp - p_xm_sp - p_xp_sm + p_xm_sm)
-        dys = 0.25 * (p_yp_sp - p_ym_sp - p_yp_sm + p_ym_sm)
+            dxx = p_xp - 2.0 * c000 + p_xm
+            dyy = p_yp - 2.0 * c000 + p_ym
+            dss = p_sp - 2.0 * c000 + p_sm
+            dxy = 0.25 * (p_xp_yp - p_xm_yp - p_xp_ym + p_xm_ym)
+            dxs = 0.25 * (p_xp_sp - p_xm_sp - p_xp_sm + p_xm_sm)
+            dys = 0.25 * (p_yp_sp - p_ym_sp - p_yp_sm + p_ym_sm)
 
         sx, sy, ss, solved = _solve_cramer_sym3x3(dxx, dyy, dss, dxy, dxs, dys, -gx, -gy, -gs)
         valid = valid & solved

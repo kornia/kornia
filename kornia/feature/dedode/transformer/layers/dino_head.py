@@ -64,18 +64,14 @@ class DINOHead(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        """Run this DeDoDe module forward.
-
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+        r"""Run this DeDoDe module forward.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature tensor with shape :math:`(B, C_{\text{in}})`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Projection logits with shape :math:`(B, \text{out\_dim})`. The bottleneck
+            features are L2-normalized before the final weight-normalized linear layer.
         """
         x = self.mlp(x)
         eps = 1e-6 if x.dtype == torch.float16 else 1e-12
@@ -87,15 +83,14 @@ class DINOHead(nn.Module):
 def _build_mlp(nlayers, in_dim, bottleneck_dim, hidden_dim=None, use_bn=False, bias=True):
     if nlayers == 1:
         return nn.Linear(in_dim, bottleneck_dim, bias=bias)
-    else:
-        layers = [nn.Linear(in_dim, hidden_dim, bias=bias)]
+    layers = [nn.Linear(in_dim, hidden_dim, bias=bias)]
+    if use_bn:
+        layers.append(nn.BatchNorm1d(hidden_dim))
+    layers.append(nn.GELU())
+    for _ in range(nlayers - 2):
+        layers.append(nn.Linear(hidden_dim, hidden_dim, bias=bias))
         if use_bn:
             layers.append(nn.BatchNorm1d(hidden_dim))
         layers.append(nn.GELU())
-        for _ in range(nlayers - 2):
-            layers.append(nn.Linear(hidden_dim, hidden_dim, bias=bias))
-            if use_bn:
-                layers.append(nn.BatchNorm1d(hidden_dim))
-            layers.append(nn.GELU())
-        layers.append(nn.Linear(hidden_dim, bottleneck_dim, bias=bias))
-        return nn.Sequential(*layers)
+    layers.append(nn.Linear(hidden_dim, bottleneck_dim, bias=bias))
+    return nn.Sequential(*layers)

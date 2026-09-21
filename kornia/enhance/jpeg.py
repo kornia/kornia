@@ -31,6 +31,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
+from kornia.core.utils import is_exporting
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
 
@@ -87,11 +88,15 @@ def _differentiable_clipping(
         Clipped output tensor of the same shape as the input tensor.
 
     """
-    output: torch.Tensor = input.clone()
+    # Branch-free ``torch.where`` selects instead of boolean-mask assignment, so the op traces for
+    # export. The exponent is clamped on the lanes that keep ``output`` so they cannot overflow.
+    output: torch.Tensor = input
     if max_val is not None:
-        output[output > max_val] = -scale * (torch.exp(-output[output > max_val] + max_val) - 1.0) + max_val
+        over = output - max_val
+        output = torch.where(over > 0, -scale * (torch.exp(-over.clamp(min=0)) - 1.0) + max_val, output)
     if min_val is not None:
-        output[output < min_val] = scale * (torch.exp(output[output < min_val] - min_val) - 1.0) + min_val
+        under = output - min_val
+        output = torch.where(under < 0, scale * (torch.exp(under.clamp(max=0)) - 1.0) + min_val, output)
     return output
 
 
@@ -223,17 +228,28 @@ def _jpeg_quality_to_scale(
 
     Args:
         compression_strength (torch.Tensor): Compression strength ranging from 0 to 100. Any shape is supported.
+            A strength of exactly 0 is given the scale of strength 1, matching libjpeg, which gives quality 0
+            the quality-1 table. Fractional strengths in (0, 1) are left alone and scale as the formula says.
 
     Returns:
         scale (torch.Tensor): Scaling factor to be applied to quantization matrix. Same shape as input.
 
     """
+    # ``5000 / 0`` is ``inf`` and the polynomial floor of ``inf`` is ``NaN``, which poisons the whole codec
+    # for a documented input. libjpeg gives quality 0 the quality-1 table, so give it the quality-1 scale.
+    # The guard is exactly the zero point: a fractional quality in (0, 1) is already finite, keeps its own
+    # (larger) scale, and is not touched. ``torch.where`` rather than ``clamp`` also keeps the gradient at
+    # every unguarded quality independent of the torch version -- clamp's derivative at its own bound is not
+    # portable across the supported torch range, as measured in PR #4406.
+    strength: torch.Tensor = torch.where(
+        compression_strength == 0.0, torch.ones_like(compression_strength), compression_strength
+    )
     # Get scale
     scale: torch.Tensor = _differentiable_polynomial_floor(
         torch.where(
-            compression_strength < 50,
-            5000.0 / compression_strength,
-            200.0 - 2.0 * compression_strength,
+            strength < 50,
+            5000.0 / strength,
+            200.0 - 2.0 * strength,
         )
     )
     return scale
@@ -512,6 +528,9 @@ def jpeg_codec_differentiable(
     Args:
         input: the RGB image to be coded.
         jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
+          A quality of exactly 0 is treated as 1, matching libjpeg, which gives quality 0 the quality-1
+          table. This endpoint is not the limit of the formula as the quality approaches 0 from above:
+          a fractional quality in (0, 1) is left alone and compresses harder still.
         quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
           quantization table.
         quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard
@@ -576,12 +595,13 @@ def jpeg_codec_differentiable(
     # Check resulting shape of quantization tables
     KORNIA_CHECK_SHAPE(quantization_table_y, ["B", "8", "8"])
     KORNIA_CHECK_SHAPE(quantization_table_c, ["B", "8", "8"])
-    # Check value range of JPEG quality
-    KORNIA_CHECK(
-        (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
-        f"JPEG quality is out of range. Expected range is [0, 100], "
-        f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
-    )
+    # Check value range of JPEG quality. The check reads the data, which graph capture cannot do; skip under export.
+    if not is_exporting():
+        KORNIA_CHECK(
+            (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
+            f"JPEG quality is out of range. Expected range is [0, 100], "
+            f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
+        )
     # Pad the image to a shape dividable by 16
     input, h_pad, w_pad = _perform_padding(input)
     # Get height and shape

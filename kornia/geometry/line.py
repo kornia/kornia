@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_svd_cast
+from kornia.core.utils import _torch_svd_cast, register_module_state
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 
@@ -56,8 +56,8 @@ class ParametrizedLine(nn.Module):
 
         """
         super().__init__()
-        self._origin = nn.Parameter(origin)
-        self._direction = nn.Parameter(direction)
+        register_module_state(self, "_origin", origin)
+        register_module_state(self, "_direction", direction)
 
     def __str__(self) -> str:
         return f"Origin: {self.origin}\nDirection: {self.direction}"
@@ -164,15 +164,19 @@ class ParametrizedLine(nn.Module):
             - the lambda value used to compute the look at point.
             - the intersected point.
 
+        Note:
+            If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
+            intersection; the function returns lambda ``0`` and the line origin as the point.
+
         """
-        dot_prod = batched_dot_product(plane.normal.data, self.direction.data)
+        dot_prod = batched_dot_product(plane.normal.data, self.direction)
         dot_prod_mask = dot_prod.abs() >= eps
 
         # TODO: add check for dot product
         res_lambda = torch.where(
             dot_prod_mask,
-            -(plane.offset + batched_dot_product(plane.normal.data, self.origin.data)) / dot_prod,
-            torch.empty_like(dot_prod),
+            -(plane.offset + batched_dot_product(plane.normal.data, self.origin)) / dot_prod,
+            torch.zeros_like(dot_prod),
         )
 
         res_point = self.point_at(res_lambda)
@@ -265,8 +269,7 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
             KORNIA_CHECK_SHAPE(weights, ["B", "N"])
             KORNIA_CHECK(points.shape[0] == weights.shape[0])
             return _fit_line_weighted_ols_2d(points, weights)
-        else:
-            return _fit_line_ols_2d(points)
+        return _fit_line_ols_2d(points)
 
     mean = points.mean(-2, True)
     A = points - mean

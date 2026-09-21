@@ -77,6 +77,9 @@ class TestDilate(BaseTester):
             None, None, :, :
         ]
         assert_close(dilation(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
+        # The convolution engine measures ~3.9e-4 absolute / ~1.5e-3 relative error on macOS's
+        # Apple-backend float32 conv path, above the harness's generic float32 default
+        # (atol=1e-5, rtol=1e-4). This explicit tolerance is scoped to this backend-specific case.
         assert_close(dilation(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_structural_element(self, device, dtype):
@@ -94,9 +97,9 @@ class TestDilate(BaseTester):
                 tensor, torch.ones_like(structural_element), structuring_element=structural_element, engine="unfold"
             ),
             expected,
-            atol=1e-3,
-            rtol=1e-3,
         )
+        # See test_kernel: convolution engine needs an explicit tolerance for macOS's
+        # Apple-backend float32 numerical error, above the harness's generic float32 default.
         assert_close(
             dilation(
                 tensor,
@@ -117,7 +120,7 @@ class TestDilate(BaseTester):
         expected = torch.tensor([[0.7, 1.0, 1.0], [0.7, 1.0, 1.0], [0.7, 0.9, 0.9]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_close(dilation(tensor, kernel), expected, atol=1e-3, rtol=1e-3)
+        assert_close(dilation(tensor, kernel), expected)
 
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
@@ -153,7 +156,6 @@ class TestDilate(BaseTester):
         # Results should differ when the anchor point changes
         assert not torch.equal(out_default, out_custom)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = dilation
         op_script = torch.jit.script(op)
@@ -165,3 +167,18 @@ class TestDilate(BaseTester):
         expected = op(tensor, kernel)
 
         assert_close(actual, expected)
+
+    def test_convolution_engine_dtype_mismatch(self, device, dtype):
+        # engine="convolution" used to crash when tensor.dtype != kernel.dtype, because the
+        # conv weight/bias were built from kernel.dtype instead of the input's dtype. See #4541.
+        # Passing a mismatched kernel must match casting the kernel to the input dtype up front;
+        # that is the same computation, so the results are bitwise equal (no tolerance needed).
+        other_dtype = torch.float16 if dtype == torch.float32 else torch.float32
+
+        tensor = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=other_dtype)
+
+        result = dilation(tensor, kernel, engine="convolution")
+
+        assert result.dtype == dtype
+        self.assert_close(result, dilation(tensor, kernel.to(dtype), engine="convolution"))

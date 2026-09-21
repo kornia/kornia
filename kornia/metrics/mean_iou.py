@@ -17,6 +17,8 @@
 
 import torch
 
+from kornia.core.utils import is_exporting
+
 from .confusion_matrix import confusion_matrix
 
 
@@ -87,13 +89,13 @@ def _convert_boxes_to_xyxy(boxes: torch.Tensor, box_format: str) -> torch.Tensor
     """
     if box_format == "xyxy":
         return boxes
-    elif box_format == "xywh":
+    if box_format == "xywh":
         # (x, y, w, h) -> (x1, y1, x2, y2)
         x, y, w, h = boxes[:, 0:1], boxes[:, 1:2], boxes[:, 2:3], boxes[:, 3:4]
         x2 = x + w
         y2 = y + h
         return torch.cat([x, y, x2, y2], dim=1)
-    elif box_format == "cxcywh":
+    if box_format == "cxcywh":
         # (cx, cy, w, h) -> (x1, y1, x2, y2)
         cx, cy, w, h = boxes[:, 0:1], boxes[:, 1:2], boxes[:, 2:3], boxes[:, 3:4]
         x1 = cx - w / 2
@@ -101,8 +103,7 @@ def _convert_boxes_to_xyxy(boxes: torch.Tensor, box_format: str) -> torch.Tensor
         x2 = cx + w / 2
         y2 = cy + h / 2
         return torch.cat([x1, y1, x2, y2], dim=1)
-    else:
-        raise ValueError(f"Unsupported box format: {box_format}. Must be one of 'xyxy', 'xywh', or 'cxcywh'.")
+    raise ValueError(f"Unsupported box format: {box_format}. Must be one of 'xyxy', 'xywh', or 'cxcywh'.")
 
 
 def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str = "xyxy") -> torch.Tensor:
@@ -146,15 +147,19 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     boxes_1_xyxy = _convert_boxes_to_xyxy(boxes_1, box_format)
     boxes_2_xyxy = _convert_boxes_to_xyxy(boxes_2, box_format)
 
-    # Validate boxes are in proper xyxy format
-    if not (
-        ((boxes_1_xyxy[:, 2] - boxes_1_xyxy[:, 0]) > 0).all() and ((boxes_1_xyxy[:, 3] - boxes_1_xyxy[:, 1]) > 0).all()
-    ):
-        raise AssertionError("Boxes_1 contains invalid boxes after conversion.")
-    if not (
-        ((boxes_2_xyxy[:, 2] - boxes_2_xyxy[:, 0]) > 0).all() and ((boxes_2_xyxy[:, 3] - boxes_2_xyxy[:, 1]) > 0).all()
-    ):
-        raise AssertionError("Boxes_2 contains invalid boxes after conversion.")
+    # Validate boxes are in proper xyxy format. The checks read the data, which graph capture cannot do;
+    # skip them under export.
+    if not is_exporting():
+        if not (
+            ((boxes_1_xyxy[:, 2] - boxes_1_xyxy[:, 0]) > 0).all()
+            and ((boxes_1_xyxy[:, 3] - boxes_1_xyxy[:, 1]) > 0).all()
+        ):
+            raise AssertionError("Boxes_1 contains invalid boxes after conversion.")
+        if not (
+            ((boxes_2_xyxy[:, 2] - boxes_2_xyxy[:, 0]) > 0).all()
+            and ((boxes_2_xyxy[:, 3] - boxes_2_xyxy[:, 1]) > 0).all()
+        ):
+            raise AssertionError("Boxes_2 contains invalid boxes after conversion.")
 
     # Find intersection
     lower_bounds = torch.max(boxes_1_xyxy[:, :2].unsqueeze(1), boxes_2_xyxy[:, :2].unsqueeze(0))  # (n1, n2, 2)

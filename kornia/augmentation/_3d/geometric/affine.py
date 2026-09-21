@@ -55,7 +55,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.
-            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
+            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (shear[i, 0], shear[i, 1])
             will be applied.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
@@ -64,13 +64,28 @@ class RandomAffine3D(GeometricAugmentationBase3D):
           to the batch form (False). Default: False.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A
+          positive roll turns a displayed ``H x W`` slice counter-clockwise, as the 2D
+          :class:`~kornia.augmentation.RandomRotation` and :func:`kornia.geometry.transform.rotate` do, and
+          opposite to :class:`RandomRotation3D`, :func:`kornia.geometry.transform.rotate3d`, and the 2D
+          :class:`~kornia.augmentation.RandomAffine`; its recorded rotation block is the transpose of
+          :class:`RandomRotation3D`'s (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - the default is bilinear resampling with ``align_corners=False``. With zero rotation, zero translation,
+          unit scale, and zero shear, it reproduces the input at that setting up to floating-point roundoff in
+          ``float32`` and ``float64``. In half precision the sampling grid itself is rounded, so the error grows
+          with the volume size (about ``0.5`` for a ``32 x 48 x 96`` volume in ``bfloat16``).
+        - a two-value ``scale=(a, b)`` is documented as isotropic but currently draws the three axes
+          independently, unlike the 2D :class:`~kornia.augmentation.RandomAffine`
+          (`#4704 <https://github.com/kornia/kornia/issues/4704>`_).
 
     Examples:
         >>> import torch
@@ -117,7 +132,6 @@ class RandomAffine3D(GeometricAugmentationBase3D):
             ]
         ] = None,
         shears: Union[
-            None,
             torch.Tensor,
             float,
             Tuple[float, float],
@@ -130,6 +144,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
                 Tuple[float, float],
                 Tuple[float, float],
             ],
+            None,
         ] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,

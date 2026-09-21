@@ -37,7 +37,7 @@ class TestSmallSRNet(BaseTester):
         assert model is not None
 
         # Input is single channel (Y channel from YCbCr)
-        x = torch.randn(batch_size, 1, 224, 224, device=device, dtype=dtype)
+        x = torch.randn(batch_size, 1, 32, 48, device=device, dtype=dtype)
         output = model(x)
         assert output is not None
 
@@ -47,7 +47,7 @@ class TestSmallSRNet(BaseTester):
 
         # SmallSRNet expects 1 channel input (Y channel), not 3
         with pytest.raises(RuntimeError):
-            x = torch.randn(1, 3, 224, 224, device=device, dtype=dtype)
+            x = torch.randn(1, 3, 16, 16, device=device, dtype=dtype)
             model(x)
 
     def test_smoke_upscale_factor_one(self, device, dtype):
@@ -58,7 +58,7 @@ class TestSmallSRNet(BaseTester):
         assert model is not None
 
         # Test forward pass - should work without crashing
-        x = torch.randn(1, 1, 64, 64, device=device, dtype=dtype)
+        x = torch.randn(1, 1, 32, 32, device=device, dtype=dtype)
         output = model(x)
 
         # With upscale_factor=1, output dimensions should match input dimensions
@@ -67,7 +67,7 @@ class TestSmallSRNet(BaseTester):
 
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
-    @pytest.mark.parametrize("height,width", [(64, 64), (128, 128), (224, 224)])
+    @pytest.mark.parametrize("height,width", [(32, 32), (32, 48), (48, 32)])
     def test_cardinality(self, device, dtype, upscale_factor, batch_size, height, width):
         """Test that output shape matches expected upscaled dimensions."""
         model = SmallSRNet(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
@@ -83,7 +83,7 @@ class TestSmallSRNet(BaseTester):
         """Test the forward pass produces valid outputs with expected value ranges."""
         model = SmallSRNet(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
 
-        x = torch.randn(1, 1, 64, 64, device=device, dtype=dtype)
+        x = torch.randn(1, 1, 32, 32, device=device, dtype=dtype)
         output = model(x)
 
         # Check output is not all zeros
@@ -155,7 +155,7 @@ class TestSmallSRNetWrapper(BaseTester):
         assert model is not None
 
         # Input is RGB image
-        x = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        x = torch.randn(batch_size, 3, 32, 48, device=device, dtype=dtype)
         output = model(x)
         assert output is not None
 
@@ -165,13 +165,13 @@ class TestSmallSRNetWrapper(BaseTester):
 
         # SmallSRNetWrapper expects 3 channel RGB input, rgb_to_ycbcr will raise ValueError
         with pytest.raises(ValueError, match="Input size must have a shape of"):
-            x = torch.randn(1, 1, 224, 224, device=device, dtype=dtype)
+            x = torch.randn(1, 1, 16, 16, device=device, dtype=dtype)
             model(x)
 
     def test_exception_negative_values(self, device, dtype):
         """Test handling of invalid pixel value ranges (should still process but may produce unexpected results)."""
         model = SmallSRNetWrapper(upscale_factor=3, pretrained=False).to(device, dtype)
-        x = torch.randn(1, 3, 64, 64, device=device, dtype=dtype) - 1.0  # Negative values
+        x = torch.randn(1, 3, 32, 32, device=device, dtype=dtype) - 1.0  # Negative values
         output = model(x)
 
         # Should not crash, output should be finite
@@ -179,7 +179,7 @@ class TestSmallSRNetWrapper(BaseTester):
 
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
-    @pytest.mark.parametrize("height,width", [(64, 64), (128, 128), (224, 224)])
+    @pytest.mark.parametrize("height,width", [(32, 32), (32, 48), (48, 32)])
     def test_cardinality(self, device, dtype, upscale_factor, batch_size, height, width):
         """Test that output shape matches expected upscaled dimensions for RGB images."""
         model = SmallSRNetWrapper(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
@@ -194,7 +194,7 @@ class TestSmallSRNetWrapper(BaseTester):
     def test_feature_rgb_processing(self, device, dtype, upscale_factor):
         """Test that RGB images are processed correctly through color space conversions."""
         model = SmallSRNetWrapper(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
-        x = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)  # RGB in [0, 1]
+        x = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)  # RGB in [0, 1]
         output = model(x)
 
         # Check output is not all zeros

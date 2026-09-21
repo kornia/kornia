@@ -21,10 +21,17 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 
-urls: Dict[str, str] = {}
-urls["lib"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth"
-urls["hp_a"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth"
+urls: Dict[str, str | list[str]] = {}
+urls["lib"] = [
+    hf_url("sosnet", "sosnet_32x32_liberty.pth"),
+    "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth",
+]
+urls["hp_a"] = [
+    hf_url("sosnet", "sosnet_32x32_hpatches_a.pth"),
+    "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth",
+]
 
 
 class SOSNet(nn.Module):
@@ -78,7 +85,7 @@ class SOSNet(nn.Module):
         self.desc_norm = nn.Sequential(nn.LocalResponseNorm(256, alpha=256.0, beta=0.5, k=0.0))
         # load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["lib"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["lib"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
@@ -93,6 +100,21 @@ class SOSNet(nn.Module):
             Descriptor tensor with shape :math:`(B, 128)`.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
-        descr = self.desc_norm(self.layers(input) + eps)
+        descr = self.layers(input)
+        # Half precision takes this step in float32 and casts back, for two reasons that between them
+        # cover both half dtypes. (1) `desc_norm` divides by the descriptor's own L2 norm, and `eps` is
+        # what keeps that division defined for a patch the network maps to exactly zero -- every
+        # `Conv2d` here has `bias=False` and every `BatchNorm2d` is `affine=False`, so a constant patch
+        # does. 1e-10 is not representable in float16, where it would flush to 0.0 and leave 0/0;
+        # bfloat16 keeps float32's exponent range, so the guard survives there and this half of the
+        # argument does not apply to it. (2) `F.local_response_norm` routes a 4-D input through
+        # `avg_pool3d`, which has no CPU kernel for *either* half dtype, so the lift is what makes CPU
+        # half work at all. Note the lift is therefore wider than the one `siftdesc.py` gives its own
+        # 1e-10 guards, which is float16-only for reason (1) alone.
+        # float32 and float64 take the original expression unchanged, bit for bit.
+        if descr.dtype in (torch.float16, torch.bfloat16):
+            descr = self.desc_norm(descr.float() + eps).to(descr.dtype)
+        else:
+            descr = self.desc_norm(descr + eps)
         descr = descr.view(descr.size(0), -1)
         return descr

@@ -32,7 +32,12 @@ __all__ = ["BaseWarper", "HomographyWarper"]
 
 
 class BaseWarper(nn.Module):
-    """Provide a base class for homography-based image warping."""
+    """Provide a base class for homography-based image warping.
+
+    Convention:
+        - subclasses receive ``src_homo_dst`` as the destination→source homography
+
+    """
 
     def __init__(self, height: int, width: int, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -74,14 +79,21 @@ class HomographyWarper(BaseWarper):
 
     .. math::
 
-        X_{dst} = H_{src}^{\{dst\}} * X_{src}
+        X_{src} = H_{src}^{\{dst\}} * X_{dst}
+
+    Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
+        coordinates and sampling conventions.
+
+        - align_corners: ``False`` by default, matching :func:`homography_warp`
+        - See the convention block of :func:`homography_warp`.
 
     Args:
         height: The height of the destination torch.Tensor.
         width: The width of the destination torch.Tensor.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
 
@@ -103,8 +115,11 @@ class HomographyWarper(BaseWarper):
         self.padding_mode = padding_mode
         self.normalized_coordinates = normalized_coordinates
         self.align_corners = align_corners
-        # create base grid to compute the flow
-        self.grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
+        # create base grid to compute the flow, under the same normalization convention that
+        # forward() will hand to grid_sample, so the precomputed path matches the direct one
+        self.grid = create_meshgrid(
+            height, width, normalized_coordinates=normalized_coordinates, align_corners=align_corners
+        )
 
         # initialice the warped destination grid
         self._warped_grid = None
@@ -117,7 +132,7 @@ class HomographyWarper(BaseWarper):
         Args:
             src_homo_dst: Homography or homographies (stacked) to
               transform all points in the grid. Shape of the homography
-              has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
+              has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
               The homography assumes normalized coordinates [-1, 1] if
               normalized_coordinates is True.
 

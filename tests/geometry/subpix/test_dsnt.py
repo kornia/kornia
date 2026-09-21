@@ -68,6 +68,45 @@ class TestRenderGaussian2d(BaseTester):
 
         self.assert_close(res_orig, res_opt)
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("normalized", [False, True])
+    @pytest.mark.parametrize("axis", ["x", "y"])
+    # 2049.3 is above float16's exact-integer limit (2048); 1500.2 is below it, where only bfloat16 (limit 256)
+    # collapses. One mean is not enough: bfloat16 in normalized mode is 1 px off at 2049.3 but 7 px off at 1500.2.
+    @pytest.mark.parametrize("mu", [2049.3, 1500.2])
+    def test_large_grid_peak_not_distorted(self, device, dtype, normalized, axis, mu):
+        """The coordinate grid must not collapse in half precision (float16 above 2048, bfloat16 above ~256)."""
+        n = 2200
+        size = (10, n) if axis == "x" else (n, 10)
+        mu_norm = mu / (n - 1) * 2 - 1
+        mean_xy = [mu, 5.0] if axis == "x" else [5.0, mu]
+        std_xy = [2.0, 2.0]
+        if normalized:
+            mean_xy = [mu_norm, 0.0] if axis == "x" else [0.0, mu_norm]
+            # A sigma of 6 pixels on EACH axis, expressed in that axis's own normalized units. Wide enough to keep
+            # 1 / sigma**2 inside the float16 range on the long axis, and (unlike one shared value) still wide enough
+            # to cover grid points on the short axis, where a tiny sigma makes the whole heatmap round to zero.
+            (h, w) = size
+            std_xy = [6.0 * 2 / (w - 1), 6.0 * 2 / (h - 1)]
+        mean = torch.tensor([mean_xy], dtype=dtype, device=device)
+        std = torch.tensor([std_xy], dtype=dtype, device=device)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, size, normalized)
+
+        assert heatmap.dtype == dtype
+        # Compare against the mean as actually stored (post half rounding), so only the grid is under test.
+        stored = mean[0, 0 if axis == "x" else 1].item()
+        expected = round((stored + 1) / 2 * (n - 1)) if normalized else round(stored)
+        line = heatmap[0, 5] if axis == "x" else heatmap[0, :, 5]
+        # Guard against a vacuous pass: an all-zero line satisfies `line[expected] == line.max()` as 0 == 0.
+        assert line.max() > 0, "heatmap rounded entirely to zero, so the peak position is not being tested"
+        # A collapsed coordinate grid does not move the peak to one wrong pixel, it smears the maximum over a
+        # plateau of tied pixels, so `line[expected] == line.max()` alone accepts any plateau containing `expected`.
+        # Require every tied maximum to sit within one pixel of it (a tie between two neighbours is legitimate).
+        assert line[expected] == line.max()
+        tied = (line == line.max()).nonzero().flatten()
+        assert (tied - expected).abs().max() <= 1, f"peak plateau {tied.tolist()} is not centred on pixel {expected}"
+
 
 class TestSpatialSoftmax2d(BaseTester):
     @pytest.fixture(params=[torch.ones(1, 1, 5, 7), torch.randn(2, 3, 16, 16)])
@@ -79,6 +118,15 @@ class TestSpatialSoftmax2d(BaseTester):
         assert actual.lt(0).sum().item() == 0, "expected no negative values"
         sums = actual.sum(-1).sum(-1)
         self.assert_close(sums, torch.ones_like(sums))
+
+    def test_non_contiguous(self, device, dtype):
+        input = torch.randn(2, 3, 4, 6, device=device, dtype=dtype).transpose(-2, -1)
+        assert not input.is_contiguous()
+
+        expected = kornia.geometry.subpix.spatial_softmax2d(input.contiguous())
+        actual = kornia.geometry.subpix.spatial_softmax2d(input)
+
+        self.assert_close(actual, expected)
 
     def test_dynamo(self, input, torch_optimizer):
         op = kornia.geometry.subpix.spatial_softmax2d
@@ -107,6 +155,17 @@ class TestSpatialExpectation2d(BaseTester):
         self.assert_close(actual_norm, expected_norm)
         actual_px = kornia.geometry.subpix.spatial_expectation2d(input, False)
         self.assert_close(actual_px, expected_px)
+
+    def test_non_contiguous(self, device, dtype):
+        input = torch.rand(2, 3, 4, 6, device=device, dtype=dtype)
+        input = input / input.sum(dim=(-2, -1), keepdim=True)
+        input = input.transpose(-2, -1)
+        assert not input.is_contiguous()
+
+        expected = kornia.geometry.subpix.spatial_expectation2d(input.contiguous())
+        actual = kornia.geometry.subpix.spatial_expectation2d(input)
+
+        self.assert_close(actual, expected)
 
     @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):

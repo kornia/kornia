@@ -93,9 +93,21 @@ class TestSe2(BaseTester):
             y = torch.rand(3, dtype=dtype, device=device)
             Se2.trans(x, y)
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        v = torch.tensor([[1.0, 2.0, 0.4]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: Se2.exp(x).matrix(), (v,))
+
+    def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
+        # #4404: both quotients that build the translation block are 0/0 at theta = 0, and the
+        # torch.where that discards them still differentiates them, so 0 * nan = nan reached the
+        # gradient at the identity even though the forward returned the correct zero translation.
+        if dtype == torch.bfloat16:
+            # Se2 holds its rotation as a complex So2, and torch.complex has no bfloat16 overload,
+            # so most of this class already cannot run at that dtype -- unrelated to the guard.
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        v = torch.zeros(1, 3, device=device, dtype=dtype, requires_grad=True)
+        Se2.exp(v).matrix().sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
 
     # TODO: implement me
     def test_jit(self, device, dtype):
@@ -285,3 +297,21 @@ class TestSe2(BaseTester):
         y = Se2.random(batch_size)
         self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
         self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
+
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        # A group built from a tensor with autograd history keeps that history; its state must
+        # still be registered so ``state_dict`` and ``.to()`` / ``.double()`` reach it.
+        v = torch.rand(2, 3, device=device, dtype=dtype, requires_grad=True)
+        s = Se2.exp(v)
+        assert s.t.grad_fn is not None and s.so2.z.grad_fn is not None
+        assert set(s.state_dict()) == {"_translation", "_rotation._z"}
+        restored = Se2(So2.identity(2, device, dtype), torch.zeros(2, 2, device=device, dtype=dtype))
+        restored.load_state_dict(s.state_dict())
+        self.assert_close(restored.matrix(), s.matrix().detach())
+        # ``.half()`` / ``.float()`` convert the floating buffers in place and keep the graph
+        # (float64 is unavailable on MPS, so convert towards float16 from float32)
+        converted = s.half() if dtype == torch.float32 else s.float()
+        assert converted.t.dtype == (torch.float16 if dtype == torch.float32 else torch.float32)
+        assert converted.t.grad_fn is not None
+        converted.t.sum().backward()
+        assert v.grad is not None

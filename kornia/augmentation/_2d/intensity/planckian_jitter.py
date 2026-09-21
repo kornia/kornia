@@ -95,6 +95,8 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomPlanckianJitter.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     This is physics based color augmentation, that creates realistic
     variations in chromaticity, this can simulate the illumination
     changes in the scene.
@@ -112,6 +114,21 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the red and blue channels are scaled by the selected row of the illuminant table and the green
+          channel is not scaled. The result is then clamped at the upper end only, so negative values stay
+          negative while any value the scaling leaves above ``1``, green included, is cut back to ``1``. Every
+          other 2D intensity augmentation whose clamp reaches the whole output bounds both ends;
+          :class:`RandomSnow` clamps only the pixels the snow covers, so it bounds the lower end of an
+          all-negative image and not the upper end of one above ``1``.
+        - ``mode`` selects the illuminant lookup table, held in the persistent buffer ``pl``, and
+          ``select_from`` narrows that table to the listed rows. The input must have three channels.
+
+    .. warning::
+        ``pl``'s shape depends on ``mode``, so a ``state_dict`` saved by an instance built with one mode
+        does not load into an instance built with the other. Tracked in
+        `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
 
     .. note::
         Input torch.Tensor must be float and normalized into [0, 1].
@@ -191,10 +208,10 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        list_idx = params["idx"].tolist()
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
-        self.pl = self.pl.to(device=input.device)
-        coeffs = self.pl[list_idx]
+        # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. Cast the
+        # buffer to the input so both device and dtype follow the input for the channel-wise multiplication.
+        coeffs = self.pl.to(input)[params["idx"].long()]
 
         r_w = coeffs[:, 0][..., None, None]
         b_w = coeffs[:, 1][..., None, None]

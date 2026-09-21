@@ -18,10 +18,11 @@
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.constants import pi
+from kornia.core.download import load_state_dict_from_url
+from kornia.core.utils import _l2_normalize
 from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
 from kornia.geometry.grid import create_meshgrid
@@ -384,14 +385,19 @@ class ExplicitSpacialEncoding(nn.Module):
         """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
-        if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
+        if not ((len(x.shape) == 4) and (x.shape[1] == self.in_dims)):
             raise ValueError(f"Invalid input shape, we expect Bx{self.in_dims}xHxW. Got: {x.shape}")
-        idx1 = torch.jit.annotate(torch.Tensor, self.idx1)
-        emb1 = torch.index_select(x, 1, idx1)
-        output = emb1 * self.emb2
-        output = output.sum(dim=(2, 3))
+        # output[b, c * d_emb + e] = sum_hw x[b, c, h, w] * emb[e, h, w]: every (c, e)
+        # pair in the row-major order of get_kron_order, which `emb2` / `idx1` spell as a
+        # gather. One matmul computes the same contraction without materialising the
+        # (B, in_dims * d_emb, H, W) product of that gather. The two buffers are kept so
+        # existing state dicts still load.
+        emb = torch.jit.annotate(torch.Tensor, self.emb)
+        dtype = torch.promote_types(x.dtype, emb.dtype)
+        output = torch.matmul(x.flatten(2).to(dtype), emb.flatten(2).transpose(1, 2).to(dtype))
+        output = output.flatten(1)
         if self.do_l2:
-            output = F.normalize(output, dim=1)
+            output = _l2_normalize(output, dim=1)
         return output
 
     def __repr__(self) -> str:
@@ -531,7 +537,7 @@ class Whitening(nn.Module):
         x = x - self.mean  # Center the data.
         x = x @ self.evecs  # Apply rotation and/or scaling.
         x = torch.sign(x) * torch.pow(torch.abs(x), self.pval)  # Powerlaw.
-        return F.normalize(x, dim=1)
+        return _l2_normalize(x, dim=1)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(xform={self.xform}, in_dims={self.in_dims}, output_dims={self.output_dims})"
@@ -594,7 +600,9 @@ class MKDDescriptor(nn.Module):
         # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
         relative_orientations = {polar_s: True, cart_s: False}
-        self.feats = {}
+        # A `ModuleDict`, so that `.to(device, dtype)` reaches the embedding buffers; a plain dict
+        # left them float32 and a half-precision input failed at the whitening matmul.
+        self.feats = nn.ModuleDict()
         for parametrization in self.parametrizations:
             gradient_embedding = EmbedGradients(patch_size=patch_size, relative=relative_orientations[parametrization])
             spatial_encoding = ExplicitSpacialEncoding(
@@ -605,18 +613,29 @@ class MKDDescriptor(nn.Module):
             self.odims += spatial_encoding.odims
         # Compute true output_dims.
         self.output_dims: int = min(output_dims, self.odims)
+        # The stages used to live in a plain dict, so a state dict saved by an earlier release has
+        # no `feats.*` keys at all. Those buffers are derived from the constructor arguments, so a
+        # strict load fills them in from this instance rather than failing on them. A state dict
+        # that has *some* `feats.*` keys was saved by this layout and is left alone, so a strict
+        # load still reports one it lost.
+        self._register_load_state_dict_pre_hook(self._fill_missing_stage_buffers)
 
         # Load supervised(lw)/unsupervised(pca) model trained on training_set.
         if self.whitening is not None:
-            whitening_models = torch.hub.load_state_dict_from_url(
-                urls[self.kernel_type], map_location=torch.device("cpu")
-            )
+            whitening_models = load_state_dict_from_url(urls[self.kernel_type], map_location=torch.device("cpu"))
             whitening_model = whitening_models[training_set]
             self.whitening_layer = Whitening(
                 whitening, whitening_model, in_dims=self.odims, output_dims=self.output_dims
             )
             self.odims = self.output_dims
         self.eval()
+
+    def _fill_missing_stage_buffers(self, state_dict: Dict[str, torch.Tensor], prefix: str, *args: Any) -> None:
+        if any(key.startswith(prefix + "feats.") for key in state_dict):
+            return
+        for name, buf in self.named_buffers():
+            if name.startswith("feats."):
+                state_dict[prefix + name] = buf.detach().clone()
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
         """Compute Multiple Kernel Descriptor (MKD) vectors for image patches.
@@ -647,7 +666,7 @@ class MKDDescriptor(nn.Module):
         y = torch.cat(features, dim=1)
 
         # l2-F.normalize.
-        y = F.normalize(y, dim=1)
+        y = _l2_normalize(y, dim=1)
 
         # Whiten descriptors.
         if self.whitening is not None:
@@ -668,7 +687,7 @@ class MKDDescriptor(nn.Module):
 
 def load_whitening_model(kernel_type: str, training_set: str) -> Dict[str, Any]:
     """Load whitening model."""
-    whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=torch.device("cpu"))
+    whitening_models = load_state_dict_from_url(urls[kernel_type], map_location=torch.device("cpu"))
     whitening_model = whitening_models[training_set]
     return whitening_model
 

@@ -66,7 +66,7 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
     if temperature is None:
         temperature = torch.tensor(1.0)
     temperature = temperature.to(device=input.device, dtype=input.dtype)
-    x = input.view(batch_size, channels, -1)
+    x = input.reshape(batch_size, channels, -1)
 
     x_soft = F.softmax(x * temperature, dim=-1)
 
@@ -107,7 +107,7 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     pos_x = grid[..., 0].reshape(-1)
     pos_y = grid[..., 1].reshape(-1)
 
-    input_flat = input.view(batch_size, channels, -1)
+    input_flat = input.reshape(batch_size, channels, -1)
 
     # Compute the expectation of the coordinates.
     expected_y = torch.sum(pos_y * input_flat, -1, keepdim=True)
@@ -142,13 +142,16 @@ def render_gaussian2d(
     dtype = mean.dtype
     device = mean.device
 
-    # Create coordinates vectors.
+    # Build the coordinate vectors at float32 for half-precision inputs: float16 only represents
+    # integers exactly up to 2048 and bfloat16 up to 256, so a linspace built at `dtype` collapses
+    # distinct pixel coordinates on large grids. Other dtypes keep their own precision.
+    compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(-1, 1, height, device=device, dtype=dtype)
+        xs = torch.linspace(-1, 1, width, device=device, dtype=compute_dtype)
+        ys = torch.linspace(-1, 1, height, device=device, dtype=compute_dtype)
     else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+        xs = torch.linspace(0, width - 1, width, device=device, dtype=compute_dtype)
+        ys = torch.linspace(0, height - 1, height, device=device, dtype=compute_dtype)
 
     mu_x = mean[..., 0].unsqueeze(-1)
     mu_y = mean[..., 1].unsqueeze(-1)
@@ -175,4 +178,5 @@ def render_gaussian2d(
     gauss_x = gauss_x / (gauss_x.sum(dim=-1, keepdim=True) + 1e-8)
     gauss_y = gauss_y / (gauss_y.sum(dim=-1, keepdim=True) + 1e-8)
 
-    return gauss_y.unsqueeze(-1) * gauss_x.unsqueeze(-2)
+    # Cast the 1-D vectors, not the (*, H, W) outer product, to avoid a full-size float32 intermediate.
+    return gauss_y.to(dtype).unsqueeze(-1) * gauss_x.to(dtype).unsqueeze(-2)

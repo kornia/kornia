@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -22,8 +23,63 @@ import torch
 from torch.distributions import Beta, Uniform
 
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+
+
+def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int = 0) -> None:
+    if isinstance(data, (list, tuple)):
+        if depth == len(shape):
+            shape.append(len(data))
+        for value in data:
+            _flatten_constant(value, shape, leaves, depth + 1)
+    else:
+        leaves.append(data)
+
+
+def _constant_tensor(
+    data: Union[float, List[Any], Tuple[Any, ...]],
+    *,
+    device: Union[str, torch.device, None] = None,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Construct small numeric constants inside the graph, without lifting tensor storage.
+
+    Inductor can reuse a lifted CPU tensor in a CUDA kernel without transferring it
+    (https://github.com/pytorch/pytorch/issues/196969). Scalar factories and stacks
+    avoid that path, including for constants returned alongside CUDA tensors. Indexed
+    scalar writes are unsafe too: tracing lifts their right-hand sides.
+
+    Eager execution, Dynamo and ``make_fx`` all run this same construction, which issues
+    no host-device copy. Each distinct Python scalar is filled once and a single stack
+    reuses it, so repeated coordinates such as box corners cost one kernel per value.
+
+    ``data`` contains Python scalars or rectangular nested lists/tuples, never tensors.
+    Other array-likes, such as NumPy arrays, keep ``torch.as_tensor`` semantics. Callers
+    choose dtype explicitly and perform coordinate arithmetic before calling this helper
+    when rounding before versus after casting matters.
+    """
+    if not isinstance(data, (list, tuple)):
+        if isinstance(data, (int, float, torch.SymInt, torch.SymFloat)):
+            return torch.full((), data, device=device, dtype=dtype)
+        return torch.as_tensor(data, device=device, dtype=dtype)
+    shape: List[int] = []
+    leaves: List[Any] = []
+    _flatten_constant(data, shape, leaves)
+    if not leaves:
+        return torch.empty(shape, device=device, dtype=dtype)
+    filled: Dict[Tuple[type, Any], torch.Tensor] = {}
+    values: List[torch.Tensor] = []
+    for leaf in leaves:
+        # Symbolic sizes stay unmerged because comparing them adds guards. The float key carries
+        # the sign because -0.0 == 0.0; NaN is filled per leaf because NaN != NaN.
+        if type(leaf) in (int, bool) or (type(leaf) is float and not math.isnan(leaf)):
+            key = (type(leaf), leaf, math.copysign(1.0, leaf))
+            if key not in filled:
+                filled[key] = torch.full((), leaf, device=device, dtype=dtype)
+            values.append(filled[key])
+        else:
+            values.append(torch.full((), leaf, device=device, dtype=dtype))
+    return torch.stack(values).view(shape)
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
@@ -425,50 +481,6 @@ def override_parameters(
         else:
             raise ValueError(f"`{if_none_exist}` is not a valid option.")
     return out
-
-
-def preprocess_boxes(input: Union[torch.Tensor, Boxes], mode: str = "vertices_plus") -> Boxes:
-    r"""Preprocess input boxes.
-
-    Args:
-        input: 2D boxes, shape of :math:`(N, 4, 2)`, :math:`(B, N, 4, 2)` or a list of :math:`(N, 4, 2)`.
-            See below for more details.
-        mode: The format in which the boxes are provided.
-
-            * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where
-              ``width = xmax - xmin``
-                and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'xyxy_plus': similar to 'xyxy' mode but where box width and length are defined as
-                ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
-                With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where
-                ``width = xmax - xmin`` and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
-                *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
-                box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
-                With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-            * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
-                ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
-                With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-
-    Note:
-        **2D boxes format** is defined as a floating data type torch.Tensor of shape ``Nx4x2`` or ``BxNx4x2``
-        where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by
-        it's 4 vertices
-        coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
-        ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
-        `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
-
-    """
-    # TODO: We may allow list here.
-    # input is BxNx4x2 or Boxes.
-    if isinstance(input, torch.Tensor):
-        if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
-            raise RuntimeError(f"Only BxNx4x2 torch.Tensor is supported. Got {input.shape}.")
-        input = Boxes.from_tensor(input, mode=mode)
-    if not isinstance(input, Boxes):
-        raise RuntimeError(f"Expect `Boxes` type. Got {type(input)}.")
-    return input
 
 
 def preprocess_keypoints(input: Union[torch.Tensor, Keypoints]) -> Keypoints:

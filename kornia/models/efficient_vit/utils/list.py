@@ -27,10 +27,9 @@ def val2list(x: Union[list[Any], tuple[Any, ...], Any], repeat_time: int = 1) ->
     """Convert value to list."""
     if isinstance(x, list):
         return x
-    elif isinstance(x, tuple):
+    if isinstance(x, tuple):
         return list(x)
-    else:
-        return [x] * repeat_time
+    return [x] * repeat_time
 
 
 def val2tuple(x: Union[list[Any], tuple[Any, ...], Any], min_len: int = 1, idx_repeat: int = -1) -> tuple[Any, ...]:

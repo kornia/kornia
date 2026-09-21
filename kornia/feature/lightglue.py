@@ -26,17 +26,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.utils import is_exporting
 from kornia.feature.laf import laf_to_three_points, scale_laf
-
-try:
-    from flash_attn.modules.mha import FlashCrossAttention
-except ModuleNotFoundError:
-    FlashCrossAttention = None
-
-if FlashCrossAttention or hasattr(F, "scaled_dot_product_attention"):
-    FLASH_AVAILABLE = True
-else:
-    FLASH_AVAILABLE = False
 
 
 def math_clamp(x, min_, max_):  # type: ignore
@@ -44,14 +36,19 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-AMP_CUSTOM_FWD_F32 = torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
-
-
-@AMP_CUSTOM_FWD_F32
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
         size = torch.tensor(size)[None]
+    # Under an active autocast, cast fp16/bf16 inputs to fp32 so the normalisation
+    # arithmetic runs at full precision regardless of the accelerator.
+    # Deriving the autocast device from the input tensor itself is correct for any
+    # backend (CUDA, NPU, XPU, MPS) and on CPU-only builds where
+    # ``torch.accelerator.current_accelerator()`` would be ``None``.
+    device_type = kpts.device.type
+    if kpts.is_floating_point() and kpts.dtype in (torch.float16, torch.bfloat16):
+        if torch.is_autocast_enabled(device_type):
+            kpts = kpts.to(torch.float32)
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
     kpts = (kpts - shift[:, None]) / scale[:, None, None]
@@ -139,17 +136,8 @@ class Attention(nn.Module):
 
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
-        if allow_flash and not FLASH_AVAILABLE:
-            warnings.warn(
-                "FlashAttention is not available. For optimal speed, consider installing torch >= 2.0 or flash-attn.",
-                stacklevel=2,
-            )
-        self.enable_flash = allow_flash and FLASH_AVAILABLE
-        self.has_sdp = hasattr(F, "scaled_dot_product_attention")
-        if allow_flash and FlashCrossAttention:
-            self.flash_ = FlashCrossAttention()
-        if self.has_sdp:
-            torch.backends.cuda.enable_flash_sdp(allow_flash)
+        self.allow_flash = allow_flash
+        torch.backends.cuda.enable_flash_sdp(allow_flash)
 
     def forward(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: Optional[torch.Tensor] = None
@@ -169,28 +157,14 @@ class Attention(nn.Module):
         Returns:
             Attention output with shape :math:`(B, H, N_q, D_h)`.
         """
-        if self.enable_flash and q.device.type == "cuda":
+        if self.allow_flash and q.device.type == "cuda":
             # use torch 2.0 scaled_dot_product_attention with flash
-            if self.has_sdp:
-                args = [x.half().contiguous() for x in [q, k, v]]
-                v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
-                return v if mask is None else v.nan_to_num()
-            else:
-                KORNIA_CHECK(mask is None)
-                q, k, v = (x.transpose(-2, -3).contiguous() for x in [q, k, v])
-                m = self.flash_(q.half(), torch.stack([k, v], 2).half())
-                return m.transpose(-2, -3).to(q.dtype).clone()
-        elif self.has_sdp:
-            args = [x.contiguous() for x in [q, k, v]]
-            v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
+            args = [x.half().contiguous() for x in [q, k, v]]
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
             return v if mask is None else v.nan_to_num()
-        else:
-            s = q.shape[-1] ** -0.5
-            sim = torch.einsum("...id,...jd->...ij", q, k) * s
-            if mask is not None:
-                sim.masked_fill(~mask, -float("inf"))
-            attn = F.softmax(sim, -1)
-            return torch.einsum("...ij,...jd->...id", attn, v)
+        args = [x.contiguous() for x in [q, k, v]]
+        v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
+        return v if mask is None else v.nan_to_num()
 
 
 class SelfBlock(nn.Module):
@@ -272,7 +246,7 @@ class CrossBlock(nn.Module):
             nn.GELU(),
             nn.Linear(2 * embed_dim, embed_dim),
         )
-        if flash and FLASH_AVAILABLE:
+        if flash:
             self.flash = Attention(True)
         else:
             self.flash = None  # type: ignore
@@ -366,10 +340,9 @@ class TransformerLayer(nn.Module):
         """
         if mask0 is not None and mask1 is not None:
             return self.masked_forward(desc0, desc1, encoding0, encoding1, mask0, mask1)
-        else:
-            desc0 = self.self_attn(desc0, encoding0)
-            desc1 = self.self_attn(desc1, encoding1)
-            return self.cross_attn(desc0, desc1)
+        desc0 = self.self_attn(desc0, encoding0)
+        desc1 = self.self_attn(desc1, encoding1)
+        return self.cross_attn(desc0, desc1)
 
     # This part is compiled and allows padding inputs
     def masked_forward(
@@ -469,6 +442,12 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
     m0 = torch.where(valid0, m0, -1)
     m1 = torch.where(valid1, m1, -1)
     return m0, m1, mscores0, mscores1
+
+
+def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
+    """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
+    if not is_exporting():
+        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), "")  # type: ignore
 
 
 class LightGlue(nn.Module):
@@ -612,20 +591,35 @@ class LightGlue(nn.Module):
             if features == "dog_affnet_hardnet":
                 features = "doghardnet"  # new dog model is better for affnet as well
             if features in ["keynet_affnet_hardnet"]:
-                fname = "keynet_affnet_hardnet_lightlue.pth"
-                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
+                fname = "keynet_affnet_hardnet_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "keynet_affnet_hardnet_lightglue.pth"),
+                    "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth",
+                ]
             elif features in ["dedodeb"]:
                 fname = "dedodeb_lightglue.pth"
-                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "dedodeb_lightglue.pth"),
+                    "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth",
+                ]
             elif features in ["dedodeg"]:
                 fname = "dedodeg_lightglue.pth"
-                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "dedodeg_lightglue.pth"),
+                    "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth",
+                ]
             elif features == "xfeat":
                 fname = "xfeat-lighterglue.pt"
-                url = "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt"
+                url = [
+                    hf_url("lightglue", "xfeat-lighterglue.pt"),
+                    "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt",
+                ]
             else:
-                url = self.url.format(self.version, features.replace("-", "_"))
-            state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
+                url = [
+                    hf_url("lightglue", f"{features.replace('-', '_')}_lightglue.pth"),
+                    self.url.format(self.version, features.replace("-", "_")),
+                ]
+            state_dict = load_state_dict_from_url(url, file_name=fname)
         elif conf.weights is not None:
             path = Path(__file__).parent
             path = path / f"weights/{self.conf.weights}.pth"
@@ -694,7 +688,8 @@ class LightGlue(nn.Module):
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
         """
-        with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
+        device_type = data["image0"]["keypoints"].device.type
+        with torch.autocast(enabled=self.conf.mp, device_type=device_type):
             return self._forward(data)
 
     def _forward(self, data: dict) -> dict:  # type: ignore
@@ -711,8 +706,8 @@ class LightGlue(nn.Module):
 
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
+        _check_keypoints_normalized(kpts0)
+        _check_keypoints_normalized(kpts1)
         if self.conf.add_scale_ori:
             kpts0 = torch.cat([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             if self.conf.scale_coef != 1.0:
@@ -926,7 +921,6 @@ class LightGlue(nn.Module):
             Minimum number of keypoints required for width pruning on that device.
             A negative value disables pruning for the device.
         """
-        if self.conf.flash and FLASH_AVAILABLE and device.type == "cuda":
+        if self.conf.flash and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]
-        else:
-            return self.pruning_keypoint_thresholds[device.type]
+        return self.pruning_keypoint_thresholds[device.type]

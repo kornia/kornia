@@ -16,21 +16,29 @@
 #
 
 import warnings
-from typing import ClassVar, Dict, List, Optional, Tuple, Union
+from typing import ClassVar, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.constants import pi
-from kornia.core.check import KORNIA_CHECK_LAF
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
+from kornia.core.utils import is_exporting
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
-from .laf import extract_patches_from_pyramid, get_laf_center, get_laf_orientation, get_laf_scale, scale_laf
+from .laf import (
+    extract_patches_from_pyramid,
+    get_laf_center,
+    get_laf_orientation,
+    get_laf_scale,
+    laf_is_filled,
+    scale_laf,
+)
 from .lightglue import LightGlue
 from .matching import GeometryAwareDescriptorMatcher, _no_match
 from .orientation import LAFOrienter, OriNet, PassLAF
@@ -41,6 +49,8 @@ from .scale_space_detector import (
     ScaleSpaceDetector,
     get_default_detector_config,
 )
+from .sift import SIFTDescriptorFromPyramid
+from .sift.scale_space import _SIFTScalePyramid, _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
 from .siftdesc import SIFTDescriptor
 
 
@@ -66,15 +76,27 @@ def get_laf_descriptors(
 
     """
     KORNIA_CHECK_LAF(lafs)
-    patch_descriptor = patch_descriptor.to(img)
+    # Moving a module swaps its parameters, which graph capture forbids; the module is already placed under export.
+    if not is_exporting():
+        patch_descriptor = patch_descriptor.to(img)
     patch_descriptor.eval()
 
     timg: torch.Tensor = img
-    if lafs.shape[1] == 0:
-        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty torch.Tensor", stacklevel=1)
-        return torch.empty(lafs.shape[0], lafs.shape[1], 128, dtype=lafs.dtype, device=lafs.device)
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)
+
+    if lafs.shape[1] == 0:
+        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty torch.Tensor", stacklevel=1)
+        # Probe the descriptor for its output width instead of assuming 128, so the empty result
+        # has the same trailing dimension and dtype as a non-empty one. The non-empty path ends in
+        # `.view(B, N, -1)`, which flattens everything the descriptor produced per patch, so the
+        # matching width is the whole probe -- `probe.shape[-1]` would only agree for descriptors
+        # whose output is 2-D. The probe has a batch of one, so its numel is that width.
+        with torch.no_grad():
+            probe = patch_descriptor(
+                torch.zeros(1, timg.size(1), patch_size, patch_size, dtype=timg.dtype, device=timg.device)
+            )
+        return torch.empty(lafs.shape[0], 0, probe.numel(), dtype=probe.dtype, device=probe.device)
 
     patches: torch.Tensor = extract_patches_from_pyramid(timg, lafs, patch_size)
     # Descriptor accepts standard torch.Tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
@@ -144,7 +166,7 @@ class LocalFeature(nn.Module):
 
     """
 
-    def __init__(self, detector: nn.Module, descriptor: LAFDescriptor, scaling_coef: float = 1.0) -> None:
+    def __init__(self, detector: nn.Module, descriptor: nn.Module, scaling_coef: float = 1.0) -> None:
         super().__init__()
         self.detector = detector
         self.descriptor = descriptor
@@ -159,13 +181,31 @@ class LocalFeature(nn.Module):
 
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
-            mask: a mask with weights where to apply the response function.
-                The shape must be the same as the input image.
+            mask: a mask saying where a detection may be, shape :math:`(B,1,H,W)` with the spatial size of the
+                image. It is forwarded to the detector unchanged; see the detector for its semantics.
 
         Returns:
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
-            - Response function values for corresponding lafs with shape :math:`(B,N,1)`.
+            - Response function values for corresponding lafs with shape :math:`(B,N)`.
             - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+
+        The shape is fixed at the detector's ``num_features``. When an image yields fewer detections, the
+        remaining slots carry a zero response and a zero LAF, and their descriptor is that of a patch sampled
+        at the origin -- one and the same vector for every such slot. :class:`LocalFeatureMatcher` drops them
+        before matching; a hand-rolled pipeline must do the same before any other matcher, including
+        :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_mnn`, :func:`~kornia.feature.match_fginn`,
+        :func:`~kornia.feature.match_adalam` and :class:`~kornia.feature.LightGlueMatcher`, since identical
+        descriptors match each other at zero distance and a mutual test does not reject a pair of them, with
+        :func:`~kornia.feature.laf_is_filled`::
+
+            from kornia.feature import laf_is_filled
+
+            valid = laf_is_filled(lafs)  # (B, N); the zero LAF marks a padded slot
+            descs, lafs = descs[0][valid[0]], lafs[:, valid[0]]
+
+        Test the LAF, not the response: a signed response can legitimately peak at exactly zero. Only the ratio
+        tests in :func:`~kornia.feature.match_snn` and :func:`~kornia.feature.match_smnn` reject padded slots on
+        their own, because the second-nearest padded descriptor is at the same zero distance.
 
         """
         lafs, responses = self.detector(img, mask)
@@ -174,8 +214,33 @@ class LocalFeature(nn.Module):
         return (lafs, responses, descs)
 
 
-class SIFTFeature(LocalFeature):
+class _SIFTFeature(LocalFeature):
+    """Compose a sparse SIFT detector with a patch or pyramid extraction backend."""
+
+    def __init__(self, detector: nn.Module, descriptor: nn.Module, upright: bool) -> None:
+        super().__init__(detector, descriptor)
+        self.upright = upright
+
+    def forward(
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return sparse LAFs, detector responses, and one descriptor per LAF."""
+        if not isinstance(self.descriptor, SIFTDescriptorFromPyramid):
+            return super().forward(img, mask)
+        lafs, responses = self.detector(img, mask)
+        lafs = scale_laf(lafs, self.scaling_coef)
+        gray_image = rgb_to_grayscale(img) if img.shape[1] == 3 else img
+        lafs, descriptors = self.descriptor.orient_and_describe(gray_image, lafs, upright=self.upright)
+        return lafs, responses, descriptors
+
+
+class SIFTFeature(_SIFTFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
+
+    ``descriptor_backend="pyramid"`` uses :class:`SIFTDescriptorFromPyramid` for
+    orientation and description at the detector's sparse LAFs. Detection and the
+    feature budget are unchanged. The default ``"patch"`` backend retains the
+    existing patch-wise pipeline.
 
     Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
     https://github.com/kornia/kornia/pull/884,
@@ -187,11 +252,14 @@ class SIFTFeature(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         config: Optional[Detector_config] = None,
         compile_model: bool = False,
         score_threshold: float = 0.0,
+        descriptor_backend: Literal["patch", "pyramid"] = "patch",
     ) -> None:
+        if descriptor_backend not in ("patch", "pyramid"):
+            raise ValueError(f"Unknown SIFT descriptor backend: {descriptor_backend!r}")
         patch_size: int = 41
         if device is None:
             device = torch.device("cpu")
@@ -201,21 +269,34 @@ class SIFTFeature(LocalFeature):
             BlobDoGSingle(1.0, 1.6),
             num_features,
             config,
-            ori_module=PassLAF() if upright else LAFOrienter(19),
+            ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
             aff_module=PassLAF(),
             compile_model=compile_model,
             score_threshold=score_threshold,
         ).to(device)
-        descriptor = LAFDescriptor(
-            SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
-        ).to(device)
-        super().__init__(detector, descriptor)
+        descriptor: nn.Module
+        if descriptor_backend == "pyramid":
+            descriptor = SIFTDescriptorFromPyramid(rootsift=rootsift).to(device)
+        else:
+            descriptor = LAFDescriptor(
+                SIFTDescriptor(patch_size=patch_size, rootsift=rootsift),
+                patch_size=patch_size,
+                grayscale_descriptor=True,
+            ).to(device)
+        super().__init__(detector, descriptor, upright)
 
 
 class SIFTFeatureScaleSpace(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
-    Using `kornia.feature.ScaleSpaceDetector` with blur pyramid.
+    The default patch backend uses `kornia.feature.ScaleSpaceDetector`. Select
+    ``descriptor_backend="pyramid"`` for a specialized SIFT pipeline that reuses
+    the detector's Gaussian images and each detection's octave and layer. Image
+    gradients are computed once per used layer and sampled for sparse orientation
+    and descriptor integration. A dedicated DoG detector refines only sparse
+    extrema and ranks all valid candidates by response, without contrast or edge
+    rejection. The feature budget is unchanged; detections may differ.
+    The default ``"patch"`` backend retains patch-wise orientation and description.
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
@@ -225,27 +306,66 @@ class SIFTFeatureScaleSpace(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         compile_modules: Union[bool, List[str]] = False,
+        descriptor_backend: Literal["patch", "pyramid"] = "patch",
     ) -> None:
+        if descriptor_backend not in ("patch", "pyramid"):
+            raise ValueError(f"Unknown SIFT descriptor backend: {descriptor_backend!r}")
         if device is None:
             device = torch.device("cpu")
         patch_size: int = 41
-        detector = ScaleSpaceDetector(
-            num_features,
-            resp_module=BlobDoG(),
-            subpix_module=ConvQuadInterp3d(strict_maxima_bonus=0.0),
-            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
-            ori_module=PassLAF() if upright else LAFOrienter(19),
-            scale_space_response=True,
-            minima_are_also_good=True,
-            mr_size=6.0,
-            compile_modules=compile_modules,
-        ).to(device)
-        descriptor = LAFDescriptor(
-            SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
-        ).to(device)
+        if descriptor_backend == "pyramid":
+            detector = _SIFTScaleSpaceDetector(num_features, _SIFTScalePyramid()).to(device)
+            if compile_modules:
+                selected = {"scale_pyr", "subpix"} if compile_modules is True else set(compile_modules)
+                unknown = selected - {"scale_pyr", "subpix"}
+                if unknown:
+                    raise ValueError("The SIFT pyramid backend supports compile_modules=['scale_pyr', 'subpix'] only")
+                if "scale_pyr" in selected:
+                    # In-place compilation preserves buffer paths and module
+                    # serialization, unlike wrapping or replacing forward.
+                    detector.scale_pyr.compile()
+                if "subpix" in selected:
+                    detector._refine = torch.compile(detector._refine)
+        else:
+            detector = ScaleSpaceDetector(
+                num_features,
+                resp_module=BlobDoG(),
+                subpix_module=ConvQuadInterp3d(strict_maxima_bonus=0.0),
+                scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
+                ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
+                scale_space_response=True,
+                minima_are_also_good=True,
+                mr_size=6.0,
+                compile_modules=compile_modules,
+            ).to(device)
+        descriptor: nn.Module
+        if descriptor_backend == "pyramid":
+            descriptor = _SIFTScaleSpaceDescriptor(rootsift=rootsift).to(device)
+        else:
+            descriptor = LAFDescriptor(
+                SIFTDescriptor(patch_size=patch_size, rootsift=rootsift),
+                patch_size=patch_size,
+                grayscale_descriptor=True,
+            ).to(device)
         super().__init__(detector, descriptor)
+        self.upright = upright
+        self.descriptor_backend = descriptor_backend
+
+    def forward(
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Detect and describe sparse SIFT features, sharing scale space when selected."""
+        if self.descriptor_backend == "patch":
+            return super().forward(img, mask)
+        gray = rgb_to_grayscale(img) if img.shape[1] == 3 else img
+        responses, lafs, _, pyramid, octaves, levels = self.detector._detect_with_pyramid(
+            gray, self.detector.num_features, mask
+        )
+        lafs = scale_laf(lafs, self.scaling_coef)
+        lafs, descriptors = self.descriptor(pyramid, lafs, octaves, levels, upright=self.upright)
+        return lafs, responses, descriptors.to(img.dtype)
 
 
 class GFTTAffNetHardNet(LocalFeature):
@@ -255,7 +375,7 @@ class GFTTAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         compile_modules: Union[bool, List[str]] = False,
     ) -> None:
         if device is None:
@@ -282,7 +402,7 @@ class HesAffNetHardNet(LocalFeature):
         self,
         num_features: int = 2048,
         upright: bool = False,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         compile_modules: Union[bool, List[str]] = False,
     ) -> None:
         if device is None:
@@ -309,7 +429,7 @@ class KeyNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         scale_laf: float = 1.0,
         compile_model: bool = False,
         score_threshold: float = 0.0,
@@ -338,7 +458,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         scale_laf: float = 1.0,
         compile_model: bool = False,
         score_threshold: float = 0.0,
@@ -404,8 +524,10 @@ class LocalFeatureMatcher(nn.Module):
         return {
             "keypoints0": torch.empty(0, 2, device=device, dtype=dtype),
             "keypoints1": torch.empty(0, 2, device=device, dtype=dtype),
-            "lafs0": torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
-            "lafs1": torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
+            # batch dim 1, matching the success path's `.view(1, -1, 2, 3)`, so that callers
+            # can index `lafs0[0]` regardless of whether anything matched.
+            "lafs0": torch.empty(1, 0, 2, 3, device=device, dtype=dtype),
+            "lafs1": torch.empty(1, 0, 2, 3, device=device, dtype=dtype),
             "confidence": torch.empty(0, device=device, dtype=dtype),
             "batch_indexes": torch.empty(0, device=device, dtype=torch.long),
         }
@@ -419,13 +541,19 @@ class LocalFeatureMatcher(nn.Module):
         Keyword Args:
             image0: left image with shape :math:`(N, 1, H1, W1)`.
             image1: right image with shape :math:`(N, 1, H2, W2)`.
-            mask0 (optional): left image mask. '0' indicates a padded position :math:`(N, H1, W1)`.
-            mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
+            mask0 (optional): left image mask. '0' suppresses detection, with shape
+                :math:`(N, H1, W1)` or :math:`(N, 1, H1, W1)`.
+            mask1 (optional): right image mask. '0' suppresses detection, with shape
+                :math:`(N, H2, W2)` or :math:`(N, 1, H2, W2)`.
 
         Returns:
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
-            - ``confidence``, confidence score [0, 1] :math:`(NC)`.
+            - ``confidence``, ``1 - descriptor distance`` :math:`(NC)`. This lies in :math:`[0, 1]`
+              only for the ratio-based ``DescriptorMatcher`` modes (``snn``, ``smnn``); ``nn`` and
+              ``mnn`` return raw distances, which are unbounded for an arbitrary descriptor, so the
+              confidence has no lower bound in general -- it goes at least down to -1, the value
+              reached by unit-norm descriptors, whose distance tops out at 2.0.
             - ``lafs0``, matching LAFs from image0 :math:`(1, NC, 2, 3)`.
             - ``lafs1``, matching LAFs from image1 :math:`(1, NC, 2, 3)`.
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
@@ -435,16 +563,36 @@ class LocalFeatureMatcher(nn.Module):
 
         if ("lafs0" not in data.keys()) or ("descriptors0" not in data.keys()):
             # One can supply pre-extracted local features
-            feats_dict0: Dict[str, torch.Tensor] = self.extract_features(data["image0"])
+            mask0 = data.get("mask0")
+            if mask0 is not None and mask0.dim() == 3:
+                mask0 = mask0.unsqueeze(1)
+            feats_dict0: Dict[str, torch.Tensor] = self.extract_features(data["image0"], mask0)
             lafs0, descs0 = feats_dict0["lafs"], feats_dict0["descriptors"]
         else:
             lafs0, descs0 = data["lafs0"], data["descriptors0"]
 
         if ("lafs1" not in data.keys()) or ("descriptors1" not in data.keys()):
-            feats_dict1: Dict[str, torch.Tensor] = self.extract_features(data["image1"])
+            mask1 = data.get("mask1")
+            if mask1 is not None and mask1.dim() == 3:
+                mask1 = mask1.unsqueeze(1)
+            feats_dict1: Dict[str, torch.Tensor] = self.extract_features(data["image1"], mask1)
             lafs1, descs1 = feats_dict1["lafs"], feats_dict1["descriptors"]
         else:
             lafs1, descs1 = data["lafs1"], data["descriptors1"]
+
+        # The padding mask below is read off the LAFs and applied to the descriptors, so the two
+        # must describe the same features; a mismatch would otherwise surface as an opaque
+        # boolean-index error, or silently mis-associate the matches when every index fits.
+        KORNIA_CHECK(
+            lafs0.shape[:2] == descs0.shape[:2],
+            f"lafs0 and descriptors0 must describe the same features, "
+            f"got {tuple(lafs0.shape)} and {tuple(descs0.shape)}",
+        )
+        KORNIA_CHECK(
+            lafs1.shape[:2] == descs1.shape[:2],
+            f"lafs1 and descriptors1 must describe the same features, "
+            f"got {tuple(lafs1.shape)} and {tuple(descs1.shape)}",
+        )
 
         keypoints0: torch.Tensor = get_laf_center(lafs0)
         keypoints1: torch.Tensor = get_laf_center(lafs1)
@@ -456,15 +604,37 @@ class LocalFeatureMatcher(nn.Module):
         out_lafs0: List[torch.Tensor] = []
         out_lafs1: List[torch.Tensor] = []
 
+        # Fixed-shape detectors represent an unfilled slot with a zero LAF. Do not let the
+        # descriptor sampled at that dummy frame become a correspondence (NN/MNN would match
+        # identical padding at the origin). Occupancy cannot be inferred from the response:
+        # a pluggable signed scale-space response may have a genuine maximum at exactly zero.
+        # Computed for the whole batch once, rather than per pair inside the loop.
+        filled0 = laf_is_filled(lafs0)
+        filled1 = laf_is_filled(lafs1)
+
         for batch_idx in range(num_image_pairs):
-            dists, idxs = self.matcher(descs0[batch_idx], descs1[batch_idx])
+            valid0 = filled0[batch_idx]
+            valid1 = filled1[batch_idx]
+            current_descs0 = descs0[batch_idx][valid0]
+            current_descs1 = descs1[batch_idx][valid1]
+            current_keypoints0 = keypoints0[batch_idx][valid0]
+            current_keypoints1 = keypoints1[batch_idx][valid1]
+            current_lafs0 = lafs0[batch_idx][valid0]
+            current_lafs1 = lafs1[batch_idx][valid1]
+
+            # `matcher` is an arbitrary module with no obligation to accept a `(0, D)` input, and a
+            # textureless or fully masked image leaves nothing to match anyway.
+            if current_descs0.shape[0] == 0 or current_descs1.shape[0] == 0:
+                continue
+
+            dists, idxs = self.matcher(current_descs0, current_descs1)
             if len(idxs) == 0:
                 continue
 
-            current_keypoints_0 = keypoints0[batch_idx, idxs[:, 0]]
-            current_keypoints_1 = keypoints1[batch_idx, idxs[:, 1]]
-            current_lafs_0 = lafs0[batch_idx, idxs[:, 0]]
-            current_lafs_1 = lafs1[batch_idx, idxs[:, 1]]
+            current_keypoints_0 = current_keypoints0[idxs[:, 0]]
+            current_keypoints_1 = current_keypoints1[idxs[:, 1]]
+            current_lafs_0 = current_lafs0[idxs[:, 0]]
+            current_lafs_1 = current_lafs1[idxs[:, 1]]
 
             out_confidence.append(1.0 - dists)
             batch_idxs = batch_idx * torch.ones(len(dists), device=keypoints0.device, dtype=torch.long)

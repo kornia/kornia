@@ -18,11 +18,10 @@
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_mps_tensor_safe
+from kornia.core.utils import _l2_normalize, is_exporting, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
@@ -38,13 +37,21 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     on CUDA and may be unavailable for these dtypes elsewhere.
     """
     half = (torch.float16, torch.bfloat16)
-    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)) and d1.dtype not in half and d2.dtype not in half:
+    if (
+        not is_exporting()  # `torch.cdist` has no ONNX lowering
+        and (not is_mps_tensor_safe(d1))
+        and (not is_mps_tensor_safe(d2))
+        and d1.dtype not in half
+        and d2.dtype not in half
+    ):
         return torch.cdist(d1, d2)
     d1_sq = (d1**2).sum(dim=1, keepdim=True)
     d2_sq = (d2**2).sum(dim=1, keepdim=True)
     dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
-    dm = dm.clamp(min=0.0).sqrt()
-    return dm
+    dm = dm.clamp(min=0.0)
+    mask = dm > 0.0
+    safe_dm = torch.where(mask, dm, torch.ones_like(dm))
+    return torch.where(mask, safe_dm.sqrt(), torch.zeros_like(dm))
 
 
 def _get_default_fginn_params() -> Dict[str, Any]:
@@ -269,10 +276,19 @@ def match_fginn(
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
+    .. note::
+        The geometric check looks at the ``min(10, B2)`` nearest candidates and penalizes every one of them
+        that lies within ``spatial_th`` pixels of the query's own 1st nearest neighbor. When *all* of them do --
+        a dense cluster of detections on one structure -- the effective 2nd nearest neighbor distance saturates,
+        the ratio collapses towards zero and the match is **accepted**. That is the intended reading: no distinct
+        competing structure among the candidates means the 1st nearest neighbor is unambiguous.
+
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-        lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
+        lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`. Accepted for API symmetry with
+          :func:`~kornia.feature.match_adalam` but not read by this function -- only
+          ``lafs2`` feeds the geometric check.
         lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
         th: distance ratio threshold.
         spatial_th: minimal distance in pixels to 2nd nearest neighbor.
@@ -300,15 +316,12 @@ def match_fginn(
     vals_cand, idxs_in_2 = torch.topk(distance_matrix, num_candidates, dim=1, largest=False)
     vals = vals_cand[:, 0]
     xy2 = get_laf_center(lafs2).view(-1, 2)
-    candidates_xy = xy2[idxs_in_2]
-    kdist = torch.norm(candidates_xy - candidates_xy[0:1], p=2, dim=2)
+    candidates_xy = xy2[idxs_in_2]  # (B1, num_candidates, 2)
+    # Distance from every candidate to the 1st nearest neighbour *of the same query*.
+    # Indexing dim 0 here would take query 0's candidate list and broadcast it over all queries.
+    kdist = torch.norm(candidates_xy - candidates_xy[:, 0:1], p=2, dim=2)
     fginn_vals = vals_cand[:, 1:] + (kdist[:, 1:] < spatial_th).to(dtype) * BIG_NUMBER
-    fginn_vals_best, _fginn_idxs_best = fginn_vals.min(dim=1)
-
-    # orig_idxs = idxs_in_2.gather(1, fginn_idxs_best.unsqueeze(1))[0]
-    # if you need to know fginn indexes - uncomment
-
-    vals_2nd = fginn_vals_best
+    vals_2nd, _ = fginn_vals.min(dim=1)
     idxs_in_2 = idxs_in_2[:, 0]
 
     ratio = vals / vals_2nd
@@ -394,27 +407,37 @@ class DescriptorMatcherWithSteerer(nn.Module):
         th: threshold on distance ratio, or other quality measure.
 
     Example:
-        >>> import kornia as K
+        The example below is deliberately small so that it runs anywhere. A real workload uses
+        full-resolution images and many more keypoints, and is worth moving onto an accelerator --
+        uncomment the ``device`` lines to do that.
+
         >>> import kornia.feature as KF
-        >>> device = K.core.utils.get_cuda_or_mps_device_if_available()
-        >>> img1 = torch.randn([1, 3, 768, 768], device=device)
-        >>> img2 = torch.randn([1, 3, 768, 768], device=device)
-        >>> dedode = KF.DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-SO2").to(device)
+        >>> # import kornia as K
+        >>> # device = K.core.utils.get_cuda_or_mps_device_if_available()
+        >>> img1 = torch.randn([1, 3, 128, 128])
+        >>> img2 = torch.randn([1, 3, 128, 128])
+        >>> # img1, img2 = img1.to(device), img2.to(device)
+        >>> dedode = KF.DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-SO2")
+        >>> # dedode = dedode.to(device)
         >>> steerer_order = 8  # discretisation order of rotation angles
         >>> steerer = KF.steerers.DiscreteSteerer.create_dedode_default(
         ... generator_type="SO2", steerer_order=steerer_order
         ... )
-        >>> steerer = steerer.to(device)
+        >>> # steerer = steerer.to(device)
         >>> matcher = KF.matching.DescriptorMatcherWithSteerer(
         ... steerer=steerer, steerer_order=steerer_order, steer_mode="global", match_mode="smnn", th=0.98
         ... )
         >>> with torch.inference_mode():
-        ...     kps1, scores1, descs1 = dedode(img1, n=20_000)
-        ...     kps2, scores2, descs2 = dedode(img2, n=20_000)
+        ...     kps1, scores1, descs1 = dedode(img1, n=1_000)
+        ...     kps2, scores2, descs2 = dedode(img2, n=1_000)
         ...     kps1, kps2, descs1, descs2 = kps1[0], kps2[0], descs1[0], descs2[0]
         ...     dists, idxs, num_rot = matcher(
-        ...         descs1, descs2, normalize=True, subset_size=1000,
+        ...         descs1, descs2, normalize=True, subset_size=500,
         ...     )
+        >>> idxs.shape == (dists.shape[0], 2), 0 <= num_rot < steerer_order
+        (True, True)
+        >>> bool((idxs[:, 0] < len(kps1)).all()), bool((idxs[:, 1] < len(kps2)).all())
+        (True, True)
         >>> # print(f"{idxs.shape[0]} tentative matches with steered DeDoDe")
         >>> # print(f"at rotation of {num_rot * 360 / steerer_order} degrees")
 
@@ -461,14 +484,13 @@ class DescriptorMatcherWithSteerer(nn.Module):
         """
         if self.match_mode == "nn":
             return match_nn(d1, d2, dm=dm)
-        elif self.match_mode == "mnn":
+        if self.match_mode == "mnn":
             return match_mnn(d1, d2, dm=dm)
-        elif self.match_mode == "snn":
+        if self.match_mode == "snn":
             return match_snn(d1, d2, self.th, dm=dm)
-        elif self.match_mode == "smnn":
+        if self.match_mode == "smnn":
             return match_smnn(d1, d2, self.th, dm=dm)
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def forward(
         self,
@@ -498,8 +520,8 @@ class DescriptorMatcherWithSteerer(nn.Module):
         rot1to2 = None
 
         if normalize:
-            desc1 = F.normalize(desc1, dim=-1)
-            desc2 = F.normalize(desc2, dim=-1)
+            desc1 = _l2_normalize(desc1, dim=-1)
+            desc2 = _l2_normalize(desc2, dim=-1)
 
         if self.steer_mode == "global":
             if subset_size is not None:

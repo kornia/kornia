@@ -759,6 +759,20 @@ class TestFilter3D(BaseTester):
 
 
 class TestFilter2D_fftconv(BaseTester):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_matches_spatial_filter(self, padding, behaviour, normalized, device, dtype):
+        sample = torch.arange(1, 169, device=device, dtype=dtype).reshape(2, 2, 6, 7) / 128
+        kernel = torch.tensor([[[1, 2, 3], [3, 2, 1]], [[2, 1, 2], [1, 3, 1]]], device=device, dtype=dtype)
+
+        actual = fft_conv(sample, kernel, normalized=normalized, padding=padding, behaviour=behaviour)
+        expected = filter2d(sample, kernel, normalized=normalized, padding=padding, behaviour=behaviour)
+
+        assert actual.dtype == dtype
+        assert actual.device == sample.device
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -1113,13 +1127,13 @@ class TestFilter2D_fftconv(BaseTester):
         self.assert_close(actual, expected)
 
 
-class TestCorrelate2d:
+class TestCorrelate2d(BaseTester):
     def test_equivalent_to_filter2d_corr(self, device, dtype):
         inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         expected = filter2d(inp, kernel, behaviour="corr")
         result = correlate2d(inp, kernel)
-        assert torch.allclose(result, expected)
+        self.assert_close(result, expected)
 
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -1130,13 +1144,13 @@ class TestCorrelate2d:
         assert isinstance(out, torch.Tensor)
 
 
-class TestConvolve2d:
+class TestConvolve2d(BaseTester):
     def test_equivalent_to_filter2d_conv(self, device, dtype):
         inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         expected = filter2d(inp, kernel, behaviour="conv")
         result = convolve2d(inp, kernel)
-        assert torch.allclose(result, expected)
+        self.assert_close(result, expected)
 
     def test_differs_from_correlate_asymmetric_kernel(self, device, dtype):
         inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
@@ -1147,19 +1161,19 @@ class TestConvolve2d:
         assert not torch.allclose(corr, conv)
 
 
-class TestCorrelate3d:
+class TestCorrelate3d(BaseTester):
     def test_equivalent_to_filter3d_corr(self, device, dtype):
         inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         expected = filter3d(inp, kernel, behaviour="corr")
         result = correlate3d(inp, kernel)
-        assert torch.allclose(result, expected)
+        self.assert_close(result, expected)
 
 
-class TestConvolve3d:
+class TestConvolve3d(BaseTester):
     def test_equivalent_to_filter3d_conv(self, device, dtype):
         inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         expected = filter3d(inp, kernel, behaviour="conv")
         result = convolve3d(inp, kernel)
-        assert torch.allclose(result, expected)
+        self.assert_close(result, expected)

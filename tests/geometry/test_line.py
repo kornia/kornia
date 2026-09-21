@@ -110,6 +110,22 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(lmbda, expected_lambda)
         self.assert_close(point, expected_point)
 
+    def test_intersect_plane_parallel(self, device, dtype):
+        # the degenerate branch must return deterministic values, not uninitialized memory
+        p0 = torch.tensor([0.0, 4.0, 0.0], device=device, dtype=dtype)
+        p1 = torch.tensor([1.0, 4.0, 0.0], device=device, dtype=dtype)
+        l1 = ParametrizedLine.through(p0, p1)
+
+        v0 = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        v1 = torch.tensor([1.0, 0.0, 1.0], device=device, dtype=dtype)
+        v2 = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+        pl0 = Hyperplane.through(v0, v1, v2)
+
+        lmbda, point = l1.intersect(pl0)
+
+        self.assert_close(lmbda, torch.tensor(0.0, device=device, dtype=dtype))
+        self.assert_close(point, p0)
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
         pass
@@ -129,6 +145,23 @@ class TestParametrizedLine(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
         pass
+
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        p0 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
+        p1 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
+        line = ParametrizedLine.through(p0, p1)
+        assert line.direction.grad_fn is not None
+        assert list(line.state_dict()) == ["_origin", "_direction"]
+        origin = torch.zeros(2, device=device, dtype=dtype)
+        restored = ParametrizedLine(origin, torch.ones(2, device=device, dtype=dtype))
+        restored.load_state_dict(line.state_dict())
+        self.assert_close(restored.direction, line.direction.detach())
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
+        moved = line.to(other)
+        assert moved.origin.dtype == other and moved.direction.dtype == other
+        assert moved.direction.grad_fn is not None
+        moved.direction.sum().backward()
+        assert p1.grad is not None
 
 
 class TestFitLine(BaseTester):

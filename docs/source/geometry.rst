@@ -2,68 +2,65 @@ kornia.geometry
 ===============
 
 .. meta::
-   :name: description
-   :content: "The Kornia.geometry module provides essential geometric transformations for computer vision tasks, including 2D and 3D image manipulation. It includes submodules for image transforms, camera models, coordinate conversions, linear algebra operations, and depth map processing, supporting a wide range of geometric operations for accurate spatial transformations and 3D reconstructions."
+   :description: The Kornia.geometry module provides essential geometric transformations for computer vision tasks, including 2D and 3D image manipulation. It includes submodules for image transforms, camera models, coordinate conversions, linear algebra operations, and depth map processing, supporting a wide range of geometric operations for accurate spatial transformations and 3D reconstructions.
 
-Geometric image transformations is another key ingredient in computer vision to manipulate images.
-Since geometry operations are typically performed in 2D or 3D, we provide several algorithms to work
-with both cases. This module, the original core of the library, consists of the following submodules:
-transforms, camera, conversions, linalg and depth. We next describe each of them:
+Geometric image transformations are another key ingredient in computer vision for manipulating images.
+Since geometry operations are typically performed in 2D or 3D, we provide algorithms for both cases.
+This module, the original core of the library, consists of the following main submodules:
 
-- `transforms`: The module provides low level interfaces to manipulate 2D images, with routines for Rotating,
-  Scaling, Translating, Shearing; Cropping functions in several modalities such as central crops,
-  crop and resize; Flipping transformations in the vertical and horizontal axis; Resizing operations;
-  Functions to warp tensors given affine or perspective transformations,
-  and utilities to compute the transformation matrices to perform the mentioned operations.
-- `camera`: A set of routines specific to different types of camera representations such as Pinhole
-  or Orthographic models containing functionalities such as projecting and unprojecting points from the
-  camera to a world frame.
-- `conversions`: Routines to perform conversions between angle representation such as
-  radians to degrees, coordinates normalization, and homogeneous to euclidean. Moreover, we include advanced
-  conversions for 3D geometry representations such as Quaternion, Axis-Angle, Rotation Matrix, or Rodrigues
-  formula.
-- `linalg`: Functions to perform general rigid-body homogeneous transformations. We include implementations to
-  transform points between frames and for homogeneous transformations, manipulation such as composition,
-  inverse and to compute relative poses.
-- `depth`: A set of layers to manipulate depth maps such as how to compute 3D point clouds given depth maps and
-  calibrated cameras; compute surface normals per pixel and warp tensor frames given calibrated cameras setup.
+- :doc:`transform <geometry.transform>`: low-level interfaces to manipulate 2D images, with routines for rotating,
+  scaling, translating and shearing; cropping functions in several modalities such as central crops and
+  crop-and-resize; vertical and horizontal flips; resizing; functions to warp tensors given affine or
+  perspective transformations; and utilities to compute the transformation matrices behind those operations.
+- :doc:`camera <geometry.camera>`: routines specific to different camera representations, such as the pinhole
+  or orthographic models, including projecting and unprojecting points between the camera and the world frame.
+- :doc:`conversions <geometry.conversions>`: conversions between angle representations (radians and degrees),
+  coordinate normalization, and homogeneous to Euclidean coordinates. It also includes conversions between 3D
+  rotation representations: quaternions, axis-angle, rotation matrices and Euler angles.
+- :doc:`linalg <geometry.linalg>`: general rigid-body homogeneous transformations, with functions to
+  transform points between frames and to compose, invert and compute relative transformations.
+- :doc:`depth <geometry.depth>`: layers to manipulate depth maps, such as computing 3D point clouds from depth maps
+  and calibrated cameras, per-pixel surface normals, and warping frames given a calibrated camera setup.
 
+The remaining submodules, listed below, cover bounding boxes and keypoints, calibration, epipolar geometry,
+homographies, Lie groups, lines, point clouds, quaternions, RANSAC, polynomial solvers and sub-pixel refinement.
 
-:Resources:
+.. admonition:: About ``align_corners``
 
-   **align_corners**
-
-   align_corners is a switch that widely offered in PyTorch geometric transform functions.
+   ``align_corners`` is a switch offered by most PyTorch and Kornia geometric transform functions.
    Here is a simple illustration showing how a 4x4 image is upsampled to 8x8, made by
    `bkkm16 <https://discuss.pytorch.org/t/what-we-should-use-align-corners-false/22663/9?u=ducha-aiki>`_.
 
    .. image:: https://user-images.githubusercontent.com/4803565/110627988-df8a4d00-81a2-11eb-8e13-06d3f7b09ef1.png
+      :alt: Illustration of align_corners=True versus align_corners=False when upsampling a 4x4 image to 8x8
 
-   - `align_corners=True`, pixels are arranged as a grid of points. Points at the corners are aligned.
-   - `align_corners=False`, pixels are arranged as 1x1 areas. Area boundaries, rather than their centers, are aligned.
+   - ``align_corners=True``: pixels are arranged as a grid of points. Points at the corners are aligned.
+   - ``align_corners=False``: pixels are arranged as 1x1 areas. Area boundaries, rather than their centers, are aligned.
+
+   The default is **not** uniform across the library; see the table in :doc:`get-started/conventions`.
 
 
 .. currentmodule:: kornia.geometry
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
 
-   geometry.bbox
-   geometry.boxes
-   geometry.keypoints
-   geometry.calibration
-   geometry.camera
-   geometry.conversions
-   geometry.depth
-   geometry.epipolar
-   geometry.grid
-   geometry.homography
-   geometry.liegroup
-   geometry.linalg
-   geometry.line
-   geometry.pointcloud
-   geometry.quaternion
-   geometry.solvers
-   geometry.subpix
-   geometry.transform
-   geometry.ransac
+   transform <geometry.transform>
+   camera <geometry.camera>
+   conversions <geometry.conversions>
+   linalg <geometry.linalg>
+   depth <geometry.depth>
+   epipolar <geometry.epipolar>
+   homography <geometry.homography>
+   ransac <geometry.ransac>
+   calibration <geometry.calibration>
+   liegroup <geometry.liegroup>
+   quaternion <geometry.quaternion>
+   line <geometry.line>
+   bbox <geometry.bbox>
+   boxes <geometry.boxes>
+   keypoints <geometry.keypoints>
+   subpix <geometry.subpix>
+   solvers <geometry.solvers>
+   grid <geometry.grid>
+   pointcloud <geometry.pointcloud>

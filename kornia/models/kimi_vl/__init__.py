@@ -15,11 +15,15 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
+from .builder import KimiVLBuilder
 from .config import KimiVLConfig, KimiVLProjectorConfig, MoonViTConfig
 from .model import KimiVLModel, KimiVLProjector
 from .moonvit import MoonViT
 
 __all__ = [
+    "KimiVLBuilder",
     "KimiVLConfig",
     "KimiVLModel",
     "KimiVLProjector",

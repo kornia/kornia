@@ -41,7 +41,7 @@ from kornia.feature import (
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_replicate_padding
 from testing.casts import dict_to
 
 
@@ -89,6 +89,97 @@ class TestGetLAFDescriptors(BaseTester):
             atol=1e-3,
             nondet_tol=1e-3,
         )
+
+
+class TestGetLAFDescriptorsEmptyPath(BaseTester):
+    """The empty-LAF result must agree with the non-empty one (see #4065)."""
+
+    @pytest.mark.parametrize("output_dims", [64, 128, 238])
+    def test_empty_matches_the_descriptor_width(self, device, dtype, output_dims):
+        """The width came from a hardcoded 128 rather than from the descriptor module."""
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        desc = kornia.feature.MKDDescriptor(patch_size=32, output_dims=output_dims).to(device, dtype)
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
+        )
+        non_empty = kornia.feature.get_laf_descriptors(img, laf, desc, 32)
+        with pytest.warns(UserWarning):
+            empty = kornia.feature.get_laf_descriptors(
+                img, torch.zeros(1, 0, 2, 3, device=device, dtype=dtype), desc, 32
+            )
+        assert empty.shape == (1, 0, non_empty.shape[-1])
+        assert empty.dtype == non_empty.dtype
+        assert empty.device.type == non_empty.device.type
+
+    @pytest.mark.parametrize("descriptor", ["four_dim", "dense_sift"])
+    def test_empty_matches_a_non_2d_descriptor(self, device, dtype, descriptor):
+        """The width must be what `.view(B, N, -1)` produces, not the probe's last dimension.
+
+        The non-empty path flattens *everything* the descriptor produced per patch, so taking
+        `probe.shape[-1]` agreed only for descriptors whose output is 2-D. `patch_descriptor` is
+        typed as a bare `nn.Module`; `DenseSIFTDescriptor` returns `(N, C, H, W)` and so does any
+        user module of that shape, and those got a narrower empty result that could not be
+        concatenated with a non-empty one -- the very defect this path exists to remove (#4065).
+        """
+
+        class FourDimDescriptor(nn.Module):
+            """Minimal descriptor whose output is not 2-D."""
+
+            def forward(self, patches: torch.Tensor) -> torch.Tensor:
+                return patches.new_zeros(patches.shape[0], 3, 2, 5)
+
+        desc = (
+            FourDimDescriptor()
+            if descriptor == "four_dim"
+            else kornia.feature.DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
+        )
+        desc = desc.to(device, dtype)
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[16.0, 16.0]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
+        )
+        non_empty = kornia.feature.get_laf_descriptors(img, laf, desc, 32)
+        with pytest.warns(UserWarning):
+            empty = kornia.feature.get_laf_descriptors(
+                img, torch.zeros(1, 0, 2, 3, device=device, dtype=dtype), desc, 32
+            )
+        assert empty.shape == (1, 0, non_empty.shape[-1])
+        # which is the point: an empty batch has to be concatenable with a non-empty one
+        assert torch.cat([non_empty, empty], dim=1).shape == non_empty.shape
+
+
+class TestLocalFeatureMatcherEmptyPath(BaseTester):
+    """`no_match_output` must keep the rank the success path uses (see #4065)."""
+
+    def test_empty_lafs_keep_the_batch_dimension(self, device, dtype):
+        matcher = kornia.feature.LocalFeatureMatcher(
+            kornia.feature.SIFTFeature(50), kornia.feature.DescriptorMatcher("snn", 0.9)
+        )
+        out = matcher.no_match_output(device, dtype)
+        # the success path returns `.view(1, -1, 2, 3)`
+        assert out["lafs0"].shape == (1, 0, 2, 3)
+        assert out["lafs1"].shape == (1, 0, 2, 3)
+        # so indexing the batch works either way
+        assert out["lafs0"][0].shape == (0, 2, 3)
+        assert out["keypoints0"].shape == (0, 2)
+
+    def test_an_empty_side_never_reaches_the_matcher(self, device, dtype):
+        # Filtering the zero-LAF padding can leave a side with no descriptor at all. `matcher` is an
+        # arbitrary module with no obligation to accept a `(0, D)` input, so a textureless pair called
+        # it with one and could raise; the pair is skipped instead, which is what `no_match_output` is for.
+        class RejectsEmpty(torch.nn.Module):
+            def forward(self, d0: torch.Tensor, d1: torch.Tensor):
+                if d0.shape[0] == 0 or d1.shape[0] == 0:
+                    raise RuntimeError("empty descriptors")
+                return kornia.feature.match_snn(d0, d1, 0.9)
+
+        matcher = kornia.feature.LocalFeatureMatcher(kornia.feature.SIFTFeature(50), RejectsEmpty()).to(device, dtype)
+        img = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        out = matcher({"image0": img, "image1": img})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["lafs0"].shape == (1, 0, 2, 3)
 
 
 class TestLAFDescriptor(BaseTester):
@@ -191,12 +282,37 @@ class TestSIFTFeature(BaseTester):
         sift = SIFTFeature()
         assert sift is not None
 
+    def test_pyramid_sift_opt_in(self, device, dtype):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        lafs, responses, descriptors = SIFTFeature(2, descriptor_backend="pyramid").to(device, dtype)(image)
+        assert lafs.shape == (1, 2, 2, 3)
+        assert responses.shape == (1, 2)
+        assert descriptors.shape == (1, 2, 128)
+
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64)
         local_feature = SIFTFeature(2, True).to(device)
         self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, fast_mode=False)
+
+
+class TestSIFTFeatureHalfPrecision(BaseTester):
+    def test_lafs_and_descriptors_are_finite(self, device):
+        # The orienter's unguarded `sqrt`/`atan2` gave a NaN LAF at a *filled* slot, which the
+        # padding mask cannot cover, and 128 NaN descriptor values in that row with it.
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, torch.float16):
+            pytest.skip("no replicate-padding kernel for float16 on this device")
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=torch.float16)
+        with torch.no_grad():
+            lafs, _, descs = SIFTFeature(50).to(device, torch.float16)(img)
+        assert lafs.dtype == torch.float16 and descs.dtype == torch.float16
+        assert int(lafs[0].ne(0).any(dim=-1).any(dim=-1).sum()) > 0
+        assert torch.isfinite(lafs).all()
+        assert torch.isfinite(descs).all()
 
 
 class TestKeyNetHardNetFeature(BaseTester):
@@ -234,6 +350,49 @@ class TestLocalFeatureMatcher(BaseTester):
     def test_smoke(self, device):
         matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("snn", 0.8)).to(device)
         assert matcher is not None
+
+    @pytest.mark.parametrize("match_type", ["nn", "mnn"])
+    def test_detector_padding_is_not_matched(self, device, dtype, match_type):
+        # A fixed-shape detector with no maxima returns zero LAFs. Their descriptors are finite,
+        # but NN/MNN would otherwise report them as false correspondences at the image origin.
+        feat = SIFTFeature(8, upright=True, score_threshold=1e6).to(device, dtype)
+        matcher = LocalFeatureMatcher(feat, DescriptorMatcher(match_type, 0.8)).to(device, dtype)
+        image0 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        image1 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        with torch.no_grad():
+            out = matcher({"image0": image0, "image1": image1})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
+        assert out["lafs0"].shape == (1, 0, 2, 3)
+        assert out["lafs1"].shape == (1, 0, 2, 3)
+
+    def test_laf_and_descriptor_counts_must_agree(self, device, dtype):
+        # The padding mask is derived from the LAFs and applied to the descriptors, so a count
+        # mismatch used to surface as an opaque boolean-index `IndexError` deep in the loop.
+        matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("nn", 0.8)).to(device, dtype)
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        lafs = torch.rand(1, 3, 2, 3, device=device, dtype=dtype)
+        descs = torch.rand(1, 5, 128, device=device, dtype=dtype)
+        images = {"image0": img, "image1": img}
+        data = {**images, "lafs0": lafs, "descriptors0": descs, "lafs1": lafs, "descriptors1": descs[:, :3]}
+        with pytest.raises(Exception, match=r"lafs0 and descriptors0"):
+            matcher(data)
+        data = {**images, "lafs0": lafs, "descriptors0": descs[:, :3], "lafs1": lafs, "descriptors1": descs}
+        with pytest.raises(Exception, match=r"lafs1 and descriptors1"):
+            matcher(data)
+
+    def test_masks_are_forwarded_to_the_detector(self, device, dtype):
+        feat = SIFTFeature(8, upright=True).to(device, dtype)
+        matcher = LocalFeatureMatcher(feat, DescriptorMatcher("nn", 0.8)).to(device, dtype)
+        image0 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        image1 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        # LocalFeatureMatcher historically documents masks without a channel dimension; it adds
+        # that singleton axis before forwarding to the detector's (B, 1, H, W) mask contract.
+        mask = torch.zeros(1, 64, 64, device=device, dtype=torch.bool)
+        with torch.no_grad():
+            out = matcher({"image0": image0, "image1": image1, "mask0": mask, "mask1": mask})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
@@ -352,3 +511,56 @@ class TestLocalFeatureMatcher(BaseTester):
         out_jit = model_jit(inputs)
         for k, v in out.items():
             self.assert_close(v, out_jit[k])
+
+
+class TestSIFTPyramidBackend(BaseTester):
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
+    @pytest.mark.parametrize("upright", [False, True])
+    def test_sparse_output_and_real_descriptor(self, device, dtype, preset, upright):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        feature = preset(num_features=3, upright=upright, descriptor_backend="pyramid").to(device, dtype).eval()
+        if preset is kornia.feature.SIFTFeature:
+            assert isinstance(feature.descriptor, kornia.feature.SIFTDescriptorFromPyramid)
+        else:
+            from kornia.feature.sift.scale_space import _SIFTScaleSpaceDescriptor
+
+            assert isinstance(feature.descriptor, _SIFTScaleSpaceDescriptor)
+        lafs, responses, descriptors = feature(image)
+        assert lafs.shape == (1, 3, 2, 3)
+        assert responses.shape == (1, 3)
+        assert descriptors.shape == (1, 3, 128)
+        assert torch.isfinite(descriptors).all()
+        if preset is kornia.feature.SIFTFeature:
+            self.assert_close(descriptors, feature.descriptor(image, lafs))
+
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature])
+    def test_detector_responses_and_centers_are_unchanged(self, device, dtype, preset):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        patch = preset(num_features=3, upright=True).to(device, dtype).eval()
+        pyramid = preset(num_features=3, descriptor_backend="pyramid").to(device, dtype).eval()
+        patch_lafs, patch_responses, _ = patch(image)
+        pyramid_lafs, pyramid_responses, _ = pyramid(image)
+        self.assert_close(get_laf_center(patch_lafs), get_laf_center(pyramid_lafs))
+        self.assert_close(patch_responses, pyramid_responses)
+
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
+    def test_invalid_backend(self, preset):
+        with pytest.raises(ValueError, match="descriptor backend"):
+            preset(descriptor_backend="unknown")
+
+    def test_generic_local_feature_preserves_frames_and_forwards_mask(self, device, dtype):
+        image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[6.0, 2.0, 20.0], [-2.0, 6.0, 20.0]]]], device=device, dtype=dtype)
+        mask = torch.ones_like(image)
+
+        class Detector(nn.Module):
+            def forward(self, image, received_mask):
+                assert received_mask is mask
+                return lafs, image.new_ones(1, 1)
+
+        descriptor = kornia.feature.SIFTDescriptorFromPyramid().to(device, dtype)
+        feature = LocalFeature(Detector(), descriptor)
+        returned, responses, descriptors = feature(image, mask)
+        self.assert_close(returned, lafs)
+        self.assert_close(responses, image.new_ones(1, 1))
+        self.assert_close(descriptors, descriptor(image, lafs))

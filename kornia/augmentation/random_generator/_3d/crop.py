@@ -22,12 +22,15 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
-from kornia.core.utils import _extract_device_dtype
+from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.core.utils import _extract_device_dtype, is_exporting
 from kornia.geometry.bbox import bbox_generator3d
 
 
 class CropGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ```crop``` transformation for crop transform.
+
+    See the Convention block on :class:`~kornia.augmentation.RandomCrop3D`.
 
     Args:
         size (tuple): Desired size of the crop operation, like (d, h, w).
@@ -70,7 +73,7 @@ class CropGenerator3D(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, torch.Tensor) else None])
 
         if not isinstance(self.size, torch.Tensor):
-            size = torch.tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+            size = _constant_tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
         else:
             size = self.size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 3]):
@@ -92,7 +95,8 @@ class CropGenerator3D(RandomGeneratorBase):
         y_diff = height - size[:, 1] + 1
         z_diff = depth - size[:, 0] + 1
 
-        if (x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any():
+        # The size check reads the data, which graph capture cannot do; skip it under export.
+        if not is_exporting() and ((x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any()):
             raise ValueError(
                 f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
             )
@@ -117,9 +121,9 @@ class CropGenerator3D(RandomGeneratorBase):
 
         if self.resize_to is None:
             crop_dst = bbox_generator3d(
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
                 size[:, 2] - 1,
                 size[:, 1] - 1,
                 size[:, 0] - 1,
@@ -135,7 +139,7 @@ class CropGenerator3D(RandomGeneratorBase):
                 and self.resize_to[2] > 0
             ):
                 raise AssertionError(f"`resize_to` must be a tuple of 3 positive integers. Got {self.resize_to}.")
-            crop_dst = torch.tensor(
+            crop_dst = _constant_tensor(
                 [
                     [
                         [0, 0, 0],
@@ -161,9 +165,11 @@ def center_crop_generator3d(
     height: int,
     width: int,
     size: Tuple[int, int, int],
-    device: Union[None, str, torch.device] = None,
+    device: Union[str, torch.device, None] = None,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
+
+    See the Convention block on :class:`~kornia.augmentation.CenterCrop3D`.
 
     Args:
         batch_size (int): the torch.Tensor batch size.
@@ -197,8 +203,6 @@ def center_crop_generator3d(
     ):
         raise AssertionError(f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}.")
 
-    if batch_size == 0:
-        return {"src": torch.zeros([0, 8, 3]), "dst": torch.zeros([0, 8, 3])}
     # unpack input sizes
     dst_d, dst_h, dst_w = size
     src_d, src_h, src_w = (depth, height, width)
@@ -223,7 +227,7 @@ def center_crop_generator3d(
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
     # Note: DeprecationWarning: an integer is required (got type float).
     # Implicit conversion to integers using __int__ is deprecated, and may be removed in a future version of Python.
-    points_src: torch.Tensor = torch.tensor(
+    points_src: torch.Tensor = _constant_tensor(
         [
             [
                 [int(start_x), int(start_y), int(start_z)],
@@ -243,7 +247,7 @@ def center_crop_generator3d(
     # [x, y, z] destination
     # top-left-front, top-right-front, bottom-right-front, bottom-left-front
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_dst: torch.Tensor = torch.tensor(
+    points_dst: torch.Tensor = _constant_tensor(
         [
             [
                 [0, 0, 0],

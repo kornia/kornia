@@ -20,9 +20,17 @@ from typing import Callable, Dict, List, Optional, Type
 import torch
 from torch import nn
 
-urls: Dict[str, str] = {}
-urls["defmo_encoder"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt"
-urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt"
+from kornia.core.download import hf_url, load_state_dict_from_url
+
+urls: Dict[str, str | list[str]] = {}
+urls["defmo_encoder"] = [
+    hf_url("defmo", "encoder_best.pt"),
+    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",
+]
+urls["defmo_rendering"] = [
+    hf_url("defmo", "rendering_best.pt"),
+    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt",
+]
 
 
 # conv1x1, conv3x3, Bottleneck, ResNet are taken from:
@@ -331,7 +339,12 @@ class RenderingDeFMO(nn.Module):
             nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1, bias=True),
         )
         self.net = model
-        self.times = torch.linspace(0, 1, self.tsr_steps)
+        # `times` is fully determined by `tsr_steps` (derived state, not learned) --
+        # register as a non-persistent buffer so `.to()` / `.cuda()` / `.half()` move
+        # it through the normal nn.Module machinery instead of leaving it behind as a
+        # plain attribute. persistent=False keeps state_dict() keys unchanged, same
+        # rationale/convention as #4079 (SIFTDescriptor.gk et al.).
+        self.register_buffer("times", torch.linspace(0, 1, self.tsr_steps), persistent=False)
 
     def forward(self, latent: torch.Tensor) -> torch.Tensor:
         """Render a temporal RGBA sequence from latent DeFMO features.
@@ -344,7 +357,10 @@ class RenderingDeFMO(nn.Module):
             Tensor with shape :math:`(B, T, 4, H_{out}, W_{out})`, where ``T`` is the
             number of rendered time steps and 4 represents RGBA channels.
         """
-        times = self.times.to(latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
+        # cast into a local rather than relying on the caller having matched dtype --
+        # `.to()` already moved `self.times` to the module's own device/dtype, this
+        # additionally covers a mismatched-precision `latent` without mutating self.
+        times = self.times.to(dtype=latent.dtype, device=latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
         renders = []
         for ki in range(times.shape[1]):
             t_tensor = (
@@ -392,13 +408,9 @@ class DeFMO(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls["defmo_encoder"], map_location=torch.device("cpu")
-            )
+            pretrained_dict = load_state_dict_from_url(urls["defmo_encoder"], map_location=torch.device("cpu"))
             self.encoder.load_state_dict(pretrained_dict, strict=True)
-            pretrained_dict_ren = torch.hub.load_state_dict_from_url(
-                urls["defmo_rendering"], map_location=torch.device("cpu")
-            )
+            pretrained_dict_ren = load_state_dict_from_url(urls["defmo_rendering"], map_location=torch.device("cpu"))
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
         self.eval()
 

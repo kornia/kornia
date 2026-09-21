@@ -1,0 +1,101 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+"""Builder for Kimi-VL models."""
+
+from __future__ import annotations
+
+from typing import Optional
+
+import torch
+
+from kornia.core.download import download_hf_file
+from kornia.core.safetensors import check_safetensors, load_safetensors
+
+from .config import KimiVLConfig, _kimi_vl_a3b_instruct_config
+from .model import KimiVLModel
+
+__all__ = ["KimiVLBuilder"]
+
+_KIMI_VL_A3B_INSTRUCT_REPO_ID = "kornia/kimi-vl-a3b-instruct-vision"
+
+_WEIGHTS_FILE = "model.safetensors"
+
+
+def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, torch.Tensor]:
+    """Download the checkpoint of a HuggingFace repo and read it into a state dict.
+
+    Args:
+        model_name: full ``owner/name`` repository id on the HuggingFace Hub.
+        cache_dir: directory to cache the checkpoint in, or ``None`` for torch's
+            hub cache -- the same cache every other kornia checkpoint uses.
+
+    Returns:
+        The checkpoint's state dict, on the CPU.
+    """
+    # validate=: a transfer cut short after a 2xx leaves a truncated file in the
+    # cache, which is returned as a hit forever after. Checking the header here
+    # makes the download path re-fetch it once instead.
+    path = download_hf_file(model_name, _WEIGHTS_FILE, model_dir=cache_dir, validate=check_safetensors)
+    return load_safetensors(path)
+
+
+class KimiVLBuilder:
+    """Builder for Kimi-VL models.
+
+    Provides convenient methods to create Kimi-VL models from configs or
+    load pretrained weights.
+    """
+
+    @staticmethod
+    def from_config(config: KimiVLConfig) -> KimiVLModel:
+        """Build model from configuration.
+
+        Args:
+            config: Model configuration.
+
+        Returns:
+            KimiVLModel instance.
+        """
+        return KimiVLModel(config)
+
+    @staticmethod
+    def from_pretrained_hf(cache_dir: Optional[str] = None) -> KimiVLModel:
+        """Load pretrained Kimi-VL-A3B-Instruct vision weights from Hugging Face Hub.
+
+        Downloads the vision encoder and projector weights of
+        `moonshotai/Kimi-VL-A3B-Instruct` from the Kornia-owned safetensors
+        checkpoint at https://huggingface.co/kornia/kimi-vl-a3b-instruct-vision.
+        The checkpoint values are bitwise-identical to the original release
+        (bf16), including the full 64x64 positional-embedding grid, which the
+        model interpolates at runtime for other input resolutions.
+
+        Args:
+            cache_dir: Optional cache directory for downloaded files. Defaults
+                to torch's hub cache, which is where every other kornia
+                checkpoint is cached.
+
+        Returns:
+            KimiVLModel instance with pretrained weights.
+
+        .. note::
+            Only Kimi-VL-A3B-Instruct is currently supported.
+        """
+        state_dict = _download_weights(_KIMI_VL_A3B_INSTRUCT_REPO_ID, cache_dir)
+        model = KimiVLBuilder.from_config(_kimi_vl_a3b_instruct_config())
+        model.load_state_dict(state_dict, strict=True)
+        return model

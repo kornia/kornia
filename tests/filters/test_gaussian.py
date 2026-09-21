@@ -15,11 +15,16 @@
 # limitations under the License.
 #
 
+import io
+import os
+import tempfile
 import warnings
+from typing import Any
 
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.filters import (
     GaussianBlur2d,
     gaussian,
@@ -62,6 +67,47 @@ def test_gaussian(window_size, sigma, mean, expected, device, dtype):
     expected = expected.to(device=device, dtype=dtype)
     result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
     assert_close(result, expected, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "window_size, sigma, mean, expected",
+    [
+        # Every sample used to underflow to 0 here, and the normalization divided 0 / 0 (#4589).
+        (4, 0.02, None, [0.0, 0.5, 0.5, 0.0]),
+        (8, 1e-4, None, [0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0]),
+        (5, 0.05, 0.0, [1.0, 0.0, 0.0, 0.0, 0.0]),
+        (4, 1.0, 40.0, [0.0, 0.0, 0.0, 1.0]),
+        # At sigma == 0 the kernel is the unit-impulse limit instead of nan.
+        (5, 0.0, None, [0.0, 0.0, 1.0, 0.0, 0.0]),
+        (4, 0.0, None, [0.0, 0.5, 0.5, 0.0]),
+        (1, 0.0, None, [1.0]),
+    ],
+)
+def test_gaussian_does_not_underflow_to_nan_4589(window_size, sigma, mean, expected, device, dtype):
+    result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
+    assert_close(result, torch.tensor([expected], device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize("window_size", [4, 5])
+def test_gaussian_sigma_gradient_is_finite_at_zero_4589(window_size, device, dtype):
+    # The impulse limit is reachable with a tensor sigma, so it has to be differentiable too.
+    # Dividing by sigma ** 2 first and repairing the result afterwards left the 0 / 0 on the
+    # graph, and the sigma gradient came back nan even though the forward value was finite.
+    sigma = torch.zeros(1, 1, device=device, dtype=dtype, requires_grad=True)
+
+    out = gaussian(window_size, sigma)
+    (out * torch.arange(window_size, device=device, dtype=dtype)).sum().backward()
+
+    assert torch.isfinite(out).all()
+    assert torch.isfinite(sigma.grad).all()
+    # The continuous limit is flat at sigma == 0: the impulse does not move as sigma grows.
+    assert_close(sigma.grad, torch.zeros_like(sigma.grad))
+
+
+def test_gaussian_empty_window_stays_empty_4589(device, dtype):
+    # kornia's convention for a degenerate shape is empty in, empty out. Subtracting the nearest
+    # sample means reducing over the window, which has no identity when the window is empty.
+    assert gaussian(0, 1.0, device=device, dtype=dtype).shape == (1, 0)
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
@@ -219,13 +265,13 @@ class TestGaussianBlur2d(BaseTester):
     def test_smoke(self, shape, kernel_size, separable, device, dtype):
         B, C, H, W = shape
         data = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        sigma_tensor = torch.rand(B, 2, device=device, dtype=dtype)
+        sigma_tensor = torch.rand(B, 2, device=device, dtype=dtype) + 0.1
 
         actual_A = gaussian_blur2d(data, kernel_size, sigma_tensor, "reflect", separable)
         assert isinstance(actual_A, torch.Tensor)
         assert actual_A.shape == shape
 
-        sigma = tuple(sigma_tensor[0, ...].cpu().numpy().tolist())
+        sigma = tuple(sigma_tensor[0, ...].tolist())
         actual_B = gaussian_blur2d(data, kernel_size, sigma, "reflect", separable)
         assert isinstance(actual_B, torch.Tensor)
         assert actual_B.shape == shape
@@ -320,38 +366,56 @@ class TestGaussianBlur2d(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
-    def test_onnx_export(self, device, dtype):
-        """Test that GaussianBlur2d can be exported via torch.onnx.export."""
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy(self, dtype):
+        """Test that GaussianBlur2d can be exported through the legacy ONNX exporter."""
+        pytest.importorskip("onnx")
         kernel_size = (3, 3)
         sigma = (1.5, 1.5)
-
-        # Create model and sample input
         model = GaussianBlur2d(kernel_size, sigma)
-        sample_input = torch.ones(1, 3, 8, 8, device=device, dtype=dtype)
+        sample_input = torch.ones(1, 3, 8, 8, dtype=dtype)
+        buf = io.BytesIO()
+        export_kwargs: dict[str, Any] = {
+            "input_names": ["input"],
+            "output_names": ["output"],
+            "opset_version": 17,
+        }
+        if torch_version_ge(2, 5, 0):
+            export_kwargs["dynamo"] = False
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, sample_input, buf, **export_kwargs)
+        assert buf.getbuffer().nbytes > 0
 
-        # Test ONNX export - just ensure it doesn't error
-        # TODO: think of an absctraction
-        try:
-            import os
-            import tempfile
+    @pytest.mark.device_agnostic
+    # 2.5 is where `dynamo=` first exists, but there it still routes through the experimental
+    # `_compat.export_compat` shim. This test passes `fallback=False` implicitly, so on the 2.5.1
+    # CI legs any exporter/onnxscript mismatch would be a hard failure rather than a skip; require
+    # the settled 2.6 exporter instead.
+    @pytest.mark.skipif(
+        torch_version_lt(2, 6, 0), reason="the dynamo ONNX exporter is only non-experimental from PyTorch 2.6"
+    )
+    def test_onnx_export_modern(self, dtype):
+        """Test that GaussianBlur2d can be exported through the dynamo ONNX exporter."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        model = GaussianBlur2d((3, 3), (1.5, 1.5))
+        sample_input = torch.ones(1, 3, 8, 8, dtype=dtype)
 
-            # Suppress onnxscript deprecation warnings (Python 3.15 compatibility)
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=DeprecationWarning, module="onnxscript.converter")
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    onnx_path = os.path.join(tmpdir, "gaussian_blur2d.onnx")
-                    torch.onnx.export(
-                        model,
-                        sample_input,
-                        onnx_path,
-                        input_names=["input"],
-                        output_names=["output"],
-                        opset_version=17,
-                    )
-                    # Verify the file was created
-                    assert os.path.exists(onnx_path)
-        except Exception as e:
-            pytest.skip(f"ONNX export not supported: {e}")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with tempfile.TemporaryDirectory() as tmpdir:
+                onnx_path = os.path.join(tmpdir, "gaussian_blur2d.onnx")
+                torch.onnx.export(
+                    model,
+                    sample_input,
+                    onnx_path,
+                    input_names=["input"],
+                    output_names=["output"],
+                    opset_version=18,
+                    dynamo=True,
+                )
+                assert os.path.getsize(onnx_path) > 0
 
     def test_sigma_negative_raises_exception(self, device, dtype):
         """Test that negative sigma raises an exception."""

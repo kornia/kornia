@@ -51,6 +51,22 @@ class CenterCrop(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
 
+    Convention:
+        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
+        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+        ``size`` accepts an integer for a square crop or an
+        ``(height, width)`` tuple. The fixed centre crop is shared by every selected image in a batch.
+
+        When the crop is selected, ``cropping_mode="slice"`` indexes the input directly and returns a writable view
+        of it; modifying the result therefore modifies the corresponding centre region of the input. This wart is
+        tracked in
+        `#4413 <https://github.com/kornia/kornia/issues/4413>`_. ``cropping_mode="resample"`` uses
+        ``crop_by_transform_mat`` with the configured ``resample`` (bilinear by default), ``align_corners`` (``True``
+        by default), and zero padding. Only resample mode supports
+        :meth:`inverse`; it resamples onto the original canvas with zero padding by default and cannot restore discarded
+        data. The inverse call can override ``padding_mode``, for example with ``padding_mode="border"``.
+
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)
@@ -114,8 +130,7 @@ class CenterCrop(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
             transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
-            transform = transform.expand(input.shape[0], -1, -1)
-            return transform
+            return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(

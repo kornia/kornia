@@ -123,3 +123,87 @@ class TestModelBaseMixinSaveOutputs:
         subdirs = list(kornia_outputs.iterdir())
         assert len(subdirs) == 1
         assert subdirs[0].name.startswith("dummy")
+
+
+class TestModelBaseMixinSaveWritesRealFiles:
+    """`save` against the real `write_image`, not a mock.
+
+    Every other test in this file patches `write_image`, which is why #4322
+    shipped: the mock accepts any dtype and any rank, so nothing checked that
+    what the containers hand it is something it can actually write. `visualize`
+    returns float images and the containers document batched input, and
+    `write_image` accepts neither -- PNG is uint8/uint16 only, and the rank has
+    to be (3, H, W), (1, H, W) or (H, W).
+    """
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
+    def test_a_float_visualization_is_written(self, tmp_path, dtype):
+        mixin = DummyMixin()
+        mixin.save(torch.rand(3, 8, 8, dtype=dtype), str(tmp_path))
+        written = list(tmp_path.iterdir())
+        assert len(written) == 1, f"expected one file, got {written}"
+        assert written[0].stat().st_size > 0
+
+    def test_a_batch_is_written_as_one_file_per_item(self, tmp_path):
+        """The containers document (B, 3, H, W); write_image takes (3, H, W)."""
+        mixin = DummyMixin()
+        mixin.save(torch.rand(4, 3, 8, 8), str(tmp_path))
+        assert len(list(tmp_path.iterdir())) == 4
+
+    def test_a_batch_of_one_is_still_indexed(self, tmp_path):
+        """So a caller does not have to guess between name.png and name_0.png."""
+        mixin = DummyMixin()
+        mixin.save(torch.rand(1, 3, 8, 8), str(tmp_path))
+        written = list(tmp_path.iterdir())
+        assert len(written) == 1
+        assert written[0].name.endswith("_0.png")
+
+    def test_the_written_file_is_a_readable_image(self, tmp_path):
+        """Writing something unreadable would satisfy a file-count check."""
+        from kornia.io import ImageLoadType, load_image
+
+        mixin = DummyMixin()
+        mixin.save(torch.rand(3, 8, 8), str(tmp_path))
+        written = next(iter(tmp_path.iterdir()))
+        image = load_image(str(written), ImageLoadType.UNCHANGED)
+        assert image.shape == (3, 8, 8)
+        assert image.dtype == torch.uint8
+
+    def test_values_survive_the_conversion(self, tmp_path):
+        """A float in [0, 1] must land on the matching 0-255 level."""
+        from kornia.io import ImageLoadType, load_image
+
+        mixin = DummyMixin()
+        source = torch.tensor([[[0.0, 1.0], [0.5, 0.25]]]).repeat(3, 1, 1)
+        mixin.save(source, str(tmp_path))
+        written = next(iter(tmp_path.iterdir()))
+        image = load_image(str(written), ImageLoadType.UNCHANGED)
+        assert image[0].tolist() == [[0, 255], [128, 64]]
+
+    def test_out_of_range_values_are_clamped_not_wrapped(self, tmp_path):
+        """Without the clamp, 1.5 * 255 overflows uint8 and comes back dark."""
+        from kornia.io import ImageLoadType, load_image
+
+        mixin = DummyMixin()
+        source = torch.tensor([[[1.5, -0.5]]]).repeat(3, 1, 1)
+        mixin.save(source, str(tmp_path))
+        written = next(iter(tmp_path.iterdir()))
+        image = load_image(str(written), ImageLoadType.UNCHANGED)
+        assert image[0].tolist() == [[255, 0]]
+
+    def test_an_integer_image_is_passed_through(self, tmp_path):
+        from kornia.io import ImageLoadType, load_image
+
+        mixin = DummyMixin()
+        source = torch.tensor([[[0, 255], [7, 64]]], dtype=torch.uint8).repeat(3, 1, 1)
+        mixin.save(source, str(tmp_path))
+        written = next(iter(tmp_path.iterdir()))
+        image = load_image(str(written), ImageLoadType.UNCHANGED)
+        assert image[0].tolist() == [[0, 255], [7, 64]]
+
+    def test_save_outputs_writes_real_files_too(self, tmp_path):
+        mixin = DummyMixin()
+        mixin._save_outputs(torch.rand(2, 3, 8, 8), directory=str(tmp_path), suffix="_mask")
+        written = sorted(p.name for p in tmp_path.iterdir())
+        assert len(written) == 2
+        assert all("_mask_" in name for name in written)

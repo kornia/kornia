@@ -77,8 +77,17 @@ class Normalize(nn.Module):
         if isinstance(std, (tuple, list)):
             std = torch.tensor(std)[None]
 
-        self.mean = mean
-        self.std = std
+        # Buffers, not plain attributes: `.to(device)` has to move them, or a
+        # module living on an accelerator keeps CPU constants. Eager tolerates
+        # the mix (a broadcastable CPU tensor combines with a CUDA/MPS one),
+        # which is why this went unnoticed, but `torch.export` traces with fake
+        # tensors and refuses it.
+        #
+        # persistent=False: these are constructor arguments, not learned state.
+        # Putting them in `state_dict()` would make every existing checkpoint
+        # report unexpected keys, for values the constructor already supplies.
+        self.register_buffer("mean", mean, persistent=False)
+        self.register_buffer("std", std, persistent=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Normalize an input tensor channel-wise with this module's statistics.
@@ -137,6 +146,11 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
             raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
+        # A per-channel vector broadcasts the same way as its (1, C) view; accept it instead of raising.
+        if mean.dim() == 1:
+            mean = mean.view(1, -1)
+        if std.dim() == 1:
+            std = std.view(1, -1)
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError(
                 "Batch dimension must be one for broadcasting when converting to ONNX."
@@ -165,9 +179,9 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     mean = mean[..., None]
     std = std[..., None]
 
-    out: torch.Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
+    out: torch.Tensor = (data.reshape(shape[0], shape[1], -1) - mean) / std
 
-    return out.view(shape)
+    return out.reshape(shape)
 
 
 class Denormalize(nn.Module):
@@ -204,8 +218,24 @@ class Denormalize(nn.Module):
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
         super().__init__()
 
-        self.mean = mean
-        self.std = std
+        # A float has to become a tensor before it can be a buffer. Wrap a
+        # scalar in a list so it becomes 1-D, exactly as `Normalize` does: the
+        # ONNX export branch indexes `mean.shape[0]`, which a 0-d tensor would
+        # turn into `IndexError: tuple index out of range`.
+        if isinstance(mean, (int, float)):
+            mean = torch.tensor([mean])
+        elif not isinstance(mean, torch.Tensor):
+            mean = torch.tensor(mean)
+
+        if isinstance(std, (int, float)):
+            std = torch.tensor([std])
+        elif not isinstance(std, torch.Tensor):
+            std = torch.tensor(std)
+
+        # See Normalize: buffers so `.to(device)` moves them; non-persistent so
+        # they stay out of `state_dict()`.
+        self.register_buffer("mean", mean, persistent=False)
+        self.register_buffer("std", std, persistent=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Restore scale/offset from a tensor normalized by mean and std.
@@ -263,6 +293,11 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
             raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
+        # A per-channel vector broadcasts the same way as its (1, C) view; accept it instead of raising.
+        if mean.dim() == 1:
+            mean = mean.view(1, -1)
+        if std.dim() == 1:
+            std = std.view(1, -1)
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError("Batch dimension must be one for broadcasting when converting to ONNX.")
     else:
@@ -344,9 +379,9 @@ def normalize_min_max(
     shape = input.shape
     B, C = shape[0], shape[1]
 
-    x_reshaped = input.view(B, C, -1)
+    x_reshaped = input.reshape(B, C, -1)
     x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
     x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
 
     x_out = (max_val - min_val) * (x_reshaped - x_min) / (x_max - x_min + eps) + min_val
-    return x_out.view(shape)
+    return x_out.reshape(shape)
