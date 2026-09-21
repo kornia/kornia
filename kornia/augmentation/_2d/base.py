@@ -169,8 +169,8 @@ class AugmentationBase2D(_AugmentationBase):
 
         if shape is None:
             return _transform_input(input)
-        else:
-            return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
+
+        return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):

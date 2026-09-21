@@ -181,3 +181,33 @@ def test_committed_digest_is_fresh(tmp_path: Path) -> None:
 
 def test_latest_version_tolerates_digitless_dirs() -> None:
     assert generate_benchmarks.latest_version(["unknown", "0.9.0rc1"]) == "0.9.0rc1"
+
+
+def test_superseded_results_are_not_published(tmp_path: Path) -> None:
+    """A run under ``superseded/`` keeps its version directory but reaches no rendered output."""
+    root = _seed(tmp_path)
+    stale = root / generate_benchmarks.SUPERSEDED_DIR / "0.9.0rc1"
+    stale.mkdir(parents=True)
+    payload = json.loads((root / "0.9.0rc1" / "augmentation--apple-m3--mps.json").read_text())
+    payload["metadata"]["git_commit"] = "deadbeef"
+    payload["results"][0]["throughput_per_s"] = 11.0  # the pre-change number that must not surface
+    (stale / "filters--apple-m3--mps.json").write_text(json.dumps(payload))
+
+    assert "0.9.0rc1" in generate_benchmarks.load_results(root)  # the live run is still loaded
+    assert list(generate_benchmarks.load_results(root)["0.9.0rc1"]) == ["augmentation--apple-m3--mps.json"]
+    rst = generate_benchmarks.render_page(root)
+    assert "deadbeef" not in rst and "filters" not in rst
+    assert "superseded/" in rst  # but the page says where the unpublished runs live
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, root)
+    assert "deadbeef" not in llms.read_text()
+
+
+def test_digest_line_names_version_and_commit(tmp_path: Path) -> None:
+    """A digest line must be readable on its own: the date alone does not identify the code."""
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+    line = next(ln for ln in llms.read_text().splitlines() if ln.startswith("- augmentation"))
+    assert "kornia 0.9.0rc1 @ c670e2ab" in line and "2026-08-08" in line

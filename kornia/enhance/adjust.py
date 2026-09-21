@@ -25,12 +25,13 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
 )
-from kornia.core.utils import _torch_histc_cast
+from kornia.core.utils import _torch_histc_cast, is_compiling
 from kornia.image.utils import perform_keep_shape_image, perform_keep_shape_video
 
 
@@ -44,6 +45,28 @@ def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
     one, and the check is skipped on MPS either way.
     """
     if cond.device.type == "mps":
+        return
+    torch._assert_async(cond, msg)
+
+
+# ``aten::_assert_async.msg`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
+_MPS_HAS_ASSERT_ASYNC = torch_version_ge(2, 13)
+
+
+def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
+    """Validate the input domain of a 256-entry lookup, including on MPS.
+
+    Same as :func:`_assert_async_value_check` on CPU and CUDA. On MPS that helper skips the check, and an
+    index the lookup cannot use then surfaces as torch's raw ``gather: index ... is out of bounds`` error,
+    which names neither the op nor the range it needs. From torch ``2.13`` the assert has an MPS kernel, so
+    the same asynchronous check runs there: no host read, and the named error is reported at the next
+    synchronization. Older releases have none, and the lookups guarded here consume the whole input anyway,
+    so the condition is read on the host instead: one stream sync per call. A host read would break a
+    ``torch.compile`` graph, so only that older fallback keeps the skip while compiling.
+    """
+    if cond.device.type == "mps" and not _MPS_HAS_ASSERT_ASYNC:
+        if not is_compiling() and not bool(cond):
+            raise RuntimeError(msg)
         return
     torch._assert_async(cond, msg)
 
@@ -709,14 +732,14 @@ def solarize(
     pixel compared against ``thresholds``, and every pixel at or above it is replaced by ``1 - value``.
     The addition is therefore applied on both sides of the threshold, and it can move a pixel across it:
     with ``thresholds=0.5`` and ``additions=0.2``, ``[0.1, 0.4, 0.6, 0.9]`` comes back as
-    ``[0.3, 0.4, 0.2, 0.0]``. The value of 'addition' is between -0.5 and 0.5.
+    ``[0.3, 0.4, 0.2, 0.0]``. The value of 'addition' is in the closed range [-0.5, 0.5].
 
     Args:
         input: image torch.Tensor with shapes like :math:`(*, C, H, W)` to solarize.
         thresholds: solarize thresholds.
             If int or one element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
-        additions: between -0.5 and 0.5.
+        additions: in the closed range [-0.5, 0.5], endpoints included.
             If None, no addition will be performed.
             If int or one element torch.Tensor, same addition will be added across the whole batch.
             If 1-d torch.Tensor, additions will be added element-wisely, len(additions) == len(input).
@@ -759,9 +782,9 @@ def solarize(
             additions = torch.as_tensor(additions)
 
         _assert_async_value_check(
-            ((additions < 0.5) & (additions > -0.5)).all(),
-            "The addition must be in the open range (-0.5, 0.5). Clamp it first: min(max(additions, -0.49), 0.49) "
-            "for floats, additions.clamp(-0.49, 0.49) for tensors.",
+            ((additions <= 0.5) & (additions >= -0.5)).all(),
+            "The addition must be in the closed range [-0.5, 0.5]. Clamp it first: min(max(additions, -0.5), 0.5) "
+            "for floats, additions.clamp(-0.5, 0.5) for tensors.",
         )
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
@@ -973,8 +996,9 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # Input is expected in [0, 1]. The histogram index below is clamped, but the LUT lookup indexes
     # with the unclamped ``scaled.long()``, which is out of bounds unless ``scaled`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
-    # inputs the lookup can index keep working exactly as before.
-    _assert_async_value_check(
+    # on MPS before torch 2.13 it costs one host sync instead (see ``_lookup_value_check``). Inputs the
+    # lookup can index keep working exactly as before.
+    _lookup_value_check(
         ((scaled > -1.0) & (scaled < 256.0)).all(),
         "equalize expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
@@ -1066,8 +1090,9 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     .. note::
        The input is expected in :math:`[0, 1]`, and each channel is equalized from a 256-bin histogram.
        Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
-       naming the range. The check runs on CPU and CUDA (via ``torch._assert_async``); on MPS it is
-       skipped, as for :func:`adjust_gamma`.
+       naming the range. The check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``;
+       on an older MPS release the condition is read on the host instead, one device sync per call, and is
+       skipped there under ``torch.compile``.
 
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
@@ -1095,10 +1120,12 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     .. note::
        The input is expected in :math:`[0, 1]`, and each channel's whole :math:`(D, H, W)` volume is
        equalized from one 256-bin histogram. The lookup step is an integer division by 255, so a volume
-       with no more than 255 voxels per channel is returned unchanged; just above that, whether it changes
+       with no more than 255 voxels per channel is returned unchanged up to floating-point roundoff; just
+       above that, whether it changes
        depends on the values. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
-       raise a ``RuntimeError`` naming the range. The check runs on CPU and CUDA (via
-       ``torch._assert_async``); on MPS it is skipped.
+       raise a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS
+       kernel from torch ``2.13``; on an older MPS release the condition is read on the host instead, one
+       device sync per call, and is skipped there under ``torch.compile``.
 
     """
     # Scales each channel independently (each (D, H, W) volume), batched over (B, C).

@@ -235,8 +235,7 @@ class MV2Block(nn.Module):
         """
         if self.use_res_connect:
             return x + self.conv(x)
-        else:
-            return self.conv(x)
+        return self.conv(x)
 
 
 class MobileViTBlock(nn.Module):

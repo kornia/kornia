@@ -25,6 +25,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
+from kornia.filters.gaussian import _gaussian_blur2d_cpu, _gaussian_blur2d_cpu_eligible
 
 __all__ = ["PyrDown", "PyrUp", "ScalePyramid", "build_laplacian_pyramid", "build_pyramid", "pyrdown", "pyrup"]
 
@@ -270,6 +271,8 @@ class ScalePyramid(nn.Module):
         pad = ksize // 2
         _B, C, _H, _W = x.shape
         k = kernel.to(device=x.device, dtype=x.dtype)
+        if _gaussian_blur2d_cpu_eligible(x) and not (torch.is_grad_enabled() and k.requires_grad):
+            return _gaussian_blur2d_cpu(x, k.view(1, -1), k.view(1, -1), "reflect")
         # Depthwise separable: same kernel applied independently to every channel.
         k_h = k.view(1, 1, 1, ksize).expand(C, 1, 1, ksize).contiguous()
         tmp = F.conv2d(F.pad(x, (pad, pad, 0, 0), mode="reflect"), k_h, groups=C)

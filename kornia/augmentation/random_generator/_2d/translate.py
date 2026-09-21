@@ -61,8 +61,7 @@ class TranslateGenerator(RandomGeneratorBase):
         self.translate_y = translate_y
 
     def __repr__(self) -> str:
-        repr = f"translate_x={self.translate_x}, translate_y={self.translate_y}"
-        return repr
+        return f"translate_x={self.translate_x}, translate_y={self.translate_y}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.translate_x_sampler = None

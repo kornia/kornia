@@ -186,9 +186,8 @@ class Quaternion(nn.Module):
         """
         if isinstance(right, Quaternion):
             return Quaternion(self.data + right.data)
-        else:
-            right_quat = self._to_scalar_quaternion(right)
-            return Quaternion(self.data + right_quat.data)
+        right_quat = self._to_scalar_quaternion(right)
+        return Quaternion(self.data + right_quat.data)
 
     def __sub__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
         """Subtract a given quaternion, scalar, or torch.Tensor.
@@ -206,13 +205,12 @@ class Quaternion(nn.Module):
         """
         if isinstance(right, Quaternion):
             return Quaternion(self.data - right.data)
-        else:
-            right_quat = self._to_scalar_quaternion(right)
-            # For scalar operations, ensure we return a torch.Tensor to preserve gradients
-            result_data = self.data - right_quat.data
-            if isinstance(result_data, nn.Parameter):
-                result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
-            return Quaternion(result_data)
+        right_quat = self._to_scalar_quaternion(right)
+        # For scalar operations, ensure we return a torch.Tensor to preserve gradients
+        result_data = self.data - right_quat.data
+        if isinstance(result_data, nn.Parameter):
+            result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
+        return Quaternion(result_data)
 
     def __mul__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
         # If right is a Quaternion, do quaternion multiplication
@@ -226,15 +224,14 @@ class Quaternion(nn.Module):
             return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
         # If right is a scalar/torch.Tensor, convert to scalar quaternion and multiply
-        else:
-            right_quat = self._to_scalar_quaternion(right)
-            new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
-            new_vec = (
-                self.real[..., None] * right_quat.vec
-                + right_quat.real[..., None] * self.vec
-                + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
-            )
-            return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
+        right_quat = self._to_scalar_quaternion(right)
+        new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
+        new_vec = (
+            self.real[..., None] * right_quat.vec
+            + right_quat.real[..., None] * self.vec
+            + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
+        )
+        return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
     def __rmul__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
         """Right multiplication (left * self) where left is a scalar or torch.Tensor."""
@@ -250,25 +247,24 @@ class Quaternion(nn.Module):
     def __div__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         if isinstance(right, Quaternion):
             return self * right.inv()
+        # For scalars/tensors, just divide the quaternion data directly
+        if isinstance(right, (int, float)):
+            right_tensor = torch.tensor(right, device=self.data.device, dtype=self.data.dtype)
         else:
-            # For scalars/tensors, just divide the quaternion data directly
-            if isinstance(right, (int, float)):
-                right_tensor = torch.tensor(right, device=self.data.device, dtype=self.data.dtype)
-            else:
-                right_tensor = right.to(device=self.data.device, dtype=self.data.dtype)
+            right_tensor = right.to(device=self.data.device, dtype=self.data.dtype)
 
-            # For division by scalar, expand to [right, right, right, right] for element-wise division
-            if right_tensor.dim() == 0:  # scalar
-                divisor = right_tensor.expand_as(self.data[..., 0]).unsqueeze(-1).expand_as(self.data)
-            else:
-                # Broadcast the torch.Tensor to match the quaternion dimensions
-                divisor = right_tensor.unsqueeze(-1).expand_as(self.data)
+        # For division by scalar, expand to [right, right, right, right] for element-wise division
+        if right_tensor.dim() == 0:  # scalar
+            divisor = right_tensor.expand_as(self.data[..., 0]).unsqueeze(-1).expand_as(self.data)
+        else:
+            # Broadcast the torch.Tensor to match the quaternion dimensions
+            divisor = right_tensor.unsqueeze(-1).expand_as(self.data)
 
-            # For scalar operations, ensure we return a torch.Tensor to preserve gradients
-            result_data = self.data / divisor
-            if isinstance(result_data, nn.Parameter):
-                result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
-            return Quaternion(result_data)
+        # For scalar operations, ensure we return a torch.Tensor to preserve gradients
+        result_data = self.data / divisor
+        if isinstance(result_data, nn.Parameter):
+            result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
+        return Quaternion(result_data)
 
     def __truediv__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         return self.__div__(right)

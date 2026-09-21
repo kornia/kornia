@@ -75,7 +75,7 @@ import torch.hub  # noqa: E402
 
 _weights_cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "weights")
 # Only when there is a restored cache to use and the developer has not pointed
-# torch somewhere themselves: a local ``pixi run build-docs`` in a fresh clone has
+# torch somewhere themselves: a local ``pixi run -e default build-docs`` in a fresh clone has
 # neither, and redirecting it would re-download all four checkpoints past a warm
 # ``~/.cache/torch/hub``.
 if os.path.isdir(_weights_cache) and not os.environ.get("TORCH_HOME"):

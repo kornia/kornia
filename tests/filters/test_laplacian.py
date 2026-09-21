@@ -15,12 +15,17 @@
 # limitations under the License.
 #
 
+import importlib
+
 import pytest
 import torch
 
-from kornia.filters import Laplacian, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
+from kornia.filters import Laplacian, filter2d, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
+from kornia.filters.kernels import normalize_kernel2d
 
-from testing.base import BaseTester, assert_close
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
+
+laplacian_module = importlib.import_module("kornia.filters.laplacian")
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
@@ -67,6 +72,71 @@ def test_get_laplacian_kernel2d_exact(device, dtype):
 
 
 class TestLaplacian(BaseTester):
+    @pytest.mark.parametrize("kernel_size", [3, 5, (5, 7)])
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_matches_dense_kernel(self, kernel_size, border_type, normalized, device, dtype):
+        data = torch.rand(2, 3, 11, 13, device=device, dtype=dtype)
+        kernel = get_laplacian_kernel2d(kernel_size, device=device, dtype=dtype)[None]
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
+
+        expected = filter2d(data, kernel, border_type)
+        self.assert_close(laplacian(data, kernel_size, border_type, normalized), expected)
+
+    @pytest.mark.parametrize("has_mkldnn", [False, True])
+    @pytest.mark.parametrize("shape", [(1, 2, 9, 10), (1, 4, 1024, 1024)])
+    def test_slices_dispatch(self, monkeypatch, has_mkldnn, shape, device, dtype):
+        # CPU uses slices except on large inputs with oneDNN; eager CUDA keeps cuDNN's convolution.
+        monkeypatch.setattr(laplacian_module, "_HAS_MKLDNN", has_mkldnn)
+        conv = laplacian_module.filter2d
+        calls = 0
+
+        def counted_conv(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return conv(*args, **kwargs)
+
+        monkeypatch.setattr(laplacian_module, "filter2d", counted_conv)
+        data = torch.rand(shape, device=device, dtype=dtype)
+        laplacian(data, 5)
+        small = not has_mkldnn or data.numel() < 1 << 22
+        uses_slices = device.type == "cpu" and dtype in (torch.float32, torch.float64) and small
+        assert calls == int(not uses_slices)
+
+    @pytest.mark.parametrize("value", ["large", "inf", "nan"])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_extreme_cpu_values_match_convolution(self, monkeypatch, value, normalized, device, dtype):
+        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("The CPU slice path supports float32/float64")
+        data = torch.zeros(1, 1, 7, 9, device=device, dtype=dtype)
+        data[..., 3, 4] = torch.finfo(dtype).max / 2 if value == "large" else float(value)
+        kernel = get_laplacian_kernel2d(3, device=device, dtype=dtype)[None]
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
+        expected = filter2d(data, kernel, "constant")
+        actual = laplacian(data, 3, "constant", normalized)
+        self.assert_close(actual.isnan(), expected.isnan())
+        self.assert_close(actual.isposinf(), expected.isposinf())
+        self.assert_close(actual.isneginf(), expected.isneginf())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+    def test_vmap(self, device, dtype):
+        data = torch.rand(2, 1, 3, 7, 9, device=device, dtype=dtype)
+        expected = torch.stack([laplacian(image, 3) for image in data])
+        actual = torch.vmap(lambda image: laplacian(image, 3))(data)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_kernel_size_one(self, normalized, device, dtype):
+        data = torch.rand(1, 1, 3, 5, device=device, dtype=dtype)
+        actual = laplacian(data, 1, normalized=normalized)
+
+        if normalized:
+            assert torch.isnan(actual).all()
+        else:
+            self.assert_close(actual, torch.zeros_like(actual))
+
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (11, 7), (3, 3)])
     @pytest.mark.parametrize("normalized", [True, False])
@@ -93,6 +163,26 @@ class TestLaplacian(BaseTester):
         kernel_size = 3
         actual = laplacian(sample, kernel_size)
         assert actual.is_contiguous()
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_export(self, device, dtype):
+        inp = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)
+        op = Laplacian((5, 7))
+        exported = torch.export.export(op, (inp,), strict=True)
+        self.assert_close(exported.module()(inp), op(inp))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    def test_cpu_autocast(self, autocast_dtype):
+        # Float32 inputs intentionally exercise CPU autocast's convolution cast.
+        inp = torch.rand(1, 1, 7, 9, dtype=torch.float32)
+        weights = get_laplacian_kernel2d(3, dtype=torch.float32)[None]
+        weights = normalize_kernel2d(weights)
+        with torch.autocast("cpu", dtype=autocast_dtype):
+            expected = filter2d(inp, weights)
+            actual = laplacian(inp, 3)
+        assert actual.dtype == expected.dtype == autocast_dtype
+        self.assert_close(actual, expected)
 
     def test_gradcheck(self, device):
         # test parameters

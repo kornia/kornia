@@ -97,8 +97,7 @@ class Resize(GeometricAugmentationBase2D):
         transform: torch.Tensor = torch.as_tensor(
             get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device
         )
-        transform = transform.expand(input.shape[0], -1, -1)
-        return transform
+        return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(
         self,

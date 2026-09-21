@@ -23,7 +23,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.enhance import equalize_clahe
+from kornia.enhance.equalization import _equalize_clahe
 
 
 class RandomClahe(IntensityAugmentationBase2D):
@@ -36,6 +36,7 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     Args:
         clip_limit: the ``(low, high)`` range the per-sample contrast-limiting threshold is drawn from.
+            A value is drawn for each image, or once and shared across the batch when ``same_on_batch=True``.
             Unlike :func:`kornia.enhance.equalize_clahe`'s scalar argument of the same name this must be a
             two-element tuple -- a scalar raises ``ValueError: `center` and `bounds` cannot be None for
             single number`` at construction -- and ``(0.0, 0.0)`` is what disables clipping. The bound is
@@ -49,38 +50,38 @@ class RandomClahe(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
-    .. warning::
-        An input outside ``[0, 1]`` reaches :func:`kornia.enhance.equalize_clahe` unchecked and comes
-        back as a raw torch indexing error that names neither this class nor the range it needs. As for
-        :class:`RandomEqualize`, the rejection is not exactly at the boundary: the failing index is the
-        256-entry lookup indexed with ``(input * 255).long()``, so a value less than one 8-bit code outside
-        ``[0, 1]``, at either end, is still admitted, up to the rounding of ``input * 255`` in the input's
-        dtype. Tracked in
-        `#4564 <https://github.com/kornia/kornia/issues/4564>`_. Unlike :class:`RandomEqualize`, CLAHE has
-        no value check on any device, so the raw error is what every caller gets on the CPU. On MPS the
-        outcome depends on torch: ``2.14`` raises the raw ``gather`` error
-        (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1`` leaves the gather
-        unchecked and returns an in-range image as if the input had been valid.
+    Convention:
+        - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming
+          :func:`kornia.enhance.equalize_clahe` and that range, the way :class:`RandomEqualize` raises for
+          :func:`kornia.enhance.equalize`. As for :class:`RandomEqualize`, the rejection is not exactly at
+          the boundary: the check guards the 256-entry lookup indexed with ``(input * 255).long()``, so a
+          value less than one 8-bit code outside ``[0, 1]``, at either end, is still admitted, up to the
+          rounding of ``input * 255`` in the input's dtype. The check is ``torch._assert_async``, which
+          has an MPS kernel from torch ``2.13``. On an older MPS release the condition is read on the host
+          instead, which costs one device sync per call and is skipped under ``torch.compile``.
+
+    Convention:
+        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. Both eager and
+          compiled execution batch the per-image limits as tensors, so newly sampled limits reuse the same
+          graph without converting draws to Python scalars. Batched differentiable histogram arithmetic
+          can differ from separate per-image calls by floating-point rounding.
+          On MPS, clip limits stored on the device are copied to CPU for float64 threshold arithmetic,
+          then thresholds are copied back; this preserves scalar rounding but adds transfer overhead.
 
     .. warning::
-        ``clip_limit`` is drawn per sample, but the first sample's value is applied to the whole batch.
-        Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
-
-    .. warning::
-        ``grid_size`` is unvalidated past its positivity check in the same way the value range is, and only a
-        **square** grid works. Any ``grid_size`` whose two entries differ raises a raw ``IndexError``
-        (``shape mismatch: indexing tensors could not be broadcast together``) on every image, whether or not
-        the grid tiles it: ``(4, 5)`` fails on a ``20 x 20`` image that both entries divide exactly, and so
-        does ``(1, 2)`` on a ``10 x 10`` one. Reported in
-        `#2531 <https://github.com/kornia/kornia/issues/2531>`_. Divisibility is a separate axis: a square
-        grid that does not tile the image is padded instead, so ``grid_size=(3, 3)`` works on a ``10 x 10``
-        image, and because :func:`kornia.enhance.equalize_clahe` rounds the tile up to an even size an
-        exactly dividing grid can still pad. An image too small for the grid raises a raw ``RuntimeError``
-        from the padding -- at the default ``grid_size=(8, 8)`` the smallest admissible square image is
-        ``9 x 9``, and ``8 x 8`` raises. A grid larger than the image gets the named ``ValueError`` instead.
+        ``grid_size`` is unvalidated past its positivity check. Its two
+        entries tile the two axes independently, and a grid that does not tile the image is padded instead, so
+        ``grid_size=(3, 3)`` works on a ``10 x 10`` image. Because :func:`kornia.enhance.equalize_clahe` rounds
+        the tile up to an even size along each axis, an exactly dividing grid can still pad: ``(4, 5)`` pads 4
+        rows and no columns of a ``20 x 20`` image. An image too small for the grid raises a raw
+        ``RuntimeError`` from the padding; at the default ``grid_size=(8, 8)`` the smallest admissible square
+        image is ``9 x 9``, and ``8 x 8`` raises. A grid larger than the image gets the named ``ValueError``
+        instead.
 
     .. note::
-        This function internally uses :func:`kornia.enhance.equalize_clahe`.
+        This function internally uses :func:`kornia.enhance.equalize_clahe`, which expects the input in
+        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values its 256-bin lookup
+        cannot index.
 
     Examples:
         >>> img = torch.rand(1, 10, 20)
@@ -124,5 +125,4 @@ class RandomClahe(IntensityAugmentationBase2D):
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        clip_limit = float(params["clip_limit_factor"][0])
-        return equalize_clahe(input, clip_limit, flags["grid_size"], flags["slow_and_differentiable"])
+        return _equalize_clahe(input, params["clip_limit_factor"], flags["grid_size"], flags["slow_and_differentiable"])

@@ -203,7 +203,9 @@ covers a slightly different extent of the source image.
    :func:`kornia.geometry.transform.warp_perspective3d` normalize with the corner-aligned
    convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
    ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
-   volume by up to ``55.1`` there, against exactly ``0`` at ``align_corners=True``. Pass
+   volume by up to ``55.1`` there, against roundoff at ``align_corners=True``: exactly
+   ``0`` in ``float32`` on torch 2.14 and about ``2e-6`` on torch 2.5.1. The grid is built
+   in ``float32``, so a ``float64`` volume is reproduced only to about ``1e-6`` even there. Pass
    ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
    `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
@@ -299,10 +301,10 @@ Augmentations
   even with only rigid children. Do not rely on the outer
   ``.transform_matrix`` to describe a nested pipeline
   (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
-- Dictionary keys use raw prefix matching with exceptions for coordinate box
-  names. Unrecognized metadata is removed from the caller's dictionary before
-  being returned in the output. See the container's dictionary guidance and
-  `#4483 <https://github.com/kornia/kornia/issues/4483>`_.
+- Dictionary keys match a data-key name exactly or before an ``_``/``-`` suffix,
+  with the longest matching name taking precedence. Unrecognized keys are
+  returned unchanged as metadata, and the caller's dictionary is left intact.
+  See the container's dictionary guidance for recognized names and aliases.
 - A positive ``degrees`` turns the displayed image counter-clockwise with
   :class:`kornia.augmentation.RandomRotation`, matching
   :func:`kornia.geometry.transform.rotate`, and clockwise with
@@ -333,8 +335,8 @@ Augmentations
   :class:`kornia.augmentation.RandomClahe` and
   :class:`kornia.augmentation.RandomJPEG` are importable and documented but absent
   from ``kornia.augmentation.__all__``, so they are outside the audited set above;
-  ``RandomClahe`` raises out of range with a raw indexing error
-  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_) and ``RandomJPEG``
+  ``RandomClahe`` raises out of range with a message naming the range, except on
+  MPS, where the check is skipped and a raw indexing error survives; and ``RandomJPEG``
   clamps the decoded RGB output into ``[0, 1]``. The decoding can produce intermediate
   values even when every input value is negative or every input value is above ``1``;
   such images need not become solid black or white.
@@ -398,9 +400,9 @@ Randomness in augmentations
   for ``RandomDissolving``, which samples VAE latents during application.
   Replaying it also needs control of that application-time random state.
 - ``same_on_batch=True`` shares the standard per-sample gate and sampled
-  transform factors. It does not equate batch-pairing indices, and the
-  ``RandomPlasma*`` noise stored in the parameters is drawn independently per
-  sample whatever the flag says.
+  transform factors. It does not equate batch-pairing indices. For
+  ``RandomPlasma*``, the stored noise map is sampled once and expanded
+  across the batch when this flag is enabled.
   Color adjustment order is one permutation shared across the batch,
   independently of this flag. On ``AugmentationSequential``, ``None`` keeps
   each child's setting, while ``True`` and ``False`` overwrite it.
@@ -434,10 +436,25 @@ Serializing an augmentation
   does not update the cached sampling distributions; ``repr`` may or may not
   reflect the loaded range. Reconstruct the augmentation to change what it
   samples (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+- With numeric constructor ranges, the 3D geometric and intensity
+  augmentations and every mix class -- ``RandomCutMixV2``, ``RandomJigsaw``,
+  ``RandomMixUpV2``, ``RandomMosaic``, ``PatchMix``, ``RandomTransplantation``
+  and ``RandomTransplantation3D`` -- have empty ``state_dict()`` objects.
+  Pickle and deepcopy preserve their configuration and recorded parameters
+  after a forward call; passing the restored
+  ``_params`` replays that transform on the same input. An empty
+  ``state_dict()`` cannot save those parameters or reconstruct the constructor
+  configuration. Tensor or ``nn.Parameter`` arguments can have different
+  registration behavior.
 - Pickle and deepcopy can retain recorded parameters and transform state,
-  but support is configuration-dependent. The ``kornia.augmentation.auto``
-  policies cannot currently be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+  but support is configuration-dependent. A ``kornia.augmentation.auto``
+  policy can be pickled only when every operation wrapper in it can, so the
+  default policies currently cannot
+  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). An empty
+  ``AutoAugment(policy=[[]])`` has no wrappers and can be pickled, and so can
+  a policy holding only ``posterize`` entries. ``copy.deepcopy`` works on all
+  three policies, before and after a forward pass or a ``.train()`` /
+  ``.eval()`` call, and the copy replays the original's recorded ``_params``.
   A normal forward draws fresh parameters; replay requires passing the
   saved parameters and controlling any application-time randomness.
 - Built-in lazy matrices keep only the input's shape, dtype and device

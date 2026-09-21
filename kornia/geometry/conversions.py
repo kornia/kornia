@@ -181,30 +181,20 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
           ``phi = -170`` degrees rotated by ``theta = 30`` returns
           ``phi = +160``, not ``-200``. At the origin ``phi`` carries no
           direction and the relation does not apply
-        - ``rho`` is ``sqrt(x ** 2 + y ** 2 + eps)``, not
-          ``sqrt(x ** 2 + y ** 2)`` — see the warning below
+        - ``rho`` is the Euclidean radius ``sqrt(x ** 2 + y ** 2)``.
+          ``eps`` only protects the gradient near the origin and does not
+          perturb the returned radius
 
-    .. warning::
-        ``eps`` is added *inside* the square root, so the expression evaluated
-        is ``sqrt(x ** 2 + y ** 2 + eps)`` and ``rho`` is biased high. Whether
-        that bias survives the rounding of the working dtype depends on where
-        it is measured. Away from the origin it is usually invisible:
-        ``cart2pol(3., 4.)`` returns ``5.000000001`` in ``float64`` but rounds
-        back to exactly ``5.`` in ``float32`` and ``float16``. At the origin it
-        is the whole answer: ``cart2pol(torch.tensor(0.), torch.tensor(0.))``
-        returns ``rho = 9.9999997e-05`` in ``float32`` and ``1e-04`` in
-        ``float64`` rather than ``0`` (in ``float16``, ``eps`` underflows the
-        sum and ``rho`` is ``0.``). Tracked in
-        `#3939 <https://github.com/kornia/kornia/issues/3939>`_.
+    .. note::
+        ``eps`` defines the neighborhood around the origin where the gradient
+        is stabilized. It does not change the forward value of ``rho``.
 
     Args:
         x: torch.Tensor of arbitrary shape.
         y: torch.Tensor of same arbitrary shape.
-        eps: added inside the square root when computing ``rho``. A positive
-            ``eps`` that is representable in the working dtype keeps the
-            gradient of ``rho`` finite at the origin, where it is ``nan`` with
-            ``eps=0``. The default ``1e-8`` underflows in ``float16`` (see the
-            warning above), so there the origin gradient is still ``nan``.
+        eps: squared-radius threshold used to stabilize the gradient near the
+            origin. It does not perturb the forward value of ``rho``. The
+            default ``1e-8`` underflows in ``float16``.
 
     Returns:
         - rho: torch.Tensor with same shape as input.
@@ -219,7 +209,10 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
-    rho = torch.sqrt(x**2 + y**2 + eps)
+    squared_radius = x**2 + y**2
+    safe_squared_radius = torch.where(squared_radius > eps, squared_radius, torch.ones_like(squared_radius))
+    safe_rho = torch.sqrt(safe_squared_radius)
+    rho = torch.sqrt(squared_radius).detach() + safe_rho - safe_rho.detach()
     phi = torch.atan2(y, x)
     return rho, phi
 
@@ -403,6 +396,11 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
           function since 0.7.0; it emits a ``DeprecationWarning`` and forwards
           to this function, returning an equal result — see the alias warning
           below
+        - differentiable at the identity rotation. The ``sqrt`` whose
+          derivative is unbounded there never sees its zero radicand, so the
+          gradient is the analytic limit of the surrounding map rather than
+          ``nan``. The guard is elementwise, and away from the identity it
+          moves no forward bit
 
     .. warning::
         Calling any of this module's four deprecated aliases
@@ -441,7 +439,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
     def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor) -> torch.Tensor:
-        theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to ensure no nan gradients
+        theta = torch.sqrt(theta2)
         wxyz = axis_angle / theta.unsqueeze(-1)  # (*, 3)
         wx, wy, wz = wxyz.unbind(dim=-1)  # (*,)
 
@@ -507,13 +505,15 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         return rot
 
     theta2 = (axis_angle * axis_angle).sum(dim=-1)
+    mask = theta2 > 1e-6
 
-    rot_normal = _compute_rotation_matrix(axis_angle, theta2)  # (*,3,3)
+    # Rows on the Taylor branch feed the discarded Rodrigues branch a stand-in theta2 of 1, so its backward never
+    # differentiates sqrt at 0. A clamp floor is no guard here: 1e-12 underflows to 0 in float16.
+    safe_theta2 = torch.where(mask, theta2, torch.ones_like(theta2))
+    rot_normal = _compute_rotation_matrix(axis_angle, safe_theta2)  # (*,3,3)
     rot_taylor = _compute_rotation_matrix_taylor(axis_angle)  # (*,3,3)
 
-    mask = (theta2 > 1e-6)[..., None, None]  # shape (*,1,1)
-
-    rotation_matrix = torch.where(mask, rot_normal, rot_taylor)
+    rotation_matrix = torch.where(mask[..., None, None], rot_normal, rot_taylor)
 
     return rotation_matrix
 

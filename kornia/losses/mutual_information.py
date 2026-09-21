@@ -100,8 +100,7 @@ class MIKernel(Enum):
 def _flatten_mask(mask: torch.Tensor | None) -> torch.Tensor:
     if mask is None:
         return torch.tensor([True])
-    else:
-        return mask.view(-1)
+    return mask.view(-1)
 
 
 def _mask_is_full(mask: torch.Tensor | None) -> bool:
