@@ -29,7 +29,7 @@ from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3
 
 
 def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, normalized: bool = True) -> torch.Tensor:
-    r"""Compute the first order image derivative in both x and y using a Sobel operator.
+    r"""Compute the first or second order image derivative in x and y using a Sobel or diff operator.
 
     .. image:: _static/img/spatial_gradient.png
 
