@@ -655,6 +655,7 @@ def bbox_generator3d(
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)
     bbox[:, :, 2] += z_start.view(-1, 1)
+    # Far corner is at start + size, not start + size - 1: see the warning in this function's docstring (#4018).
     bbox[:, 1, 0] += width.view(-1)
     bbox[:, 2, 0] += width.view(-1)
     bbox[:, 2, 1] += height.view(-1)
@@ -662,6 +663,7 @@ def bbox_generator3d(
 
     # back
     bbox_back = bbox.clone()
+    # Far corner is at start + size, not start + size - 1: see the warning in this function's docstring (#4018).
     bbox_back[:, :, -1] += depth.view(-1, 1).expand(-1, 4)
     bbox = torch.cat([bbox, bbox_back], dim=1)
 

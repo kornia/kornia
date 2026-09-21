@@ -64,6 +64,8 @@ from typing import Callable, Optional
 import numpy as np
 import torch
 
+# Prefer this checkout to an installed wheel or another editable checkout.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import (
     add_contribute_args,
@@ -74,6 +76,7 @@ from common import (
     run_metadata,
     save_json,
     versions_line,
+    warm_up_cpu,
 )
 
 import kornia.augmentation as KA
@@ -220,6 +223,7 @@ def main() -> None:
     skip_compile = frozenset(s.strip() for s in args.skip_compile_ops.split(",") if s.strip())
 
     torch.set_num_threads(args.threads)
+    warm_up_cpu()  # CPU baselines are also timed in accelerator runs.
     torch.manual_seed(0)
     np.random.seed(0)  # noqa: NPY002 — albumentations samples from the legacy global RNG
     random.seed(0)
@@ -250,6 +254,7 @@ def main() -> None:
         print_preflight(meta["load"])
     print(f"# flagship augmentation benchmark — commit {meta['git_commit']} — {platform.platform()}")
     print(versions_line(meta))
+    print(f"# Kornia source: {Path(KA.__file__).resolve()}")
     if device.type == "cuda":
         print(f"# CUDA device: {meta['cuda_device']} (CUDA {meta['cuda_version']})")
     print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput img/s")

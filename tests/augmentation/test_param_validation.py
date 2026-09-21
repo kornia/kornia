@@ -138,6 +138,26 @@ class TestParamValidation:
             (10.0, 0, (-5, 5), "singular", ValueError, r"param out of bounds\. .*got tensor\(\[-10\.,  10\.\]\)"),
             (0.6, 0, (-0.5, 0.5), "joint", ValueError, r"param out of bounds\. .*got tensor\(\[-0\.6000,  0\.6000\]\)"),
             (3.0, 1.0, (0, 2), "joint", ValueError, r"param out of bounds\. .*got tensor\(\[-2\.,  4\.\]\)"),
+            # -inf hits the earlier "non negative" guard, not the finiteness check: the row pins that order.
+            (float("-inf"), 0, (0, float("inf")), "joint", ValueError, "must be non negative"),
+            (float("inf"), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            (float("nan"), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            (torch.tensor(float("inf")), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            # The explicit-range form of the same rule (#4635). An `inf` endpoint used to slip
+            # through exactly when bounds[1] was itself `inf`, because the joint check then
+            # compares `inf >= inf`; with a finite domain it was already rejected.
+            ((0.0, float("inf")), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            ([0.0, float("inf")], 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            (torch.tensor([0.0, float("inf")]), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            ((0.0, float("inf")), 0, (0, float("inf")), "singular", ValueError, "must be finite"),
+            # nan was already rejected, but reported as "out of bounds", which named the domain
+            # rather than the endpoint. Now it gets the same message as every other non-finite range.
+            ((0.0, float("nan")), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            ((float("-inf"), 1.0), 0, (-10, 10), "joint", ValueError, "must be finite"),
+            # `check=None` skips the bounds check, not the finiteness rule, exactly as it does
+            # for a scalar: an infinite draw range is a NaN at forward time whatever the domain.
+            ((0.0, float("inf")), 0, (0, float("inf")), None, ValueError, "must be finite"),
+            (float("inf"), 0, (0, float("inf")), None, ValueError, "must be finite"),
         ],
     )
     def test_range_bound_errors(self, factor, center, bounds, check, expected_exception, match_msg):
@@ -205,3 +225,45 @@ class TestParamValidation:
         """A scalar that overshoots a geometric parameter's bound is rejected at construction."""
         with pytest.raises(ValueError, match=match_msg):
             ctor()
+
+    # The 3D readers took a scalar or an explicit range without any bound, so an angle past one
+    # turn was sampled instead of rejected (#4617). Executed 2026-09-17 (torch 2.5.0, cpu).
+    @pytest.mark.parametrize(
+        "ctor, match_msg",
+        [
+            (lambda: K.RandomRotation3D(400.0), r"degrees out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)"),
+            (
+                lambda: K.RandomRotation3D((-400.0, 400.0)),
+                r"degrees out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)",
+            ),
+            (lambda: K.RandomAffine3D(400.0), r"degrees out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)"),
+            (
+                lambda: K.RandomAffine3D(30.0, shears=400.0),
+                r"shears out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)",
+            ),
+            (
+                lambda: K.RandomMotionBlur3D(3, 400.0, 0.5),
+                r"angle out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)",
+            ),
+        ],
+        ids=["rotation3d-scalar", "rotation3d-range", "affine3d-degrees", "affine3d-shears", "motion-blur3d-angle"],
+    )
+    def test_3d_angle_past_one_turn_raises(self, ctor, match_msg):
+        """A 3D angle range wider than one turn is rejected, as the 2D one is."""
+        with pytest.raises(ValueError, match=match_msg):
+            ctor()
+
+    @pytest.mark.parametrize(
+        "ctor",
+        [
+            lambda: K.RandomRotation3D(360.0),
+            lambda: K.RandomRotation3D((-360.0, 360.0)),
+            lambda: K.RandomRotation3D((10.0, 20.0, 30.0)),
+            lambda: K.RandomAffine3D(30.0, shears=(10.0, 20.0, 30.0, 40.0, 50.0, 60.0)),
+            lambda: K.RandomMotionBlur3D(3, 360.0, 0.5),
+        ],
+        ids=["at-the-bound", "explicit-at-the-bound", "per-axis", "per-axis-shears", "motion-blur-at-the-bound"],
+    )
+    def test_3d_angles_inside_the_bound_still_construct(self, ctor):
+        """The bound is inclusive, and the per-axis forms are unaffected."""
+        assert ctor() is not None

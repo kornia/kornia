@@ -57,10 +57,6 @@ class RandomSaturation(IntensityAugmentationBase2D):
           with a negative channel does not: ``(-0.1, 0.5, 0.5)`` becomes ``(0.0, 0.5, 0.5)``, and an
           all-negative pixel becomes gray at its largest channel.
 
-    .. warning::
-        In ``float16`` a black pixel comes back as NaN, because ``rgb_to_hsv``'s ``eps`` underflows
-        there. Tracked in `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
-
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_saturation`
 

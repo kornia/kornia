@@ -92,8 +92,12 @@ class PatchMixGenerator(RandomGeneratorBase):
             }
 
         with torch.no_grad():
+            # The draw behind the pairing is never shared across the batch: identical values
+            # argsort to the identity, which pairs every image with itself and makes the whole
+            # augmentation a no-op. `same_on_batch` shares the patch location below instead,
+            # matching the convention that it does not equate batch-pairing indices.
             mix_pairs: torch.Tensor = (
-                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch)
+                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch=False)
                 .to(device=_device, dtype=_dtype)
                 .argsort(dim=0)
             )
@@ -102,6 +106,12 @@ class PatchMixGenerator(RandomGeneratorBase):
 
             # Sample patch coordinates
             # height - patch_size + 1
+            if self.patch_size > min(height, width):
+                raise ValueError(
+                    f"Expect `patch_size` to fit the input: got {self.patch_size} for an input of "
+                    f"{height}x{width}. A larger patch makes the corner range negative, and the "
+                    f"negative slice that follows copies an arbitrary rectangle instead of raising."
+                )
             max_y = height - self.patch_size
             max_x = width - self.patch_size
 

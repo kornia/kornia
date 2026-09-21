@@ -1277,6 +1277,20 @@ class TestRandomVerticalFlip(BaseTester):
         self.gradcheck(RandomVerticalFlip(p=1.0), (input,))
 
 
+class TestHueAugmentationBlackPixels(BaseTester):
+    @pytest.mark.parametrize("augmentation", [ColorJiggle, ColorJitter])
+    def test_black_pixels(self, device, dtype, augmentation):
+        data = torch.tensor([0.75, 0.5, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).repeat(1, 1, 6, 8)
+        data[..., :2, :3] = 0.0
+        data.requires_grad_()
+
+        result = augmentation(hue=(0.1, 0.1), p=1.0)(data)
+        assert torch.isfinite(result).all()
+        self.assert_close(result[..., :2, :3], torch.zeros_like(result[..., :2, :3]))
+        (gradient,) = torch.autograd.grad(result.sum(), data)
+        assert torch.isfinite(gradient).all()
+
+
 class TestColorJiggle(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
@@ -4222,6 +4236,53 @@ class TestRandomClahe(BaseTester):
         output_data = RandomClahe(p=1.0, grid_size=(2, 2))(input_data)
         assert output_data.shape == batch_shape
 
+    @pytest.mark.parametrize("batch_prob", [(True, True), (False, True), (False, False)])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    @pytest.mark.parametrize("limits", [(0.5, 40.0), (7.0, 7.0), (0.0, -1.0)])
+    def test_per_sample_clip_limit_replay(self, batch_prob, slow_and_differentiable, limits, device, dtype):
+        torch.manual_seed(0)
+        input_data = torch.rand(2, 1, 32, 32).pow(3).to(device=device, dtype=dtype)
+        input_data.requires_grad_(slow_and_differentiable)
+        clip_limits = torch.tensor(limits)
+        aug = RandomClahe(
+            clip_limit=(0.5, 40.0),
+            grid_size=(2, 2),
+            slow_and_differentiable=slow_and_differentiable,
+            p=0.5,
+        )
+        params = aug.forward_parameters(input_data.shape)
+        params["clip_limit_factor"] = clip_limits
+        params["batch_prob"] = torch.tensor(batch_prob)
+
+        transformed = torch.cat(
+            [
+                kornia.enhance.equalize_clahe(
+                    input_data[index : index + 1], float(clip_limit), (2, 2), slow_and_differentiable
+                )
+                for index, clip_limit in enumerate(clip_limits)
+            ]
+        )
+        expected = torch.where(torch.tensor(batch_prob, device=device).view(-1, 1, 1, 1), transformed, input_data)
+
+        actual = aug(input_data, params=params)
+        self.assert_close(actual, expected)
+        if slow_and_differentiable:
+            weights = torch.rand_like(actual)
+            self.assert_close(
+                torch.autograd.grad(actual, input_data, weights)[0],
+                torch.autograd.grad(expected, input_data, weights)[0],
+            )
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input_data = torch.rand(1, 1, 32, 32).to(device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        aug = RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), same_on_batch=True, p=1.0)
+
+        output = aug(input_data)
+
+        self.assert_close(aug._params["clip_limit_factor"][0], aug._params["clip_limit_factor"][1])
+        self.assert_close(output[0], output[1])
+
 
 class TestRandomGaussianNoise(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
@@ -4324,6 +4385,14 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
 
 class TestRandomGaussianIllumination(BaseTester):
+    @pytest.mark.parametrize("sigma", [0.0, 0.001, 0.02])
+    @pytest.mark.parametrize("size", [1, 2, 3, 4, 8, 32])
+    def test_a_small_sigma_it_admits_returns_a_finite_image_4589(self, sigma, size, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(4, 3, size, size, device=device, dtype=dtype)
+        out = RandomGaussianIllumination(sigma=sigma, p=1.0)(img)
+        assert torch.isfinite(out).all()
+
     def _roundtrip(self, aug, serializer):
         if serializer == "pickle":
             return pickle.loads(pickle.dumps(aug))  # noqa: S301
@@ -4674,15 +4743,32 @@ class TestRandomChannelDropout(BaseTester):
         ):
             RandomChannelDropout(num_drop_channels=num_drop_channels, p=1.0)(input_tensor)
 
-        fill_value = 2.0
-        with pytest.raises(
-            BaseError, match=f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}"
-        ):
+        # an out-of-range int is rejected on the bound just like a float
+        for fill_value in (2.0, 2, -1):
+            with pytest.raises(
+                BaseError, match=f"Invalid value in `fill_value`. Must be a number between 0 and 1. Got: {fill_value}"
+            ):
+                RandomChannelDropout(fill_value=fill_value)
+
+        fill_value = "1"
+        with pytest.raises(TypeCheckError, match=f"`fill_value` must be an int or a float. Got: {type(fill_value)}"):
             RandomChannelDropout(fill_value=fill_value)
 
-        fill_value = 1
-        with pytest.raises(TypeCheckError, match=f"`fill_value` must be a float. Got: {type(fill_value)}"):
-            RandomChannelDropout(fill_value=fill_value)
+    @pytest.mark.parametrize(("fill_value", "as_float"), [(0, 0.0), (1, 1.0), (True, 1.0)])
+    def test_int_fill_value_matches_float_4606(self, fill_value, as_float, device, dtype):
+        # RandomErasing accepts an int `value`; an int `fill_value` used to be rejected on type here.
+        input_tensor = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        torch.manual_seed(0)
+        out_int = RandomChannelDropout(fill_value=fill_value, p=1.0)(input_tensor)
+        torch.manual_seed(0)
+        out_float = RandomChannelDropout(fill_value=as_float, p=1.0)(input_tensor)
+        assert out_int.dtype == dtype
+        self.assert_close(out_int, out_float, rtol=0.0, atol=0.0)
+
+    def test_int_fill_value_buffer_follows_module_casts_4606(self, device):
+        aug = RandomChannelDropout(fill_value=1, p=1.0)
+        assert aug.fill_value.dtype == torch.float32
+        assert aug.to(device).half().fill_value.dtype == torch.float16
 
     @pytest.mark.parametrize("channel_shape, batch_shape", [(3, 1), (1, 1), (5, 5)])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
@@ -4719,6 +4805,11 @@ class TestRandomChannelDropout(BaseTester):
 
 
 class TestNormalize(BaseTester):
+    def test_noncontiguous(self, device, dtype):
+        data = torch.rand(2, 3, 4, 5, device=device, dtype=dtype).transpose(-1, -2)
+        aug = Normalize(mean=0.5, std=0.25, p=1.0)
+        self.assert_close(aug(data), (data - 0.5) / 0.25)
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -5014,6 +5105,39 @@ class TestRandomBoxBlur(BaseTester):
 
         self.assert_close(out[0, 0, 2, 2], img[0, 0, 1:4, 1:4].mean())
 
+    @pytest.mark.parametrize("border_type", ["circular", "CIRCULAR", 3, "BorderType.CIRCULAR"])
+    def test_border_type_accepts_the_spellings_of_the_other_blurs_4590(self, border_type, device, dtype):
+        from kornia.constants import BorderType
+        from kornia.filters import box_blur
+
+        if border_type == "BorderType.CIRCULAR":
+            border_type = BorderType.CIRCULAR
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        out = RandomBoxBlur((3, 3), border_type=border_type, p=1.0)(img.clone())
+
+        expected = box_blur(img, (3, 3), border_type="circular", separable=True)
+        torch.testing.assert_close(out, expected, rtol=0.0, atol=0.0)
+
+    def test_unknown_border_type_is_rejected_at_construction_4590(self):
+        with pytest.raises(KeyError):
+            RandomBoxBlur((3, 3), border_type="bogus")
+
+    @pytest.mark.parametrize("border_type", ["circular", 3, "BorderType.CIRCULAR"])
+    def test_per_call_border_type_override_is_honoured_4590(self, border_type, device, dtype):
+        from kornia.constants import BorderType
+        from kornia.filters import box_blur
+
+        if border_type == "BorderType.CIRCULAR":
+            border_type = BorderType.CIRCULAR
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        # forward(**kwargs) puts the raw override into `flags`, bypassing __init__'s normalization
+        out = RandomBoxBlur((3, 3), p=1.0)(img.clone(), border_type=border_type)
+
+        expected = box_blur(img, (3, 3), border_type="circular", separable=True)
+        torch.testing.assert_close(out, expected, rtol=0.0, atol=0.0)
+
 
 class TestPadTo(BaseTester):
     def test_smoke(self, device, dtype):
@@ -5096,6 +5220,116 @@ class TestRandomPlasma:
         aug = RandomPlasmaContrast(p=1.0).to(device)
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
+
+    @pytest.mark.parametrize(
+        "augmentation_cls",
+        [
+            RandomPlasmaBrightness,
+            RandomPlasmaContrast,
+            RandomPlasmaShadow,
+        ],
+    )
+    @pytest.mark.parametrize("spatial_shape", [(8, 8), (5, 9)])
+    def test_same_on_batch_reuses_plasma_map_4570(self, augmentation_cls, device, dtype, spatial_shape):
+        torch.manual_seed(4570)
+        image = torch.full((4, 3, *spatial_shape), 0.3, device=device, dtype=dtype)
+        aug = augmentation_cls(roughness=(0.2, 0.8), same_on_batch=True, p=1.0).to(device, dtype)
+        output = aug(image)
+        plasma = aug._params["plasma"]
+        expected_channels = 1 if augmentation_cls is RandomPlasmaShadow else 3
+        assert plasma.shape == (4, expected_channels, *spatial_shape)
+        assert plasma.device == image.device
+        assert plasma.dtype == image.dtype
+        assert torch.isfinite(plasma).all(), "plasma-same-on-batch: nonfinite map"
+        assert torch.equal(plasma, plasma[:1].expand_as(plasma)), "plasma-same-on-batch: map differs across batch"
+        assert torch.isfinite(output).all(), "plasma-same-on-batch: nonfinite output"
+        assert torch.equal(output, output[:1].expand_as(output)), "plasma-same-on-batch: output differs across batch"
+        assert output.shape == image.shape
+        assert output.device == image.device
+        assert output.dtype == image.dtype
+
+    @pytest.mark.parametrize(
+        "augmentation_cls",
+        [
+            RandomPlasmaBrightness,
+            RandomPlasmaContrast,
+            RandomPlasmaShadow,
+        ],
+    )
+    def test_different_on_batch_keeps_independent_maps_4570(self, augmentation_cls, device, dtype):
+        torch.manual_seed(4570)
+        image = torch.full((4, 3, 8, 8), 0.3, device=device, dtype=dtype)
+        aug = augmentation_cls(roughness=(0.2, 0.8), same_on_batch=False, p=1.0).to(device, dtype)
+        output = aug(image)
+        plasma = aug._params["plasma"]
+        assert plasma.shape[0] == image.shape[0]
+        assert torch.max(torch.abs(plasma[0] - plasma[1:])).item() > 0, "plasma-independent: maps unexpectedly equal"
+        assert torch.isfinite(output).all(), "plasma-independent: nonfinite output"
+
+    @pytest.mark.parametrize(
+        "augmentation_cls",
+        [
+            RandomPlasmaBrightness,
+            RandomPlasmaContrast,
+            RandomPlasmaShadow,
+        ],
+    )
+    def test_same_on_batch_params_replay_4570(self, augmentation_cls, device, dtype):
+        torch.manual_seed(4570)
+        image = torch.full((4, 3, 8, 8), 0.3, device=device, dtype=dtype)
+        aug = augmentation_cls(roughness=(0.2, 0.8), same_on_batch=True, p=1.0).to(device, dtype)
+        output = aug(image)
+        params = {key: value.clone() for key, value in aug._params.items()}
+        torch.manual_seed(123)
+        replayed = aug(image, params=params)
+        assert torch.equal(output, replayed), "plasma-replay: output changed with saved parameters"
+        assert torch.equal(params["plasma"], aug._params["plasma"]), "plasma-replay: saved map changed"
+        assert params["forward_input_shape"].tolist() == list(image.shape), (
+            "plasma-replay: input shape metadata changed"
+        )
+
+    @pytest.mark.parametrize(
+        "augmentation_cls",
+        [
+            RandomPlasmaBrightness,
+            RandomPlasmaContrast,
+            RandomPlasmaShadow,
+        ],
+    )
+    def test_same_on_batch_unbatched_keepdim_4570(self, augmentation_cls, device, dtype):
+        image = torch.full((3, 8, 8), 0.3, device=device, dtype=dtype)
+        aug = augmentation_cls(roughness=(0.2, 0.8), same_on_batch=True, p=1.0, keepdim=True).to(device, dtype)
+        output = aug(image)
+        assert output.shape == image.shape
+        assert output.device == image.device
+        assert output.dtype == image.dtype
+
+    @pytest.mark.parametrize(
+        "augmentation_cls",
+        [
+            RandomPlasmaBrightness,
+            RandomPlasmaContrast,
+            RandomPlasmaShadow,
+        ],
+    )
+    def test_same_on_batch_single_batch_map_4570(self, augmentation_cls, device, dtype):
+        torch.manual_seed(4570)
+        image = torch.full((1, 3, 5, 9), 0.3, device=device, dtype=dtype)
+        aug = augmentation_cls(roughness=(0.2, 0.8), same_on_batch=True, p=1.0).to(device, dtype)
+        output = aug(image)
+        plasma = aug._params["plasma"]
+        expected_channels = 1 if augmentation_cls is RandomPlasmaShadow else 3
+        assert plasma.shape == (1, expected_channels, 5, 9)
+        assert plasma.device == image.device
+        assert plasma.dtype == image.dtype
+        assert torch.isfinite(plasma).all(), "plasma-single-batch: nonfinite map"
+        assert torch.isfinite(output).all(), "plasma-single-batch: nonfinite output"
+        assert output.shape == image.shape
+        assert output.device == image.device
+        assert output.dtype == image.dtype
+        params = {key: value.clone() for key, value in aug._params.items()}
+        torch.manual_seed(123)
+        assert torch.equal(output, aug(image, params=params)), "plasma-single-batch: replay mismatch"
 
     @pytest.mark.parametrize(
         "augmentation_cls",
@@ -5333,6 +5567,25 @@ class TestPlanckianJitter(BaseTester):
         expected = self._get_expected_output_same_on_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    def test_planckian_jitter_preserves_dtype_4574(self, device, dtype):
+        input = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        output = RandomPlanckianJitter(p=1.0)(input)
+
+        assert output.dtype == input.dtype
+        assert output.device == input.device
+
+    # The half dtypes are named rather than taken from the fixture so the preservation is
+    # exercised on the default float32 leg too, not only on the two half-precision jobs.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_planckian_jitter_preserves_half_dtype_on_any_leg_4574(self, device, half_dtype):
+        if device.type == "mps" and half_dtype is torch.bfloat16:
+            pytest.skip("bfloat16 support on MPS is incomplete")
+        input = torch.rand(2, 3, 4, 4, device=device, dtype=half_dtype)
+        output = RandomPlanckianJitter(p=1.0)(input)
+
+        assert output.dtype == half_dtype
+        assert output.device == input.device
+
 
 class TestRandomRGBShift(BaseTester):
     def test_smoke(self, device, dtype):
@@ -5409,6 +5662,11 @@ class TestRandomTranslate(BaseTester):
 
 class TestRandomAutoContrast(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
+
+    def test_noncontiguous(self, device, dtype):
+        data = torch.rand(2, 3, 4, 5, device=device, dtype=dtype).transpose(-1, -2)
+        aug = kornia.augmentation.RandomAutoContrast(p=1.0)
+        self.assert_close(aug(data), aug(data.contiguous()))
 
     def test_smoke_no_transform(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
@@ -5509,6 +5767,25 @@ class TestRandomSnow(BaseTester):
         output_data = aug(input_data)
         assert output_data.shape == input_data.shape
 
+    def test_gray_patch_is_finite_and_replayed(self, device, dtype):
+        input_data = torch.full((1, 3, 4, 4), 0.25, device=device, dtype=dtype)
+        input_data[:, 0, 2:, 2:] = 0.9
+        input_data[:, 1, 2:, 2:] = 0.2
+        input_data[:, 2, 2:, 2:] = 0.4
+        aug = RandomSnow(snow_coefficient=(0.5, 0.5), brightness=(2.0, 2.0), p=1.0)
+        params = aug.forward_parameters(input_data.shape)
+        params["snow_coefficient"].fill_(0.5)
+        params["brightness"].fill_(2.0)
+        output_data = aug(input_data, params=params)
+        assert torch.isfinite(output_data).all(), "random-snow-gray-oracle: nonfinite output"
+        expected_gray = torch.full_like(output_data[..., :2, :2], 0.5)
+        self.assert_close(output_data[..., :2, :2], expected_gray)
+        replayed = aug(input_data, params=params)
+        self.assert_close(replayed, output_data)
+        assert output_data.shape == input_data.shape
+        assert output_data.device == input_data.device
+        assert output_data.dtype == input_data.dtype
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         input_data = torch.rand(1, 3, 6, 8, device=device, dtype=torch.float64)
@@ -5604,6 +5881,48 @@ class TestRandomRain(BaseTester):
             assert output_data.shape == batch_shape
         else:
             assert (*(1,) * (4 - len(batch_shape)), *batch_shape) == output_data.shape
+
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize(
+        "drop_height,drop_width,number_of_drops",
+        [((1, 1), (0, 0), (1, 1)), ((1, 2), (-3, -2), (1, 3)), ((3, 3), (2, 3), (5, 10)), ((5, 20), (-5, 5), (20, 40))],
+    )
+    def test_batched_rasterisation_matches_per_drop_reference_4530(
+        self, device, dtype, same_on_batch, drop_height, drop_width, number_of_drops
+    ):
+        # The drops are rasterised for the whole batch in one indexed write (#4530). This pins that
+        # against the straightforward formulation it replaced: one write per step of every drop of
+        # every sample. Both are fed the same params, so only the drawing code is compared, and the
+        # comparison is exact: a vectorised rewrite that moved a single pixel would fail here.
+        torch.manual_seed(0)
+        image = torch.rand(4, 3, 24, 30, device=device, dtype=dtype)
+        aug = RandomRain(
+            p=1.0,
+            drop_height=drop_height,
+            drop_width=drop_width,
+            number_of_drops=number_of_drops,
+            same_on_batch=same_on_batch,
+        )
+        torch.manual_seed(1)
+        params = aug.forward_parameters(image.shape)
+
+        reference = image.clone()
+        for i in range(image.shape[0]):
+            n = int(params["number_of_drops_factor"][i])
+            h, w = int(params["drop_height_factor"][i]), int(params["drop_width_factor"][i])
+            size = max(h, abs(w))
+            x = torch.linspace(0, h, steps=size, dtype=torch.long).to(device)
+            y = torch.linspace(0, w, steps=size, dtype=torch.long).to(device)
+            last_dy, last_dx = (h, w) if size > 1 else (0, 0)
+            rows, cols = image.shape[2] - last_dy, image.shape[3] - abs(last_dx)
+            coords = params["coordinates_factor"][i][:n]
+            r0 = (coords[:, 0] * rows).long().clamp(max=rows - 1).to(device)
+            c0 = (coords[:, 1] * cols).long().clamp(max=cols - 1).to(device) + max(-last_dx, 0)
+            for k in range(size):
+                reference[i, :, r0 + x[k], c0 + y[k]] = 200 / 255
+
+        out = aug.apply_transform(image, params, {})
+        assert torch.equal(out, reference)
 
     def test_smoke(self, device, dtype):
         input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)

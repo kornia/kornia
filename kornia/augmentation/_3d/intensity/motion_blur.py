@@ -61,6 +61,11 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
+        A tuple ``kernel_size`` is drawn once per call and shared across the batch, and each odd size inside
+        the range is equally likely, bounds included, so ``(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws
+        ``3, 5, ..., 19``. A range holding no odd size is rounded **up** out of the requested range instead, so
+        ``(4, 4)`` draws ``5``; a reversed pair such as ``(20, 3)`` raises a ``ValueError`` at construction.
+
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)
