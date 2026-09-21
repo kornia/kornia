@@ -78,9 +78,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           then expands it at application time, while the plasma classes with ``same_on_batch=True`` store an
           expanded ``(B, C, H, W)`` view with shared storage for the batch; ``RandomPlasmaShadow`` stores
           ``(B, 1, H, W)``. :class:`ColorJiggle` and :class:`ColorJitter` both draw an application ``order``;
-          it is shared by the whole batch. Only :class:`ColorJitter` takes a fixed ``order`` constructor
-          argument. Without one, on either class, an ``order`` tensor passed as a forward keyword, or
-          replayed ``params``, replaces the drawn order for that call; a fixed order ignores both.
+          it is shared by the whole batch. Both take a fixed ``order`` constructor argument. Without one,
+          an ``order`` tensor passed as a forward keyword, or replayed ``params``, replaces the drawn order
+          for that call; a fixed order ignores both.
         - where a class documents bounds for a parameter, an explicit range outside them usually raises at
           construction. These checks run on the forward pass instead: :class:`RandomGamma`'s non-negativity checks
           on ``gamma`` and ``gain``, which live in :func:`kornia.enhance.adjust_gamma`, and

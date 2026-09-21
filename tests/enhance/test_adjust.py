@@ -126,6 +126,49 @@ class TestAdjustSaturation(BaseTester):
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
         self.assert_close(f(data), expected)
 
+    def test_saturation_matches_hsv_reference_per_batch_factor(self, device, dtype):
+        # Keep adjust_saturation's HSV semantics while allowing its implementation to avoid
+        # materializing an HSV image. The values avoid hue-sector boundaries, where equivalent
+        # formulas can legitimately differ by a small floating-point rounding error.
+        image = torch.tensor(
+            [
+                [[[0.2, 0.4]], [[0.8, 0.7]], [[0.5, 0.1]]],
+                [[[0.9, 0.3]], [[0.2, 0.8]], [[0.6, 0.5]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        factor = torch.tensor([0.0, 1.5], device=device, dtype=dtype)
+
+        hsv = kornia.color.rgb_to_hsv(image)
+        expected_hsv = hsv.clone()
+        expected_hsv[:, 1:2] = (hsv[:, 1:2] * factor[:, None, None, None]).clamp(0, 1)
+        expected = kornia.color.hsv_to_rgb(expected_hsv)
+
+        self.assert_close(kornia.enhance.adjust_saturation(image, factor), expected, low_tolerance=True)
+
+    def test_zero_delta_gradient_is_finite(self, device, dtype):
+        image = torch.tensor([0.0, 0.5], device=device, dtype=dtype).view(2, 1, 1, 1).expand(2, 3, 2, 2).clone()
+        image.requires_grad_()
+        result = kornia.enhance.adjust_saturation(image, 1.5)
+        (gradient,) = torch.autograd.grad(result.sum(), image)
+        assert torch.isfinite(result).all()
+        assert torch.isfinite(gradient).all()
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("dtype", [torch.uint8, torch.int32])
+    def test_integer_input_matches_hsv_reference(self, dtype):
+        image = torch.tensor([1, 0, 0], dtype=dtype).view(1, 3, 1, 1)
+        expected = kornia.color.hsv_to_rgb(kornia.enhance.adjust_saturation_raw(kornia.color.rgb_to_hsv(image), 0.5))
+        self.assert_close(kornia.enhance.adjust_saturation(image, 0.5), expected)
+
+    @pytest.mark.device_agnostic
+    def test_tied_extrema_use_symmetric_subgradient(self):
+        image = torch.tensor([0.8, 0.8, 0.2], dtype=torch.float64).view(1, 3, 1, 1).requires_grad_()
+        result = kornia.enhance.adjust_saturation(image, 0.5)
+        (gradient,) = torch.autograd.grad(result.sum(), image)
+        self.assert_close(gradient.flatten(), torch.tensor([1.25, 1.25, 0.5], dtype=torch.float64))
+
     def test_saturation_with_gray_subtraction_one_batch(self, device, dtype):
         data = torch.tensor(
             [
@@ -144,6 +187,11 @@ class TestAdjustSaturation(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_saturation, (img, 2.0))
+
+    def test_gradcheck_factor(self, device):
+        img = torch.rand(2, 3, 2, 3, device=device, dtype=torch.float64)
+        factor = torch.tensor([0.8, 1.2], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.enhance.adjust_saturation, (img, factor))
 
     def test_gradcheck_with_gray_subtraction(self, device):
         batch_size, channels, height, width = 2, 3, 4, 5

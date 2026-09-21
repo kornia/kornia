@@ -1333,6 +1333,51 @@ class TestColorJiggle(BaseTester):
         res = f(input)
         self.assert_close(res[0], res[1])
 
+    def test_fixed_order(self, device, dtype):
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        params["order"] = torch.tensor([3, 2, 1, 0], device=device, dtype=torch.long)
+        self.assert_close(op(image, params=params), expected)
+        with pytest.raises(ValueError, match=r"entries must be in 0\.\.3"):
+            ColorJiggle(order=(0, 1, 9))
+
+    def test_dynamo_fixed_order(self, device, dtype):
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)
+        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        compiled = torch.compile(op, fullgraph=True)
+        expected = op(image, params=params)
+        actual = compiled(image, params=params)
+        self.assert_close(actual, expected)
+        expected_grad = torch.autograd.grad(expected.sum(), image, retain_graph=True)[0]
+        actual_grad = torch.autograd.grad(actual.sum(), image, retain_graph=True)[0]
+        self.assert_close(actual_grad, expected_grad)
+
+        # The full forward samples factors in graph while using the fixed application order.
+        fresh = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert torch.compile(fresh, fullgraph=True)(image).shape == image.shape
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("layout", ["channels_last", "transposed"])
+    def test_dynamo_fixed_order_noncontiguous(self, layout):
+        image = torch.rand(2, 3, 8, 10)
+        if layout == "channels_last":
+            image = image.to(memory_format=torch.channels_last)
+        else:
+            image = image.transpose(-1, -2)
+        image.requires_grad_()
+
+        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        actual = torch.compile(op, fullgraph=True)(image, params=params)
+        self.assert_close(actual, expected)
+        expected_grad = torch.autograd.grad(expected.sum(), image, retain_graph=True)[0]
+        actual_grad = torch.autograd.grad(actual.sum(), image)[0]
+        self.assert_close(actual_grad, expected_grad)
+
     def _get_expected_brightness(self, device, dtype):
         return torch.tensor(
             [
