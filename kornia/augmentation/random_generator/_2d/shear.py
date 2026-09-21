@@ -65,8 +65,7 @@ class ShearGenerator(RandomGeneratorBase):
         self.shear = shear
 
     def __repr__(self) -> str:
-        repr = f"shear={self.shear}"
-        return repr
+        return f"shear={self.shear}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         _shear = _shear_bound(self.shear, device, dtype)

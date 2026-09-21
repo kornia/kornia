@@ -49,8 +49,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         pad_if_needed: It will F.pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
-        fill: Pixel fill value for constant fill. Default is 0. If a tuple of
-            length 3, it is used to fill R, G, B channels respectively.
+        fill: Pixel fill value for constant fill. Default is 0.
             This value is only used when the padding_mode is constant.
         padding_mode: Type of padding. Should be: constant, reflect, replicate.
         resample: the interpolation mode.

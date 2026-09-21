@@ -277,6 +277,20 @@ class TestRandomMixUpV2(BaseTester):
         if untouched.any():
             self.assert_close(output[untouched], input[untouched])
 
+    def test_mixup_prob_single_gate(self, device, dtype):
+        # Regression test for #4649: p must not be applied twice
+        torch.manual_seed(42)
+        x = torch.rand(4, 1, 8, 8, device=device, dtype=dtype)
+        aug = RandomMixUpV2(p=0.5)
+        assert aug._param_generator.p == 1.0
+
+        for _ in range(20):
+            aug(x)
+            bp = aug._params["batch_prob"]
+            if bp[0] > 0:
+                # All rows in a selected batch must be mixed
+                assert (aug._params["mixup_lambdas"] > 0).all()
+
 
 class TestRandomCutMixV2(BaseTester):
     def test_smoke(self):
@@ -491,6 +505,24 @@ class TestRandomCutMixV2(BaseTester):
         expected_lambda = w.to(torch.float64) * h.to(torch.float64) / (15 * 17)
 
         self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
+
+    def test_cutmix_prob_single_gate(self, device, dtype):
+        # Regression test for #4649: p must not be applied twice
+        from kornia.geometry.bbox import infer_bbox_shape
+
+        torch.manual_seed(42)
+        x = torch.rand(4, 1, 16, 16, device=device, dtype=dtype)
+        aug = RandomCutMixV2(p=0.5, cut_size=(0.2, 0.8), use_correct_lambda=True)
+        assert aug._param_generator.p == 1.0
+
+        for _ in range(20):
+            aug(x)
+            bp = aug._params["batch_prob"]
+            if bp[0] > 0:
+                # All rows in a selected batch must have non-empty crops
+                w, h = infer_bbox_shape(aug._params["crop_src"][0])
+                assert (w > 0).all()
+                assert (h > 0).all()
 
 
 class TestRandomMosaic(BaseTester):

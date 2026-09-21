@@ -39,6 +39,8 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py
     <https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py>`_.
 
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
     The loss and accuracy are computed as:
 
     .. code-block:: python
@@ -73,6 +75,20 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         - Adjusted image, shape of :math:`(B, C, H, W)`.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, 3)`.
 
+    Convention:
+        - With ``data_keys=["input", "class"]``, the class output is ``(B, 3)``: its columns are the original
+          label, the label selected by ``_params["mixup_pairs"]``, and the sampled lambda. The image is
+          ``input * (1 - lambda) + paired_input * lambda``. Labels must be one-dimensional and are returned as
+          floating values in the image dtype, except that a ``float16`` or ``bfloat16`` image yields ``float32``
+          labels so integer class ids up to ``2 ** 24`` stay exact.
+        - ``p`` is a batch-wide gate for this class and is applied once: one draw per call selects the whole batch
+          with probability ``p``, so ``_params["batch_prob"]`` is all ones or all zeros. Every row of a selected
+          batch draws its lambda from ``lambda_val`` and none is dropped again; a row's image can still be unchanged
+          if its lambda is zero or it is paired with itself.
+          At ``p=0`` the image is unchanged and the class output holds
+          the original label twice with a zero lambda. ``same_on_batch=True`` shares lambda draws, but it does not
+          constrain the pairing indices: they can differ across rows and can select the original sample.
+
     Note:
         This implementation would randomly mixup images in a batch. Ideally, the larger batch size would be preferred.
 
@@ -103,7 +119,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = rg.MixupGenerator(lambda_val, p=p)
+        self._param_generator = rg.MixupGenerator(lambda_val, p=1.0)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
@@ -111,15 +127,14 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         input_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
         lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(input.device, dtype=input.dtype)
-        inputs = input * (1 - lam) + input_permute * lam
-        return inputs
+        return input * (1 - lam) + input_permute * lam
 
     def apply_non_transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         image_dtype = DType.to_torch(int(params["dtype"].item()))
         calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
-        out_labels = torch.stack(
+        return torch.stack(
             [
                 input.to(device=input.device, dtype=calc_dtype),
                 input.to(device=input.device, dtype=calc_dtype),
@@ -127,7 +142,6 @@ class RandomMixUpV2(MixAugmentationBaseV2):
             ],
             -1,
         )
-        return out_labels
 
     def apply_transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
@@ -136,7 +150,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
         image_dtype = DType.to_torch(int(params["dtype"].item()))
         calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
-        out_labels = torch.stack(
+        return torch.stack(
             [
                 input.to(device=input.device, dtype=calc_dtype),
                 labels_permute.to(device=input.device, dtype=calc_dtype),
@@ -144,4 +158,3 @@ class RandomMixUpV2(MixAugmentationBaseV2):
             ],
             -1,
         )
-        return out_labels
