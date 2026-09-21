@@ -67,10 +67,10 @@ def track_points_lk(
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Track sparse points between grayscale images using single-scale Lucas--Kanade.
 
-    This translation-only inverse-compositional solver samples bilinear patches and reuses
-    the reference-image central-difference gradients and 2x2 normal matrix. See Baker and
-    Matthews, *Lucas-Kanade 20 Years On: A Unifying Framework* (IJCV, 2004),
-    https://www.ri.cmu.edu/pub_files/pub4/baker_simon_2004_1/baker_simon_2004_1.pdf.
+    This translation-only inverse-compositional solver follows :cite:`BakerMatthews2004`,
+    building on :cite:`LucasKanade1981`. It samples bilinear patches and reuses the
+    reference-image central-difference gradients and 2x2 normal matrix. The paper is
+    available at https://publications.ri.cmu.edu/lucas-kanade-20-years-on-a-unifying-framework.
 
     Args:
         image_prev: Reference grayscale image of shape (B,1,H,W).
@@ -98,6 +98,11 @@ def track_points_lk(
         Invalid operands are sanitized before sampling and solving. Gradients are supported
         through valid tracks away from interpolation, stopping and validity boundaries.
         This is a local, single-scale method; it does not build a pyramid.
+
+    See Also:
+        :class:`kornia.tracking.HomographyTracker` tracks a planar target with a stateful
+        homography estimator. This function is a stateless primitive for supplied points.
+        :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator` estimates a global image transform.
     """
     for name, value in (
         ("image_prev", image_prev),
