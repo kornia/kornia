@@ -96,6 +96,7 @@ from .sift import SIFTDescriptorFromPyramid
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
+from .template_matching import match_template_zncc
 from .tfeat import TFeat
 from .xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
@@ -181,6 +182,7 @@ __all__ = [
     "match_nn",
     "match_smnn",
     "match_snn",
+    "match_template_zncc",
     "normalize_laf",
     "perspective_transform_lafs",
     "rotate_laf",

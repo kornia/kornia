@@ -21,6 +21,8 @@ differentiable PyTorch modules. For guidance on which model to pick, see the
      - Detector + descriptor pipelines: DISK, ALIKED, DeDoDe, XFeat, SIFTFeature, KeyNetAffNetHardNet and friends.
    * - :doc:`feature.matching`
      - Nearest-neighbour, mutual, ratio-test, FGINN and AdaLAM matching; LightGlue and LoFTR.
+   * - :doc:`feature.template_matching`
+     - Batched zero-mean normalized cross-correlation for fixed-scale template localization.
    * - :doc:`feature.laf`
      - Local affine frames (LAFs): patch extraction, normalization, orientation and affine shape estimation.
    * - :doc:`feature.layers`
@@ -33,5 +35,6 @@ differentiable PyTorch modules. For guidance on which model to pick, see the
    feature.descriptors
    feature.local_features
    feature.matching
+   feature.template_matching
    feature.laf
    feature.layers
