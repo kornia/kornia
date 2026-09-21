@@ -1733,6 +1733,18 @@ class TestQuaternionToRotationMatrix(BaseTester):
         assert torch.isfinite(q_f16.grad).all()
         self.assert_close(q_f16.grad, torch.zeros(4, device=device, dtype=torch.float16), atol=1e-3, rtol=1e-3)
 
+    @pytest.mark.parametrize("eps", [1e-12, 1e-3])
+    def test_normalize_quaternion_zero_gradient_is_one_over_eps(self, device, dtype, eps):
+        # Below eps normalize_quaternion is q / eps, so its derivative at q = 0 is I / eps, as on main (F.normalize).
+        # Only float16 with an eps whose reciprocal overflows (the #4623 case) substitutes a zero gradient.
+        q = torch.zeros(4, device=device, dtype=dtype, requires_grad=True)
+        kornia.geometry.conversions.normalize_quaternion(q, eps=eps).sum().backward()
+        if dtype == torch.float16 and eps * 65504.0 < 1.0:
+            expected = torch.zeros(4, device=device, dtype=dtype)
+        else:
+            expected = torch.full((4,), 1.0 / eps, device=device, dtype=dtype)
+        self.assert_close(q.grad, expected)
+
     def test_normalize_quaternion_eps_zero_gradient_4623(self, device, dtype):
         # Issue #4623: normalize_quaternion(q, eps=0.0) on non-zero q must give finite, correct gradients across dtypes.
         q = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype, requires_grad=True)

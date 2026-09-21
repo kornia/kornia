@@ -752,7 +752,11 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     out = quaternion / denom
     if eps == 0.0:
         return torch.where(mask, out, torch.full_like(quaternion, float("nan")))
-    return torch.where(mask, out, torch.zeros_like(quaternion))
+    if quaternion.dtype == torch.float16 and safe_eps * 65504.0 < 1.0:
+        # The exact derivative of q / eps at q = 0 is I / eps, which overflows float16 (#4623); use a zero gradient.
+        return torch.where(mask, out, torch.zeros_like(quaternion))
+    # Below eps the function is q / eps, so the zero quaternion keeps its exact derivative I / eps.
+    return torch.where(mask, out, quaternion / torch.full_like(quaternion, safe_eps))
 
 
 # based on:
