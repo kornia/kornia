@@ -1371,6 +1371,17 @@ class TestColorJiggle(BaseTester):
         )
         assert result.returncode == 0, result.stderr
 
+    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
+        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
+        # 3.13), so a fixed order must fall back to the Python dispatch there.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
+        fallback = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert torch.equal(fallback(image, params=params), expected)
+
     def test_dynamo_fixed_order(self, device, dtype):
         image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)
         op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
