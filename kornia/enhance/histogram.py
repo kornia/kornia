@@ -163,6 +163,17 @@ def histogram2d(
     return pdf
 
 
+def _restore_float_dtype(hist: torch.Tensor, image: torch.Tensor, auto_centers: bool) -> torch.Tensor:
+    """Hand back the image's own dtype after wider bin centers promoted the result.
+
+    Only for auto-built centers on a floating-point image: an integer image or explicit ``centers`` keep the promoted
+    dtype they always had, and casting a KDE result into an integer dtype would truncate it (uint8 wraps modulo 256).
+    """
+    if auto_centers and image.is_floating_point():
+        return hist.to(image.dtype)
+    return hist
+
+
 def image_histogram2d(
     image: torch.Tensor,
     min: float = 0.0,
@@ -257,10 +268,7 @@ def image_histogram2d(
         raise ValueError(f"Kernel must be 'triangular', 'gaussian', 'uniform' or 'epanechnikov'. Got {kernel}.")
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
-    if auto_centers and image.is_floating_point():
-        # The wider centers promoted the result; hand back the image's own dtype as before. An integer image or explicit
-        # `centers` keep the promoted dtype they always had (casting a KDE result into an integer dtype would wrap).
-        hist = hist.to(image.dtype)
+    hist = _restore_float_dtype(hist, image, auto_centers)
 
     if return_pdf:
         normalization = torch.sum(hist, dim=-1, keepdim=True) + eps
