@@ -25,24 +25,35 @@ kornia.enhance         torchvision v2         OpenCV / albumentations       scik
 =====================  =====================  ============================  ===================================
 ``normalize``          ``normalize``          albumentations ``Normalize``  —
 ``adjust_gamma``       ``adjust_gamma``       ``cv2.LUT`` (uint8)           ``exposure.adjust_gamma``
-``adjust_hue``         ``adjust_hue``         —                             —
-``adjust_saturation``  ``adjust_saturation``  —                             PIL ``ImageEnhance.Color``
+                                              ``RandomGamma``
+``adjust_hue``         ``adjust_hue``         ``ColorJitter(hue=)``         —
+``adjust_saturation``  ``adjust_saturation``  ``ColorJitter(saturation=)``  PIL ``ImageEnhance.Color``
 ``equalize``           ``equalize`` (uint8)   ``cv2.equalizeHist``/channel  ``equalize_hist``; PIL ``equalize``
+                                              ``Equalize``
 ``equalize_clahe``     —                      ``cv2.createCLAHE``/channel   ``exposure.equalize_adapthist``
+                                              ``CLAHE``
 =====================  =====================  ============================  ===================================
 
 Regimes (see ``benchmarks/README.md``): kornia/torchvision run a batched float BCHW tensor on CPU
 or GPU and kornia is differentiable, except torchvision's ``equalize``, which runs the same batch
-as uint8 BCHW (its documented input); OpenCV, albumentations and PIL run single uint8 HWC images
-on CPU in a Python loop, their native regime; scikit-image runs normalized float HWC images per
-image. Parameters are matched: mean/std ImageNet normalization, gamma 2.2, a hue shift of 0.1 turn
-(``0.2 * pi`` radians in kornia, ``0.1`` in torchvision), saturation 1.5, and CLAHE with clip
-limit 40 on an 8x8 grid. The gamma LUT is the native uint8 implementation of a pointwise curve.
-CLAHE clip limits are not interchangeable across libraries: OpenCV and kornia use an absolute
-multiple of the uniform bin height, scikit-image a normalized fraction, here set to
-``40 / 256`` — equal in spirit only. ``adjust_saturation`` is not the same algorithm across
-columns: kornia scales S in HSV space and converts back, while torchvision and PIL blend with the
-grayscale image (kornia's ``adjust_saturation_with_gray_subtraction``); the row times each
+as uint8 BCHW (its documented input); OpenCV, albumentations and PIL run single uint8 HWC images on
+CPU in a Python loop, their native regime; scikit-image runs normalized float HWC images per image.
+PIL receives ready-made ``Image`` objects, as kornia receives a ready-made tensor. OpenCV's
+per-channel ops split and merge with ``cv2.split``/``cv2.merge``. The albumentations transforms are
+pinned to the same fixed parameter (``gamma_limit``, ``saturation`` and ``hue`` as one-point
+ranges, the other ``ColorJitter`` factors at identity, which it skips). Parameters are matched:
+mean/std ImageNet normalization, gamma 2.2, a hue shift of 0.1 turn (``0.2 * pi`` radians in
+kornia, ``0.1`` in torchvision), saturation 1.5, and CLAHE with clip limit 40 on an 8x8 grid. The
+gamma LUT is the native uint8 implementation of a pointwise curve. CLAHE clip limits are not
+interchangeable across libraries: OpenCV and kornia use an absolute multiple of the uniform bin
+height, scikit-image a normalized fraction, here set to ``40 / 256`` — equal in spirit only.
+albumentations' ``CLAHE`` does less work on RGB input: it converts to Lab, equalizes only the L
+channel and converts back, while kornia, OpenCV and scikit-image equalize all three channels; its
+cell is the transform as users call it, not the same computation. scikit-image's ``adjust_gamma``
+runs on float here, the documented regime; on ``uint8`` it uses a lookup table and is several times
+faster, which the OpenCV LUT cell represents. ``adjust_saturation`` is not the same algorithm
+across columns: kornia scales S in HSV space and converts back, while torchvision and PIL blend
+with the grayscale image (kornia's ``adjust_saturation_with_gray_subtraction``); the row times each
 library's saturation adjustment as users call it. Throughput is img/s.
 
 Usage:
@@ -57,7 +68,7 @@ import math
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import torch
@@ -102,6 +113,7 @@ def build_ops(
     imgs_u8, batch_f = image_batch(b, h, w, device, dtype)
     imgs_f = [im.astype(np.float32) / 255.0 for im in imgs_u8]
     batch_u8 = (batch_f.float() * 255).round().to(torch.uint8)
+    pil_imgs = [pil.fromarray(im) for im in imgs_u8] if pil else []
     mean = torch.tensor(MEAN, device=device, dtype=dtype)
     std = torch.tensor(STD, device=device, dtype=dtype)
 
@@ -111,11 +123,18 @@ def build_ops(
     def include(name: str) -> bool:
         return selected is None or name in selected
 
-    def per_channel(fn: object, images: list[np.ndarray]) -> Backend:
-        return lambda: [np.stack([fn(im[..., c]) for c in range(im.shape[-1])], axis=-1) for im in images]
+    def cv_per_channel(fn: Callable[[np.ndarray], np.ndarray]) -> Backend:
+        return lambda: [cv2.merge([fn(c) for c in cv2.split(im)]) for im in imgs_u8]
+
+    def sk_per_channel(fn: Callable[[np.ndarray], np.ndarray]) -> Backend:
+        return lambda: [np.stack([fn(im[..., c]) for c in range(im.shape[-1])], axis=-1) for im in imgs_f]
 
     def alb(t: object) -> Backend:
         return lambda: [t(image=im)["image"] for im in imgs_u8]
+
+    def color_jitter(**factor: tuple[float, float]) -> object:
+        identity = {"brightness": (1.0, 1.0), "contrast": (1.0, 1.0), "saturation": (1.0, 1.0), "hue": (0.0, 0.0)}
+        return A.ColorJitter(**{**identity, **factor}, p=1.0)
 
     if include("normalize"):
         row = kornia_row("normalize", KE.normalize, batch_f, mean, std)
@@ -129,35 +148,39 @@ def build_ops(
         if cv2:
             lut = np.clip(((np.arange(256) / 255.0) ** GAMMA) * 255.0 + 0.5, 0, 255).astype(np.uint8)
             row["opencv"] = lambda: [cv2.LUT(im, lut) for im in imgs_u8]
+        row["albumentations"] = alb(A.RandomGamma(gamma_limit=(GAMMA * 100, GAMMA * 100), p=1.0)) if A else None
         row["scikit-image"] = (lambda: [ske.adjust_gamma(im, GAMMA) for im in imgs_f]) if ske else None
         ops["adjust_gamma"] = row
 
     if include("adjust_hue"):
         row = kornia_row("adjust_hue", KE.adjust_hue, batch_f, 2 * math.pi * HUE_TURN)
         row["torchvision v2"] = (lambda: tvf.adjust_hue(batch_f, HUE_TURN)) if tvf else None
+        row["albumentations"] = alb(color_jitter(hue=(HUE_TURN, HUE_TURN))) if A else None
         ops["adjust_hue"] = row
 
     if include("adjust_saturation"):
         row = kornia_row("adjust_saturation", KE.adjust_saturation, batch_f, SATURATION)
         row["torchvision v2"] = (lambda: tvf.adjust_saturation(batch_f, SATURATION)) if tvf else None
+        row["albumentations"] = alb(color_jitter(saturation=(SATURATION, SATURATION))) if A else None
         if pil and pil_enh:
-            row["PIL"] = lambda: [pil_enh.Color(pil.fromarray(im)).enhance(SATURATION) for im in imgs_u8]
+            row["PIL"] = lambda: [pil_enh.Color(im).enhance(SATURATION) for im in pil_imgs]
         ops["adjust_saturation"] = row
 
     if include("equalize"):
         row = kornia_row("equalize", KE.equalize, batch_f)
         row["torchvision v2"] = (lambda: tvf.equalize(batch_u8)) if tvf else None
-        row["opencv"] = per_channel(cv2.equalizeHist, imgs_u8) if cv2 else None
-        row["scikit-image"] = per_channel(ske.equalize_hist, imgs_f) if ske else None
+        row["albumentations"] = alb(A.Equalize(mode="cv", by_channels=True, p=1.0)) if A else None
+        row["opencv"] = cv_per_channel(cv2.equalizeHist) if cv2 else None
+        row["scikit-image"] = sk_per_channel(ske.equalize_hist) if ske else None
         if pil and pil_ops:
-            row["PIL"] = lambda: [pil_ops.equalize(pil.fromarray(im)) for im in imgs_u8]
+            row["PIL"] = lambda: [pil_ops.equalize(im) for im in pil_imgs]
         ops["equalize"] = row
 
     if include("equalize_clahe"):
         row = kornia_row("equalize_clahe", KE.equalize_clahe, batch_f, CLAHE_CLIP, CLAHE_GRID)
         if cv2:
             clahe = cv2.createCLAHE(clipLimit=CLAHE_CLIP, tileGridSize=CLAHE_GRID)
-            row["opencv"] = per_channel(clahe.apply, imgs_u8)
+            row["opencv"] = cv_per_channel(clahe.apply)
         row["albumentations"] = (
             alb(A.CLAHE(clip_limit=(CLAHE_CLIP, CLAHE_CLIP), tile_grid_size=CLAHE_GRID, p=1.0)) if A else None
         )
@@ -196,7 +219,8 @@ def main() -> None:
         units="img/s",
         regimes=[
             "kornia/torchvision: batched float BCHW (torchvision equalize: uint8 BCHW); "
-            "albumentations/opencv/PIL: uint8 HWC per-image loop (CPU); scikit-image: normalized float HWC loop"
+            "albumentations/opencv/PIL: uint8 HWC per-image loop (CPU); scikit-image: normalized float HWC loop",
+            "PIL: prebuilt Image objects; albumentations CLAHE equalizes only L in Lab, the others all 3 channels",
         ],
         missing=[(label, imported[key][1]) for key, label in labels.items() if libs[key] is None],
     )

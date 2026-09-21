@@ -14,7 +14,7 @@ otherwise reach for. All flagships share one command line, one console layout an
 | Suite | Flagship ops | Baselines |
 | --- | --- | --- |
 | [`augmentation`](augmentation/flagship.py) | flip, affine, perspective, resized crop, color jiggle, blur, brightness, grayscale (class API, sampling included) | torchvision v2, albumentations, OpenCV, PIL |
-| [`color`](color/flagship.py) | grayscale, HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV, PIL |
+| [`color`](color/flagship.py) | grayscale, HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV (per image and stacked), PIL |
 | [`contrib`](contrib/flagship.py) | exact connected components, distance transform | scikit-image, SciPy, OpenCV |
 | [`enhance`](enhance/flagship.py) | normalize, gamma, hue, saturation, equalize, CLAHE | torchvision v2, albumentations, scikit-image, OpenCV, PIL |
 | [`feature`](feature/flagship.py) | Harris and GFTT responses, SIFT detect+describe, SNN matching | scikit-image, OpenCV |
@@ -22,8 +22,8 @@ otherwise reach for. All flagships share one command line, one console layout an
 | [`geometry`](geometry/flagship.py) | warp perspective/affine, rotate, resize, perspective-transform solve | torchvision v2, OpenCV |
 | [`io`](io/flagship.py) | JPEG and PNG decode to an RGB uint8 tensor | torchvision, OpenCV, PIL |
 | [`losses`](losses/flagship.py) | binary focal, focal, Dice, SSIM, total variation (forward + backward) | torchvision |
-| [`metrics`](metrics/flagship.py) | PSNR, SSIM, mean IoU | scikit-image |
-| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | scikit-image, OpenCV |
+| [`metrics`](metrics/flagship.py) | PSNR, SSIM, mean IoU | scikit-image, OpenCV |
+| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | albumentations, scikit-image, OpenCV |
 
 Modules without a flagship: `models`, `tracking` and the model wrappers in `contrib` need
 downloaded weights (learned local features are covered by `feature/local_features.py`); `nerf`,
@@ -92,6 +92,18 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
 - **Equal footing + honest regimes:** identical transform parameters and interpolation across
   backends; state each backend's regime (batched float tensor vs per-image uint8 loop) instead
   of pretending the columns are apples-to-apples. Publish losses alongside wins.
+- **Every baseline at its best:** a baseline cell times the library's idiomatic fastest call,
+  not a convenient one. Build its inputs outside the timed call, as kornia's tensor is: PIL gets
+  ready-made `Image` objects, a mask gets the dtype the library's fast path takes (`bool` for
+  scikit-image's `label`). Use the library's own idioms (`cv2.split`/`cv2.merge`, not strided
+  slices plus `np.stack`), and fill a column wherever the library has the op (`cv2.PSNR`,
+  albumentations' transforms). When the call does different work, such as albumentations' `CLAHE`
+  equalizing only L in Lab, say so in the regime text. Each of these cost a published ratio 1.3x
+  to 3.3x in #4723's first review.
+- **One thread count for every library:** `setup_run` pins OpenCV to `--threads` as well as torch
+  and records `opencv_num_threads`; the header prints both. OpenCV builds whose parallel backend
+  ignores `setNumThreads` (GCD in the macOS wheels) keep every core, and the header says so in a
+  `NOTE`.
 - **Public API only:** benchmark `kornia.*` as users call it — no private helpers, no
   reimplementations inside the script.
 
@@ -111,6 +123,7 @@ One file per run:
     "kornia": "0.9.0rc1",
     "device": "cpu",
     "torch_num_threads": 4,
+    "opencv_num_threads": 4,
     "opencv": "4.11.0",
     "torchvision": null,
     "numpy": "2.4.0"
@@ -148,7 +161,7 @@ All flagships build on the same helpers in [`common.py`](common.py), so their ou
   `--contribute`, `--machine-slug`. `--ops` rejects names the suite does not have.
 - **Header** (`start_run`), in this order: `# <suite> benchmark — commit … — platform`, the
   software stack, `# kornia source: …`, the CUDA device when there is one,
-  `# device=…, dtype=…, threads=…, size=… — throughput <units>`, one line per backend regime,
+  `# device=…, dtype=…, threads=… (opencv …), size=… — throughput <units>`, one line per backend regime,
   the meaning of `-`, then one `# NOTE:` per unavailable library or eager-only op.
 - **Tables** (`run_batch_sweep`): one per batch size, op names left, one right-aligned
   throughput column per backend, units at the end of the header row. `-` is a skipped cell,
@@ -427,7 +440,8 @@ torchvision 0.24.1, albumentations 2.0.8, OpenCV 4.11.0, Pillow 12.3, float32, 2
 4 threads, batch 32, throughput img/s. Timed region = parameter sampling + application through
 each library's random-transform class API; kornia/torchvision run a batched float tensor,
 albumentations/OpenCV/PIL a per-image uint8 CPU loop. CUDA tables follow the PR-thread protocol
-used for the geometry suite.
+used for the geometry suite. These runs predate prebuilt PIL inputs: the PIL cells include the
+`Image.fromarray` conversion, so PIL is faster than shown.
 
 `--device cpu --compile`:
 

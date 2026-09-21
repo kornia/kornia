@@ -15,23 +15,25 @@
 # limitations under the License.
 #
 
-"""Flagship morphology benchmark: kornia.morphology vs OpenCV and scikit-image.
+"""Flagship morphology benchmark: kornia.morphology vs OpenCV, albumentations and scikit-image.
 
 Covers the two primitives and the two most used compound operators, all with a 5x5 square
 structuring element:
 
-=================  ========================================  ==========================================
-kornia.morphology  OpenCV (uint8 HWC per-image loop)         scikit-image (per channel)
-=================  ========================================  ==========================================
-``dilation``       ``cv2.dilate``                            ``morphology.dilation``
-``erosion``        ``cv2.erode``                             ``morphology.erosion``
-``opening``        ``cv2.morphologyEx(MORPH_OPEN)``          ``morphology.opening``
-``gradient``       ``cv2.morphologyEx(MORPH_GRADIENT)``      ``dilation - erosion``
-=================  ========================================  ==========================================
+=================  ====================================  ================================  ==========================
+kornia.morphology  OpenCV (uint8 HWC per-image loop)     albumentations ``Morphological``  scikit-image (per channel)
+=================  ====================================  ================================  ==========================
+``dilation``       ``cv2.dilate``                        ``operation="dilation"``          ``morphology.dilation``
+``erosion``        ``cv2.erode``                         ``operation="erosion"``           ``morphology.erosion``
+``opening``        ``cv2.morphologyEx(MORPH_OPEN)``      —                                 ``morphology.opening``
+``gradient``       ``cv2.morphologyEx(MORPH_GRADIENT)``  —                                 ``dilation - erosion``
+=================  ====================================  ================================  ==========================
 
 Regimes (see ``benchmarks/README.md``): kornia runs a batched float BCHW tensor on CPU or GPU with
 its default ``unfold`` engine and is differentiable; OpenCV runs single uint8 HWC images on CPU in
-a Python loop, its native regime, and filters all channels in one call; scikit-image runs the
+a Python loop, its native regime, and filters all channels in one call; albumentations'
+``Morphological`` runs the same loop through its transform call, with its elliptical element
+replaced by the 5x5 square (albumentations offers only dilation and erosion); scikit-image runs the
 same uint8 images one channel at a time, because its grayscale morphology is 2-D. Borders are each
 library's default: kornia's ``geodesic`` border and OpenCV's default border value both leave
 out-of-image pixels out of the max/min; scikit-image reflects at the border (``mode="reflect"``).
@@ -77,6 +79,16 @@ OPS = ("dilation", "erosion", "opening", "gradient")
 KERNEL_SIZE = 5
 
 
+def square_morphological(A: ModuleType, operation: str, element: np.ndarray) -> object:
+    """albumentations' ``Morphological`` with a fixed element; its own draws an ellipse of size ``scale``."""
+
+    class SquareMorphological(A.Morphological):
+        def get_params(self) -> dict[str, np.ndarray]:
+            return {"kernel": element}
+
+    return SquareMorphological(operation=operation, p=1.0)
+
+
 def build_ops(
     b: int,
     h: int,
@@ -86,6 +98,7 @@ def build_ops(
     do_compile: bool,
     cv2: Optional[ModuleType],
     skm: Optional[ModuleType],
+    A: Optional[ModuleType],
     skip_compile: frozenset[str] = frozenset(),
     selected: Optional[frozenset[str]] = None,
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
@@ -120,12 +133,15 @@ def build_ops(
         "opening": (lambda ch: skm.opening(ch, footprint)) if skm else None,
         "gradient": sk_gradient if skm else None,
     }
+    alb_ops = {name: square_morphological(A, name, kernel_np) for name in ("dilation", "erosion")} if A else {}
     for name in OPS:
         if not include(name):
             continue
         row = kornia_row(name, getattr(KM, name), batch_f, kernel)
         cv_fn, sk_fn = cv_ops[name], sk_ops[name]
         row["opencv"] = (lambda cv_fn=cv_fn: [cv_fn(im) for im in imgs_u8]) if cv_fn else None
+        alb_t = alb_ops.get(name)
+        row["albumentations"] = (lambda alb_t=alb_t: [alb_t(image=im)["image"] for im in imgs_u8]) if alb_t else None
         row["scikit-image"] = per_channel(sk_fn) if sk_fn else None
         ops[name] = row
 
@@ -140,8 +156,9 @@ def main() -> None:
 
     cv2, cv2_error = optional_import("cv2")
     skm, skm_error = optional_import("skimage.morphology")
+    A, a_error = optional_import("albumentations")
 
-    libs = [(skm, "scikit-image", skm_error), (cv2, "opencv", cv2_error)]
+    libs = [(skm, "scikit-image", skm_error), (cv2, "opencv", cv2_error), (A, "albumentations", a_error)]
     meta = start_run(
         "flagship morphology",
         args,
@@ -149,15 +166,15 @@ def main() -> None:
         units="img/s",
         regimes=[
             f"{KERNEL_SIZE}x{KERNEL_SIZE} square element; kornia: batched float BCHW; "
-            "opencv: uint8 HWC per-image loop (CPU); scikit-image: uint8 per-image, per-channel loop"
+            "opencv/albumentations: uint8 HWC per-image loop (CPU); scikit-image: uint8 per-image, per-channel loop"
         ],
         missing=[(name, err) for lib, name, err in libs if lib is None],
     )
-    backends = ["kornia (eager)", "kornia (compiled)", "scikit-image", "opencv"]
+    backends = ["kornia (eager)", "kornia (compiled)", "albumentations", "scikit-image", "opencv"]
     results = run_batch_sweep(
         batch_list(args),
         lambda b: build_ops(
-            b, args.size, args.size, device, dtype, args.compile, cv2, skm, args.skip_compile_ops, args.ops
+            b, args.size, args.size, device, dtype, args.compile, cv2, skm, A, args.skip_compile_ops, args.ops
         ),
         backends,
         row_fields=image_row_fields(args),

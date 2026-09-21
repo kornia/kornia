@@ -20,25 +20,28 @@
 Times what a data loader pays per image: read an encoded file from disk and decode it to an RGB
 ``uint8`` array or tensor. One row per common format:
 
-=============  =====================  ==================================  =====================================
-kornia.io      OpenCV                 torchvision.io                      PIL
-=============  =====================  ==================================  =====================================
-``load_jpeg``  ``imread`` + BGR->RGB  ``decode_image(read_file(path))``   ``Image.open(path).convert("RGB")``
-``load_png``   ``imread`` + BGR->RGB  ``decode_image(read_file(path))``   ``Image.open(path).convert("RGB")``
-=============  =====================  ==================================  =====================================
+=============  ============================  ====================================  =============================
+kornia.io      OpenCV                        torchvision.io                        PIL
+=============  ============================  ====================================  =============================
+``load_jpeg``  ``imread(IMREAD_COLOR_RGB)``  ``decode_jpeg([read_file(p), ...])``  ``np.asarray(Image.open(p))``
+``load_png``   ``imread(IMREAD_COLOR_RGB)``  ``decode_image(read_file(p))``        ``np.asarray(Image.open(p))``
+=============  ============================  ====================================  =============================
 
 kornia calls ``load_image(path, ImageLoadType.RGB8, device)``, which decodes with kornia-rs and
 returns a ``(3, H, W)`` uint8 tensor on the selected device; torchvision's tensor is moved to the
 same device, so on an accelerator both columns include the host-to-device copy and the device sync.
-OpenCV and PIL return host arrays, their native result, and never touch the accelerator. OpenCV's
-row includes the ``cvtColor`` to RGB so every column produces the same channel order; PIL's
-includes ``np.asarray``, which forces the lazy decode. Each call loads ``batch`` distinct files,
-so the throughput is decoded images per second. The files are ``--size`` square RGB images of
-Gaussian-blurred noise — compressible like a photograph rather than like white noise — written
-once per config to a temporary directory (JPEG quality 90 via PIL, PNG default compression) and
-read back through the OS page cache, so the rows measure decoding, not storage. There is no
-``torch.compile`` column: file I/O and the kornia-rs decoder are outside what it compiles, so
-``--compile`` is ignored.
+OpenCV and PIL return host arrays, their native result, and never touch the accelerator. Every
+column produces RGB: OpenCV decodes straight to RGB with ``IMREAD_COLOR_RGB`` (OpenCV 4.10 and
+later; older versions time ``imread`` plus a ``cvtColor``), and PIL converts only when the file is
+not already RGB. PIL's cell includes ``np.asarray``, which forces the lazy decode, and closes each
+file. torchvision decodes the JPEG row with one batched ``decode_jpeg`` call over the file bytes,
+its fastest CPU path; ``decode_image`` takes one image at a time, so the PNG row loops. Each call
+loads ``batch`` distinct files, so the throughput is decoded images per second. The files are
+``--size`` square RGB images of Gaussian-blurred noise — compressible like a photograph rather than
+like white noise — written once per config to a temporary directory (JPEG quality 90 via PIL, PNG
+default compression) and read back through the OS page cache, so the rows measure decoding, not
+storage. There is no ``torch.compile`` column: file I/O and the kornia-rs decoder are outside what
+it compiles, so ``--compile`` is ignored.
 
 Usage:
     python benchmarks/io/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -96,6 +99,12 @@ def write_images(root: Path, b: int, size: int, pil: ModuleType) -> dict[str, li
     return paths
 
 
+def pil_rgb(pil: ModuleType, path: str) -> np.ndarray:
+    """Decode ``path`` to an RGB ``uint8`` array and close the file."""
+    with pil.open(path) as im:
+        return np.asarray(im if im.mode == "RGB" else im.convert("RGB"))
+
+
 def build_ops(
     b: int,
     size: int,
@@ -116,15 +125,22 @@ def build_ops(
         row: dict[str, Backend] = {
             "kornia (eager)": lambda files=files: [load_image(p, ImageLoadType.RGB8, device) for p in files]
         }
-        if tvio:
+        if tvio and op == "load_jpeg":
+            row["torchvision"] = lambda files=files: [
+                im.to(device)
+                for im in tvio.decode_jpeg([tvio.read_file(p) for p in files], mode=tvio.ImageReadMode.RGB)
+            ]
+        elif tvio:
             row["torchvision"] = lambda files=files: [
                 tvio.decode_image(tvio.read_file(p), mode=tvio.ImageReadMode.RGB).to(device) for p in files
             ]
-        if cv2:
+        if cv2 and hasattr(cv2, "IMREAD_COLOR_RGB"):
+            row["opencv"] = lambda files=files: [cv2.imread(p, cv2.IMREAD_COLOR_RGB) for p in files]
+        elif cv2:
             row["opencv"] = lambda files=files: [
                 cv2.cvtColor(cv2.imread(p, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB) for p in files
             ]
-        row["PIL"] = lambda files=files: [np.asarray(pil.open(p).convert("RGB")) for p in files]
+        row["PIL"] = lambda files=files: [pil_rgb(pil, p) for p in files]
         ops[op] = row
     return ops, {}
 

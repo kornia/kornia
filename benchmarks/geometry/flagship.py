@@ -71,6 +71,8 @@ from common import (
 
 import kornia.geometry as KG
 
+OPS = ("warp_perspective", "warp_affine", "rotate", "resize", "get_perspective_transform")
+
 
 def build_ops(
     b: int,
@@ -151,7 +153,7 @@ def build_ops(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    add_flagship_args(parser)
+    add_flagship_args(parser, ops=OPS)
     args = parser.parse_args()
     device, dtype, sync = setup_run(args)
 

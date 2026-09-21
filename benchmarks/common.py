@@ -62,19 +62,20 @@ def warm_up_cpu(seconds: float = 3.0) -> None:
         a @ a
 
 
-def time_us(
+def time_us_or_error(
     fn: Callable[[], object],
     min_run_time: float = 1.0,
     sync: Optional[Callable[[], None]] = None,
     num_threads: Optional[int] = None,
-) -> tuple[float, float]:
-    """Median and interquartile-range wall clock of ``fn`` in microseconds.
+) -> tuple[float, float, Optional[str]]:
+    """Median and interquartile-range wall clock of ``fn`` in microseconds, plus the failure's name.
 
     ``blocked_autorange`` warms up, runs many repeats, and synchronizes CUDA. Devices it does
-    not sync (MPS) pass their sync as ``sync`` so it lands inside the timed region. Returns
-    ``(nan, nan)`` if ``fn`` raises, so callers can render a skip cell instead of dying.
-    ``num_threads`` controls the timed calls and defaults to the current ``torch.get_num_threads()``;
-    Timer would otherwise override the caller's thread count with one.
+    not sync (MPS) pass their sync as ``sync`` so it lands inside the timed region. If ``fn``
+    raises, returns ``(nan, nan, exception class name)`` from that same call, so callers can render
+    a skip cell and say why without calling ``fn`` again. ``num_threads`` controls the timed calls
+    and defaults to the current ``torch.get_num_threads()``; Timer would otherwise override the
+    caller's thread count with one.
     """
     stmt = "fn(); sync()" if sync is not None else "fn()"
     try:
@@ -82,9 +83,20 @@ def time_us(
         m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}, num_threads=threads).blocked_autorange(
             min_run_time=min_run_time
         )
-        return m.median * 1e6, m.iqr * 1e6
-    except Exception:
-        return float("nan"), float("nan")
+        return m.median * 1e6, m.iqr * 1e6, None
+    except Exception as exc:
+        return float("nan"), float("nan"), type(exc).__name__
+
+
+def time_us(
+    fn: Callable[[], object],
+    min_run_time: float = 1.0,
+    sync: Optional[Callable[[], None]] = None,
+    num_threads: Optional[int] = None,
+) -> tuple[float, float]:
+    """``time_us_or_error`` without the failure name: ``(nan, nan)`` if ``fn`` raises."""
+    median, iqr, _ = time_us_or_error(fn, min_run_time=min_run_time, sync=sync, num_threads=num_threads)
+    return median, iqr
 
 
 def git_commit() -> str:
@@ -115,6 +127,12 @@ def _optional_version(module: str) -> Optional[str]:
         return None
 
 
+def _opencv_num_threads() -> Optional[int]:
+    """OpenCV's thread count if a suite imported it, else ``None``; never imports it itself."""
+    cv2 = sys.modules.get("cv2")
+    return cv2.getNumThreads() if cv2 is not None else None
+
+
 def run_metadata(device: torch.device) -> dict[str, Any]:
     """Hardware/software metadata embedded in every result file (W3: date, hardware, versions)."""
     import kornia
@@ -129,6 +147,7 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "kornia": kornia.__version__,
         "device": str(device),
         "torch_num_threads": torch.get_num_threads(),
+        "opencv_num_threads": _opencv_num_threads(),
         "opencv": _optional_version("cv2"),
         "torchvision": _optional_version("torchvision"),
         "numpy": _optional_version("numpy"),
@@ -348,18 +367,17 @@ def run_batch_sweep(
                     cells.append(f"{'-':>{col_width + 1}}")
                     continue
                 backend_sync = sync if backend.startswith(torch_backends) else None
-                median, iqr = time_us(fn, min_run_time=min_run_time, sync=backend_sync)
+                median, iqr, error = time_us_or_error(fn, min_run_time=min_run_time, sync=backend_sync)
                 row_out: dict[str, Any] = {"op": op_name, "backend": backend, "batch": b, **row_fields(b)}
-                if math.isnan(median):
-                    # time_us swallows the exception; one untimed call recovers its name so the JSON
-                    # says why the cell is empty, like a compile failure does.
+                if error is not None:
+                    # The JSON says why the cell is empty, like it does for a compile failure.
                     results.append(
                         {
                             **row_out,
                             "median_us": None,
                             "iqr_us": None,
                             "throughput_per_s": None,
-                            "error": _failure_name(fn),
+                            "error": error,
                         }
                     )
                     failed.append(f"{op_name}/{backend}")
@@ -375,14 +393,6 @@ def run_batch_sweep(
         names = ", ".join(dict.fromkeys(failed))
         print(f"# NOTE: '✗' = the call raised (exception name in the JSON 'error' field): {names}")
     return results
-
-
-def _failure_name(fn: Callable[[], object]) -> str:
-    try:
-        fn()
-    except Exception as exc:
-        return type(exc).__name__
-    return "timing failed"
 
 
 Backend = Optional[Callable[[], object]]
@@ -444,12 +454,20 @@ def add_flagship_args(
 
 
 def setup_run(args: argparse.Namespace) -> tuple[torch.device, torch.dtype, Optional[Callable[[], None]]]:
-    """Thread count, CPU warm-up and pinned seeds; returns ``(device, dtype, sync)``.
+    """Thread counts, CPU warm-up and pinned seeds; returns ``(device, dtype, sync)``.
+
+    ``--threads`` pins OpenCV as well as torch when OpenCV is installed. Left alone, OpenCV uses
+    every core while torch uses ``--threads``, and the header would report only torch's count.
+    Some OpenCV builds ignore the request (the GCD backend of the macOS wheels); ``start_run``
+    then prints the count OpenCV actually uses.
 
     ``sync`` is the MPS synchronize for ``time_us`` (``blocked_autorange`` already syncs CUDA). The
     CPU warm-up runs on accelerator runs too, because they still time CPU-only baselines.
     """
     torch.set_num_threads(args.threads)
+    cv2, _ = optional_import("cv2")
+    if cv2 is not None:
+        cv2.setNumThreads(args.threads)
     warm_up_cpu()
     torch.manual_seed(0)
     random.seed(0)
@@ -514,7 +532,17 @@ def start_run(
     if device.type == "cuda":
         print(f"# CUDA device: {meta['cuda_device']} (CUDA {meta['cuda_version']})")
     size = f", size={args.size}" if getattr(args, "size", None) else ""
-    print(f"# device={device}, dtype={args.dtype}, threads={torch.get_num_threads()}{size} — throughput {units}")
+    cv_threads = f" (opencv {meta['opencv_num_threads']})" if meta["opencv_num_threads"] is not None else ""
+    print(
+        f"# device={device}, dtype={args.dtype}, threads={torch.get_num_threads()}{cv_threads}{size}"
+        f" — throughput {units}"
+    )
+    if meta["opencv_num_threads"] not in (None, torch.get_num_threads()):
+        # macOS wheels build OpenCV on GCD, which ignores setNumThreads.
+        print(
+            f"# NOTE: OpenCV ignored --threads {torch.get_num_threads()} (its parallel backend does not honour "
+            f"setNumThreads) and runs on {meta['opencv_num_threads']} threads"
+        )
     for line in regimes:
         print(f"# {line}")
     print("# '-' = skipped: backend unavailable, no counterpart, or compile failure (see the JSON 'error' field)")

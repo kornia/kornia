@@ -370,3 +370,48 @@ def test_run_batch_sweep_records_raising_backend(capsys) -> None:
     # the label column grows to fit the longest op name instead of running into the first cell
     line = next(line for line in out.splitlines() if line.startswith("a_very_long_operation_name_here"))
     assert line[len("a_very_long_operation_name_here")] == " "
+
+
+def test_run_batch_sweep_reports_the_timed_failure_without_calling_again() -> None:
+    calls: list[int] = []
+
+    def flaky():
+        calls.append(1)
+        raise (ValueError if len(calls) == 1 else TypeError)("differs per call")
+
+    rows = run_batch_sweep([1], lambda b: ({"op": {"flaky": flaky}}, {}), ["flaky"], row_fields=lambda b: {})
+    assert rows[0]["error"] == "ValueError"  # the exception the timed call raised, not a re-run's
+    assert len(calls) == 1
+
+
+def test_setup_run_pins_opencv_threads_and_header_reports_them(monkeypatch, capsys) -> None:
+    import types
+
+    state = {"threads": 8}
+    fake_cv2 = types.ModuleType("cv2")
+    fake_cv2.setNumThreads = lambda n: state.update(threads=n)
+    fake_cv2.getNumThreads = lambda: state["threads"]
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+    monkeypatch.setattr(common, "warm_up_cpu", lambda: None)
+    torch_threads = torch.get_num_threads()
+    try:
+        args = _flagship_parser().parse_args(["--threads", "3"])
+        common.setup_run(args)
+        assert state["threads"] == 3
+        meta = common.start_run("flagship demo", args, torch.device("cpu"), units="img/s")
+    finally:
+        torch.set_num_threads(torch_threads)
+    assert meta["opencv_num_threads"] == 3
+    assert "threads=3 (opencv 3)" in capsys.readouterr().out
+
+
+def test_start_run_notes_when_opencv_ignores_threads(monkeypatch, capsys) -> None:
+    import types
+
+    fake_cv2 = types.ModuleType("cv2")
+    fake_cv2.getNumThreads = lambda: 8  # GCD builds report every core whatever was requested
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+    args = _flagship_parser().parse_args([])
+    common.start_run("flagship demo", args, torch.device("cpu"), units="img/s")
+    out = capsys.readouterr().out
+    assert f"OpenCV ignored --threads {torch.get_num_threads()}" in out and "runs on 8 threads" in out

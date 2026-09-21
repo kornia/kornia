@@ -40,7 +40,9 @@ CPU or GPU and kornia is differentiable; albumentations/OpenCV/PIL run single ui
 CPU in a Python loop — their native regime. OpenCV and PIL are only listed where the augmentation
 is parameter-free (flip via ``Image.transpose``, grayscale via ``convert("L")``): for
 randomly-parameterized augmentations, albumentations *is* the OpenCV-backed baseline. PIL is
-usually the slowest but serves as the signal-processing-correct reference implementation.
+usually the slowest but serves as the signal-processing-correct reference implementation. PIL
+receives ready-made ``Image`` objects, as kornia receives a ready-made tensor; the PIL cells of the
+``0.9.0rc1`` result files still include the ``Image.fromarray`` conversion.
 Parameter distributions are matched in spirit across libraries, but
 parameterizations differ (e.g. perspective distortion scales) — columns are regime comparisons,
 not bit-exact races. RandomResizedCrop outputs size//2 per side for every backend;
@@ -80,6 +82,17 @@ from common import (
 
 import kornia.augmentation as KA
 
+OPS = (
+    "RandomHorizontalFlip",
+    "RandomAffine",
+    "RandomPerspective",
+    "RandomResizedCrop",
+    "ColorJiggle",
+    "RandomGaussianBlur",
+    "RandomBrightness",
+    "RandomGrayscale",
+)
+
 
 def build_ops(
     b: int,
@@ -97,14 +110,16 @@ def build_ops(
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
     """Build {op: {backend: zero-arg callable}}; each callable transforms the whole batch once.
 
-    Rows outside ``selected`` (``--ops``) are neither compiled nor timed.
+    Rows outside ``selected`` (``--ops``) are not built, so they are neither compiled nor timed.
     """
     imgs_u8, batch_f = image_batch(b, h, w, device, dtype)
+    pil_imgs = [pil.fromarray(im) for im in imgs_u8] if pil else []
     compiled_rows = KorniaRows(device, do_compile, skip_compile)
 
+    def include(name: str) -> bool:
+        return selected is None or name in selected
+
     def kornia_row(label: str, aug: torch.nn.Module) -> dict[str, Backend]:
-        if selected is not None and label not in selected:
-            return {}
         return compiled_rows(label, aug.to(device), batch_f)
 
     def tv(t: object) -> Backend:
@@ -115,63 +130,71 @@ def build_ops(
 
     ops: dict[str, dict[str, Backend]] = {}
 
-    row = kornia_row("RandomHorizontalFlip", KA.RandomHorizontalFlip(p=1.0))
-    row["torchvision v2"] = tv(T2.RandomHorizontalFlip(p=1.0)) if T2 else None
-    row["albumentations"] = alb(A.HorizontalFlip(p=1.0)) if A else None
-    row["opencv"] = (lambda: [cv2.flip(im, 1) for im in imgs_u8]) if cv2 else None
-    row["PIL"] = (
-        (lambda: [pil.fromarray(im).transpose(pil.Transpose.FLIP_LEFT_RIGHT) for im in imgs_u8]) if pil else None
-    )
-    ops["RandomHorizontalFlip"] = row
+    if include("RandomHorizontalFlip"):
+        row = kornia_row("RandomHorizontalFlip", KA.RandomHorizontalFlip(p=1.0))
+        row["torchvision v2"] = tv(T2.RandomHorizontalFlip(p=1.0)) if T2 else None
+        row["albumentations"] = alb(A.HorizontalFlip(p=1.0)) if A else None
+        row["opencv"] = (lambda: [cv2.flip(im, 1) for im in imgs_u8]) if cv2 else None
+        row["PIL"] = (lambda: [im.transpose(pil.Transpose.FLIP_LEFT_RIGHT) for im in pil_imgs]) if pil else None
+        ops["RandomHorizontalFlip"] = row
 
-    row = kornia_row("RandomAffine", KA.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0))
-    row["torchvision v2"] = tv(T2.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2))) if T2 else None
-    row["albumentations"] = (
-        alb(A.Affine(rotate=(-30.0, 30.0), translate_percent=(0.0, 0.1), scale=(0.8, 1.2), p=1.0)) if A else None
-    )
-    ops["RandomAffine"] = row
+    if include("RandomAffine"):
+        row = kornia_row("RandomAffine", KA.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0))
+        row["torchvision v2"] = (
+            tv(T2.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2))) if T2 else None
+        )
+        row["albumentations"] = (
+            alb(A.Affine(rotate=(-30.0, 30.0), translate_percent=(0.0, 0.1), scale=(0.8, 1.2), p=1.0)) if A else None
+        )
+        ops["RandomAffine"] = row
 
-    row = kornia_row("RandomPerspective", KA.RandomPerspective(0.5, p=1.0))
-    row["torchvision v2"] = tv(T2.RandomPerspective(distortion_scale=0.5, p=1.0)) if T2 else None
-    row["albumentations"] = alb(A.Perspective(scale=(0.05, 0.1), p=1.0)) if A else None
-    ops["RandomPerspective"] = row
+    if include("RandomPerspective"):
+        row = kornia_row("RandomPerspective", KA.RandomPerspective(0.5, p=1.0))
+        row["torchvision v2"] = tv(T2.RandomPerspective(distortion_scale=0.5, p=1.0)) if T2 else None
+        row["albumentations"] = alb(A.Perspective(scale=(0.05, 0.1), p=1.0)) if A else None
+        ops["RandomPerspective"] = row
 
-    dst = (h // 2, w // 2)
-    row = kornia_row("RandomResizedCrop", KA.RandomResizedCrop(dst))
-    row["torchvision v2"] = tv(T2.RandomResizedCrop(dst, antialias=False)) if T2 else None
-    row["albumentations"] = alb(A.RandomResizedCrop(size=dst, p=1.0)) if A else None
-    ops["RandomResizedCrop"] = row
+    if include("RandomResizedCrop"):
+        dst = (h // 2, w // 2)
+        row = kornia_row("RandomResizedCrop", KA.RandomResizedCrop(dst))
+        row["torchvision v2"] = tv(T2.RandomResizedCrop(dst, antialias=False)) if T2 else None
+        row["albumentations"] = alb(A.RandomResizedCrop(size=dst, p=1.0)) if A else None
+        ops["RandomResizedCrop"] = row
 
-    row = kornia_row("ColorJiggle", KA.ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0))
-    row["torchvision v2"] = tv(T2.ColorJitter(0.2, 0.2, 0.2, 0.1)) if T2 else None
-    row["albumentations"] = alb(A.ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0)) if A else None
-    ops["ColorJiggle"] = row
+    if include("ColorJiggle"):
+        row = kornia_row("ColorJiggle", KA.ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0))
+        row["torchvision v2"] = tv(T2.ColorJitter(0.2, 0.2, 0.2, 0.1)) if T2 else None
+        row["albumentations"] = alb(A.ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0)) if A else None
+        ops["ColorJiggle"] = row
 
-    row = kornia_row("RandomGaussianBlur", KA.RandomGaussianBlur((5, 5), (0.1, 2.0), p=1.0))
-    row["torchvision v2"] = tv(T2.GaussianBlur(5, sigma=(0.1, 2.0))) if T2 else None
-    row["albumentations"] = alb(A.GaussianBlur(blur_limit=(5, 5), sigma_limit=(0.1, 2.0), p=1.0)) if A else None
-    ops["RandomGaussianBlur"] = row
+    if include("RandomGaussianBlur"):
+        row = kornia_row("RandomGaussianBlur", KA.RandomGaussianBlur((5, 5), (0.1, 2.0), p=1.0))
+        row["torchvision v2"] = tv(T2.GaussianBlur(5, sigma=(0.1, 2.0))) if T2 else None
+        row["albumentations"] = alb(A.GaussianBlur(blur_limit=(5, 5), sigma_limit=(0.1, 2.0), p=1.0)) if A else None
+        ops["RandomGaussianBlur"] = row
 
-    row = kornia_row("RandomBrightness", KA.RandomBrightness(brightness=(0.8, 1.2), p=1.0))
-    row["torchvision v2"] = tv(T2.ColorJitter(brightness=(0.8, 1.2))) if T2 else None
-    row["albumentations"] = (
-        alb(A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.0, p=1.0)) if A else None
-    )
-    ops["RandomBrightness"] = row
+    if include("RandomBrightness"):
+        row = kornia_row("RandomBrightness", KA.RandomBrightness(brightness=(0.8, 1.2), p=1.0))
+        row["torchvision v2"] = tv(T2.ColorJitter(brightness=(0.8, 1.2))) if T2 else None
+        row["albumentations"] = (
+            alb(A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.0, p=1.0)) if A else None
+        )
+        ops["RandomBrightness"] = row
 
-    row = kornia_row("RandomGrayscale", KA.RandomGrayscale(p=1.0))
-    row["torchvision v2"] = tv(T2.RandomGrayscale(p=1.0)) if T2 else None
-    row["albumentations"] = alb(A.ToGray(p=1.0)) if A else None
-    row["opencv"] = (lambda: [cv2.cvtColor(im, cv2.COLOR_RGB2GRAY) for im in imgs_u8]) if cv2 else None
-    row["PIL"] = (lambda: [pil.fromarray(im).convert("L") for im in imgs_u8]) if pil else None
-    ops["RandomGrayscale"] = row
+    if include("RandomGrayscale"):
+        row = kornia_row("RandomGrayscale", KA.RandomGrayscale(p=1.0))
+        row["torchvision v2"] = tv(T2.RandomGrayscale(p=1.0)) if T2 else None
+        row["albumentations"] = alb(A.ToGray(p=1.0)) if A else None
+        row["opencv"] = (lambda: [cv2.cvtColor(im, cv2.COLOR_RGB2GRAY) for im in imgs_u8]) if cv2 else None
+        row["PIL"] = (lambda: [im.convert("L") for im in pil_imgs]) if pil else None
+        ops["RandomGrayscale"] = row
 
-    return {k: v for k, v in ops.items() if selected is None or k in selected}, compiled_rows.compile_failures
+    return ops, compiled_rows.compile_failures
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    add_flagship_args(parser)
+    add_flagship_args(parser, ops=OPS)
     args = parser.parse_args()
     device, dtype, sync = setup_run(args)
 
