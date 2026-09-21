@@ -78,6 +78,11 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     """
 
+    def _validate_data_key(self, key: DataKey) -> None:
+        if key == DataKey.CLASS and type(self).apply_transform_class is RandomMosaic.apply_transform_class:
+            raise RuntimeError(f"{self.__class__.__name__} does not support `TAG` types.")
+        super()._validate_data_key(key)
+
     def __init__(
         self,
         output_size: Optional[Tuple[int, int]] = None,
@@ -105,11 +110,6 @@ class RandomMosaic(MixAugmentationBaseV2):
             "align_corners": align_corners,
             "cropping_mode": cropping_mode,
         }
-
-    def apply_transform_mask(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
-    ) -> torch.Tensor:
-        raise NotImplementedError
 
     @torch.no_grad()
     def apply_transform_boxes(self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> Boxes:
@@ -150,11 +150,6 @@ class RandomMosaic(MixAugmentationBaseV2):
         out_boxes.clamp(offset, offset_end, inplace=True)
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
         return out_boxes
-
-    def apply_transform_keypoint(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
-    ) -> torch.Tensor:
-        raise NotImplementedError
 
     def apply_transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

@@ -49,6 +49,23 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
     """
 
+    def _validate_data_key(self, key: DataKey) -> None:
+        # Check the handler without executing a transform or requiring subclasses to declare support twice.
+        if key in (DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH):
+            if type(self).apply_transform_boxes is MixAugmentationBaseV2.apply_transform_boxes:
+                raise NotImplementedError
+        elif key == DataKey.KEYPOINTS:
+            if type(self).apply_transform_keypoint is MixAugmentationBaseV2.apply_transform_keypoint:
+                raise NotImplementedError
+        elif key == DataKey.CLASS:
+            if type(self).apply_transform_class is MixAugmentationBaseV2.apply_transform_class:
+                raise NotImplementedError
+        elif key == DataKey.MASK:
+            if type(self).apply_transform_mask is MixAugmentationBaseV2.apply_transform_mask:
+                raise NotImplementedError
+        elif key != DataKey.INPUT:
+            raise NotImplementedError
+
     def __init__(
         self,
         p: float,
@@ -70,8 +87,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
         if shape is None:
             return _transform_input(input)
-        else:
-            return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
+
+        return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
@@ -123,6 +140,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     def transform_mask(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        self._validate_data_key(DataKey.MASK)
         batch_prob = params["batch_prob"]
         to_apply = torch.atleast_1d(batch_prob > 0.5)
         output = input
@@ -135,6 +153,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     def transform_boxes(
         self, input: Union[torch.Tensor, Boxes], params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> Boxes:
+        self._validate_data_key(DataKey.BBOX)
         # input is BxNx4x2 or Boxes.
         if isinstance(input, torch.Tensor):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
@@ -152,6 +171,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     def transform_keypoint(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        self._validate_data_key(DataKey.KEYPOINTS)
         batch_prob = params["batch_prob"]
         to_apply = torch.atleast_1d(batch_prob > 0.5)
         output = input
@@ -164,6 +184,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     def transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        self._validate_data_key(DataKey.CLASS)
         batch_prob = params["batch_prob"]
         to_apply = torch.atleast_1d(batch_prob > 0.5)
         output = input
@@ -220,6 +241,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             keys = self.data_keys
         else:
             keys = [DataKey.get(inp) for inp in data_keys]
+
+        for key in keys:
+            self._validate_data_key(key)
 
         if params is None:
             in_tensor_idx: int = keys.index(DataKey.INPUT)

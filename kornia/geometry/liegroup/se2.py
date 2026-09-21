@@ -131,11 +131,10 @@ class Se2(nn.Module):
         if isinstance(right, Se2):
             KORNIA_CHECK_TYPE(right, Se2)
             return self._mul_se2(right)
-        elif isinstance(right, (Vector2, torch.Tensor)):
+        if isinstance(right, (Vector2, torch.Tensor)):
             # _check_se2_r_t_shape(so2, risght)
             return so2 * right + t
-        else:
-            raise TypeError(f"Unsupported type: {type(right)}")
+        raise TypeError(f"Unsupported type: {type(right)}")
 
     @property
     def so2(self) -> So2:

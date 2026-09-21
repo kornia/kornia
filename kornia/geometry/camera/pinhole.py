@@ -56,11 +56,9 @@ class PinholeCamera:
     .. warning::
         :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` — the half-pixel rule —
         which disagrees with the integer pixel centres above; it is tracked as a coordinated repair in
-        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The in-place :meth:`scale_` failure on an
-        integer ``height`` / ``width`` with a floating-point scale factor is
-        `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the direct projection limitation for
-        :math:`(B, N, 4, 4)` camera storage `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The behaviour
-        described here is documented as it is; the issues above track the repairs.
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The direct projection limitation for
+        :math:`(B, N, 4, 4)` camera storage is `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The
+        behaviour described here is documented as it is; the issues above track the repairs.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -316,7 +314,7 @@ class PinholeCamera:
             - the new camera owns its parameter storage, so writing ``tx`` / ``ty`` / ``tz`` on the returned
               camera leaves the source where it was.
             - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
-              point, unlike :meth:`scale_`. An integer factor preserves the integer image-size dtype.
+              point, as :meth:`scale_` does. An integer factor preserves the integer image-size dtype.
 
             See :doc:`camera and world conventions </get-started/camera-conventions>` for image resizing and
             the matching intrinsics scaling convention.
@@ -352,20 +350,15 @@ class PinholeCamera:
         Convention:
             - applies the same rescaling as :meth:`scale` in place and returns ``self``. The camera owns its
               parameter storage, so the tensors passed to the constructor are not modified.
-            - with a floating-point ``scale_factor``, writing back into an integer ``height`` / ``width`` raises
-              :class:`RuntimeError` where :meth:`scale` promotes it to floating point. An integer factor
-              succeeds. The focal lengths and principal point have already been scaled when the error is
-              raised: the camera is left partially scaled.
-              If ``height`` is integer, both image dimensions are unchanged; if only ``width`` is integer,
-              ``height`` has already been scaled too.
+            - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
+              point, just as :meth:`scale` does. An integer factor preserves the integer image-size dtype.
 
             See :doc:`camera and world conventions </get-started/camera-conventions>` for image resizing and
             the matching intrinsics scaling convention.
 
         .. warning::
-            The failure on an integer image size with a floating-point scale factor is tracked in
-            `#4265 <https://github.com/kornia/kornia/issues/4265>`_, and the principal-point rule shared with
-            :meth:`scale` in `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
+            The principal-point rule shared with :meth:`scale` is tracked in
+            `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
 
         Args:
             scale_factor: a torch.Tensor with the scale factor. It has
@@ -382,8 +375,8 @@ class PinholeCamera:
         self.intrinsics[..., 0, 2] *= scale_factor
         self.intrinsics[..., 1, 2] *= scale_factor
         # scale the image height/width
-        self.height *= scale_factor
-        self.width *= scale_factor
+        self.height = self.height * scale_factor
+        self.width = self.width * scale_factor
         return self
 
     def project(self, point_3d: torch.Tensor) -> torch.Tensor:

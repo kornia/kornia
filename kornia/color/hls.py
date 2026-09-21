@@ -35,7 +35,9 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     Args:
         image: RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
-        eps: epsilon value to avoid div by zero.
+        eps: bias added to the chroma and lightness denominators before dividing. The zero
+            denominators themselves are handled by a safe-substitution guard, so ``eps`` is not
+            what keeps the result finite and ``eps=0`` is well defined.
 
     Returns:
         HLS version of the image with shape :math:`(*, 3, H, W)`.
@@ -78,11 +80,16 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         torch.add(maxc, minc, out=l_)  # l = max + min
         torch.sub(maxc, minc, out=s)  # s = max - min
 
-    # precompute image / (max - min)
-    im = image / (s + eps).unsqueeze(-3)
+    # Use unit divisors when chroma or the lightness denominator is zero.
+    # Preserve the epsilon-adjusted calculation for nonzero denominators.
+    chroma_denominator = torch.where(s == 0, torch.ones_like(s), s + eps)
+    im = image / chroma_denominator.unsqueeze(-3)
 
-    # epsilon cannot be inside the where to avoid precision issues
-    s /= torch.where(l_ < 1.0, l_, 2.0 - l_) + eps  # saturation
+    lightness_denominator = torch.where(l_ < 1.0, l_, 2.0 - l_)
+    saturation_denominator = torch.where(
+        lightness_denominator == 0, torch.ones_like(lightness_denominator), lightness_denominator + eps
+    )
+    s /= saturation_denominator  # saturation
     l_ /= 2  # luminance
 
     # note that r,g and b were previously div by (max - min)

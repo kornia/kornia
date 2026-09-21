@@ -60,14 +60,13 @@ def _apply_linear_transformation(
         return out.contiguous()
 
     # BRANCH 2: GPU/Accelerators (Conv2d)
-    else:
-        # Reshape for conv2d: (B*..., C, H, W)
-        input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
+    # Reshape for conv2d: (B*..., C, H, W)
+    input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
 
-        weight = kernel_compute.view(3, 3, 1, 1)
-        out_flat = F.conv2d(input_flat, weight, bias=bias_compute)
+    weight = kernel_compute.view(3, 3, 1, 1)
+    out_flat = F.conv2d(input_flat, weight, bias=bias_compute)
 
-        # Unflatten back to original shape
-        out = out_flat.reshape(input_shape)
+    # Unflatten back to original shape
+    out = out_flat.reshape(input_shape)
 
     return out

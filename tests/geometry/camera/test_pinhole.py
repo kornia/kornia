@@ -811,13 +811,11 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(height, height_before, atol=0.0, rtol=0.0)
         self.assert_close(width, width_before, atol=0.0, rtol=0.0)
 
-    def test_wart_scale_inplace_rejects_integer_image_size_4265(self, device, dtype):
-        # Wart pin for kornia#4265: the constructor accepts int64 height/width --
-        # that is what the class docstring's own example builds -- and a floating factor promotes them, but the
-        # in-place twin scale_() writes the float result back into the int64 storage and raises.
-        # Snippet used to generate expected: cam.scale_(0.5) on an int64 height executed 2026-09-05 (torch 2.14.0,
-        # every dtype) -> RuntimeError("result type Float can't be cast to the desired output type Long").
-        # Pins the CURRENT behavior; NOT a contract; delete when #4265 is repaired.
+    def test_scale_inplace_promotes_integer_image_size_4265(self, device, dtype):
+        # Regression for kornia#4265: the constructor accepts int64 height/width --
+        # that is what the class docstring's own example builds. A floating factor now
+        # promotes int64 to float in both scale() and scale_() after this repair (#4371).
+        # Integer factor preserves int64. Pins the repaired contract after #4371.
         K = _k44(device, dtype)
         cam = kornia.geometry.camera.PinholeCamera(
             K,
@@ -836,14 +834,20 @@ class TestPinholeCamera(BaseTester):
             self.assert_close(inplace.width, scaled.width)
             self.assert_close(inplace.intrinsics, scaled.intrinsics)
         assert cam.scale(torch.tensor([0.5], device=device, dtype=dtype)).height.is_floating_point()
-        with pytest.raises(RuntimeError, match="can't be cast to the desired output type"):
-            cam.scale_(0.5)
+        # scale_(0.5) now promotes int64 height/width to float instead of raising (#4371).
+        # Both the plain Python float (the issue's own call shape) and a tensor factor promote.
+        inplace = cam.scale_(0.5)
+        assert inplace is cam
+        assert cam.height.is_floating_point()
+        # int64 height/width * Python float 0.5 promotes to the default floating dtype
+        # (e.g. float32), not necessarily the camera's intrinsics dtype. Construct the
+        # expected values from the promoted tensors rather than the fixture dtype.
+        self.assert_close(cam.height, cam.height.new_tensor([3.0]), atol=0.0, rtol=0.0)
+        self.assert_close(cam.width, cam.width.new_tensor([4.0]), atol=0.0, rtol=0.0)
         expected_K = _k44(device, dtype)
         expected_K[:, :2, :3] *= 0.5
         self.assert_close(K, _k44(device, dtype), atol=0.0, rtol=0.0)
         self.assert_close(cam.intrinsics, expected_K, atol=0.0, rtol=0.0)
-        self.assert_close(cam.height, torch.tensor([6], device=device))
-        self.assert_close(cam.width, torch.tensor([8], device=device))
 
     @pytest.mark.parametrize("shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)])
     @pytest.mark.parametrize("parameter", ["intrinsics", "extrinsics"])

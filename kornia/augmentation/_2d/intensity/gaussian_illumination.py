@@ -70,8 +70,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
           input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
           It adds the field to the image and
-          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not --
-          except where the Gaussian kernel itself is NaN, see the warning below.
+          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample.
@@ -79,7 +78,12 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
           bound, the sum is cut there rather than rescaled.
         - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
           multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
-          narrower kernel on a smaller image.
+          narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel, including the
+          ``0`` the constructor's check admits: :func:`kornia.filters.gaussian` measures each sample's
+          squared distance from the **nearest sample** rather than from the mean, so that sample always
+          weighs ``exp(0) = 1`` and the normalizing sum cannot underflow. At ``sigma=0`` the kernel is the
+          unit impulse -- all the weight on the nearest sample, or split evenly between the two that tie
+          half a pixel either side of the mean on an even-length axis.
         - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
           original's output under the same seed. After ``.compile()``, which swaps in a compiled transform,
           it no longer pickles or passes through ``torch.save``, although it still deep-copies.
@@ -88,23 +92,6 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
         above zero; a positive sampled gradient can recover values instead. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
-
-    .. warning::
-        A ``sigma`` at or near ``0``, which the constructor admits, can make the whole output NaN.
-        :func:`kornia.filters.gaussian` normalizes by ``gauss.sum()``, which underflows to zero there, so
-        the kernel is ``0 / 0``. ``sigma=0.0`` does it at any size. Above zero it is the kernel's
-        **absolute** width that decides -- ``sigma`` times the axis length, since ``sigma`` is relative --
-        and not the axis length on its own. With ``center=(0.5, 0.5)`` an even axis puts its nearest sample
-        half a pixel off the mean, so the kernel underflows once ``sigma * axis`` falls below about
-        ``0.034``: a ``4 x 4`` image at ``sigma=(0.005, 0.005)`` is NaN, and so is a ``64 x 64`` one at
-        ``sigma=(0.0005, 0.0005)``, while ``8 x 8`` and larger are finite at ``0.005``. An odd axis whose
-        rounded center lands on the grid keeps a sample at the mean and is finite at every positive
-        ``sigma``; the default ``center=(0.1, 0.9)`` can miss the grid only on a ``1``- or ``3``-pixel axis,
-        which is why a drawn center makes a ``3 x 3`` image NaN on some seeds but never a ``5 x 5`` one.
-        The threshold follows the **parameter** dtype, which is ``float32`` whatever the image dtype, so
-        after ``set_rng_device_and_dtype(device, torch.float64)`` the ``4 x 4`` case at ``sigma=0.005`` is
-        finite and ``0.003`` is not. The default ``sigma=(0.2, 1.0)`` is unaffected. Tracked in
-        `#4589 <https://github.com/kornia/kornia/issues/4589>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
