@@ -179,7 +179,11 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     mean = mean[..., None]
     std = std[..., None]
 
-    out: torch.Tensor = (data.flatten(2) - mean) / std
+    numel = 1
+    for dim in shape[2:]:
+        numel *= dim
+
+    out: torch.Tensor = (data.reshape(shape[0], shape[1], numel) - mean) / std
 
     return out.reshape(shape)
 

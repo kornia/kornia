@@ -82,6 +82,25 @@ class TestNormalize(BaseTester):
         assert mean.grad.abs().sum() == 0
         assert std.grad.abs().sum() == 0
 
+    def test_rank2_normalize(self, device, dtype):
+        data = torch.ones(2, 3, device=device, dtype=dtype)
+        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype)
+        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype)
+
+        expected = (data - mean) / std
+
+        self.assert_close(kornia.enhance.normalize(data, mean, std), expected)
+
+    def test_empty_rank2_normalize(self, device, dtype):
+        data = torch.empty(0, 3, device=device, dtype=dtype)
+        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype)
+        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype)
+
+        output = kornia.enhance.normalize(data, mean, std)
+
+        assert output.shape == data.shape
+        self.assert_close(output, data)
+
     def test_broadcast_normalize(self, device, dtype):
         # prepare input data
         data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
