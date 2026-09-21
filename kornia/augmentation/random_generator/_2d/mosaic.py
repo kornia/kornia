@@ -30,17 +30,21 @@ __all__ = ["MosaicGenerator"]
 
 
 class MosaicGenerator(RandomGeneratorBase):
-    r"""Generate mixup indexes and lambdas for a batch of inputs.
+    r"""Generate the tile order and crop boxes of a mosaic for a batch of inputs.
+
+    See the Convention block on :class:`~kornia.augmentation.RandomMosaic`.
 
     Args:
-        output_size: the output torch.Tensor width and height after mosaicing.
+        output_size: the output ``(height, width)`` after mosaicing.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
-        start_ratio_range: top-left (x, y) position for cropping the mosaic images.
+        start_ratio_range: the ``(low, high)`` range from which both top-left crop ratios ``(x / W, y / H)``
+            are drawn.
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - mosaic_ids (torch.Tensor): a shape of (B, N) torch.tensor, where n is the number of mosaic images.
+            - permutation (torch.Tensor): per-sample tile order with a shape of (B, N), where N is the number
+              of mosaic images.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
             - batch_shapes (torch.Tensor): image shapes in the batch with a shape of (B, 3).

@@ -33,6 +33,8 @@ from kornia.core.utils import _extract_device_dtype
 class AffineGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ```3d affine``` transformation random affine transform.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomAffine3D`.
+
     Args:
         degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
@@ -57,7 +59,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.
-            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
+            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (shear[i, 0], shear[i, 1])
             will be applied.
 
     Returns:
@@ -65,7 +67,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             - translations (torch.Tensor): element-wise translations with a shape of (B, 3).
             - center (torch.Tensor): element-wise center with a shape of (B, 3).
             - scale (torch.Tensor): element-wise scales with a shape of (B, 3).
-            - angle (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
+            - angles (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
             - sxy (torch.Tensor): element-wise x-y-facet shears with a shape of (B,).
             - sxz (torch.Tensor): element-wise x-z-facet shears with a shape of (B,).
             - syx (torch.Tensor): element-wise y-x-facet shears with a shape of (B,).

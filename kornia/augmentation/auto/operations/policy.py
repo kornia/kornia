@@ -33,8 +33,24 @@ from kornia.core.utils import is_exporting
 class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     """Policy tuple for applying multiple operations.
 
+    Convention:
+        - accepts only :class:`~kornia.augmentation.auto.operations.OperationBase` children. Generated parameters
+          apply every child in construction order. Supplied ``params`` define the execution path instead: their
+          order and membership select the referenced children, so they may replay a reordered or partial path.
+          ``forward`` stores the ``ParamItem`` objects for the path it executed in ``_params``; those parameters can
+          replay the same operations through ``forward(input, params=...)``.
+        - its transformation matrix is the ordered product of its geometric wrapped operations. Intensity
+          operations do not contribute to that matrix.
+        - direct ``forward_parameters`` delegates to each wrapped augmentation rather than to
+          :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`.
+          It consequently samples the wrapped operation's native
+          magnitude instead of the ``OperationBase`` magnitude mapping; the gate comes from the wrapped
+          augmentation's ``p`` on both paths (`#4656 <https://github.com/kornia/kornia/issues/4656>`_). Tracked
+          in `#4441 <https://github.com/kornia/kornia/issues/4441>`_. Policy augmentations use their own
+          samplers where needed.
+
     Args:
-        operations: a list of operations to perform.
+        operations: the operations to perform, passed as positional arguments rather than as one list.
 
     """
 

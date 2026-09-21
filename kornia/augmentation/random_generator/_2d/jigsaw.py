@@ -29,6 +29,8 @@ __all__ = ["JigsawGenerator"]
 class JigsawGenerator(RandomGeneratorBase):
     r"""Generate Jigsaw permutation indices for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomJigsaw`.
+
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
             each output will mix image patches in a 2x2 grid.
