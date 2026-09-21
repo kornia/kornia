@@ -25,6 +25,7 @@ from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
@@ -63,7 +64,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         align_corners: interpolation flag.
         cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
             on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
-            to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+            to extract the window. Use `slice` for efficiency, or `resample` for proper
             differentiability.
 
     Examples:
@@ -87,9 +88,11 @@ class RandomMosaic(MixAugmentationBaseV2):
           along width and ``mosaic_grid[1]`` tiles along height, then crops each result. It supports
           ``"bbox"``, ``"bbox_xyxy"``, and ``"bbox_xywh"`` in addition to image inputs; it does not support
           masks, keypoints, or class labels.
-        - With an explicit ``output_size`` an unselected sample is zero-padded or cropped to that size rather than
-          returned unchanged. The boxes of a selected sample are translated with its tiles, not rescaled, and
-          clipped to the output window ``[0, W_out] x [0, H_out]``.
+        - Both ``cropping_mode`` values take an ``output_size`` window of the composed canvas at the drawn corner,
+          without rescaling; where the window passes the canvas edge it is zero. With an explicit ``output_size`` an
+          unselected sample is zero-padded or cropped to that size rather than returned unchanged. The boxes of a
+          selected sample are translated with its tiles, not rescaled, and clipped to the output window
+          ``[0, W_out] x [0, H_out]``.
         - The box output is always one dense tensor. When the gate selects any sample, every row holds
           ``N * mosaic_grid[0] * mosaic_grid[1]`` boxes for ``N`` input boxes per sample: a selected row holds its
           mosaic boxes, and an unselected row holds its own ``N`` boxes unchanged followed by all-zero padding rows
@@ -250,6 +253,14 @@ class RandomMosaic(MixAugmentationBaseV2):
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            if flags["output_size"] is not None and input.shape[0] > 0 and not is_exporting():
+                # The window is ``output_size`` and may pass the canvas edge. Zero-pad the canvas so every slice is
+                # exactly ``output_size``: ``crop_by_indices`` resizes rather than pads when all boxes coincide.
+                src = params["src"].long()
+                pad_w = int(src[:, 1, 0].max()) + 1 - input.shape[-1]
+                pad_h = int(src[:, 3, 1].max()) + 1 - input.shape[-2]
+                if pad_w > 0 or pad_h > 0:
+                    input = F.pad(input, [0, max(pad_w, 0), 0, max(pad_h, 0)])
             return crop_by_indices(input, params["src"], flags["output_size"], shape_compensation="F.pad")
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 

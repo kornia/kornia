@@ -105,8 +105,8 @@ class MosaicGenerator(RandomGeneratorBase):
         crop_src = bbox_generator(
             start_corner_x,
             start_corner_y,
-            start_corner_x.clone().fill_(input_sizes[1]),
-            start_corner_y.clone().fill_(input_sizes[0]),
+            start_corner_x.clone().fill_(output_size[1]),
+            start_corner_y.clone().fill_(output_size[0]),
         )
         crop_dst = _constant_tensor(
             [

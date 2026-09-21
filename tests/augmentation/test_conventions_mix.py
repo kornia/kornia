@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 
 import pytest
@@ -513,6 +514,77 @@ class TestMixConventions(BaseTester):
         assert resampled.shape == image.shape
         self.assert_close(resampled, expected_image)
         self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("output_size", [(4, 10), (9, 5), (14, 18)])
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_convention_mosaic_output_size_crops_an_unscaled_window_of_the_canvas(
+        self, cropping_mode, output_size, batch_size, device, dtype
+    ):
+        # Both cropping modes take an ``output_size`` window of the composed canvas at the drawn corner, without
+        # rescaling; past the canvas edge the window is zero. That is what keeps the boxes, which are translated and
+        # not rescaled, on their tiles. Before, resample squeezed an input-sized window into ``output_size`` (#4679
+        # review), and slice did so whenever every sample drew the same corner (``crop_by_indices`` ignored
+        # ``shape_compensation="F.pad"`` on its uniform path).
+        image = torch.rand(batch_size, 1, 6, 8, device=device, dtype=dtype)
+        aug = K.RandomMosaic(
+            output_size=output_size,
+            start_ratio_range=(0.5, 0.5),
+            p=1.0,
+            cropping_mode=cropping_mode,
+            resample="nearest",
+        )
+        output = aug(image)
+        canvas = aug._compose_images(image, aug._params, aug.flags)  # (12, 16); the corner is (x, y) = (4, 3)
+        window = canvas[..., 3 : 3 + output_size[0], 4 : 4 + output_size[1]]
+        expected = torch.nn.functional.pad(
+            window, [0, output_size[1] - window.shape[-1], 0, output_size[0] - window.shape[-2]]
+        )
+        assert output.shape == (batch_size, 1, *output_size)
+        self.assert_close(output, expected)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_convention_mosaic_boxes_stay_on_their_tiles_for_a_random_corner(self, cropping_mode, device, dtype):
+        # Each source image is one constant and its box covers the whole image, so the pixels inside every output
+        # box must all come from the one tile the box claims. The box is shrunk by one pixel per side: a half-precision
+        # corner rounds by up to a pixel, while the defect this pins moved a tile boundary by a whole tile fraction.
+        image = torch.arange(1.0, 5.0, device=device, dtype=dtype).view(4, 1, 1, 1).expand(4, 1, 6, 8).contiguous()
+        boxes = torch.tensor([[[0.0, 0.0, 8.0, 6.0]]], device=device, dtype=dtype).expand(4, 1, 4)
+        for output_size in ((4, 10), (9, 5), (8, 12)):
+            for seed in range(5):
+                torch.manual_seed(seed)
+                aug = K.RandomMosaic(
+                    output_size=output_size,
+                    p=1.0,
+                    cropping_mode=cropping_mode,
+                    resample="nearest",
+                    data_keys=["input", "bbox_xyxy"],
+                )
+                output, out_boxes = aug(image, boxes)
+                for b in range(4):
+                    for x1, y1, x2, y2 in out_boxes[b].tolist():
+                        x1, y1, x2, y2 = math.ceil(x1) + 1, math.ceil(y1) + 1, math.floor(x2) - 1, math.floor(y2) - 1
+                        if x2 <= x1 or y2 <= y1:
+                            continue
+                        values = output[b, 0, y1:y2, x1:x2].unique()
+                        assert values.numel() == 1 and values.item() != 0, (output_size, seed, b)
+
+    def test_convention_mosaic_unselected_list_row_keeps_its_own_box_count(self, device, dtype):
+        # A list input carries its own padding: a one-box sample in a list whose longest sample has two boxes. An
+        # unselected row must come back with just its own box, not its own padding row as a phantom box.
+        image = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        boxes = [
+            torch.tensor([[1.0, 1.0, 4.0, 4.0]], device=device, dtype=dtype),
+            torch.tensor([[1.0, 1.0, 3.0, 3.0], [2.0, 1.0, 6.0, 5.0]], device=device, dtype=dtype),
+        ]
+        mosaic = K.RandomMosaic(p=1.0)
+        pipeline = K.AugmentationSequential(mosaic, data_keys=["input", "bbox_xyxy"])
+        pipeline(image, boxes)
+        params = pipeline._params
+        params[0].data["batch_prob"] = params[0].data["batch_prob"].new_tensor([0.0, 1.0])
+        _, out_boxes = pipeline(image, boxes, params=params)
+        assert isinstance(out_boxes, list)
+        self.assert_close(out_boxes[0], boxes[0])
 
     @staticmethod
     def _mosaic_boxes(num_boxes: int, data_key: str, device, dtype) -> torch.Tensor:
