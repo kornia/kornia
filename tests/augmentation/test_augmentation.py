@@ -19,6 +19,7 @@ import copy
 import io
 import os
 import pickle
+import subprocess
 import sys
 from typing import Any, Dict, Optional, Tuple, Type
 from unittest.mock import patch
@@ -1346,6 +1347,29 @@ class TestColorJiggle(BaseTester):
         assert torch.equal(sampled(image, params=params), expected)
         with pytest.raises(ValueError, match=r"entries must be in 0\.\.3"):
             ColorJiggle(order=(0, 1, 9))
+
+    @pytest.mark.device_agnostic
+    def test_fixed_order_keeps_distribution_validation(self):
+        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
+        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
+        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        script = (
+            "import torch\n"
+            "from torch.distributions import Distribution\n"
+            "from kornia.augmentation import ColorJiggle\n"
+            "Distribution.set_default_validate_args(True)\n"
+            "ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(torch.rand(2, 3, 8, 8))\n"
+            "assert Distribution._validate_args, 'ColorJiggle disabled Distribution validation'\n"
+        )
+        # Trusted, fixed command (the current interpreter running a literal script); no external input.
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+        assert result.returncode == 0, result.stderr
 
     def test_dynamo_fixed_order(self, device, dtype):
         image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)

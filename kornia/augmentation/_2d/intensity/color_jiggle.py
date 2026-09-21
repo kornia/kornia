@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -207,16 +208,23 @@ class ColorJiggle(IntensityAugmentationBase2D):
         # restricted to RGB inputs: tracing the hue/saturation branches would otherwise reject the neutral
         # one- and four-channel configurations accepted by the Python dispatch below.
         if self._fixed_order is not None and input.shape[-3] == 3:
-            jittered = input
-            for idx in self._fixed_order:
-                jittered = _apply_transform_cond(
-                    idx,
-                    jittered,
-                    params["brightness_factor"],
-                    params["contrast_factor"],
-                    params["saturation_factor"],
-                    params["hue_factor"],
-                )
+            # An eager torch.cond enters Dynamo, whose one-time setup calls
+            # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
+            validate_args = Distribution._validate_args
+            try:
+                jittered = input
+                for idx in self._fixed_order:
+                    jittered = _apply_transform_cond(
+                        idx,
+                        jittered,
+                        params["brightness_factor"],
+                        params["contrast_factor"],
+                        params["saturation_factor"],
+                        params["hue_factor"],
+                    )
+            finally:
+                if Distribution._validate_args != validate_args:
+                    Distribution.set_default_validate_args(validate_args)
             return jittered
 
         transforms = [
