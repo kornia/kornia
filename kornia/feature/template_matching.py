@@ -66,6 +66,7 @@ def match_template_zncc(image: Tensor, template: Tensor, min_variance: float = 1
     Euclidean norms. Each channel is centered spatially, then all channels are aggregated.
     This is the CCOEFF_NORMED formula documented in OpenCV's TemplateMatchModes:
     https://docs.opencv.org/4.13.0/df/dfb/group__imgproc__object.html.
+    The classical normalized-correlation formulation is also described in :cite:`Lewis1995template`.
     Unlike OpenCV's constant-template convention, degenerate windows return zero and false.
 
     Args:
@@ -85,13 +86,20 @@ def match_template_zncc(image: Tensor, template: Tensor, min_variance: float = 1
         No padding, resizing or intensity rescaling is applied to the matching definition.
         A nonfinite image pixel invalidates only overlapping windows; a nonfinite template
         invalidates its image pair. The mask is not a confidence or visibility estimate.
+        Mask invalid scores before selecting a peak and handle images with no valid window.
+        The score map is differentiable on nondegenerate inputs; integer argmax locations are not.
+
+        Per-channel intensity offsets and a common positive gain cancel in the ideal score.
+        Independent per-channel gains need not cancel, and scaling can change the validity
+        decision because min_variance is expressed in squared intensity units.
 
         Locally centered windows avoid cancellation in raw second moments on weak textures.
         Computation uses bounded spatial tiles rather than one materialized full patch tensor;
         differentiable tiles are recomputed during backward to avoid retaining all centered
         windows. This prioritizes numerical accuracy and bounded intermediates over the speed
         of a convolution-only implementation. Fixed-shape compilation and gradients on
-        nondegenerate inputs are supported; dynamic-shape export is not guaranteed.
+        nondegenerate inputs are supported; dynamic-shape export is not guaranteed. This is
+        direct spatial correlation, not the FFT or summed-area acceleration in the reference.
     """
     for name, value in (("image", image), ("template", template)):
         if not isinstance(value, Tensor):
