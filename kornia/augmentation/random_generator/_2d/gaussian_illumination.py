@@ -72,8 +72,7 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr_buf = f"gain={self.gain}, center={self.center}, sigma={self.sigma}, sign={self.sign}"
-        return repr_buf
+        return f"gain={self.gain}, center={self.center}, sigma={self.sigma}, sign={self.sign}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""

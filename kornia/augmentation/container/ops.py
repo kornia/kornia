@@ -329,6 +329,8 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            input = module.inverse(**extra_args)
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d inverse operations are not yet supported. You are welcome to file a PR in our repo."

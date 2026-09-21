@@ -1352,6 +1352,26 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 
 
 class TestRandomMotionBlur(RandomGeneratorBaseTests):
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_shared_kernel_size_4671(self, same_on_batch, device, dtype):
+        torch.manual_seed(0)
+        gen = MotionBlurGenerator(
+            (3, 9),
+            torch.tensor([-45.0, 45.0], device=device, dtype=dtype),
+            torch.tensor([-1.0, 1.0], device=device, dtype=dtype),
+        )
+        params = gen(torch.Size([8]), same_on_batch=same_on_batch)
+        sizes = params["ksize_factor"]
+        assert sizes.shape == (8,)
+        assert sizes.device == device
+        assert sizes.dtype == torch.int32
+        assert sizes.unique().numel() == 1
+        for name in ("angle_factor", "direction_factor"):
+            assert params[name].shape == (8,)
+            assert params[name].device == device
+            assert params[name].dtype == dtype
+            assert (params[name].unique().numel() == 1) == same_on_batch
+
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("kernel_size", [3, (3, 5)])
     @pytest.mark.parametrize("angle", [torch.tensor([10, 30])])

@@ -30,14 +30,17 @@ __all__ = ["PatchMixGenerator"]
 class PatchMixGenerator(RandomGeneratorBase):
     r"""Generate patchmix indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.PatchMix`.
+
     Args:
-        alpha (float): hyperparameter for generating cut size from beta distribution.
+        alpha (float): parameter of the ``Beta(alpha, alpha)`` draw returned as ``lam``. It does not affect
+            the patch, whose side is always ``patch_size``.
         patch_size (int): size of the patch to be swapped.
-        p (float): probability of applying patchmix.
+        p (float): stored for ``repr`` only; the augmentation draws the gate itself.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B).
+            - mix_pairs (torch.Tensor): pairing indices with a shape of (B).
             - patch_coords (torch.Tensor): top-left coordinates of the patch (B, 2).
             - lam (torch.Tensor): mixing parameter (B).
 
@@ -59,8 +62,7 @@ class PatchMixGenerator(RandomGeneratorBase):
         self.p = p
 
     def __repr__(self) -> str:
-        repr = f"alpha={self.alpha}, patch_size={self.patch_size}, p={self.p}"
-        return repr
+        return f"alpha={self.alpha}, patch_size={self.patch_size}, p={self.p}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.beta_sampler = Beta(
@@ -92,8 +94,12 @@ class PatchMixGenerator(RandomGeneratorBase):
             }
 
         with torch.no_grad():
+            # The draw behind the pairing is never shared across the batch: identical values
+            # argsort to the identity, which pairs every image with itself and makes the whole
+            # augmentation a no-op. `same_on_batch` shares the patch location below instead,
+            # matching the convention that it does not equate batch-pairing indices.
             mix_pairs: torch.Tensor = (
-                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch)
+                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch=False)
                 .to(device=_device, dtype=_dtype)
                 .argsort(dim=0)
             )
@@ -102,6 +108,12 @@ class PatchMixGenerator(RandomGeneratorBase):
 
             # Sample patch coordinates
             # height - patch_size + 1
+            if self.patch_size > min(height, width):
+                raise ValueError(
+                    f"Expect `patch_size` to fit the input: got {self.patch_size} for an input of "
+                    f"{height}x{width}. A larger patch makes the corner range negative, and the "
+                    f"negative slice that follows copies an arbitrary rectangle instead of raising."
+                )
             max_y = height - self.patch_size
             max_x = width - self.patch_size
 

@@ -32,7 +32,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
     Args:
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
+            If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
@@ -44,7 +44,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
+            - ksize_factor (torch.Tensor): one shared kernel size repeated to a shape of (B,).
             - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
             - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
 
@@ -67,8 +67,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.direction = direction
 
     def __repr__(self) -> str:
-        repr = f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}"
-        return repr
+        return f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         angle = _range_bound(self.angle, "angle", center=0.0, bounds=(-360, 360)).to(device=device, dtype=dtype)
@@ -110,7 +109,9 @@ class MotionBlurGenerator(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.angle, self.direction])
         angle_factor = _adapted_rsampling((batch_size,), self.angle_sampler, same_on_batch)
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
-        ksize_half = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).floor()
+        # A ranged kernel size is shared by the batch; angle and direction can still vary per sample.
+        ksize_same_on_batch = same_on_batch or isinstance(self.kernel_size, tuple)
+        ksize_half = _adapted_rsampling((batch_size,), self.ksize_sampler, ksize_same_on_batch).floor()
         # A float32 draw can round up onto the open upper end, hi + 1; keep it inside the closed range.
         ksize_factor = ksize_half.clamp_max(self._ksize_half_max).int() * 2 + 1
 
