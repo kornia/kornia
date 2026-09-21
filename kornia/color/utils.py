@@ -67,6 +67,4 @@ def _apply_linear_transformation(
     out_flat = F.conv2d(input_flat, weight, bias=bias_compute)
 
     # Unflatten back to original shape
-    out = out_flat.reshape(input_shape)
-
-    return out
+    return out_flat.reshape(input_shape)
