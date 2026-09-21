@@ -403,3 +403,41 @@ def test_inverse_without_a_forward_pass_still_reports_missing_params(device, dty
     x = torch.rand(2, 3, 8, 6, device=device, dtype=dtype)
     with pytest.raises(ValueError, match="No parameters available"):
         RandAugment(n=1, m=5).inverse(x)
+
+
+def test_operation_base_deepcopy_after_use() -> None:
+    operation = ops.Brightness()
+    state_dict = operation.state_dict()
+
+    assert isinstance(operation._probability, torch.nn.Parameter)
+    assert isinstance(operation.probability, torch.Tensor)
+    assert operation.probability.item() == operation.op.p
+    assert hasattr(operation, "temperature")
+    assert "_probability" in state_dict
+    assert "temperature" in state_dict
+
+    restored = ops.Brightness()
+    restored.load_state_dict(state_dict, strict=True)
+
+    assert restored.probability.item() == operation.probability.item()
+    assert torch.equal(restored.temperature, operation.temperature)
+
+    x = torch.rand(2, 3, 32, 32)
+
+    cases = [
+        (RandAugment(n=2, m=15), "forward"),
+        (AutoAugment(), "train"),
+        (AutoAugment(), "eval"),
+        (TrivialAugment(), "train"),
+        (AugmentationSequential(RandAugment(n=2, m=15)), "forward"),
+    ]
+
+    for aug, action in cases:
+        if action == "forward":
+            aug(x)
+        elif action == "train":
+            aug.train()
+        else:
+            aug.eval()
+
+        copy.deepcopy(aug)
