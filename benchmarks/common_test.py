@@ -264,3 +264,109 @@ def test_machine_slug_override_is_slugified() -> None:
     from common import machine_slug
 
     assert machine_slug({"machine": "x86_64"}, override="My Box! #2") == "my-box-2"
+
+
+def _flagship_parser(**kwargs):
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    common.add_flagship_args(parser, **kwargs)
+    return parser
+
+
+def test_add_flagship_args_shared_defaults() -> None:
+    args = _flagship_parser(ops=("a", "b")).parse_args([])
+    assert (args.batches, args.size, args.device, args.dtype, args.threads) == ("1,8,32", 256, "cpu", "float32", 4)
+    assert args.ops is None and args.skip_compile_ops == frozenset() and args.min_run_time == 1.0
+    assert args.json is None and args.contribute is None
+
+
+def test_add_flagship_args_rejects_unknown_ops(capsys) -> None:
+    import pytest
+
+    parser = _flagship_parser(ops=("a", "b"))
+    assert parser.parse_args(["--ops", "b, a"]).ops == frozenset({"a", "b"})
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--ops", "a,nope"])
+    assert "unknown operation(s): nope" in capsys.readouterr().err
+
+
+def test_add_flagship_args_without_batches() -> None:
+    args = _flagship_parser(batches="").parse_args([])
+    assert not hasattr(args, "batches")
+
+
+def test_kornia_provenance_is_checkout_relative() -> None:
+    console, field = common.kornia_provenance(str(common.REPO_ROOT / "kornia" / "__init__.py"))
+    assert field == "kornia/__init__.py"
+    assert Path(console).is_absolute()
+    assert common.kornia_provenance("/elsewhere/site-packages/kornia/__init__.py")[1] == "outside-checkout"
+    assert common.kornia_provenance(None)[1] == "outside-checkout"
+
+
+def test_start_run_prints_shared_header_and_exports_units(capsys) -> None:
+    args = _flagship_parser().parse_args(["--skip-compile-ops", "opB"])
+    meta = common.start_run(
+        "flagship demo", args, torch.device("cpu"), units="img/s", regimes=["regime line"], missing=[("lib", "why")]
+    )
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("# flagship demo benchmark — commit ")
+    assert out[1].startswith("# torch ")
+    assert out[2].startswith("# kornia source: ")
+    assert "throughput img/s" in out[3]
+    assert "# regime line" in out
+    assert "# NOTE: lib not available (why) — its column is skipped" in out
+    assert any("--skip-compile-ops keeps eager-only: opB" in line for line in out)
+    assert meta["units"] == "img/s"
+    assert not meta["kornia_module"].startswith("/")  # privacy rule: never an absolute path
+    assert "load" in meta
+
+
+def test_finish_run_writes_json(tmp_path, capsys) -> None:
+    out = tmp_path / "run.json"
+    args = _flagship_parser().parse_args(["--json", str(out)])
+    common.finish_run(args, "demo", {"device": "cpu"}, [{"op": "a", "median_us": float("nan")}])
+    payload = json.loads(out.read_text())
+    assert payload["results"][0]["median_us"] is None
+    assert f"# results written to {out}" in capsys.readouterr().out
+
+
+def test_kornia_rows_eager_only_and_step() -> None:
+    calls: list[str] = []
+    rows = common.KorniaRows(torch.device("cpu"), do_compile=False, step=lambda call: lambda: calls.append(call()))
+    row = rows("op", lambda x: x + 1, 1)
+    assert set(row) == {"kornia (eager)"}
+    row["kornia (eager)"]()
+    assert calls == [2]  # step wraps the eager call
+
+
+def test_kornia_rows_records_warmup_failure(monkeypatch) -> None:  # 'compile' in a NAME gets deselected
+    def broken(fn):
+        def run(*args):
+            raise RuntimeError("boom")
+
+        return run
+
+    monkeypatch.setattr(torch, "compile", broken)
+    rows = common.KorniaRows(torch.device("cpu"), do_compile=True, skip_compile=frozenset({"kept"}))
+    row = rows("op", lambda x: x, 1)
+    assert row["kornia (compiled)"] is None
+    assert rows.compile_failures == {"op": "RuntimeError"}
+    assert "kornia (compiled)" not in rows("kept", lambda x: x, 1)
+
+
+def test_run_batch_sweep_records_raising_backend(capsys) -> None:
+    def boom():
+        raise ValueError("bad input")
+
+    def build(b):
+        return {"a_very_long_operation_name_here": {"ok": lambda: None, "bad": boom}}, {}
+
+    rows = run_batch_sweep([1], build, ["ok", "bad"], row_fields=lambda b: {}, min_run_time=0.05)
+    bad = next(r for r in rows if r["backend"] == "bad")
+    assert bad["error"] == "ValueError" and bad["median_us"] is None and bad["throughput_per_s"] is None
+    out = capsys.readouterr().out
+    assert "✗" in out and "a_very_long_operation_name_here/bad" in out
+    # the label column grows to fit the longest op name instead of running into the first cell
+    line = next(line for line in out.splitlines() if line.startswith("a_very_long_operation_name_here"))
+    assert line[len("a_very_long_operation_name_here")] == " "
