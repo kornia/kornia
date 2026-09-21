@@ -29,7 +29,7 @@ from torch.distributions import Distribution
 import kornia.augmentation as K
 from kornia.constants import BorderType, Resample
 from kornia.core.exceptions import BaseError, ImageError, ShapeError
-from kornia.filters import box_blur, motion_blur
+from kornia.filters import box_blur
 from kornia.filters.kernels import gaussian
 
 from testing.base import (
@@ -376,22 +376,8 @@ class TestBlurConventions(BaseTester):
         assert aug.flags["border_type"] == BorderType.CONSTANT
         assert aug.flags["resample"] == Resample.NEAREST
 
-    # Issue #4599: `kernel_size` is drawn once per SAMPLE and then one entry -- the one at a uniformly
-    # drawn `_params["idx"]`, not the first -- is applied to the whole batch; and because the draw is
-    # `UniformDistribution(ks[0] // 2, ks[1] // 2)` truncated with `.int()`, the range's upper bound is
-    # practically never reached.  `(3, 5)` is therefore a constant 3 -- "practically": the float32 draw
-    # rounds onto the bound about once in 2**24 (seed 204 draws one 5 in 50000), so the pin is that the
-    # bound is vanishingly rare, not impossible.  RandomRain had the same wart and no longer does
-    # (#4567): it draws over `[lo, hi + 1)`, floors, and clamps that rounding escape back onto the closed
-    # range -- the remedy this one still needs.
-    # Snippet used to generate expected:
-    #   import collections
-    #   for ks in ((3, 5), (3, 7), (5, 11)):
-    #       torch.manual_seed(0)
-    #       v = K.RandomMotionBlur(ks, (0., 0.), (0., 0.), p=1.).forward_parameters((20000, 1, 8, 8))
-    #       print(ks, sorted(collections.Counter(v["ksize_factor"].tolist())))
-    # executed 2026-09-16 (torch 2.14.0, cpu) -> `[3]`, `[3, 5]`, `[5, 7, 9]`; `idx` over 400 seeds at
-    # B = 6 lands on every row (`{0: 67, 1: 71, 2: 66, 3: 57, 4: 83, 5: 56}`).
+    # Issue #4599: the odd upper bound of a ranged kernel_size is drawn. Sample independent calls
+    # because the kernel size is shared within each batch (#4671).
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(
         ("kernel_size", "drawn"),
@@ -404,63 +390,25 @@ class TestBlurConventions(BaseTester):
     def test_random_motion_blur_upper_bound_is_drawn_4599(self, kernel_size, drawn):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomMotionBlur(kernel_size, (0.0, 0.0), (0.0, 0.0), p=1.0)
-        factors = aug.forward_parameters((20000, 1, 8, 8))["ksize_factor"]
+        factors = torch.cat([aug.forward_parameters((1, 1, 8, 8))["ksize_factor"] for _ in range(20000)])
         assert sorted(set(factors.tolist())) == drawn
         assert int((factors == kernel_size[1]).sum()) > 1000
 
-    # Issue #4599, the other half: the per-sample draw is real, and a random index selects which one
-    # the batch gets -- so `_params["ksize_factor"]` holds B different values while one kernel is used.
-    @pytest.mark.device_agnostic
-    def test_wart_random_motion_blur_applies_one_randomly_indexed_kernel_size_4599(self):
-        picked = set()
-        distinct = 0
-        for seed in range(64):
-            torch.manual_seed(seed)
-            params = K.RandomMotionBlur((3, 21), (0.0, 0.0), (0.0, 0.0), p=1.0).forward_parameters((6, 3, 8, 8))
-            assert params["ksize_factor"].shape == (6,)
-            assert params["idx"].shape == (1,)
-            picked.add(int(params["idx"][0]))
-            distinct += len(set(params["ksize_factor"].tolist())) > 1
-        # Every row of the batch can be the one applied, so it is not "the first sample's".
-        assert picked == set(range(6))
-        # And the draw really is per sample: a constant `ksize_factor` would make `idx` immaterial.
-        assert distinct > 60
-        # The kernel that is applied is the one at `idx`, not the first sample's: `_params` alone cannot
-        # see that (`kernel_size_list[0]` in apply_transform left this pin green), so compare the output
-        # with the functional at `ksize_factor[idx]` on seeds where that differs from `ksize_factor[0]`.
-        torch.manual_seed(_FIXTURE_SEED)
-        image = torch.rand(6, 3, 8, 8)
-        checked = 0
+    # Issue #4671: the stored sizes describe the shared kernel actually applied to every image.
+    def test_convention_random_motion_blur_stored_kernel_sizes_match_impulse_widths_4671(self, device, dtype):
+        image = torch.zeros(8, 1, 17, 17, device=device, dtype=dtype)
+        image[:, :, 8, 8] = 1
+        aug = K.RandomMotionBlur((3, 9), (0.0, 0.0), (0.0, 0.0), p=1.0)
+        drawn = set()
         for seed in range(8):
             torch.manual_seed(seed)
-            aug = K.RandomMotionBlur((3, 21), (-45.0, 45.0), (-1.0, 1.0), p=1.0)
-            out = aug(image)
-            params = aug._params
-            idx = int(params["idx"][0])
-            applied, first = int(params["ksize_factor"][idx]), int(params["ksize_factor"][0])
-            reference = motion_blur(
-                image,
-                applied,
-                params["angle_factor"],
-                params["direction_factor"],
-                border_type="constant",
-                mode="nearest",
-            )
-            assert torch.equal(out, reference)
-            if applied != first:
-                assert not torch.equal(
-                    out,
-                    motion_blur(
-                        image,
-                        first,
-                        params["angle_factor"],
-                        params["direction_factor"],
-                        border_type="constant",
-                        mode="nearest",
-                    ),
-                )
-                checked += 1
-        assert checked >= 3
+            output = aug(image)
+            # A horizontal, uniform blur spreads an impulse across exactly kernel_size pixels.
+            widths = (output[:, 0, 8] != 0).sum(-1)
+            assert widths.tolist() == aug._params["ksize_factor"].tolist()
+            assert widths.unique().numel() == 1
+            drawn.update(widths.tolist())
+        assert len(drawn) > 1
 
     # Row 6c-24, the resampling caveat: the kernel's weights are laid on a line and then rotated, so
     # with ``border_type="reflect"`` a "nearest" or "bilinear" rotation keeps them non-negative and the
