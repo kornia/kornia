@@ -141,23 +141,15 @@ class Test3DAugmentationConventions(BaseTester):
         self.assert_close(affine(volume), volume)
         self.assert_close(rotation(volume), volume)
 
-    def test_wart_random_perspective3d_identity_align_corners_false_4503(self, device, dtype):
-        # #4503: the default false-setting perspective path still mixes coordinate normalizations. A zero
-        # distortion matrix is identity, but a non-constant volume is resampled away from its voxel centres.
+    def test_convention_random_perspective3d_identity_under_either_align_corners_4503(self, device, dtype):
+        # #4503: the 3D normalization follows the flag handed to grid_sample, so a zero-distortion perspective
+        # warp is an identity under both settings. Before the fix the default False setting resampled this
+        # non-constant volume away from its voxel centres by more than 1.
         if not supports_bilinear_3d_grid_sample(device, dtype):
             pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
-        volume = torch.arange(60, device=device, dtype=dtype).reshape(1, 1, 3, 4, 5)
-        default = K.RandomPerspective3D(0.0, p=1.0)
-        aligned = K.RandomPerspective3D(0.0, p=1.0, align_corners=True)
-        assert (default(volume) - volume).abs().max() > 1
-        self.assert_close(aligned(volume), volume)
-
-    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="3D normalization ignores align_corners, #4503")
-    def test_convention_random_perspective3d_identity_align_corners_false(self, device, dtype):
-        if not supports_bilinear_3d_grid_sample(device, dtype):
-            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
-        volume = torch.arange(60, device=device, dtype=dtype).reshape(1, 1, 3, 4, 5)
+        volume = torch.arange(60, device=device, dtype=dtype).reshape(1, 1, 3, 4, 5) / 64
         self.assert_close(K.RandomPerspective3D(0.0, p=1.0)(volume), volume)
+        self.assert_close(K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume), volume)
 
     @pytest.mark.device_agnostic
     def test_wart_positive_roll_direction_splits_the_rotation_entry_points_4408(self):
