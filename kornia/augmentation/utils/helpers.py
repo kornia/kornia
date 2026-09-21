@@ -23,6 +23,7 @@ import torch
 from torch.distributions import Beta, Uniform
 
 from kornia.core.utils import _extract_device_dtype
+from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -34,6 +35,26 @@ def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int
             _flatten_constant(value, shape, leaves, depth + 1)
     else:
         leaves.append(data)
+
+
+def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
+    """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
+
+    :class:`~kornia.geometry.boxes.Boxes` records per-sample trailing padding in ``_N`` and its default export
+    returns a ragged list for such an object. The padding rows are zeroed after the export rather than stored as
+    zeros, because a zero stored box exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and
+    ``'vertices'`` modes, which reads as a real one-pixel box.
+    """
+    out = boxes.to_tensor(mode, as_padded_sequence=True)
+    if not isinstance(out, torch.Tensor):
+        raise TypeError(f"Expected a padded tensor export. Got {type(out)}.")
+    if boxes._N is None:
+        return out
+    num_boxes = out.shape[1]
+    real = torch.tensor([num_boxes - n for n in boxes._N], device=out.device)
+    valid = torch.arange(num_boxes, device=out.device)[None] < real[:, None]
+    valid = valid.reshape(valid.shape + (1,) * (out.dim() - 2))
+    return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
 
 
 def _constant_tensor(

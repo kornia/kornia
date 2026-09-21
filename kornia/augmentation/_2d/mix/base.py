@@ -26,8 +26,8 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     _validate_input_dtype,
 )
+from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, DType
-from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
 
 
@@ -292,15 +292,15 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             elif dcate == DataKey.BBOX:
                 box = Boxes.from_tensor(_input, mode="vertices", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("vertices"), torch.Tensor)
+                output = _boxes_to_padded_tensor(box, "vertices")
             elif dcate == DataKey.BBOX_XYXY:
                 box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("xyxy"), torch.Tensor)
+                output = _boxes_to_padded_tensor(box, "xyxy")
             elif dcate == DataKey.BBOX_XYWH:
                 box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("xywh"), torch.Tensor)
+                output = _boxes_to_padded_tensor(box, "xywh")
             elif dcate == DataKey.KEYPOINTS:
                 output = self.transform_keypoint(_input, self._params, self.flags)
             elif dcate == DataKey.CLASS:

@@ -90,6 +90,15 @@ class RandomMosaic(MixAugmentationBaseV2):
         - With an explicit ``output_size`` an unselected sample is zero-padded or cropped to that size rather than
           returned unchanged. The boxes of a selected sample are translated with its tiles, not rescaled, and
           clipped to the output window ``[0, W_out] x [0, H_out]``.
+        - The box output is always one dense tensor. When the gate selects any sample, every row holds
+          ``N * mosaic_grid[0] * mosaic_grid[1]`` boxes for ``N`` input boxes per sample: a selected row holds its
+          mosaic boxes, and an unselected row holds its own ``N`` boxes unchanged followed by all-zero padding rows
+          (``[0, 0, 0, 0]`` in ``"bbox_xyxy"`` and ``"bbox_xywh"``, four ``(0, 0)`` vertices in ``"bbox"``), which
+          have zero area. When the gate selects no sample the boxes are returned unchanged with their ``N`` rows.
+          A selected sample's box that falls below ``min_bbox_size`` is zeroed by
+          :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area` and so exports as ``[0, 0, 1, 1]`` in
+          ``"bbox_xyxy"`` and ``"bbox_xywh"``, not as zero-area padding
+          (`#4714 <https://github.com/kornia/kornia/issues/4714>`_).
 
     """
 
@@ -138,7 +147,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
 
-        original_boxes = input.clone()
+        num_boxes = input.data.shape[1]
         maybe_out_boxes: Optional[Boxes] = None
         # ``batch_shapes`` and ``src_box`` are full-batch sized.
         # Subset them to match ``idx`` (the to_apply indices).
@@ -155,25 +164,21 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _idx = i * flags["mosaic_grid"][1] + j
                 _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]
                 _box.translate(_offset, inplace=True)
-
                 if maybe_out_boxes is None:
                     maybe_out_boxes = _box
-                elif to_apply.all():
-                    KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
                 else:
-                    # Only selected samples contribute additional mosaic boxes.
-                    # Represent non-selected samples as padding rather than real boxes.
-                    tile_boxes = Boxes(
-                        [_box._data[k] if to_apply[k] else _box._data[k, :0] for k in range(_box._data.shape[0])],
-                        mode=_box._mode,
-                    )
-                    KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(tile_boxes, inplace=True)
+                    KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
         out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
         out_boxes.clamp(offset, offset_end, inplace=True)
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
 
-        if not to_apply.all():
-            out_boxes._data[~to_apply] = original_boxes._data[~to_apply]
+        if not bool(to_apply.all()):
+            # An unselected sample keeps its own boxes unchanged, followed by padding up to the mosaic box count.
+            # The padding is recorded in ``_N`` and exported as all-zero (zero-area) rows.
+            out_boxes._data[~to_apply, :num_boxes] = input._data[~to_apply]
+            out_boxes._data[~to_apply, num_boxes:] = 0.0
+            padding = out_boxes._data.shape[1] - num_boxes
+            out_boxes._N = [0 if bool(selected) else padding for selected in to_apply]
 
         return out_boxes
 

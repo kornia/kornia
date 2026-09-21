@@ -514,6 +514,76 @@ class TestMixConventions(BaseTester):
         self.assert_close(resampled, expected_image)
         self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)
 
+    @staticmethod
+    def _mosaic_boxes(num_boxes: int, data_key: str, device, dtype) -> torch.Tensor:
+        corners = torch.tensor([[1.0, 1.0, 4.0, 4.0], [2.0, 1.0, 6.0, 5.0]], device=device, dtype=dtype)[:num_boxes]
+        boxes = corners[None] + 0.25 * torch.arange(4, device=device, dtype=dtype).view(4, 1, 1)  # distinct rows
+        if data_key != "bbox":
+            return boxes
+        x1, y1, x2, y2 = boxes.unbind(-1)
+        return torch.stack([torch.stack(v, -1) for v in ((x1, y1), (x2, y1), (x2, y2), (x1, y2))], -2)
+
+    @pytest.mark.parametrize("num_boxes", [1, 2])
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_convention_mosaic_partial_gate_pads_unselected_rows_with_zero_area_boxes(
+        self, num_boxes, data_key, device, dtype
+    ):
+        # Maintainer ruling on #4679 (#4652): the box output is always one dense tensor. An unselected row keeps
+        # its own boxes, followed by all-zero padding rather than the [0, 0, 1, 1] placeholder that reads as a real
+        # 1x1 box. Before, a partial gate returned a ragged list for one box per sample and crashed for two.
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        boxes = self._mosaic_boxes(num_boxes, data_key, device, dtype)
+        reference = K.RandomMosaic(p=1.0, data_keys=["input", data_key])
+        reference(image, boxes)
+        params = dict(reference._params)
+        params["batch_prob"] = params["batch_prob"].new_tensor([0.0, 1.0, 0.0, 1.0])
+        _, out_boxes = K.RandomMosaic(p=1.0, data_keys=["input", data_key])(image, boxes, params=params)
+        assert isinstance(out_boxes, torch.Tensor)
+        assert out_boxes.shape == (4, 4 * num_boxes, *boxes.shape[2:])
+        self.assert_close(out_boxes[[0, 2], :num_boxes], boxes[[0, 2]])
+        padding = out_boxes[[0, 2], num_boxes:]
+        assert torch.equal(padding, torch.zeros_like(padding))
+
+    def test_convention_mosaic_gate_leaves_selected_rows_and_p0_returns_the_input(self, device, dtype):
+        # The partial gate changes only the unselected rows: a selected row matches the full-gate result of the
+        # same draw, the full gate has no padding to add, and a gate that selects nothing returns the input.
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        boxes = self._mosaic_boxes(2, "bbox_xyxy", device, dtype)
+        aug = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])
+        _, full = aug(image, boxes)
+        params = dict(aug._params)
+        params["batch_prob"] = params["batch_prob"].new_tensor([0.0, 1.0, 0.0, 1.0])
+        _, partial = aug(image, boxes, params=params)
+        assert isinstance(partial, torch.Tensor)
+        assert partial.shape == full.shape == (4, 8, 4)
+        self.assert_close(partial[[1, 3]], full[[1, 3]])
+        _, untouched = K.RandomMosaic(p=0.0, data_keys=["input", "bbox_xyxy"])(image, boxes)
+        assert untouched.shape == boxes.shape
+        self.assert_close(untouched, boxes)
+
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_convention_mosaic_partial_gate_pads_with_zeros_inside_augmentation_sequential(
+        self, data_key, device, dtype
+    ):
+        # AugmentationSequential exports boxes through its own modes; the padding is zero there as well.
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        boxes = self._mosaic_boxes(2, data_key, device, dtype)
+        mosaic = K.RandomMosaic(p=0.5)
+        pipeline = K.AugmentationSequential(mosaic, data_keys=["input", data_key])
+        for seed in range(20):
+            torch.manual_seed(seed)
+            _, out_boxes = pipeline(image, boxes)
+            selected = mosaic._params["batch_prob"] > 0.5
+            if 0 < int(selected.sum()) < 4:
+                break
+        else:
+            pytest.fail("no partial gate in 20 draws")
+        assert isinstance(out_boxes, torch.Tensor)
+        assert out_boxes.shape == (4, 8, *boxes.shape[2:])
+        self.assert_close(out_boxes[~selected, :2], boxes[~selected])
+        padding = out_boxes[~selected, 2:]
+        assert torch.equal(padding, torch.zeros_like(padding))
+
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("p", [0.0, 1.0])
