@@ -167,7 +167,13 @@ def test_torch_export_mask_uses_the_call_image_dtype_4478(case: str) -> None:
     behind, and baked the rounding into the graph. The mask now comes back bit for bit in all three setups.
     """
     seq, args, get_mask, expected = _mask_export_case(case)
+    # ``input_dtype`` and ``mask_dtype`` are class attributes until the first eager call writes them. Export must
+    # not create or change them: torch 2.9 rejects an attribute created during capture, and torch 2.14 lets it
+    # through silently, so the state is pinned here as well as by the export itself.
+    state_before = {k: vars(seq).get(k, "<unset>") for k in ("input_dtype", "mask_dtype")}
     exported = torch.export.export(seq, args)
+    state_after = {k: vars(seq).get(k, "<unset>") for k in ("input_dtype", "mask_dtype")}
+    assert state_after == state_before, f"{case}: export changed the container state {state_before} -> {state_after}"
     mask = get_mask(exported.module()(*args))
     assert mask.dtype == torch.float64
     assert torch.equal(mask, expected), f"{case}: {mask.flatten().tolist()} vs {expected.flatten().tolist()}"

@@ -489,12 +489,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 # Output dtypes are read back per argument in ``_arguments_postproc``; ``mask_dtype`` only records
                 # the last mask's dtype for callers that read the attribute. The test is on ``arg``: it used to be
                 # on the accumulator ``inp``, which is always a list, so a tensor mask was indexed at ``arg[0]``
-                # and an empty batch raised ``IndexError``.
-                if isinstance(arg, list):
-                    if len(arg) > 0:
-                        self.mask_dtype = arg[0].dtype
-                else:
-                    self.mask_dtype = cast(torch.Tensor, arg).dtype
+                # and an empty batch raised ``IndexError``. Like ``input_dtype``, the attribute is not written under
+                # ``torch.export``: creating an instance attribute during capture fails the export on torch 2.9.
+                if not is_exporting():
+                    if isinstance(arg, list):
+                        if len(arg) > 0:
+                            self.mask_dtype = arg[0].dtype
+                    else:
+                        self.mask_dtype = cast(torch.Tensor, arg).dtype
                 inp.append(self._preproc_mask(arg, working_dtype))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
