@@ -49,7 +49,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         fill: Pixel fill value for constant fill. Default is 0. If a tuple of
             length 3, it is used to fill R, G, B channels respectively.
             This value is only used when the padding_mode is constant.
-        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
+        padding_mode: Type of padding, passed to F.pad. Should be: constant, reflect, replicate or circular.
+            Default is constant.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
@@ -57,13 +58,11 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
-        - Output: :math:`(B, C, , out_d, out_h, out_w)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
+        - Output: :math:`(B, C, out_d, out_h, out_w)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.

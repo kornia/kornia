@@ -30,7 +30,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
 
     Args:
         p: probability of applying the transformation.
-        kernel_size: motion kernel size (odd and positive).
+        kernel_size: motion kernel size (odd and at least 3).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
         angle: Range of degrees to select from.
@@ -53,13 +53,11 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Convention:
         See :class:`~kornia.augmentation.IntensityAugmentationBase3D` for the shared 3D intensity contract.

@@ -59,7 +59,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.
-            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
+            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (shear[i, 0], shear[i, 1])
             will be applied.
 
     Returns:
@@ -67,7 +67,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             - translations (torch.Tensor): element-wise translations with a shape of (B, 3).
             - center (torch.Tensor): element-wise center with a shape of (B, 3).
             - scale (torch.Tensor): element-wise scales with a shape of (B, 3).
-            - angle (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
+            - angles (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
             - sxy (torch.Tensor): element-wise x-y-facet shears with a shape of (B,).
             - sxz (torch.Tensor): element-wise x-z-facet shears with a shape of (B,).
             - syx (torch.Tensor): element-wise y-x-facet shears with a shape of (B,).

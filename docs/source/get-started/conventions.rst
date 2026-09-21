@@ -447,13 +447,16 @@ Serializing an augmentation
   configuration. Tensor or ``nn.Parameter`` arguments can have different
   registration behavior.
 - Pickle and deepcopy can retain recorded parameters and transform state,
-  but support is configuration-dependent. The ``kornia.augmentation.auto``
-  policies containing operation wrappers cannot currently be pickled
+  but support is configuration-dependent. A ``kornia.augmentation.auto``
+  policy can be pickled only when every operation wrapper in it can, so the
+  default policies currently cannot
   (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). An empty
-  ``AutoAugment(policy=[[]])`` has no wrappers and can be pickled. ``copy.deepcopy``
-  of a used policy can raise ``RuntimeError``, for example ``RandAugment``
-  after a forward pass with gradients enabled
-  (`#4656 <https://github.com/kornia/kornia/issues/4656>`_).
+  ``AutoAugment(policy=[[]])`` has no wrappers and can be pickled, and so can
+  a policy holding only ``posterize`` entries. ``copy.deepcopy`` raises
+  ``RuntimeError`` once a policy has rebuilt its probability samplers with
+  gradients enabled: after a ``RandAugment`` forward pass, or after
+  ``.train()`` / ``.eval()`` on any of the three policies, even one that was
+  never called (`#4656 <https://github.com/kornia/kornia/issues/4656>`_).
   A normal forward draws fresh parameters; replay requires passing the
   saved parameters and controlling any application-time randomness.
 - Built-in lazy matrices keep only the input's shape, dtype and device

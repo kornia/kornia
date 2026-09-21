@@ -36,8 +36,8 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - src (torch.Tensor): perspective source bounding boxes with a shape of (B, 8, 3).
-            - dst (torch.Tensor): perspective target bounding boxes with a shape (B, 8, 3).
+            - start_points (torch.Tensor): perspective source bounding boxes with a shape of (B, 8, 3).
+            - end_points (torch.Tensor): perspective target bounding boxes with a shape (B, 8, 3).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,

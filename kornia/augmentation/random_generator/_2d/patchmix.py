@@ -33,9 +33,10 @@ class PatchMixGenerator(RandomGeneratorBase):
     See the Convention block on :class:`~kornia.augmentation.PatchMix`.
 
     Args:
-        alpha (float): hyperparameter for generating cut size from beta distribution.
+        alpha (float): parameter of the ``Beta(alpha, alpha)`` draw returned as ``lam``. It does not affect
+            the patch, whose side is always ``patch_size``.
         patch_size (int): size of the patch to be swapped.
-        p (float): probability of applying patchmix.
+        p (float): stored for ``repr`` only; the augmentation draws the gate itself.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.

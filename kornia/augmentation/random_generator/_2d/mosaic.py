@@ -30,7 +30,7 @@ __all__ = ["MosaicGenerator"]
 
 
 class MosaicGenerator(RandomGeneratorBase):
-    r"""Generate mixup indexes and lambdas for a batch of inputs.
+    r"""Generate the tile order and crop boxes of a mosaic for a batch of inputs.
 
     See the Convention block on :class:`~kornia.augmentation.RandomMosaic`.
 

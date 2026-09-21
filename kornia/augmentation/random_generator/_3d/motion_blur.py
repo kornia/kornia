@@ -30,7 +30,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
     See the Convention block on :class:`~kornia.augmentation.RandomMotionBlur3D`.
 
     Args:
-        kernel_size: motion kernel size (odd and positive).
+        kernel_size: motion kernel size (odd and at least 3).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
         angle: ``(yaw, pitch, roll)`` of the motion blur in degrees; a positive roll turns the kernel
@@ -46,7 +46,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
     Returns:
         A dict of parameters to be passed for transformation.
             - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
+            - angle_factor (torch.Tensor): element-wise ``(yaw, pitch, roll)`` angle factors with a shape of (B, 3).
             - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
 
     Note:

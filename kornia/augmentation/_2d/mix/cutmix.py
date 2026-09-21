@@ -35,8 +35,8 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     Localizable Features` :cite:`yun2019cutmix`.
 
     The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
-    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.Tensor that contains (label_permuted_batch, lambda)
-    for each cutmix.
+    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.Tensor that contains
+    (label_batch, label_permuted_batch, lambda) for each cutmix.
 
     The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
     <https://github.com/clovaai/CutMix-PyTorch>`_.

@@ -62,8 +62,10 @@ class OperationBase(nn.Module):
         - The concrete operation classes in ``kornia.augmentation.auto.operations.ops`` only configure this
           wrapper around public 2D augmentations; their input, dtype, RNG, and replay contracts are those of
           their wrapped augmentation and :doc:`/get-started/conventions`. Serialization is the exception: this
-          wrapper stores its magnitude mapping as a local closure, so every concrete operation except
-          ``Posterize`` fails to pickle even though all the wrapped augmentations pickle
+          wrapper stores its magnitude mapping as a local closure unless the concrete class supplies its own
+          named mapping and ``symmetric_megnitude`` is false, and a local closure does not pickle even though
+          all the wrapped augmentations do. With default arguments only ``Posterize`` pickles;
+          ``ShearX`` and ``ShearY`` also do with ``symmetric_megnitude=False``
           (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
 
     """

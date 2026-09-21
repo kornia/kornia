@@ -50,7 +50,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
           samplers where needed.
 
     Args:
-        operations: a list of operations to perform.
+        operations: the operations to perform, passed as positional arguments rather than as one list.
 
     """
 

@@ -53,9 +53,8 @@ class RandomMosaic(MixAugmentationBaseV2):
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
         min_bbox_size: minimum area of bounding boxes. Default to 0.
-        data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints",
-            "class", "label".
+        data_keys: the input type sequential for applying augmentations. Only "input", "image", "bbox",
+            "bbox_xyxy" and "bbox_xywh" are implemented; see the Convention block.
         p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
@@ -92,8 +91,10 @@ class RandomMosaic(MixAugmentationBaseV2):
           masks, keypoints, or class labels.
         - With an explicit ``output_size`` an unselected sample is zero-padded or cropped to that size rather than
           returned unchanged. Boxes are not rescaled or clipped to ``output_size``, and whenever any sample is
-          selected an unselected sample's boxes are padded to the grid's box count with ``[0, 0, 1, 1]``
-          placeholders (`#4652 <https://github.com/kornia/kornia/issues/4652>`_).
+          selected an unselected sample's own boxes are clipped to the input extent, replaced by a
+          ``[0, 0, 1, 1]`` placeholder when smaller than ``min_bbox_size``, and padded with that placeholder to
+          the grid's box count, although that sample is not mixed
+          (`#4652 <https://github.com/kornia/kornia/issues/4652>`_).
 
     """
 

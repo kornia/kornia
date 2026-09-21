@@ -41,9 +41,11 @@ class AugmentationBase3D(_AugmentationBase):
         - the working layout is ``(B, C, D, H, W)`` float. Inputs of rank three and four are promoted by
           prepending batch and, for rank three, channel dimensions; ``keepdim=True`` restores that original
           rank. The dtype guard accepts only ``float16``, ``bfloat16``, ``float32``, and ``float64``.
+          :class:`~kornia.augmentation.RandomTransplantation3D` overrides ``forward`` and takes batched inputs
+          only.
         - ``p`` gates samples and ``p_batch`` gates a whole call; ``same_on_batch=True`` shares the generated
-          values. No concrete 3D constructor exposes ``p_batch``
-          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_); :class:`CenterCrop3D` and
+          values. Of the concrete 3D constructors only :class:`~kornia.augmentation.RandomTransplantation3D`
+          exposes ``p_batch`` (`#4425 <https://github.com/kornia/kornia/issues/4425>`_); :class:`CenterCrop3D` and
           :class:`RandomCrop3D` instead map their own ``p`` onto the call-wide gate. Parameters use the common
           augmentation RNG and ``forward(x, params=...)`` replays a complete generated dictionary. See
           :doc:`/get-started/conventions` for the canonical sampling, seeding, and serialization contract.
