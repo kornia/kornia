@@ -56,11 +56,9 @@ class RandomClahe(IntensityAugmentationBase2D):
           :func:`kornia.enhance.equalize`. As for :class:`RandomEqualize`, the rejection is not exactly at
           the boundary: the check guards the 256-entry lookup indexed with ``(input * 255).long()``, so a
           value less than one 8-bit code outside ``[0, 1]``, at either end, is still admitted, up to the
-          rounding of ``input * 255`` in the input's dtype. The check runs on the CPU and on CUDA. **It is
-          skipped on MPS by design** -- materializing the condition there would drain the queued stream on
-          every call -- so an MPS image keeps the pre-existing behaviour: torch ``2.14`` raises the raw
-          ``gather`` error (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1``
-          leaves the gather unchecked and returns an in-range image as if the input had been valid.
+          rounding of ``input * 255`` in the input's dtype. The check is ``torch._assert_async``, which
+          has an MPS kernel from torch ``2.13``. On an older MPS release the condition is read on the host
+          instead, which costs one device sync per call and is skipped under ``torch.compile``.
 
     Convention:
         - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. Both eager and
