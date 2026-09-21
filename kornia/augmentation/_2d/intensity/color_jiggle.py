@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -123,7 +124,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
         - a fixed ``order`` makes a three-channel transform ``torch.compile`` fullgraph-safe while preserving
           lazy neutral-factor skips: eager and compiled calls both dispatch each step through ``torch.cond``,
           and the result is contiguous even for a channels-last input. The default sampled tensor order, and
-          neutral one- and four-channel configurations, keep the Python dispatch path. Differentiating a
+          neutral one- and four-channel configurations, keep the Python dispatch path, as does a fixed order
+          where Dynamo is unavailable (torch ``2.5.1`` on Python ``3.13``). Differentiating a
           compiled fixed-order transform needs torch ``2.7`` or newer with the ``inductor`` backend: on
           ``2.5.1`` and ``2.6.0`` the forward pass compiles but the backward pass raises, while the
           ``aot_eager`` backend works on each.
@@ -194,6 +196,9 @@ class ColorJiggle(IntensityAugmentationBase2D):
                     f"`order` entries must be in 0..3 (brightness, contrast, saturation, hue). Got {order}"
                 )
         self._fixed_order: Optional[Tuple[int, ...]] = order
+        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
+        # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
+        self._cond_dispatch = order is not None and torch._dynamo.is_dynamo_supported()
 
     def apply_transform(
         self,
@@ -206,17 +211,24 @@ class ColorJiggle(IntensityAugmentationBase2D):
         # branch is traced, including branches that are not selected at runtime, so the dispatcher is
         # restricted to RGB inputs: tracing the hue/saturation branches would otherwise reject the neutral
         # one- and four-channel configurations accepted by the Python dispatch below.
-        if self._fixed_order is not None and input.shape[-3] == 3:
-            jittered = input
-            for idx in self._fixed_order:
-                jittered = _apply_transform_cond(
-                    idx,
-                    jittered,
-                    params["brightness_factor"],
-                    params["contrast_factor"],
-                    params["saturation_factor"],
-                    params["hue_factor"],
-                )
+        if self._cond_dispatch and input.shape[-3] == 3:
+            # An eager torch.cond enters Dynamo, whose one-time setup calls
+            # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
+            validate_args = Distribution._validate_args
+            try:
+                jittered = input
+                for idx in self._fixed_order:
+                    jittered = _apply_transform_cond(
+                        idx,
+                        jittered,
+                        params["brightness_factor"],
+                        params["contrast_factor"],
+                        params["saturation_factor"],
+                        params["hue_factor"],
+                    )
+            finally:
+                if Distribution._validate_args != validate_args:
+                    Distribution.set_default_validate_args(validate_args)
             return jittered
 
         transforms = [
