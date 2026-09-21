@@ -61,11 +61,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`RandomClahe` and :class:`RandomJPEG` are not in ``kornia.augmentation.__all__`` and document
           their own behavior on their own pages.
         - what this block and the class pages say about an output describes the samples the ``p`` gate
-          transforms; every other sample comes back with its input values. Below ``p=1`` the transform is
-          still computed for every sample and the gate then selects, so a skipped sample that fails a value
-          check still makes the call raise -- :class:`RandomEqualize` and :class:`RandomClahe` raise for an
-          out-of-range image even at ``p=0.0`` -- and a skipped sample's gradient can be NaN where the
-          transform's derivative is infinite (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+          transforms; every other sample comes back with its input values. A call whose gate selects no
+          sample does not compute the transform, so at ``p=0.0`` :class:`RandomEqualize` and
+          :class:`RandomClahe` return an out-of-range image unchanged and the gradient is the identity.
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
           per sample where the class's own docstring says so. :class:`RandomMotionBlur` instead draws
           one kernel size for the whole batch and repeats it in ``_params["ksize_factor"]`` with shape

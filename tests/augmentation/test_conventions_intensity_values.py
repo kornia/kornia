@@ -583,41 +583,37 @@ class TestIntensityValueRangeConventions(BaseTester):
             else:
                 assert K.RandomEqualize(p=1.0)(edge).shape == edge.shape
 
-    # Issue #4576: below p=1 the base computes the transform for the whole batch and then selects the
-    # rows the gate keeps (`_AugmentationBase.transform_inputs`), so a row the gate skips still reaches
-    # the value check and the backward pass.  At p=0.0 RandomEqualize and RandomClahe raise for an image
-    # they never touch, and RandomGamma returns the input values but a NaN gradient where the discarded
-    # power's derivative is infinite.
+    # Fixed by #4579 (#4576): below p=1 the base used to compute the transform for the whole batch and
+    # then select, so at p=0.0 RandomEqualize and RandomClahe raised for an out-of-range image they never
+    # touch, and RandomGamma returned the input values with a NaN gradient where the discarded power's
+    # derivative is infinite.  A gate that selects no sample now skips the transform: the input comes back
+    # unchanged with an identity gradient.
     # Snippet used to generate expected:
     #   g = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32); x = torch.cat([g, g * 2])
     #   torch.manual_seed(0); K.RandomEqualize(p=0.0)(x)  # and K.RandomClahe(p=0.0)(x)
     #   v = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1).requires_grad_()
     #   torch.manual_seed(0); y = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(v); y.sum().backward()
     #   print(torch.equal(y, v), v.grad.flatten().tolist())
-    # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32) -> both
-    # classes raise (`equalize expects input values in [0, 1]`, `index ... is out of bounds`; on mps the
-    # named message since #4600), then `True [nan, 1.0, 1.0, nan, 1.0, 1.0]`.
-    def test_wart_p_gate_computes_the_skipped_samples_4576(self, device, dtype):
+    # executed 2026-09-21 (torch 2.14.0, cpu float32/float64) -> both classes return x unchanged, then
+    # `True [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]`; before the fix both raised and the gradient was
+    # `[nan, 1.0, 1.0, nan, 1.0, 1.0]`.
+    def test_convention_p_gate_skips_the_transform_when_no_sample_is_selected(self, device, dtype):
         if device.type == "cuda":
-            pytest.skip("not on CUDA: the value asserts are device-side asserts that poison the context")
+            pytest.skip("not on CUDA: a regression would fire device-side asserts that poison the context")
         ramp = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32)
         image = torch.cat([ramp, ramp * 2.0]).to(device=device, dtype=dtype)
         for cls in (K.RandomEqualize, K.RandomClahe):
             torch.manual_seed(_FORWARD_SEED)
-            # It has to be the value check that fires, not merely some RuntimeError: the claim is that
-            # the transform ran on a sample `p=0.0` was supposed to skip.
-            # MPS runs the value check too since #4600, so only the named error qualifies there.
-            gate_rejection = r"\[0, 1\]|out of bounds" if device.type == "cpu" else r"\[0, 1\]"
-            with pytest.raises(RuntimeError, match=gate_rejection):
-                _sync(cls(p=0.0)(image).device)
+            out = cls(p=0.0)(image)
+            _sync(out.device)
+            assert torch.equal(out, image)
         values = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1)
         values = values.to(device=device, dtype=dtype).requires_grad_()
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(values)
         assert torch.equal(out, values)
         out.sum().backward()
-        assert bool(values.grad[..., 0].isnan().all())
-        self.assert_close(values.grad[..., 1:], torch.ones_like(values.grad[..., 1:]))
+        assert torch.equal(values.grad, torch.ones_like(values))
 
 
 class TestIntensityColourConventions(BaseTester):
