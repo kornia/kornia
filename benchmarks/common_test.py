@@ -415,3 +415,32 @@ def test_start_run_notes_when_opencv_ignores_threads(monkeypatch, capsys) -> Non
     common.start_run("flagship demo", args, torch.device("cpu"), units="img/s")
     out = capsys.readouterr().out
     assert f"OpenCV ignored --threads {torch.get_num_threads()}" in out and "runs on 8 threads" in out
+
+
+def test_setup_run_without_opencv_leaves_it_out(monkeypatch, capsys) -> None:
+    import types
+
+    # The version probe imports cv2 as a side effect; simulate that where OpenCV is not installed.
+    fake_cv2 = types.ModuleType("cv2")
+    fake_cv2.getNumThreads = lambda: 8
+    real_optional_version = common._optional_version
+
+    def optional_version(module: str):
+        if module == "cv2":
+            sys.modules["cv2"] = fake_cv2
+        return real_optional_version(module)
+
+    monkeypatch.delitem(sys.modules, "cv2", raising=False)
+    monkeypatch.setattr(common, "_optional_version", optional_version)
+    monkeypatch.setattr(common, "warm_up_cpu", lambda: None)
+    torch_threads = torch.get_num_threads()
+    try:
+        args = _flagship_parser().parse_args(["--threads", "3"])
+        common.setup_run(args, opencv=False)
+        meta = common.start_run("flagship demo", args, torch.device("cpu"), units="img/s")
+    finally:
+        torch.set_num_threads(torch_threads)
+        sys.modules.pop("cv2", None)
+    assert meta["opencv_num_threads"] is None
+    out = capsys.readouterr().out
+    assert "# device=cpu, dtype=float32, threads=3, size=" in out and "OpenCV ignored" not in out

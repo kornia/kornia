@@ -137,6 +137,8 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
     """Hardware/software metadata embedded in every result file (W3: date, hardware, versions)."""
     import kornia
 
+    # Read before the version probes below, which import cv2 even in a suite that left it alone.
+    opencv_num_threads = _opencv_num_threads()
     meta: dict[str, Any] = {
         "timestamp_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_commit": git_commit(),
@@ -147,7 +149,7 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "kornia": kornia.__version__,
         "device": str(device),
         "torch_num_threads": torch.get_num_threads(),
-        "opencv_num_threads": _opencv_num_threads(),
+        "opencv_num_threads": opencv_num_threads,
         "opencv": _optional_version("cv2"),
         "torchvision": _optional_version("torchvision"),
         "numpy": _optional_version("numpy"),
@@ -453,19 +455,22 @@ def add_flagship_args(
     add_contribute_args(parser)
 
 
-def setup_run(args: argparse.Namespace) -> tuple[torch.device, torch.dtype, Optional[Callable[[], None]]]:
+def setup_run(
+    args: argparse.Namespace, opencv: bool = True
+) -> tuple[torch.device, torch.dtype, Optional[Callable[[], None]]]:
     """Thread counts, CPU warm-up and pinned seeds; returns ``(device, dtype, sync)``.
 
     ``--threads`` pins OpenCV as well as torch when OpenCV is installed. Left alone, OpenCV uses
     every core while torch uses ``--threads``, and the header would report only torch's count.
     Some OpenCV builds ignore the request (the GCD backend of the macOS wheels); ``start_run``
-    then prints the count OpenCV actually uses.
+    then prints the count OpenCV actually uses. Suites without an OpenCV or albumentations column
+    pass ``opencv=False``: OpenCV is then not imported, and the header and metadata leave it out.
 
     ``sync`` is the MPS synchronize for ``time_us`` (``blocked_autorange`` already syncs CUDA). The
     CPU warm-up runs on accelerator runs too, because they still time CPU-only baselines.
     """
     torch.set_num_threads(args.threads)
-    cv2, _ = optional_import("cv2")
+    cv2, _ = optional_import("cv2") if opencv else (None, None)
     if cv2 is not None:
         cv2.setNumThreads(args.threads)
     warm_up_cpu()

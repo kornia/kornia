@@ -153,7 +153,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_flagship_args(parser, ops=OPS)
     args = parser.parse_args()
-    device, dtype, sync = setup_run(args)
+    device, dtype, sync = setup_run(args, opencv=False)
 
     tvops, tvops_error = optional_import("torchvision.ops")
 

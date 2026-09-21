@@ -103,7 +103,10 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
 - **One thread count for every library:** `setup_run` pins OpenCV to `--threads` as well as torch
   and records `opencv_num_threads`; the header prints both. OpenCV builds whose parallel backend
   ignores `setNumThreads` (GCD in the macOS wheels) keep every core, and the header says so in a
-  `NOTE`.
+  `NOTE`. Suites with no OpenCV-backed column (`losses`, `feature/laf_ops.py`) leave OpenCV out.
+  The `0.9.0rc1` result files predate the pin and have no `opencv_num_threads`: on the
+  i7-14700K Linux runs, the OpenCV and albumentations cells used every core while torch used 4.
+  The Apple runs are unaffected, because GCD ignores the pin.
 - **Public API only:** benchmark `kornia.*` as users call it — no private helpers, no
   reimplementations inside the script.
 

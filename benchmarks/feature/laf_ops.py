@@ -175,7 +175,7 @@ def main() -> None:
     add_flagship_args(parser, ops=OPS, batches="")
     parser.add_argument("--configs", default="1x2000,1x20000,8x2000", help="comma-separated BxN pairs")
     args = parser.parse_args()
-    device, dtype, sync = setup_run(args)
+    device, dtype, sync = setup_run(args, opencv=False)
     configs = [(int(b), int(n)) for b, n in (c.split("x") for c in args.configs.split(","))]
 
     meta = start_run(
