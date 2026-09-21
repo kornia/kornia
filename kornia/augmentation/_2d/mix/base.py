@@ -163,8 +163,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             # all-applied branch.
             output = applied_post
 
-        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
-        return output
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
     def transform_mask(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

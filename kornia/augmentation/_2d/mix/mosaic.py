@@ -255,5 +255,4 @@ class RandomMosaic(MixAugmentationBaseV2):
         flags = KORNIA_UNWRAP(maybe_flags, Dict[str, Any])
         output = self._compose_images(input, params, flags=flags)
         transform = self.compute_transformation(output, params, flags=flags)
-        output = self._crop_images(output, params, flags=flags, transform=transform)
-        return output
+        return self._crop_images(output, params, flags=flags, transform=transform)

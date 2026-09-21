@@ -54,8 +54,7 @@ class MixupGenerator(RandomGeneratorBase):
         self.p = p
 
     def __repr__(self) -> str:
-        repr = f"lambda_val={self.lambda_val}"
-        return repr
+        return f"lambda_val={self.lambda_val}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if self.lambda_val is None:

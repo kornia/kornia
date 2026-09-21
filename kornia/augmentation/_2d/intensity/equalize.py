@@ -44,8 +44,7 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - this class raises on an out-of-``[0, 1]`` input instead of transforming it. See
           :class:`~kornia.augmentation.IntensityAugmentationBase2D` for the policies used by the other
           intensity augmentations. :class:`RandomClahe` also raises out of range, with a message naming
-          :func:`kornia.enhance.equalize_clahe` and the range; its check is skipped on MPS, where the raw
-          indexing error survives on torch ``2.14``.
+          :func:`kornia.enhance.equalize_clahe` and the range.
         - the rejection is not exactly at the boundary: the check guards the 256-entry lookup indexed with
           ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]``, at either end, is
           still admitted, up to the rounding of ``input * 255`` in the input's dtype: in ``float16``,
@@ -53,13 +52,10 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
-        :math:`[0, 1]` and raises a ``RuntimeError`` for values it cannot equalize. Where the value check
-        runs, its message names that range; kornia skips the check for an MPS image, and what happens
-        there depends on torch: from ``2.14`` the lookup raises a raw indexing error
-        (``AcceleratorError: gather: index 260 is out of bounds for dimension with size 256``), while
-        ``2.5.1`` and ``2.9.1`` leave the MPS gather unchecked and return an out-of-range image silently.
-        That MPS gap is what `#4431 <https://github.com/kornia/kornia/issues/4431>`_ left behind when it
-        was closed, and is tracked in `#4600 <https://github.com/kornia/kornia/issues/4600>`_.
+        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values it cannot equalize. The
+        check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older MPS
+        release the condition is read on the host instead, which costs one device sync per call and is
+        skipped under ``torch.compile``.
 
     Examples:
         >>> rng = torch.manual_seed(0)

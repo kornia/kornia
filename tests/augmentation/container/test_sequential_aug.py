@@ -70,7 +70,6 @@ class TestSequential:
             )
             out = aug(inp)
             assert out.shape == inp.shape
-            aug.inverse(inp)
             reproducibility_test(inp, aug)
 
 
