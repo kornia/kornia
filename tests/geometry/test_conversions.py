@@ -5513,6 +5513,37 @@ class TestEulerFromQuaternion(BaseTester):
             f"rotation (error {error})"
         )
 
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_convention_roundtrip_holds_at_gimbal_lock_random_roll_yaw_3993(self, device, dtype, sign):
+        # Regression for kornia#3993: a single fixed (roll, yaw) = (0.1, 0.2) probe at gimbal lock is
+        # not enough to catch a gimbal detector that only fires for SOME (roll, yaw) pairs at the
+        # pole -- exactly the failure mode of the cos(pitch) estimator this test guards against
+        # regressing to. sqrt(1 - sinp**2) recomputes cos(pitch) from an already-rounded sinp, so at
+        # a true pole it does not evaluate to ~0 but to sqrt(k * eps) for however many ulps k the
+        # rounded sinp fell short of 1 -- and k varies with (roll, yaw). Measured over 500 random
+        # (roll, yaw) per (dtype, sign) cell, that estimator missed 9-13 poles per 500 at the
+        # threshold this branch uses; hypot(sinr_cosp, cosr_cosp) has no such cancellation and
+        # measured 0/500. Both dtype and sign are covered here (dtype via the fixture, both signs via
+        # this parametrize) because the failure rate differs by dtype and the two signs exercise
+        # different branches of the yaw-folding logic.
+        _skip_if_dtype_unavailable(device, dtype)
+
+        pitch_in = sign * torch.pi / 2
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        roll_in = (torch.rand(200, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        yaw_in = (torch.rand(200, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        roll_in = roll_in.to(device=device, dtype=dtype)
+        yaw_in = yaw_in.to(device=device, dtype=dtype)
+        pitch_batch = torch.full_like(roll_in, pitch_in)
+
+        quaternion = quaternion_from_euler(roll_in, pitch_batch, yaw_in)
+        roundtrip = quaternion_from_euler(*euler_from_quaternion(*quaternion))
+
+        rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion, dim=-1))
+        rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip, dim=-1))
+
+        self.assert_close(rot_in, rot_back, low_tolerance=True)
+
     def test_convention_euler_from_quaternion_normalizes_its_input_3953(self, device, dtype):
         # Intended behavior: the euler angles of a quaternion depend only on the rotation it
         # represents, so rescaling the quaternion must not change them -- which is what the
