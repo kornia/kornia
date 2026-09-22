@@ -95,8 +95,10 @@ class CropGenerator3D(RandomGeneratorBase):
         y_diff = height - size[:, 1] + 1
         z_diff = depth - size[:, 0] + 1
 
+        # ``*_diff`` is the number of valid start offsets, so it is 1 when the crop covers the whole
+        # axis and 0 when the crop is one voxel too large. The guard has to reject that zero as well.
         # The size check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and ((x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any()):
+        if not is_exporting() and ((x_diff <= 0).any() or (y_diff <= 0).any() or (z_diff <= 0).any()):
             raise ValueError(
                 f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
             )

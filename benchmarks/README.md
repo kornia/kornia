@@ -6,12 +6,39 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 
 ## Directory map
 
+Every kornia module with image or tensor ops a user would time has one `flagship.py`: a small,
+representative set of that module's ops — not every export — against the libraries users would
+otherwise reach for. All flagships share one command line, one console layout and one JSON format
+(see [Shared output format](#shared-output-format)).
+
+| Suite | Flagship ops | Baselines |
+| --- | --- | --- |
+| [`augmentation`](augmentation/flagship.py) | flip, affine, perspective, resized crop, color jiggle, blur, brightness, grayscale (class API, sampling included) | torchvision v2, albumentations, OpenCV, PIL |
+| [`color`](color/flagship.py) | grayscale, HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV (per image and stacked), PIL |
+| [`contrib`](contrib/flagship.py) | exact connected components, distance transform | scikit-image, SciPy, OpenCV |
+| [`enhance`](enhance/flagship.py) | normalize, gamma, hue, saturation, equalize, CLAHE | torchvision v2, albumentations, scikit-image, OpenCV, PIL |
+| [`feature`](feature/flagship.py) | Harris and GFTT responses, SIFT detect+describe, SNN matching | scikit-image, OpenCV |
+| [`filters`](filters/flagship.py) | Gaussian, Sobel, Laplacian, median, box, Canny, unsharp, bilateral, guided, motion, Otsu | torchvision v2, albumentations, scikit-image, OpenCV, kornia-rs, PIL |
+| [`geometry`](geometry/flagship.py) | warp perspective/affine, rotate, resize, perspective-transform solve | torchvision v2, OpenCV |
+| [`io`](io/flagship.py) | JPEG and PNG decode to an RGB uint8 tensor | torchvision, OpenCV, PIL |
+| [`losses`](losses/flagship.py) | binary focal, focal, Dice, SSIM, total variation (forward + backward) | torchvision |
+| [`metrics`](metrics/flagship.py) | PSNR, SSIM, mean IoU | scikit-image, OpenCV |
+| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | torchmorph (CUDA only), albumentations, scikit-image, OpenCV |
+
+Modules without a flagship: `models`, `tracking` and the model wrappers in `contrib` need
+downloaded weights (learned local features are covered by `feature/local_features.py`); `nerf`,
+`sensors`, `x`, `onnx`, `transpiler`, `grad_estimator`, `image`, `core`, `utils` and `testing`
+are training loops, containers, exporters or plumbing whose cost is the ops above.
+
+Deeper, single-topic scripts:
+
 | Directory | Contents |
 | --- | --- |
 | [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL/scikit-image. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
-| [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
+| [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions (`*_test.py`). |
+| [`contrib/`](contrib/) | [`connected_components.py`](contrib/connected_components.py): union-find vs pooling labeling, validated against SciPy; [report](contrib/connected_components.md). |
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
@@ -37,11 +64,12 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   Hybrid CPUs (performance + efficiency cores) keep lightly loaded threads on efficiency cores
   until they have carried sustained load, and WSL2 cannot pin them. On an i7-14700K this moved a
   5x5 oneDNN convolution from 0.56 ms to 0.22 ms while a slice-based filter barely changed, so
-  an unwarmed A/B can pick the wrong implementation. The filters and augmentation flagships do
-  this, including accelerator runs because they also time CPU-only library baselines.
-- **Checkout provenance:** the filters and augmentation flagship scripts import Kornia from
-  their own checkout and print the source path. Direct script execution must not silently benchmark an
-  installed wheel or another editable checkout while recording the current tree's commit.
+  an unwarmed A/B can pick the wrong implementation. Every flagship does this through
+  `common.setup_run`, including accelerator runs because they also time CPU-only library baselines.
+- **Checkout provenance:** every flagship imports Kornia from its own checkout, prints the source
+  path, warns when kornia resolved elsewhere, and exports the checkout-relative path as
+  `kornia_module`. Direct script execution must not silently benchmark an installed wheel or
+  another editable checkout while recording the current tree's commit.
 - **Device sync inside the timed region:** `blocked_autorange` syncs CUDA; for MPS pass
   `sync=torch.mps.synchronize` to `time_us`. A hand-rolled `time.time()` around a GPU call
   measures launch latency, not work.
@@ -64,6 +92,21 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
 - **Equal footing + honest regimes:** identical transform parameters and interpolation across
   backends; state each backend's regime (batched float tensor vs per-image uint8 loop) instead
   of pretending the columns are apples-to-apples. Publish losses alongside wins.
+- **Every baseline at its best:** a baseline cell times the library's idiomatic fastest call,
+  not a convenient one. Build its inputs outside the timed call, as kornia's tensor is: PIL gets
+  ready-made `Image` objects, a mask gets the dtype the library's fast path takes (`bool` for
+  scikit-image's `label`). Use the library's own idioms (`cv2.split`/`cv2.merge`, not strided
+  slices plus `np.stack`), and fill a column wherever the library has the op (`cv2.PSNR`,
+  albumentations' transforms). When the call does different work, such as albumentations' `CLAHE`
+  equalizing only L in Lab, say so in the regime text. Each of these cost a published ratio 1.3x
+  to 3.3x in #4723's first review.
+- **One thread count for every library:** `setup_run` pins OpenCV to `--threads` as well as torch
+  and records `opencv_num_threads`; the header prints both. OpenCV builds whose parallel backend
+  ignores `setNumThreads` (GCD in the macOS wheels) keep every core, and the header says so in a
+  `NOTE`. Suites with no OpenCV-backed column (`losses`, `feature/laf_ops.py`) leave OpenCV out.
+  The `0.9.0rc1` result files predate the pin and have no `opencv_num_threads`: on the
+  i7-14700K Linux runs, the OpenCV and albumentations cells used every core while torch used 4.
+  The Apple runs are unaffected, because GCD ignores the pin.
 - **Public API only:** benchmark `kornia.*` as users call it — no private helpers, no
   reimplementations inside the script.
 
@@ -83,6 +126,7 @@ One file per run:
     "kornia": "0.9.0rc1",
     "device": "cpu",
     "torch_num_threads": 4,
+    "opencv_num_threads": 4,
     "opencv": "4.11.0",
     "torchvision": null,
     "numpy": "2.4.0"
@@ -104,14 +148,38 @@ One file per run:
 ```
 
 `throughput_per_s` counts items per second — images for image ops, point-set solves for
-`get_perspective_transform`. `null` means the measurement failed (backend raised).
+`get_perspective_transform`. `metadata.units` names the item for the whole file (`img/s`,
+`items/s`, `LAFs/s`); the docs page labels its tables from it. `metadata.kornia_module` is the
+checkout-relative path kornia was imported from (`outside-checkout` otherwise), and
+`metadata.load` holds the aggregate load snapshot. A row whose timings are `null` carries an
+`error`: the exception name when the backend or its `torch.compile` warmup raised, or
+`unavailable` when the library is missing or has no counterpart for that op.
+
+## Shared output format
+
+All flagships build on the same helpers in [`common.py`](common.py), so their output lines up:
+
+- **Command line** (`add_flagship_args`): `--batches`, `--size`, `--device`, `--dtype`,
+  `--threads`, `--compile`, `--ops`, `--skip-compile-ops`, `--min-run-time`, `--json`,
+  `--contribute`, `--machine-slug`. `--ops` rejects names the suite does not have.
+- **Header** (`start_run`), in this order: `# <suite> benchmark — commit … — platform`, the
+  software stack, `# kornia source: …`, the CUDA device when there is one,
+  `# device=…, dtype=…, threads=… (opencv …), size=… — throughput <units>`, one line per backend regime,
+  the meaning of `-`, then one `# NOTE:` per unavailable library or eager-only op.
+- **Tables** (`run_batch_sweep`): one per batch size, op names left, one right-aligned
+  throughput column per backend, units at the end of the header row. `-` is a skipped cell,
+  `✗` a call that raised; both are explained in the JSON `error` field.
+- **Footer** (`finish_run`): `# results written to <path>` for `--json`, and the canonical
+  path plus the `git add` line for `--contribute`.
 
 ## Adding a new benchmark
 
-1. Import the utilities (`benchmarks/` is not a package — scripts under a subdirectory add the
-   parent to `sys.path`, see the top of `geometry/flagship.py`).
-2. Time every backend with `time_us`, print a table with the git commit, platform, and device
-   name in the header, and support `--json` via `save_json(path, run_metadata(device), results)`.
+1. Start from the smallest flagship (`morphology/flagship.py`): it puts the checkout root and
+   `benchmarks/` on `sys.path` (`benchmarks/` is not a package), then uses `add_flagship_args`,
+   `setup_run`, `start_run`, `KorniaRows`, `run_batch_sweep` and `finish_run`. Do not hand-roll
+   the header, the compile warmup or the JSON writing; that is how suites drifted apart.
+2. Pick a representative handful of the module's ops, not every export, and list them in the
+   module docstring with each baseline's counterpart.
 3. Baselines run **correctly and on equal footing** (same parameters, same interpolation, their
    native data regime) — a misconfigured baseline is worse than no baseline.
 4. Missing optional libraries must degrade to a skip note, never a crash.
@@ -244,7 +312,8 @@ and
 so the docs performance page renders it; the tables below are the B=1 N=20000 slice of those
 files. Linux/WSL2 (kernel 6.18, x86_64), Intel i7-14700K + NVIDIA RTX 4090, Python 3.13,
 torch 2.14.0+cu130, CUDA 13.0, kornia 0.9.0rc1, float32, image 256×256, patch size 32,
-14 threads; LAF scales are stratified across all four pyramid levels that a 256×256 image at
+14 threads (torch's default there; the script now defaults to `--threads 4` like every flagship, so pass
+`--threads 14` to reproduce); LAF scales are stratified across all four pyramid levels that a 256×256 image at
 PS=32 provides. Throughput in LAFs/s (higher is better); no cross-library column exists — no
 other library exposes LAFs. Every op compiled on both devices on this stack, so there is no `-`
 cell. Compare columns within one table, never numbers across machines.
@@ -374,7 +443,8 @@ torchvision 0.24.1, albumentations 2.0.8, OpenCV 4.11.0, Pillow 12.3, float32, 2
 4 threads, batch 32, throughput img/s. Timed region = parameter sampling + application through
 each library's random-transform class API; kornia/torchvision run a batched float tensor,
 albumentations/OpenCV/PIL a per-image uint8 CPU loop. CUDA tables follow the PR-thread protocol
-used for the geometry suite.
+used for the geometry suite. These runs predate prebuilt PIL inputs: the PIL cells include the
+`Image.fromarray` conversion, so PIL is faster than shown.
 
 `--device cpu --compile`:
 

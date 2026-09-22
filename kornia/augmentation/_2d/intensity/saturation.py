@@ -45,12 +45,13 @@ class RandomSaturation(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the input must have three channels: the scaling is computed in HSV, and any other channel count
-          raises a ``ValueError`` on the forward pass.
+        - the input must have three channels: the scaling is defined on the HSV saturation, and any other
+          channel count raises a ``ValueError`` on the forward pass.
         - the drawn factor reaches :func:`kornia.enhance.adjust_saturation` unchanged -- it is not
           re-based the way :class:`RandomBrightness` re-bases its own -- and ``1.0`` is the identity for a
-          pixel with no negative channel. That primitive round-trips through HSV, so the identity holds only
-          up to floating-point error, and the error is larger in half precision than in ``float32``.
+          pixel with no negative channel. That primitive divides by the value channel plus a small epsilon,
+          and in half precision and integer dtypes it round-trips through HSV, so the identity holds only up
+          to floating-point error, and the error is larger in half precision than in ``float32``.
         - there is no final RGB clamp, but the primitive clamps the HSV saturation component into
           ``[0, 1]``. An out-of-range RGB input can remain outside that interval or be mapped into it. At a
           factor of ``1.0`` a pixel above ``1`` with no negative channel comes back unchanged, while a pixel

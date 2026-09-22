@@ -36,7 +36,8 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
+            If Tuple[int, int] or a two-element list, it will randomly generate one odd value from the closed
+            range for the whole batch.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
@@ -69,11 +70,13 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           with shape ``(B,)``. All samples use that size, even with ``same_on_batch=False``; angle and
           direction are sampled per image unless ``same_on_batch=True``. Previously saved parameters
           with differing kernel sizes still select one entry via ``_params["idx"]`` for the whole batch.
-          The draw truncates a float, so the range's upper bound is practically never reached -- only when
-          the ``float32`` draw rounds onto it, about once in ``2**24`` -- and ``kernel_size=(3, 5)`` is a
-          constant ``3`` while ``(3, 7)`` draws only ``3`` and ``5``. An even bound is separately rounded
-          **up** out of the requested range, so ``(4, 4)`` draws ``5``. Tracked in
-          `#4599 <https://github.com/kornia/kornia/issues/4599>`_.
+          A tuple range draws each odd size inside it with equal probability, bounds included, so
+          ``kernel_size=(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws ``3, 5, ..., 19``. A range that
+          holds no odd size is rounded **up** out of the requested range instead, so ``(4, 4)`` draws ``5``;
+          a reversed one such as ``(20, 3)`` raises at construction. Because the whole range is drawn, and
+          not just its lowest odd size, every size in it is live against the image-size rule below: with
+          ``border_type="reflect"`` a ``kernel_size=(3, 5)`` on a ``2 x 2`` image raises on the draws of
+          ``5`` -- about half of them -- where a constant ``3`` always fit.
         - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
           border pixel is blended with ``0`` and pulled toward it: below the input's own minimum for a
           positive image, and above its maximum for a negative one. With
@@ -119,7 +122,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Union[int, Tuple[int, int]],
+        kernel_size: Union[int, Tuple[int, int], List[int]],
         angle: Union[torch.Tensor, float, Tuple[float, float]],
         direction: Union[torch.Tensor, float, Tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,

@@ -65,7 +65,8 @@ class TestRandomMotionBlur(BaseTester):
 
         expected = motion_blur(
             input,
-            f._params["ksize_factor"].unique().item(),
+            # The whole batch is blurred with the kernel size at `idx`; the per-sample draws can differ.
+            int(f._params["ksize_factor"][f._params["idx"][0]]),
             f._params["angle_factor"],
             f._params["direction_factor"],
             f.flags["border_type"].name.lower(),

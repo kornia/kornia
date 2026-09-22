@@ -276,23 +276,23 @@ Augmentations
   zero.
 - The geometric mask path normally uses nearest interpolation. That avoids
   interpolating labels, but padding can still introduce its fill value.
-- Put the image before masks, including in dictionary insertion order, so
-  conversion uses its working dtype. Earlier masks use the previous image
-  dtype, or ``float32`` on a fresh container. Integer labels outside the
-  working dtype's exact range can change even through a flip; for example,
-  ``2049`` becomes ``2048`` in ``float16``. Every output mask is cast to the
-  last mask argument's dtype (its first element's dtype for a list).
-  A common mask dtype avoids that cross-mask conversion, but does not prevent
-  precision loss during processing. Empty batches with masks can also raise
-  (`#4478 <https://github.com/kornia/kornia/issues/4478>`_). Direct geometric
-  ``transform_masks`` calls require floating tensors; the container converts
-  integer and boolean masks around those calls.
+- Masks are processed in the image working dtype: that of the most recent
+  image argument before the mask, or of the call's first image when none
+  precedes it, which can happen in dictionary insertion order. Integer labels
+  outside the working dtype's exact range can change even through a flip; for
+  example, ``2049`` becomes ``2048`` in ``float16``
+  (`#4478 <https://github.com/kornia/kornia/issues/4478>`_). Each output mask
+  comes back in the dtype of its own argument, per element for a list,
+  ``bool`` included, so masks of different dtypes do not affect each other.
+  An empty batch with a mask is accepted. Direct geometric ``transform_masks``
+  calls require floating tensors; the container converts integer and boolean
+  masks around those calls.
 - Mask lists are not a reliable replacement for separate full-batch tensors.
   Direct augmentation children use list index ``i`` to select a sample's
   gate. Full-batch entries can therefore become desynchronized under mixed
   gates; per-sample entries can fail in warps or reuse the wrong crop window.
-  Prefer separate ``mask`` keys with a common dtype, subject to the precision
-  and filtering limitations above
+  Prefer separate ``mask`` keys, subject to the precision and filtering
+  limitations above
   (`#4477 <https://github.com/kornia/kornia/issues/4477>`_).
 - Boxes use the inclusive ``xyxy_plus`` convention of
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use

@@ -148,14 +148,14 @@ class CutmixGenerator(RandomGeneratorBase):
 
         cut_height = (cutmix_rate * height).floor().to(device=_device, dtype=_dtype)
         cut_width = (cutmix_rate * width).floor().to(device=_device, dtype=_dtype)
-        _gen_shape = (1,)
 
         if same_on_batch:
-            _gen_shape = (cut_height.size(0),)
             cut_height = cut_height[0]
             cut_width = cut_width[0]
 
+        # One start position per cut, like the sizes above; with same_on_batch the helper repeats a single draw.
         # Reserve at least 1 pixel for cropping.
+        _gen_shape = (batch_size * self.num_mix,)
         x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
             width - cut_width - 1
         )

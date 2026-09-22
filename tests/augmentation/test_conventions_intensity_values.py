@@ -854,9 +854,9 @@ class TestIntensityColourConventions(BaseTester):
         self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0, order=(1, 2, 3))(above), above)
 
     # Row 6c-08, the order and channel-count details:
-    # - a fixed constructor `order` ignores a forward `order=` tensor;
-    # - ColorJiggle has no constructor order, and a forward `order=` tensor replaces the drawn one, so
-    #   leaving the hue step out lets a one-channel image through;
+    # - on ColorJiggle and ColorJitter, a fixed constructor `order` ignores a forward `order=` tensor;
+    # - without a constructor order, a forward `order=` tensor replaces ColorJiggle's drawn one, so leaving
+    #   the hue step out lets a one-channel image through;
     # - ColorJitter's saturation step (adjust_saturation_with_gray_subtraction) rejects four channels,
     #   clamps a three-channel image, and returns a one-channel image unchanged.
     # Snippet used to generate expected:
@@ -876,6 +876,8 @@ class TestIntensityColourConventions(BaseTester):
         fixed = K.ColorJitter(brightness=(0.5, 0.5), order=(1,), p=1.0)
         torch.manual_seed(_FORWARD_SEED)
         assert torch.equal(fixed(image, order=torch.tensor([0])), fixed(image))
+        fixed_jiggle = K.ColorJiggle(brightness=(0.5, 0.5), order=(1,), p=1.0)
+        assert torch.equal(fixed_jiggle(image, order=torch.tensor([0])), fixed_jiggle(image))
         assert float((K.ColorJitter(brightness=(0.5, 0.5), p=1.0, order=(0,))(image) - image).abs().max()) > 0.1
 
         gray = image[:, :1].contiguous()

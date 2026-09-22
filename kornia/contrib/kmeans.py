@@ -123,8 +123,7 @@ class KMeans:
         num_samples: int = len(X)
         perm = torch.randperm(num_samples, device=X.device)
         idx = perm[:num_clusters]
-        initial_state = X[idx]
-        return initial_state
+        return X[idx]
 
     def _pairwise_euclidean_distance(self, data1: torch.Tensor, data2: torch.Tensor) -> torch.Tensor:
         """Compute pairwise squared distance between 2 sets of vectors.
@@ -141,8 +140,7 @@ class KMeans:
         A = data1[:, None, ...]
         # 1*C*D
         B = data2[None, ...]
-        distance = euclidean_distance(A, B)
-        return distance
+        return euclidean_distance(A, B)
 
     def fit(self, X: torch.Tensor) -> None:
         """Fit iterative KMeans clustering till a threshold for shift in cluster centers or a maximum no of iterations
@@ -235,5 +233,4 @@ class KMeans:
         )
 
         distance = self._pairwise_euclidean_distance(x, self.cluster_centers)
-        cluster_assignment = distance.argmin(-1)
-        return cluster_assignment
+        return distance.argmin(-1)
