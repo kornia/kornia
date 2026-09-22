@@ -152,7 +152,7 @@ class TestDilate(BaseTester):
             dilation(tensor, kernel, structuring_element=torch.ones(3, 2, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("kernel_dtype", [torch.bool, torch.uint8, torch.int8, torch.int64])
-    @pytest.mark.parametrize("engine", ["unfold", "convolution"])
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "auto"])
     def test_non_float_kernel_matches_float_kernel(self, device, dtype, kernel_dtype, engine):
         # The kernel is only a membership mask (#4736): a bool or integer kernel must give exactly the
         # float kernel's result and dtype. The cross has zeros, so an excluded neighbor that leaks in shows.
