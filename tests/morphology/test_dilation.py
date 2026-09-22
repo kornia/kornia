@@ -352,8 +352,8 @@ class TestDilate(BaseTester):
         tensor = torch.tensor([[[[-1.0, -0.0], [0.0, -0.0]]]], device=device)
         kernel = torch.ones(2, 2, device=device)
 
-        expected = dilation(tensor, kernel, origin=[0, 0], engine="unfold")
-        actual = dilation(tensor, kernel, origin=[0, 0], engine="shift")
+        expected = dilation(tensor, kernel, origin=[1, 1], engine="unfold")
+        actual = dilation(tensor, kernel, origin=[1, 1], engine="shift")
 
         assert torch.equal(actual, expected)
         assert torch.equal(actual, torch.zeros_like(actual))
