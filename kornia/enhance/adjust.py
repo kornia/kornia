@@ -218,8 +218,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     else:
         factor = factor.to(image.device, image.dtype)
 
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
     if factor.shape[-3] != 1:
         raise ValueError(f"Factor must hold one value per image, not per channel. Got shape {factor.shape}")
 
