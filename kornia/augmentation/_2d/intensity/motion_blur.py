@@ -80,7 +80,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - an image smaller than the kernel is accepted, down to ``1 x 1``, at the default
           ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` raises once a spatial axis is
           no longer than half the kernel size along it, and ``"circular"`` raises a padding error of its
-          own once half the kernel size exceeds a spatial axis. Unlike :class:`RandomBoxBlur`,
+          own once the kernel radius exceeds a spatial axis. Unlike :class:`RandomBoxBlur`,
           :class:`RandomGaussianBlur` and :class:`RandomSharpness`, which name the class and the shape,
           both of these surface as raw torch errors.
 

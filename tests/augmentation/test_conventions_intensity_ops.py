@@ -666,6 +666,9 @@ class TestBlurConventions(BaseTester):
             ((2, 2), "reflect", (1, 1, 1, 1), (1, 1, 2, 2)),
             ((6, 6), "reflect", (1, 1, 3, 3), (1, 1, 4, 4)),
             ((6, 6), "circular", (1, 1, 2, 2), (1, 1, 3, 3)),
+            # the odd-extent circular boundary: `(k + 1) // 2` agrees with `k // 2` on every even row
+            # above, and only an odd kernel at its exact minimum tells them apart
+            ((5, 5), "circular", (1, 1, 1, 1), (1, 1, 2, 2)),
         ],
     )
     def test_convention_even_kernels_use_the_wider_asymmetric_pad_4559(

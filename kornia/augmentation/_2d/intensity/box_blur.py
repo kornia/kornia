@@ -63,10 +63,12 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
           the input's minimum for a positive image, and above its maximum for a negative one.
 
     .. note::
-        The padding sets a minimum image size. At the default ``border_type="reflect"`` each spatial axis must be
-        longer than the kernel's radius along it, and ``"circular"`` needs at least that radius; both raise a
-        ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` invent
-        their padding and run down to a single pixel.
+        The padding sets a minimum image size. An even kernel extent ``k`` is padded asymmetrically, with the
+        wider ``k // 2`` pad behind, so the bound is stated against that pad rather than the radius: at the default
+        ``border_type="reflect"`` each spatial axis must be longer than ``k // 2`` along it (``3`` pixels for a
+        ``4``-wide kernel), and ``"circular"`` needs at least ``k // 2``; both raise a ``ValueError`` naming the
+        class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` invent their padding and run down
+        to a single pixel.
 
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
