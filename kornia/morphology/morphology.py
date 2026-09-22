@@ -195,8 +195,9 @@ def dilation(
         :func:`dilation` returns the correct dilation plus a ``True`` border ring as wide as the pad the
         kernel needs, left by the geodesic pad, which is ``True`` in ``bool`` -- so only an image no larger
         than that ring comes back all ``True``, and the result is exact with a :math:`1 \times 1` kernel or
-        with ``border_type="constant"``. :func:`erosion` and :func:`gradient` raise ``NotImplementedError``
-        on ``bool``, as do the ``reflect`` and ``replicate`` pads. Tracked in
+        with ``border_type="constant"``. :func:`erosion` and :func:`gradient` raise a torch error
+        (``NotImplementedError`` on recent torch, ``RuntimeError`` on older releases) on ``bool``, as do the
+        ``reflect`` and ``replicate`` pads. Tracked in
         `#4735 <https://github.com/kornia/kornia/issues/4735>`_.
 
     Args:
@@ -345,7 +346,8 @@ def erosion(
         has to be flipped with the kernel, and a non-zero ``border_value`` has to be negated.
 
         The two ``.. warning::`` blocks in :func:`dilation` describe this function too, except that
-        ``erosion`` raises ``NotImplementedError`` on ``bool`` input rather than returning a result.
+        ``erosion`` raises a torch error on ``bool`` input rather than returning a result (the exception
+        class depends on the torch version).
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.

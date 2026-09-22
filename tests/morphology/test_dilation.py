@@ -689,7 +689,8 @@ class TestDilate(BaseTester):
         #   dilation(x, ones(1, 3, ...), "constant")  -> [F,F,F,T,T,T,F,F,F]  (False pad, exact)
         #   y = zeros(1, 1, 1, 5, dtype=bool); y[..., 2] = True
         #   dilation(y, ones(1, 3, dtype=bool))       -> [T,T,T,T,T]          (#4735's own case)
-        #   erosion(x, ones(1, 3, dtype=torch.bool))  -> NotImplementedError
+        #   erosion(x, ones(1, 3, dtype=torch.bool))  -> NotImplementedError (torch 2.14) / RuntimeError
+        #     (torch <= 2.9), "two bool tensors is not supported"
         #   dilation([[0, 50000, 0]] int64, [[1, 0, 1]] int64) -> [50000, 40000, 50000] (true: [5e4,0,5e4])
         float_kernel = torch.ones(1, 3, device=device)
 
@@ -724,7 +725,8 @@ class TestDilate(BaseTester):
         small_bool[..., 2] = True
         assert dilation(small_bool, bool_kernel).flatten().tolist() == [True, True, True, True, True]
 
-        with pytest.raises(NotImplementedError, match="bool"):
+        # torch 2.14 raises NotImplementedError, torch 2.5.1 / 2.9.1 raise RuntimeError, same message.
+        with pytest.raises((NotImplementedError, RuntimeError), match="bool"):
             erosion(hot_bool, bool_kernel)
 
         big_int = torch.tensor([[0, 50000, 0]], dtype=torch.int64, device=device)[None, None]
