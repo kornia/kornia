@@ -158,11 +158,16 @@ def dilation(
           ``mode="reflect"``, so a comparison against it has to pass ``mode="ignore"`` explicitly.
         - The other border modes carry torch's names, which do not match scipy's and scikit-image's:
           ``reflect`` is their ``mirror``, ``replicate`` their ``nearest`` and ``circular`` their ``wrap``,
-          while their ``reflect`` is a rule this function has no name for. ``geodesic`` and ``replicate``
-          coincide while the structuring element still covers the output pixel, and differ once it can miss it.
-        - :func:`opening` and :func:`closing` reuse ``kernel`` in both halves, so they are true
-          morphological openings and closings; :func:`gradient`, :func:`top_hat` and :func:`bottom_hat` are
-          their one-line definitions. The kernel, origin and border conventions above apply to all seven.
+          while their ``reflect`` is a rule this function has no name for. ``geodesic`` is not ``replicate``:
+          the two differ once the structuring element can reach outside the image, including when its origin
+          cell is a member and the gaps are elsewhere (``kernel=[[1, 0, 1, 0, 1]]``). They coincide for a
+          rectangle of ones, where every pixel the replicate pad duplicates is already in the window.
+        - :func:`opening` and :func:`closing` reuse ``kernel`` in both halves, so they are morphological
+          openings and closings *up to the* ``max_val`` *sentinel*: a window that reaches outside the image
+          can leave ``x - max_val`` in the output, and adding ``max_val`` back in a later stage returns ``x``
+          quantised to that sentinel's spacing, so anti-extensivity, extensivity and idempotence can miss by
+          a fraction of it (see the warning below). :func:`gradient`, :func:`top_hat` and :func:`bottom_hat`
+          are their one-line definitions. The kernel, origin and border conventions above apply to all seven.
 
     .. warning::
         ``max_val`` is a finite stand-in for infinity, not an infinity. It is padded into the border and
@@ -435,10 +440,14 @@ def opening(
     Convention:
         ``opening`` is ``dilation(erosion(tensor))`` with the same ``kernel`` in both halves. Because
         :func:`dilation` reflects the structuring element and :func:`erosion` does not, the composition is a
-        true morphological opening -- anti-extensive and idempotent -- for an asymmetric kernel as well.
-        ``scipy.ndimage.grey_opening`` and ``skimage.morphology.opening`` are openings too; OpenCV's
-        ``MORPH_OPEN`` composes without a flip and is not one for an asymmetric kernel -- it alters a block
-        that ``opening`` leaves untouched. Conventions otherwise as in :func:`dilation`.
+        morphological opening -- anti-extensive and idempotent -- for an asymmetric kernel as well, up to the
+        ``max_val`` sentinel: a window that reaches outside the image round-trips it and can move a pixel by
+        a fraction of the sentinel's spacing (see the warning in :func:`dilation`). The invariants are exact
+        for ``[[0, 1, 1]]`` and for ``[[0, 0, 0], [0, 1, 1], [0, 1, 0]]`` at the default origin and for
+        ``ones(3, 3)`` at ``origin=[0, 0]``; they are not for ``[[1, 0, 0]]``, whose window leaves the image
+        on one side only. ``scipy.ndimage.grey_opening`` and ``skimage.morphology.opening`` are openings too;
+        OpenCV's ``MORPH_OPEN`` composes without a flip and is not one for an asymmetric kernel -- it alters
+        a block that ``opening`` leaves untouched. Conventions otherwise as in :func:`dilation`.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -540,10 +549,14 @@ def closing(
 
     Convention:
         ``closing`` is ``erosion(dilation(tensor))`` with the same ``kernel`` in both halves, so it is a
-        true morphological closing -- extensive and idempotent -- for an asymmetric kernel as well.
-        ``scipy.ndimage.grey_closing`` and ``skimage.morphology.closing`` are closings too; OpenCV's
-        ``MORPH_CLOSE`` composes without a flip and is not one for an asymmetric kernel -- it alters a block
-        that ``closing`` leaves untouched. Conventions otherwise as in :func:`dilation`.
+        morphological closing -- extensive and idempotent -- for an asymmetric kernel as well, up to the
+        ``max_val`` sentinel: a window that reaches outside the image round-trips it and can move a pixel by
+        a fraction of the sentinel's spacing (see the warning in :func:`dilation`). The invariants are exact
+        for ``[[0, 1, 1]]`` and for ``[[0, 0, 0], [0, 1, 1], [0, 1, 0]]`` at the default origin and for
+        ``ones(3, 3)`` at ``origin=[0, 0]``; they are not for ``[[1, 0, 0]]``, whose window leaves the image
+        on one side only. ``scipy.ndimage.grey_closing`` and ``skimage.morphology.closing`` are closings too;
+        OpenCV's ``MORPH_CLOSE`` composes without a flip and is not one for an asymmetric kernel -- it alters
+        a block that ``closing`` leaves untouched. Conventions otherwise as in :func:`dilation`.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.

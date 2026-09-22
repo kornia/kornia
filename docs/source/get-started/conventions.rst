@@ -475,7 +475,9 @@ Morphology
   pixel, not an offset from the centre, and OpenCV's ``anchor`` is the same index in ``(x, y)``
   order. The default is ``[k_h // 2, k_w // 2]`` for even sizes too.
 - ``border_type`` carries torch's pad-mode names, which do not mean what the same words mean in
-  scipy and scikit-image. See :func:`kornia.morphology.dilation` for the full convention block.
+  scipy and scikit-image: torch's ``reflect`` is their ``mirror``, and their own ``reflect`` -- which
+  is also their default -- repeats the edge sample and has no kornia spelling. See
+  :func:`kornia.morphology.dilation` for the full convention block.
 
 .. list-table::
    :header-rows: 1
@@ -502,8 +504,8 @@ Morphology
      - ``(x, y)`` index
    * - default border
      - ``geodesic`` (ignore outside)
-     - ``reflect``
-     - ``reflect``
+     - ``reflect`` (scipy's own rule, **not** torch's ``reflect``)
+     - ``reflect`` (same rule as scipy's)
      - ignore outside
    * - name of torch's ``reflect``
      - ``reflect``

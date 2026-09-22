@@ -148,11 +148,16 @@ class TestOpening(BaseTester):
 
     def test_convention_opening_is_a_morphological_opening(self, device, dtype):
         # `opening` is `dilation(erosion(x))` with the SAME kernel in both halves. Because `dilation`
-        # reflects the kernel and `erosion` does not, the composition is a true morphological opening:
+        # reflects the kernel and `erosion` does not, the composition is a morphological opening:
         # anti-extensive and idempotent for an asymmetric kernel, and it leaves a block that is a union
-        # of translates of the kernel untouched. OpenCV composes without a flip, so its `MORPH_OPEN` is
-        # not an opening for an asymmetric kernel; scipy and scikit-image agree with kornia
-        # (scikit-image mirrors the footprint inside `opening`, so it recovers the property too).
+        # of translates of the kernel untouched. That holds EXACTLY for the two kernels below at the
+        # default origin (and, for ones(3, 3) at origin=[0, 0], in the custom-origin test above); the
+        # last block of this test pins the kernel where it does NOT hold exactly, so the docstring's
+        # `max_val` qualification is on record rather than assumed.
+        # OpenCV composes without a flip, so its `MORPH_OPEN` is not an opening for an asymmetric
+        # kernel; scipy and scikit-image agree with kornia here (scikit-image mirrors the footprint
+        # inside `opening`, and on the 7x10 rand(seed 0) frame `sm.opening(x, A, mode="ignore")` is
+        # bit-equal to `opening(x, A)`).
         # 0/1 fixtures are exact in every dtype and `max`/`min` only ever select an already-present
         # value, so both the block equality and the idempotence compare with `torch.equal`.
         # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
@@ -172,3 +177,19 @@ class TestOpening(BaseTester):
         opened = opening(tensor, l_kernel)
         assert (opened <= tensor).all()
         assert torch.equal(opening(opened, l_kernel), opened)
+
+        # The invariants are exact only up to the `max_val` sentinel, so the docstring qualifies them.
+        # `[[1, 0, 0]]` at the default origin reads `x(p + 1)`, so its window leaves the image on the
+        # right; `dilation` can then emit `x - max_val`, and the next stage's `+ max_val` returns `x`
+        # quantised to `max_val`'s spacing. Idempotence then misses by a fraction of that spacing --
+        # exactly, not approximately, zero is what a sentinel-free implementation would give.
+        # Generated with kornia in this worktree (torch 2.14.0, CPU, same rand(1, 1, 7, 10) seed 0):
+        #   max|opening(opening(x)) - opening(x)|:  float32 2.0671e-04, float64 0, float16 9.2969e-01,
+        #   bfloat16 9.2969e-01   (float32 ULP of max_val=1e4 is 9.7656e-4; float16's is 8, bf16's 64)
+        # anti-extensivity survives this kernel exactly; extensivity is the half that fails for
+        # `closing` (see tests/morphology/test_closing.py). Tracked in #4734.
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        side_opened = opening(tensor, side_kernel)
+        assert (side_opened <= tensor).all()
+        deviation = (opening(side_opened, side_kernel) - side_opened).abs().max()
+        assert deviation <= 2.0 * torch.finfo(dtype).eps * 1e4

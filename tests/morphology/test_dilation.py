@@ -79,12 +79,14 @@ class TestDilate(BaseTester):
             None, None, :, :
         ]
         assert_close(dilation(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        # The convolution engine measures ~3.9e-4 absolute / ~4.4e-4 relative error here, above the
-        # harness's generic float32 default (atol=1e-5, rtol=1e-4). The cause is the `-max_val`
-        # sentinel, not the platform: `engine="convolution"` routes every window through `F.conv2d`
-        # with `-max_val` in the bias, so the error scales with `max_val` (one float32 ULP of the
-        # default `max_val=1e4` is 1.2e-3) instead of with the image range. `engine="unfold"` is
-        # exact. Tracked in #4734; this explicit tolerance is scoped to the convolution engine.
+        # The convolution engine measures 3.9065e-4 absolute / 4.3405e-4 relative error on THIS
+        # fixture (re-measured for `dilation`; `erosion`'s figures differ, see test_erosion.py),
+        # above the harness's generic float32 default (atol=1e-5, rtol=1e-4). The cause is the
+        # `-max_val` sentinel, not the platform: `engine="convolution"` routes every window through
+        # `F.conv2d` with `-max_val` in the bias, so the error scales with `max_val` rather than with
+        # the image range. One float32 ULP at the default `max_val=1e4` is 9.7656e-4, and the largest
+        # engine gap measured (rand(1, 1, 9, 11) seed 0, ones(3, 3)) is 1.2736e-3, i.e. ~1.3 ULP.
+        # `engine="unfold"` is exact. Tracked in #4734; this tolerance is scoped to the convolution engine.
         assert_close(dilation(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_structural_element(self, device, dtype):
@@ -104,7 +106,8 @@ class TestDilate(BaseTester):
             expected,
         )
         # See test_kernel: the convolution engine needs an explicit tolerance because the `-max_val`
-        # sentinel it carries in the conv bias costs about one ULP of `max_val`. Tracked in #4734.
+        # sentinel it carries in the conv bias costs on the order of one ULP of `max_val` (9.7656e-4
+        # in float32 at the default `max_val=1e4`). Tracked in #4734.
         assert_close(
             dilation(
                 tensor,
@@ -601,18 +604,22 @@ class TestDilate(BaseTester):
     def test_convention_engines_agree_within_one_ulp_of_max_val(self, device, dtype):
         # Both engines implement the same operation. `engine="unfold"` is exact; `engine="convolution"`
         # routes every window through `F.conv2d` with the `-max_val` sentinel in the bias, so its error
-        # scales with `max_val` rather than with the image range. The exact gap is platform-dependent,
-        # so this pins the BOUND, not the value. Tracked in #4734.
-        # Measured here (CPU, torch 2.14.0, float32, x = rand(1, 1, 9, 11) seed 0, kernel ones(3, 3)):
-        #   max_val=1     -> 1.19e-07      max_val=1e2 -> 7.15e-06      max_val=1e4 -> 1.27e-03
-        # float64, float16 and bfloat16 measured 0 at all three values.
+        # scales with `max_val` rather than with the image range. The exact gap is platform-dependent --
+        # only CPU and MPS on torch 2.14.0 were measured here, and CUDA's `conv2d` picks a different
+        # algorithm -- so this pins a BOUND, not the value, and the bound carries slack (4 eps rather
+        # than the 2 eps that would just fit the measurement) so that one extra ULP on an unmeasured
+        # backend or on the torch 2.5.1 floor does not red the pin. Tracked in #4734.
+        # Measured (CPU, torch 2.14.0, float32, x = rand(1, 1, 9, 11) seed 0, kernel ones(3, 3)):
+        #   max_val=1     -> 1.1921e-07    max_val=1e2 -> 7.1526e-06    max_val=1e4 -> 1.2736e-03
+        # i.e. 1.0, 0.6 and 1.3 float32 ULPs of `max_val`. float64, float16 and bfloat16 measured 0 at
+        # all three values.
         tensor = torch.rand(1, 1, 9, 11, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         for max_val in (1.0, 1e2, 1e4):
             unfolded = dilation(tensor, kernel, max_val=max_val, engine="unfold")
             convolved = dilation(tensor, kernel, max_val=max_val, engine="convolution")
-            self.assert_close(convolved, unfolded, atol=2.0 * torch.finfo(dtype).eps * max_val, rtol=0.0)
+            self.assert_close(convolved, unfolded, atol=4.0 * torch.finfo(dtype).eps * max_val, rtol=0.0)
 
     def test_wart_dilation_max_val_sentinel_leaks_4734(self, device):
         # `max_val` is a finite stand-in for infinity, not an infinity: it is SUBTRACTED from the

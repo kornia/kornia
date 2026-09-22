@@ -142,11 +142,16 @@ class TestClosing(BaseTester):
         assert torch.equal(closing(closed, kernel, origin=[0, 0]), closed)
 
     def test_convention_closing_is_a_morphological_closing(self, device, dtype):
-        # `closing` is `erosion(dilation(x))` with the SAME kernel in both halves, so it is a true
-        # morphological closing: extensive and idempotent for an asymmetric kernel. scipy's
-        # `grey_closing` uses the same convention; scikit-image mirrors the footprint inside `closing`,
-        # so it returns kornia's closing by the same kernel, while OpenCV's `MORPH_CLOSE` composes
-        # without a flip and is not a closing for an asymmetric kernel.
+        # `closing` is `erosion(dilation(x))` with the SAME kernel in both halves, so it is a
+        # morphological closing: extensive and idempotent for an asymmetric kernel. That holds EXACTLY
+        # for the two kernels below at the default origin (and, for ones(3, 3) at origin=[0, 0], in
+        # the custom-origin test above); the last block of this test pins the kernel where it does NOT
+        # hold exactly, so the docstring's `max_val` qualification is on record rather than assumed.
+        # scipy's `grey_closing` uses the same convention. scikit-image mirrors the footprint inside
+        # `closing`, so its result is a closing too, but it is NOT bit-equal to kornia's: on the 7x10
+        # rand(seed 0) frame `sm.closing(x, A, mode="ignore")` differs from `closing(x, A)` on 5
+        # border pixels of column 0 (the interiors agree). OpenCV's `MORPH_CLOSE` composes without a
+        # flip and is not a closing for an asymmetric kernel at all.
         # `max`/`min` only select an already-present value of the input, so the idempotence compares
         # with `torch.equal` and the `>=` never needs a tolerance.
         # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
@@ -166,3 +171,18 @@ class TestClosing(BaseTester):
         closed = closing(tensor, l_kernel)
         assert (closed >= tensor).all()
         assert torch.equal(closing(closed, l_kernel), closed)
+
+        # The invariants are exact only up to the `max_val` sentinel, so the docstring qualifies them.
+        # `[[1, 0, 0]]` at the default origin reads `x(p + 1)`, so its window leaves the image on the
+        # right; `dilation` can then emit `x - max_val`, and the next stage's `+ max_val` returns `x`
+        # quantised to `max_val`'s spacing, which can push `closing(x)` just BELOW `x`.
+        # Generated with kornia in this worktree (torch 2.14.0, CPU, same rand(1, 1, 7, 10) seed 0):
+        #   max(x - closing(x)).clamp(min=0):  float32 4.7034e-04, float64 0, float16 9.7998e-01,
+        #   bfloat16 9.8047e-01   (float32 ULP of max_val=1e4 is 9.7656e-4; float16's is 8, bf16's 64)
+        # idempotence survives this kernel exactly; it is the opening half that loses it
+        # (see tests/morphology/test_opening.py). Tracked in #4734.
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        side_closed = closing(tensor, side_kernel)
+        shortfall = (tensor - side_closed).clamp(min=0).max()
+        assert shortfall <= 2.0 * torch.finfo(dtype).eps * 1e4
+        assert torch.equal(closing(side_closed, side_kernel), side_closed)
