@@ -22,7 +22,7 @@ from kornia.morphology import dilation
 from kornia.morphology import morphology as morphology_module
 from kornia.morphology.morphology import _records_grad, _resolve_engine
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, supports_reflect_padding, supports_replicate_padding
 from testing.parametrized_tester import parametrized_test
 
 
@@ -304,6 +304,10 @@ class TestDilate(BaseTester):
     def test_shift_engine_matches_unfold(self, device, dtype, kernel_shape, origin, border_type, non_flat):
         # engine="shift" reduces the same finite max-plus terms as engine="unfold" in the same order,
         # so the outputs are equal (#4729).
+        if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
         kh, kw = kernel_shape
         origin_yx = {"center": None, "first": [0, 0], "last": [kh - 1, kw - 1]}[origin]
         anchor = origin_yx if origin_yx is not None else [kh // 2, kw // 2]
@@ -359,6 +363,18 @@ class TestDilate(BaseTester):
         kernel = torch.ones(3, 3, device=device, dtype=torch.float64)
         kernel[0, 2] = 0.0
         self.gradcheck(lambda t: dilation(t, kernel, engine="shift"), (tensor,))
+
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_dynamo(self, device, dtype, torch_optimizer, requires_grad):
+        # engine="auto" reads grad mode, ``requires_grad`` and the promoted dtype when the graph is traced,
+        # so both engines it can select on this device (``shift`` forward-only, ``unfold`` for a CPU
+        # float32/float64 backward graph) have to compile to the eager result.
+        tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype).requires_grad_(requires_grad)
+        kernel = torch.ones(3, 5, device=device, dtype=dtype)
+        kernel[0, 0] = 0.0
+        op_optimized = torch_optimizer(dilation)
+
+        self.assert_close(dilation(tensor, kernel), op_optimized(tensor, kernel))
 
     def test_shift_engine_jit(self, device, dtype):
         op_script = torch.jit.script(dilation)

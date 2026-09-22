@@ -39,8 +39,8 @@ def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, widt
     Forward-only this holds one output-sized intermediate whatever the kernel area, so peak memory is flat
     in ``k_h k_w`` where ``unfold`` and ``convolution`` grow with it (24 MiB against 1627 MiB at 15 x 15,
     B=8 x 3 x 256^2 float32 on CUDA). Under autograd the opposite is true: every ``torch.maximum`` saves
-    its left operand, so ``k_h k_w - 1`` output-sized tensors stay alive until backward (2717 MiB against
-    1627 MiB in that same cell). :func:`_resolve_engine` accounts for both regimes.
+    both operands, so ``2 (k_h k_w - 1)`` output-sized tensors stay alive until backward (2717 MiB
+    against 1627 MiB in that same cell). :func:`_resolve_engine` accounts for both regimes.
     """
     kh, kw = offsets.shape
     # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
@@ -78,7 +78,7 @@ def _resolve_engine(
       (21 of 24), so it is always the CUDA choice.
     - CPU without a backward graph: ``shift`` wins every cell, by 4-13x in float32 and 12-20x in half
       precision, and its peak memory is flat in the kernel area instead of growing with it.
-    - CPU with a backward graph: the running max saves ``k_h k_w - 1`` intermediates, so ``shift``
+    - CPU with a backward graph: the running max saves ``2 (k_h k_w - 1)`` intermediates, so ``shift``
       loses to ``unfold`` in float32 (up to 2.5x at 15 x 15) and float64 (up to 3.4x), while still
       winning 11 of 12 half-precision cells.
 
@@ -158,13 +158,13 @@ def dilation(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
-            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
-            :func:`_resolve_engine` for the measurements.
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. The
+            measurements behind that rule are recorded in the ``_resolve_engine`` source.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
             padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
-            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            under autograd it instead saves :math:`2 (k_h k_w - 1)` output-sized tensors for the backward
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
@@ -273,13 +273,13 @@ def erosion(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
-            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
-            :func:`_resolve_engine` for the measurements.
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. The
+            measurements behind that rule are recorded in the ``_resolve_engine`` source.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
             padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
-            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            under autograd it instead saves :math:`2 (k_h k_w - 1)` output-sized tensors for the backward
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
@@ -389,13 +389,13 @@ def opening(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
-            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
-            :func:`_resolve_engine` for the measurements.
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. The
+            measurements behind that rule are recorded in the ``_resolve_engine`` source.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
             padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
-            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            under autograd it instead saves :math:`2 (k_h k_w - 1)` output-sized tensors for the backward
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
@@ -479,13 +479,13 @@ def closing(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
-            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
-            :func:`_resolve_engine` for the measurements.
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. The
+            measurements behind that rule are recorded in the ``_resolve_engine`` source.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
             padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
-            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            under autograd it instead saves :math:`2 (k_h k_w - 1)` output-sized tensors for the backward
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
@@ -571,13 +571,13 @@ def gradient(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
-            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
-            :func:`_resolve_engine` for the measurements.
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. The
+            measurements behind that rule are recorded in the ``_resolve_engine`` source.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
             padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
-            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            under autograd it instead saves :math:`2 (k_h k_w - 1)` output-sized tensors for the backward
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
@@ -652,13 +652,13 @@ def top_hat(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
-            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
-            :func:`_resolve_engine` for the measurements.
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. The
+            measurements behind that rule are recorded in the ``_resolve_engine`` source.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
             padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
-            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            under autograd it instead saves :math:`2 (k_h k_w - 1)` output-sized tensors for the backward
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
@@ -736,13 +736,13 @@ def bottom_hat(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
-            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
-            :func:`_resolve_engine` for the measurements.
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. The
+            measurements behind that rule are recorded in the ``_resolve_engine`` source.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
             padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
-            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            under autograd it instead saves :math:`2 (k_h k_w - 1)` output-sized tensors for the backward
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
