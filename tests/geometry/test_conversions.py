@@ -6261,6 +6261,37 @@ class TestEulerFromQuaternion(BaseTester):
             f"rotation (error {error})"
         )
 
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_convention_roundtrip_holds_at_gimbal_lock_random_roll_yaw_3993(self, device, dtype, sign):
+        # Regression for kornia#3993: a single fixed (roll, yaw) = (0.1, 0.2) probe at gimbal lock is
+        # not enough to catch a gimbal detector that only fires for SOME (roll, yaw) pairs at the
+        # pole -- exactly the failure mode of the cos(pitch) estimator this test guards against
+        # regressing to. sqrt(1 - sinp**2) recomputes cos(pitch) from an already-rounded sinp, so at
+        # a true pole it does not evaluate to ~0 but to sqrt(k * eps) for however many ulps k the
+        # rounded sinp fell short of 1 -- and k varies with (roll, yaw). Measured over 500 random
+        # (roll, yaw) per (dtype, sign) cell, that estimator missed 9-13 poles per 500 at the
+        # threshold this branch uses; hypot(sinr_cosp, cosr_cosp) has no such cancellation and
+        # measured 0/500. Both dtype and sign are covered here (dtype via the fixture, both signs via
+        # this parametrize) because the failure rate differs by dtype and the two signs exercise
+        # different branches of the yaw-folding logic.
+        _skip_if_dtype_unavailable(device, dtype)
+
+        pitch_in = sign * torch.pi / 2
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        roll_in = (torch.rand(200, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        yaw_in = (torch.rand(200, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        roll_in = roll_in.to(device=device, dtype=dtype)
+        yaw_in = yaw_in.to(device=device, dtype=dtype)
+        pitch_batch = torch.full_like(roll_in, pitch_in)
+
+        quaternion = quaternion_from_euler(roll_in, pitch_batch, yaw_in)
+        roundtrip = quaternion_from_euler(*euler_from_quaternion(*quaternion))
+
+        rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion, dim=-1))
+        rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip, dim=-1))
+
+        self.assert_close(rot_in, rot_back, low_tolerance=True)
+
     @pytest.mark.xfail(
         raises=AssertionError,
         reason="euler_from_quaternion does not normalise its input, so a non-unit quaternion gives "
@@ -6298,12 +6329,7 @@ class TestEulerFromQuaternion(BaseTester):
         # in TestQuaternionExpToLog because the two functions are independent code paths and a fix
         # to one leaves the other broken, which would leave the other strict xfail silently XFAIL.
         # If it fails, the euler half of #3953 was fixed -- flip/remove the strict xfail above.
-        # NOT a contract that a scaled quaternion must keep producing this triple. The scale bug is
-        # unchanged (the function still does not normalise); the triple below moved when the
-        # gimbal-lock branch for #3950 landed -- scaling by 2 saturates the asin argument, which now
-        # routes through that branch and returns (0, pi/2, yaw) instead of the old atan2 residue.
-        # The new value is more stable: yaw = -2*atan2(x, w) is scale-invariant, so it no longer
-        # depends on rounding the way the pre-#3950 triple did.
+        # NOT a contract that a scaled quaternion must keep producing this triple.
         # Snippet used to generate expected (torch only, executed on cpu float64):
         #   t = lambda x: torch.tensor(x, dtype=torch.float64)
         #   q = quaternion_from_euler(t(0.3), t(0.7), t(1.1))
@@ -6311,10 +6337,10 @@ class TestEulerFromQuaternion(BaseTester):
         #   [x.item() for x in euler_from_quaternion(*q)]
         #     -> [0.2999999999999999, 0.6999999999999998, 1.0999999999999999]     (the unit input)
         #   [x.item() for x in euler_from_quaternion(*[2 * c for c in q])]
-        #     -> [0.0, 1.5707963267948966, 0.14034560699328846]
-        #   (float32: [0.0, 1.5707963705062866, 0.14034557342529297];
-        #    float16:  [0.0, 1.5703125, 0.1405029296875];
-        #    bfloat16: [0.0, 1.5703125, 0.138671875] -- all within the dtype's default tolerance
+        #     -> [1.6560585860248003, 1.5707963267948966, 2.1048169977173687]
+        #   (float32: [1.656058430671692, 1.5707963705062866, 2.1048169136047363];
+        #    float16:  [1.6572265625, 1.5703125, 2.10546875];
+        #    bfloat16: [1.6484375, 1.5703125, 2.109375] -- all within the dtype's default tolerance
         #    of the float64 literals below)
         quaternion = quaternion_from_euler(
             torch.tensor(0.3, device=device, dtype=dtype),
@@ -6326,7 +6352,7 @@ class TestEulerFromQuaternion(BaseTester):
 
         assert_close(
             out,
-            torch.tensor([0.0, 1.5707963267948966, 0.14034560699328846], device=device, dtype=dtype),
+            torch.tensor([1.6560585860248003, 1.5707963267948966, 2.1048169977173687], device=device, dtype=dtype),
             msg=_issue_msg("kornia#3953: euler_from_quaternion no longer ignores the quaternion norm"),
         )
 

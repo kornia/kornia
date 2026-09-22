@@ -1407,15 +1407,19 @@ def euler_from_quaternion(
     # returned triple no longer represents the rotation (#3950). Only one combined
     # angle survives there -- roll - yaw at +pi/2 and roll + yaw at -pi/2 -- so pin
     # roll to 0 and fold that degree of freedom into yaw, which reconstructs the
-    # input rotation. The threshold scales with sqrt(eps): once the asin argument
-    # has rounded to within a few ulps of 1, cos(pitch) is a small multiple of
-    # sqrt(eps) (asin(1 - d) = pi/2 - sqrt(2 d)), so a modest factor above sqrt(eps)
-    # clears that rounding band while staying far from any genuinely resolvable
-    # pitch. Measured sweep: factor 1.0 misses float32 gimbal (asin argument
-    # rounds below 1); 2.0 catches both dtypes with no regression at any sampled
-    # offset from pi/2; 8.0+ creates a band where resolvable pitches are snapped
-    # and the error is worse than main. 2.0 is the tightest margin that works.
-    cos_pitch = (1.0 - sinp * sinp).clamp(min=0.0).sqrt()
+    # input rotation. cos(pitch) is measured as hypot(sinr_cosp, cosr_cosp) rather
+    # than sqrt(1 - sinp**2): both quantities are proportional to cos(pitch), but
+    # the latter cancels an already-rounded sinp against itself, so at a true pole
+    # it lands within a handful of ulps of any fixed threshold instead of at 0 --
+    # measured, sqrt(1 - sinp**2) misses 9-13 of every 500 uniformly sampled poles
+    # per (dtype, sign) cell at threshold 2*sqrt(eps), because the tie is exact at
+    # 4 ulps of rounding in |sinp| and no factor separates that tie from a
+    # genuinely resolvable near-pole pitch (they are only ~4x apart). hypot has no
+    # such cancellation: it separates poles from resolvable pitches by 4-8 orders
+    # of magnitude and is never worse than the old estimator away from them.
+    # Threshold 2*sqrt(eps) is unchanged from the original sweep -- only the
+    # quantity it is compared against changed.
+    cos_pitch = torch.hypot(sinr_cosp, cosr_cosp)
     gimbal = cos_pitch < 2.0 * torch.finfo(w.dtype).eps ** 0.5
     up = sinp > 0.0
     # Snap pitch to exactly ±pi/2 there (asin returns pi/2 - O(sqrt(eps)) once its
