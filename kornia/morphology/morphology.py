@@ -199,7 +199,8 @@ def dilation(
           ``True``: every function but :func:`dilation` contains an erosion and raises a torch error
           (``NotImplementedError`` on recent torch, ``RuntimeError`` on older releases), and :func:`dilation`
           is silently wrong under every ``border_type`` as soon as the kernel holds a ``False`` cell, which
-          then contributes ``x + 1`` instead of being left out -- for a ``bool`` image, ``True`` everywhere.
+          then contributes ``x + 1`` instead of being left out -- for a ``bool`` image, ``True`` everywhere
+          under every border that accepts one.
         - The geodesic pad stores :math:`\mp` ``max_val`` in the image's dtype. A ``uint8`` image raises an
           overflow ``RuntimeError`` there on CPU, while on MPS the sentinel wraps modulo 256 instead of
           raising; under the other ``border_type`` values a ``uint8`` image with a floating kernel runs and
@@ -207,12 +208,14 @@ def dilation(
           ``max_val``.
         - A ``bool`` image stores the geodesic pad as ``True``. With a floating kernel, or a ``bool`` kernel
           with no ``False`` cell, :func:`dilation` returns the correct dilation plus a ``True`` (or ``1``)
-          border ring as wide as the pad the kernel needs, so only an image no larger than that ring comes
-          back all ``True``, and the result is exact with a :math:`1 \times 1` kernel, with
+          border ring as wide as the pad the kernel needs. The ring alone fills only an image no larger than
+          itself (an all-``False`` :math:`1 \times 5` under ``ones(1, 3)`` keeps three ``False`` pixels); the
+          :math:`1 \times 5` of the issue comes back all ``True`` because the ring and the true dilation of
+          its centre pixel together cover it. The result is exact with a :math:`1 \times 1` kernel, with
           ``border_type="constant"`` and with ``circular``, which pads the image's own values. With a
-          floating kernel, :func:`erosion` is exact under the geodesic
-          pad, because ``True`` cannot lower a minimum, and :func:`gradient` inherits the ring from
-          :func:`dilation`. On CPU the ``reflect`` and ``replicate`` pads raise on a ``bool`` image.
+          floating kernel, :func:`erosion` is exact under the geodesic pad, because ``True`` cannot lower a
+          minimum, and :func:`gradient` inherits the ring from :func:`dilation`. On CPU the ``reflect`` and
+          ``replicate`` pads raise on a ``bool`` image.
 
         Tracked in `#4735 <https://github.com/kornia/kornia/issues/4735>`_.
 
@@ -521,8 +524,11 @@ def opening(
         but loses idempotence, by less than one ULP of ``max_val`` and by nothing at all in ``float64``; under
         ``replicate`` it stays idempotent but is not anti-extensive at all; under ``circular`` it is exact.
 
-        ``skimage.morphology.opening`` with ``mode="ignore"`` is this opening: it mirrors its footprint in
-        the second half and is bit-equal to ``opening`` on a random frame. ``scipy.ndimage.grey_opening``
+        ``skimage.morphology.opening`` with ``mode="ignore"`` mirrors its footprint in the second half, so it
+        is this opening at ``origin=[(k_h - 1) // 2, (k_w - 1) // 2]``, where its erosion half anchors (see
+        :func:`erosion`): the default origin for an odd-sized kernel, one cell earlier for an even one. It is
+        bit-equal to ``opening`` at that origin on random frames for odd and even kernels alike while no
+        window is empty (an empty one returns ``inf`` there and the sentinel here). ``scipy.ndimage.grey_opening``
         has no ignore mode, and a single ``cval=-inf`` pads its erosion half with ``-inf`` as well, so it is
         anti-extensive but differs from ``opening`` at the border and can return ``-inf`` there (the whole
         last column for ``[[1, 0, 0]]``). At their shared default ``mode="reflect"`` neither is
@@ -651,8 +657,10 @@ def closing(
         ``replicate`` it stays idempotent but is not extensive at all; under ``circular`` it is exact.
 
         ``skimage.morphology.closing`` with ``mode="ignore"`` mirrors its footprint in the second half, which
-        makes it kornia's closing by the *flipped* kernel -- bit-equal to ``closing(x, kernel.flip((0, 1)))``
-        on a random frame -- so it is a closing too, but a different one for an asymmetric kernel.
+        makes it kornia's closing by the *flipped* kernel at the default origin -- bit-equal to
+        ``closing(x, kernel.flip((0, 1)))`` on random frames for odd-sized and even-sized kernels alike while
+        no window is empty (an empty one returns ``inf`` there and the sentinel here) -- so it is a closing
+        too, but a different one for an asymmetric kernel.
         ``scipy.ndimage.grey_closing`` has no ignore mode, and a single ``cval=+inf`` pads its dilation half
         with ``+inf`` as well, so it is extensive but differs from ``closing`` at the border and can return
         ``inf`` there (the whole first column for ``[[1, 0, 0]]``). At their shared default ``mode="reflect"``

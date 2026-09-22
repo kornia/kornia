@@ -691,8 +691,9 @@ class TestDilate(BaseTester):
         # input is supported. `uint8` does not survive the GEODESIC pad (which stores -/+ max_val);
         # under the other `border_type` values the call runs and silently returns `float32`. `int64` is
         # silently wrong near `max_val`. `bool` is NOT silently all-`True`: the geodesic pad is `True`
-        # in `bool`, so the correct dilation comes back with a `True` border ring as wide as the pad --
-        # all-`True` only on an image no larger than that ring, which is the 1x5 of the issue.
+        # in `bool`, so the correct dilation comes back with a `True` border ring as wide as the pad. The
+        # ring alone fills only an image no larger than itself (an all-False 1x5 keeps three False pixels);
+        # the 1x5 of the issue is all `True` because the ring and its centre pixel's dilation cover it.
         # scipy, scikit-image and OpenCV all accept these dtypes. Tracked in #4735. Dtypes are
         # explicit here (the claim is about non-float dtypes), so this pin takes `device` only.
         # Generated with kornia in this worktree (torch 2.14.0):
@@ -744,8 +745,17 @@ class TestDilate(BaseTester):
         exact_dilation = [False, False, False, True, True, True, False, False, False]
         assert dilation(hot_bool, bool_kernel, border_type="constant").flatten().tolist() == exact_dilation
         assert dilation(hot_bool, bool_kernel, border_type="circular").flatten().tolist() == exact_dilation
-        # #4735's own 1x5 is no wider than the ring, which is why it comes back all `True`.
-        small_bool = torch.zeros(1, 1, 1, 5, dtype=torch.bool, device=device)
+        # The ring alone fills only an image no larger than itself: an all-False 1x5 keeps its three
+        # interior pixels and an all-False 1x2 is nothing but ring. #4735's own 1x5 comes back all `True`
+        # because the ring (cols 0 and 4) and the true dilation of its centre pixel (cols 1-3) cover it.
+        # Generated with kornia in this worktree (torch 2.14.0; CPU and MPS agree):
+        #   dilation(zeros(1, 1, 1, 5, bool), ones(1, 3, bool)) -> [T, F, F, F, T]
+        #   dilation(zeros(1, 1, 1, 2, bool), ones(1, 3, bool)) -> [T, T]
+        cold_small = torch.zeros(1, 1, 1, 5, dtype=torch.bool, device=device)
+        assert dilation(cold_small, bool_kernel).flatten().tolist() == [True, False, False, False, True]
+        cold_tiny = torch.zeros(1, 1, 1, 2, dtype=torch.bool, device=device)
+        assert dilation(cold_tiny, bool_kernel).flatten().tolist() == [True, True]
+        small_bool = cold_small.clone()
         small_bool[..., 2] = True
         assert dilation(small_bool, bool_kernel).flatten().tolist() == [True, True, True, True, True]
 

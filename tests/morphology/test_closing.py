@@ -150,7 +150,9 @@ class TestClosing(BaseTester):
         # scikit-image mirrors the footprint inside `closing`, which makes it kornia's closing by the
         # FLIPPED kernel: on the 7x10 rand(seed 0) frame `sm.closing(x, A, mode="ignore")` is bit-equal
         # to `closing(x, A.flip((0, 1)))` and differs from `closing(x, A)` on 5 border pixels of
-        # column 0 (the interiors agree). scipy has no ignore mode: `grey_closing(..., mode="constant",
+        # column 0 (the interiors agree); the same flipped-kernel equality holds for the L kernel and, at
+        # the default origin, for the even kernels [[1, 0]], ones(2, 2), [[1, 1, 0, 1]] and [[0, 1, 1, 1]]
+        # (rand(1, 1, 7, 10) seeds 0-2, float64). scipy has no ignore mode: `grey_closing(..., mode="constant",
         # cval=inf)` pads its dilation half with +inf as well, so it is extensive but differs from
         # kornia's at the border (0.40 for A on a 7x9 rand frame) and returns inf on the whole first
         # column for `[[1, 0, 0]]`; it equals `blk` below only because that frame's border is already 0.

@@ -156,7 +156,11 @@ class TestOpening(BaseTester):
         # `max_val` qualification is on record rather than assumed.
         # OpenCV composes without a flip, so its `MORPH_OPEN` is not an opening for an asymmetric
         # kernel. scikit-image mirrors the footprint inside `opening`, and on the 7x10 rand(seed 0)
-        # frame `sm.opening(x, A, mode="ignore")` is bit-equal to `opening(x, A)`. scipy has no ignore
+        # frame `sm.opening(x, A, mode="ignore")` is bit-equal to `opening(x, A)`; so is the L kernel's.
+        # For the even kernels [[1, 0]], ones(2, 2), [[1, 1, 0, 1]] and [[0, 1, 1, 1]] it is bit-equal to
+        # `opening(x, K, origin=[(k_h - 1) // 2, (k_w - 1) // 2])` (rand(1, 1, 7, 10) seeds 0-2, float64),
+        # where its erosion half anchors, and equals neither `opening(x, K)` nor the flipped-kernel opening
+        # at the default origin (ones(2, 2): 0.805 apart on seed 0). scipy has no ignore
         # mode: `grey_opening(..., mode="constant", cval=-inf)` pads its erosion half with -inf as well,
         # so it is anti-extensive but differs from kornia's at the border (0.61 for A, 0.37 for
         # ones(3, 3) on a 7x9 rand frame) and returns -inf on the whole last column for `[[1, 0, 0]]`;
