@@ -83,13 +83,12 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           ``border_type="reflect"`` the result stays between the input's extremes, up to rounding, at
           ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative weights,
           and the result can overshoot both extremes.
-        - an image smaller than the kernel is accepted, down to ``1 x 1``, at ``border_type="constant"``
-          and ``"replicate"``. ``"reflect"`` raises once a spatial axis is no longer than half the kernel
-          size along it, as the two padding blurs do, and ``"circular"`` raises a padding error of its own once the
-          kernel radius exceeds a spatial axis. Both are raw torch errors of the kind
-          `#4559 <https://github.com/kornia/kornia/issues/4559>`_ tracks, although that issue is scoped to the
-          three classes that raise at their *defaults* and names this one as accepting the same images --
-          which it does, at the default ``border_type="constant"``.
+        - an image smaller than the kernel is accepted, down to ``1 x 1``, at the default
+          ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` raises once a spatial axis is
+          no longer than half the kernel size along it, and ``"circular"`` raises a padding error of its
+          own once the kernel radius exceeds a spatial axis. Unlike :class:`RandomBoxBlur`,
+          :class:`RandomGaussianBlur` and :class:`RandomSharpness`, which name the class and the shape,
+          both of these surface as raw torch errors.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.

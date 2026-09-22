@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.enhance import sharpness
 
 
@@ -60,10 +61,10 @@ class RandomSharpness(IntensityAugmentationBase2D):
         An input whose values are all negative comes back as an all-zero image. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
-    .. warning::
-        An image with a side smaller than the ``3 x 3`` smoothing kernel raises a raw torch
-        ``RuntimeError`` about the padded input size rather than a kornia error naming the class.
-        Tracked in `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
+    .. note::
+        The smoothing kernel is a fixed ``3 x 3`` convolved with no padding, so both spatial sides
+        must be at least ``3`` pixels; a smaller image raises a ``ValueError`` naming the class and
+        the input shape.
 
     .. note::
         This function internally uses :func:`kornia.enhance.sharpness`.
@@ -104,5 +105,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # the smoothing kernel is a fixed 3 x 3 convolved without padding of its own
+        _check_filter_min_size("RandomSharpness", input, 3, border_type="valid")
         factor = params["sharpness"]
         return sharpness(input, factor)
