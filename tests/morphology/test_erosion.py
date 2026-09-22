@@ -155,9 +155,7 @@ class TestErode(BaseTester):
         # The kernel is only a membership mask (#4736): a bool or integer kernel must give exactly the
         # float kernel's result and dtype. The cross has zeros, so an excluded neighbor that leaks in shows.
         tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
-        kernel = torch.tensor(
-            [[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype
-        )
+        kernel = torch.tensor([[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
         expected = erosion(tensor, kernel, engine=engine)
         actual = erosion(tensor, kernel.to(kernel_dtype), engine=engine)
         assert actual.dtype == expected.dtype
