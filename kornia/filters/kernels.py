@@ -1032,8 +1032,7 @@ def get_hanning_kernel1d(
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
     x = torch.arange(kernel_size, device=device, dtype=dtype)
-    x = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
-    return x
+    return 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
 
 
 def get_hanning_kernel2d(
@@ -1058,9 +1057,7 @@ def get_hanning_kernel2d(
 
     ky = get_hanning_kernel1d(kernel_size[0], device, dtype)[None].T
     kx = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
-    kernel2d = ky @ kx
-
-    return kernel2d
+    return ky @ kx
 
 
 @deprecated(replace_with="get_gaussian_kernel1d", version="0.6.10")
