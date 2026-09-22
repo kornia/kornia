@@ -119,10 +119,13 @@ class RandomTransplantation(MixAugmentationBaseV2):
           tensor.
         - like every mix augmentation it is not geometric: ``transform_matrix`` and ``inverse()`` both raise
           ``RuntimeError``, and the ``inverse()`` of a
-          :class:`~kornia.augmentation.container.AugmentationSequential` holding one raises the same error. The
-          container hands a mask on as ``(B, 1, H, W)`` once any other augmentation has run, which the rank rule
-          above refuses, so the transplant only works there as the first step
-          (`#4707 <https://github.com/kornia/kornia/issues/4707>`_).
+          :class:`~kornia.augmentation.container.AugmentationSequential` holding one raises the same error.
+        - a mask with a singleton channel axis, ``(B, 1, *spatial)``, next to an image of the same rank is read as
+          the ``(B, *spatial)`` mask: the labels and ``selection`` come from its spatial layout and it comes back in
+          its own ``(B, 1, *spatial)`` layout. That is the layout a container hands on once any other augmentation
+          has run, so the transplant works at any position in a pipeline, not only as the first step
+          (`#4707 <https://github.com/kornia/kornia/issues/4707>`_). With no image in the call, a mask keeps its
+          own rank and a size-1 first spatial axis is not squeezed.
 
     Examples:
         >>> import torch
@@ -242,6 +245,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
         return acceptor
 
     def transform_mask(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
+        if acceptor.ndim == selection.ndim + 1:
+            # A mask with a singleton channel axis, ``(B, 1, *spatial)``, as a container hands it on (#4707).
+            selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
         acceptor[selection] = donor[selection]
         return acceptor
 
@@ -276,6 +282,15 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         # The first mask key will be used for the transplantation
         mask: torch.Tensor = input[data_keys.index(DataKey.MASK)]
+        # Once any earlier step has run, AugmentationSequential hands the mask on as ``(B, 1, *spatial)``, the
+        # image's rank. Drive the transplant from the spatial layout, so the selection is the one a
+        # ``(B, *spatial)`` mask gives and the singleton axis is re-added per input in ``transform_mask`` (#4707).
+        if (
+            mask.ndim > self._channel_dim
+            and mask.shape[self._channel_dim] == 1
+            and any(key == DataKey.INPUT and _input.ndim == mask.ndim for _input, key in zip(input, data_keys))
+        ):
+            mask = mask.squeeze(self._channel_dim)
         for _input, key in zip(input, data_keys):
             if key == DataKey.INPUT:
                 KORNIA_CHECK(
