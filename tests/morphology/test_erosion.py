@@ -433,7 +433,7 @@ class TestErode(BaseTester):
     def test_convention_adjunction_without_empty_windows(self, device, dtype):
         # `dilation` and `erosion` with the same kernel and origin are an adjoint pair,
         # `dilation(x) <= y` everywhere exactly when `x <= erosion(y)` everywhere, while no window is empty
-        # and the image range stays well below `max_val`. The kernel is asymmetric so that a reflection
+        # and the image range stays well below `max_val`. The kernel changes under a 180-degree flip, so a reflection
         # mismatch between the two would break the pair, and it holds its default origin cell [1, 1], so
         # no window is empty. Every value is a small integer, exact in every dtype. The empty-window
         # counterexample is pinned in test_wart_dilation_max_val_sentinel_leaks_4734.
@@ -442,7 +442,7 @@ class TestErode(BaseTester):
             device=device,
             dtype=dtype,
         )[None, None]
-        kernel = torch.tensor([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        kernel = torch.tensor([[1.0, 1.0, 0.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
         dilated = dilation(x, kernel)
         # y = dilation(x) is the smallest y with dilation(x) <= y, so x <= erosion(y) must hold ...
         assert bool((x <= erosion(dilated, kernel)).all())
