@@ -586,6 +586,20 @@ class TestMixConventions(BaseTester):
         assert isinstance(out_boxes, list)
         self.assert_close(out_boxes[0], boxes[0])
 
+    def test_convention_mosaic_direct_list_input_returns_dense_tensor(self, device, dtype):
+        image = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        boxes = [
+            torch.tensor([[1.0, 1.0, 4.0, 4.0]], device=device, dtype=dtype),
+            torch.tensor([[1.0, 1.0, 3.0, 3.0], [2.0, 1.0, 6.0, 5.0]], device=device, dtype=dtype),
+        ]
+
+        output, out_boxes = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])(image, boxes)
+
+        assert isinstance(out_boxes, torch.Tensor)
+        assert out_boxes.shape == (2, 8, 4)
+        assert output.shape == image.shape
+
+        self.assert_close(out_boxes[0, 4:], torch.zeros_like(out_boxes[0, 4:]))
     @staticmethod
     def _mosaic_boxes(num_boxes: int, data_key: str, device, dtype) -> torch.Tensor:
         corners = torch.tensor([[1.0, 1.0, 4.0, 4.0], [2.0, 1.0, 6.0, 5.0]], device=device, dtype=dtype)[:num_boxes]
