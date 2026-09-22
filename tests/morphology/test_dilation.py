@@ -508,10 +508,13 @@ class TestDilate(BaseTester):
                 expected[..., row, col] = 1.0
 
             if engine == "convolution":
-                # See test_kernel: the convolution engine can carry tiny floating noise on some
-                # backends even for 0/1 inputs, so compare the full tensor at the harness's
-                # default per-dtype tolerance instead of a strict nonzero() index list; the
-                # fixture is 0/1 so this is exact anyway.
+                # See test_kernel: `engine="convolution"` routes every window through `F.conv2d` with
+                # the `-max_val` sentinel in the bias, so the gap between the engines scales with
+                # `max_val` rather than with the image range (#4734) -- it is not a platform artefact.
+                # On this 0/1 fixture the gap measures exactly 0 on CPU in float32, float64, float16
+                # and bfloat16 and on MPS in float32, float16 and bfloat16 (torch 2.14.0); CUDA is
+                # unmeasured, so this compares the full tensor at the harness's default per-dtype
+                # tolerance rather than a strict nonzero() index list.
                 self.assert_close(actual, expected)
             else:
                 assert sorted(actual.nonzero()[:, 2:].tolist()) == expected_nonzero
@@ -520,18 +523,24 @@ class TestDilate(BaseTester):
         # `dilation` is the Minkowski dilation `out(p) = max_{q: kernel[q] != 0} x(p - (q - origin))`,
         # so the kernel *contents* are reflected. The asymmetric kernel is the whole point: `ones(3, 3)`
         # is invariant under the flip and cannot tell the two conventions apart.
-        # 0/1 fixtures are exact in every dtype, so this compares with `torch.equal`.
+        # The fixture is 0/1 and the engine gap on it measures exactly 0 on CPU in all four dtypes
+        # and on MPS in float32/float16/bfloat16 (torch 2.14.0), but CUDA is unmeasured and the gap is
+        # a `max_val` effect rather than a platform one (#4734), so this compares at the harness's
+        # default per-dtype tolerance, like the neighbouring convolution branch above.
         # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
         #   x = np.zeros((1, 7), np.float32); x[0, 3] = 1.0; A = np.array([[0, 1, 1]], bool)
         #   ndi.grey_dilation(x, footprint=A, mode="constant", cval=-np.inf)
         #       -> [0, 0, 0, 1, 1, 0, 0]   (cols {3, 4}; same as kornia)
         #   sm.dilation(x, A, mode="ignore") -> [0, 0, 1, 1, 0, 0, 0]   (cols {2, 3})
         #   cv2.dilate(x, A.astype(np.uint8)) -> [0, 0, 1, 1, 0, 0, 0]  (cols {2, 3})
-        # scikit-image and OpenCV do not reflect, so for an asymmetric kernel they return kornia's
-        # dilation by the flipped kernel. On the whole 7x10 rand(seed 0) frame,
-        # `sm.dilation(x, A[:, ::-1], mode="ignore")` is bit-equal to `dilation(x, A)` while
-        # `sm.dilation(x, A, mode="ignore")` is not, and `sm.erosion(x, A, mode="ignore")` is bit-equal
-        # to `erosion(x, A)`.
+        # Neither reference reflects. scikit-image returns kornia's dilation by the flipped kernel at
+        # every kernel size; OpenCV does so only for an odd-sized kernel, because it also anchors an
+        # even-sized kernel one cell earlier. Measured on a 7x9 rand(seed 0) float64 frame, comparing
+        # each reference at its default anchor against `dilation(x, K.flip((0, 1)))`:
+        #   K = ones(1, 3) / [[0, 1, 1]]  (odd): skimage 0, cv2 0 at the default origin
+        #   K = [[1, 0]] / ones(2, 2) / [[1, 1, 0, 1]]  (even): skimage 0 at the default origin, while
+        #       cv2 differs there (0.956 / 0.825 / 0.732) and is 0 at
+        #       `origin=[(k_h - 1) // 2, (k_w - 1) // 2]`.
         tensor = torch.zeros(1, 1, 1, 7, device=device, dtype=dtype)
         tensor[..., 3] = 1.0
         kernel = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
@@ -540,8 +549,8 @@ class TestDilate(BaseTester):
         expected[..., 3] = 1.0
         expected[..., 4] = 1.0
 
-        for engine in ("unfold", "convolution"):
-            assert torch.equal(dilation(tensor, kernel, engine=engine), expected), engine
+        self.assert_close(dilation(tensor, kernel, engine="unfold"), expected)
+        self.assert_close(dilation(tensor, kernel, engine="convolution"), expected)
 
     def test_convention_dilation_non_flat_se_is_additive_and_reflected(self, device, dtype):
         # `structuring_element` is the additive (grey-level) part: the neighbourhood value `SE[q]` is
@@ -580,9 +589,12 @@ class TestDilate(BaseTester):
         #   ndi.grey_dilation(x, footprint=np.array([[-1, 1, 0]]), ...) -> [0, 0, 1, 1, 0, 0, 0]
         #       (2 members, same as kornia's kernel by the flip)
         #   sm.dilation(x, np.array([[-1, 1, 0]]), mode="ignore")       -> [0, 0, 0, 1, 1, 0, 0]
-        # i.e. scikit-image DROPS the -1 cell (it is not truthy for its footprint padding), kornia and
-        # scipy keep it. Entries of `structuring_element` under a zero `kernel` cell are overwritten by
-        # the `-max_val` sentinel and never reach the output.
+        # scikit-image KEEPS the -1 cell: its `[[-1, 1, 0]]` output is bit-equal to its `[[1, 1, 0]]`
+        # output and differs from its `[[0, 1, 0]]` output ([0, 0, 0, 1, 0, 0, 0]), which is what
+        # dropping the cell would give. The remaining difference from kornia is the reflection --
+        # cols {3, 4} there against cols {2, 3} here -- not the membership rule.
+        # Entries of `structuring_element` under a zero `kernel` cell are overwritten by the
+        # `-max_val` sentinel and never reach the output.
         tensor = torch.rand(1, 2, 5, 6, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         reference_kernel = torch.tensor([[1.0, 1.0, 0.0]], device=device, dtype=dtype)
         expected_dilation = dilation(tensor, reference_kernel)
@@ -611,8 +623,8 @@ class TestDilate(BaseTester):
         # backend or on the torch 2.5.1 floor does not red the pin. Tracked in #4734.
         # Measured (CPU, torch 2.14.0, float32, x = rand(1, 1, 9, 11) seed 0, kernel ones(3, 3)):
         #   max_val=1     -> 1.1921e-07    max_val=1e2 -> 7.1526e-06    max_val=1e4 -> 1.2736e-03
-        # i.e. 1.0, 0.6 and 1.3 float32 ULPs of `max_val`. float64, float16 and bfloat16 measured 0 at
-        # all three values.
+        # i.e. 1.0, 0.94 and 1.3 float32 ULPs of `max_val` (ULP(1) = 1.1921e-07, ULP(1e2) = 7.6294e-06,
+        # ULP(1e4) = 9.7656e-04). float64, float16 and bfloat16 measured 0 at all three values.
         tensor = torch.rand(1, 1, 9, 11, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
@@ -654,22 +666,30 @@ class TestDilate(BaseTester):
         ]
 
     def test_wart_integer_and_bool_input_4735(self, device):
-        # The `-max_val` sentinel is written into a tensor of the INPUT's dtype, so only floating-point
-        # input is supported: `uint8` does not survive the store, `int64` is silently wrong near
-        # `max_val`, and `bool` is silently all-`True` (the sentinel pad is a non-zero integer, i.e.
-        # `True`). scipy, scikit-image and OpenCV all accept these dtypes. Tracked in #4735. Dtypes are
+        # The `max_val` sentinel is written into a tensor of the INPUT's dtype, so only floating-point
+        # input is supported. `uint8` does not survive the GEODESIC pad (which stores -/+ max_val);
+        # under the other `border_type` values the call runs and silently returns `float32`. `int64` is
+        # silently wrong near `max_val`. `bool` is NOT silently all-`True`: the geodesic pad is `True`
+        # in `bool`, so the correct dilation comes back with a `True` border ring as wide as the pad --
+        # all-`True` only on an image no larger than that ring, which is the 1x5 of the issue.
+        # scipy, scikit-image and OpenCV all accept these dtypes. Tracked in #4735. Dtypes are
         # explicit here (the claim is about non-float dtypes), so this pin takes `device` only.
         # Generated with kornia in this worktree (torch 2.14.0):
         #   CPU: dilation(torch.zeros(1, 1, 1, 5, dtype=torch.uint8), torch.ones(1, 3))
         #        -> RuntimeError: value cannot be converted to type uint8_t without overflow
         #   MPS: the same call does NOT raise; the store wraps (-1e4 mod 256 == 240) and returns
-        #        [240, 0, 0, 0, 240]. The backends disagree, so the pin asserts the consequence they
-        #        share: an all-zero uint8 image does not come back all zero from `dilation`.
+        #        float32 [240, 0, 0, 0, 240]. The backends disagree, so the pin asserts the consequence
+        #        they share: an all-zero uint8 image does not come back all zero from `dilation`.
         #        `erosion` pads +max_val, which wraps to the same 240, and a min against 240 happens
         #        to leave an all-zero image alone on MPS -- so only `dilation` is asserted here.
-        #   x = zeros(1, 1, 1, 5, dtype=bool); x[..., 2] = True   (CPU and MPS agree on the rest)
-        #   dilation(x, torch.ones(1, 3, dtype=torch.bool))  -> [True]*5   (scipy/skimage: [F,T,T,T,F])
-        #   erosion(x, torch.ones(1, 3, dtype=torch.bool))   -> NotImplementedError
+        #   both: dilation(zeros uint8, ones(1, 3), border_type="constant") -> float32 zeros, no raise
+        #   x = zeros(1, 1, 1, 9, dtype=bool); x[..., 4] = True   (CPU and MPS agree on all of these)
+        #   dilation(x, ones(1, 3, dtype=bool))       -> [T,F,F,T,T,T,F,F,T]  (ring + correct interior)
+        #   dilation(x, ones(1, 1, dtype=bool))       -> [F,F,F,F,T,F,F,F,F]  (no pad, exact)
+        #   dilation(x, ones(1, 3, ...), "constant")  -> [F,F,F,T,T,T,F,F,F]  (False pad, exact)
+        #   y = zeros(1, 1, 1, 5, dtype=bool); y[..., 2] = True
+        #   dilation(y, ones(1, 3, dtype=bool))       -> [T,T,T,T,T]          (#4735's own case)
+        #   erosion(x, ones(1, 3, dtype=torch.bool))  -> NotImplementedError
         #   dilation([[0, 50000, 0]] int64, [[1, 0, 1]] int64) -> [50000, 40000, 50000] (true: [5e4,0,5e4])
         float_kernel = torch.ones(1, 3, device=device)
 
@@ -680,10 +700,29 @@ class TestDilate(BaseTester):
         else:
             assert out_uint8.abs().max().item() != 0.0
 
-        hot_bool = torch.zeros(1, 1, 1, 5, dtype=torch.bool, device=device)
-        hot_bool[..., 2] = True
+        # Only the geodesic pad stores the sentinel, so `constant` runs -- and silently changes dtype.
+        constant_uint8 = dilation(
+            torch.zeros(1, 1, 1, 5, dtype=torch.uint8, device=device), float_kernel, border_type="constant"
+        )
+        assert constant_uint8.dtype == torch.float32
+        assert constant_uint8.abs().max().item() == 0.0
+
+        hot_bool = torch.zeros(1, 1, 1, 9, dtype=torch.bool, device=device)
+        hot_bool[..., 4] = True
         bool_kernel = torch.ones(1, 3, dtype=torch.bool, device=device)
-        assert dilation(hot_bool, bool_kernel).flatten().tolist() == [True, True, True, True, True]
+        # The correct dilation is cols {3, 4, 5}; cols 0 and 8 are the `True` ring left by the pad.
+        ring_plus_dilation = [True, False, False, True, True, True, False, False, True]
+        assert dilation(hot_bool, bool_kernel).flatten().tolist() == ring_plus_dilation
+        # A 1x1 kernel needs no pad, and a `constant` pad of 0.0 is `False`: both are exact.
+        one_cell = torch.ones(1, 1, dtype=torch.bool, device=device)
+        hot_pixel_only = [False, False, False, False, True, False, False, False, False]
+        assert dilation(hot_bool, one_cell).flatten().tolist() == hot_pixel_only
+        exact_dilation = [False, False, False, True, True, True, False, False, False]
+        assert dilation(hot_bool, bool_kernel, border_type="constant").flatten().tolist() == exact_dilation
+        # #4735's own 1x5 is no wider than the ring, which is why it comes back all `True`.
+        small_bool = torch.zeros(1, 1, 1, 5, dtype=torch.bool, device=device)
+        small_bool[..., 2] = True
+        assert dilation(small_bool, bool_kernel).flatten().tolist() == [True, True, True, True, True]
 
         with pytest.raises(NotImplementedError, match="bool"):
             erosion(hot_bool, bool_kernel)

@@ -468,16 +468,16 @@ Serializing an augmentation
 Morphology
 ----------
 
-- :func:`kornia.morphology.dilation` **reflects** the structuring element (the Minkowski
-  convention, as in ``scipy.ndimage``); :func:`kornia.morphology.erosion` does not. For an
-  asymmetric kernel, scikit-image and OpenCV return kornia's dilation by the *flipped* kernel.
-- ``origin`` is the ``[row, col]`` index of the structuring-element cell placed on the output
-  pixel, not an offset from the centre, and OpenCV's ``anchor`` is the same index in ``(x, y)``
-  order. The default is ``[k_h // 2, k_w // 2]`` for even sizes too.
-- ``border_type`` carries torch's pad-mode names, which do not mean what the same words mean in
-  scipy and scikit-image: torch's ``reflect`` is their ``mirror``, and their own ``reflect`` -- which
-  is also their default -- repeats the edge sample and has no kornia spelling. See
-  :func:`kornia.morphology.dilation` for the full convention block.
+- :func:`kornia.morphology.dilation` **reflects** the structuring element (the Minkowski convention, as in
+  ``scipy.ndimage``); :func:`kornia.morphology.erosion` does not. For an asymmetric kernel scikit-image returns
+  kornia's dilation by the *flipped* kernel, and OpenCV returns that dilation at
+  ``origin=[(k_h - 1) // 2, (k_w - 1) // 2]`` -- the default origin for an odd size, one cell earlier for an even one.
+- ``origin`` is the ``[row, col]`` index of the structuring-element cell placed on the output pixel, not an offset
+  from the centre, and OpenCV's ``anchor`` is the same index in ``(x, y)`` order. The default is
+  ``[k_h // 2, k_w // 2]`` for even sizes too.
+- ``border_type``'s ``reflect`` does not mean what the same word means in scipy and scikit-image (``constant``
+  does): torch's ``reflect`` is their ``mirror``, while their own ``reflect`` -- also their default -- repeats the
+  edge sample and has no kornia spelling. See :func:`kornia.morphology.dilation` for the full convention block.
 
 .. list-table::
    :header-rows: 1

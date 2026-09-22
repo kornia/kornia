@@ -87,7 +87,8 @@ class TestErode(BaseTester):
         # the image range. One float32 ULP at the default `max_val=1e4` is 9.7656e-4, and the largest
         # engine gap measured (rand(1, 1, 9, 11) seed 0, ones(3, 3)) is 1.2736e-3, i.e. ~1.3 ULP.
         # The relative figure exceeds `rtol=1e-3`; the assertion passes on `atol=1e-3`, because the
-        # error is absolute and the tightest entry here is `expected == 0.2` (3.9062e-4 * 0.2/0.5).
+        # error is absolute and the tightest entry here is `expected == 0.2`, where the absolute error
+        # measures 2.9297e-4, i.e. the reported relative figure is (2.9297e-4 / 0.2).
         # `engine="unfold"` is exact. Tracked in #4734; this tolerance is scoped to the convolution engine.
         assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
@@ -384,13 +385,27 @@ class TestErode(BaseTester):
         # the kernel is NOT reflected, unlike in `dilation`. The complement form `1 - erosion(1 - x, A)`
         # makes the two conventions land on different columns for the asymmetric kernel `[[0, 1, 1]]`;
         # `ones(3, 3)` is invariant under the flip and could not tell them apart.
-        # 0/1 fixtures are exact in every dtype, so this compares with `torch.equal`.
+        # The fixtures are 0/1 and small integers, exact in every dtype; the engine gap on them
+        # measures exactly 0 on CPU in all four dtypes and on MPS in float32/float16/bfloat16
+        # (torch 2.14.0), but it is a `max_val` effect and CUDA is unmeasured (#4734), so the
+        # comparison uses the harness's default per-dtype tolerance.
         # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
         #   x = np.zeros((1, 7), np.float32); x[0, 3] = 1.0; A = np.array([[0, 1, 1]], bool)
         #   1 - ndi.grey_erosion(1 - x, footprint=A, mode="constant", cval=np.inf) -> cols {2, 3}
         #   1 - sm.erosion(1 - x, A, mode="ignore")                                -> cols {2, 3}
         #   1 - cv2.erode(1 - x, A.astype(np.uint8))                               -> cols {2, 3}
-        # All three references agree with kornia here; it is `dilation` that reflects.
+        # All three references agree with kornia on this ODD kernel; it is `dilation` that reflects.
+        # For an EVEN-sized footprint scikit-image anchors one cell earlier than the other three.
+        # On the ramp below with the even asymmetric kernel [[1, 1, 0, 1]] (default origin [0, 2]):
+        #   ramp = np.array([[1., 2., 3., 0., 5., 6., 7., 8.]], np.float32); K = ...[[1, 1, 0, 1]]
+        #   ndi.grey_erosion(ramp, footprint=K != 0, mode="constant", cval=1e8)
+        #                                            -> [2, 1, 0, 2, 0, 0, 5, 6]   (= kornia, below)
+        #   cv2.erode(ramp, K.astype(np.uint8))      -> [2, 1, 0, 2, 0, 0, 5, 6]   (= kornia)
+        #   sm.erosion(ramp, K != 0, mode="ignore")  -> [1, 0, 2, 0, 0, 5, 6, 7]   (one cell earlier,
+        #       which is kornia's erosion at origin=[(k_h - 1) // 2, (k_w - 1) // 2] = [0, 1])
+        # Measured the same way on a 7x9 rand(seed 0) float64 frame: scipy and cv2 match kornia's
+        # default for [[1, 0]], ones(2, 2), ones(1, 3), [[0, 1, 1]] and [[1, 1, 0, 1]], while skimage
+        # differs on the three even ones by 0.956 / 0.682 / 0.822 and matches at the earlier origin.
         tensor = torch.zeros(1, 1, 1, 7, device=device, dtype=dtype)
         tensor[..., 3] = 1.0
         kernel = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
@@ -399,8 +414,21 @@ class TestErode(BaseTester):
         expected[..., 2] = 1.0
         expected[..., 3] = 1.0
 
-        for engine in ("unfold", "convolution"):
-            assert torch.equal(1 - erosion(1 - tensor, kernel, engine=engine), expected), engine
+        self.assert_close(1 - erosion(1 - tensor, kernel, engine="unfold"), expected)
+        self.assert_close(1 - erosion(1 - tensor, kernel, engine="convolution"), expected)
+
+        # The even-sized kernel is where scikit-image parts company; the kornia literal is the one
+        # scipy and OpenCV also produce. Every value is a small integer, exact in every dtype, and no
+        # window here is empty, so the `max_val` sentinel never reaches the output.
+        ramp = torch.tensor([[1.0, 2.0, 3.0, 0.0, 5.0, 6.0, 7.0, 8.0]], device=device, dtype=dtype)[None, None]
+        even_kernel = torch.tensor([[1.0, 1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        even_expected = torch.tensor([[2.0, 1.0, 0.0, 2.0, 0.0, 0.0, 5.0, 6.0]], device=device, dtype=dtype)[None, None]
+        self.assert_close(erosion(ramp, even_kernel), even_expected)
+        # scikit-image's answer is this one, and it is kornia's at the earlier origin.
+        skimage_expected = torch.tensor([[1.0, 0.0, 2.0, 0.0, 0.0, 5.0, 6.0, 7.0]], device=device, dtype=dtype)[
+            None, None
+        ]
+        self.assert_close(erosion(ramp, even_kernel, origin=[0, 1]), skimage_expected)
 
     def test_convention_geodesic_border_ignores_outside(self, device, dtype):
         # The default `border_type="geodesic"` makes the operation ignore the pixels outside the image,
@@ -423,6 +451,10 @@ class TestErode(BaseTester):
         #   erosion(..., border_type="constant")                                    -> 1 only at (1, 1:3)
         #   erosion(..., border_value=-5.0)                                         -> all 1 (ignored)
         #   erosion(..., border_type="constant", border_value=-5.0)                 -> -5 on the border
+        #   erosion(..., border_type="reflect", border_value=-5.0)
+        #       -> RuntimeError: Padding mode "reflect" doesn't take in value argument
+        # `border_value` is not merely ignored outside `constant`: kornia always forwards it to
+        # `F.pad`, and `reflect`, `replicate` and `circular` reject any value other than 0.0 (#4736).
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
@@ -433,6 +465,11 @@ class TestErode(BaseTester):
         padded = torch.full((1, 1, 3, 4), -5.0, device=device, dtype=dtype)
         padded[..., 1, 1:3] = 1.0
         assert torch.equal(erosion(tensor, kernel, border_type="constant", border_value=-5.0), padded)
+
+        # Outside `geodesic` and `constant` a non-zero `border_value` is not ignored -- it raises.
+        for border_type in ("reflect", "replicate", "circular"):
+            with pytest.raises(RuntimeError, match="doesn't take in value argument"):
+                erosion(tensor, kernel, border_type=border_type, border_value=-5.0)
 
     def test_convention_border_type_names_match_scipy_modes(self, device, dtype):
         # `border_type` accepts the four `torch.nn.functional.pad` modes on top of `geodesic`, and the
@@ -466,8 +503,9 @@ class TestErode(BaseTester):
             assert torch.equal(actual, expected_row), border_type
 
     def test_convention_geodesic_is_not_replicate(self, device, dtype):
-        # `geodesic` and `replicate` are different modes. They differ once the structuring element can
-        # reach outside the image -- NOT only when it stops covering the output pixel itself: the
+        # `geodesic` and `replicate` are different modes. They can differ once the structuring element
+        # can reach outside the image -- reaching outside is necessary but not sufficient, and it is
+        # NOT only when the element stops covering the output pixel itself that they part: the
         # gapped kernel `[[1, 0, 1, 0, 1]]` has a non-zero origin cell (default origin `[0, 2]`) and
         # still separates them, so "covers the pixel" is not a sufficient condition for them to agree.
         # They do agree for a rectangle of ones, where every pixel the replicate pad duplicates is
