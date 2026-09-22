@@ -454,7 +454,7 @@ class TestErode(BaseTester):
         #   erosion(..., border_type="reflect", border_value=-5.0)
         #       -> RuntimeError: Padding mode "reflect" doesn't take in value argument
         # `border_value` is not merely ignored outside `constant`: kornia always forwards it to
-        # `F.pad`, and `reflect`, `replicate` and `circular` reject any value other than 0.0 (#4736).
+        # `F.pad`, and `reflect`, `replicate` and `circular` reject any value other than 0.0 (#4748).
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 

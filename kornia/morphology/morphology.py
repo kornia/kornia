@@ -224,7 +224,7 @@ def dilation(
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
             under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
             ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning above.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
@@ -373,7 +373,7 @@ def erosion(
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
             under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
             ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -526,7 +526,7 @@ def opening(
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
             under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
             ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -652,7 +652,7 @@ def closing(
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
             under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
             ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -761,7 +761,7 @@ def gradient(
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
             under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
             ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -859,7 +859,7 @@ def top_hat(
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
             under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
             ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -960,7 +960,7 @@ def bottom_hat(
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
             under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
             ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
