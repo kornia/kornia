@@ -239,7 +239,11 @@ class AugmentationSequentialOps:
         for inp, dcate in zip(arg, _data_keys):
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
-            outputs.append(op.inverse(inp, module, param=param, extra_args=extra_arg))
+            if dcate.name == "MASK" and isinstance(inp, list):
+                # Mirror ``transform``: a list of masks is inverted element by element.
+                outputs.append(MaskSequentialOps.inverse_list(inp, module, param=param, extra_args=extra_arg))
+            else:
+                outputs.append(op.inverse(inp, module, param=param, extra_args=extra_arg))
         if len(outputs) == 1 and isinstance(outputs, (list, tuple)):
             return outputs[0]
         return outputs
@@ -567,6 +571,54 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
             input = MaskSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
+
+        return input
+
+    @classmethod
+    def inverse_list(
+        cls, input: List[torch.Tensor], module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> List[torch.Tensor]:
+        """Inverse a transformation on a list of masks, undoing :meth:`transform_list` element by element.
+
+        Args:
+            input: list of input tensors.
+            module: any torch nn.Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
+        """
+        if extra_args is None:
+            extra_args = {}
+
+        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            if module.transform_matrix is None:
+                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
+            transform = module.compute_inverse_transformation(module.transform_matrix)
+            params = cls.get_instance_module_param(param)
+            params_i = copy.deepcopy(params)
+            inv_input = []
+            for i, inp in enumerate(input):
+                # The same per-element ``batch_prob`` that ``transform_list`` gave this element.
+                params_i["batch_prob"] = params["batch_prob"][i]
+                inv_input.append(
+                    module.inverse_masks(inp, params=params_i, flags=module.flags, transform=transform, **extra_args)
+                )
+            input = inv_input
+
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
+            raise NotImplementedError(
+                "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
+            )
+
+        elif isinstance(module, K.container.ImageSequentialBase):
+            seq_params = cls.get_sequential_module_param(param)
+            input = [module.inverse_masks(inp, params=seq_params, extra_args=extra_args) for inp in input]
+
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
+            raise NotImplementedError(
+                "The support for list of masks under auto operations are not yet supported. You are welcome to file a"
+                " PR in our repo."
+            )
 
         return input
 
