@@ -115,8 +115,7 @@ def laplacian(
     for offset in range(1, kx):
         output = output + rows[..., :, offset : offset + width]
 
-    output = output - (ky * kx) * input
-    return output
+    return output - (ky * kx) * input
 
 
 class Laplacian(nn.Module):

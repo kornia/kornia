@@ -203,8 +203,7 @@ def filter2d_separable(
 
     """
     out_x = filter2d(input, kernel_x[..., None, :], border_type, normalized, padding)
-    out = filter2d(out_x, kernel_y[..., None], border_type, normalized, padding)
-    return out
+    return filter2d(out_x, kernel_y[..., None], border_type, normalized, padding)
 
 
 def filter3d(

@@ -93,8 +93,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
             -2,
         )
 
-        inv_tilt = R.transpose(-1, -2) @ invPz
-        return inv_tilt
+        return R.transpose(-1, -2) @ invPz
 
     Pz = torch.stack(
         [
@@ -105,8 +104,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         -2,
     )
 
-    tilt = Pz @ R
-    return tilt
+    return Pz @ R
 
 
 def distort_points(

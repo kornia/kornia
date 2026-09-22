@@ -1001,9 +1001,7 @@ def get_translation_matrix2d(translations: torch.Tensor) -> torch.Tensor:
     transform[..., 2] += translations  # tx/ty
 
     # F.pad transform to get Bx3x3
-    transform_h = convert_affinematrix_to_homography(transform)
-
-    return transform_h
+    return convert_affinematrix_to_homography(transform)
 
 
 def get_shear_matrix2d(
@@ -1059,8 +1057,7 @@ def get_shear_matrix2d(
         [ones_tensor, -sx_tan, sx_tan * y, -sy_tan, ones_tensor + sx_tan * sy_tan, sy_tan * (x - sx_tan * y)], dim=-1
     ).view(-1, 2, 3)
 
-    shear_mat = convert_affinematrix_to_homography(shear_mat)
-    return shear_mat
+    return convert_affinematrix_to_homography(shear_mat)
 
 
 def get_affine_matrix3d(
@@ -1214,9 +1211,7 @@ def get_shear_matrix3d(
     )
 
     shear_mat = torch.stack([m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23], -1).view(-1, 3, 4)
-    shear_mat = convert_affinematrix_to_homography3d(shear_mat)
-
-    return shear_mat
+    return convert_affinematrix_to_homography3d(shear_mat)
 
 
 def _compute_shear_matrix_3d(

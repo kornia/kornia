@@ -212,8 +212,7 @@ class RANSAC(nn.Module):
 
         """
         batch_size, sample_size = kp1.shape[:2]
-        H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
-        return H
+        return self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
 
     def verify(
         self, kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
