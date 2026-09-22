@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.morphology import erosion
+from kornia.morphology import dilation, erosion
 from kornia.morphology import morphology as morphology_module
 from kornia.morphology.morphology import _records_grad, _resolve_engine
 
@@ -429,6 +429,29 @@ class TestErode(BaseTester):
             None, None
         ]
         self.assert_close(erosion(ramp, even_kernel, origin=[0, 1]), skimage_expected)
+
+    def test_convention_adjunction_without_empty_windows(self, device, dtype):
+        # `dilation` and `erosion` with the same kernel and origin are an adjoint pair,
+        # `dilation(x) <= y` everywhere exactly when `x <= erosion(y)` everywhere, while no window is empty
+        # and the image range stays well below `max_val`. The kernel is asymmetric so that a reflection
+        # mismatch between the two would break the pair, and it holds its default origin cell [1, 1], so
+        # no window is empty. Every value is a small integer, exact in every dtype. The empty-window
+        # counterexample is pinned in test_wart_dilation_max_val_sentinel_leaks_4734.
+        x = torch.tensor(
+            [[3.0, 0.0, 5.0, 1.0, 2.0, 7.0], [0.0, 4.0, 1.0, 6.0, 0.0, 2.0], [2.0, 1.0, 0.0, 3.0, 5.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )[None, None]
+        kernel = torch.tensor([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        dilated = dilation(x, kernel)
+        # y = dilation(x) is the smallest y with dilation(x) <= y, so x <= erosion(y) must hold ...
+        assert bool((x <= erosion(dilated, kernel)).all())
+        # ... and lowering y at any one pixel breaks the left side, so it must break the right side too.
+        for row in range(x.shape[-2]):
+            for col in range(x.shape[-1]):
+                lowered = dilated.clone()
+                lowered[..., row, col] -= 1
+                assert not bool((x <= erosion(lowered, kernel)).all()), (row, col)
 
     def test_convention_geodesic_border_ignores_outside(self, device, dtype):
         # The default `border_type="geodesic"` makes the operation ignore the pixels outside the image,

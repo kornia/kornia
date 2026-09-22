@@ -188,17 +188,33 @@ def dilation(
         or the store raises. Tracked in `#4734 <https://github.com/kornia/kornia/issues/4734>`_.
 
     .. warning::
-        Only floating-point input is supported. ``uint8`` input does not survive the geodesic pad, which
-        stores :math:`\mp` ``max_val``: on CPU it raises and on MPS the sentinel wraps modulo 256 instead of
-        raising; under the other ``border_type`` values it runs but silently returns ``float32``. ``int64``
-        is silently wrong once the image range approaches ``max_val``. ``bool`` input is not rejected either:
-        :func:`dilation` returns the correct dilation plus a ``True`` border ring as wide as the pad the
-        kernel needs, left by the geodesic pad, which is ``True`` in ``bool`` -- so only an image no larger
-        than that ring comes back all ``True``, and the result is exact with a :math:`1 \times 1` kernel or
-        with ``border_type="constant"``. :func:`erosion` and :func:`gradient` raise a torch error
-        (``NotImplementedError`` on recent torch, ``RuntimeError`` on older releases) on ``bool``, as do the
-        ``reflect`` and ``replicate`` pads. Tracked in
-        `#4735 <https://github.com/kornia/kornia/issues/4735>`_.
+        Only floating-point operands are supported. The ``max_val`` sentinel is stored into the image *and*
+        into the kernel, so what a non-float call does depends on the pair of dtypes, and the result takes
+        their promoted dtype (``torch.promote_types`` of ``tensor`` and ``kernel``, or of ``tensor`` and
+        ``structuring_element`` when one is given): a ``uint8`` image with a ``float64`` kernel returns
+        ``float64``, not ``float32``.
+
+        - The kernel's masked-out cells store ``-max_val`` in the kernel's dtype. A ``uint8`` kernel therefore
+          raises an overflow ``RuntimeError`` under every ``border_type``. A ``bool`` kernel stores it as
+          ``True``: :func:`erosion` and :func:`gradient` raise a torch error (``NotImplementedError`` on
+          recent torch, ``RuntimeError`` on older releases), and :func:`dilation` is silently wrong under
+          every ``border_type`` as soon as the kernel holds a ``False`` cell, which then contributes ``x + 1``
+          instead of being left out -- for a ``bool`` image, ``True`` everywhere.
+        - The geodesic pad stores :math:`\mp` ``max_val`` in the image's dtype. A ``uint8`` image raises an
+          overflow ``RuntimeError`` there on CPU, while on MPS the sentinel wraps modulo 256 instead of
+          raising; under the other ``border_type`` values a ``uint8`` image with a floating kernel runs and
+          returns the kernel's dtype. An ``int64`` image is silently wrong once its range approaches
+          ``max_val``.
+        - A ``bool`` image stores the geodesic pad as ``True``. With a floating kernel, or a ``bool`` kernel
+          with no ``False`` cell, :func:`dilation` returns the correct dilation plus a ``True`` (or ``1``)
+          border ring as wide as the pad the kernel needs, so only an image no larger than that ring comes
+          back all ``True``, and the result is exact with a :math:`1 \times 1` kernel or with
+          ``border_type="constant"``. With a floating kernel, :func:`erosion` is exact under the geodesic
+          pad, because ``True`` cannot lower a minimum, and :func:`gradient` inherits the ring from
+          :func:`dilation`. On CPU the ``reflect`` and ``replicate``
+          pads raise on a ``bool`` image.
+
+        Tracked in `#4735 <https://github.com/kornia/kornia/issues/4735>`_.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -333,20 +349,29 @@ def erosion(
         structuring element. It is the Minkowski erosion
         :math:`\varepsilon_B f(x) = \min_{b \in B} f(x + b)`, the convention of ``scipy.ndimage.grey_erosion``,
         ``skimage.morphology.erosion`` and ``cv2.erode``. scipy and OpenCV agree with kornia pixel for pixel
-        for odd-sized and even-sized kernels alike while ``|x|`` stays well below ``max_val``; scikit-image
-        centres an even-sized footprint one cell earlier, so it matches kornia's ``erosion`` at
-        ``origin=[(k_h - 1) // 2, (k_w - 1) // 2]`` instead.
-        An empty window returns ``max_val`` here, ``inf`` in scipy and scikit-image and ``FLT_MAX`` in
-        OpenCV.
+        for odd-sized and even-sized kernels alike wherever the window holds at least one in-image cell of the
+        kernel and the image range stays well below ``max_val``; scikit-image centres an even-sized footprint
+        one cell earlier, so it matches kornia's ``erosion`` at ``origin=[(k_h - 1) // 2, (k_w - 1) // 2]``
+        instead.
+        Under ``border_type="geodesic"`` a window with no in-image kernel cell is empty. scipy and
+        scikit-image return ``inf`` there and OpenCV ``FLT_MAX``, while kornia returns a finite value that
+        depends on the image: for a flat kernel, :math:`\text{max\_val} + \min(0, m)`, where :math:`m` is the
+        smallest in-image pixel under a masked-out cell of that window. It is ``max_val`` only when those
+        pixels are non-negative; ``x=[[-2.]]`` with ``kernel=[[0, 1]]`` and ``origin=[0, 0]`` returns
+        ``9998``. :func:`dilation` mirrors it with :math:`-\text{max\_val} + \max(0, M)`.
 
-        ``dilation`` and ``erosion`` with the same ``kernel`` and ``origin`` are an adjoint pair. Their
+        ``dilation`` and ``erosion`` with the same ``kernel`` and ``origin`` are an adjoint pair --
+        ``dilation(x) <= y`` everywhere exactly when ``x <= erosion(y)`` everywhere -- while no window is
+        empty and the image range stays well below ``max_val``. The finite sentinel breaks the pair
+        otherwise: with ``max_val=1``, ``x = y = [[-2.]]``, ``kernel=[[0, 1]]`` and ``origin=[0, 0]``,
+        ``dilation(x) <= y`` is false while ``x <= erosion(y)`` is true. Their
         duality under negation is ``erosion(tensor, kernel, origin=origin)`` equals
         ``-dilation(-tensor, kernel.flip((0, 1)), origin=[k_h - 1 - origin[0], k_w - 1 - origin[1]])``, which
         is exact for a flat structuring element and ``border_value=0``; a non-flat ``structuring_element``
         has to be flipped with the kernel, and a non-zero ``border_value`` has to be negated.
 
         The two ``.. warning::`` blocks in :func:`dilation` describe this function too, except that
-        ``erosion`` raises a torch error on ``bool`` input rather than returning a result (the exception
+        ``erosion`` raises a torch error on a ``bool`` kernel rather than returning a result (the exception
         class depends on the torch version).
 
     Args:

@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.morphology import dilation, erosion
+from kornia.morphology import dilation, erosion, gradient
 from kornia.morphology import morphology as morphology_module
 from kornia.morphology.morphology import _records_grad, _resolve_engine
 
@@ -665,6 +665,27 @@ class TestDilate(BaseTester):
             -10000.0,
         ]
 
+        # An empty window is not `max_val` either: a masked-out in-image cell contributes `x + max_val`
+        # to `erosion` (`x - max_val` to `dilation`), so a negative pixel under it pulls the result below
+        # the sentinel. Generated with kornia in this worktree (torch 2.14.0, CPU and MPS, float32):
+        #   erosion([[-2.]], [[0., 1.]], origin=[0, 0])  -> 9998.0   (scipy, cval=inf: inf)
+        #   dilation([[5.]], [[0., 1.]], origin=[0, 0])  -> -9995.0  (scipy, cval=-inf: -inf)
+        corner_kernel = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
+        minus_two = torch.full((1, 1, 1, 1), -2.0, device=device, dtype=dtype)
+        assert erosion(minus_two, corner_kernel, origin=[0, 0]).item() == 9998.0
+        five = torch.full((1, 1, 1, 1), 5.0, device=device, dtype=dtype)
+        assert dilation(five, corner_kernel, origin=[0, 0]).item() == -9995.0
+
+        # The same empty window breaks the adjunction `dilation(x) <= y  <=>  x <= erosion(y)`, which holds
+        # while no window is empty (see test_convention_adjunction_without_empty_windows in test_erosion.py).
+        #   max_val=1, x = y = [[-2.]]: dilation(x) -> -1.0, erosion(y) -> -1.0
+        dilated = dilation(minus_two, corner_kernel, origin=[0, 0], max_val=1.0)
+        eroded = erosion(minus_two, corner_kernel, origin=[0, 0], max_val=1.0)
+        assert dilated.item() == -1.0
+        assert eroded.item() == -1.0
+        assert not bool((dilated <= minus_two).all())
+        assert bool((minus_two <= eroded).all())
+
     def test_wart_integer_and_bool_input_4735(self, device):
         # The `max_val` sentinel is written into a tensor of the INPUT's dtype, so only floating-point
         # input is supported. `uint8` does not survive the GEODESIC pad (which stores -/+ max_val);
@@ -728,6 +749,60 @@ class TestDilate(BaseTester):
         # torch 2.14 raises NotImplementedError, torch 2.5.1 / 2.9.1 raise RuntimeError, same message.
         with pytest.raises((NotImplementedError, RuntimeError), match="bool"):
             erosion(hot_bool, bool_kernel)
+
+        # The sentinel is also stored into the KERNEL, and the result takes the promoted dtype of image and
+        # kernel, so the image dtype alone does not decide the outcome. Generated with kornia in this
+        # worktree (torch 2.14.0; CPU and MPS agree on every line below):
+        #   dilation(zeros uint8, ones(1, 3, float16), "constant")       -> float16 zeros (not float32)
+        #   dilation(zeros float, ones(1, 3, uint8), "constant")         -> RuntimeError overflow
+        #   dilation([[0, 3, 0, 0, 7]], [[T, F, T]])                     -> [3, 4, 3, 7, 8]  (true: [3, 0, 3, 7, 0])
+        #   dilation(hot_bool, [[T, F, T]]), geodesic and "constant"     -> all True
+        #   erosion(float image, bool kernel)                            -> NotImplementedError / RuntimeError
+        #   dilation(hot_bool, ones(1, 3) float)                         -> float32 ring + correct interior
+        #   erosion(~hot_bool, [[1., 0., 1.]] float)                     -> float32, exact under geodesic
+        #   gradient(hot_bool, ones(1, 3) float)                         -> float32, the dilation's ring
+        zeros_uint8 = torch.zeros(1, 1, 1, 5, dtype=torch.uint8, device=device)
+        half_kernel = torch.ones(1, 3, dtype=torch.float16, device=device)
+        assert dilation(zeros_uint8, half_kernel, border_type="constant").dtype == torch.float16
+        float_zeros = torch.zeros(1, 1, 1, 5, device=device)
+        uint8_kernel = torch.ones(1, 3, dtype=torch.uint8, device=device)
+        for border_type in ("constant", "circular"):
+            with pytest.raises(RuntimeError, match="overflow"):
+                dilation(float_zeros, uint8_kernel, border_type=border_type)
+            with pytest.raises(RuntimeError, match="overflow"):
+                erosion(float_zeros, uint8_kernel, border_type=border_type)
+
+        # A `False` kernel cell stores -max_val as `True`, so it contributes `x + 1` instead of dropping out.
+        sparse_bool_kernel = torch.tensor([[True, False, True]], device=device)
+        ramp = torch.tensor([[0.0, 3.0, 0.0, 0.0, 7.0]], device=device)[None, None]
+        assert dilation(ramp, sparse_bool_kernel).flatten().tolist() == [3.0, 4.0, 3.0, 7.0, 8.0]
+        assert dilation(ramp, torch.tensor([[1.0, 0.0, 1.0]], device=device)).flatten().tolist() == [
+            3.0,
+            0.0,
+            3.0,
+            7.0,
+            0.0,
+        ]
+        for border_type in ("geodesic", "constant"):
+            assert dilation(hot_bool, sparse_bool_kernel, border_type=border_type).all()
+        with pytest.raises((NotImplementedError, RuntimeError), match="bool"):
+            erosion(ramp, sparse_bool_kernel)
+
+        # A floating kernel lets every function run on a `bool` image and return the floating dtype.
+        ring_dilation = dilation(hot_bool, float_kernel)
+        assert ring_dilation.dtype == torch.float32
+        assert ring_dilation.flatten().tolist() == [float(v) for v in ring_plus_dilation]
+        cold_bool = ~hot_bool
+        gapped_float_kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device)
+        # `True` cannot lower a minimum, so the geodesic `True` pad leaves erosion exact.
+        assert erosion(cold_bool, gapped_float_kernel).flatten().tolist() == [1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0]
+        assert (
+            erosion(cold_bool, gapped_float_kernel).tolist()
+            == erosion(cold_bool.float(), gapped_float_kernel).tolist()
+        )
+        ring_gradient = gradient(hot_bool, float_kernel)
+        assert ring_gradient.dtype == torch.float32
+        assert ring_gradient.flatten().tolist() == [1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0]
 
         big_int = torch.tensor([[0, 50000, 0]], dtype=torch.int64, device=device)[None, None]
         int_kernel = torch.tensor([[1, 0, 1]], dtype=torch.int64, device=device)
