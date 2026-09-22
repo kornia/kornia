@@ -1042,21 +1042,20 @@ class TestConventionAugmentationBase2D(BaseTester):
     @pytest.mark.parametrize(
         "name,error,message",
         [
-            ("RandomCrop", IndexError, "list index out of range"),
             ("LongestMaxSize", KeyError, "output_size"),
             ("RandomAutoContrast", ValueError, "Invalid input tensor, it is empty."),
         ],
     )
-    def test_wart_zero_batch_raises_in_three_exception_families_4429(self, name, error, message, device, dtype):
+    def test_wart_zero_batch_raises_in_two_exception_families_4429(self, name, error, message, device, dtype):
         # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". These representative
         # augmentations raise through distinct failure paths; RandomAutoContrast is a deliberate validation
-        # error and the others expose implementation details.
+        # error and the other exposes an implementation detail.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu):
-        # RandomCrop IndexError('list index out of range'), LongestMaxSize KeyError('output_size'),
-        # RandomAutoContrast ValueError('Invalid input tensor, it is empty.').
-        # Normalize used to be a fourth family; #4681 fixed it.
+        # LongestMaxSize KeyError('output_size'), RandomAutoContrast ValueError('Invalid input tensor, it is
+        # empty.').
+        # Normalize used to be a further family, fixed by #4681; RandomCrop's IndexError from
+        # crop_by_indices was another.
         builders = {
-            "RandomCrop": lambda: K.RandomCrop((4, 6), p=1.0),
             "LongestMaxSize": lambda: K.LongestMaxSize(16, p=1.0),
             "RandomAutoContrast": lambda: K.RandomAutoContrast(p=1.0),
         }
@@ -1066,11 +1065,9 @@ class TestConventionAugmentationBase2D(BaseTester):
     @pytest.mark.parametrize(
         ("augmentation", "shape"),
         [
-            pytest.param(
-                lambda: K.RandomCrop((4, 6), p=1.0),
-                (0, 3, 4, 6),
-                marks=pytest.mark.xfail(strict=True, raises=IndexError, reason="Tracked in #4429"),
-            ),
+            pytest.param(lambda: K.RandomCrop((4, 6), p=1.0), (0, 3, 4, 6), id="RandomCrop"),
+            pytest.param(lambda: K.RandomCrop((8, 10), pad_if_needed=True, p=1.0), (0, 3, 8, 10), id="RandomCrop-pad"),
+            pytest.param(lambda: K.RandomResizedCrop((4, 4), p=1.0), (0, 3, 4, 4), id="RandomResizedCrop"),
             pytest.param(
                 lambda: K.LongestMaxSize(16, p=1.0),
                 (0, 3, 12, 16),
