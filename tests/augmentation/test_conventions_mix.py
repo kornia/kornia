@@ -463,10 +463,12 @@ class TestMixConventions(BaseTester):
             assert top_left[0].unique(dim=0).shape[0] > 1  # ...and rows of one mix land in different places,
             assert top_left[1].unique(dim=0).shape[0] > 1
             assert bool((top_left[0] != top_left[1]).any())  # as do the two mixes of one row.
-            # Every cut still fits: the far corner is inclusive and one pixel is reserved on each axis.
+            # Each axis is drawn on its own: sharing only the x or only the y draw would still vary the pairs.
+            assert top_left[..., 0].unique().numel() > 1 and top_left[..., 1].unique().numel() > 1
+            # Every cut fits inside the image (the far corner is inclusive).
             assert bool((crop_src >= 0).all())
-            assert bool((crop_src[..., 2, 0] < shape[-1] - 1).all())
-            assert bool((crop_src[..., 2, 1] < shape[-2] - 1).all())
+            assert bool((crop_src[..., 0] <= shape[-1] - 1).all())
+            assert bool((crop_src[..., 1] <= shape[-2] - 1).all())
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
