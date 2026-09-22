@@ -109,8 +109,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     """
     ks_2: float = float(ksize) / 2.0
     xc2 = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()
-    kernel = torch.ger(xc2, xc2) / (ks_2**2)
-    return kernel
+    return torch.ger(xc2, xc2) / (ks_2**2)
 
 
 def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple[int, int, int]:

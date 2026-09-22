@@ -134,9 +134,7 @@ class Bottleneck(nn.Module):
             identity = self.downsample(x)
 
         out += identity
-        out = self.relu(out)
-
-        return out
+        return self.relu(out)
 
 
 class ResNet(nn.Module):
@@ -259,9 +257,7 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.fc(x)
-
-        return x
+        return self.fc(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run the ResNet backbone and classification head.
@@ -426,5 +422,4 @@ class DeFMO(nn.Module):
             temporal sub-frames and 4 stores red, green, blue, and alpha channels.
         """
         latent = self.encoder(input_data)
-        x_out = self.rendering(latent)
-        return x_out
+        return self.rendering(latent)

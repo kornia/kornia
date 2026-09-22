@@ -112,8 +112,7 @@ def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_LAF(LAF)
-    out = LAF[..., 2]
-    return out
+    return LAF[..., 2]
 
 
 def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
@@ -200,8 +199,7 @@ def laf_from_center_scale_ori(
     KORNIA_CHECK_SHAPE(scale, ["B", "N", "1", "1"])
     KORNIA_CHECK_SHAPE(ori, ["B", "N", "1"])
     unscaled_laf = torch.cat([angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
-    laf = scale_laf(unscaled_laf, scale)
-    return laf
+    return scale_laf(unscaled_laf, scale)
 
 
 def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torch.Tensor:
@@ -323,8 +321,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # What remains non-finite is exactly the singular ellipse, which we deliberately do not guard.
     inv21 = -a21 / (a11 * a22)
     A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
-    out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
-    return out
+    return torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
 
 
 def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
@@ -895,8 +892,7 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
     y_max = float(h - 1) - border
     good_lafs_mask = (pts[..., 0] >= border) * (pts[..., 0] <= x_max) * (pts[..., 1] >= border) * (pts[..., 1] <= y_max)
     # `.all` rather than `.min` on the bool mask: ONNX ReduceMin has no bool overload.
-    good_lafs_mask = good_lafs_mask.all(dim=2)
-    return good_lafs_mask
+    return good_lafs_mask.all(dim=2)
 
 
 def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:
@@ -911,8 +907,7 @@ def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:
 
     """  # noqa:D205
     KORNIA_CHECK_LAF(laf)
-    three_pts = torch.stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
-    return three_pts
+    return torch.stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
 
 
 def laf_from_three_points(threepts: torch.Tensor) -> torch.Tensor:
@@ -927,10 +922,9 @@ def laf_from_three_points(threepts: torch.Tensor) -> torch.Tensor:
         laf :math:`(B, N, 2, 3)`.
 
     """
-    laf = torch.stack(
+    return torch.stack(
         [threepts[..., 0] - threepts[..., 2], threepts[..., 1] - threepts[..., 2], threepts[..., 2]], dim=-1
     )
-    return laf
 
 
 def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:
