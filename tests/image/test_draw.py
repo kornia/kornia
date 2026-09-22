@@ -89,6 +89,22 @@ class TestDrawPoint(BaseTester):
         # Ensure that we get the same underlying image back
         self.assert_close(drawn_vec_img, drawn_mat_img)
 
+    def test_draw_point2d_single_1d_point(self, dtype, device):
+        """A single [x, y] vector used to TypeError via zip over 0-d scalars."""
+        points = torch.tensor([1, 3], device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        self.assert_close(img[:, 3, 1], color.to(img.dtype))
+
+    def test_draw_point2d_empty_points(self, dtype, device):
+        """An empty (0, 2) point set used to fail unpacking zip(*points)."""
+        points = torch.zeros(0, 2, device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        out = draw_point2d(img, points, color)
+        self.assert_close(out, torch.zeros(3, 8, 8, dtype=dtype, device=device))
+
 
 class TestDrawLine(BaseTester):
     def test_draw_line_vertical(self, dtype, device):
