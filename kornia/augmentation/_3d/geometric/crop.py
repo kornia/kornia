@@ -25,7 +25,18 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation.utils.helpers import _pad_with_fill
 from kornia.constants import Resample
-from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
+from kornia.geometry import crop_by_transform_mat3d
+
+
+def _crop_translation3d(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    """Return the matrix of a crop, which only moves the first ``src`` vertex onto the first ``dst`` vertex.
+
+    Solving the perspective system from the eight vertices instead fails for a crop with a size-1 axis, whose
+    vertices are coplanar (#4705).
+    """
+    transform = torch.eye(4, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
+    transform[:, :3, 3] = dst[:, 0] - src[:, 0]
+    return transform
 
 
 class RandomCrop3D(GeometricAugmentationBase3D):
@@ -168,7 +179,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
         return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(

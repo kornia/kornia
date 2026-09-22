@@ -286,6 +286,18 @@ class TestBlurConventions(BaseTester):
         with pytest.raises(Exception, match="odd integer"):
             _sync(K.RandomGaussianBlur((2, 2), (1.0, 1.0), p=1.0)(image).device)
 
+    # Row 6c-21b: the even-kernel error does not depend on the image size.  2x2 is below the reflect
+    # minimum a 4-extent kernel needs, so a size check that ran first would blame the image instead.
+    # Snippet used to generate expected:
+    #   K.RandomGaussianBlur((4, 4), (0.1, 1.0), p=1.0)(torch.rand(1, 1, 2, 2))  (and a 3x4 kernel)
+    # executed 2026-09-22 (torch 2.5.0, cpu) -> `Kernel size must be an odd integer bigger than 0.
+    # Gotcha 4 on (4, 4)` and `... Gotcha 4 on (3, 4)`.
+    @pytest.mark.parametrize("kernel_size", [(4, 4), (3, 4)])
+    def test_convention_random_gaussian_blur_even_kernel_error_is_size_independent(self, device, dtype, kernel_size):
+        image = torch.rand(1, 1, 2, 2).to(device=device, dtype=dtype)
+        with pytest.raises(Exception, match=r"odd integer bigger than 0\. Gotcha 4"):
+            _sync(K.RandomGaussianBlur(kernel_size, (0.1, 1.0), p=1.0)(image).device)
+
     # Row 6c-22: RandomMotionBlur's ``angle`` is counter-clockwise as the image is displayed.  The
     # fixture is a 7x9 impulse at (row 2, col 3), off both centre lines, so no literal below is its
     # own transpose: +45 deg carries the blur from (row 3, col 2) up to (row 1, col 4), and -45 deg
@@ -490,26 +502,24 @@ class TestBlurConventions(BaseTester):
         self.assert_close(out, make()(half_impulse) * 2.0)
         self.assert_close(make()(-half_impulse), -make()(half_impulse))
 
-    # Issue #4559: RandomBoxBlur, RandomGaussianBlur and RandomSharpness let a raw torch error out
-    # when the image is smaller than the kernel along an axis, instead of raising a kornia error that
-    # names the kernel and the shape.  The two blurs reflect-pad, so they fail as soon as an axis is
-    # no longer than the kernel radius (`k // 2`, one pixel for the 3x3 default); RandomSharpness
-    # convolves without padding, so it needs the full 3x3.
-    # RandomMedianBlur and RandomMotionBlur accept the same degenerate image, which is what makes the
-    # split a defect rather than a package-wide rule.  #4559 leaves two coherent outcomes open (raise
-    # a named kornia error, or pad and run), so this is a wart pin on today's behavior, not a strict
-    # xfail on a settled contract.
+    # Issue #4559, fixed: RandomBoxBlur, RandomGaussianBlur and RandomSharpness now raise a kornia
+    # `ValueError` naming the class, the kernel and the input shape, where they used to let a raw torch
+    # padding error out.  The thresholds are unchanged, and they are what the message states: the two
+    # blurs reflect-pad, so an axis must be longer than the kernel radius (`k // 2`, one pixel for the
+    # 3x3 default); RandomSharpness convolves without padding, so it needs the full 3x3.
+    # RandomMedianBlur and RandomMotionBlur accept the same degenerate image, which is what made the
+    # split a defect rather than a package-wide rule, and they are unchanged.
     # Snippet used to generate expected:
     #   for shape in ((2, 3, 1, 8), (2, 3, 2, 2), (2, 3, 3, 3)):
     #       x = torch.rand(*shape)
     #       torch.manual_seed(0); K.RandomBoxBlur(p=1.0)(x)  # and the four other classes
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> on (2, 3, 1, 8) the two blurs raise `RuntimeError:
-    # Argument #6: Padding size should be less than the corresponding input dimension, but got:
-    # padding (1, 1) at dimension 2 of input [2, 3, 1, 8]` and RandomSharpness `RuntimeError:
-    # Calculated padded input size per channel: (1 x 8). Kernel size: (3 x 3). Kernel size can't be
-    # greater than actual input size`; on (2, 3, 2, 2) only RandomSharpness raises; on (2, 3, 3, 3)
-    # all five run; RandomMedianBlur and RandomMotionBlur run on every shape.
-    def test_wart_blur_and_sharpness_reject_images_smaller_than_kernel_4559(self, device, dtype):
+    # executed 2026-09-18 (torch 2.5.0, cpu) -> on (2, 3, 1, 8) the two blurs raise `ValueError:
+    # RandomBoxBlur cannot filter an image this small: kernel_size=(3, 3) with border_type='reflect'
+    # needs at least 2 pixel(s) along height, but the input is (2, 3, 1, 8)` and RandomSharpness the
+    # same shape of message with `border_type='valid'` and 3 pixels; on (2, 3, 2, 2) only
+    # RandomSharpness raises; on (2, 3, 3, 3) all five run; RandomMedianBlur and RandomMotionBlur run
+    # on every shape.
+    def test_convention_blur_and_sharpness_name_the_size_they_need_4559(self, device, dtype):
         # The skip is scoped to the legs that actually reflect-pad.  RandomSharpness fails through
         # F.conv2d, and RandomMedianBlur and RandomMotionBlur run on a 1x8 image with no reflect padding
         # at all, so skipping the whole test where reflection_pad2d is missing -- the torch 2.5.1 float16
@@ -527,10 +537,8 @@ class TestBlurConventions(BaseTester):
             if not reflect_ok:
                 continue
             torch.manual_seed(_FORWARD_SEED)
-            # The message is torch's reflect-padding guard, identical on cpu and mps and in every
-            # dtype (measured); a kornia-named error would not be a RuntimeError at all, since
-            # BaseError derives straight from Exception.
-            with pytest.raises(RuntimeError, match="Padding size should be less"):
+            # kornia's own error, raised before the filter runs, so it is device- and dtype-independent.
+            with pytest.raises(ValueError, match=rf"{name} cannot filter an image this small"):
                 _sync(make()(thin).device)
             torch.manual_seed(_FORWARD_SEED)
             assert make()(small).shape == small.shape, f"{name} should still accept a 2x2 image"
@@ -543,16 +551,19 @@ class TestBlurConventions(BaseTester):
         }
         narrow = torch.rand(2, 3, 20, 2).to(device=device, dtype=dtype)
         short = torch.rand(2, 3, 3, 20).to(device=device, dtype=dtype)
-        for make in rectangular.values():
+        for name, make in rectangular.items():
             if not reflect_ok:
                 continue
             torch.manual_seed(_FORWARD_SEED)
             assert make()(narrow).shape == narrow.shape
             torch.manual_seed(_FORWARD_SEED)
-            with pytest.raises(RuntimeError, match="Padding size should be less"):
+            with pytest.raises(ValueError, match=rf"{name} cannot filter an image this small"):
                 _sync(make()(short).device)
+            # the message names the axis that is too short, not just the kernel
+            with pytest.raises(ValueError, match="along height"):
+                make()(short)
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError, match="Kernel size can't be greater"):
+        with pytest.raises(ValueError, match="RandomSharpness cannot filter an image this small"):
             _sync(K.RandomSharpness(1.0, p=1.0)(small).device)
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomSharpness(1.0, p=1.0)(square).shape == square.shape
@@ -567,8 +578,8 @@ class TestBlurConventions(BaseTester):
     # as the kernel radius (kernel_size // 2) exceeds the axis it pads -- which is a strictly smaller
     # image than the reflect guard needs, and is why the docstrings cannot say the non-reflect border
     # types run on every image.  ``"constant"`` and ``"replicate"`` do run there.  The message is
-    # torch's, not kornia's, so this is the same wart as the pin above and #4559's two outcomes
-    # (raise a named kornia error, or pad and run) leave it a wart pin rather than a strict xfail.
+    # still torch's for RandomMotionBlur, which #4559 leaves alone, while the two padding blurs now
+    # raise kornia's own error before reaching the pad -- at the same threshold, the radius.
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); one = torch.rand(2, 3, 1, 1); thin = torch.rand(2, 3, 3, 12)
     #   for bt in ("constant", "reflect", "replicate", "circular"):
@@ -579,7 +590,7 @@ class TestBlurConventions(BaseTester):
     # value causes wrapping around more than once.`, while motion `k=3` on 1x1 (radius 1, axis 1) and
     # the `"constant"`/`"replicate"` legs return the input shape.  The boundary is the radius, not the
     # kernel: `(9, 9)` circular runs at H=4 and raises at H=3; motion `k=5` runs at 2x2.
-    def test_wart_circular_padding_rejects_images_smaller_than_kernel_radius_4559(self, device, dtype):
+    def test_convention_circular_padding_rejects_images_smaller_than_kernel_radius_4559(self, device, dtype):
         if not supports_replicate_padding(device, dtype):
             pytest.skip("replication_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FIXTURE_SEED)
@@ -602,11 +613,58 @@ class TestBlurConventions(BaseTester):
         }
         for name, make in blurs.items():
             torch.manual_seed(_FORWARD_SEED)
-            with pytest.raises(RuntimeError, match="wrapping around"):
+            with pytest.raises(ValueError, match=rf"{name} cannot filter an image this small"):
                 _sync(make("circular")(thin).device)
             for border in ("constant", "replicate"):
                 torch.manual_seed(_FORWARD_SEED)
                 assert make(border)(thin).shape == thin.shape, f"{name} at {border} should accept a 3-row image"
+
+    # Issue #4559, the case the first cut of the guard missed: RandomBoxBlur accepts EVEN kernel
+    # sizes, and `filter2d` pads those asymmetrically -- `(k - 1) // 2` in front, `k // 2` behind.
+    # Stating the minima against the radius `(k - 1) // 2` therefore under-reports by one pixel for
+    # every even extent, and those inputs walked straight past the guard into the raw torch errors
+    # it exists to replace.  The constraint is the wider pad, `k // 2`.
+    # Snippet used to generate expected:
+    #   for k in range(1, 9):
+    #       front, rear = (k - 1) // 2, k - 1 - (k - 1) // 2
+    #       for mode in ("reflect", "circular"):
+    #           min(s for s in range(1, 12) if F.pad(torch.rand(1, 1, s, s), [front, rear] * 2, mode=mode))
+    # executed 2026-09-19 (torch 2.5.0, cpu) -> reflect needs `k // 2 + 1` and circular `k // 2` for
+    # every k in 1..8, i.e. 3 and 2 for a 4-wide kernel where the radius said 2 and 1.
+    @pytest.mark.parametrize(
+        "kernel, border, too_small, big_enough",
+        [
+            ((4, 4), "reflect", (1, 1, 2, 2), (1, 1, 3, 3)),
+            ((4, 4), "circular", (1, 1, 1, 1), (1, 1, 2, 2)),
+            ((2, 2), "reflect", (1, 1, 1, 1), (1, 1, 2, 2)),
+            ((6, 6), "reflect", (1, 1, 3, 3), (1, 1, 4, 4)),
+            ((6, 6), "circular", (1, 1, 2, 2), (1, 1, 3, 3)),
+            # the odd-extent circular boundary: `(k + 1) // 2` agrees with `k // 2` on every even row
+            # above, and only an odd kernel at its exact minimum tells them apart
+            ((5, 5), "circular", (1, 1, 1, 1), (1, 1, 2, 2)),
+        ],
+    )
+    def test_convention_even_kernels_use_the_wider_asymmetric_pad_4559(
+        self, kernel, border, too_small, big_enough, device, dtype
+    ):
+        if border == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        torch.manual_seed(_FIXTURE_SEED)
+        small = torch.rand(*too_small).to(device=device, dtype=dtype)
+        large = torch.rand(*big_enough).to(device=device, dtype=dtype)
+
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(ValueError, match="RandomBoxBlur cannot filter an image this small"):
+            _sync(K.RandomBoxBlur(kernel, border_type=border, p=1.0)(small).device)
+        # one pixel more and it is kornia's job to run, not to refuse
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomBoxBlur(kernel, border_type=border, p=1.0)(large).shape == large.shape
+        # the modes that invent their padding are untouched by the widening
+        for invented in ("constant", "replicate"):
+            if invented == "replicate" and not supports_replicate_padding(device, dtype):
+                continue
+            torch.manual_seed(_FORWARD_SEED)
+            assert K.RandomBoxBlur(kernel, border_type=invented, p=1.0)(small).shape == small.shape
 
     # The constant-border claim is directional, and a positive fixture cannot tell "pulled toward 0" from
     # "pulled below the minimum".  On an all-negative image zero padding pushes the border ABOVE the

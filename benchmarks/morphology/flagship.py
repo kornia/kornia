@@ -33,7 +33,10 @@ The kornia column names ``kornia.morphology`` functions and the albumentations c
 ``operation`` of its ``Morphological`` transform.
 
 Regimes (see ``benchmarks/README.md``): kornia runs a batched float BCHW tensor on CPU or GPU with
-its default ``unfold`` engine and is differentiable; `torchmorph <https://github.com/intcomp/torchmorph>`_
+its default ``engine="auto"`` and is differentiable. ``auto`` picks ``unfold`` on CUDA and the exact
+``shift`` engine elsewhere, except for a float32 or float64 CPU call that records a backward graph,
+which keeps ``unfold``; this suite times the forward alone, so it measures ``unfold`` on CUDA and
+``shift`` on CPU and MPS. `torchmorph <https://github.com/intcomp/torchmorph>`_
 runs the same batched BCHW tensor through its custom CUDA kernels, which exist only for CUDA, so its
 column is skipped on every other device; it computes in float32 (a float16 or bfloat16 input is
 upcast inside the call) and is not differentiable. OpenCV runs single uint8 HWC images on CPU in

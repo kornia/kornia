@@ -470,20 +470,19 @@ class TestTransplantationConventions(BaseTester):
         assert torch.equal(flat_mask, volume_mask)
 
     @pytest.mark.device_agnostic
-    def test_wart_container_dispatch_reports_only_one_of_the_two_rank_mistakes_4692(self):
+    def test_convention_container_rejects_both_rank_mistakes_4692(self):
         image, mask = _labelled_batch(batch=3, spatial=(4, 6))
         volume, volume_mask = _labelled_batch(batch=3, spatial=(3, 4, 6))
         # The 2D class on a volume raises.
         with pytest.raises(RuntimeError, match="input shape expected to be in"):
             K.AugmentationSequential(K.RandomTransplantation(p=1.0), data_keys=["image", "mask"])(volume, volume_mask)
-        # The 3D class on a 2D batch is a silent no-op: correct shapes, nothing moved.
+        # The 3D class on a 2D batch is rejected because the 4D shape is ambiguous.
         inner = K.RandomTransplantation3D(p=1.0)
-        torch.manual_seed(7)
-        out_image, out_mask = K.AugmentationSequential(inner, data_keys=["image", "mask"])(image, mask)
-        assert out_image.shape == image.shape
-        assert torch.equal(out_mask, mask)
-        assert inner._params["batch_prob"].numel() == 1  # a one-element gate for a batch of 3
-        assert inner._params["donor_indices"].tolist() == [0]
+        with pytest.raises(
+            RuntimeError,
+            match=r"3D augmentations in AugmentationSequential expect input shape",
+        ):
+            K.AugmentationSequential(inner, data_keys=["image", "mask"])(image, mask)
 
     @pytest.mark.device_agnostic
     def test_wart_container_runs_the_transplant_only_as_the_first_step_4707(self):

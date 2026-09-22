@@ -1416,3 +1416,52 @@ class TestPosterize(BaseTester):
         op = kornia.enhance.posterize
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img, 3), op_optimized(img, 3))
+
+
+_FACTOR_OPS = [
+    kornia.enhance.adjust_saturation,
+    kornia.enhance.adjust_saturation_raw,
+    kornia.enhance.adjust_saturation_with_gray_subtraction,
+    kornia.enhance.adjust_hue,
+    kornia.enhance.adjust_hue_raw,
+    kornia.enhance.adjust_contrast,
+    kornia.enhance.adjust_contrast_with_mean_subtraction,
+    kornia.enhance.adjust_brightness,
+    kornia.enhance.adjust_brightness_accumulative,
+]
+
+
+class TestFactorBroadcast(BaseTester):
+    """A factor carrying more dimensions than the image used to spin forever while broadcasting."""
+
+    @pytest.mark.parametrize("op", _FACTOR_OPS)
+    @pytest.mark.parametrize("img_shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_factor_with_more_dims_raises(self, device, dtype, op, img_shape):
+        img = torch.rand(img_shape, device=device, dtype=dtype)
+        factor = torch.ones(2, *([1] * len(img_shape)), device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            op(img, factor)
+
+    @pytest.mark.parametrize("op", _FACTOR_OPS)
+    def test_per_image_factor_with_equal_rank(self, device, dtype, op):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        values = [0.3, 0.7]
+        factor = torch.tensor(values, device=device, dtype=dtype).view(2, 1, 1, 1)
+        out = op(img, factor)
+        for i, v in enumerate(values):
+            self.assert_close(out[i : i + 1], op(img[i : i + 1], v))
+
+    @pytest.mark.parametrize("op", [kornia.enhance.adjust_brightness, kornia.enhance.adjust_contrast])
+    def test_per_channel_factor_with_equal_rank(self, device, dtype, op):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        values = [0.2, 0.5, 0.8]
+        factor = torch.tensor(values, device=device, dtype=dtype).view(1, 3, 1, 1)
+        out = op(img, factor)
+        for c, v in enumerate(values):
+            self.assert_close(out[:, c : c + 1], op(img[:, c : c + 1], v))
+
+    def test_factor_with_fewer_dims_still_broadcasts(self, device, dtype):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
+        out = kornia.enhance.adjust_brightness(img, factor)
+        assert out.shape == img.shape

@@ -96,7 +96,7 @@ def distort_points_kannala_brandt(
 
     radius_sq = x**2 + y**2
 
-    distorted_points = torch.where(
+    return torch.where(
         radius_sq[..., None] > 1e-8,
         _distort_points_kannala_brandt_impl(
             projected_points_in_camera_z1_plane,
@@ -105,8 +105,6 @@ def distort_points_kannala_brandt(
         ),
         distort_points_affine(projected_points_in_camera_z1_plane, params[..., :4]),
     )
-
-    return distorted_points
 
 
 def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, params: torch.Tensor) -> torch.Tensor:

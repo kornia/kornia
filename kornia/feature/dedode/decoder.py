@@ -164,5 +164,4 @@ class ConvRefiner(nn.Module):
             x = self.hidden_blocks(x0)
             if self.residual:
                 x = (x + x0) / 1.4
-            x = self.out_conv(x)
-            return x
+            return self.out_conv(x)

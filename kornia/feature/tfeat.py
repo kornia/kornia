@@ -93,5 +93,4 @@ class TFeat(nn.Module):
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)
         x = x.view(x.size(0), -1)
-        x = self.descr(x)
-        return x
+        return self.descr(x)

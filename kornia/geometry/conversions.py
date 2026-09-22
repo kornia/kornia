@@ -463,7 +463,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         r21 = wx * sin_theta + wywz * one_minus_cos
         r22 = cos_theta + wz * wz * one_minus_cos
 
-        rot = torch.stack(
+        return torch.stack(
             [
                 torch.stack([r00, r01, r02], dim=-1),
                 torch.stack([r10, r11, r12], dim=-1),
@@ -471,8 +471,6 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
             ],
             dim=-2,
         )
-
-        return rot
 
     def _compute_rotation_matrix_taylor(axis_angle: torch.Tensor) -> torch.Tensor:
         rx, ry, rz = axis_angle.unbind(-1)
@@ -487,7 +485,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         # the first-order truncation had det = 1 + theta^2; the second-order
         # truncation has det = 1 + theta^4 / 4, so the matrix is a rotation to
         # the working precision across the whole low-angle branch
-        rot = torch.stack(
+        return torch.stack(
             [
                 k_one - k_half * (ry2 + rz2),
                 -rz + k_half * rxry,
@@ -502,8 +500,6 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
             dim=-1,
         ).reshape(list(axis_angle.shape[:-1]) + [3, 3])
 
-        return rot
-
     theta2 = (axis_angle * axis_angle).sum(dim=-1)
     mask = theta2 > 1e-6
 
@@ -513,9 +509,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     rot_normal = _compute_rotation_matrix(axis_angle, safe_theta2)  # (*,3,3)
     rot_taylor = _compute_rotation_matrix_taylor(axis_angle)  # (*,3,3)
 
-    rotation_matrix = torch.where(mask[..., None, None], rot_normal, rot_taylor)
-
-    return rotation_matrix
+    return torch.where(mask[..., None, None], rot_normal, rot_taylor)
 
 
 @deprecated(replace_with="axis_angle_to_rotation_matrix", version="0.7.0")
@@ -883,9 +877,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     # this slightly awkward construction of the output shape is to satisfy torchscript
     output_shape = [*list(quaternion.shape[:-1]), 3, 3]
-    matrix = matrix_flat.reshape(output_shape)
-
-    return matrix
+    return matrix_flat.reshape(output_shape)
 
 
 def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
@@ -1112,9 +1104,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     quaternion_scalar: torch.Tensor = torch.cos(norm_q)
 
     # compose quaternion and return
-    quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1).to(orig_dtype)
-
-    return quaternion_exp
+    return torch.cat((quaternion_scalar, quaternion_vector), dim=-1).to(orig_dtype)
 
 
 def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
@@ -2644,8 +2634,7 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
     fxfy = camera_matrix[..., :2, :2].diagonal(dim1=-2, dim2=-1)
     if len(cxcy.shape) < len(point_2d.shape):  # broadcast intrinsics:
         cxcy, fxfy = cxcy.unsqueeze(-2), fxfy.unsqueeze(-2)
-    xy = (point_2d - cxcy) / fxfy
-    return xy
+    return (point_2d - cxcy) / fxfy
 
 
 def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
@@ -3353,7 +3342,7 @@ def vector_to_skew_symmetric_matrix(vec: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input vector must be of shape (B, 3) or (3,). Got {vec.shape}")
     v1, v2, v3 = vec[..., 0], vec[..., 1], vec[..., 2]
     zeros = torch.zeros_like(v1)
-    skew_symmetric_matrix = torch.stack(
+    return torch.stack(
         [
             torch.stack([zeros, -v3, v2], dim=-1),
             torch.stack([v3, zeros, -v1], dim=-1),
@@ -3361,4 +3350,3 @@ def vector_to_skew_symmetric_matrix(vec: torch.Tensor) -> torch.Tensor:
         ],
         dim=-2,
     )
-    return skew_symmetric_matrix

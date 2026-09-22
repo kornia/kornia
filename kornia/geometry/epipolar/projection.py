@@ -177,8 +177,7 @@ def depth_from_point(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch
 
     """
     X_tmp = R @ X.transpose(-2, -1)
-    X_out = X_tmp[..., 2, :] + t[..., 2, :]
-    return X_out
+    return X_tmp[..., 2, :] + t[..., 2, :]
 
 
 # adapted from:

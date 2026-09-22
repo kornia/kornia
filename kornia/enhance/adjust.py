@@ -71,6 +71,25 @@ def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
     torch._assert_async(cond, msg)
 
 
+def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
+    """Right-pad ``factor`` with singleton dimensions so it broadcasts against ``image``.
+
+    A ``factor`` with more dimensions than ``image`` can never reach the image rank by appending
+    dimensions, so padding it would loop forever. Reject it here instead of hanging. The padding
+    only lines the ranks up: shapes that still do not broadcast are reported by the op itself.
+    """
+    if factor.dim() > image.dim():
+        raise ValueError(
+            f"Factor has more dimensions than the image and cannot be broadcast: got factor shape "
+            f"{tuple(factor.shape)} for image shape {tuple(image.shape)}."
+        )
+
+    while factor.dim() != image.dim():
+        factor = factor[..., None]
+
+    return factor
+
+
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
@@ -85,9 +104,7 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # unpack the hsv values
     h, s, v = torch.chunk(image, chunks=3, dim=-3)
@@ -143,9 +160,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     x_other: torch.Tensor = rgb_to_grayscale(image)
 
@@ -203,8 +218,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     else:
         factor = factor.to(image.device, image.dtype)
 
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
     if factor.shape[-3] != 1:
         raise ValueError(f"Factor must hold one value per image, not per channel. Got shape {factor.shape}")
 
@@ -241,9 +255,7 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
     factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # unpack the hsv values
     h, s, v = torch.chunk(image, chunks=3, dim=-3)
@@ -438,9 +450,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     _assert_async_value_check(
         (factor >= 0).all(),
@@ -497,9 +507,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
@@ -570,9 +578,7 @@ def adjust_brightness(
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # shift pixel values
     img_adjust: torch.Tensor = image + factor
@@ -625,9 +631,7 @@ def adjust_brightness_accumulative(
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # shift pixel values
     img_adjust: torch.Tensor = image * factor
