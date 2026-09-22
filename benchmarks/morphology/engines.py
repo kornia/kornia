@@ -17,17 +17,15 @@
 
 """Compare the three ``kornia.morphology`` engines, ``unfold``, ``convolution`` and ``shift``, on one device.
 
-The ``engine="auto"`` default picks one engine per device (see ``kornia.morphology.dilation``).
-This script measures the evidence behind that choice: for each dtype, kernel size and batch it
-times ``dilation`` with each engine, reports the fastest one and the one ``auto`` selects, and
-checks that the engines agree. ``conv-unfold`` and ``shift-unfold`` are the largest absolute
-differences from the ``unfold`` output. The engines compute the same max-plus expression, so a
-non-zero value is backend rounding: ``convolution`` inherits the precision of ``conv2d``, and
-``shift`` takes the same max or min in a different order, which should always give 0. On CUDA the
-TF32 column repeats the ``convolution`` comparison with ``torch.backends.cudnn.allow_tf32``
-(PyTorch's default ``True``) switched on, which rounds float32 convolution inputs to a 10-bit
-mantissa on Ampere and newer GPUs; every other column runs with the flag left as the process
-found it.
+For each dtype, kernel size and batch it times ``dilation`` with each explicit public engine,
+reports the fastest successful timing, and checks that the engines agree. ``conv-unfold`` and
+``shift-unfold`` are the largest absolute differences from the ``unfold`` output. The engines
+compute the same max-plus expression, so a non-zero value is backend rounding: ``convolution``
+inherits the precision of ``conv2d``, and ``shift`` takes the same max or min sequentially in the
+same order, which should always give 0. On CUDA the TF32 column repeats the ``convolution`` comparison
+with ``torch.backends.cudnn.allow_tf32`` (PyTorch's default ``True``) switched on, which rounds
+float32 convolution inputs to a 10-bit mantissa on Ampere and newer GPUs; every other column runs
+with the flag left as the process found it.
 
 ``--backward`` times forward + backward of ``dilation(x).sum()`` instead of the forward alone.
 ``--compile`` adds a ``torch.compile(fullgraph=True)`` timing of each engine and the wall clock of
@@ -45,6 +43,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 import time
 from pathlib import Path
@@ -55,13 +54,25 @@ import torch
 # Prefer this checkout to an installed wheel or another editable checkout.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import add_contribute_args, finish_run, parse_names, start_run, time_us, warm_up_cpu
+from common import add_contribute_args, finish_run, parse_names, start_run, time_us_or_error, warm_up_cpu
 
 import kornia.morphology as KM
-from kornia.morphology.morphology import _records_grad, _resolve_engine
 
 ENGINES = ("unfold", "convolution", "shift")
 SHORT = {"unfold": "unfold", "convolution": "conv", "shift": "shift"}
+
+
+def parse_selected_names(value: str, *, kind: str, choices: tuple[str, ...]) -> frozenset[str]:
+    """Parse a non-empty comma-separated subset and make invalid names an argparse error."""
+    selected = parse_names(value)
+    unknown = selected.difference(choices)
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unknown {kind}(s): {', '.join(sorted(unknown))}. Available: {', '.join(choices)}"
+        )
+    if not selected:
+        raise argparse.ArgumentTypeError(f"at least one {kind} is required. Available: {', '.join(choices)}")
+    return selected
 
 
 def max_abs_diff(x: torch.Tensor, kernel: torch.Tensor, engine: str, tf32: Optional[bool]) -> float:
@@ -98,13 +109,80 @@ def bench_fn(
     return step
 
 
+def display_timing(value: float) -> str:
+    """Render a failed timing as a visible table marker instead of a plausible number."""
+    return f"{value:.3f}" if math.isfinite(value) else "-"
+
+
+def display_difference(value: float) -> str:
+    """Render a failed numerical comparison as visibly unavailable."""
+    return f"{value:.2e}" if math.isfinite(value) else "-"
+
+
+def abort_if_cuda_context_poisoned(
+    device: torch.device, *, context: str, error_text: str = "", cause: Optional[BaseException] = None
+) -> None:
+    """Abort rather than publish later timings after an illegal CUDA memory access."""
+    if device.type != "cuda":
+        return
+    try:
+        torch.cuda.synchronize(device)
+    except Exception as sync_error:
+        error_text = f"{error_text} | {sync_error}"
+    if "illegal memory access" in error_text.lower():
+        raise SystemExit(
+            f"FATAL: CUDA context poisoned during {context} (illegal memory access); "
+            "no later measurement or contributed result would be trustworthy. "
+            "Rerun without the failing configuration; CUDA_LAUNCH_BLOCKING=1 localizes the kernel."
+        ) from cause
+
+
+def time_us_checked(
+    fn: Callable[[], None], min_run_time: float, sync: Optional[Callable[[], None]], device: torch.device, context: str
+) -> tuple[float, float, Optional[str]]:
+    """Time a call and ensure a reported CUDA failure did not poison the context."""
+    median, iqr, error = time_us_or_error(fn, min_run_time, sync)
+    if error is not None:
+        abort_if_cuda_context_poisoned(device, context=context)
+    return median, iqr, error
+
+
+def result_row(
+    *, dtype: str, batch: int, kernel: int, backend: str, median_us: float, iqr_us: float, error: Optional[str]
+) -> dict[str, Any]:
+    """Return one schema-valid long-form timing row."""
+    valid = error is None and math.isfinite(median_us) and median_us > 0
+    row: dict[str, Any] = {
+        "op": "dilation",
+        "backend": backend,
+        "batch": batch,
+        "dtype": dtype,
+        "kernel": kernel,
+        "median_us": median_us if valid else None,
+        "iqr_us": iqr_us if valid and math.isfinite(iqr_us) else None,
+        "throughput_per_s": batch * 1e6 / median_us if valid else None,
+    }
+    if not valid:
+        row["error"] = error or "non-finite timing"
+    return row
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--device", type=str, default="cpu", help="cpu, cuda, or mps")
     parser.add_argument(
-        "--engines", type=parse_names, default=frozenset(ENGINES), help="comma-separated engines (default: all)"
+        "--engines",
+        type=lambda value: parse_selected_names(value, kind="engine", choices=ENGINES),
+        default=frozenset(ENGINES),
+        help="comma-separated engines (default: all)",
     )
-    parser.add_argument("--dtypes", type=parse_names, default=frozenset({"float32", "float16"}))
+    dtype_names = ("float32", "float16", "bfloat16", "float64")
+    parser.add_argument(
+        "--dtypes",
+        type=lambda value: parse_selected_names(value, kind="dtype", choices=dtype_names),
+        default=frozenset({"float32", "float16"}),
+        help="comma-separated dtypes (default: float32,float16)",
+    )
     parser.add_argument("--kernels", type=str, default="3,5,7,15", help="comma-separated square kernel sizes")
     parser.add_argument("--batches", type=str, default="1,8", help="comma-separated batch sizes")
     parser.add_argument("--channels", type=int, default=3)
@@ -122,13 +200,13 @@ def main() -> None:
     torch.manual_seed(0)
     device = torch.device(args.device)
     sync = torch.mps.synchronize if device.type == "mps" else None
-    dtypes = [d for d in ("float32", "float16", "bfloat16", "float64") if d in args.dtypes]
+    dtypes = [d for d in dtype_names if d in args.dtypes]
     args.dtype = ",".join(dtypes)  # start_run prints it
     meta = start_run(
         "morphology engines",
         args,
         device,
-        units="ms",
+        units="img/s",
         regimes=[
             f"dilation, square kernel, B x {args.channels} x {args.size} x {args.size} float input"
             + (", forward + backward" if args.backward else ", forward only"),
@@ -145,7 +223,7 @@ def main() -> None:
     diffs = [e for e in engines if e != "unfold"] if "unfold" in engines else []
     tf32_col = device.type == "cuda" and "convolution" in diffs
     header = f"{'dtype':9} {'B':>3} {'k':>3}" + "".join(f" {SHORT[e] + ' ms':>11}" for e in engines)
-    header += f" {'fastest':>12} {'auto':>12}" + "".join(f" {SHORT[e] + '-unfold':>13}" for e in diffs)
+    header += f" {'fastest':>12}" + "".join(f" {SHORT[e] + '-unfold':>13}" for e in diffs)
     header += f" {'conv TF32 on':>13}" if tf32_col else ""
     if args.compile:
         header += "".join(f" {'compiled ' + SHORT[e] + ' ms':>18} {'compile s':>9}" for e in engines)
@@ -157,47 +235,125 @@ def main() -> None:
             for k in (int(v) for v in args.kernels.split(",")):
                 x = torch.rand(b, args.channels, args.size, args.size, device=device, dtype=dtype)
                 kernel = torch.ones(k, k, device=device, dtype=dtype)
-                # auto is grad-aware, so the reported choice has to match the regime being timed.
-                graph = args.backward and _records_grad(x.detach().requires_grad_(True), kernel, None)
                 row: dict[str, Any] = {
                     "dtype": dtype_name,
                     "batch": b,
                     "kernel": k,
-                    "auto": _resolve_engine("auto", x, graph),
                 }
+                result_by_engine: dict[str, dict[str, Any]] = {}
                 for engine in engines:
-                    median, iqr = time_us(bench_fn(x, kernel, engine, args.backward), args.min_run_time, sync)
+                    median, iqr, error = time_us_checked(
+                        bench_fn(x, kernel, engine, args.backward),
+                        args.min_run_time,
+                        sync,
+                        device,
+                        f"eager {engine} timing (dtype={dtype_name}, batch={b}, kernel={k})",
+                    )
                     row[f"{engine}_ms"] = median / 1e3
                     row[f"{engine}_iqr_ms"] = iqr / 1e3
-                row["fastest"] = min(engines, key=lambda e: row[f"{e}_ms"])
+                    row[f"{engine}_error"] = error
+                    engine_result = result_row(
+                        dtype=dtype_name,
+                        batch=b,
+                        kernel=k,
+                        backend=f"kornia (engine={engine})",
+                        median_us=median,
+                        iqr_us=iqr,
+                        error=error,
+                    )
+                    results.append(engine_result)
+                    result_by_engine[engine] = engine_result
+                successful = [e for e in engines if row[f"{e}_error"] is None and math.isfinite(row[f"{e}_ms"])]
+                row["fastest"] = min(successful, key=lambda e: row[f"{e}_ms"]) if successful else "-"
                 if args.compile:
                     for engine in engines:
-                        fn = bench_fn(x, kernel, engine, args.backward, compiled=True)
-                        start = time.perf_counter()
-                        fn()  # compile outside the timed region
-                        if sync is not None:
-                            sync()
-                        elif device.type == "cuda":
-                            torch.cuda.synchronize(device)
-                        row[f"compile_{engine}_s"] = time.perf_counter() - start
-                        median, iqr = time_us(fn, args.min_run_time, sync)
+                        try:
+                            fn = bench_fn(x, kernel, engine, args.backward, compiled=True)
+                            start = time.perf_counter()
+                            fn()  # compile outside the timed region
+                            if sync is not None:
+                                sync()
+                            elif device.type == "cuda":
+                                torch.cuda.synchronize(device)
+                            row[f"compile_{engine}_s"] = time.perf_counter() - start
+                            median, iqr, error = time_us_checked(
+                                fn,
+                                args.min_run_time,
+                                sync,
+                                device,
+                                f"compiled {engine} timing (dtype={dtype_name}, batch={b}, kernel={k})",
+                            )
+                        except Exception as exc:
+                            abort_if_cuda_context_poisoned(
+                                device,
+                                context=f"compiled {engine} warmup (dtype={dtype_name}, batch={b}, kernel={k})",
+                                error_text=str(exc),
+                                cause=exc,
+                            )
+                            row[f"compile_{engine}_s"] = float("nan")
+                            median, iqr, error = float("nan"), float("nan"), type(exc).__name__
                         row[f"compiled_{engine}_ms"] = median / 1e3
                         row[f"compiled_{engine}_iqr_ms"] = iqr / 1e3
+                        row[f"compiled_{engine}_error"] = error
+                        compiled_result = result_row(
+                            dtype=dtype_name,
+                            batch=b,
+                            kernel=k,
+                            backend=f"kornia (engine={engine}, compiled)",
+                            median_us=median,
+                            iqr_us=iqr,
+                            error=error,
+                        )
+                        compiled_result["compile_s"] = (
+                            row[f"compile_{engine}_s"] if math.isfinite(row[f"compile_{engine}_s"]) else None
+                        )
+                        results.append(compiled_result)
                 for engine in diffs:
-                    row[f"max_abs_diff_{engine}"] = max_abs_diff(x, kernel, engine, None)
+                    try:
+                        difference = max_abs_diff(x, kernel, engine, None)
+                    except Exception as exc:
+                        abort_if_cuda_context_poisoned(
+                            device,
+                            context=f"{engine}-unfold comparison (dtype={dtype_name}, batch={b}, kernel={k})",
+                            error_text=str(exc),
+                            cause=exc,
+                        )
+                        difference = float("nan")
+                        result_by_engine[engine]["comparison_error"] = type(exc).__name__
+                    row[f"max_abs_diff_{engine}"] = difference
+                    result_by_engine[engine]["max_abs_diff_from_unfold"] = (
+                        difference if math.isfinite(difference) else None
+                    )
                 if tf32_col:
-                    row["max_abs_diff_convolution_tf32"] = max_abs_diff(x, kernel, "convolution", True)
-                line = f"{dtype_name:9} {b:>3} {k:>3}" + "".join(f" {row[e + '_ms']:>11.3f}" for e in engines)
-                line += f" {row['fastest']:>12} {row['auto']:>12}"
-                line += "".join(f" {row['max_abs_diff_' + e]:>13.2e}" for e in diffs)
+                    try:
+                        tf32_difference = max_abs_diff(x, kernel, "convolution", True)
+                    except Exception as exc:
+                        abort_if_cuda_context_poisoned(
+                            device,
+                            context=f"convolution TF32 comparison (dtype={dtype_name}, batch={b}, kernel={k})",
+                            error_text=str(exc),
+                            cause=exc,
+                        )
+                        tf32_difference = float("nan")
+                        result_by_engine["convolution"]["tf32_comparison_error"] = type(exc).__name__
+                    row["max_abs_diff_convolution_tf32"] = tf32_difference
+                    result_by_engine["convolution"]["max_abs_diff_from_unfold_tf32"] = (
+                        tf32_difference if math.isfinite(tf32_difference) else None
+                    )
+                line = f"{dtype_name:9} {b:>3} {k:>3}" + "".join(
+                    f" {display_timing(row[e + '_ms']):>11}" for e in engines
+                )
+                line += f" {row['fastest']:>12}"
+                line += "".join(f" {display_difference(row['max_abs_diff_' + e]):>13}" for e in diffs)
                 if tf32_col:
-                    line += f" {row['max_abs_diff_convolution_tf32']:>13.2e}"
+                    line += f" {display_difference(row['max_abs_diff_convolution_tf32']):>13}"
                 if args.compile:
                     line += "".join(
-                        f" {row['compiled_' + e + '_ms']:>18.3f} {row['compile_' + e + '_s']:>9.1f}" for e in engines
+                        f" {display_timing(row['compiled_' + e + '_ms']):>18} "
+                        f"{display_timing(row['compile_' + e + '_s']):>9}"
+                        for e in engines
                     )
                 print(line, flush=True)
-                results.append(row)
     finish_run(args, "morphology-engines", meta, results)
 
 

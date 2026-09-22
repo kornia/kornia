@@ -43,12 +43,16 @@ def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, widt
     1627 MiB in that same cell). :func:`_resolve_engine` accounts for both regimes.
     """
     kh, kw = offsets.shape
-    output = padded[..., 0:height, 0:width] + offsets[0, 0]
-    for i in range(kh):
-        for j in range(kw):
+    # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
+    # down to a scalar would instead apply wrapped-scalar rules and silently keep ``padded.dtype``.
+    output = padded[..., 0:height, 0:width] + offsets[0:1, 0:1]
+    # ``unfold`` reduces the kernel-height dimension first and then kernel width. Keep the same
+    # column-major traversal so equal values preserve the same IEEE-754 signed-zero result.
+    for j in range(kw):
+        for i in range(kh):
             if i == 0 and j == 0:
                 continue
-            shifted = padded[..., i : i + height, j : j + width] + offsets[i, j]
+            shifted = padded[..., i : i + height, j : j + width] + offsets[i : i + 1, j : j + 1]
             output = torch.maximum(output, shifted) if dilate else torch.minimum(output, shifted)
     return output
 
@@ -57,7 +61,8 @@ def _resolve_engine(engine: str, tensor: torch.Tensor, recording_grad: bool = Fa
     """Map ``engine="auto"`` to the preferred engine for ``tensor``; leave other values unchanged.
 
     ``recording_grad`` says whether this call will build a backward graph, which changes the ranking.
-    All three engines return bitwise equal forward output, so switching on it never changes a value.
+    For finite inputs, the two engines selected by ``auto`` (``unfold`` and ``shift``) return bitwise
+    equal forward output, so switching between them never changes a value.
 
     Benchmarks in :mod:`benchmarks.morphology.engines` (x86 CPU, an RTX 4090 and an Apple M1,
     ``dilation``, B x 3 x 256 x 256) give three CPU/CUDA regimes:
@@ -131,9 +136,10 @@ def dilation(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
-            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
+            equal output.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
             float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
             to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
@@ -204,9 +210,7 @@ def dilation(
         ).max(dim=1)
         output = output.view(B, C, H, W)
     elif engine == "shift":
-        output = _shift_reduce(
-            output, neighborhood.flip((0, 1)).to(dtype=output.dtype), tensor.shape[-2], tensor.shape[-1], True
-        )
+        output = _shift_reduce(output, neighborhood.flip((0, 1)), tensor.shape[-2], tensor.shape[-1], True)
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
     return output.view_as(tensor)
@@ -242,9 +246,10 @@ def erosion(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if border_type is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
-            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
+            equal output.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
             float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
             to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
@@ -315,9 +320,7 @@ def erosion(
         ).min(dim=1)
         output = output.view(B, C, H, W)
     elif engine == "shift":
-        output = _shift_reduce(
-            output, (-neighborhood).to(dtype=output.dtype), tensor.shape[-2], tensor.shape[-1], False
-        )
+        output = _shift_reduce(output, -neighborhood, tensor.shape[-2], tensor.shape[-1], False)
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
 
@@ -354,9 +357,10 @@ def opening(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
-            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
+            equal output.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
             float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
             to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
@@ -441,9 +445,10 @@ def closing(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
-            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
+            equal output.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
             float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
             to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
@@ -530,9 +535,10 @@ def gradient(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
-            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
+            equal output.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
             float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
             to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
@@ -608,9 +614,10 @@ def top_hat(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
-            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
+            equal output.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
             float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
             to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
@@ -689,9 +696,10 @@ def bottom_hat(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
-        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
-            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+        engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
+            equal output.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
             float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
             to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32

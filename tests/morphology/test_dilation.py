@@ -244,8 +244,8 @@ class TestDilate(BaseTester):
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate"])
     @pytest.mark.parametrize("non_flat", [False, True])
     def test_shift_engine_matches_unfold(self, device, dtype, kernel_shape, origin, border_type, non_flat):
-        # engine="shift" reduces the same max-plus terms as engine="unfold" in a different order;
-        # max and min are exact in any order, so the outputs are bitwise equal (#4729).
+        # engine="shift" reduces the same finite max-plus terms as engine="unfold" in the same order,
+        # so the outputs are bitwise equal (#4729).
         kh, kw = kernel_shape
         origin_yx = {"center": None, "first": [0, 0], "last": [kh - 1, kw - 1]}[origin]
         anchor = origin_yx if origin_yx is not None else [kh // 2, kw // 2]
@@ -266,6 +266,22 @@ class TestDilate(BaseTester):
 
         assert actual.dtype == tensor.dtype
         assert torch.equal(actual, expected)
+
+    def test_shift_engine_mixed_dtype_non_flat(self, device):
+        tensor = torch.zeros(1, 1, 2, 2, device=device, dtype=torch.float16)
+        kernel = torch.ones(2, 2, device=device, dtype=torch.float32)
+        structuring_element = torch.tensor(
+            [[0.1234567, 0.2345678], [0.3456789, 0.4567890]], device=device, dtype=torch.float32
+        )
+        kwargs = {"structuring_element": structuring_element, "origin": [0, 0]}
+
+        expected = dilation(tensor, kernel, engine="unfold", **kwargs)
+        actual = dilation(tensor, kernel, engine="shift", **kwargs)
+
+        assert expected.dtype == torch.float32
+        assert actual.dtype == expected.dtype
+        assert torch.equal(actual, expected)
+        assert torch.equal(dilation(tensor, kernel, **kwargs), expected)
 
     def test_shift_engine_gradcheck(self, device):
         tensor = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
