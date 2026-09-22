@@ -1200,7 +1200,6 @@ class TestRotationMatrixToQuaternion(BaseTester):
             (0.177614107728004, 0.280136495828629, -0.440902262926102, 0.834015488624573), device=device, dtype=dtype
         )
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix, eps=eps)
-        torch.set_printoptions(precision=10)
         self.assert_close(quaternion_true, quaternion, atol=atol, rtol=rtol)
 
     def test_cond1_180_rot_x(self, device, dtype, atol, rtol):
