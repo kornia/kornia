@@ -114,7 +114,10 @@ def dilation(
 
     # computation
     if structuring_element is None:
-        neighborhood = torch.zeros_like(kernel, dtype=tensor.dtype)
+        # ``kernel`` is only a membership mask: a bool or integer kernel cannot hold ``-max_val``, so a
+        # floating-point image lends it its dtype. A float kernel keeps its own, which may widen the result.
+        nb_dtype = tensor.dtype if tensor.is_floating_point() and not kernel.is_floating_point() else kernel.dtype
+        neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
         neighborhood[kernel == 0] = -max_val
     else:
         neighborhood = structuring_element.clone()
@@ -206,7 +209,10 @@ def erosion(
 
     # computation
     if structuring_element is None:
-        neighborhood = torch.zeros_like(kernel, dtype=tensor.dtype)
+        # ``kernel`` is only a membership mask: a bool or integer kernel cannot hold ``-max_val``, so a
+        # floating-point image lends it its dtype. A float kernel keeps its own, which may widen the result.
+        nb_dtype = tensor.dtype if tensor.is_floating_point() and not kernel.is_floating_point() else kernel.dtype
+        neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
         neighborhood[kernel == 0] = -max_val
     else:
         neighborhood = structuring_element.clone()
