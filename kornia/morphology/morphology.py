@@ -197,7 +197,8 @@ def dilation(
         origin = [se_h // 2, se_w // 2]
 
     # pad
-    pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    # The kernel is reflected below (Minkowski dilation), so the window is anchored at the reflected origin.
+    pad_e: List[int] = [se_w - origin[1] - 1, origin[1], se_h - origin[0] - 1, origin[0]]
     if border_type == "geodesic":
         border_value = -max_val
         border_type = "constant"

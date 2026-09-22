@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.morphology import dilation
+from kornia.morphology import dilation, erosion
 from kornia.morphology import morphology as morphology_module
 from kornia.morphology.morphology import _records_grad, _resolve_engine
 
@@ -382,3 +382,92 @@ class TestDilate(BaseTester):
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         assert torch.equal(op_script(tensor, kernel, engine="shift"), dilation(tensor, kernel, engine="shift"))
+
+    def test_even_kernel_centre(self, device, dtype):
+        # `dilation` reflects the kernel contents but padded with the unreflected origin, so an
+        # even-sized kernel's default-origin window was anchored one pixel toward the top-left of
+        # where the Minkowski dilation ``out(p) = max_{q: kernel[q] != 0} x(p - (q - origin))``
+        # anchors it. 0/1 fixtures are exact in every dtype (no arithmetic rounding), so this
+        # compares with `torch.equal`.
+        # Generated with:
+        #   x = torch.zeros(1, 1, 6, 7); x[..., 2, 3] = 1
+        #   dilation(x, torch.ones(2, 2))
+        # scipy 1.17.1 `ndi.grey_dilation(x, footprint=np.ones((2, 2), bool))` and skimage 0.26.0
+        # `sm.dilation(x, np.ones((2, 2)))` both give this (fixed) set; OpenCV 5.0.0 `cv2.dilate`
+        # does not reflect the kernel and gives {(2, 3), (2, 4), (3, 3), (3, 4)} instead.
+        tensor = torch.zeros(1, 1, 6, 7, device=device, dtype=dtype)
+        tensor[..., 2, 3] = 1.0
+        kernel = torch.ones(2, 2, device=device, dtype=dtype)
+
+        expected = torch.zeros(1, 1, 6, 7, device=device, dtype=dtype)
+        expected[..., 1, 2] = 1.0
+        expected[..., 1, 3] = 1.0
+        expected[..., 2, 2] = 1.0
+        expected[..., 2, 3] = 1.0
+
+        assert torch.equal(dilation(tensor, kernel), expected)
+
+    def test_custom_origin_direction(self, device, dtype):
+        # With an origin index `o`, dilation collects `x(p - (q - origin))`, so `origin=[0, 0]`
+        # must spread the window toward +rows/+cols -- the same direction `erosion(...,
+        # origin=[0, 0])` already uses (erosion at `p` reads rows/cols `p..p+k-1`). Pre-fix,
+        # `dilation` spread it toward -rows/-cols instead. 0/1 fixtures are exact in every dtype,
+        # so this compares with `torch.equal`.
+        # Generated with:
+        #   x = torch.zeros(1, 1, 6, 7); x[..., 2, 3] = 1
+        #   dilation(x, torch.ones(3, 3), origin=[0, 0])
+        tensor = torch.zeros(1, 1, 6, 7, device=device, dtype=dtype)
+        tensor[..., 2, 3] = 1.0
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        expected = torch.zeros(1, 1, 6, 7, device=device, dtype=dtype)
+        expected[..., 2:5, 3:6] = 1.0
+
+        assert torch.equal(dilation(tensor, kernel, origin=[0, 0]), expected)
+
+    def test_erosion_duality_custom_origin(self, device, dtype):
+        # erosion(x, B, origin=o) == -dilation(-x, B.flip((0, 1)), origin=[k_h-1-o0, k_w-1-o1])
+        # must hold exactly for every origin, not just an odd kernel's centre. Both sides only
+        # ever select an already-present value of `x` (max/min, never interpolation), and
+        # negation is exact in every dtype, so `torch.equal` is fine here too. Pre-fix, this held
+        # only for an odd kernel's centre origin and failed for every other origin.
+        # Generated with:
+        #   torch.manual_seed(0); x = torch.rand(1, 1, 7, 10)
+        #   L = torch.tensor([[0., 0., 0.], [0., 1., 1.], [0., 1., 0.]])
+        torch.manual_seed(0)
+        tensor = torch.rand(1, 1, 7, 10, device=device, dtype=dtype)
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        square_kernel = torch.ones(2, 2, device=device, dtype=dtype)
+
+        for kernel in (l_kernel, square_kernel):
+            k_h, k_w = kernel.shape
+            flipped = kernel.flip((0, 1))
+            for o0 in range(k_h):
+                for o1 in range(k_w):
+                    origin = [o0, o1]
+                    dual_origin = [k_h - 1 - o0, k_w - 1 - o1]
+                    lhs = erosion(tensor, kernel, origin=origin)
+                    rhs = -dilation(-tensor, flipped, origin=dual_origin)
+                    assert torch.equal(lhs, rhs), (tuple(kernel.shape), origin)
+
+    def test_odd_kernel_default_origin_unchanged(self, device, dtype):
+        # An odd kernel with the default (centred) origin pads symmetrically either way
+        # (`se_w - origin[1] - 1 == origin[1]` when `origin[1] == (se_w - 1) // 2`), so the fix
+        # must leave this case bitwise unchanged. This literal was captured from `dilation` on
+        # unmodified `main` (commit 0e8cf3b57), before the pad-line fix was applied, so it also
+        # pins the pre-fix value. 0/1 fixtures are exact in every dtype, so this compares with
+        # `torch.equal`.
+        # Generated with:
+        #   L = torch.tensor([[0., 0., 0.], [0., 1., 1.], [0., 1., 0.]])
+        #   x = torch.zeros(1, 1, 6, 7); x[..., 2, 3] = 1
+        #   dilation(x, L)
+        tensor = torch.zeros(1, 1, 6, 7, device=device, dtype=dtype)
+        tensor[..., 2, 3] = 1.0
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+
+        expected = torch.zeros(1, 1, 6, 7, device=device, dtype=dtype)
+        expected[..., 2, 3] = 1.0
+        expected[..., 2, 4] = 1.0
+        expected[..., 3, 3] = 1.0
+
+        assert torch.equal(dilation(tensor, l_kernel), expected)

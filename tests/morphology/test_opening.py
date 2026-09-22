@@ -122,3 +122,26 @@ class TestOpening(BaseTester):
         expected = op(tensor, kernel)
 
         assert_close(actual, expected)
+
+    def test_opening_custom_origin_is_anti_extensive_and_idempotent(self, device, dtype):
+        # opening = dilation(erosion(x)) must stay anti-extensive (opening(x) <= x) and
+        # idempotent (opening(opening(x)) == opening(x)) under a custom origin too, not just the
+        # default centred one. `dilation`'s origin bug broke both for origin=[0, 0]. `block`
+        # already equals its own opening under `ones(3, 3)`, so the equality check also exercises
+        # idempotency; 0/1 fixtures compare exactly with `torch.equal`, the `<=` on the rand
+        # fixture never needs a tolerance (selection only, no interpolation), and repeating
+        # `opening` on its own (already-open) output is likewise exact.
+        # Generated with:
+        #   block = torch.zeros(1, 1, 7, 10); block[..., 2:5, 3:7] = 1
+        #   torch.manual_seed(0); x = torch.rand(1, 1, 7, 10)
+        block = torch.zeros(1, 1, 7, 10, device=device, dtype=dtype)
+        block[..., 2:5, 3:7] = 1.0
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        assert torch.equal(opening(block, kernel, origin=[0, 0]), block)
+
+        torch.manual_seed(0)
+        tensor = torch.rand(1, 1, 7, 10, device=device, dtype=dtype)
+        opened = opening(tensor, kernel, origin=[0, 0])
+        assert (opened <= tensor).all()
+        assert torch.equal(opening(opened, kernel, origin=[0, 0]), opened)
