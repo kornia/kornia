@@ -34,7 +34,13 @@ def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, widt
 
     The ``shift`` engine: output pixel ``(y, x)`` reduces ``padded[y + i, x + j] + offsets[i, j]`` over the
     kernel positions, the same max-plus expression ``unfold`` evaluates, without materialising the window
-    tensor. The only intermediate is one output-sized tensor, and ``torch.compile`` fuses the loop.
+    tensor. ``torch.compile`` fuses the loop.
+
+    Forward-only this holds one output-sized intermediate whatever the kernel area, so peak memory is flat
+    in ``k_h k_w`` where ``unfold`` and ``convolution`` grow with it (24 MiB against 1627 MiB at 15 x 15,
+    B=8 x 3 x 256^2 float32 on CUDA). Under autograd the opposite is true: every ``torch.maximum`` saves
+    its left operand, so ``k_h k_w - 1`` output-sized tensors stay alive until backward (2717 MiB against
+    1627 MiB in that same cell). :func:`_resolve_engine` accounts for both regimes.
     """
     kh, kw = offsets.shape
     output = padded[..., 0:height, 0:width] + offsets[0, 0]
@@ -47,16 +53,49 @@ def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, widt
     return output
 
 
-def _resolve_engine(engine: str, tensor: torch.Tensor) -> str:
-    """Map ``engine="auto"`` to the preferred engine for ``tensor``'s device; leave other values unchanged.
+def _resolve_engine(engine: str, tensor: torch.Tensor, recording_grad: bool = False) -> str:
+    """Map ``engine="auto"`` to the preferred engine for ``tensor``; leave other values unchanged.
 
-    Benchmarks in :mod:`benchmarks.morphology.engines` show that ``unfold`` is the broadly faster CUDA engine,
-    including backward, while ``shift`` gives large CPU gains and is competitive on MPS. ``shift`` is also exact
-    and avoids the kernel-area-sized intermediate used by ``unfold`` and ``convolution``.
+    ``recording_grad`` says whether this call will build a backward graph, which changes the ranking.
+    All three engines return bitwise equal forward output, so switching on it never changes a value.
+
+    Benchmarks in :mod:`benchmarks.morphology.engines` (x86 CPU and an RTX 4090, ``dilation``,
+    B x 3 x 256 x 256) give three regimes:
+
+    - CUDA: ``unfold`` is the broadly faster engine forward (23 of 24 cells) and forward + backward
+      (21 of 24), so it is always the CUDA choice.
+    - CPU without a backward graph: ``shift`` wins every cell, by 4-13x in float32 and 12-20x in half
+      precision, and its peak memory is flat in the kernel area instead of growing with it.
+    - CPU with a backward graph: the running max saves ``k_h k_w - 1`` intermediates, so ``shift``
+      loses to ``unfold`` in float32 (up to 2.5x at 15 x 15) and float64 (up to 3.4x), while still
+      winning 11 of 12 half-precision cells.
+
+    MPS keeps ``shift`` in both cases: its ``unfold`` is an order of magnitude slower forward there,
+    and the forward + backward sweep has not been run on a Metal device.
     """
     if engine == "auto":
-        return "unfold" if tensor.device.type == "cuda" else "shift"
+        if tensor.device.type == "cuda":
+            return "unfold"
+        is_float32_or_64 = tensor.dtype in (torch.float32, torch.float64)
+        if tensor.device.type == "cpu" and recording_grad and is_float32_or_64:
+            return "unfold"
+        return "shift"
     return engine
+
+
+def _records_grad(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor]) -> bool:
+    """Whether an op over these inputs will build a backward graph.
+
+    ``torch.no_grad()`` leaves ``requires_grad`` set on the inputs but records nothing, so grad mode has
+    to be checked too: inference on a tensor that happens to require grad should take the forward-only
+    engine. The kernel and the structuring element count because ``dilation`` and ``erosion``
+    differentiate through the neighborhood they build from them.
+    """
+    if not torch.is_grad_enabled():
+        return False
+    if tensor.requires_grad or kernel.requires_grad:
+        return True
+    return structuring_element is not None and structuring_element.requires_grad
 
 
 def dilation(
@@ -90,12 +129,16 @@ def dilation(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CUDA and the exact,
-            low-memory ``"shift"`` engine on every other device.
+            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
+            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
+            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
-            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
+            padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
+            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
         Dilated image with shape :math:`(B, C, H, W)`.
@@ -141,7 +184,7 @@ def dilation(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    engine = _resolve_engine(engine, tensor)
+    engine = _resolve_engine(engine, tensor, _records_grad(tensor, kernel, structuring_element))
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
@@ -197,12 +240,16 @@ def erosion(
         border_value: Value to fill past edges of input if border_type is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CUDA and the exact,
-            low-memory ``"shift"`` engine on every other device.
+            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
+            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
+            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
-            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
+            padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
+            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
         Eroded image with shape :math:`(B, C, H, W)`.
@@ -248,7 +295,7 @@ def erosion(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    engine = _resolve_engine(engine, tensor)
+    engine = _resolve_engine(engine, tensor, _records_grad(tensor, kernel, structuring_element))
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.min(output - neighborhood, 4)
@@ -305,12 +352,16 @@ def opening(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CUDA and the exact,
-            low-memory ``"shift"`` engine on every other device.
+            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
+            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
+            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
-            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
+            padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
+            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
@@ -388,12 +439,16 @@ def closing(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CUDA and the exact,
-            low-memory ``"shift"`` engine on every other device.
+            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
+            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
+            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
-            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
+            padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
+            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
        Closed image with shape :math:`(B, C, H, W)`.
@@ -473,12 +528,16 @@ def gradient(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CUDA and the exact,
-            low-memory ``"shift"`` engine on every other device.
+            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
+            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
+            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
-            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
+            padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
+            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
        Gradient image with shape :math:`(B, C, H, W)`.
@@ -547,12 +606,16 @@ def top_hat(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CUDA and the exact,
-            low-memory ``"shift"`` engine on every other device.
+            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
+            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
+            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
-            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
+            padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
+            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
        Top hat transformed image with shape :math:`(B, C, H, W)`.
@@ -624,12 +687,16 @@ def bottom_hat(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). All three engines
-            compute the same max-plus expression. ``"auto"`` picks ``"unfold"`` on CUDA and the exact,
-            low-memory ``"shift"`` engine on every other device.
+            compute the same max-plus expression and return bitwise equal output. ``"auto"`` picks
+            ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
+            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
+            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
-            padded image; it is exact and needs no :math:`k_h k_w`-sized intermediate.
+            padded image. It is exact, and forward-only it needs no :math:`k_h k_w`-sized intermediate;
+            under autograd it instead saves :math:`k_h k_w - 1` output-sized tensors for the backward
+            pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
        Top hat transformed image with shape :math:`(B, C, H, W)`.

@@ -19,7 +19,7 @@ import pytest
 import torch
 
 from kornia.morphology import erosion
-from kornia.morphology.morphology import _resolve_engine
+from kornia.morphology.morphology import _records_grad, _resolve_engine
 
 from testing.base import BaseTester, assert_close
 from testing.parametrized_tester import parametrized_test
@@ -172,8 +172,8 @@ class TestErode(BaseTester):
         self.assert_close(result, erosion(tensor, kernel.to(dtype), engine="convolution"))
 
     def test_auto_engine(self, device, dtype):
-        # engine="auto", the default, runs "unfold" on CUDA and the exact, low-memory "shift" engine
-        # everywhere else (#4525). An explicit engine is passed through unchanged.
+        # engine="auto", the default, runs "unfold" on CUDA and the exact "shift" engine everywhere
+        # else (#4525). An explicit engine is passed through unchanged.
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.ones(3, 5, device=device, dtype=dtype)
         kernel[0, 0] = 0.0
@@ -186,6 +186,44 @@ class TestErode(BaseTester):
         expected = erosion(tensor, kernel, engine=expected_engine)
         assert torch.equal(erosion(tensor, kernel), expected)
         assert torch.equal(erosion(tensor, kernel, engine="auto"), expected)
+
+    def test_auto_engine_is_grad_aware(self, device, dtype):
+        # A CPU call that records a backward graph takes "unfold" in float32/float64, where "shift"
+        # is up to 3.4x slower; half precision and the forward-only path keep "shift". CUDA is
+        # "unfold" either way. Bitwise equal forward output makes the switch value-preserving.
+        tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
+        kernel = torch.ones(3, 5, device=device, dtype=dtype)
+        wide = dtype in (torch.float32, torch.float64)
+        grad_engine = "unfold" if device.type == "cuda" or wide else "shift"
+        plain_engine = "unfold" if device.type == "cuda" else "shift"
+
+        assert _resolve_engine("auto", tensor, True) == grad_engine
+        assert _resolve_engine("auto", tensor, False) == plain_engine
+        assert _resolve_engine("shift", tensor, True) == "shift"
+        assert torch.equal(erosion(tensor, kernel), erosion(tensor, kernel, engine=plain_engine))
+
+        grad_tensor = tensor.clone().requires_grad_(True)
+        assert torch.equal(erosion(grad_tensor, kernel), erosion(grad_tensor, kernel, engine=grad_engine))
+        # torch.no_grad() leaves requires_grad set but records nothing, so the forward-only engine wins.
+        with torch.no_grad():
+            assert torch.equal(erosion(grad_tensor, kernel), erosion(grad_tensor, kernel, engine=plain_engine))
+
+    def test_auto_engine_follows_kernel_grad(self, device, dtype):
+        # The neighborhood is built from the kernel and the structuring element, so grad on either
+        # one records a backward graph even when the image does not require grad (#4525).
+        tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
+        kernel = torch.ones(3, 5, device=device, dtype=dtype)
+        wide = dtype in (torch.float32, torch.float64)
+        grad_engine = "unfold" if device.type == "cuda" or wide else "shift"
+
+        assert _records_grad(tensor, kernel, None) is False
+        assert _records_grad(tensor, kernel.clone().requires_grad_(True), None) is True
+        assert _records_grad(tensor, kernel, torch.rand(3, 5, device=device, dtype=dtype)) is False
+        se = torch.rand(3, 5, device=device, dtype=dtype).requires_grad_(True)
+        assert _records_grad(tensor, kernel, se) is True
+
+        grad_kernel = kernel.clone().requires_grad_(True)
+        assert torch.equal(erosion(tensor, grad_kernel), erosion(tensor, grad_kernel, engine=grad_engine))
 
     @pytest.mark.parametrize("kernel_shape", [(1, 1), (3, 3), (3, 5), (4, 2)])
     @pytest.mark.parametrize("origin", ["center", "first", "last"])

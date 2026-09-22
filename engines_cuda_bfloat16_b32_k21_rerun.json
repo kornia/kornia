@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "albumentations": "2.0.8",
+    "cuda_device": "NVIDIA GeForce RTX 4090",
+    "cuda_version": "13.0",
+    "cudnn_allow_tf32": true,
+    "device": "cuda",
+    "git_commit": "eb40a588",
+    "kornia": "0.9.0rc1",
+    "kornia_module": "kornia/__init__.py",
+    "kornia_rs": "0.1.14",
+    "load": {
+      "cpu_count": 28,
+      "load_avg_15m": 2.0458984375,
+      "load_avg_1m": 1.25244140625,
+      "load_avg_5m": 2.16357421875,
+      "mem_available_bytes": 29807800320,
+      "mem_total_bytes": 33488039936
+    },
+    "machine": "x86_64",
+    "numpy": "2.5.3",
+    "opencv": "5.0.0",
+    "opencv_num_threads": null,
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.13.12",
+    "skimage": null,
+    "timestamp_utc": "2026-09-22T08:43:58+00:00",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 4,
+    "torchvision": "0.29.0+cu130",
+    "units": "ms"
+  },
+  "results": [
+    {
+      "auto": "convolution",
+      "batch": 32,
+      "convolution_iqr_ms": 1.377341748593608,
+      "convolution_ms": 95.75057999973069,
+      "dtype": "bfloat16",
+      "fastest": "shift",
+      "kernel": 21,
+      "max_abs_diff_convolution": 0.0,
+      "max_abs_diff_convolution_tf32": 0.0,
+      "max_abs_diff_shift": 0.0,
+      "shift_iqr_ms": 1.6035029948398005,
+      "shift_ms": 10.750074005045462,
+      "unfold_iqr_ms": 0.20553274589474313,
+      "unfold_ms": 14.775523999560392
+    }
+  ]
+}

@@ -58,7 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import add_contribute_args, finish_run, parse_names, start_run, time_us, warm_up_cpu
 
 import kornia.morphology as KM
-from kornia.morphology.morphology import _resolve_engine
+from kornia.morphology.morphology import _records_grad, _resolve_engine
 
 ENGINES = ("unfold", "convolution", "shift")
 SHORT = {"unfold": "unfold", "convolution": "conv", "shift": "shift"}
@@ -157,7 +157,14 @@ def main() -> None:
             for k in (int(v) for v in args.kernels.split(",")):
                 x = torch.rand(b, args.channels, args.size, args.size, device=device, dtype=dtype)
                 kernel = torch.ones(k, k, device=device, dtype=dtype)
-                row: dict[str, Any] = {"dtype": dtype_name, "batch": b, "kernel": k, "auto": _resolve_engine("auto", x)}
+                # auto is grad-aware, so the reported choice has to match the regime being timed.
+                graph = args.backward and _records_grad(x.detach().requires_grad_(True), kernel, None)
+                row: dict[str, Any] = {
+                    "dtype": dtype_name,
+                    "batch": b,
+                    "kernel": k,
+                    "auto": _resolve_engine("auto", x, graph),
+                }
                 for engine in engines:
                     median, iqr = time_us(bench_fn(x, kernel, engine, args.backward), args.min_run_time, sync)
                     row[f"{engine}_ms"] = median / 1e3
