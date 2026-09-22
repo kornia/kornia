@@ -470,7 +470,7 @@ class TestTransplantationConventions(BaseTester):
         assert torch.equal(flat_mask, volume_mask)
 
     @pytest.mark.device_agnostic
-    def test_wart_container_dispatch_reports_only_one_of_the_two_rank_mistakes_4692(self):
+    def test_convention_container_rejects_both_rank_mistakes_4692(self):
         image, mask = _labelled_batch(batch=3, spatial=(4, 6))
         volume, volume_mask = _labelled_batch(batch=3, spatial=(3, 4, 6))
         # The 2D class on a volume raises.

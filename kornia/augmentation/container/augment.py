@@ -120,8 +120,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           The input dictionary is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
-          Feeding a coordinate layout under another coordinate key raises ``ValueError`` naming the expected shape.
-          ``N = 0`` is
+          For 3D augmentations, inputs must be ``(D, H, W)`` or ``(B, C, D, H, W)``; rank-4 input is rejected
+          because ``(C, D, H, W)`` and ``(B, C, H, W)`` are ambiguous. Feeding a coordinate layout under another
+          coordinate key raises ``ValueError`` naming the expected shape. ``N = 0`` is
           accepted on every one of them. A ``mask`` is the one key whose rank changes: a ``(B, H, W)`` mask is
           accepted and returned as ``(B, 1, H, W)``. A wrong input *rank* raises ``RuntimeError`` here rather than
           the ``ValueError`` a bare augmentation raises.
