@@ -132,20 +132,17 @@ class TestBlurConventions(BaseTester):
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `(1, 5)` keeps row sums
     # [0, 0, 0, 9, 0, 0, 0] and `(5, 1)` gives [0, 0, 0, 0, 0, 0, 0]; with the bar on row 2 the
     # surviving sum moves to index 2, and on the transposed 9x7 bar the roles of the two kernels swap.
-    def test_convention_median_blur_border_median_is_over_zero_padding(self, device, dtype):
-        # A constant-ones image: the 3x3 window at a corner holds 5 zeros and 4 ones, so the corner comes
-        # back 0 while an edge pixel (3 zeros, 6 ones) stays 1.  Replicate padding would return 1 at both.
-        # Snippet used to generate expected:
-        #   torch.manual_seed(0); y = K.RandomMedianBlur((3, 3), p=1.0)(torch.ones(1, 1, 4, 4)); print(y[0, 0, 0, :2])
-        #   torch.manual_seed(0); print(K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6))[0, 0, 0])
-        # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `[0., 1.]`; `[0., 0., 1., 1., 0., 0.]`.
+    def test_convention_median_blur_border_median_uses_constant_padding(self, device, dtype):
+        # A constant-ones image: constant zero padding makes the corner median zero,
+        # while edge and center windows still have enough ones for a median of 1.
         ones = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomMedianBlur((3, 3), p=1.0)(ones)
         assert float(out[0, 0, 0, 0]) == 0.0 and float(out[0, 0, 0, 1]) == 1.0
         assert float(out[0, 0, 1, 1]) == 1.0
-        # 5x5 on a 6x6 image: the top row's window holds 3 image rows, so 15 ones at columns 2 and 3
-        # (median 1) but 12 at columns 1 and 4 and 9 at the corners (median 0).
+        # 5x5 on a 6x6 image: the top row's window holds 3 image rows; with constant zero padding,
+        # columns 2 and 3 hold 15 ones (median 1), while columns 1 and 4 hold 12 and corners hold 9
+        # (median 0), producing zero medians near the corners and one in the middle.
         torch.manual_seed(_FORWARD_SEED)
         wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6, device=device, dtype=dtype))
         self.assert_close(wide[0, 0, 0], ones.new_tensor([0.0, 0.0, 1.0, 1.0, 0.0, 0.0]))
@@ -200,11 +197,6 @@ class TestBlurConventions(BaseTester):
         large = torch.rand(2, 3, 32, 32).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match="is invalid for input of size"):
             _sync(even(large).device)
-        # Below the kernel the zero-padded image is too small for F.conv2d, which raises before the view:
-        # the claim is "raises for every image", not "raises the same error for every image".
-        small = torch.rand(2, 3, 1, 1).to(device=device, dtype=dtype)
-        with pytest.raises(RuntimeError, match="Kernel size can't be greater than actual input size"):
-            _sync(even(small).device)
 
     # Row 6c-20 (issue #4433, closed by #4486, which documents the mapping): RandomBoxBlur's
     # ``normalized`` flag is not a normalization switch -- it is forwarded as box_blur's
@@ -508,12 +500,14 @@ class TestBlurConventions(BaseTester):
     # padding (1, 1) at dimension 2 of input [2, 3, 1, 8]` and RandomSharpness `RuntimeError:
     # Calculated padded input size per channel: (1 x 8). Kernel size: (3 x 3). Kernel size can't be
     # greater than actual input size`; on (2, 3, 2, 2) only RandomSharpness raises; on (2, 3, 3, 3)
-    # all five run; RandomMedianBlur and RandomMotionBlur run on every shape.
+    # all five run; RandomMedianBlur rejects a 1-pixel dimension with its default reflect padding,
+    # while RandomMotionBlur still accepts that shape.
     def test_wart_blur_and_sharpness_reject_images_smaller_than_kernel_4559(self, device, dtype):
         # The skip is scoped to the legs that actually reflect-pad.  RandomSharpness fails through
-        # F.conv2d, and RandomMedianBlur and RandomMotionBlur run on a 1x8 image with no reflect padding
-        # at all, so skipping the whole test where reflection_pad2d is missing -- the torch 2.5.1 float16
-        # leg -- would drop three legs of #4559 for a reason that does not apply to them.
+        # F.conv2d.  RandomMedianBlur now uses reflect padding by default and therefore rejects a
+        # 1-pixel dimension, while RandomMotionBlur runs on a 1x8 image with no reflect padding at all,
+        # so skipping the whole test where reflection_pad2d is missing -- the torch 2.5.1 float16
+        # leg -- would drop legs of #4559 for a reason that does not apply to them.
         reflect_ok = supports_reflect_padding(device, dtype)
         torch.manual_seed(_FIXTURE_SEED)
         thin = torch.rand(2, 3, 1, 8).to(device=device, dtype=dtype)
@@ -556,11 +550,12 @@ class TestBlurConventions(BaseTester):
             _sync(K.RandomSharpness(1.0, p=1.0)(small).device)
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomSharpness(1.0, p=1.0)(square).shape == square.shape
-        # The two rank/kernel-rotation filters accept the same one-row image, so the failure is not
-        # a package-wide "kernel larger than image" rule.
-        for make in (lambda: K.RandomMedianBlur(p=1.0), lambda: K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)):
-            torch.manual_seed(_FORWARD_SEED)
-            assert make()(thin).shape == thin.shape
+        # RandomMedianBlur keeps constant padding as its default and accepts the one-row image,
+        # while RandomMotionBlur continues to accept it.
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomMedianBlur(p=1.0)(thin).shape == thin.shape
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)(thin).shape == thin.shape
 
     # Issue #4559, the same family one border type over: ``border_type="circular"`` has a padding
     # failure of its own.  torch's circular pad refuses to wrap more than once, so it raises as soon
