@@ -196,9 +196,7 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     else:
         raise TypeError(f"Unsupported type for background_color: {type(background_color)}")
 
-    blended_rgb = image_rgb * alpha + background_rgb * (1.0 - alpha)
-
-    return blended_rgb
+    return image_rgb * alpha + background_rgb * (1.0 - alpha)
 
 
 def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
@@ -296,8 +294,8 @@ def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_IS_COLOR(image)
-    rgb255 = (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
-    return rgb255
+
+    return (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
 
 
 def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
@@ -315,8 +313,7 @@ def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_IS_COLOR(image)
-    rgb255 = (image * 255).clip(0.0, 255.0)
-    return rgb255
+    return (image * 255).clip(0.0, 255.0)
 
 
 def rgb255_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -334,8 +331,8 @@ def rgb255_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_IS_COLOR(image)
-    rgb = image / 255.0
-    return rgb
+
+    return image / 255.0
 
 
 def rgb255_to_normals(image: torch.Tensor) -> torch.Tensor:
@@ -353,8 +350,7 @@ def rgb255_to_normals(image: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_IS_COLOR(image)
-    normals = F.normalize((image / 255.0) * 2.0 - 1.0, dim=-3, p=2.0)
-    return normals
+    return F.normalize((image / 255.0) * 2.0 - 1.0, dim=-3, p=2.0)
 
 
 class BgrToRgb(nn.Module):

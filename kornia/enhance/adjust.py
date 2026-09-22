@@ -511,9 +511,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
 
-    img_adjust = img_adjust.clamp(min=0.0, max=1.0)
-
-    return img_adjust
+    return img_adjust.clamp(min=0.0, max=1.0)
 
 
 def adjust_brightness(
