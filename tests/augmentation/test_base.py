@@ -1050,8 +1050,8 @@ class TestConventionAugmentationBase2D(BaseTester):
         # error and the others expose implementation details.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu):
         # RandomCrop IndexError('list index out of range'), LongestMaxSize KeyError('output_size'),
-        # RandomAutoContrast ValueError('Invalid input tensor, it is empty.'),
-        # Normalize RuntimeError('cannot reshape tensor of 0 elements into shape [0, 3, -1] ...').
+        # RandomAutoContrast ValueError('Invalid input tensor, it is empty.').
+        # Normalize used to be a fourth family; #4681 fixed it.
         builders = {
             "RandomCrop": lambda: K.RandomCrop((4, 6), p=1.0),
             "LongestMaxSize": lambda: K.LongestMaxSize(16, p=1.0),
