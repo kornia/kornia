@@ -491,6 +491,9 @@ class Test3DAugmentationConventions(BaseTester):
         axes = per_axis.forward_parameters(torch.Size([64, 1, 5, 6, 7]))["scale"]
         assert axes.shape == (64, 3)
         assert not bool((axes[:, 0] == axes[:, 1]).any()) and not bool((axes[:, 1] == axes[:, 2]).any())
+        # The two-value form is range-checked once under its own name; main reported it as "scale-x".
+        with pytest.raises(ValueError, match="scale out of bounds"):
+            K.RandomAffine3D(0.0, scale=(-0.5, 2.0), p=1.0)
 
     @pytest.mark.device_agnostic
     def test_convention_random_affine3d_six_pair_shears_keep_their_lower_bound(self):
