@@ -1756,14 +1756,14 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             "crop_src": torch.tensor(
                 [
                     [
-                        [[48.0, 31.0], [47.0, 31.0], [47.0, 30.0], [48.0, 30.0]],
-                        [[48.0, 31.0], [47.0, 31.0], [47.0, 30.0], [48.0, 30.0]],
-                        [[17.0, 11.0], [141.0, 11.0], [141.0, 135.0], [17.0, 135.0]],
-                        [[48.0, 31.0], [47.0, 31.0], [47.0, 30.0], [48.0, 30.0]],
-                        [[16.0, 10.0], [147.0, 10.0], [147.0, 141.0], [16.0, 141.0]],
-                        [[48.0, 31.0], [47.0, 31.0], [47.0, 30.0], [48.0, 30.0]],
-                        [[8.0, 5.0], [171.0, 5.0], [171.0, 168.0], [8.0, 168.0]],
-                        [[48.0, 31.0], [47.0, 31.0], [47.0, 30.0], [48.0, 30.0]],
+                        [[48.0, 49.0], [47.0, 49.0], [47.0, 48.0], [48.0, 48.0]],
+                        [[31.0, 129.0], [30.0, 129.0], [30.0, 128.0], [31.0, 128.0]],
+                        [[56.0, 44.0], [180.0, 44.0], [180.0, 168.0], [56.0, 168.0]],
+                        [[59.0, 74.0], [58.0, 74.0], [58.0, 73.0], [59.0, 73.0]],
+                        [[53.0, 53.0], [184.0, 53.0], [184.0, 184.0], [53.0, 184.0]],
+                        [[75.0, 167.0], [74.0, 167.0], [74.0, 166.0], [75.0, 166.0]],
+                        [[27.0, 4.0], [190.0, 4.0], [190.0, 167.0], [27.0, 167.0]],
+                        [[22.0, 46.0], [21.0, 46.0], [21.0, 45.0], [22.0, 45.0]],
                     ]
                 ],
                 device=device,
@@ -1773,7 +1773,9 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         }
         assert res.keys() == expected.keys(), res.keys()
         assert_close(res["mix_pairs"], expected["mix_pairs"], rtol=1e-4, atol=1e-4)
-        assert_close(res["crop_src"], expected["crop_src"], rtol=1e-4, atol=1e-4)
+        # bfloat16 keeps 8 significant bits, so ``floor(u * span)`` can land one pixel from the float32 literal.
+        tolerance = {"rtol": 0.0, "atol": 1.0} if dtype == torch.bfloat16 else {"rtol": 1e-4, "atol": 1e-4}
+        assert_close(res["crop_src"], expected["crop_src"], **tolerance)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
