@@ -185,16 +185,17 @@ class TestDilate(BaseTester):
         self.assert_close(result, dilation(tensor, kernel.to(dtype), engine="convolution"))
 
     def test_auto_engine(self, device, dtype):
-        # engine="auto", the default, runs "unfold" on CPU and "convolution" on every other device,
-        # where it is the faster engine (#4525). An explicit engine is passed through unchanged.
+        # engine="auto", the default, runs "unfold" on CUDA and the exact, low-memory "shift" engine
+        # everywhere else (#4525). An explicit engine is passed through unchanged.
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.ones(3, 5, device=device, dtype=dtype)
         kernel[0, 0] = 0.0
-        expected_engine = "unfold" if device.type == "cpu" else "convolution"
+        expected_engine = "unfold" if device.type == "cuda" else "shift"
 
         assert _resolve_engine("auto", tensor) == expected_engine
         assert _resolve_engine("unfold", tensor) == "unfold"
         assert _resolve_engine("convolution", tensor) == "convolution"
+        assert _resolve_engine("shift", tensor) == "shift"
         expected = dilation(tensor, kernel, engine=expected_engine)
         assert torch.equal(dilation(tensor, kernel), expected)
         assert torch.equal(dilation(tensor, kernel, engine="auto"), expected)
