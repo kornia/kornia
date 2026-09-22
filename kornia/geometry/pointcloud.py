@@ -24,6 +24,13 @@ from typing import BinaryIO, Dict, List, NamedTuple, Optional, Tuple
 
 import torch
 
+__all__ = [
+    "load_pointcloud_ply",
+    "load_pointcloud_ply_binary",
+    "save_pointcloud_ply",
+    "save_pointcloud_ply_binary",
+]
+
 
 def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     r"""Save to disk a pointcloud in PLY format.
