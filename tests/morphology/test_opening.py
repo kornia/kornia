@@ -145,3 +145,30 @@ class TestOpening(BaseTester):
         opened = opening(tensor, kernel, origin=[0, 0])
         assert (opened <= tensor).all()
         assert torch.equal(opening(opened, kernel, origin=[0, 0]), opened)
+
+    def test_convention_opening_is_a_morphological_opening(self, device, dtype):
+        # `opening` is `dilation(erosion(x))` with the SAME kernel in both halves. Because `dilation`
+        # reflects the kernel and `erosion` does not, the composition is a true morphological opening:
+        # anti-extensive and idempotent for an asymmetric kernel, and it leaves a block that is a union
+        # of translates of the kernel untouched. OpenCV composes without a flip, so its `MORPH_OPEN` is
+        # not an opening for an asymmetric kernel; scipy and scikit-image agree with kornia
+        # (scikit-image mirrors the footprint inside `opening`, so it recovers the property too).
+        # 0/1 fixtures are exact in every dtype and `max`/`min` only ever select an already-present
+        # value, so both the block equality and the idempotence compare with `torch.equal`.
+        # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
+        #   blk = np.zeros((9, 11), np.float32); blk[3:6, 3:7] = 1.0; A = np.array([[0, 1, 1]], bool)
+        #   ndi.grey_opening(blk, footprint=A, mode="constant", cval=-np.inf) == blk   -> True
+        #   sm.opening(blk, A, mode="ignore") == blk                                   -> True
+        #   cv2.morphologyEx(blk, cv2.MORPH_OPEN, A.astype(np.uint8)) == blk           -> False
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)) for the invariants.
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        asymmetric = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        block = torch.zeros(1, 1, 9, 11, device=device, dtype=dtype)
+        block[..., 3:6, 3:7] = 1.0
+        assert torch.equal(opening(block, asymmetric), block)
+
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        opened = opening(tensor, l_kernel)
+        assert (opened <= tensor).all()
+        assert torch.equal(opening(opened, l_kernel), opened)

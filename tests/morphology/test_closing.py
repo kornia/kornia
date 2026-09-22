@@ -140,3 +140,29 @@ class TestClosing(BaseTester):
         closed = closing(tensor, kernel, origin=[0, 0])
         assert (closed >= tensor).all()
         assert torch.equal(closing(closed, kernel, origin=[0, 0]), closed)
+
+    def test_convention_closing_is_a_morphological_closing(self, device, dtype):
+        # `closing` is `erosion(dilation(x))` with the SAME kernel in both halves, so it is a true
+        # morphological closing: extensive and idempotent for an asymmetric kernel. scipy's
+        # `grey_closing` uses the same convention; scikit-image mirrors the footprint inside `closing`,
+        # so it returns kornia's closing by the same kernel, while OpenCV's `MORPH_CLOSE` composes
+        # without a flip and is not a closing for an asymmetric kernel.
+        # `max`/`min` only select an already-present value of the input, so the idempotence compares
+        # with `torch.equal` and the `>=` never needs a tolerance.
+        # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
+        #   blk = np.zeros((9, 11), np.float32); blk[3:6, 3:7] = 1.0; A = np.array([[0, 1, 1]], bool)
+        #   ndi.grey_closing(blk, footprint=A, mode="constant", cval=np.inf) == blk  -> True
+        #   sm.closing(blk, A, mode="ignore") == blk                                 -> True
+        #   cv2.morphologyEx(blk, cv2.MORPH_CLOSE, A.astype(np.uint8)) == blk        -> False
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)) for the invariants.
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        asymmetric = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        block = torch.zeros(1, 1, 9, 11, device=device, dtype=dtype)
+        block[..., 3:6, 3:7] = 1.0
+        assert torch.equal(closing(block, asymmetric), block)
+
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        closed = closing(tensor, l_kernel)
+        assert (closed >= tensor).all()
+        assert torch.equal(closing(closed, l_kernel), closed)

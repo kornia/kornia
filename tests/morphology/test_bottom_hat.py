@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.morphology import bottom_hat
+from kornia.morphology import bottom_hat, closing
 
 from testing.base import BaseTester, assert_close
 from testing.parametrized_tester import parametrized_test
@@ -122,3 +122,19 @@ class TestBottomHat(BaseTester):
         expected = op(sample, kernel)
 
         assert_close(actual, expected)
+
+    def test_convention_bottom_hat_is_closing_minus_image(self, device, dtype):
+        # `bottom_hat` is exactly `closing(x) - x` with the same kernel and the same options, so every
+        # convention of :func:`kornia.morphology.dilation` applies to it unchanged. The L kernel is
+        # asymmetric under the flip, so this cannot pass by accident on a symmetric kernel.
+        # `bottom_hat` evaluates that very expression, so the two sides are bitwise equal in every dtype.
+        # Generated with:
+        #   L = torch.tensor([[0., 0., 0.], [0., 1., 1.], [0., 1., 0.]])
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0))
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+
+        assert torch.equal(bottom_hat(tensor, l_kernel), closing(tensor, l_kernel) - tensor)
+        # The closing is extensive, so the bottom hat is non-negative.
+        assert (bottom_hat(tensor, l_kernel) >= 0).all()

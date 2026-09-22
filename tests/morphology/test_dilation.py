@@ -79,9 +79,12 @@ class TestDilate(BaseTester):
             None, None, :, :
         ]
         assert_close(dilation(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        # The convolution engine measures ~3.9e-4 absolute / ~1.5e-3 relative error on macOS's
-        # Apple-backend float32 conv path, above the harness's generic float32 default
-        # (atol=1e-5, rtol=1e-4). This explicit tolerance is scoped to this backend-specific case.
+        # The convolution engine measures ~3.9e-4 absolute / ~4.4e-4 relative error here, above the
+        # harness's generic float32 default (atol=1e-5, rtol=1e-4). The cause is the `-max_val`
+        # sentinel, not the platform: `engine="convolution"` routes every window through `F.conv2d`
+        # with `-max_val` in the bias, so the error scales with `max_val` (one float32 ULP of the
+        # default `max_val=1e4` is 1.2e-3) instead of with the image range. `engine="unfold"` is
+        # exact. Tracked in #4734; this explicit tolerance is scoped to the convolution engine.
         assert_close(dilation(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_structural_element(self, device, dtype):
@@ -100,8 +103,8 @@ class TestDilate(BaseTester):
             ),
             expected,
         )
-        # See test_kernel: convolution engine needs an explicit tolerance for macOS's
-        # Apple-backend float32 numerical error, above the harness's generic float32 default.
+        # See test_kernel: the convolution engine needs an explicit tolerance because the `-max_val`
+        # sentinel it carries in the conv bias costs about one ULP of `max_val`. Tracked in #4734.
         assert_close(
             dilation(
                 tensor,
@@ -509,3 +512,200 @@ class TestDilate(BaseTester):
                 self.assert_close(actual, expected)
             else:
                 assert sorted(actual.nonzero()[:, 2:].tolist()) == expected_nonzero
+
+    def test_convention_dilation_reflects_kernel(self, device, dtype):
+        # `dilation` is the Minkowski dilation `out(p) = max_{q: kernel[q] != 0} x(p - (q - origin))`,
+        # so the kernel *contents* are reflected. The asymmetric kernel is the whole point: `ones(3, 3)`
+        # is invariant under the flip and cannot tell the two conventions apart.
+        # 0/1 fixtures are exact in every dtype, so this compares with `torch.equal`.
+        # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
+        #   x = np.zeros((1, 7), np.float32); x[0, 3] = 1.0; A = np.array([[0, 1, 1]], bool)
+        #   ndi.grey_dilation(x, footprint=A, mode="constant", cval=-np.inf)
+        #       -> [0, 0, 0, 1, 1, 0, 0]   (cols {3, 4}; same as kornia)
+        #   sm.dilation(x, A, mode="ignore") -> [0, 0, 1, 1, 0, 0, 0]   (cols {2, 3})
+        #   cv2.dilate(x, A.astype(np.uint8)) -> [0, 0, 1, 1, 0, 0, 0]  (cols {2, 3})
+        # scikit-image and OpenCV do not reflect, so for an asymmetric kernel they return kornia's
+        # dilation by the flipped kernel. On the whole 7x10 rand(seed 0) frame,
+        # `sm.dilation(x, A[:, ::-1], mode="ignore")` is bit-equal to `dilation(x, A)` while
+        # `sm.dilation(x, A, mode="ignore")` is not, and `sm.erosion(x, A, mode="ignore")` is bit-equal
+        # to `erosion(x, A)`.
+        tensor = torch.zeros(1, 1, 1, 7, device=device, dtype=dtype)
+        tensor[..., 3] = 1.0
+        kernel = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
+
+        expected = torch.zeros(1, 1, 1, 7, device=device, dtype=dtype)
+        expected[..., 3] = 1.0
+        expected[..., 4] = 1.0
+
+        for engine in ("unfold", "convolution"):
+            assert torch.equal(dilation(tensor, kernel, engine=engine), expected), engine
+
+    def test_convention_dilation_non_flat_se_is_additive_and_reflected(self, device, dtype):
+        # `structuring_element` is the additive (grey-level) part: the neighbourhood value `SE[q]` is
+        # ADDED to `x` before the max (and SUBTRACTED before the min in `erosion`), while `kernel` only
+        # selects the members. It is reflected in `dilation` together with the kernel, so the peak of
+        # `SE = [0, 0.5, 1]` lands to the RIGHT of the hot pixel.
+        # Every literal below is a multiple of 0.5 and therefore exact in float16/bfloat16 too.
+        # Generated with scipy 1.17.1 / numpy 2.0.0:
+        #   x = np.zeros((1, 7), np.float32); x[0, 3] = 1.0; SE = np.array([[0, .5, 1.]])
+        #   ndi.grey_dilation(x, structure=SE, footprint=np.ones((1, 3), bool),
+        #                     mode="constant", cval=-np.inf)   -> [0.5, 1, 1, 1.5, 2, 1, 1]
+        #   ndi.grey_erosion(x + 5, structure=SE, footprint=np.ones((1, 3), bool),
+        #                    mode="constant", cval=np.inf)     -> [4, 4, 4.5, 4, 4, 4, 4.5]
+        # scikit-image and OpenCV have no non-flat structuring element at all.
+        tensor = torch.zeros(1, 1, 1, 7, device=device, dtype=dtype)
+        tensor[..., 3] = 1.0
+        kernel = torch.ones(1, 3, device=device, dtype=dtype)
+        structuring_element = torch.tensor([[0.0, 0.5, 1.0]], device=device, dtype=dtype)
+
+        dilated = dilation(tensor, kernel, structuring_element=structuring_element)
+        self.assert_close(
+            dilated,
+            torch.tensor([[[[0.5, 1.0, 1.0, 1.5, 2.0, 1.0, 1.0]]]], device=device, dtype=dtype),
+        )
+
+        eroded = erosion(tensor + 5.0, kernel, structuring_element=structuring_element)
+        self.assert_close(
+            eroded,
+            torch.tensor([[[[4.0, 4.0, 4.5, 4.0, 4.0, 4.0, 4.5]]]], device=device, dtype=dtype),
+        )
+
+    def test_convention_kernel_is_a_membership_mask(self, device, dtype):
+        # `kernel` is a flat membership mask tested with `!= 0`: negative and fractional entries are
+        # members just like a 1, and their magnitude is ignored (use `structuring_element` for weights).
+        # Generated with scikit-image 0.26.0 / scipy 1.17.1 / numpy 2.0.0 on the hot-pixel row:
+        #   ndi.grey_dilation(x, footprint=np.array([[-1, 1, 0]]), ...) -> [0, 0, 1, 1, 0, 0, 0]
+        #       (2 members, same as kornia's kernel by the flip)
+        #   sm.dilation(x, np.array([[-1, 1, 0]]), mode="ignore")       -> [0, 0, 0, 1, 1, 0, 0]
+        # i.e. scikit-image DROPS the -1 cell (it is not truthy for its footprint padding), kornia and
+        # scipy keep it. Entries of `structuring_element` under a zero `kernel` cell are overwritten by
+        # the `-max_val` sentinel and never reach the output.
+        tensor = torch.rand(1, 2, 5, 6, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        reference_kernel = torch.tensor([[1.0, 1.0, 0.0]], device=device, dtype=dtype)
+        expected_dilation = dilation(tensor, reference_kernel)
+        expected_erosion = erosion(tensor, reference_kernel)
+
+        for entry in (-1.0, 0.5, 2.0):
+            kernel = torch.tensor([[entry, 1.0, 0.0]], device=device, dtype=dtype)
+            assert torch.equal(dilation(tensor, kernel), expected_dilation), entry
+            assert torch.equal(erosion(tensor, kernel), expected_erosion), entry
+
+        masked_kernel = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        loud = torch.tensor([[99.0, 0.0, 0.0]], device=device, dtype=dtype)
+        quiet = torch.zeros(1, 3, device=device, dtype=dtype)
+        assert torch.equal(
+            dilation(tensor, masked_kernel, structuring_element=loud),
+            dilation(tensor, masked_kernel, structuring_element=quiet),
+        )
+
+    def test_convention_engines_agree_within_one_ulp_of_max_val(self, device, dtype):
+        # Both engines implement the same operation. `engine="unfold"` is exact; `engine="convolution"`
+        # routes every window through `F.conv2d` with the `-max_val` sentinel in the bias, so its error
+        # scales with `max_val` rather than with the image range. The exact gap is platform-dependent,
+        # so this pins the BOUND, not the value. Tracked in #4734.
+        # Measured here (CPU, torch 2.14.0, float32, x = rand(1, 1, 9, 11) seed 0, kernel ones(3, 3)):
+        #   max_val=1     -> 1.19e-07      max_val=1e2 -> 7.15e-06      max_val=1e4 -> 1.27e-03
+        # float64, float16 and bfloat16 measured 0 at all three values.
+        tensor = torch.rand(1, 1, 9, 11, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        for max_val in (1.0, 1e2, 1e4):
+            unfolded = dilation(tensor, kernel, max_val=max_val, engine="unfold")
+            convolved = dilation(tensor, kernel, max_val=max_val, engine="convolution")
+            self.assert_close(convolved, unfolded, atol=2.0 * torch.finfo(dtype).eps * max_val, rtol=0.0)
+
+    def test_wart_dilation_max_val_sentinel_leaks_4734(self, device):
+        # `max_val` is a finite stand-in for infinity, not an infinity: it is SUBTRACTED from the
+        # masked-out neighbourhood cells and padded into the border, so it reaches the output whenever
+        # the window is empty or the image range approaches `max_val`. scipy returns a true -inf/+inf
+        # here and scikit-image's `mode="ignore"` keeps the pixel. Tracked in #4734.
+        # float32 only: 40000 is not representable in bfloat16 and the claim is about the float32
+        # default `max_val=1e4`, so the dtype is explicit rather than taken from the fixture.
+        # Generated with kornia in this worktree (torch 2.14.0, CPU, float32):
+        #   dilation(torch.ones(1, 1, 1, 1), [[1., 0., 0.]], origin=[0, 2]).item()  -> -9999.0
+        #   erosion(torch.ones(1, 1, 1, 1), [[1., 0., 0.]], origin=[0, 2]).item()   ->  10000.0
+        #   dilation([[0., 5e4, 0.]], [[1., 0., 1.]])  -> [50000., 40000., 50000.]  (true: [5e4, 0, 5e4])
+        #   dilation([[-5e4, -6e4]], torch.ones(1, 3)) -> [-10000., -10000.]        (true: [-5e4, -5e4])
+        dtype = torch.float32
+        single = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+
+        # The window is empty at this origin, so the output is the sentinel plus the pixel, not the pixel.
+        assert dilation(single, side_kernel, origin=[0, 2]).item() == -9999.0
+        assert erosion(single, side_kernel, origin=[0, 2]).item() == 10000.0
+
+        big = torch.tensor([[0.0, 5e4, 0.0]], device=device, dtype=dtype)[None, None]
+        gapped_kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        assert dilation(big, gapped_kernel).flatten().tolist() == [50000.0, 40000.0, 50000.0]
+        # With a `max_val` above the image range the same call is correct, which is the diagnosis.
+        assert dilation(big, gapped_kernel, max_val=1e6).flatten().tolist() == [50000.0, 0.0, 50000.0]
+
+        negative = torch.tensor([[-5e4, -6e4]], device=device, dtype=dtype)[None, None]
+        assert dilation(negative, torch.ones(1, 3, device=device, dtype=dtype)).flatten().tolist() == [
+            -10000.0,
+            -10000.0,
+        ]
+
+    def test_wart_integer_and_bool_input_4735(self, device):
+        # The `-max_val` sentinel is written into a tensor of the INPUT's dtype, so only floating-point
+        # input is supported: `uint8` does not survive the store, `int64` is silently wrong near
+        # `max_val`, and `bool` is silently all-`True` (the sentinel pad is a non-zero integer, i.e.
+        # `True`). scipy, scikit-image and OpenCV all accept these dtypes. Tracked in #4735. Dtypes are
+        # explicit here (the claim is about non-float dtypes), so this pin takes `device` only.
+        # Generated with kornia in this worktree (torch 2.14.0):
+        #   CPU: dilation(torch.zeros(1, 1, 1, 5, dtype=torch.uint8), torch.ones(1, 3))
+        #        -> RuntimeError: value cannot be converted to type uint8_t without overflow
+        #   MPS: the same call does NOT raise; the store wraps (-1e4 mod 256 == 240) and returns
+        #        [240, 0, 0, 0, 240]. The backends disagree, so the pin asserts the consequence they
+        #        share: an all-zero uint8 image does not come back all zero from `dilation`.
+        #        `erosion` pads +max_val, which wraps to the same 240, and a min against 240 happens
+        #        to leave an all-zero image alone on MPS -- so only `dilation` is asserted here.
+        #   x = zeros(1, 1, 1, 5, dtype=bool); x[..., 2] = True   (CPU and MPS agree on the rest)
+        #   dilation(x, torch.ones(1, 3, dtype=torch.bool))  -> [True]*5   (scipy/skimage: [F,T,T,T,F])
+        #   erosion(x, torch.ones(1, 3, dtype=torch.bool))   -> NotImplementedError
+        #   dilation([[0, 50000, 0]] int64, [[1, 0, 1]] int64) -> [50000, 40000, 50000] (true: [5e4,0,5e4])
+        float_kernel = torch.ones(1, 3, device=device)
+
+        try:
+            out_uint8 = dilation(torch.zeros(1, 1, 1, 5, dtype=torch.uint8, device=device), float_kernel)
+        except RuntimeError as err:
+            assert "overflow" in str(err), str(err)
+        else:
+            assert out_uint8.abs().max().item() != 0.0
+
+        hot_bool = torch.zeros(1, 1, 1, 5, dtype=torch.bool, device=device)
+        hot_bool[..., 2] = True
+        bool_kernel = torch.ones(1, 3, dtype=torch.bool, device=device)
+        assert dilation(hot_bool, bool_kernel).flatten().tolist() == [True, True, True, True, True]
+
+        with pytest.raises(NotImplementedError, match="bool"):
+            erosion(hot_bool, bool_kernel)
+
+        big_int = torch.tensor([[0, 50000, 0]], dtype=torch.int64, device=device)[None, None]
+        int_kernel = torch.tensor([[1, 0, 1]], dtype=torch.int64, device=device)
+        assert dilation(big_int, int_kernel).flatten().tolist() == [50000, 40000, 50000]
+
+    def test_wart_validation_messages_4736(self, device, dtype):
+        # Three argument errors are raised by torch rather than by kornia, so the message names neither
+        # the kornia argument nor the accepted values. Tracked in #4736.
+        # Generated with kornia in this worktree (torch 2.14.0, CPU, float32):
+        #   dilation(x, ones(3, 3), border_type="banana")
+        #       -> NotImplementedError: Unrecognised padding mode banana
+        #   dilation(x, ones(1, 4), structuring_element=zeros(1, 3))
+        #       -> IndexError: The shape of the mask [1, 4] at index 1 does not match ... [1, 3] ...
+        #   dilation(x, ones(3, 3, dtype=torch.uint8))
+        #       -> RuntimeError: value cannot be converted to type uint8_t without overflow
+        tensor = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+
+        with pytest.raises(NotImplementedError, match="padding mode"):
+            dilation(tensor, torch.ones(3, 3, device=device, dtype=dtype), border_type="banana")
+
+        with pytest.raises(IndexError, match="does not match"):
+            dilation(
+                tensor,
+                torch.ones(1, 4, device=device, dtype=dtype),
+                structuring_element=torch.zeros(1, 3, device=device, dtype=dtype),
+            )
+
+        with pytest.raises(RuntimeError, match="overflow"):
+            dilation(tensor, torch.ones(3, 3, dtype=torch.uint8, device=device))
