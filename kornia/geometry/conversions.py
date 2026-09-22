@@ -603,19 +603,15 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
           degenerate inputs listed on
           :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
 
-    .. warning::
-        ``eps`` is added *inside* the square root that produces the dominant
-        component, so with the default the result is not a unit quaternion. In
-        ``float64``, ``rotation_matrix_to_quaternion(torch.eye(3))`` returns
-        ``[1.0000000012499999, 0., 0., 0.]`` (``||q|| - 1`` is ``1.25e-09``),
-        while ``eps=0.0`` returns exactly ``[1., 0., 0., 0.]``. The inflation is
-        below one ulp of 1.0 in ``float32``, ``float16`` and ``bfloat16``, where
-        the identity already comes back exactly unit. Tracked in
-        `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
-
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
-        eps: added inside the square root of the dominant component; see the warning above.
+        eps: floor on each square-root radicand. It is never added to the
+            radicand: a radicand above ``eps`` is used as is, and one at or
+            below it (for example the negative radicand of a discarded branch
+            on a slightly non-orthogonal input) gives ``2 * sqrt(eps)`` with a
+            zero gradient. For an exact rotation matrix the selected radicand is
+            at least ``1``, so ``eps`` does not change the result. The divisions
+            are separately guarded against a zero denominator.
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -624,7 +620,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         >>> input = torch.tensor([[1., 0., 0.],
         ...                       [0., 1., 0.],
         ...                       [0., 0., 1.]])
-        >>> rotation_matrix_to_quaternion(input, eps=torch.finfo(input.dtype).eps)
+        >>> rotation_matrix_to_quaternion(input)
         tensor([1., 0., 0., 0.])
 
     """
@@ -644,8 +640,21 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     trace: torch.Tensor = m00 + m11 + m22
 
+    # eps floors the radicand instead of being added to it, so it never shifts a valid result.
+    radicand_floor: float = max(eps, 0.0)
+
+    def _safe_sqrt_sq(r: torch.Tensor) -> torch.Tensor:
+        # 2 * sqrt(max(r, eps)) with a finite backward everywhere: sqrt is only ever differentiated at a
+        # radicand above the floor (or at a substituted 1), and a radicand at or below the floor takes the
+        # constant 2 * sqrt(eps) from the other where arm. No clamp: its derivative at the bound depends on the
+        # torch version. A NaN radicand is passed through, so an invalid matrix never becomes a finite quaternion.
+        mask = r > radicand_floor
+        safe_r = torch.where(mask, r, torch.ones_like(r))
+        out = torch.where(mask, torch.sqrt(safe_r) * 2.0, torch.full_like(r, 2.0 * radicand_floor**0.5))
+        return torch.where(torch.isnan(r), r, out)
+
     def trace_positive_cond() -> torch.Tensor:
-        sq = torch.sqrt(trace + 1.0 + eps) * 2.0  # sq = 4 * qw.
+        sq = _safe_sqrt_sq(trace + 1.0)  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
@@ -653,7 +662,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_1() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
+        sq = _safe_sqrt_sq(1.0 + m00 - m11 - m22)  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
         qy = safe_zero_division(m01 + m10, sq)
@@ -661,7 +670,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_2() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
+        sq = _safe_sqrt_sq(1.0 + m11 - m00 - m22)  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
         qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
@@ -669,7 +678,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_3() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
+        sq = _safe_sqrt_sq(1.0 + m22 - m00 - m11)  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
         qx = safe_zero_division(m02 + m20, sq)
         qy = safe_zero_division(m12 + m21, sq)
@@ -732,9 +741,22 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    # Exact smallest positive float16 subnormal, kept literal for TorchScript support.
-    safe_eps = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
-    return F.normalize(quaternion, p=2.0, dim=-1, eps=safe_eps)
+    safe_eps: float = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
+    norm = torch.linalg.vector_norm(quaternion, ord=2, dim=-1, keepdim=True)
+    # Only an exactly-zero norm takes the constant arms below; a NaN norm compares unequal to zero and goes
+    # through the division, so NaN in gives NaN out. The eps floor is a value floor selected by torch.where,
+    # so its derivative does not depend on the torch version the way clamp's derivative at the bound does.
+    mask = norm != 0.0
+    safe_norm = torch.where(mask, norm, torch.ones_like(norm))
+    denom = torch.where(safe_norm < safe_eps, torch.full_like(safe_norm, safe_eps), safe_norm)
+    out = quaternion / denom
+    if eps == 0.0:
+        return torch.where(mask, out, torch.full_like(quaternion, float("nan")))
+    if quaternion.dtype == torch.float16 and safe_eps * 65504.0 < 1.0:
+        # The exact derivative of q / eps at q = 0 is I / eps, which overflows float16 (#4623); use a zero gradient.
+        return torch.where(mask, out, torch.zeros_like(quaternion))
+    # Below eps the function is q / eps, so the zero quaternion keeps its exact derivative I / eps.
+    return torch.where(mask, out, quaternion / torch.full_like(quaternion, safe_eps))
 
 
 # based on:
@@ -3256,20 +3278,6 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` and
           :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_Rt`.
           Tracked in `#3962 <https://github.com/kornia/kornia/issues/3962>`_
-
-    .. warning::
-        The output quaternion is not exactly unit in ``float64``: the identity
-        input ``[1., 0., 0., 0.]`` with ``t = (1, 1, 1)`` returns
-        ``[0., 1.0000000012499999, 0., 0.]``, so ``|q| - 1`` is
-        ``1.2499998813808588e-09`` (torch 2.9.1, cpu), where ``float32`` returns
-        an exactly unit ``[0., 1., 0., 0.]``. The ``[0, 1, 0, 0]`` shape is
-        correct and not a component shift — for an identity input the composed
-        rotation is ``diag(1, -1, -1)``, a half turn about ``x``. Only the
-        magnitude is wrong; it is inherited from
-        :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`.
-        Colmap consumers that validate ``QW QX QY QZ`` as a unit quaternion will
-        see it. Tracked in
-        `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
 
     .. warning::
         The all-zero quaternion is never rejected. At every floating dtype, the
