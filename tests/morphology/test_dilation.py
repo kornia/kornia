@@ -795,11 +795,9 @@ class TestDilate(BaseTester):
         cold_bool = ~hot_bool
         gapped_float_kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device)
         # `True` cannot lower a minimum, so the geodesic `True` pad leaves erosion exact.
-        assert erosion(cold_bool, gapped_float_kernel).flatten().tolist() == [1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0]
-        assert (
-            erosion(cold_bool, gapped_float_kernel).tolist()
-            == erosion(cold_bool.float(), gapped_float_kernel).tolist()
-        )
+        cold_erosion = erosion(cold_bool, gapped_float_kernel)
+        assert cold_erosion.flatten().tolist() == [1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0]
+        assert torch.equal(cold_erosion, erosion(cold_bool.float(), gapped_float_kernel))
         ring_gradient = gradient(hot_bool, float_kernel)
         assert ring_gradient.dtype == torch.float32
         assert ring_gradient.flatten().tolist() == [1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0]
