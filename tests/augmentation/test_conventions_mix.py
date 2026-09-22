@@ -600,6 +600,7 @@ class TestMixConventions(BaseTester):
         assert output.shape == image.shape
 
         self.assert_close(out_boxes[0, 4:], torch.zeros_like(out_boxes[0, 4:]))
+
     @staticmethod
     def _mosaic_boxes(num_boxes: int, data_key: str, device, dtype) -> torch.Tensor:
         corners = torch.tensor([[1.0, 1.0, 4.0, 4.0], [2.0, 1.0, 6.0, 5.0]], device=device, dtype=dtype)[:num_boxes]
