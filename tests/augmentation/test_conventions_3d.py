@@ -404,17 +404,15 @@ class Test3DAugmentationConventions(BaseTester):
         self.assert_close(skipped, volume, rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
-    def test_wart_random_crop3d_accepts_a_one_voxel_oversized_crop_4688(self):
+    def test_convention_random_crop3d_rejects_a_one_voxel_oversized_crop_4688(self):
+        # Fixed by #4691: a crop one voxel larger than the input used to pass the guard and append an empty slab
+        # (#4688). It now raises like any larger request, on every axis, matching CenterCrop3D.
         volume = torch.ones(1, 1, 4, 5, 6)
-        output = K.RandomCrop3D((5, 5, 6), p=1.0)(volume)
-        assert output.shape == (1, 1, 5, 5, 6)
-        # The appended slab carries no input signal. It is compared against a real slice rather than
-        # against zero: torch 2.5.1 and 2.9.1 leave ~1e-6 of grid_sample roundoff there, 2.14 leaves 0.
-        slices = output.sum(dim=(1, 3, 4))[0]
-        assert float(slices[-1]) < 1e-3 * float(slices[0])
-        with pytest.raises(ValueError, match="cannot be smaller than crop size"):
-            K.RandomCrop3D((6, 5, 6), p=1.0)(volume)
-        # CenterCrop3D rejects the same one-voxel request.
+        for size in ((5, 5, 6), (4, 6, 6), (4, 5, 7), (6, 5, 6)):
+            with pytest.raises(ValueError, match="cannot be smaller than crop size"):
+                K.RandomCrop3D(size, p=1.0)(volume)
+        # The whole volume is still a valid crop.
+        self.assert_close(K.RandomCrop3D((4, 5, 6), p=1.0)(volume), volume)
         with pytest.raises(AssertionError, match="Crop size must be smaller"):
             K.CenterCrop3D((5, 5, 6), p=1.0)(volume)
 
