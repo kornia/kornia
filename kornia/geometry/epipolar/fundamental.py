@@ -114,8 +114,7 @@ def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
     AT = A.transpose(-2, -1)  # (..., 9, 7)
     G = AT @ A  # (..., 9, 9) SPD
     _evals, evecs = torch.linalg.eigh(G)  # ascending eigenvalues
-    N = evecs[..., :, :2]  # eigenvectors for 2 smallest evals
-    return N  # orthonormal columns
+    return evecs[..., :, :2]  # eigenvectors for 2 smallest evals
 
 
 def _F1F2_from_nullspace(N: torch.Tensor):
@@ -440,9 +439,7 @@ def get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, F
         pts2 = convert_points_to_homogeneous(pts2)
     line1in2 = compute_correspond_epilines(pts1, Fm)
     perp = get_perpendicular(line1in2, pts2)
-    points1_in_2 = convert_points_from_homogeneous(torch.linalg.cross(line1in2, perp, dim=2))
-
-    return points1_in_2
+    return convert_points_from_homogeneous(torch.linalg.cross(line1in2, perp, dim=2))
 
 
 def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:

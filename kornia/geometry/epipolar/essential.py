@@ -788,5 +788,4 @@ def find_essential(
          To choose the best one out of 10, try to check the one with the lowest Sampson distance.
 
     """
-    E = run_5point(points1, points2, weights).to(points1.dtype)
-    return E
+    return run_5point(points1, points2, weights).to(points1.dtype)

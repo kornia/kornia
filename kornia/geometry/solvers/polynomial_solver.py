@@ -76,11 +76,9 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
 
     root_plus = (-b + sqrt_delta) * inv_2a
     root_minus = (-b - sqrt_delta) * inv_2a
-    solutions = torch.stack(
+    return torch.stack(
         [torch.where(mask_negative, zero, root_plus), torch.where(mask_negative, zero, root_minus)], dim=-1
     )
-
-    return solutions
 
 
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
