@@ -120,8 +120,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           The input dictionary is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
-          Feeding a coordinate layout under another coordinate key raises ``ValueError`` naming the expected shape.
-          ``N = 0`` is
+          For 3D augmentations, inputs must be ``(D, H, W)`` or ``(B, C, D, H, W)``; rank-4 input is rejected
+          because ``(C, D, H, W)`` and ``(B, C, H, W)`` are ambiguous. Feeding a coordinate layout under another
+          coordinate key raises ``ValueError`` naming the expected shape. ``N = 0`` is
           accepted on every one of them. A ``mask`` is the one key whose rank changes: a ``(B, H, W)`` mask is
           accepted and returned as ``(B, 1, H, W)``. A wrong input *rank* raises ``RuntimeError`` here rather than
           the ``ValueError`` a bare augmentation raises.
@@ -578,14 +579,24 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
+        if DataKey.INPUT in self.transform_op.data_keys:
+            inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
+            if not isinstance(inp, torch.Tensor):
+                raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
+            if self.contains_3d_augmentation and len(inp.shape) == 4:
+                raise RuntimeError(
+                    f"3D augmentations in AugmentationSequential expect input shape "
+                    f"(D, H, W) or (B, C, D, H, W), but got {inp.shape}."
+                )
+
         if params is None:
             # image data must exist if params is not provided.
             if DataKey.INPUT in self.transform_op.data_keys:
                 inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
-                if not isinstance(inp, torch.Tensor):
-                    raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
-                if self.contains_video_sequential or self.contains_3d_augmentation:
+                if self.contains_video_sequential:
+                    _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
+                elif self.contains_3d_augmentation:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 else:
                     _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
