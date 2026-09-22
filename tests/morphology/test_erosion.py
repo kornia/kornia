@@ -403,9 +403,12 @@ class TestErode(BaseTester):
         #   cv2.erode(ramp, K.astype(np.uint8))      -> [2, 1, 0, 2, 0, 0, 5, 6]   (= kornia)
         #   sm.erosion(ramp, K != 0, mode="ignore")  -> [1, 0, 2, 0, 0, 5, 6, 7]   (one cell earlier,
         #       which is kornia's erosion at origin=[(k_h - 1) // 2, (k_w - 1) // 2] = [0, 1])
-        # Measured the same way on a 7x9 rand(seed 0) float64 frame: scipy and cv2 match kornia's
-        # default for [[1, 0]], ones(2, 2), ones(1, 3), [[0, 1, 1]] and [[1, 1, 0, 1]], while skimage
-        # differs on the three even ones by 0.956 / 0.682 / 0.822 and matches at the earlier origin.
+        # Measured the same way on a 7x9 rand(seed 0) float64 frame, over the windows that hold an
+        # in-image kernel cell: scipy and cv2 match kornia's default for [[1, 0]], ones(2, 2),
+        # ones(1, 3), [[0, 1, 1]] and [[1, 1, 0, 1]], while skimage differs on the three even ones by
+        # 0.956 / 0.682 / 0.822 and matches at the earlier origin. For [[1, 0]] kornia's column 0 is an
+        # empty window at the default origin and holds the `max_val` sentinel (10000) where scipy holds
+        # `inf`, so that column is outside the comparison (#4734).
         tensor = torch.zeros(1, 1, 1, 7, device=device, dtype=dtype)
         tensor[..., 3] = 1.0
         kernel = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)

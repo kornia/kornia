@@ -147,11 +147,15 @@ class TestClosing(BaseTester):
         # for the two kernels below at the default origin (and, for ones(3, 3) at origin=[0, 0], in
         # the custom-origin test above); the last block of this test pins the kernel where it does NOT
         # hold exactly, so the docstring's `max_val` qualification is on record rather than assumed.
-        # scipy's `grey_closing` uses the same convention. scikit-image mirrors the footprint inside
-        # `closing`, so its result is a closing too, but it is NOT bit-equal to kornia's: on the 7x10
-        # rand(seed 0) frame `sm.closing(x, A, mode="ignore")` differs from `closing(x, A)` on 5
-        # border pixels of column 0 (the interiors agree). OpenCV's `MORPH_CLOSE` composes without a
-        # flip and is not a closing for an asymmetric kernel at all.
+        # scikit-image mirrors the footprint inside `closing`, which makes it kornia's closing by the
+        # FLIPPED kernel: on the 7x10 rand(seed 0) frame `sm.closing(x, A, mode="ignore")` is bit-equal
+        # to `closing(x, A.flip((0, 1)))` and differs from `closing(x, A)` on 5 border pixels of
+        # column 0 (the interiors agree). scipy has no ignore mode: `grey_closing(..., mode="constant",
+        # cval=inf)` pads its dilation half with +inf as well, so it is extensive but differs from
+        # kornia's at the border (0.40 for A on a 7x9 rand frame) and returns inf on the whole first
+        # column for `[[1, 0, 0]]`; it equals `blk` below only because that frame's border is already 0.
+        # OpenCV's `MORPH_CLOSE` composes without a flip and is not a closing for an asymmetric kernel
+        # at all.
         # `max`/`min` only select an already-present value of the input, so the idempotence compares
         # with `torch.equal` and the `>=` never needs a tolerance.
         # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
@@ -194,3 +198,16 @@ class TestClosing(BaseTester):
         shortfall = (tensor - side_closed).clamp(min=0).max()
         assert shortfall <= 2.0 * torch.finfo(dtype).eps * 1e4
         assert torch.equal(closing(side_closed, side_kernel), side_closed)
+
+        # That is the geodesic story only. `dilation` reads `x(p + 1)` and `erosion` reads `y(p - 1)`, so
+        # under `replicate` the first column of the closing is `x(1)`, not `x(0)`, and the closing is not
+        # extensive at all (idempotence survives); under `circular` the two shifts cancel and the closing
+        # is exactly `x`. Measured with kornia in this worktree (torch 2.14.0, CPU, float32) over 20 seeds
+        # of rand(1, 1, 7, 10): worst replicate extensivity miss 0.987, worst replicate idempotence miss 0,
+        # worst circular deviation from `x` 0.
+        dip = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)[None, None]
+        replicated = closing(dip, side_kernel, border_type="replicate")
+        assert replicated.flatten().tolist() == [0.0, 0.0, 1.0]
+        assert not bool((replicated >= dip).all())
+        assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
+        assert torch.equal(closing(tensor, side_kernel, border_type="circular"), tensor)

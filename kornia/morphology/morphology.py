@@ -196,10 +196,10 @@ def dilation(
 
         - The kernel's masked-out cells store ``-max_val`` in the kernel's dtype. A ``uint8`` kernel therefore
           raises an overflow ``RuntimeError`` under every ``border_type``. A ``bool`` kernel stores it as
-          ``True``: :func:`erosion` and :func:`gradient` raise a torch error (``NotImplementedError`` on
-          recent torch, ``RuntimeError`` on older releases), and :func:`dilation` is silently wrong under
-          every ``border_type`` as soon as the kernel holds a ``False`` cell, which then contributes ``x + 1``
-          instead of being left out -- for a ``bool`` image, ``True`` everywhere.
+          ``True``: every function but :func:`dilation` contains an erosion and raises a torch error
+          (``NotImplementedError`` on recent torch, ``RuntimeError`` on older releases), and :func:`dilation`
+          is silently wrong under every ``border_type`` as soon as the kernel holds a ``False`` cell, which
+          then contributes ``x + 1`` instead of being left out -- for a ``bool`` image, ``True`` everywhere.
         - The geodesic pad stores :math:`\mp` ``max_val`` in the image's dtype. A ``uint8`` image raises an
           overflow ``RuntimeError`` there on CPU, while on MPS the sentinel wraps modulo 256 instead of
           raising; under the other ``border_type`` values a ``uint8`` image with a floating kernel runs and
@@ -208,8 +208,9 @@ def dilation(
         - A ``bool`` image stores the geodesic pad as ``True``. With a floating kernel, or a ``bool`` kernel
           with no ``False`` cell, :func:`dilation` returns the correct dilation plus a ``True`` (or ``1``)
           border ring as wide as the pad the kernel needs, so only an image no larger than that ring comes
-          back all ``True``, and the result is exact with a :math:`1 \times 1` kernel or with
-          ``border_type="constant"``. With a floating kernel, :func:`erosion` is exact under the geodesic
+          back all ``True``, and the result is exact with a :math:`1 \times 1` kernel, with
+          ``border_type="constant"`` and with ``circular``, which pads the image's own values. With a
+          floating kernel, :func:`erosion` is exact under the geodesic
           pad, because ``True`` cannot lower a minimum, and :func:`gradient` inherits the ring from
           :func:`dilation`. On CPU the ``reflect`` and ``replicate`` pads raise on a ``bool`` image.
 
@@ -511,20 +512,23 @@ def opening(
         :math:`|x|` approaches ``max_val`` the sentinel clips the data instead and the invariants miss by the
         clip (see the first warning in :func:`dilation`).
 
-        With ``engine="unfold"``, a ``border_type`` of ``geodesic``, ``replicate`` or ``circular`` and an
-        image range well below ``max_val``, the invariants are exact for ``[[0, 1, 1]]`` and for
-        ``[[0, 0, 0], [0, 1, 1], [0, 1, 0]]`` at the default origin and for ``ones(3, 3)`` at
-        ``origin=[0, 0]``; ``engine="convolution"`` and the ``constant`` and ``reflect`` borders can break
-        them even for those kernels. ``[[1, 0, 0]]``, whose window leaves the image on one side only, stays
-        anti-extensive but loses idempotence, by less than one ULP of ``max_val`` and by nothing at all in
-        ``float64``.
+        With any ``engine`` but ``"convolution"`` (the default ``"auto"`` never picks it), a ``border_type``
+        of ``geodesic``, ``replicate`` or ``circular`` and an image range well below ``max_val``, the
+        invariants are exact for ``[[0, 1, 1]]`` and for ``[[0, 0, 0], [0, 1, 1], [0, 1, 0]]`` at the default
+        origin and for ``ones(3, 3)`` at ``origin=[0, 0]``; ``engine="convolution"`` and the ``constant`` and
+        ``reflect`` borders can break them even for those kernels. ``[[1, 0, 0]]``, whose window leaves the
+        image on one side only, depends on the border: under the default ``geodesic`` it stays anti-extensive
+        but loses idempotence, by less than one ULP of ``max_val`` and by nothing at all in ``float64``; under
+        ``replicate`` it stays idempotent but is not anti-extensive at all; under ``circular`` it is exact.
 
-        ``scipy.ndimage.grey_opening`` and ``skimage.morphology.opening`` are openings too once their border
-        is an infinity (``mode="ignore"`` in scikit-image, ``cval=-inf`` in scipy); at their shared default
-        ``mode="reflect"`` neither is anti-extensive for a kernel that omits its own origin, such as
-        ``[[1, 0, 0]]``. OpenCV's ``MORPH_OPEN`` composes without a flip and is not one for an asymmetric
-        kernel -- it alters a block that ``opening`` leaves untouched. Conventions otherwise as in
-        :func:`dilation`.
+        ``skimage.morphology.opening`` with ``mode="ignore"`` is this opening: it mirrors its footprint in
+        the second half and is bit-equal to ``opening`` on a random frame. ``scipy.ndimage.grey_opening``
+        has no ignore mode, and a single ``cval=-inf`` pads its erosion half with ``-inf`` as well, so it is
+        anti-extensive but differs from ``opening`` at the border and can return ``-inf`` there (the whole
+        last column for ``[[1, 0, 0]]``). At their shared default ``mode="reflect"`` neither is
+        anti-extensive for a kernel that omits its own origin, such as ``[[1, 0, 0]]``. OpenCV's
+        ``MORPH_OPEN`` composes without a flip and is not an opening for an asymmetric kernel -- it alters a
+        block that ``opening`` leaves untouched. Conventions otherwise as in :func:`dilation`.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -637,20 +641,24 @@ def closing(
         :math:`|x|` approaches ``max_val`` the sentinel clips the data instead and the invariants miss by the
         clip (see the first warning in :func:`dilation`).
 
-        With ``engine="unfold"``, a ``border_type`` of ``geodesic``, ``replicate`` or ``circular`` and an
-        image range well below ``max_val``, the invariants are exact for ``[[0, 1, 1]]`` and for
-        ``[[0, 0, 0], [0, 1, 1], [0, 1, 0]]`` at the default origin and for ``ones(3, 3)`` at
-        ``origin=[0, 0]``; ``engine="convolution"`` and the ``constant`` and ``reflect`` borders can break
-        them even for those kernels. ``[[1, 0, 0]]``, whose window leaves the image on one side only, stays
-        idempotent but loses extensivity, by less than one ULP of ``max_val`` and by nothing at all in
-        ``float64``.
+        With any ``engine`` but ``"convolution"`` (the default ``"auto"`` never picks it), a ``border_type``
+        of ``geodesic``, ``replicate`` or ``circular`` and an image range well below ``max_val``, the
+        invariants are exact for ``[[0, 1, 1]]`` and for ``[[0, 0, 0], [0, 1, 1], [0, 1, 0]]`` at the default
+        origin and for ``ones(3, 3)`` at ``origin=[0, 0]``; ``engine="convolution"`` and the ``constant`` and
+        ``reflect`` borders can break them even for those kernels. ``[[1, 0, 0]]``, whose window leaves the
+        image on one side only, depends on the border: under the default ``geodesic`` it stays idempotent but
+        loses extensivity, by less than one ULP of ``max_val`` and by nothing at all in ``float64``; under
+        ``replicate`` it stays idempotent but is not extensive at all; under ``circular`` it is exact.
 
-        ``scipy.ndimage.grey_closing`` and ``skimage.morphology.closing`` are closings too once their border
-        is an infinity (``mode="ignore"`` in scikit-image, ``cval=+inf`` in scipy); at their shared default
-        ``mode="reflect"`` neither is extensive for a kernel that omits its own origin, such as
-        ``[[1, 0, 0]]``. OpenCV's ``MORPH_CLOSE`` composes without a flip and is not one for an asymmetric
-        kernel -- it alters a block that ``closing`` leaves untouched. Conventions otherwise as in
-        :func:`dilation`.
+        ``skimage.morphology.closing`` with ``mode="ignore"`` mirrors its footprint in the second half, which
+        makes it kornia's closing by the *flipped* kernel -- bit-equal to ``closing(x, kernel.flip((0, 1)))``
+        on a random frame -- so it is a closing too, but a different one for an asymmetric kernel.
+        ``scipy.ndimage.grey_closing`` has no ignore mode, and a single ``cval=+inf`` pads its dilation half
+        with ``+inf`` as well, so it is extensive but differs from ``closing`` at the border and can return
+        ``inf`` there (the whole first column for ``[[1, 0, 0]]``). At their shared default ``mode="reflect"``
+        neither is extensive for a kernel that omits its own origin, such as ``[[1, 0, 0]]``. OpenCV's
+        ``MORPH_CLOSE`` composes without a flip and is not a closing for an asymmetric kernel -- it alters a
+        block that ``closing`` leaves untouched. Conventions otherwise as in :func:`dilation`.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.

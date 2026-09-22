@@ -155,9 +155,12 @@ class TestOpening(BaseTester):
         # last block of this test pins the kernel where it does NOT hold exactly, so the docstring's
         # `max_val` qualification is on record rather than assumed.
         # OpenCV composes without a flip, so its `MORPH_OPEN` is not an opening for an asymmetric
-        # kernel; scipy and scikit-image agree with kornia here (scikit-image mirrors the footprint
-        # inside `opening`, and on the 7x10 rand(seed 0) frame `sm.opening(x, A, mode="ignore")` is
-        # bit-equal to `opening(x, A)`).
+        # kernel. scikit-image mirrors the footprint inside `opening`, and on the 7x10 rand(seed 0)
+        # frame `sm.opening(x, A, mode="ignore")` is bit-equal to `opening(x, A)`. scipy has no ignore
+        # mode: `grey_opening(..., mode="constant", cval=-inf)` pads its erosion half with -inf as well,
+        # so it is anti-extensive but differs from kornia's at the border (0.61 for A, 0.37 for
+        # ones(3, 3) on a 7x9 rand frame) and returns -inf on the whole last column for `[[1, 0, 0]]`;
+        # it equals `blk` below only because that frame's border is already 0.
         # 0/1 fixtures are exact in every dtype and `max`/`min` only ever select an already-present
         # value, so both the block equality and the idempotence compare with `torch.equal`.
         # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
@@ -201,3 +204,16 @@ class TestOpening(BaseTester):
         assert (side_opened <= tensor).all()
         deviation = (opening(side_opened, side_kernel) - side_opened).abs().max()
         assert deviation <= 2.0 * torch.finfo(dtype).eps * 1e4
+
+        # That is the geodesic story only. `erosion` reads `x(p - 1)` and `dilation` reads `y(p + 1)`, so
+        # under `replicate` the last column of the opening is `x(W - 2)`, not `x(W - 1)`, and the opening
+        # is not anti-extensive at all (idempotence survives); under `circular` the two shifts cancel and
+        # the opening is exactly `x`. Measured with kornia in this worktree (torch 2.14.0, CPU, float32)
+        # over 20 seeds of rand(1, 1, 7, 10): worst replicate anti-extensivity miss 0.979, worst replicate
+        # idempotence miss 0, worst circular deviation from `x` 0.
+        bump = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)[None, None]
+        replicated = opening(bump, side_kernel, border_type="replicate")
+        assert replicated.flatten().tolist() == [0.0, 1.0, 1.0]
+        assert not bool((replicated <= bump).all())
+        assert torch.equal(opening(replicated, side_kernel, border_type="replicate"), replicated)
+        assert torch.equal(opening(tensor, side_kernel, border_type="circular"), tensor)

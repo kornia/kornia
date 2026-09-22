@@ -735,12 +735,15 @@ class TestDilate(BaseTester):
         # The correct dilation is cols {3, 4, 5}; cols 0 and 8 are the `True` ring left by the pad.
         ring_plus_dilation = [True, False, False, True, True, True, False, False, True]
         assert dilation(hot_bool, bool_kernel).flatten().tolist() == ring_plus_dilation
-        # A 1x1 kernel needs no pad, and a `constant` pad of 0.0 is `False`: both are exact.
+        # A 1x1 kernel needs no pad, a `constant` pad of 0.0 is `False`, and a `circular` pad is the
+        # image's own values: all three are exact. (`reflect` and `replicate` raise on a `bool` image on
+        # CPU: "reflection_pad2d" / "replication_pad2d" not implemented for 'Bool'.)
         one_cell = torch.ones(1, 1, dtype=torch.bool, device=device)
         hot_pixel_only = [False, False, False, False, True, False, False, False, False]
         assert dilation(hot_bool, one_cell).flatten().tolist() == hot_pixel_only
         exact_dilation = [False, False, False, True, True, True, False, False, False]
         assert dilation(hot_bool, bool_kernel, border_type="constant").flatten().tolist() == exact_dilation
+        assert dilation(hot_bool, bool_kernel, border_type="circular").flatten().tolist() == exact_dilation
         # #4735's own 1x5 is no wider than the ring, which is why it comes back all `True`.
         small_bool = torch.zeros(1, 1, 1, 5, dtype=torch.bool, device=device)
         small_bool[..., 2] = True
