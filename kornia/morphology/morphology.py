@@ -189,9 +189,9 @@ def dilation(
 
     .. warning::
         Only floating-point input is supported. ``uint8`` input does not survive the geodesic pad, which
-        stores :math:`\mp` ``max_val``: on CPU it raises and on MPS it wraps (``-max_val`` modulo 256); under
-        the other ``border_type`` values it runs but silently returns ``float32``. ``int64`` is silently
-        wrong once the image range approaches ``max_val``. ``bool`` input is not rejected either:
+        stores :math:`\mp` ``max_val``: on CPU it raises and on MPS the sentinel wraps modulo 256 instead of
+        raising; under the other ``border_type`` values it runs but silently returns ``float32``. ``int64``
+        is silently wrong once the image range approaches ``max_val``. ``bool`` input is not rejected either:
         :func:`dilation` returns the correct dilation plus a ``True`` border ring as wide as the pad the
         kernel needs, left by the geodesic pad, which is ``True`` in ``bool`` -- so only an image no larger
         than that ring comes back all ``True``, and the result is exact with a :math:`1 \times 1` kernel or
@@ -332,8 +332,9 @@ def erosion(
         structuring element. It is the Minkowski erosion
         :math:`\varepsilon_B f(x) = \min_{b \in B} f(x + b)`, the convention of ``scipy.ndimage.grey_erosion``,
         ``skimage.morphology.erosion`` and ``cv2.erode``. scipy and OpenCV agree with kornia pixel for pixel
-        for odd-sized and even-sized kernels alike; scikit-image centres an even-sized footprint one cell
-        earlier, so it matches kornia's ``erosion`` at ``origin=[(k_h - 1) // 2, (k_w - 1) // 2]`` instead.
+        for odd-sized and even-sized kernels alike while ``|x|`` stays well below ``max_val``; scikit-image
+        centres an even-sized footprint one cell earlier, so it matches kornia's ``erosion`` at
+        ``origin=[(k_h - 1) // 2, (k_w - 1) // 2]`` instead.
         An empty window returns ``max_val`` here, ``inf`` in scipy and scikit-image and ``FLT_MAX`` in
         OpenCV.
 

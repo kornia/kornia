@@ -539,8 +539,8 @@ class TestDilate(BaseTester):
         # each reference at its default anchor against `dilation(x, K.flip((0, 1)))`:
         #   K = ones(1, 3) / [[0, 1, 1]]  (odd): skimage 0, cv2 0 at the default origin
         #   K = [[1, 0]] / ones(2, 2) / [[1, 1, 0, 1]]  (even): skimage 0 at the default origin, while
-        #       cv2 differs there (0.956 / 0.825 / 0.732) and is 0 at
-        #       `origin=[(k_h - 1) // 2, (k_w - 1) // 2]`.
+        #       cv2 differs there (`ones(2, 2)` 0.825, `[[1, 1, 0, 1]]` 0.732, and `[[1, 0]]` by a
+        #       border-sized DBL_MAX artefact) and is 0 at `origin=[(k_h - 1) // 2, (k_w - 1) // 2]`.
         tensor = torch.zeros(1, 1, 1, 7, device=device, dtype=dtype)
         tensor[..., 3] = 1.0
         kernel = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
@@ -680,8 +680,8 @@ class TestDilate(BaseTester):
         #   MPS: the same call does NOT raise; the store wraps (-1e4 mod 256 == 240) and returns
         #        float32 [240, 0, 0, 0, 240]. The backends disagree, so the pin asserts the consequence
         #        they share: an all-zero uint8 image does not come back all zero from `dilation`.
-        #        `erosion` pads +max_val, which wraps to the same 240, and a min against 240 happens
-        #        to leave an all-zero image alone on MPS -- so only `dilation` is asserted here.
+        #        `erosion` pads +max_val, which wraps to 16, and a min against 16 happens to leave an
+        #        all-zero image alone on MPS -- so only `dilation` is asserted here.
         #   both: dilation(zeros uint8, ones(1, 3), border_type="constant") -> float32 zeros, no raise
         #   x = zeros(1, 1, 1, 9, dtype=bool); x[..., 4] = True   (CPU and MPS agree on all of these)
         #   dilation(x, ones(1, 3, dtype=bool))       -> [T,F,F,T,T,T,F,F,T]  (ring + correct interior)
