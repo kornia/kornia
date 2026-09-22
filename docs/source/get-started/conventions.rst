@@ -465,6 +465,52 @@ Serializing an augmentation
   forward replaces the pending state. Unchanged inherited implementations
   keep the compact metadata state. See :doc:`/augmentation.base` for details.
 
+Morphology
+----------
+
+- :func:`kornia.morphology.dilation` **reflects** the structuring element (the Minkowski
+  convention, as in ``scipy.ndimage``); :func:`kornia.morphology.erosion` does not. For an
+  asymmetric kernel, scikit-image and OpenCV return kornia's dilation by the *flipped* kernel.
+- ``origin`` is the ``[row, col]`` index of the structuring-element cell placed on the output
+  pixel, not an offset from the centre, and OpenCV's ``anchor`` is the same index in ``(x, y)``
+  order. The default is ``[k_h // 2, k_w // 2]`` for even sizes too.
+- ``border_type`` carries torch's pad-mode names, which do not mean what the same words mean in
+  scipy and scikit-image. See :func:`kornia.morphology.dilation` for the full convention block.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Behaviour
+     - kornia
+     - ``scipy.ndimage``
+     - scikit-image
+     - OpenCV
+   * - ``dilation`` reflects the kernel
+     - yes
+     - yes
+     - no
+     - no
+   * - ``ones(2, 2)`` on a hot pixel at ``(2, 3)``
+     - rows 1-2, cols 2-3
+     - rows 1-2, cols 2-3
+     - rows 1-2, cols 2-3
+     - rows 2-3, cols 3-4
+   * - origin/anchor semantics
+     - ``[row, col]`` index
+     - offset from ``k // 2``
+     - not exposed
+     - ``(x, y)`` index
+   * - default border
+     - ``geodesic`` (ignore outside)
+     - ``reflect``
+     - ``reflect``
+     - ignore outside
+   * - name of torch's ``reflect``
+     - ``reflect``
+     - ``mirror``
+     - ``mirror``
+     - ``BORDER_REFLECT_101``
+
 Pitfall checklist
 -----------------
 

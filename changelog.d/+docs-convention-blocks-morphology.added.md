@@ -1,0 +1,5 @@
+Document the conventions of `kornia.morphology` — the kernel reflection in `dilation` and its absence in
+`erosion`, the membership-mask `kernel` and additive `structuring_element`, the `[row, col]` `origin` and its
+even-size default, and the five `border_type` values and their scipy / scikit-image / OpenCV names — as
+Convention blocks on the seven public functions and a new section on the Conventions & Pitfalls page, with
+executable tests for every claim and for the `max_val` sentinel, non-float input and validation warts.

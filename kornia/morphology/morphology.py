@@ -138,20 +138,66 @@ def dilation(
 
     The kernel must have 2 dimensions.
 
+    Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the table that compares the
+        reflection, centring and border rules of ``kornia.morphology`` with scipy, scikit-image and OpenCV.
+
+        - ``kernel`` is a flat **membership mask** of shape :math:`(k_h, k_w)`, laid over the image's
+          :math:`(H, W)` axes. Every non-zero entry is a member of the neighborhood and its magnitude is
+          ignored, so negative and fractional entries are members too; use ``structuring_element`` for
+          weights. Entries of ``structuring_element`` under a zero ``kernel`` cell do not reach the output.
+        - ``dilation`` **reflects** the structuring element. It is the Minkowski dilation
+          :math:`\delta_B f(x) = \max_{b \in B} f(x - b)`, the convention of ``scipy.ndimage.grey_dilation``.
+          scikit-image and OpenCV do not reflect, so for an asymmetric kernel they return kornia's dilation
+          by the flipped kernel. :func:`erosion` does not reflect and all three references agree with it.
+        - ``origin`` is the ``[row, col]`` index of the structuring-element cell placed on the output pixel,
+          defaulting to ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike. scipy spells the same
+          choice as an offset from ``k // 2``, and OpenCV's ``anchor`` is an index in ``(x, y)`` order.
+        - ``border_type="geodesic"`` (the default) ignores the pixels outside the image, which is
+          scikit-image's ``mode="ignore"`` and OpenCV's default border. scikit-image's own default is
+          ``mode="reflect"``, so a comparison against it has to pass ``mode="ignore"`` explicitly.
+        - The other border modes carry torch's names, which do not match scipy's and scikit-image's:
+          ``reflect`` is their ``mirror``, ``replicate`` their ``nearest`` and ``circular`` their ``wrap``,
+          while their ``reflect`` is a rule this function has no name for. ``geodesic`` and ``replicate``
+          coincide while the structuring element still covers the output pixel, and differ once it can miss it.
+        - :func:`opening` and :func:`closing` reuse ``kernel`` in both halves, so they are true
+          morphological openings and closings; :func:`gradient`, :func:`top_hat` and :func:`bottom_hat` are
+          their one-line definitions. The kernel, origin and border conventions above apply to all seven.
+
+    .. warning::
+        ``max_val`` is a finite stand-in for infinity, not an infinity. It is padded into the border and
+        subtracted from the masked-out neighborhood cells, so it reaches the output whenever a window is
+        empty or the image range approaches it, and it bounds the accuracy of ``engine="convolution"``.
+        Keep it well above :math:`|x|`. Tracked in
+        `#4734 <https://github.com/kornia/kornia/issues/4734>`_.
+
+    .. warning::
+        Only floating-point input is supported. ``uint8`` input does not survive the sentinel store (it
+        raises on CPU and wraps around on MPS), ``int64`` is silently wrong once the image range approaches
+        ``max_val``, and ``bool`` returns all ``True``. Tracked in
+        `#4735 <https://github.com/kornia/kornia/issues/4735>`_.
+
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
-            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
-            For full structural elements use torch.ones_like(structural_element).
-        structuring_element: Structuring element used for the grayscale dilation. It may be a non-flat
-            structuring element.
-        origin: Origin of the structuring element. Default: ``None`` and uses the center of
-            the structuring element as origin (rounding towards zero).
-        border_type: It determines how the image borders are handled, where ``border_value`` is the value
-            when ``border_type`` is equal to ``constant``. Default: ``geodesic`` which ignores the values that are
-            outside the image when applying the operation.
-        border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
-        max_val: The value of the infinite elements in the kernel.
+            the set of neighbors of the center over which the operation is applied, and their magnitude is
+            ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            For a full neighborhood pass a ``kernel`` of all ones.
+        structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
+            in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
+            ``kernel``'s; a mismatch is reported by an internal ``IndexError``
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
+            Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
+            (``[1, 1]`` for a :math:`2 \times 2` kernel).
+        border_type: How the image borders are handled. Default: ``geodesic``, which ignores the values
+            that are outside the image when applying the operation. The other accepted values are the
+            :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``;
+            an unrecognised one is reported by ``torch`` without naming this argument
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        border_value: Value to fill past edges of input. Used only when ``border_type`` is ``constant``;
+            under ``geodesic`` it is silently overwritten.
+        max_val: Finite stand-in for the infinite elements of the kernel. See the warning above.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -254,20 +300,36 @@ def erosion(
 
     The kernel must have 2 dimensions.
 
+    Convention:
+        Conventions as in :func:`dilation`, with one difference: ``erosion`` does **not** reflect the
+        structuring element. It is the Minkowski erosion
+        :math:`\varepsilon_B f(x) = \min_{b \in B} f(x + b)`, which is what ``scipy.ndimage.grey_erosion``,
+        ``skimage.morphology.erosion`` and ``cv2.erode`` all compute, so an asymmetric kernel gives the same
+        answer in all four libraries. The two operations are adjoint: ``erosion`` by ``kernel`` at ``origin``
+        equals ``-dilation(-tensor, kernel.flip((0, 1)), origin=[k_h - 1 - origin[0], k_w - 1 - origin[1]])``.
+
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
-            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
-            For full structural elements use torch.ones_like(structural_element).
-        structuring_element (torch.Tensor, optional): Structuring element used for the grayscale dilation.
-            It may be a non-flat structuring element.
-        origin: Origin of the structuring element. Default: ``None`` and uses the center of
-            the structuring element as origin (rounding towards zero).
-        border_type: It determines how the image borders are handled, where ``border_value`` is the value
-            when ``border_type`` is equal to ``constant``. Default: ``geodesic`` which ignores the values that are
-            outside the image when applying the operation.
-        border_value: Value to fill past edges of input if border_type is ``constant``.
-        max_val: The value of the infinite elements in the kernel.
+            the set of neighbors of the center over which the operation is applied, and their magnitude is
+            ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            For a full neighborhood pass a ``kernel`` of all ones.
+        structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
+            in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
+            ``kernel``'s; a mismatch is reported by an internal ``IndexError``
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
+            Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
+            (``[1, 1]`` for a :math:`2 \times 2` kernel).
+        border_type: How the image borders are handled. Default: ``geodesic``, which ignores the values
+            that are outside the image when applying the operation. The other accepted values are the
+            :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``;
+            an unrecognised one is reported by ``torch`` without naming this argument
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        border_value: Value to fill past edges of input. Used only when ``border_type`` is ``constant``;
+            under ``geodesic`` it is silently overwritten.
+        max_val: Finite stand-in for the infinite elements of the kernel. See the warning in
+            :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -370,20 +432,36 @@ def opening(
 
     The kernel must have 2 dimensions.
 
+    Convention:
+        ``opening`` is ``dilation(erosion(tensor))`` with the same ``kernel`` in both halves. Because
+        :func:`dilation` reflects the structuring element and :func:`erosion` does not, the composition is a
+        true morphological opening -- anti-extensive and idempotent -- for an asymmetric kernel as well.
+        ``scipy.ndimage.grey_opening`` and ``skimage.morphology.opening`` are openings too; OpenCV's
+        ``MORPH_OPEN`` composes without a flip and is not one for an asymmetric kernel -- it alters a block
+        that ``opening`` leaves untouched. Conventions otherwise as in :func:`dilation`.
+
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
-            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
-            For full structural elements use torch.ones_like(structural_element).
-        structuring_element: Structuring element used for the grayscale dilation. It may be a
-            non-flat structuring element.
-        origin: Origin of the structuring element. Default: ``None`` and uses the center of
-            the structuring element as origin (rounding towards zero).
-        border_type: It determines how the image borders are handled, where ``border_value`` is the value
-            when ``border_type`` is equal to ``constant``. Default: ``geodesic`` which ignores the values that are
-            outside the image when applying the operation.
-        border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
-        max_val: The value of the infinite elements in the kernel.
+            the set of neighbors of the center over which the operation is applied, and their magnitude is
+            ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            For a full neighborhood pass a ``kernel`` of all ones.
+        structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
+            in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
+            ``kernel``'s; a mismatch is reported by an internal ``IndexError``
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
+            Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
+            (``[1, 1]`` for a :math:`2 \times 2` kernel).
+        border_type: How the image borders are handled. Default: ``geodesic``, which ignores the values
+            that are outside the image when applying the operation. The other accepted values are the
+            :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``;
+            an unrecognised one is reported by ``torch`` without naming this argument
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        border_value: Value to fill past edges of input. Used only when ``border_type`` is ``constant``;
+            under ``geodesic`` it is silently overwritten.
+        max_val: Finite stand-in for the infinite elements of the kernel. See the warning in
+            :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -400,7 +478,7 @@ def opening(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-       torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
+       Opened image with shape :math:`(B, C, H, W)`.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -460,20 +538,35 @@ def closing(
 
     The kernel must have 2 dimensions.
 
+    Convention:
+        ``closing`` is ``erosion(dilation(tensor))`` with the same ``kernel`` in both halves, so it is a
+        true morphological closing -- extensive and idempotent -- for an asymmetric kernel as well.
+        ``scipy.ndimage.grey_closing`` and ``skimage.morphology.closing`` are closings too; OpenCV's
+        ``MORPH_CLOSE`` composes without a flip and is not one for an asymmetric kernel -- it alters a block
+        that ``closing`` leaves untouched. Conventions otherwise as in :func:`dilation`.
+
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
-            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
-            For full structural elements use torch.ones_like(structural_element).
-        structuring_element: Structuring element used for the grayscale dilation. It may be a
-            non-flat structuring element.
-        origin: Origin of the structuring element. Default is None and uses the center of
-            the structuring element as origin (rounding towards zero).
-        border_type: It determines how the image borders are handled, where ``border_value`` is the value
-            when ``border_type`` is equal to ``constant``. Default: ``geodesic`` which ignores the values that are
-            outside the image when applying the operation.
-        border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
-        max_val: The value of the infinite elements in the kernel.
+            the set of neighbors of the center over which the operation is applied, and their magnitude is
+            ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            For a full neighborhood pass a ``kernel`` of all ones.
+        structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
+            in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
+            ``kernel``'s; a mismatch is reported by an internal ``IndexError``
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
+            Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
+            (``[1, 1]`` for a :math:`2 \times 2` kernel).
+        border_type: How the image borders are handled. Default: ``geodesic``, which ignores the values
+            that are outside the image when applying the operation. The other accepted values are the
+            :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``;
+            an unrecognised one is reported by ``torch`` without naming this argument
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        border_value: Value to fill past edges of input. Used only when ``border_type`` is ``constant``;
+            under ``geodesic`` it is silently overwritten.
+        max_val: Finite stand-in for the infinite elements of the kernel. See the warning in
+            :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -552,20 +645,32 @@ def gradient(
     That means, (dilation - erosion) applying the same kernel in each channel.
     The kernel must have 2 dimensions.
 
+    Convention:
+        ``gradient`` is ``dilation(tensor) - erosion(tensor)`` with the same ``kernel`` and the same
+        options, so the conventions of :func:`dilation` and :func:`erosion` apply to it unchanged.
+
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
-            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
-            For full structural elements use torch.ones_like(structural_element).
-        structuring_element: Structuring element used for the grayscale dilation. It may be a
-            non-flat structuring element.
-        origin: Origin of the structuring element. Default is None and uses the center of
-            the structuring element as origin (rounding towards zero).
-        border_type: It determines how the image borders are handled, where ``border_value`` is the value
-            when ``border_type`` is equal to ``constant``. Default: ``geodesic`` which ignores the values that are
-            outside the image when applying the operation.
-        border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
-        max_val: The value of the infinite elements in the kernel.
+            the set of neighbors of the center over which the operation is applied, and their magnitude is
+            ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            For a full neighborhood pass a ``kernel`` of all ones.
+        structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
+            in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
+            ``kernel``'s; a mismatch is reported by an internal ``IndexError``
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
+            Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
+            (``[1, 1]`` for a :math:`2 \times 2` kernel).
+        border_type: How the image borders are handled. Default: ``geodesic``, which ignores the values
+            that are outside the image when applying the operation. The other accepted values are the
+            :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``;
+            an unrecognised one is reported by ``torch`` without naming this argument
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        border_value: Value to fill past edges of input. Used only when ``border_type`` is ``constant``;
+            under ``geodesic`` it is silently overwritten.
+        max_val: Finite stand-in for the infinite elements of the kernel. See the warning in
+            :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -633,20 +738,32 @@ def top_hat(
 
     See :func:`~kornia.morphology.opening` for details.
 
+    Convention:
+        ``top_hat`` is ``tensor - opening(tensor)`` with the same ``kernel`` and the same options, so the
+        conventions of :func:`dilation` apply to it unchanged.
+
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
-            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
-            For full structural elements use torch.ones_like(structural_element).
-        structuring_element: Structuring element used for the grayscale dilation. It may be a
-            non-flat structuring element.
-        origin: Origin of the structuring element. Default: ``None`` and uses the center of
-            the structuring element as origin (rounding towards zero).
-        border_type: It determines how the image borders are handled, where ``border_value`` is the value
-            when ``border_type`` is equal to ``constant``. Default: ``geodesic`` which ignores the values that are
-            outside the image when applying the operation.
-        border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
-        max_val: The value of the infinite elements in the kernel.
+            the set of neighbors of the center over which the operation is applied, and their magnitude is
+            ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            For a full neighborhood pass a ``kernel`` of all ones.
+        structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
+            in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
+            ``kernel``'s; a mismatch is reported by an internal ``IndexError``
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
+            Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
+            (``[1, 1]`` for a :math:`2 \times 2` kernel).
+        border_type: How the image borders are handled. Default: ``geodesic``, which ignores the values
+            that are outside the image when applying the operation. The other accepted values are the
+            :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``;
+            an unrecognised one is reported by ``torch`` without naming this argument
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        border_value: Value to fill past edges of input. Used only when ``border_type`` is ``constant``;
+            under ``geodesic`` it is silently overwritten.
+        max_val: Finite stand-in for the infinite elements of the kernel. See the warning in
+            :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -717,20 +834,32 @@ def bottom_hat(
 
     See :func:`~kornia.morphology.closing` for details.
 
+    Convention:
+        ``bottom_hat`` is ``closing(tensor) - tensor`` with the same ``kernel`` and the same options, so the
+        conventions of :func:`dilation` apply to it unchanged.
+
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
-            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
-            For full structural elements use torch.ones_like(structural_element).
-        structuring_element: Structuring element used for the grayscale dilation. It may be a
-            non-flat structuring element.
-        origin: Origin of the structuring element. Default: ``None`` and uses the center of
-            the structuring element as origin (rounding towards zero).
-        border_type: It determines how the image borders are handled, where ``border_value`` is the value
-            when ``border_type`` is equal to ``constant``. Default: ``geodesic`` which ignores the values that are
-            outside the image when applying the operation.
-        border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
-        max_val: The value of the infinite elements in the kernel.
+            the set of neighbors of the center over which the operation is applied, and their magnitude is
+            ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            For a full neighborhood pass a ``kernel`` of all ones.
+        structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
+            in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
+            ``kernel``'s; a mismatch is reported by an internal ``IndexError``
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
+            Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
+            (``[1, 1]`` for a :math:`2 \times 2` kernel).
+        border_type: How the image borders are handled. Default: ``geodesic``, which ignores the values
+            that are outside the image when applying the operation. The other accepted values are the
+            :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``;
+            an unrecognised one is reported by ``torch`` without naming this argument
+            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+        border_value: Value to fill past edges of input. Used only when ``border_type`` is ``constant``;
+            under ``geodesic`` it is silently overwritten.
+        max_val: Finite stand-in for the infinite elements of the kernel. See the warning in
+            :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -747,7 +876,7 @@ def bottom_hat(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-       Top hat transformed image with shape :math:`(B, C, H, W)`.
+       Bottom hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
