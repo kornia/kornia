@@ -25,6 +25,7 @@ from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType
 from kornia.filters import gaussian_blur2d
+from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 
 
 class RandomGaussianBlur(IntensityAugmentationBase2D):
@@ -120,6 +121,9 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
+        # An even entry is wrong at every image size, so raise gaussian_blur2d's own kernel error
+        # before the size guard below can blame the image for it.
+        _check_kernel_size(_unpack_2d_ks(self.flags["kernel_size"]), 0)
         _check_filter_min_size(
             "RandomGaussianBlur",
             input,

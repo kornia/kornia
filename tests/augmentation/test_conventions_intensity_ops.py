@@ -285,6 +285,18 @@ class TestBlurConventions(BaseTester):
         with pytest.raises(Exception, match="odd integer"):
             _sync(K.RandomGaussianBlur((2, 2), (1.0, 1.0), p=1.0)(image).device)
 
+    # Row 6c-21b: the even-kernel error does not depend on the image size.  2x2 is below the reflect
+    # minimum a 4-extent kernel needs, so a size check that ran first would blame the image instead.
+    # Snippet used to generate expected:
+    #   K.RandomGaussianBlur((4, 4), (0.1, 1.0), p=1.0)(torch.rand(1, 1, 2, 2))  (and a 3x4 kernel)
+    # executed 2026-09-22 (torch 2.5.0, cpu) -> `Kernel size must be an odd integer bigger than 0.
+    # Gotcha 4 on (4, 4)` and `... Gotcha 4 on (3, 4)`.
+    @pytest.mark.parametrize("kernel_size", [(4, 4), (3, 4)])
+    def test_convention_random_gaussian_blur_even_kernel_error_is_size_independent(self, device, dtype, kernel_size):
+        image = torch.rand(1, 1, 2, 2).to(device=device, dtype=dtype)
+        with pytest.raises(Exception, match=r"odd integer bigger than 0\. Gotcha 4"):
+            _sync(K.RandomGaussianBlur(kernel_size, (0.1, 1.0), p=1.0)(image).device)
+
     # Row 6c-22: RandomMotionBlur's ``angle`` is counter-clockwise as the image is displayed.  The
     # fixture is a 7x9 impulse at (row 2, col 3), off both centre lines, so no literal below is its
     # own transpose: +45 deg carries the blur from (row 3, col 2) up to (row 1, col 4), and -45 deg
