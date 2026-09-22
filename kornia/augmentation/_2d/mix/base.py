@@ -279,6 +279,16 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             in_tensor = self.transform_tensor(in_tensor)
             self._params = self.forward_parameters(in_tensor.shape)
             self._params.update({"dtype": torch.full((), DType.get(in_tensor.dtype).value, dtype=torch.long)})
+        elif DataKey.INPUT in keys:
+            # The class handlers read ``"dtype"``, which a ``forward_parameters()`` dictionary does not have: take it
+            # from the input, as above, in a copy that leaves the caller's dictionary alone. A supplied ``"dtype"`` is
+            # replaced too, so a dictionary recorded on another image dtype cannot go stale. Only the dtype check of
+            # ``transform_tensor`` runs here, so that a subclass's shape checks still come after the params checks.
+            in_tensor = input[keys.index(DataKey.INPUT)]
+            _validate_input_dtype(
+                in_tensor, accepted_dtypes=[torch.bfloat16, torch.float16, torch.float32, torch.float64]
+            )
+            self._params = {**params, "dtype": torch.full((), DType.get(in_tensor.dtype).value, dtype=torch.long)}
         else:
             self._params = params
 
