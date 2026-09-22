@@ -46,8 +46,10 @@ def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, widt
     # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
     # down to a scalar would instead apply wrapped-scalar rules and silently keep ``padded.dtype``.
     output = padded[..., 0:height, 0:width] + offsets[0:1, 0:1]
-    # ``unfold`` reduces the kernel-height dimension first and then kernel width. Keep the same
-    # column-major traversal so equal values preserve the same IEEE-754 signed-zero result.
+    # ``unfold`` reduces the kernel-height dimension first and then kernel width; keep that traversal so
+    # tied values are met in the same order. Which of two tied operands a backend's ``max``/``min``
+    # returns is its own choice (CPU keeps the first, MPS the second), so the sign of a zero result is
+    # not preserved between engines or devices; the value is.
     for j in range(kw):
         for i in range(kh):
             if i == 0 and j == 0:
@@ -57,12 +59,17 @@ def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, widt
     return output
 
 
-def _resolve_engine(engine: str, tensor: torch.Tensor, recording_grad: bool = False) -> str:
+def _resolve_engine(
+    engine: str, tensor: torch.Tensor, recording_grad: bool = False, dtype: Optional[torch.dtype] = None
+) -> str:
     """Map ``engine="auto"`` to the preferred engine for ``tensor``; leave other values unchanged.
 
     ``recording_grad`` says whether this call will build a backward graph, which changes the ranking.
-    For finite inputs, the two engines selected by ``auto`` (``unfold`` and ``shift``) return bitwise
-    equal forward output, so switching between them never changes a value.
+    ``dtype`` is the dtype the max-plus terms are computed in; it defaults to ``tensor.dtype`` and is
+    wider when the kernel or the structuring element promotes the computation, which is what the
+    dtype rule below has to see. For finite inputs, the two engines selected by ``auto`` (``unfold``
+    and ``shift``) return equal forward output, so switching between them never changes a value; only
+    the sign of a zero can differ, because a backend's ``max``/``min`` may return either tied operand.
 
     Benchmarks in :mod:`benchmarks.morphology.engines` (x86 CPU, an RTX 4090 and an Apple M1,
     ``dilation``, B x 3 x 256 x 256) give three CPU/CUDA regimes:
@@ -80,28 +87,37 @@ def _resolve_engine(engine: str, tensor: torch.Tensor, recording_grad: bool = Fa
     float32 grad branch deliberately does not extend to Metal. ``convolution`` is faster than
     ``shift`` at small kernels on MPS but collapses at 15 x 15 (2854 ms against 354 ms at B=8), which
     is why it is not the choice either.
+
+    The grad branch is a backward-pass speed rule, not a derivative-preserving one: forward-mode AD
+    (``torch.func.jvp``, ``torch.autograd.forward_ad``) records no backward graph, so it takes
+    ``shift`` off CUDA like any forward-only call, and its tangent at tied maxima is the ``shift``
+    one.
     """
     if engine == "auto":
         if tensor.device.type == "cuda":
             return "unfold"
-        is_float32_or_64 = tensor.dtype in (torch.float32, torch.float64)
+        if dtype is None:
+            dtype = tensor.dtype
+        is_float32_or_64 = dtype in (torch.float32, torch.float64)
         if tensor.device.type == "cpu" and recording_grad and is_float32_or_64:
             return "unfold"
         return "shift"
     return engine
 
 
-def _records_grad(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor]) -> bool:
+def _records_grad(tensor: torch.Tensor, structuring_element: Optional[torch.Tensor]) -> bool:
     """Whether an op over these inputs will build a backward graph.
 
     ``torch.no_grad()`` leaves ``requires_grad`` set on the inputs but records nothing, so grad mode has
     to be checked too: inference on a tensor that happens to require grad should take the forward-only
-    engine. The kernel and the structuring element count because ``dilation`` and ``erosion``
-    differentiate through the neighborhood they build from them.
+    engine. The structuring element counts because ``dilation`` and ``erosion`` differentiate through
+    the neighborhood they build from it. The kernel does not: it enters only through the ``kernel == 0``
+    mask, so a kernel that requires grad still produces an output that does not. Forward-mode AD
+    (``torch.func.jvp``) is invisible here by design; see :func:`_resolve_engine`.
     """
     if not torch.is_grad_enabled():
         return False
-    if tensor.requires_grad or kernel.requires_grad:
+    if tensor.requires_grad:
         return True
     return structuring_element is not None and structuring_element.requires_grad
 
@@ -137,11 +153,13 @@ def dilation(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
-            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
-            equal output.
-            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
-            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
-            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
+            output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
+            tied operand.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
+            which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
+            :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -193,7 +211,10 @@ def dilation(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    engine = _resolve_engine(engine, tensor, _records_grad(tensor, kernel, structuring_element))
+    # The max-plus terms compute in the promoted dtype, which the dtype rule of ``auto`` has to see: a
+    # float16 image with a float32 kernel computes, and differentiates, in float32.
+    compute_dtype = torch.promote_types(tensor.dtype, neighborhood.dtype)
+    engine = _resolve_engine(engine, tensor, _records_grad(tensor, structuring_element), compute_dtype)
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
@@ -247,11 +268,13 @@ def erosion(
         border_value: Value to fill past edges of input if border_type is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
-            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
-            equal output.
-            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
-            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
-            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
+            output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
+            tied operand.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
+            which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
+            :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -303,7 +326,10 @@ def erosion(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    engine = _resolve_engine(engine, tensor, _records_grad(tensor, kernel, structuring_element))
+    # The max-plus terms compute in the promoted dtype, which the dtype rule of ``auto`` has to see: a
+    # float16 image with a float32 kernel computes, and differentiates, in float32.
+    compute_dtype = torch.promote_types(tensor.dtype, neighborhood.dtype)
+    engine = _resolve_engine(engine, tensor, _records_grad(tensor, structuring_element), compute_dtype)
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.min(output - neighborhood, 4)
@@ -358,11 +384,13 @@ def opening(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
-            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
-            equal output.
-            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
-            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
-            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
+            output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
+            tied operand.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
+            which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
+            :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -446,11 +474,13 @@ def closing(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
-            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
-            equal output.
-            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
-            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
-            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
+            output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
+            tied operand.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
+            which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
+            :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -536,11 +566,13 @@ def gradient(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
-            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
-            equal output.
-            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
-            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
-            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
+            output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
+            tied operand.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
+            which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
+            :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -615,11 +647,13 @@ def top_hat(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
-            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
-            equal output.
-            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
-            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
-            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
+            output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
+            tied operand.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
+            which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
+            :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -697,11 +731,13 @@ def bottom_hat(
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
-            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return bitwise
-            equal output.
-            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a float32 or
-            float64 CPU call which records a backward graph takes ``"unfold"``, where ``"shift"`` is up
-            to 3.4x slower. See :func:`_resolve_engine` for the measurements.
+            and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
+            output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
+            tied operand.
+            ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
+            which computes in float32 or float64 (the image dtype, or the wider dtype the kernel promotes it
+            to) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x slower. See
+            :func:`_resolve_engine` for the measurements.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the

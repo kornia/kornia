@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.morphology import erosion
+from kornia.morphology import morphology as morphology_module
 from kornia.morphology.morphology import _records_grad, _resolve_engine
 
 from testing.base import BaseTester, assert_close
@@ -191,7 +192,7 @@ class TestErode(BaseTester):
         # A CPU call that records a backward graph takes "unfold" in float32/float64, where "shift"
         # is up to 3.4x slower; half precision and the forward-only path keep "shift". CUDA is
         # "unfold" either way, and MPS is "shift" either way -- the grad branch is CPU-only, so the
-        # dtype does not enter off CPU. Bitwise equal forward output makes the switch value-preserving.
+        # dtype does not enter off CPU. Equal forward output makes the switch value-preserving.
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.ones(3, 5, device=device, dtype=dtype)
         wide = dtype in (torch.float32, torch.float64)
@@ -209,22 +210,79 @@ class TestErode(BaseTester):
         with torch.no_grad():
             assert torch.equal(erosion(grad_tensor, kernel), erosion(grad_tensor, kernel, engine=plain_engine))
 
-    def test_auto_engine_follows_kernel_grad(self, device, dtype):
-        # The neighborhood is built from the kernel and the structuring element, so grad on either
-        # one records a backward graph even when the image does not require grad (#4525).
+    def test_auto_engine_follows_structuring_element_grad(self, device, dtype, monkeypatch):
+        # The neighborhood is built from the structuring element, so grad on it records a backward
+        # graph even when the image does not require grad. The kernel enters only through the
+        # ``kernel == 0`` mask, so a kernel that requires grad records nothing and must not push a
+        # forward-only call onto the slower grad-mode engine (#4525).
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.ones(3, 5, device=device, dtype=dtype)
-        wide = dtype in (torch.float32, torch.float64)
-        grad_engine = "unfold" if device.type == "cuda" or (device.type == "cpu" and wide) else "shift"
+        se = torch.rand(3, 5, device=device, dtype=dtype)
+        seen = []
+        resolve = morphology_module._resolve_engine
+        monkeypatch.setattr(
+            morphology_module,
+            "_resolve_engine",
+            lambda engine, t, recording_grad=False, dtype=None: (
+                seen.append(recording_grad) or resolve(engine, t, recording_grad, dtype)
+            ),
+        )
 
-        assert _records_grad(tensor, kernel, None) is False
-        assert _records_grad(tensor, kernel.clone().requires_grad_(True), None) is True
-        assert _records_grad(tensor, kernel, torch.rand(3, 5, device=device, dtype=dtype)) is False
-        se = torch.rand(3, 5, device=device, dtype=dtype).requires_grad_(True)
-        assert _records_grad(tensor, kernel, se) is True
+        assert _records_grad(tensor, None) is False
+        assert _records_grad(tensor, se) is False
+        assert _records_grad(tensor, se.clone().requires_grad_(True)) is True
 
-        grad_kernel = kernel.clone().requires_grad_(True)
-        assert torch.equal(erosion(tensor, grad_kernel), erosion(tensor, grad_kernel, engine=grad_engine))
+        erosion(tensor, kernel.clone().requires_grad_(True), engine="shift")
+        erosion(tensor, kernel, se.clone().requires_grad_(True), engine="shift")
+        erosion(tensor.clone().requires_grad_(True), kernel, engine="shift")
+        with torch.no_grad():
+            erosion(tensor.clone().requires_grad_(True), kernel, engine="shift")
+        assert seen == [False, True, True, False]
+        assert not erosion(tensor, kernel.clone().requires_grad_(True)).requires_grad
+
+    def test_auto_engine_resolves_from_promoted_dtype(self, device, monkeypatch):
+        # A float16 image with a float32 kernel computes, and differentiates, in float32, so the
+        # float32/float64 grad rule of "auto" must see the promoted dtype rather than the image's.
+        # On CPU that is the difference between "unfold" and a "shift" backward that is ~5x slower.
+        tensor = torch.rand(2, 3, 9, 9, device=device, dtype=torch.float16).requires_grad_(True)
+        kernel = torch.ones(3, 5, device=device, dtype=torch.float32)
+        grad_engine = "unfold" if device.type in ("cuda", "cpu") else "shift"
+        seen = []
+        resolve = morphology_module._resolve_engine
+
+        def recording_resolve(engine, t, recording_grad=False, dtype=None):
+            seen.append((dtype, resolve(engine, t, recording_grad, dtype)))
+            return seen[-1][1]
+
+        monkeypatch.setattr(morphology_module, "_resolve_engine", recording_resolve)
+        assert _resolve_engine("auto", tensor, True, torch.float32) == grad_engine
+        assert _resolve_engine("auto", tensor, True) == ("unfold" if device.type == "cuda" else "shift")
+
+        actual = erosion(tensor, kernel)
+        expected = erosion(tensor, kernel, engine=grad_engine)
+        assert seen[0] == (torch.float32, grad_engine)
+        assert actual.dtype == torch.float32
+        assert torch.equal(actual, expected)
+        # The same call without a backward graph keeps the forward-only engine off CUDA.
+        with torch.no_grad():
+            erosion(tensor, kernel)
+        assert seen[-1] == (torch.float32, "unfold" if device.type == "cuda" else "shift")
+
+    def test_auto_engine_forward_ad_takes_forward_engine(self, device):
+        # Forward-mode AD records no backward graph, so off CUDA "auto" takes "shift" and the tangent
+        # at tied maxima is the "shift" one: torch.maximum averages the tied tangents where
+        # torch.max(dim=) (the "unfold" engine) forwards one argmax's tangent. The all-ones input makes
+        # every window a tie, so the two engines' tangents differ and the pin can fail.
+        tensor = torch.ones(1, 1, 2, 2, device=device)
+        tangent = torch.tensor([[[[1.0, 2.0], [4.0, 8.0]]]], device=device)
+        kernel = torch.ones(2, 2, device=device)
+        expected_engine = "unfold" if device.type == "cuda" else "shift"
+
+        def run(engine):
+            return torch.func.jvp(lambda t: erosion(t, kernel, origin=[0, 0], engine=engine), (tensor,), (tangent,))[1]
+
+        assert not torch.equal(run("unfold"), run("shift"))
+        assert torch.equal(run("auto"), run(expected_engine))
 
     @pytest.mark.parametrize("kernel_shape", [(1, 1), (3, 3), (3, 5), (4, 2)])
     @pytest.mark.parametrize("origin", ["center", "first", "last"])
@@ -232,7 +290,7 @@ class TestErode(BaseTester):
     @pytest.mark.parametrize("non_flat", [False, True])
     def test_shift_engine_matches_unfold(self, device, dtype, kernel_shape, origin, border_type, non_flat):
         # engine="shift" reduces the same finite max-plus terms as engine="unfold" in the same order,
-        # so the outputs are bitwise equal (#4729).
+        # so the outputs are equal (#4729).
         kh, kw = kernel_shape
         origin_yx = {"center": None, "first": [0, 0], "last": [kh - 1, kw - 1]}[origin]
         anchor = origin_yx if origin_yx is not None else [kh // 2, kw // 2]
@@ -270,7 +328,10 @@ class TestErode(BaseTester):
         assert torch.equal(actual, expected)
         assert torch.equal(erosion(tensor, kernel, **kwargs), expected)
 
-    def test_shift_engine_preserves_signed_zero(self, device):
+    def test_shift_engine_signed_zero_is_equal_value(self, device):
+        # Windows that tie between +0 and -0 give an equal value on every engine; which zero comes out
+        # is the backend's tie choice for max/min (CPU keeps the first operand, MPS the second) and is
+        # deliberately not pinned, on either engine.
         tensor = torch.tensor([[[[1.0, -0.0], [0.0, -0.0]]]], device=device)
         kernel = torch.ones(2, 2, device=device)
 
@@ -278,7 +339,7 @@ class TestErode(BaseTester):
         actual = erosion(tensor, kernel, origin=[0, 0], engine="shift")
 
         assert torch.equal(actual, expected)
-        assert torch.equal(torch.signbit(actual), torch.signbit(expected))
+        assert torch.equal(actual, torch.zeros_like(actual))
 
     def test_shift_engine_gradcheck(self, device):
         tensor = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
