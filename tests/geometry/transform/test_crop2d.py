@@ -20,7 +20,7 @@ import torch
 
 import kornia
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_2d_grid_sample
 
 
 class TestCropAndResize(BaseTester):
@@ -303,6 +303,21 @@ class TestCenterCrop(BaseTester):
         self.assert_close(out_resample_true, out_resample_false)
         # and both agree with the plain integer-index slice of the same region
         self.assert_close(out_resample_false, inp[:, :, 1:3, 1:3], atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("size", [(1, 3), (3, 1), (1, 1)])
+    def test_convention_center_crop_accepts_a_size_one_axis_4751(self, size, device, dtype):
+        # A crop is a translation. Solving the perspective system from the box vertices instead returned a
+        # matrix of NaNs here, because a size-1 axis makes the vertices collinear.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(25.0, device=device, dtype=dtype).view(1, 1, 5, 5)
+        top, left = (5 - size[0]) // 2, (5 - size[1]) // 2
+        expected = inp[..., top : top + size[0], left : left + size[1]]
+
+        self.assert_close(kornia.geometry.transform.center_crop(inp, size), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(
+            kornia.geometry.transform.CenterCrop2D(size, cropping_mode="resample")(inp), expected, atol=1e-4, rtol=1e-4
+        )
 
 
 class TestCropByBoxes(BaseTester):

@@ -22,7 +22,8 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform
+from kornia.geometry.transform import crop_by_transform_mat
+from kornia.geometry.transform.crop2d import _crop_translation
 
 
 class CenterCrop(GeometricAugmentationBase2D):
@@ -127,7 +128,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
-            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            transform = _crop_translation(params["src"].to(input), params["dst"].to(input))
             return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
