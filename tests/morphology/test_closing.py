@@ -132,9 +132,9 @@ class TestClosing(BaseTester):
         # repeating `closing` on its own (already-closed) output is likewise exact, so
         # `torch.equal` is fine.
         # Generated with:
-        #   torch.manual_seed(0); x = torch.rand(1, 1, 7, 10)
-        torch.manual_seed(0)
-        tensor = torch.rand(1, 1, 7, 10, device=device, dtype=dtype)
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0))
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         closed = closing(tensor, kernel, origin=[0, 0])

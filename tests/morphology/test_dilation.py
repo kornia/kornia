@@ -432,10 +432,10 @@ class TestDilate(BaseTester):
         # negation is exact in every dtype, so `torch.equal` is fine here too. Pre-fix, this held
         # only for an odd kernel's centre origin and failed for every other origin.
         # Generated with:
-        #   torch.manual_seed(0); x = torch.rand(1, 1, 7, 10)
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0))
         #   L = torch.tensor([[0., 0., 0.], [0., 1., 1.], [0., 1., 0.]])
-        torch.manual_seed(0)
-        tensor = torch.rand(1, 1, 7, 10, device=device, dtype=dtype)
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
         square_kernel = torch.ones(2, 2, device=device, dtype=dtype)
 
@@ -471,3 +471,41 @@ class TestDilate(BaseTester):
         expected[..., 3, 3] = 1.0
 
         assert torch.equal(dilation(tensor, l_kernel), expected)
+
+    @pytest.mark.parametrize("engine", ["unfold", "convolution"])
+    def test_even_kernel_centre_non_square(self, device, dtype, engine):
+        # A rectangular kernel's rows and columns must each be padded with their OWN axis's
+        # reflected origin: `se_h`/`origin[0]` (rows) must never leak into the width pad slot, or
+        # `se_w`/`origin[1]` (cols) into the height pad slot. `ones(2, 2)`, `ones(3, 3)` and the L
+        # kernel used elsewhere in this file are square (or symmetric enough) that a pad list with
+        # rows and columns swapped still reproduces every one of their pins; only a genuinely
+        # rectangular kernel with an off-centre hot pixel catches a row/col swap.
+        # Derived from the Minkowski rule with the default origin [k_h // 2, k_w // 2]:
+        #   out(p) = max_{q in kernel} x(p - (q - origin))
+        # so the nonzero set is {p0 + q - origin : q in kernel}, clipped to the image bounds.
+        # Confirmed against the fixed library. Generated with:
+        #   x = torch.zeros(1, 1, 6, 7); x[..., 1, 4] = 1
+        #   dilation(x, torch.ones(1, 4))  -> row 1, cols 2..5 (origin=[0, 2])
+        #   dilation(x, torch.ones(4, 1))  -> rows 0..2, col 4 (origin=[2, 0]; row -1 clipped)
+        tensor = torch.zeros(1, 1, 6, 7, device=device, dtype=dtype)
+        tensor[..., 1, 4] = 1.0
+
+        wide_kernel = torch.ones(1, 4, device=device, dtype=dtype)
+        wide_nonzero = [[1, 2], [1, 3], [1, 4], [1, 5]]
+        tall_kernel = torch.ones(4, 1, device=device, dtype=dtype)
+        tall_nonzero = [[0, 4], [1, 4], [2, 4]]
+
+        for kernel, expected_nonzero in ((wide_kernel, wide_nonzero), (tall_kernel, tall_nonzero)):
+            actual = dilation(tensor, kernel, engine=engine)
+            expected = torch.zeros(1, 1, 6, 7, device=device, dtype=dtype)
+            for row, col in expected_nonzero:
+                expected[..., row, col] = 1.0
+
+            if engine == "convolution":
+                # See test_kernel: the convolution engine can carry tiny floating noise on some
+                # backends even for 0/1 inputs, so compare the full tensor at the harness's
+                # default per-dtype tolerance instead of a strict nonzero() index list; the
+                # fixture is 0/1 so this is exact anyway.
+                self.assert_close(actual, expected)
+            else:
+                assert sorted(actual.nonzero()[:, 2:].tolist()) == expected_nonzero

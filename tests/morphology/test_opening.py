@@ -133,15 +133,15 @@ class TestOpening(BaseTester):
         # `opening` on its own (already-open) output is likewise exact.
         # Generated with:
         #   block = torch.zeros(1, 1, 7, 10); block[..., 2:5, 3:7] = 1
-        #   torch.manual_seed(0); x = torch.rand(1, 1, 7, 10)
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0))
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
         block = torch.zeros(1, 1, 7, 10, device=device, dtype=dtype)
         block[..., 2:5, 3:7] = 1.0
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         assert torch.equal(opening(block, kernel, origin=[0, 0]), block)
 
-        torch.manual_seed(0)
-        tensor = torch.rand(1, 1, 7, 10, device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         opened = opening(tensor, kernel, origin=[0, 0])
         assert (opened <= tensor).all()
         assert torch.equal(opening(opened, kernel, origin=[0, 0]), opened)
