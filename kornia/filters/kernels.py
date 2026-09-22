@@ -386,11 +386,11 @@ def get_sobel_kernel_5x5_2nd_order(
     """Return a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
         [
-            [-1.0, 0.0, 2.0, 0.0, -1.0],
-            [-4.0, 0.0, 8.0, 0.0, -4.0],
-            [-6.0, 0.0, 12.0, 0.0, -6.0],
-            [-4.0, 0.0, 8.0, 0.0, -4.0],
-            [-1.0, 0.0, 2.0, 0.0, -1.0],
+            [1.0, 0.0, -2.0, 0.0, 1.0],
+            [4.0, 0.0, -8.0, 0.0, 4.0],
+            [6.0, 0.0, -12.0, 0.0, 6.0],
+            [4.0, 0.0, -8.0, 0.0, 4.0],
+            [1.0, 0.0, -2.0, 0.0, 1.0],
         ],
         device=device,
         dtype=dtype,
@@ -403,11 +403,11 @@ def _get_sobel_kernel_5x5_2nd_order_xy(
     """Return a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
         [
-            [-1.0, -2.0, 0.0, 2.0, 1.0],
-            [-2.0, -4.0, 0.0, 4.0, 2.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0],
-            [2.0, 4.0, 0.0, -4.0, -2.0],
             [1.0, 2.0, 0.0, -2.0, -1.0],
+            [2.0, 4.0, 0.0, -4.0, -2.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0],
+            [-2.0, -4.0, 0.0, 4.0, 2.0],
+            [-1.0, -2.0, 0.0, 2.0, 1.0],
         ],
         device=device,
         dtype=dtype,
@@ -518,7 +518,7 @@ def get_diff_kernel2d_2nd_order(
     """Return 2nd order gradient for diff operator."""
     gxx = torch.tensor([[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype)
     gyy = gxx.transpose(0, 1)
-    gxy = torch.tensor([[-1.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, -1.0]], device=device, dtype=dtype)
+    gxy = torch.tensor([[1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 1.0]], device=device, dtype=dtype)
     return torch.stack([gxx, gxy, gyy])
 
 
