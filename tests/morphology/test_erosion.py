@@ -143,6 +143,17 @@ class TestErode(BaseTester):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert erosion(tensor, test)
 
+        with pytest.raises(ValueError, match="Unknown `border_type`"):
+            erosion(tensor, kernel, border_type="banana")
+
+        with pytest.raises(ValueError, match="`structuring_element` shape must match `kernel` shape"):
+            erosion(tensor, kernel, structuring_element=torch.ones(3, 2, device=device, dtype=dtype))
+
+        for kernel_dtype in (torch.uint8, torch.int8):
+            result = erosion(tensor, torch.ones(3, 3, device=device, dtype=kernel_dtype))
+            assert result.shape == tensor.shape
+            assert result.dtype == tensor.dtype
+
     def test_jit(self, device, dtype):
         op = erosion
         op_script = torch.jit.script(op)

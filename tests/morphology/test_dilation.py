@@ -143,6 +143,17 @@ class TestDilate(BaseTester):
         with pytest.raises(NotImplementedError, match="unknown"):
             dilation(tensor, kernel, engine="invalid_engine")
 
+        with pytest.raises(ValueError, match="Unknown `border_type`"):
+            dilation(tensor, kernel, border_type="banana")
+
+        with pytest.raises(ValueError, match="`structuring_element` shape must match `kernel` shape"):
+            dilation(tensor, kernel, structuring_element=torch.ones(3, 2, device=device, dtype=dtype))
+
+        for kernel_dtype in (torch.uint8, torch.int8):
+            result = dilation(tensor, torch.ones(3, 3, device=device, dtype=kernel_dtype))
+            assert result.shape == tensor.shape
+            assert result.dtype == tensor.dtype
+
     def test_custom_origin(self, device, dtype):
         # Custom origin shifts the structuring element anchor point
         tensor = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
