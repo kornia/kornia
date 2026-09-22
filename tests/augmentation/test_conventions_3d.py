@@ -23,7 +23,12 @@ import torch
 import kornia
 import kornia.augmentation as K
 
-from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_nearest_3d_grid_sample
+from testing.base import (
+    BaseTester,
+    supports_bilinear_3d_grid_sample,
+    supports_nearest_3d_grid_sample,
+    supports_unit_size_3d_affine_grid,
+)
 
 
 class Test3DAugmentationConventions(BaseTester):
@@ -122,6 +127,20 @@ class Test3DAugmentationConventions(BaseTester):
             dtype=dtype,
         )
         self.assert_close(augmentation(volume, params=params), volume[..., 1:3, 1:4, 1:5])
+
+    @pytest.mark.parametrize("size", [(1, 3, 4), (2, 1, 4), (2, 3, 1), (1, 1, 1)])
+    def test_convention_crop3d_accepts_a_size_one_axis_4705(self, size, device, dtype):
+        # A crop is a translation. Solving the perspective system from the box vertices instead raised
+        # _LinAlgError here, because a size-1 axis makes the vertices coplanar.
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        if not supports_unit_size_3d_affine_grid(device, dtype):
+            pytest.skip("3D affine_grid cannot build a size-1 axis for this device and dtype")
+        volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
+        for augmentation in (K.CenterCrop3D(size, p=1.0), K.RandomCrop3D(size, p=1.0)):
+            output = augmentation(volume)
+            x, y, z = augmentation._params["src"][0, 0].long().tolist()
+            self.assert_close(output, volume[..., z : z + size[0], y : y + size[1], x : x + size[2]])
 
     def test_convention_geometric_defaults_and_identity(self, device, dtype):
         if not supports_bilinear_3d_grid_sample(device, dtype):
