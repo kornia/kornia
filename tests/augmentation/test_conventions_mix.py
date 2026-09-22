@@ -544,7 +544,7 @@ class TestMixConventions(BaseTester):
             assert mixed[..., 1].flatten().tolist() == ([999.0, 257.0] if p == 1.0 else [257.0, 999.0])
 
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float16])
+    @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float16, torch.bfloat16, torch.float64])
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_mix_forward_parameters_replay_with_class_4706(self, image_dtype, p):
         # A forward_parameters() dictionary has no "dtype"; forward takes it from the input, so replaying it with
@@ -560,6 +560,27 @@ class TestMixConventions(BaseTester):
             assert "dtype" not in params  # the caller's dictionary is left as it was
             assert torch.equal(output, sampled) and torch.equal(mixed, sampled_labels)
             assert mixed.dtype == _label_dtype(image_dtype)
+
+    def test_convention_mix_replay_takes_dtype_from_the_input_not_the_dictionary(self):
+        # A dictionary recorded on a float32 image and replayed on a float64 one gives float64 labels, like a fresh
+        # draw on the float64 image: the recorded "dtype" is not reused.
+        image = torch.rand(2, 1, 4, 4)
+        labels = torch.tensor([1, 2])
+        for aug in (K.RandomMixUpV2(p=1.0), K.RandomCutMixV2(p=1.0, use_correct_lambda=True)):
+            aug(image, labels, data_keys=["input", "class"])
+            params = dict(aug._params)
+            _, mixed = aug(image.double(), labels, params=params, data_keys=["input", "class"])
+            assert mixed.dtype == torch.float64
+
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int32, torch.bool])
+    def test_convention_mix_replay_rejects_an_unsupported_dtype_with_type_error(self, image_dtype):
+        # The replayed dictionary goes through the same dtype check as a fresh draw, so the error stays a TypeError.
+        image = torch.rand(2, 1, 4, 4)
+        for aug_cls in (K.RandomMixUpV2, K.RandomCutMixV2, K.RandomJigsaw, K.RandomMosaic):
+            aug = aug_cls(p=1.0)
+            params = aug.forward_parameters(image.shape)
+            with pytest.raises(TypeError, match="Expected input of"):
+                aug((image * 255).to(image_dtype), params=params)
 
     def test_convention_jigsaw_identity_permutation_transposes_the_grid(self, device, dtype):
         # The destination cell is chosen column-major by an entry's position; the entry's value indexes the
