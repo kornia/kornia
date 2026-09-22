@@ -190,11 +190,12 @@ class TestErode(BaseTester):
     def test_auto_engine_is_grad_aware(self, device, dtype):
         # A CPU call that records a backward graph takes "unfold" in float32/float64, where "shift"
         # is up to 3.4x slower; half precision and the forward-only path keep "shift". CUDA is
-        # "unfold" either way. Bitwise equal forward output makes the switch value-preserving.
+        # "unfold" either way, and MPS is "shift" either way -- the grad branch is CPU-only, so the
+        # dtype does not enter off CPU. Bitwise equal forward output makes the switch value-preserving.
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.ones(3, 5, device=device, dtype=dtype)
         wide = dtype in (torch.float32, torch.float64)
-        grad_engine = "unfold" if device.type == "cuda" or wide else "shift"
+        grad_engine = "unfold" if device.type == "cuda" or (device.type == "cpu" and wide) else "shift"
         plain_engine = "unfold" if device.type == "cuda" else "shift"
 
         assert _resolve_engine("auto", tensor, True) == grad_engine
@@ -214,7 +215,7 @@ class TestErode(BaseTester):
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.ones(3, 5, device=device, dtype=dtype)
         wide = dtype in (torch.float32, torch.float64)
-        grad_engine = "unfold" if device.type == "cuda" or wide else "shift"
+        grad_engine = "unfold" if device.type == "cuda" or (device.type == "cpu" and wide) else "shift"
 
         assert _records_grad(tensor, kernel, None) is False
         assert _records_grad(tensor, kernel.clone().requires_grad_(True), None) is True

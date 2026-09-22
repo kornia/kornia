@@ -59,8 +59,8 @@ def _resolve_engine(engine: str, tensor: torch.Tensor, recording_grad: bool = Fa
     ``recording_grad`` says whether this call will build a backward graph, which changes the ranking.
     All three engines return bitwise equal forward output, so switching on it never changes a value.
 
-    Benchmarks in :mod:`benchmarks.morphology.engines` (x86 CPU and an RTX 4090, ``dilation``,
-    B x 3 x 256 x 256) give three regimes:
+    Benchmarks in :mod:`benchmarks.morphology.engines` (x86 CPU, an RTX 4090 and an Apple M1,
+    ``dilation``, B x 3 x 256 x 256) give three CPU/CUDA regimes:
 
     - CUDA: ``unfold`` is the broadly faster engine forward (23 of 24 cells) and forward + backward
       (21 of 24), so it is always the CUDA choice.
@@ -70,8 +70,11 @@ def _resolve_engine(engine: str, tensor: torch.Tensor, recording_grad: bool = Fa
       loses to ``unfold`` in float32 (up to 2.5x at 15 x 15) and float64 (up to 3.4x), while still
       winning 11 of 12 half-precision cells.
 
-    MPS keeps ``shift`` in both cases: its ``unfold`` is an order of magnitude slower forward there,
-    and the forward + backward sweep has not been run on a Metal device.
+    MPS keeps ``shift`` in both cases, measured on an Apple M1: ``unfold`` is not the fastest engine
+    in any of the 16 forward + backward cells, and ``shift`` beats it there by 2.6-10x, so the CPU
+    float32 grad branch deliberately does not extend to Metal. ``convolution`` is faster than
+    ``shift`` at small kernels on MPS but collapses at 15 x 15 (2854 ms against 354 ms at B=8), which
+    is why it is not the choice either.
     """
     if engine == "auto":
         if tensor.device.type == "cuda":
