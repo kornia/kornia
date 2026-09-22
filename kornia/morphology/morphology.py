@@ -211,8 +211,7 @@ def dilation(
           back all ``True``, and the result is exact with a :math:`1 \times 1` kernel or with
           ``border_type="constant"``. With a floating kernel, :func:`erosion` is exact under the geodesic
           pad, because ``True`` cannot lower a minimum, and :func:`gradient` inherits the ring from
-          :func:`dilation`. On CPU the ``reflect`` and ``replicate``
-          pads raise on a ``bool`` image.
+          :func:`dilation`. On CPU the ``reflect`` and ``replicate`` pads raise on a ``bool`` image.
 
         Tracked in `#4735 <https://github.com/kornia/kornia/issues/4735>`_.
 
@@ -355,10 +354,10 @@ def erosion(
         instead.
         Under ``border_type="geodesic"`` a window with no in-image kernel cell is empty. scipy and
         scikit-image return ``inf`` there and OpenCV ``FLT_MAX``, while kornia returns a finite value that
-        depends on the image: for a flat kernel, :math:`\text{max\_val} + \min(0, m)`, where :math:`m` is the
+        depends on the image: for a flat kernel, ``max_val + min(0, m)``, where ``m`` is the
         smallest in-image pixel under a masked-out cell of that window. It is ``max_val`` only when those
         pixels are non-negative; ``x=[[-2.]]`` with ``kernel=[[0, 1]]`` and ``origin=[0, 0]`` returns
-        ``9998``. :func:`dilation` mirrors it with :math:`-\text{max\_val} + \max(0, M)`.
+        ``9998``. :func:`dilation` mirrors it with ``-max_val + max(0, M)``, ``M`` the largest such pixel.
 
         ``dilation`` and ``erosion`` with the same ``kernel`` and ``origin`` are an adjoint pair --
         ``dilation(x) <= y`` everywhere exactly when ``x <= erosion(y)`` everywhere -- while no window is
