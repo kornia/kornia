@@ -83,11 +83,6 @@ class ColorJitter(IntensityAugmentationBase2D):
         `#4785 <https://github.com/kornia/kornia/issues/4785>`_.
 
     .. warning::
-        On an input that is not three-channel, which only a fixed ``order`` admits, the contrast step blends each
-        sample with the mean of the whole batch rather than its own. Tracked in
-        `#4806 <https://github.com/kornia/kornia/issues/4806>`_.
-
-    .. warning::
         After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
         Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
 

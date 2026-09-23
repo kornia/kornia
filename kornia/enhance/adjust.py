@@ -511,7 +511,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     if image.shape[-3] == 3:
         img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
     else:
-        img_mean = image.mean()
+        img_mean = image.mean((-3, -2, -1), True)
 
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
@@ -1468,8 +1468,7 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
     r"""Adjust Contrast of an image.
 
     For an RGB image it blends the image with its grayscale mean, ``factor * image + (1 - factor) * mean``, as
-    torchvision and PIL do. Any other channel count takes the mean over the whole batch rather than per image
-    (`#4806 <https://github.com/kornia/kornia/issues/4806>`_).
+    torchvision and PIL do.
     The input image is expected to be in the range of [0, 1].
 
     Args:

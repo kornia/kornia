@@ -2001,6 +2001,15 @@ class TestColorJitter(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    def test_non_rgb_contrast_is_batch_independent(self, device, dtype):
+        image = torch.tensor([[[[0.8, 0.9], [0.7, 0.6]]], [[[0.0, 0.1], [0.2, 0.1]]]], device=device, dtype=dtype)
+        jitter = ColorJitter(contrast=(0.5, 0.5), p=1.0, order=(1,))
+
+        batched = jitter(image)
+        separate = torch.cat([jitter(sample.unsqueeze(0)) for sample in image])
+
+        self.assert_close(batched, separate)
+
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
             [
