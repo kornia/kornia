@@ -439,14 +439,20 @@ class TestAutoAugmentConventions(BaseTester):
         )
         assert bool((trivial.abs() <= 0.3 * 180).all()) and trivial.abs().max() > 30.0
         assert (trivial < 0).any() and (trivial > 0).any()
-        # AutoAugment's shear bins are fractions too, so the mapping is applied once: bin 9 is [0.24, 0.3] * 180.
-        auto = (
-            AutoAugment(policy=[[("shear_x", 1.0, 9)]])
-            .forward_parameters(torch.Size([64, 1, 8, 6]))[0]
-            .data[0]
-            .data["shear_x"]
-        )
-        assert bool((auto >= 0.24 * 180 - 1e-3).all()) and bool((auto <= 0.3 * 180 + 1e-3).all())
+        # AutoAugment's shear bins are fractions too, so the mapping is applied once: bin b of either shear op spans
+        # the adjacent points b and b + 1 of linspace(-0.3, 0.3, 11), times 180, and 256 rows reach both ends.
+        edges = [-0.3 + 0.06 * point for point in range(11)]
+        for name in ("shear_x", "shear_y"):
+            for magnitude_bin in range(10):
+                low, high = edges[magnitude_bin] * 180, edges[magnitude_bin + 1] * 180
+                auto = (
+                    AutoAugment(policy=[[(name, 1.0, magnitude_bin)]])
+                    .forward_parameters(torch.Size([256, 1, 8, 6]))[0]
+                    .data[0]
+                    .data[name]
+                )
+                assert bool((auto >= low - 1e-3).all()) and bool((auto <= high + 1e-3).all()), (name, magnitude_bin)
+                assert auto.min() < low + 1.0 and auto.max() > high - 1.0, (name, magnitude_bin)
         # The same policy entry through RandAugment, which always applied the mapping.
         mapped = (
             RandAugment(n=1, m=29, policy=[[("shear_x", -0.3, 0.3)]])
