@@ -1741,6 +1741,32 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             side.append(float(box[:, 0].max() - box[:, 0].min()))
         assert side[0] > side[1]
 
+    def test_start_reaches_every_legal_position_uniformly_4730(self, device, dtype):
+        # kornia#4730: starts were drawn from 0 .. side - cut - 2, so the last two legal starts were never drawn.
+        torch.manual_seed(0)
+        gen = CutmixGenerator(cut_size=torch.tensor([0.75, 0.75], device=device, dtype=dtype), p=1.0)
+        crop = gen(torch.Size([3000, 1, 7, 10]))["crop_src"][0]
+        # sqrt(1 - 0.75) = 0.5: every cut is 5 wide and 3 tall, so x starts 0..5 and y starts 0..4.
+        assert ((crop[:, 1, 0] - crop[:, 0, 0] + 1) == 5).all()
+        assert ((crop[:, 2, 1] - crop[:, 0, 1] + 1) == 3).all()
+        for start, n_legal in ((crop[:, 0, 0], 6), (crop[:, 0, 1], 5)):
+            counts = torch.bincount(start.long().cpu(), minlength=n_legal)
+            assert counts.numel() == n_legal, counts  # no start past side - cut
+            expected = len(start) / n_legal
+            assert counts.min() > 0.8 * expected and counts.max() < 1.2 * expected, counts
+
+    def test_start_stays_inside_when_the_draw_rounds_to_one_4730(self, device, dtype, monkeypatch):
+        # A float16/bfloat16 parameter dtype rounds a float32 draw above 1 - 2**-12 (float16) or 1 - 2**-9
+        # (bfloat16) to exactly 1.0, and MPS half-precision rand can return 1.0; floor(1.0 * (side - cut + 1)) is one
+        # past the last legal start, so the generator must clamp it.
+        rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.ones_like(rand(*args, **kwargs)))
+        gen = CutmixGenerator(cut_size=torch.tensor([0.75, 0.75], device=device, dtype=dtype), p=1.0)
+        crop = gen(torch.Size([2, 1, 7, 10]))["crop_src"]
+        # 5 x 3 cut in a 10 x 7 image: the last legal start is (5, 4).
+        box = torch.tensor([[5.0, 4.0], [9.0, 4.0], [9.0, 6.0], [5.0, 6.0]], device=device, dtype=dtype)
+        assert_close(crop, box.expand_as(crop), rtol=0.0, atol=0.0)
+
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
         image_shape = torch.Size([8, 3, 200, 200])
@@ -1773,8 +1799,10 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         }
         assert res.keys() == expected.keys(), res.keys()
         assert_close(res["mix_pairs"], expected["mix_pairs"], rtol=1e-4, atol=1e-4)
-        # bfloat16 keeps 8 significant bits, so ``floor(u * span)`` can land one pixel from the float32 literal.
-        tolerance = {"rtol": 0.0, "atol": 1.0} if dtype == torch.bfloat16 else {"rtol": 1e-4, "atol": 1e-4}
+        # The start is computed in the parameter dtype: float16 and bfloat16 keep 11 and 8 significant bits, so
+        # ``floor(u * span)`` can land one pixel from the float32 literal.
+        half = dtype in (torch.float16, torch.bfloat16)
+        tolerance = {"rtol": 0.0, "atol": 1.0} if half else {"rtol": 1e-4, "atol": 1e-4}
         assert_close(res["crop_src"], expected["crop_src"], **tolerance)
 
     def test_same_on_batch(self, device, dtype):
