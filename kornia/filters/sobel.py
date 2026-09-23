@@ -25,7 +25,12 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
-from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
+from .kernels import (
+    get_spatial_gradient_kernel2d,
+    get_spatial_gradient_kernel3d,
+    normalize_kernel2d,
+    normalize_kernel2d_2nd_order,
+)
 
 
 def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, normalized: bool = True) -> torch.Tensor:
@@ -81,7 +86,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
     else:
         kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
         if normalized:
-            kernel = normalize_kernel2d(kernel)
+            kernel = normalize_kernel2d(kernel) if order == 1 else normalize_kernel2d_2nd_order(kernel)
 
     # prepare kernel
     b, c, h, w = input.shape

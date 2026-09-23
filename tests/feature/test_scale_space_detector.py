@@ -256,8 +256,15 @@ class TestScaleSpaceDetector(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             # The shifted response is flat at half precision and yields no maxima at all.
             pytest.skip("a Hessian response offset by 1.0 has no resolution left in half precision")
-        torch.manual_seed(0)
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        # Gaussian blobs of increasing size give the Hessian one scale-space maximum per blob. Random noise
+        # left one or two maxima whose survival depended on the exact response scale and on the dtype.
+        coords = torch.arange(96, device=device, dtype=torch.float64)
+        yy, xx = torch.meshgrid(coords, coords, indexing="ij")
+        inp = torch.zeros(96, 96, device=device, dtype=torch.float64)
+        for i, sigma in enumerate((1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0)):
+            cy, cx = 16 + 32 * (i // 3), 16 + 32 * (i % 3)
+            inp += torch.exp(-((yy - cy) ** 2 + (xx - cx) ** 2) / (2 * sigma**2))
+        inp = inp[None, None].to(dtype)
         det = ScaleSpaceDetector(50, resp_module=NegatedHessian()).to(device, dtype)
         lafs, resps = det(inp)
         filled = lafs[0].ne(0).any(dim=-1).any(dim=-1)
