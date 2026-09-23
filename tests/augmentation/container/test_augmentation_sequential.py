@@ -924,6 +924,20 @@ class TestConventionAugmentationSequential(BaseTester):
         for entry, original in zip(restored, masks):
             self.assert_close(entry, original)
 
+    def test_list_mask_inverse_applies_the_inverse_matrix_4716(self, device, dtype):
+        # A flip is its own inverse, so a flip round trip cannot tell the inverse matrix from the forward one.
+        # A quarter turn can: applying the forward matrix again gives a half turn instead of the identity.
+        image = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        labels = torch.arange(64, device=device).reshape(1, 1, 8, 8).expand(2, 1, -1, -1) % 7
+        masks = [labels.clone(), labels > 3]
+        seq = K.AugmentationSequential(K.RandomRotation(degrees=(90.0, 90.0), p=1.0), data_keys=["input", "mask"])
+        out_image, out_masks = seq(image, masks)
+        assert not torch.equal(out_masks[0], labels)
+        _, restored = seq.inverse(out_image, out_masks)
+        assert [m.dtype for m in restored] == [torch.int64, torch.bool]
+        for entry, original in zip(restored, masks):
+            assert torch.equal(entry, original)
+
     @pytest.mark.parametrize("key", ["bbox_xyxy", "bbox_xywh"])
     @pytest.mark.parametrize("suffix", ["", "_2", "-a"])
     def test_dictionary_coordinate_box_keys_4483(self, key, suffix, device, dtype):

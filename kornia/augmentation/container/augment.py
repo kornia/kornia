@@ -145,7 +145,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           list can become desynchronized from the image when the gate differs across samples. A list longer
           than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
           ``.inverse()`` takes the list the forward pass returned and inverts it element by element with the
-          same per-entry gate, so a round trip restores each entry. Tracked in
+          same per-entry gate, so a round trip restores each entry wherever the forward warp kept it inside
+          the frame. Tracked in
           `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - supported geometric data-key handlers share the recorded transform, subject to the mask limitations
           above. Custom rigid subclasses are not dispatched solely because they supply a matrix
