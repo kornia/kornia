@@ -52,9 +52,10 @@ class ColorJitter(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
         order: a fixed application order, as indices into (brightness, contrast, saturation, hue); a subset
-          applies only those. ``None`` (the default) draws a random order on every call. A fixed order makes
-          the transform ``torch.compile`` fullgraph-safe. The parameter generator still draws an ``order``
-          entry into ``_params``, and with a fixed order that entry is ignored, including on replay.
+          applies only those, and a repeated index raises ``ValueError``. ``None`` (the default) draws a random
+          order on every call. A fixed order makes the transform ``torch.compile`` fullgraph-safe. The parameter
+          generator still draws an ``order`` entry into ``_params``, and with a fixed order that entry is ignored,
+          including on replay.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
@@ -152,10 +153,12 @@ class ColorJitter(IntensityAugmentationBase2D):
         # keeps the original random per-call order.
         if order is not None:
             order = tuple(int(i) for i in order)
-            if not set(order) <= {0, 1, 2, 3} or len(order) != len(set(order)):
+            if not set(order) <= {0, 1, 2, 3}:
                 raise ValueError(
                     f"`order` entries must be in 0..3 (brightness, contrast, saturation, hue). Got {order}"
                 )
+            if len(order) != len(set(order)):
+                raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
 
         # native functions
