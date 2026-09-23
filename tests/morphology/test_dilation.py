@@ -329,6 +329,22 @@ class TestDilate(BaseTester):
         assert actual.dtype == tensor.dtype
         assert torch.equal(actual, expected)
 
+    @pytest.mark.parametrize("border_type", ["reflect", "replicate", "circular"])
+    def test_border_value_ignored_for_non_constant_border(self, device, dtype, border_type):
+        # border_value only applies to border_type="constant"; the other modes ignore it
+        # instead of forwarding it to F.pad, which rejects a value for them (#4748).
+        if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        tensor = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        actual = dilation(tensor, kernel, border_type=border_type, border_value=1.0)
+        expected = dilation(tensor, kernel, border_type=border_type)
+
+        assert torch.equal(actual, expected)
+
     def test_shift_engine_mixed_dtype_non_flat(self, device):
         tensor = torch.zeros(1, 1, 2, 2, device=device, dtype=torch.float16)
         kernel = torch.ones(2, 2, device=device, dtype=torch.float32)
