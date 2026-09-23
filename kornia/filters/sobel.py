@@ -26,10 +26,10 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import (
+    _normalize_kernel2d_2nd_order,
     get_spatial_gradient_kernel2d,
     get_spatial_gradient_kernel3d,
     normalize_kernel2d,
-    normalize_kernel2d_2nd_order,
 )
 
 
@@ -42,7 +42,9 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
         input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
         mode: derivatives modality, can be: `sobel` or `diff`.
         order: the order of the derivatives.
-        normalized: whether the output is normalized.
+        normalized: if ``True``, scale the kernels so that every output channel estimates the derivative
+          itself, exact on linear surfaces for ``order=1`` and on quadratic surfaces for ``order=2``. If
+          ``False``, return the raw kernel responses.
 
     Return:
         the derivatives of the input feature map. with shape :math:`(B, C, 2, H, W)` holding
@@ -88,7 +90,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
     else:
         kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
         if normalized:
-            kernel = normalize_kernel2d(kernel) if order == 1 else normalize_kernel2d_2nd_order(kernel)
+            kernel = normalize_kernel2d(kernel) if order == 1 else _normalize_kernel2d_2nd_order(kernel)
 
     # prepare kernel
     b, c, h, w = input.shape

@@ -74,7 +74,7 @@ def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     return input / (norm[..., None, None])
 
 
-def normalize_kernel2d_2nd_order(input: torch.Tensor) -> torch.Tensor:
+def _normalize_kernel2d_2nd_order(input: torch.Tensor) -> torch.Tensor:
     r"""Scale a stack of second order derivative kernels ``(dxx, dxy, dyy)`` to derivative estimates.
 
     Each kernel is divided by the magnitude of its response to the quadratic whose second derivative it
