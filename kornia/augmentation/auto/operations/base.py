@@ -58,10 +58,8 @@ class OperationBase(nn.Module):
         - a symmetric magnitude first applies the configured magnitude mapping, then chooses an independent sign
           for every row. Sign selection preserves the mapped magnitude, but the mapping can first quantize it to
           zero. For example, ``Posterize`` maps ``0.5`` to zero with ``magnitude_range=(0, 8)``.
-        - :class:`~kornia.augmentation.auto.PolicySequential` is a lower-level container. Its own sampler calls
-          ``operation.op.forward_parameters`` directly, bypassing this wrapper's magnitude mapping. This is a
-          distinct direct-use behavior, tracked in `#4441
-          <https://github.com/kornia/kornia/issues/4441>`_.
+        - :class:`~kornia.augmentation.auto.PolicySequential` samples each operation through
+          ``forward_parameters``, so the magnitude mapping applies under every policy container.
         - The concrete operation classes in ``kornia.augmentation.auto.operations.ops`` only configure this
           wrapper around public 2D augmentations; their input, dtype, RNG, and replay contracts are those of
           their wrapped augmentation and :doc:`/get-started/conventions`. Serialization is the exception: this

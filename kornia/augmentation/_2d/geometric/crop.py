@@ -29,7 +29,8 @@ from kornia.constants import Resample
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
+from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat
+from kornia.geometry.transform.crop2d import _crop_translation
 
 
 class RandomCrop(GeometricAugmentationBase2D):
@@ -213,7 +214,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         if flags["cropping_mode"] in ("resample", "slice"):
             src = params["src"].to(input)
             dst = params["dst"].to(input)
-            transform: torch.Tensor = get_perspective_transform(src, dst)
+            transform = _crop_translation(src, dst)
 
             # Scale against the canvas represented by the effective replay parameters.
             # During export, retain the static-shape path rather than reading padding_size back to host.

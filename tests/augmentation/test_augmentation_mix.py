@@ -310,7 +310,7 @@ class TestRandomCutMixV2(BaseTester):
         expected = torch.tensor(
             [
                 [[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
-                [[[1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
+                [[[0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0]]],
             ],
             device=device,
             dtype=dtype,
@@ -326,6 +326,21 @@ class TestRandomCutMixV2(BaseTester):
             torch.tensor([0, 1], device=device, dtype=label_dtype),
         )
         self.assert_close(out_label[0, :, 2], torch.tensor([0.5, 0.5], device=device, dtype=label_dtype))
+
+    def test_full_image_cut_pastes_the_whole_partner_4730(self, device, dtype):
+        # kornia#4730: a full-image cut used to start at -1, so the box sat one pixel outside the image and the
+        # last row and column kept the original pixels while lambda reported a full cut.
+        torch.manual_seed(0)
+        batch, height, width = 3, 5, 7
+        image = torch.arange(1, batch + 1, device=device, dtype=dtype).view(batch, 1, 1, 1)
+        image = image.expand(batch, 2, height, width).contiguous()
+        f = RandomCutMixV2(p=1.0, cut_size=(0.0, 0.0), data_keys=["input", "class"], use_correct_lambda=True)
+        out_image, out_label = f(image, torch.arange(batch, device=device))
+        pairs = f._params["mix_pairs"][0].to(device)
+        box = torch.tensor([[0.0, 0.0], [width - 1, 0.0], [width - 1, height - 1], [0.0, height - 1]], device=device)
+        self.assert_close(f._params["crop_src"][0].to(box), box.expand(batch, 4, 2), rtol=0.0, atol=0.0)
+        self.assert_close(out_image, image[pairs], rtol=0.0, atol=0.0)
+        self.assert_close(out_label[0, :, 2], torch.zeros_like(out_label[0, :, 2]), rtol=0.0, atol=0.0)
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(76)
@@ -359,7 +374,7 @@ class TestRandomCutMixV2(BaseTester):
         expected = torch.tensor(
             [
                 [[[0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
-                [[[1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
+                [[[0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0]]],
             ],
             device=device,
             dtype=dtype,
@@ -393,7 +408,7 @@ class TestRandomCutMixV2(BaseTester):
 
         expected = torch.tensor(
             [
-                [[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
+                [[[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]]],
                 [[[1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
             ],
             device=device,
@@ -436,8 +451,8 @@ class TestRandomCutMixV2(BaseTester):
 
         expected = torch.tensor(
             [
-                [[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
-                [[[1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
+                [[[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]]],
+                [[[0.0, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]]],
             ],
             device=device,
             dtype=dtype,
