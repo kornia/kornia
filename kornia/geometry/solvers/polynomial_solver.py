@@ -241,7 +241,9 @@ def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
     at all cannot. Measured on 100k-row sweeps per family: after polishing, genuine float32 roots
     leave at most 5.8e-6 and float64 roots from an ill-conditioned cluster 3.7e-11, while the values
     Ferrari's collapsed factorisation produces in #4474 never fall below 1.5e-3 in either dtype.
-    ``sqrt(eps) / 4`` is 8.6e-5 in float32 and 3.7e-9 in float64, at least 15x from both sides.
+    ``sqrt(eps) / 4`` is 8.6e-5 in float32 and 3.7e-9 in float64, at least 15x from both. That margin
+    is for Ferrari's own candidates. A value polished from a complex-pair placeholder can stop inside
+    the tolerance next to two close roots, so ``solve_quartic`` also requires those to have converged.
     """
     return math.sqrt(torch.finfo(dtype).eps) / 4
 
@@ -475,8 +477,13 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # a root from the collapsed-factorisation values above. Two Newton steps, each kept only when it
     # lowers |p|, pull a genuine root to the evaluation floor; a value that is not a root of this
     # quartic cannot be pulled there, and a step near a multiple root that would overshoot is not
-    # taken, so the polish never makes a candidate worse.
+    # taken, so the polish never makes a candidate worse. The zeros solve_quadratic returns for a
+    # complex pair are polished too: when rounding sends a real pair's discriminant negative, the
+    # pair comes back as placeholders and Newton from zero recovers the root nearest zero (one real
+    # root of 1e-3 next to roots of 1 to 1e3, say). They are judged apart from Ferrari's own
+    # candidates below, because from zero Newton can also stop anywhere |p| is merely small.
     root_candidates = torch.cat([roots1, roots2], dim=-1)
+    is_candidate = root_candidates != 0
     A_e, B_e, C_e, D_e = (t.unsqueeze(-1) for t in (A, B, C, D))
 
     def quartic(x: torch.Tensor) -> torch.Tensor:
@@ -496,30 +503,10 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         root_candidates = torch.where(improved, stepped, root_candidates)
         root_residual = torch.where(improved, stepped_residual, root_residual)
 
-    # Then drop the candidates that are not roots of the normalized quartic, using the zero
-    # placeholder this function already returns for a quartic with no real roots. The tolerance is
-    # relative to the size of the terms at the candidate: a cluster of close real roots is
-    # ill-conditioned in float32 and lands a long way from the true values while still satisfying
-    # the polynomial, and those stay.
+    # The derivative at each polished candidate, relative to the size of the derivative's terms,
+    # tells a simple root (p' clear of zero) from a multiple one; at a simple root |p / p'| is a
+    # first-order estimate of the distance to the root.
     abs_root = torch.abs(root_candidates)
-    root_residual_scale = torch.maximum(
-        torch.ones_like(root_candidates),
-        abs_root**4
-        + torch.abs(A_e) * abs_root**3
-        + torch.abs(B_e) * abs_root**2
-        + torch.abs(C_e) * abs_root
-        + torch.abs(D_e),
-    )
-    is_root = torch.abs(root_residual) / root_residual_scale <= _quartic_root_residual_tol(root_candidates.dtype)
-    root_candidates = torch.where(is_root, root_candidates, torch.zeros_like(root_candidates))
-
-    # Polishing can also carry a non-root onto a root the other quadratic already reports: when the
-    # quadratic that should have held the complex pair collapses to a double candidate near a real
-    # root, both copies converge onto it and a simple root comes back two or three times. A simple
-    # root cannot repeat, so a candidate that coincides with an earlier accepted one is dropped
-    # unless the root is multiple, which the derivative decides: at a multiple root p' vanishes
-    # with p, at a simple one it does not. Two genuine roots that merely lie close have a small
-    # derivative between them for the same reason and are both kept.
     abs_derivative = torch.abs(quartic_derivative(root_candidates))
     derivative_scale = torch.maximum(
         torch.ones_like(root_candidates),
@@ -532,13 +519,50 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         torch.abs(root_residual) / torch.maximum(abs_derivative, eps * derivative_scale),
         torch.zeros_like(root_candidates),
     )
+
+    # Then drop the candidates that are not roots of the normalized quartic, using the zero
+    # placeholder this function already returns for a quartic with no real roots. The tolerance is
+    # relative to the size of the terms at the candidate: a cluster of close real roots is
+    # ill-conditioned in float32 and lands a long way from the true values while still satisfying
+    # the polynomial, and those stay.
+    root_residual_scale = torch.maximum(
+        torch.ones_like(root_candidates),
+        abs_root**4
+        + torch.abs(A_e) * abs_root**3
+        + torch.abs(B_e) * abs_root**2
+        + torch.abs(C_e) * abs_root
+        + torch.abs(D_e),
+    )
+    is_root = torch.abs(root_residual) / root_residual_scale <= _quartic_root_residual_tol(root_candidates.dtype)
+    # A polished placeholder is kept only where Newton converged, at a simple root: its remaining step
+    # |p / p'| must be within sqrt(eps) of |x| itself, the reach of a root the dtype can resolve. The
+    # bound is relative with no floor at 1, so a root near zero is held to the same standard; with a
+    # floor it becomes absolute there and admits a value 25% off a root at 1e-3. Two steps from zero
+    # can also stop inside the residual tolerance a tenth away from two close real roots, where |p|
+    # stays small over a wide interval; p' is small there too, and the step still to go is far larger.
+    recovered = is_simple & (root_error <= math.sqrt(eps) * abs_root)
+    is_root = is_root & (is_candidate | recovered)
+    root_candidates = torch.where(is_root, root_candidates, torch.zeros_like(root_candidates))
+
+    # Polishing can also carry a non-root onto a root the other quadratic already reports: when the
+    # quadratic that should have held the complex pair collapses to a double candidate near a real
+    # root, both copies converge onto it and a simple root comes back two or three times. A simple
+    # root cannot repeat, so a candidate that coincides with an earlier accepted one is dropped
+    # unless the root is multiple, which the derivative decides: at a multiple root p' vanishes
+    # with p, at a simple one it does not. Two genuine roots that merely lie close have a small
+    # derivative between them for the same reason and are both kept.
     ulp_floor = eps * torch.maximum(abs_root.unsqueeze(-1), abs_root.unsqueeze(-2))
     coincidence = _QUARTIC_COINCIDENCE_FACTOR * (root_error.unsqueeze(-1) + root_error.unsqueeze(-2) + ulp_floor)
     coincide = torch.abs(root_candidates.unsqueeze(-1) - root_candidates.unsqueeze(-2)) <= coincidence
-    earlier = torch.tril(torch.ones(4, 4, dtype=torch.bool, device=root_candidates.device), diagonal=-1)
+    # Of two copies, the one kept is Ferrari's own candidate over a root recovered from a placeholder,
+    # which had only two steps from zero to get there while the other started at the root; between
+    # two of the same kind, the earlier one.
+    slot = torch.arange(4, device=root_candidates.device).expand_as(root_candidates)
+    rank = slot + 4 * (~is_candidate).to(slot.dtype)
+    outranked_by = rank.unsqueeze(-2) < rank.unsqueeze(-1)
     accepted = root_candidates != 0
-    repeats_earlier = (coincide & earlier & accepted.unsqueeze(-1) & accepted.unsqueeze(-2)).any(dim=-1)
-    root_candidates = torch.where(repeats_earlier & is_simple, torch.zeros_like(root_candidates), root_candidates)
+    is_repeat = (coincide & outranked_by & accepted.unsqueeze(-1) & accepted.unsqueeze(-2)).any(dim=-1)
+    root_candidates = torch.where(is_repeat & is_simple, torch.zeros_like(root_candidates), root_candidates)
     roots1, roots2 = root_candidates[:, :2], root_candidates[:, 2:]
 
     solutions[mask_quartic, 0:2] = roots1.to(dtype=solutions.dtype)

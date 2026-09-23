@@ -24,6 +24,17 @@ import kornia.geometry.solvers as solver
 from testing.base import BaseTester
 
 
+def _monic_from_roots(roots: torch.Tensor) -> torch.Tensor:
+    """Expand prod (x - r_i) row by row into monic coefficients, highest power first, in float64."""
+    roots = roots.to(torch.float64)
+    coeffs = torch.ones(roots.shape[0], 1, dtype=torch.float64)
+    for i in range(roots.shape[1]):
+        r = roots[:, i : i + 1]
+        coeffs = torch.cat([coeffs, torch.zeros(roots.shape[0], 1, dtype=torch.float64)], dim=1)
+        coeffs[:, 1:] = coeffs[:, 1:] - r * coeffs[:, :-1]
+    return coeffs
+
+
 class TestQuadraticSolver(BaseTester):
     def test_smoke(self, device, dtype):
         coeffs = torch.rand(1, 3, device=device, dtype=dtype)
@@ -795,12 +806,7 @@ class TestQuarticSolver(BaseTester):
         gaps = torch.rand(2000, 3, generator=gen, dtype=torch.float64) * 4 + 0.5
         first = torch.rand(2000, 1, generator=gen, dtype=torch.float64) * (20 - gaps.sum(1, keepdim=True)) - 10
         true_roots = torch.cat([first, first + gaps.cumsum(1)], dim=1)
-        # Expand prod (x - r_i) into monic coefficients, highest power first.
-        coeffs = torch.ones(2000, 1, dtype=torch.float64)
-        for i in range(4):
-            r = true_roots[:, i : i + 1]
-            coeffs = torch.cat([coeffs, torch.zeros(2000, 1, dtype=torch.float64)], dim=1)
-            coeffs[:, 1:] = coeffs[:, 1:] - r * coeffs[:, :-1]
+        coeffs = _monic_from_roots(true_roots)
         roots = torch.sort(solver.solve_quartic(coeffs.to(device=device, dtype=dtype)), dim=-1).values
 
         assert bool((roots != 0).all()), f"{int((roots == 0).sum())} roots replaced by the placeholder"
@@ -837,6 +843,97 @@ class TestQuarticSolver(BaseTester):
         roots = torch.sort(solver.solve_quartic(coeffs), dim=-1).values
         expected = torch.tensor([[-3.0, -1.0, 2.0, 2.0], [-1.0, -1.0, 1.0, 1.0]], device=device, dtype=dtype)
         self.assert_close(roots, expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize(
+        "coeffs, true_roots, dtypes",
+        [
+            # (x + 8.75)(x + 8.74)(x^2 - 2x + 17), and the same with roots -8.75 and -8.748. Polishing a
+            # complex-pair placeholder from zero stopped a tenth away from the close pair, inside the
+            # residual tolerance: -8.8777 twice, or -8.8840 four times.
+            ([1.0, 15.49, 58.495, 144.38, 1300.075], [-8.75, -8.74], (torch.float32, torch.float64)),
+            ([1.0, 15.498, 58.549, 144.376, 1301.265], [-8.75, -8.748], (torch.float32, torch.float64)),
+            # A recovered placeholder must have converged: accepting it at any simple root returns -1.10588
+            # for the near-double root at -1.1189.
+            (
+                [1.0, -2.4284734, -3.84090791, 6.128004724, 6.696065824],
+                [-1.11887, -1.11886, 2.02579, 2.64041],
+                (torch.float32, torch.float64),
+            ),
+            # ...relative to |x| itself: a bound of sqrt(eps) * max(1, |x|) is absolute below 1, and
+            # returns 0.0008457 for the root at 0.00112, 25% off.
+            (
+                [1.0, -6.807518769, -104.0549685, 0.2346873751, -0.0001323169874],
+                [-7.351354433, 0.001122449359, 0.001132718443, 14.15661803],
+                (torch.float32,),
+            ),
+        ],
+    )
+    def test_returned_values_are_roots_4474(self, coeffs, true_roots, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("This case pins behaviour in another dtype.")
+        roots = solver.solve_quartic(torch.tensor([coeffs], device=device, dtype=dtype))[0]
+        want = torch.tensor(true_roots, device=device, dtype=dtype)
+        # Relative to the root itself, with no floor at 1, so a value near zero is held to the same standard.
+        rtol = 1e-2 if dtype == torch.float32 else 1e-6
+        for value in roots[roots != 0]:
+            assert bool(((want - value).abs() <= rtol * want.abs()).any()), f"{value} is not a root: {roots.tolist()}"
+
+    @pytest.mark.parametrize(
+        "coeffs, expected, dtypes",
+        [
+            # Each case pins one rule of the polish/filter/dedupe step: changing that rule makes it fail.
+            # Placeholders are judged apart from Ferrari's candidates: without it -8.8777 is returned twice.
+            ([1.0, 15.49, 58.495, 144.38, 1300.075], [-8.75, -8.74], (torch.float32, torch.float64)),
+            # Placeholders are polished: without it the root at 0.003 is lost next to roots of 1e2 to 1e3.
+            (
+                [1.0, -1088.503, -128841.7345, 329286.535, -986.7],
+                [-110.0, 0.003, 2.5, 1196.0],
+                (torch.float32, torch.float64),
+            ),
+            # The error bound comes only from simple roots: counting the double root drops 1.68.
+            (
+                _monic_from_roots(torch.tensor([[2.3, 2.3, -4.19, 1.68]], dtype=torch.float64))[0].tolist(),
+                [-4.19, 1.68, 2.3, 2.3],
+                (torch.float64,),
+            ),
+            # Coincidence factor 4, not 1: at 1 a second -1.5 survives (roots -2, -1.5, 4 +- 0.5i).
+            ([1.0, -4.5, -8.75, 32.875, 48.75], [-2.0, -1.5], (torch.float32, torch.float64)),
+            # Simple-root threshold 1e-2, not 1e-1: at 1e-1 -4031 is returned twice (roots -4031, -4689,
+            # 231 +- 875i). The smaller case (roots -9, -5, 1 +- 3i) guards the same repeat at -9.
+            (
+                [1.0, 8258.0, 15691705.0, -1590869938.0, 15479948400000.0],
+                [-4689.0, -4031.0],
+                (torch.float32, torch.float64),
+            ),
+            ([1.0, 12.0, 27.0, 50.0, 450.0], [-9.0, -5.0], (torch.float32, torch.float64)),
+            # ...and not 1e-3: at 1e-3 the double root at -2 loses a copy (roots -5, -2, -2, 2.25).
+            ([1.0, 6.75, 3.75, -34.0, -45.0], [-5.0, -2.0, -2.0, 2.25], (torch.float32, torch.float64)),
+            # The ulp floor in the coincidence window: without it 4.75 comes back twice (roots 4.75, -5, 9 +- 3i).
+            ([1.0, -17.75, 61.75, 450.0, -2137.5], [-5.0, 4.75], (torch.float32, torch.float64)),
+        ],
+    )
+    def test_root_set_4474(self, coeffs, expected, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("This case pins behaviour in another dtype.")
+        roots = solver.solve_quartic(torch.tensor([coeffs], device=device, dtype=dtype))[0]
+        found = torch.sort(roots[roots != 0]).values
+        assert found.numel() == len(expected), f"expected {expected}, got {roots.tolist()}"
+        # A double root in float32 lands ~sqrt(eps) apart; everything else here is far tighter.
+        tol = 1e-2 if dtype == torch.float32 else 1e-6
+        want = torch.tensor(sorted(expected), device=device, dtype=dtype)
+        self.assert_close(found, want, rtol=tol, atol=tol)
+
+    def test_ferrari_candidate_is_kept_over_a_recovered_copy_4474(self, device, dtype):
+        # A placeholder recovered to 2.288697 and Ferrari's own 2.289372 are copies of the root at
+        # 2.289375. The recovered one had two steps from zero and is 3e-4 off; keeping it by slot order
+        # threw away the accurate one. Ferrari's candidate is kept.
+        if dtype != torch.float32:
+            pytest.skip("The recovered copy arises in float32.")
+        coeffs = torch.tensor([[1.0, -7.111530047, 11.09636462, 16.30030766, -37.6143968]], device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)[0]
+        near = roots[(roots - 2.289375).abs() <= 1e-2 * 2.289375]
+        assert near.numel() == 1, f"expected one copy of 2.289375, got {roots.tolist()}"
+        assert abs(float(near) - 2.289375) <= 1e-5 * 2.289375, f"kept the less accurate copy: {float(near)}"
 
     def test_four_real_roots_survive_the_residual_filter_4474(self, device, dtype):
         # The guard rejects non-roots; it must not reject roots. A well-separated
