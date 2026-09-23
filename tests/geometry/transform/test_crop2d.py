@@ -521,14 +521,13 @@ class TestCropByIndices(BaseTester):
             kornia.geometry.transform.crop_by_indices(img, src_box, size=None)
 
     def test_convention_shape_compensation_pad_vs_resize(self, device, dtype):
-        # shape_compensation is pinned per the crop_by_indices Convention block: when
-        # src_box is identical across the batch it is ignored (exact integer slice if the
-        # slice already matches `size`, resized otherwise); it only takes effect for a
-        # non-uniform batch, where 'pad' trims via F.pad's negative padding (keeps the
-        # top-left corner, no interpolation) while 'resize' downsamples via interpolation.
+        # shape_compensation is pinned per the crop_by_indices Convention block: it applies
+        # whenever the cropped slice does not match `size`, whether or not src_box is identical
+        # across the batch. 'pad' trims via F.pad's negative padding (keeps the top-left corner,
+        # no interpolation) while 'resize' resamples via interpolation.
         inp = torch.arange(0.0, 32.0, device=device, dtype=dtype).view(1, 1, 4, 8).repeat(2, 1, 1, 1)
 
-        # --- identical src_box across the batch: shape_compensation is ignored ---
+        # --- identical src_box across the batch: shape_compensation still applies (#4749) ---
         box_3x3 = torch.tensor([[[0, 0], [2, 0], [2, 2], [0, 2]]], device=device, dtype=torch.int64).expand(2, -1, -1)
         box_2x2 = torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]], device=device, dtype=torch.int64).expand(2, -1, -1)
         size = (2, 2)
@@ -542,13 +541,28 @@ class TestCropByIndices(BaseTester):
         self.assert_close(out_resize_match, expected_slice, atol=0.0, rtol=0.0)
         self.assert_close(out_pad_match, expected_slice, atol=0.0, rtol=0.0)
 
-        # slice (3x3) differs from `size` (2x2): resized under both settings.
+        # slice (3x3) differs from `size` (2x2): 'resize' resamples, 'pad' trims — the same
+        # result the same box produces in the non-uniform batch below.
         out_resize_diff = kornia.geometry.transform.crop_by_indices(
             inp, box_3x3, size=size, shape_compensation="resize"
         )
         out_pad_diff = kornia.geometry.transform.crop_by_indices(inp, box_3x3, size=size, shape_compensation="pad")
-        self.assert_close(out_resize_diff, out_pad_diff, atol=0.0, rtol=0.0)
+        expected_resize_uniform = torch.tensor([[2.25, 3.75], [14.25, 15.75]], device=device, dtype=dtype)
+        expected_pad_uniform = torch.tensor([[0.0, 1.0], [8.0, 9.0]], device=device, dtype=dtype)
+        self.assert_close(out_resize_diff[:, 0], expected_resize_uniform.expand(2, -1, -1), rtol=1e-2, atol=1e-2)
+        self.assert_close(out_pad_diff[:, 0], expected_pad_uniform.expand(2, -1, -1), rtol=1e-2, atol=1e-2)
         assert out_resize_diff.shape[-2:] == size
+
+        # identical 2x2 box padded UP to (3, 3): zero ring, not a 2x2->3x3 resample (#4749).
+        out_pad_grow = kornia.geometry.transform.crop_by_indices(inp, box_2x2, size=(3, 3), shape_compensation="pad")
+        expected_grow = torch.nn.functional.pad(inp[..., 0:2, 0:2], [0, 1, 0, 1])
+        self.assert_close(out_pad_grow, expected_grow, atol=0.0, rtol=0.0)
+
+        # identical 3x3 box to (4, 2): grows the height and trims the width, so the two axes'
+        # pad amounts differ and a swapped F.pad argument order changes the result.
+        out_pad_mixed = kornia.geometry.transform.crop_by_indices(inp, box_3x3, size=(4, 2), shape_compensation="pad")
+        expected_mixed = torch.nn.functional.pad(inp[..., 0:3, 0:3], [0, -1, 0, 1])
+        self.assert_close(out_pad_mixed, expected_mixed, atol=0.0, rtol=0.0)
 
         # --- non-uniform batch (box 0 != box 1): shape_compensation genuinely takes effect ---
         src_box = torch.tensor(
