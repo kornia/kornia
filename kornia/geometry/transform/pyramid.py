@@ -156,30 +156,14 @@ class ScalePyramid(nn.Module):
 
     Convention:
         - input: :math:`(B, C, H, W)`
-        - ``forward`` returns a 3-tuple ``(pyr, sigmas, pixel_dists)``, one entry per
-          octave: ``pyr[octave]`` is :math:`(B, C, L, H_i, W_i)` with
-          ``L = n_levels + extra_levels`` stacked levels; ``sigmas[octave]`` and
-          ``pixel_dists[octave]`` are :math:`(B, L)` — these are **nominal**
-          bookkeeping scale metadata (the values the scale-space construction
-          targets), not measured physical blur. ``sigmas`` is octave-relative,
-          resetting to the same ``init_sigma``-seeded sequence at the start of
-          every octave (octave 0's first entry is instead the assumed input
-          blur, ``0.5``, or ``1.0`` when ``double_image=True``, whenever
-          ``init_sigma`` is below that value) — e.g.
-          ``ScalePyramid(n_levels=1, init_sigma=0.25)`` returns octave 0
-          ``[0.5, 0.5, 1.0, 2.0]`` and octave 1+ ``[0.25, 0.5, 1.0, 2.0]`` (the
-          per-level values scale with ``n_levels``/``extra_levels``); and
-          ``pixel_dists`` is the pixel spacing of each level relative to the
-          input. The nominal blur in original-image pixels is
-          ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]``
-          alone. Caveat: when ``init_sigma`` is below the assumed input blur,
-          the true blur exceeds this nominal value for octave-0 levels
-          :math:`\geq 1` and for everything seeded from them in later octaves
-          (each octave is seeded from an earlier octave's under-labelled
-          level, so the gap propagates onward)
-        - no ``align_corners`` constructor parameter — the internal ``double_image``
-          and octave-seeding resizes are hardcoded to ``align_corners=True`` and are
-          not user-configurable
+        - ``forward`` returns ``(pyr, sigmas, pixel_dists)``, one entry per octave: ``pyr[o]`` is
+          :math:`(B, C, L, H_o, W_o)` with ``L = n_levels + extra_levels``, and ``sigmas[o]`` and
+          ``pixel_dists[o]`` are :math:`(B, L)` nominal values (the targeted blur, not a measurement)
+        - ``sigmas`` is octave-relative: the blur in input pixels is ``sigmas[o] * pixel_dists[o]``.
+          An ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
+          ``double_image=True``) replaces octave 0's first entry by that blur, and the true blur
+          of the levels built from it then exceeds the nominal value
+        - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter
 
     Args:
         n_levels: number of the levels in octave.
@@ -521,8 +505,6 @@ def build_pyramid(
           unchanged original as level 0), not a 0-based index of the last level
         - each subsequent level is produced by :func:`pyrdown` (``floor(side / 2)``
           per dimension)
-        - border_type: ``'reflect'`` by default
-        - align_corners: ``False`` by default
 
     .. warning::
         The ``max_level`` bounds check does not currently reject non-positive

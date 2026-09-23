@@ -401,12 +401,10 @@ def crop_by_transform_mat3d(
     Convention:
         - input: :math:`(B, C, D, H, W)`; ``out_size`` is ``(d, h, w)``
         - ``transform`` is the source→destination **pixel** transform, accepted as
-          either :math:`(B, 3, 4)` affine or :math:`(B, 4, 4)` homogeneous — for the
-          homogeneous form only the top three rows are kept before this function passes
-          the result to :func:`warp_affine3d`, which itself requires :math:`(B, 3, 4)`
-          and rejects a :math:`(B, 4, 4)` input
+          either :math:`(B, 3, 4)` affine or :math:`(B, 4, 4)` homogeneous; only the top
+          three rows are used, so a projective last row is ignored (unlike the 2D
+          :func:`crop_by_transform_mat`)
         - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: the 3D volume tensor with shape (B, C, D, H, W).

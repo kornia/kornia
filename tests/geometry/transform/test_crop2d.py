@@ -174,10 +174,8 @@ class TestCropAndResize(BaseTester):
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
     def test_convention_single_image_does_not_broadcast_over_boxes(self, device, dtype):
-        # A single box broadcasts over a batch of N images (see test_crop_batch_broadcast),
-        # but a single image does NOT broadcast over a batch of N boxes -- it raises
-        # RuntimeError instead, so the broadcasting crop_and_resize supports is
-        # one-directional, not general batch broadcasting.
+        # A single box broadcasts over a batch of images (test_crop_batch_broadcast), but a single
+        # image does not broadcast over a batch of boxes: it raises.
         inp_one = torch.arange(0.0, 16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
         two_boxes = torch.tensor(
             [[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]], [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]],
@@ -430,12 +428,7 @@ class TestCropByTransform(BaseTester):
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("out_size", [(1, 3), (3, 1), (1, 1)])
     def test_convention_one_pixel_output(self, device, dtype, align_corners, out_size):
-        # A 1-pixel output dimension must behave like any other size under both conventions
-        # (#3929). The (B, 3, 3) path used to return all-NaN at align_corners=True (fixed by
-        # #4006's singleton-axis mapping) and, at align_corners=False, to silently fall back to
-        # warp_affine through a correction matrix built for the wrong grid convention, which
-        # gave these pre-fix values on the same input:
-        #   (1, 3): [4.6111, 5.5000, 5.9815]   (3, 1): [5.9444, 9.5000, 12.1204]   (1, 1): [4.1667]
+        # A 1-pixel output dimension behaves like any other size under both conventions (#3929).
         # Snippet used to generate expected (pure slicing, no resampling involved):
         #   inp = torch.arange(16.0).view(1, 1, 4, 4); h, w = out_size
         #   expected = inp[:, :, 1 : 1 + h, 1 : 1 + w]

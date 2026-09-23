@@ -50,13 +50,14 @@ def crop_and_resize(
     r"""Extract crops from 2D images (4D torch.Tensor) and resize given a bounding box.
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
+        defaults and sampling rules.
+
         - input: :math:`(B, C, H, W)`; ``size`` is ``(h, w)``
         - ``boxes``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order
           top-left, top-right, bottom-right, bottom-left; coordinates are
           **inclusive** pixel positions (box ``(1, 1)``..``(2, 2)`` selects a
           :math:`2 \times 2` pixel block), origin at top-left
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -148,8 +149,6 @@ def center_crop(
     Convention:
         - input: :math:`(B, C, H, W)` (strictly 4D — no unbatched ``(C, H, W)``/
           ``(H, W)`` input is accepted); ``size`` is ``(h, w)``
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -247,8 +246,6 @@ def crop_by_boxes(
           :func:`crop_and_resize`; ``dst_box`` determines the output resolution
         - a single box (batch size 1) broadcasts over a batch of images, but a single
           image does not broadcast over a batch of boxes
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -287,10 +284,6 @@ def crop_by_boxes(
         >>> crop_by_boxes(input, src_box, dst_box, align_corners=True)
         tensor([[[[ 5.0000,  6.0000],
                   [ 9.0000, 10.0000]]]])
-
-    Note:
-        If the src_box is smaller than dst_box, the following error will be thrown.
-        RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
 
     """
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
@@ -345,21 +338,8 @@ def crop_by_transform_mat(
           either :math:`(B, 2, 3)` affine or :math:`(B, 3, 3)` homogeneous; dispatch is
           by shape — :math:`(B, 2, 3)` takes the cheaper :func:`warp_affine` path,
           while :math:`(B, 3, 3)` takes :func:`warp_perspective` and uses the **full**
-          matrix, so a non-trivial third (projective) row changes the output for
-          non-degenerate ``out_size`` (see note below); :class:`CenterCrop2D` itself
-          calls this with a :math:`(B, 2, 3)` transform
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
-
-    .. note::
-        An ``out_size`` dimension equal to ``1`` is handled like any other size under
-        both ``align_corners`` settings: the :math:`(B, 3, 3)` path keeps its projective
-        row and agrees with the :math:`(B, 2, 3)` path for an affine transform. It used
-        to return all-``NaN`` at ``align_corners=True`` and to silently fall back to
-        :func:`warp_affine` at ``align_corners=False``
-        (`#3929 <https://github.com/kornia/kornia/issues/3929>`_); the singleton axis
-        now maps to the centre of the normalized range and the warp normalizes under
-        the same convention it samples with.
+          matrix, so a non-trivial third (projective) row changes the output; an
+          ``out_size`` dimension of ``1`` is handled like any other size
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
