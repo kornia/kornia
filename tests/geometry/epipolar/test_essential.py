@@ -96,11 +96,29 @@ class TestFindEssential(BaseTester):
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype):
+        # A degenerate set (the same points in both images) can make the 10x10 elimination matrix
+        # exactly singular. torch.linalg.solve raises torch._C._LinAlgError on a singular batch
+        # element instead of returning the NaN that the solver's damping fallback looked for, so
+        # before #4765 the call aborted with a backend error instead of returning its documented
+        # shape. Points all at the origin are singular for every batch size and dtype, so the first
+        # input below pins the repair without depending on a draw.
+        #
+        # The random draw was the original coverage and is seeded now: unseeded it hit the singular
+        # path on about 2% of draws, so it failed intermittently depending on the RNG state left by
+        # whatever ran before it (seeds 79 and 83 are two such draws at B=5, N=5, float32 on CPU).
+        #
+        # NaN in the result is expected and is not what this pins: find_essential returns all 10
+        # candidate solutions and the ones from non-real roots are NaN by construction, for
+        # non-degenerate input too. What is pinned is that the call returns its documented shape.
         B, N = batch_size, num_points
-        points1_deg = torch.rand(B, N, 2, device=device, dtype=dtype)
-        weights = torch.ones_like(points1_deg)[..., 0]
-        E_mat_deg = epi.essential.find_essential(points1_deg, points1_deg, weights)
-        assert E_mat_deg.shape == (B, 10, 3, 3)
+        torch.manual_seed(79)
+        for points1_deg in (
+            torch.zeros(B, N, 2, device=device, dtype=dtype),
+            torch.rand(B, N, 2, device=device, dtype=dtype),
+        ):
+            weights = torch.ones_like(points1_deg)[..., 0]
+            E_mat_deg = epi.essential.find_essential(points1_deg, points1_deg, weights)
+            assert E_mat_deg.shape == (B, 10, 3, 3)
 
 
 class TestEssentialFromFundamental(BaseTester):

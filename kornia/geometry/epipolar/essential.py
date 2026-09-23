@@ -272,17 +272,30 @@ def _null_to_Nister_solution_script(
     # Prefer direct solve; if singular, add tiny damping (no batch compaction).
     eye10 = torch.eye(10, device=device, dtype=dtype).unsqueeze(0).expand(B, 10, 10)
 
-    # Try direct solve first
-    eliminated = torch.linalg.solve(A10, b_poly)  # (B,10,10)
+    # Damped A = A10 + λI, where λ depends on scale
+    # (use per-batch scalar to avoid huge allocations)
+    diagA = torch.diagonal(A10, dim1=-2, dim2=-1).abs().mean(dim=-1)  # (B,)
+    lam = (diagA * 1e-8 + 1e-8).to(dtype)  # (B,)
 
-    # Detect NaN/Inf from singular solve and fix with damping solve
+    # Damp the exactly singular elements BEFORE the solve. torch.linalg.solve raises
+    # torch._C._LinAlgError on a singular batch element instead of returning the NaN the check below
+    # looks for, so that check alone never saw them and a degenerate correspondence set aborted the
+    # call (#4765). lu_factor_ex reports singularity through ``info`` rather than raising, and it is
+    # the same factorization torch.linalg.solve runs internally, so no dtype or device gains a
+    # requirement it did not already have. Well-conditioned elements keep A10 itself and go through
+    # the same torch.linalg.solve as before, so their results are bit-identical.
+    _, _, info = torch.linalg.lu_factor_ex(A10)
+    singular = info > 0  # (B,)
+    A_solve = A10
+    if singular.any():
+        A_solve = torch.where(singular.view(B, 1, 1), A10 + eye10 * lam.view(B, 1, 1), A10)
+
+    eliminated = torch.linalg.solve(A_solve, b_poly)  # (B,10,10)
+
+    # Detect NaN/Inf from an ill-conditioned (but not exactly singular) solve and fix with damping
     bad = torch.isnan(eliminated).flatten(-2).any(-1) | torch.isinf(eliminated).flatten(-2).any(-1)  # (B,)
     if bad.any():
-        # Damped solve only for bad rows but WITHOUT compaction:
-        # build damped A = A10 + λI, where λ depends on scale
-        # (use per-batch scalar to avoid huge allocations)
-        diagA = torch.diagonal(A10, dim1=-2, dim2=-1).abs().mean(dim=-1)  # (B,)
-        lam = (diagA * 1e-8 + 1e-8).to(dtype)  # (B,)
+        # Damped solve only for bad rows but WITHOUT compaction
         A_damped = A10 + eye10 * lam.view(B, 1, 1)
         eliminated_d = torch.linalg.solve(A_damped, b_poly)
         eliminated = torch.where(bad.view(B, 1, 1), eliminated_d, eliminated)
