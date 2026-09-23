@@ -173,9 +173,7 @@ rows are a local run at commit ``f8449854`` (2026-09-23; RTX 4090, Python 3.11, 
 CUDA failure is re-run on its own (with ``--isolate-half-precision`` for the half dtypes) and counted by that result.
 Eight of the CUDA float32 failures are cuDNN TF32 accuracy misses in convolutions
 (`#4778 <https://github.com/kornia/kornia/issues/4778>`_); the other 14 are tests that assume CPU behavior
-(`#4779 <https://github.com/kornia/kornia/issues/4779>`_). The CUDA rows deselect
-``TestFindHomographyDLT::test_nocrash`` and ``test_nocrash_lu``, which hang on CUDA
-(`#4770 <https://github.com/kornia/kornia/issues/4770>`_).
+(`#4779 <https://github.com/kornia/kornia/issues/4779>`_).
 
 Reproduce a CPU half-precision row in that environment (the manifest header pins the OS, architecture, Python and
 PyTorch versions) with:
