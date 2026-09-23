@@ -554,7 +554,7 @@ class TestMixConventions(BaseTester):
         self.assert_close(output[~selected], image[~selected])
         own = torch.tensor([[2.0, 1.0, 8.0, 6.0], [0.0, 0.0, 1.0, 1.0]])  # clipped to W=8, H=6; the small one dropped
         self.assert_close(filtered[~selected][:, :2], own.expand(2, -1, -1))
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="NoneType"):
             K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
         self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)  # no selection, no raise
 
