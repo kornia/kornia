@@ -376,6 +376,15 @@ class TestDilate(BaseTester):
 
         self.assert_close(dilation(tensor, kernel), op_optimized(tensor, kernel))
 
+    def test_shift_engine_forward_only_matches_autograd_safe(self, device):
+        tensor = torch.rand(2, 3, 9, 9, device=device)
+        kernel = torch.randn(3, 3, device=device)
+
+        forward = dilation(tensor, kernel, engine="shift")
+        safe = dilation(tensor.clone().requires_grad_(True), kernel, engine="shift").detach()
+
+        assert torch.equal(forward, safe)
+
     def test_shift_engine_jit(self, device, dtype):
         op_script = torch.jit.script(dilation)
         tensor = torch.rand(1, 2, 7, 7, device=device, dtype=dtype)
