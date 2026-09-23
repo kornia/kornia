@@ -379,11 +379,8 @@ def adjust_gamma(
         "Gain must be non-negative. Clamp it first: max(gain, 0.0) for floats, gain.clamp_min(0.0) for tensors.",
     )
 
-    for _ in range(len(input.shape) - len(gamma.shape)):
-        gamma = torch.unsqueeze(gamma, dim=-1)
-
-    for _ in range(len(input.shape) - len(gain.shape)):
-        gain = torch.unsqueeze(gain, dim=-1)
+    gamma = _make_factor_broadcastable(gamma, input)
+    gain = _make_factor_broadcastable(gain, input)
 
     # Apply the gamma correction
     x_adjust: torch.Tensor = gain * torch.pow(input, gamma)

@@ -108,13 +108,15 @@ class TestAutoAugmentConventions(BaseTester):
         assert degrees.min() < 1.0 and degrees.max() > 5.0
 
     @pytest.mark.device_agnostic
-    def test_wart_trivialaugment_bypasses_symmetric_magnitude_mapping_4441(self):
+    def test_convention_trivialaugment_applies_the_symmetric_magnitude_mapping_4441(self):
+        # #4441: TrivialAugment used to sample the wrapped augmentation directly, which skipped the random sign,
+        # so a symmetric op such as rotate only ever drew non-negative magnitudes.
         torch.manual_seed(17)
         aug = TrivialAugment(policy=[[("rotate", -30.0, 30.0)]])
         degrees = aug.forward_parameters(torch.Size([64, 1, 8, 6]))[0].data[0].data["degrees"]
-        assert (degrees >= 0.0).all()
-        assert (degrees <= 30.0).all()
-        assert degrees.min() < 5.0 and degrees.max() > 25.0
+        assert (degrees.abs() <= 30.0).all()
+        assert (degrees < 0).any() and (degrees > 0).any()
+        assert degrees.abs().min() < 5.0 and degrees.abs().max() > 25.0
 
     @pytest.mark.device_agnostic
     def test_convention_randaugment_maps_m_and_validates_the_policy_cardinality(self):
@@ -288,7 +290,10 @@ class TestAutoAugmentConventions(BaseTester):
         self.assert_close(invert(image, params=params).flatten(), image.new_tensor(expected))
 
     @pytest.mark.device_agnostic
-    def test_wart_policy_sequential_bypasses_operation_wrapper_sampling_4441(self):
+    def test_convention_policy_sequential_samples_through_the_operation_wrapper_4441(self):
+        # #4441: PolicySequential used to call the wrapped augmentation's forward_parameters, so it ignored the
+        # wrapper's magnitude and magnitude mapping. The gate still comes from the wrapped augmentation's p, and
+        # the wrapper's probability parameter is still not consulted on either path.
         operation = ops.Rotate(initial_magnitude=3.0, initial_probability=0.5)
         direct_operation = ops.Rotate(initial_magnitude=3.0, initial_probability=0.5)
         direct_policy = PolicySequential(direct_operation)
@@ -302,8 +307,9 @@ class TestAutoAugmentConventions(BaseTester):
         direct_params = direct_policy.forward_parameters(shape)[0].data
 
         self.assert_close(wrapped_params["degrees"].abs(), torch.full_like(wrapped_params["degrees"], 3.0))
-        assert not torch.equal(direct_params["degrees"], wrapped_params["degrees"])
-        assert not torch.allclose(direct_params["degrees"].abs(), torch.full_like(direct_params["degrees"], 3.0))
+        assert direct_params.keys() == wrapped_params.keys()
+        for key, value in wrapped_params.items():
+            self.assert_close(direct_params[key], value)
         self.assert_close(operation.probability, torch.tensor([1e-7]))
         assert direct_operation.op.p == 0.5
 
@@ -421,16 +427,33 @@ class TestAutoAugmentConventions(BaseTester):
         assert magnitudes.unique().numel() == 8
 
     @pytest.mark.device_agnostic
-    def test_wart_trivialaugment_shear_bypass_drops_the_180_factor_4441(self):
+    def test_convention_policy_shear_entries_are_mapped_to_degrees_4441(self):
+        # #4441: TrivialAugment used to drop ShearX's 180 factor, so ("shear_x", -0.3, 0.3) sheared by at most
+        # 0.3 degrees, where RandAugment sheared by up to 54 degrees for the same entry.
         torch.manual_seed(17)
-        bypassed = (
+        trivial = (
             TrivialAugment(policy=[[("shear_x", -0.3, 0.3)]])
             .forward_parameters(torch.Size([64, 1, 8, 6]))[0]
             .data[0]
             .data["shear_x"]
         )
-        assert bool((bypassed.abs() <= 0.3).all()) and bypassed.abs().max() > 0.05
-        # The same policy entry through RandAugment, which does apply the mapping.
+        assert bool((trivial.abs() <= 0.3 * 180).all()) and trivial.abs().max() > 30.0
+        assert (trivial < 0).any() and (trivial > 0).any()
+        # AutoAugment's shear bins are fractions too, so the mapping is applied once: bin b of either shear op spans
+        # the adjacent points b and b + 1 of linspace(-0.3, 0.3, 11), times 180, and 256 rows reach both ends.
+        edges = [-0.3 + 0.06 * point for point in range(11)]
+        for name in ("shear_x", "shear_y"):
+            for magnitude_bin in range(10):
+                low, high = edges[magnitude_bin] * 180, edges[magnitude_bin + 1] * 180
+                auto = (
+                    AutoAugment(policy=[[(name, 1.0, magnitude_bin)]])
+                    .forward_parameters(torch.Size([256, 1, 8, 6]))[0]
+                    .data[0]
+                    .data[name]
+                )
+                assert bool((auto >= low - 1e-3).all()) and bool((auto <= high + 1e-3).all()), (name, magnitude_bin)
+                assert auto.min() < low + 1.0 and auto.max() > high - 1.0, (name, magnitude_bin)
+        # The same policy entry through RandAugment, which always applied the mapping.
         mapped = (
             RandAugment(n=1, m=29, policy=[[("shear_x", -0.3, 0.3)]])
             .forward_parameters(torch.Size([8, 1, 8, 6]))[0]

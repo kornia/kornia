@@ -488,16 +488,29 @@ class Test3DAugmentationConventions(BaseTester):
             aug(volume, params=params)
 
     @pytest.mark.device_agnostic
-    def test_wart_random_affine3d_two_value_scale_is_not_isotropic_4704(self):
-        # Documented as isotropic; the 2D class draws one value per sample, the 3D class one per axis.
+    def test_convention_random_affine3d_two_value_scale_is_isotropic_4704(self):
+        # A two-value scale draws one factor per sample for all three axes, as the 2D class does; the
+        # three-pair form keeps one independent draw per axis.
         flat = K.RandomAffine(0.0, scale=(0.5, 2.0), p=1.0).forward_parameters(torch.Size([64, 1, 6, 7]))["scale"]
         assert bool((flat[:, 0] == flat[:, 1]).all())
         aug = K.RandomAffine3D(0.0, scale=(0.5, 2.0), p=1.0)
         aug(torch.rand(64, 1, 5, 6, 7))
         scale = aug._params["scale"]
         assert scale.shape == (64, 3)
-        assert not bool((scale[:, 0] == scale[:, 1]).any()) and not bool((scale[:, 1] == scale[:, 2]).any())
+        assert bool((scale[:, 0] == scale[:, 1]).all()) and bool((scale[:, 1] == scale[:, 2]).all())
+        assert 0.5 <= float(scale.min()) and float(scale.max()) <= 2.0
+        assert len(scale[:, 0].unique()) > 1
         self.assert_close(aug.transform_matrix[:, :3, :3].diagonal(dim1=-2, dim2=-1), scale)
+        shared = K.RandomAffine3D(0.0, scale=(0.5, 2.0), same_on_batch=True, p=1.0)
+        shared_scale = shared.forward_parameters(torch.Size([64, 1, 5, 6, 7]))["scale"]
+        assert len(shared_scale.unique()) == 1
+        per_axis = K.RandomAffine3D(0.0, scale=((0.5, 2.0), (0.5, 2.0), (0.5, 2.0)), p=1.0)
+        axes = per_axis.forward_parameters(torch.Size([64, 1, 5, 6, 7]))["scale"]
+        assert axes.shape == (64, 3)
+        assert not bool((axes[:, 0] == axes[:, 1]).any()) and not bool((axes[:, 1] == axes[:, 2]).any())
+        # The two-value form is range-checked once under its own name; main reported it as "scale-x".
+        with pytest.raises(ValueError, match="scale out of bounds"):
+            K.RandomAffine3D(0.0, scale=(-0.5, 2.0), p=1.0)
 
     @pytest.mark.device_agnostic
     def test_convention_random_affine3d_six_pair_shears_keep_their_lower_bound(self):

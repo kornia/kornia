@@ -55,11 +55,9 @@ class TrivialAugment(PolicyAugmentBase):
           probability is sampled; a candidate's second and third entries are its magnitude range, not a
           probability, unlike :class:`~kornia.augmentation.auto.AutoAugment`. Only the magnitude is drawn
           independently for every batch row.
-        - sampling bypasses the operation wrapper's magnitude mapping. For example, a ``("rotate", -30, 30)``
-          candidate draws angles in ``[0, 30]`` without applying the random sign; for ``shear_x`` / ``shear_y``
-          the same bypass also drops the mapping's factor of ``180``, so those candidates shear by at most
-          ``0.3`` degrees. This follows the :class:`~kornia.augmentation.auto.PolicySequential` limitation
-          tracked in `#4441 <https://github.com/kornia/kornia/issues/4441>`_.
+        - the operation wrapper's magnitude mapping applies, as under
+          :class:`~kornia.augmentation.auto.RandAugment`. A ``("rotate", -30, 30)`` candidate draws angles in
+          ``[-30, 30]`` with a random sign, and ``("shear_x", -0.3, 0.3)`` shears by up to ``0.3 * 180`` degrees.
 
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.

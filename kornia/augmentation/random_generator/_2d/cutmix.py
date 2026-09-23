@@ -154,16 +154,16 @@ class CutmixGenerator(RandomGeneratorBase):
             cut_width = cut_width[0]
 
         # One start position per cut, like the sizes above; with same_on_batch the helper repeats a single draw.
-        # Reserve at least 1 pixel for cropping.
+        # Legal starts run 0 .. side - cut_side inclusive; the clamp only guards a u -> 1 float round-up.
         _gen_shape = (batch_size * self.num_mix,)
         x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
-            width - cut_width - 1
+            width - cut_width + 1
         )
         y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
-            height - cut_height - 1
+            height - cut_height + 1
         )
-        x_start = x_start.floor()
-        y_start = y_start.floor()
+        x_start = torch.minimum(x_start.floor(), width - cut_width)
+        y_start = torch.minimum(y_start.floor(), height - cut_height)
 
         crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
 
