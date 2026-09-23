@@ -28,7 +28,15 @@ from kornia.augmentation.utils import (
 )
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, DType
+from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
+
+
+def _export_boxes(box: Boxes, mode: str, box_input: Any) -> torch.Tensor:
+    # A list box input comes back as a list of per-sample tensors; a tensor input as one dense tensor.
+    if isinstance(box_input, list):
+        return KORNIA_UNWRAP(box.to_tensor(mode), torch.Tensor)
+    return _boxes_to_padded_tensor(box, mode)
 
 
 class MixAugmentationBaseV2(_BasicAugmentationBase):
@@ -292,15 +300,15 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             elif dcate == DataKey.BBOX:
                 box = Boxes.from_tensor(_input, mode="vertices", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = _boxes_to_padded_tensor(box, "vertices")
+                output = _export_boxes(box, "vertices", _input)
             elif dcate == DataKey.BBOX_XYXY:
                 box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = _boxes_to_padded_tensor(box, "xyxy")
+                output = _export_boxes(box, "xyxy", _input)
             elif dcate == DataKey.BBOX_XYWH:
                 box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = _boxes_to_padded_tensor(box, "xywh")
+                output = _export_boxes(box, "xywh", _input)
             elif dcate == DataKey.KEYPOINTS:
                 output = self.transform_keypoint(_input, self._params, self.flags)
             elif dcate == DataKey.CLASS:

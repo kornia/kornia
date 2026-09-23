@@ -516,7 +516,7 @@ class TestMixConventions(BaseTester):
         self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
-    @pytest.mark.parametrize("output_size", [(4, 10), (9, 5), (14, 18)])
+    @pytest.mark.parametrize("output_size", [(4, 10), (9, 5), (14, 18), (4, 14), (13, 6)])
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_convention_mosaic_output_size_crops_an_unscaled_window_of_the_canvas(
         self, cropping_mode, output_size, batch_size, device, dtype
@@ -586,20 +586,25 @@ class TestMixConventions(BaseTester):
         assert isinstance(out_boxes, list)
         self.assert_close(out_boxes[0], boxes[0])
 
-    def test_convention_mosaic_direct_list_input_returns_dense_tensor(self, device, dtype):
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    @pytest.mark.parametrize("gate", [(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    def test_convention_mosaic_list_boxes_come_back_as_a_list(self, gate, data_key, device, dtype):
+        # Maintainer ruling on #4679: a list box input comes back as a list, from a direct call and from
+        # AugmentationSequential, at every gate; an unselected sample's tensor is its own boxes, with no padding.
         image = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
-        boxes = [
-            torch.tensor([[1.0, 1.0, 4.0, 4.0]], device=device, dtype=dtype),
-            torch.tensor([[1.0, 1.0, 3.0, 3.0], [2.0, 1.0, 6.0, 5.0]], device=device, dtype=dtype),
-        ]
-
-        output, out_boxes = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])(image, boxes)
-
-        assert isinstance(out_boxes, torch.Tensor)
-        assert out_boxes.shape == (2, 8, 4)
-        assert output.shape == image.shape
-
-        self.assert_close(out_boxes[0, 4:], torch.zeros_like(out_boxes[0, 4:]))
+        corners = self._mosaic_boxes(2, data_key, device, dtype)
+        boxes = [corners[0, :1], corners[1]]
+        pipeline = K.AugmentationSequential(K.RandomMosaic(p=1.0), data_keys=["input", data_key])
+        pipeline(image, boxes)
+        params = pipeline._params
+        params[0].data["batch_prob"] = params[0].data["batch_prob"].new_tensor(gate)
+        _, piped = pipeline(image, boxes, params=params)
+        _, direct = K.RandomMosaic(data_keys=["input", data_key])(image, boxes, params=params[0].data)
+        for out_boxes in (direct, piped):
+            assert isinstance(out_boxes, list) and len(out_boxes) == 2
+            for sample, selected in enumerate(gate):
+                if not selected:
+                    self.assert_close(out_boxes[sample], boxes[sample])
 
     @staticmethod
     def _mosaic_boxes(num_boxes: int, data_key: str, device, dtype) -> torch.Tensor:
@@ -615,9 +620,9 @@ class TestMixConventions(BaseTester):
     def test_convention_mosaic_partial_gate_pads_unselected_rows_with_zero_area_boxes(
         self, num_boxes, data_key, device, dtype
     ):
-        # Maintainer ruling on #4679 (#4652): the box output is always one dense tensor. An unselected row keeps
+        # Maintainer ruling on #4679 (#4652): a tensor box input always comes back dense. An unselected row keeps
         # its own boxes, followed by all-zero padding rather than the [0, 0, 1, 1] placeholder that reads as a real
-        # 1x1 box. Before, a partial gate returned a ragged list for one box per sample and crashed for two.
+        # 1x1 box.
         image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
         boxes = self._mosaic_boxes(num_boxes, data_key, device, dtype)
         reference = K.RandomMosaic(p=1.0, data_keys=["input", data_key])

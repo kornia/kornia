@@ -93,15 +93,22 @@ class RandomMosaic(MixAugmentationBaseV2):
           unselected sample is zero-padded or cropped to that size rather than returned unchanged. The boxes of a
           selected sample are translated with its tiles, not rescaled, and clipped to the output window
           ``[0, W_out] x [0, H_out]``.
-        - The box output is always one dense tensor. When the gate selects any sample, every row holds
+        - A tensor box input comes back as one dense tensor. When the gate selects any sample, every row holds
           ``N * mosaic_grid[0] * mosaic_grid[1]`` boxes for ``N`` input boxes per sample: a selected row holds its
           mosaic boxes, and an unselected row holds its own ``N`` boxes unchanged followed by all-zero padding rows
           (``[0, 0, 0, 0]`` in ``"bbox_xyxy"`` and ``"bbox_xywh"``, four ``(0, 0)`` vertices in ``"bbox"``), which
           have zero area. When the gate selects no sample the boxes are returned unchanged with their ``N`` rows.
-          A selected sample's box that falls below ``min_bbox_size`` is zeroed by
-          :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area` and so exports as ``[0, 0, 1, 1]`` in
-          ``"bbox_xyxy"`` and ``"bbox_xywh"``, not as zero-area padding
-          (`#4714 <https://github.com/kornia/kornia/issues/4714>`_).
+        - A list box input comes back as a list with one tensor per sample, from a direct call and from
+          :class:`~kornia.augmentation.container.AugmentationSequential` alike, whatever the gate selects. An
+          unselected sample's tensor is its own boxes unchanged, with no padding rows. A selected sample's tensor
+          takes its box count from the wrong source images, so it can drop real boxes or keep padding rows
+          (`#4715 <https://github.com/kornia/kornia/issues/4715>`_).
+        - In either form, a selected sample's box that falls below ``min_bbox_size`` is zeroed by
+          :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area`. A direct call exports it as ``[0, 0, 1, 1]``
+          in ``"bbox_xyxy"`` and ``"bbox_xywh"``, not as zero-area padding
+          (`#4714 <https://github.com/kornia/kornia/issues/4714>`_); inside
+          :class:`~kornia.augmentation.container.AugmentationSequential` it is ``[0, 0, 1, 1]`` in ``"bbox_xywh"``
+          and ``[0, 0, 0, 0]`` in ``"bbox_xyxy"``.
 
     """
 
