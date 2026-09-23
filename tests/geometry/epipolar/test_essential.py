@@ -96,29 +96,47 @@ class TestFindEssential(BaseTester):
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype):
-        # A degenerate set (the same points in both images) can make the 10x10 elimination matrix
-        # exactly singular. torch.linalg.solve raises torch._C._LinAlgError on a singular batch
-        # element instead of returning the NaN that the solver's damping fallback looked for, so
-        # before #4765 the call aborted with a backend error instead of returning its documented
-        # shape. Points all at the origin are singular for every batch size and dtype, so the first
-        # input below pins the repair without depending on a draw.
-        #
-        # The random draw was the original coverage and is seeded now: unseeded it hit the singular
-        # path on about 2% of draws, so it failed intermittently depending on the RNG state left by
-        # whatever ran before it (seeds 79 and 83 are two such draws at B=5, N=5, float32 on CPU).
-        #
-        # NaN in the result is expected and is not what this pins: find_essential returns all 10
-        # candidate solutions and the ones from non-real roots are NaN by construction, for
-        # non-degenerate input too. What is pinned is that the call returns its documented shape.
         B, N = batch_size, num_points
-        torch.manual_seed(79)
-        for points1_deg in (
-            torch.zeros(B, N, 2, device=device, dtype=dtype),
-            torch.rand(B, N, 2, device=device, dtype=dtype),
-        ):
-            weights = torch.ones_like(points1_deg)[..., 0]
-            E_mat_deg = epi.essential.find_essential(points1_deg, points1_deg, weights)
-            assert E_mat_deg.shape == (B, 10, 3, 3)
+        eye = torch.eye(3, device=device, dtype=dtype)
+
+        # Points all at the origin give a design matrix whose SVD returns unit vectors for its null
+        # space, and every basis of four unit vectors makes the 10x10 elimination matrix exactly
+        # singular. A singular sample has no solution, so find_essential returns run_5point's fallback
+        # for an element without candidates: the identity, for all 10.
+        zeros = torch.zeros(B, N, 2, device=device, dtype=dtype)
+        E_zeros = epi.essential.find_essential(zeros, zeros, torch.ones(B, N, device=device, dtype=dtype))
+        self.assert_close(E_zeros, eye.expand(B, 10, 3, 3), atol=0.0, rtol=0.0)
+
+        # A singular element does not disturb the rest of its batch: next to one, a regular sample
+        # returns exactly what it returns alone, NaN candidates from complex roots included.
+        x1 = torch.tensor(
+            [[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]],
+            device=device,
+            dtype=dtype,
+        )
+        x2 = torch.tensor(
+            [[0.3470, -0.4274], [-0.1818, -0.1281], [-0.1766, -0.1617], [0.4066, -0.0706], [0.1137, 0.0363]],
+            device=device,
+            dtype=dtype,
+        )
+        alone = epi.essential.find_essential(x1[None], x2[None], torch.ones(1, 5, device=device, dtype=dtype))[0]
+        mixed = epi.essential.find_essential(
+            torch.stack((zeros[0, :5], x1)),
+            torch.stack((zeros[0, :5], x2)),
+            torch.ones(2, 5, device=device, dtype=dtype),
+        )
+        self.assert_close(mixed[0], eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
+        assert torch.equal(torch.isnan(mixed[1]), torch.isnan(alone))
+        self.assert_close(torch.nan_to_num(mixed[1]), torch.nan_to_num(alone), atol=0.0, rtol=0.0)
+
+        # Whether any other degenerate set is exactly singular depends on the platform's LAPACK. This
+        # L-shaped set and a random draw with the same points in both images exercise that path where
+        # it occurs, and must return the documented shape either way.
+        lshape = torch.tensor([[1.0, 0.0], [0.5, 0.0], [0.0, 1.0], [0.0, 0.0], [0.0, 0.5]], device=device, dtype=dtype)
+        draw = torch.rand(B, N, 2, generator=torch.Generator().manual_seed(79)).to(device=device, dtype=dtype)
+        for points in (lshape.expand(B, 5, 2), draw):
+            weights = torch.ones(points.shape[:2], device=device, dtype=dtype)
+            assert epi.essential.find_essential(points, points, weights).shape == (B, 10, 3, 3)
 
 
 class TestEssentialFromFundamental(BaseTester):
