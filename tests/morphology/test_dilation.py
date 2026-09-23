@@ -385,7 +385,6 @@ class TestDilate(BaseTester):
 
         assert torch.equal(forward, safe)
 
-
     def test_shift_engine_structuring_element_forward_ad(self, device, dtype):
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("forward AD test requires floating point dtype")
@@ -416,12 +415,8 @@ class TestDilate(BaseTester):
         tensor = torch.rand(2, 3, 1, 9, 11, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
-        actual = torch.func.vmap(
-            lambda x: dilation(x, kernel, engine="shift")
-        )(tensor)
-        expected = torch.func.vmap(
-            lambda x: dilation(x, kernel, engine="unfold")
-        )(tensor)
+        actual = torch.func.vmap(lambda x: dilation(x, kernel, engine="shift"))(tensor)
+        expected = torch.func.vmap(lambda x: dilation(x, kernel, engine="unfold"))(tensor)
 
         assert torch.equal(actual, expected)
 
