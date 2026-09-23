@@ -148,9 +148,7 @@ def dice_loss(
     if average == "macro":
         dice_loss = (dice_loss * weight).sum(-1) / weight.sum()
 
-    dice_loss = torch.mean(dice_loss)
-
-    return dice_loss
+    return torch.mean(dice_loss)
 
 
 class DiceLoss(nn.Module):
