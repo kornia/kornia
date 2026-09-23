@@ -314,9 +314,9 @@ def _crop_by_boxes_to_size(
     padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` and
-    # ``center_crop`` build ``dst_box`` from ``size``, so they take this path and never read the box
-    # values back from the device -- which also keeps them capturable by ``torch.onnx.export``.
+    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` builds
+    # ``dst_box`` from ``size``, so it takes this path and never reads the box values back from the
+    # device -- which also keeps it capturable by ``torch.onnx.export``.
     if len(input_tensor.shape) != 4:
         raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
