@@ -161,6 +161,19 @@ class TestWarpPerspective3d(BaseTester):
         out = proj.warp_perspective3d(sample, identity, dsize, align_corners=True)
         self.assert_close(out, sample)
 
+    @pytest.mark.parametrize("size", [8, 32])
+    def test_identity_float64_precision(self, device, size):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # the sampling grid is built in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff like warp_affine3d, not to float32 grid precision
+        dsize = (size // 2, size, size)
+        sample = torch.rand(1, 1, *dsize, device=device, dtype=torch.float64)
+        identity = torch.eye(4, device=device, dtype=torch.float64)[None]
+        out = proj.warp_perspective3d(sample, identity, dsize, align_corners=True)
+        assert out.dtype == torch.float64
+        self.assert_close(out, sample, rtol=0.0, atol=1e-12)
+
     @pytest.mark.parametrize("dsize", [(4, 4, 4), (2, 3, 4)])
     @pytest.mark.xfail(strict=True, raises=AssertionError, reason="3D normalization ignores align_corners, #4503")
     def test_convention_identity_reproduces_input_align_corners_false(self, dsize, device, dtype):

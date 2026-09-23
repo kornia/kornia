@@ -436,16 +436,14 @@ class Test3DAugmentationConventions(BaseTester):
             K.CenterCrop3D((5, 5, 6), p=1.0)(volume)
 
     @pytest.mark.device_agnostic
-    def test_convention_perspective3d_identity_is_only_float32_grid_precise(self):
+    def test_convention_perspective3d_identity_is_float64_precise(self):
         volume = torch.rand(1, 1, 4, 5, 6, dtype=torch.float64)
         rotation = float((K.RandomRotation3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
         residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
-        # The rotation path is exact to float64 roundoff (0 on torch 2.14, ~2e-16 on 2.5.1 and 2.9.1);
-        # the perspective path is off by ~1e-7 because its sampling grid is built in float32.
+        # Both paths build their sampling grid in float64, so both are exact to float64 roundoff
+        # (0 on torch 2.14, ~2e-16 on 2.5.1 and 2.9.1). A float32 grid left the perspective path ~1e-7 off.
         assert rotation < 1e-12
-        # An absolute window rather than a multiple of `rotation`: where the rotation is exactly 0 a relative
-        # bound collapses to "> 1e-16", under one float64 ULP. 1e-9 has two orders of headroom on either side.
-        assert 1e-9 < residual < 1e-5
+        assert residual < 1e-12
 
     @pytest.mark.device_agnostic
     def test_convention_random_crop3d_offset_reaches_both_ends(self):
@@ -553,14 +551,6 @@ class Test3DAugmentationConventions(BaseTester):
             half = large.to(torch.bfloat16)
             for aug in (K.RandomRotation3D(0.0, p=1.0), K.RandomAffine3D(0.0, p=1.0)):
                 assert float((aug(half) - half).abs().max()) > 0.1
-        # The float32 grid of the perspective path shows at float64 too, and also grows with the volume.
-        small64 = torch.rand(1, 1, 4, 5, 6, dtype=torch.float64)
-        large64 = torch.rand(1, 1, 8, 16, 32, dtype=torch.float64)
-        residuals = [
-            float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
-            for volume in (small64, large64)
-        ]
-        assert residuals[0] < residuals[1] < 1e-4
 
     @pytest.mark.device_agnostic
     def test_convention_center_crop3d_centres_each_axis_with_its_own_offset(self):

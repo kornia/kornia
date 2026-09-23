@@ -666,6 +666,18 @@ class TestWarpPerspective(BaseTester):
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (h_out, w_out))
         assert img_a.shape == (batch_size, channels, h_out, w_out)
 
+    @pytest.mark.parametrize("size", [8, 64])
+    def test_identity_float64_precision(self, device, size):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # the sampling grid is built in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff like warp_affine, not to float32 grid precision
+        img = torch.rand(1, 1, size, size, device=device, dtype=torch.float64)
+        homo = torch.eye(3, device=device, dtype=torch.float64)[None]
+        out = kornia.geometry.warp_perspective(img, homo, (size, size), align_corners=True)
+        assert out.dtype == torch.float64
+        self.assert_close(out, img, rtol=0.0, atol=1e-12)
+
     def test_exception(self, device, dtype):
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         homo = torch.eye(3, device=device, dtype=dtype)[None]
