@@ -2746,7 +2746,7 @@ def camtoworld_to_worldtocam_Rt(
         gives ``max|M_inv @ M - I| = 3.0``. Pass ``check_rotation=True`` to
         raise a ``ValueError`` instead,
         which also rejects reflections (``det(R) < 0``). Delivered in
-        `#NNNN <https://github.com/kornia/kornia/pull/NNNN>`_.
+        `#4817 <https://github.com/kornia/kornia/pull/4817>`_.
 
     .. warning::
         The batch sizes of ``R`` and ``t`` are not checked: ``t`` is broadcast
