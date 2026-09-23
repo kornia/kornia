@@ -454,7 +454,7 @@ def _homography_sizes(op_name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
 # and TestCamtoworldRtToPoseRt -- one definition and one materialisation site instead of nine
 # copies that would have to be edited in lockstep, and it is what makes those classes'
 # "same asymmetric pose as TestRt2Extrinsics" cross-references true by construction.
-# The kornia#3961 wart deliberately uses a DIFFERENT, non-orthogonal rotation and stays out of this.
+# The unchecked-default pin (kornia#3961) deliberately uses a DIFFERENT, non-orthogonal rotation.
 _ASYMMETRIC_R = [[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]
 _ASYMMETRIC_T = [[[1.0], [2.0], [3.0]]]
 
@@ -4898,7 +4898,7 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         # documentation -- and applying it twice, or once in each direction, returns the input
         # (value-exactly for this pose, whose entries keep every product exact). So nothing can
         # detect that a pose was already converted. The pose pair holds because R is a rotation;
-        # test_wart_non_orthogonal_rotation_is_transposed_not_inverted_3961 pins the other case.
+        # test_convention_unchecked_default_transposes_non_orthogonal_rotation_3961 pins the other case.
         _skip_if_dtype_unavailable(device, dtype)
         rotation, translation = _asymmetric_pose(device, dtype)
         pose = (Rt_to_matrix4x4(rotation, translation),) if forward_name.endswith("4x4") else (rotation, translation)
@@ -5019,19 +5019,14 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # _assert_strictly_batched helper.
         _assert_strictly_batched(op_name, shapes, device)
 
-    def test_wart_non_orthogonal_rotation_is_transposed_not_inverted_3961(self, device, dtype):
-        # Wart pin for kornia#3961: R is ASSUMED orthogonal and the assumption is not checked by default,
-        # so for any other matrix the result is a transpose that is not an inverse -- silently, with no
-        # error and no warning. Three cells, each a different observable of the same root:
+    def test_convention_unchecked_default_transposes_non_orthogonal_rotation_3961(self, device, dtype):
+        # Convention pin (kornia#3961): R is ASSUMED to be a rotation and, with the default
+        # check_rotation=False, this is not checked, so for any other matrix the result is a transpose
+        # that is not an inverse -- silently. The call below deliberately omits the argument; the
+        # opt-in validation is covered by the test_check_rotation_* tests. Three observables:
         #   (1) the returned rotation is exactly R.T even though R.T is not R^-1 here;
-        #   (2) composing the two 4x4 matrices misses the identity by 3.0, i.e. not by a rounding
-        #       amount -- this is what a caller notices as "my poses drifted";
-        #   (3) even the round trip breaks, the translation coming back 9.0 away from the input;
-        #       cell (3) is kept separate from (2) because a fix that validated only the rotation
-        #       would leave the translation error in place for a caller who ignores the raise.
-        # Resolved by kornia#3961 without changing the default: check_rotation=False keeps R
-        # unchecked by design, so this pins that default -- the call below deliberately omits
-        # the argument. The opt-in validation is covered by the check_rotation tests.
+        #   (2) composing the two 4x4 matrices misses the identity by 3.0, not by a rounding amount;
+        #   (3) the round trip returns the translation 9.0 away from the input.
         # R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]] has det = 2 and dyadic entries, so every literal
         # below is exact in every dtype.
         # Snippet used to generate expected (torch only, executed on cpu):
@@ -5052,7 +5047,7 @@ class TestCamtoworldRtToPoseRt(BaseTester):
             inverted_t, torch.tensor([[[-1.0], [-2.5], [-6.0]]], device=device, dtype=dtype), atol=0.0, rtol=0.0
         )
         assert (composed - torch.eye(4, device=device, dtype=dtype)).abs().max().item() == 3.0, (
-            "kornia#3961: a non-orthogonal rotation no longer misses the identity by 3.0"
+            "kornia#3961: the unchecked default no longer misses the identity by 3.0"
         )
         self.assert_close(
             round_trip_t, torch.tensor([[[2.25], [2.5], [12.0]]], device=device, dtype=dtype), atol=0.0, rtol=0.0
@@ -5073,7 +5068,8 @@ class TestCamtoworldRtToPoseRt(BaseTester):
     def test_check_rotation_accepts_rounding_error(self, fn, device, dtype):
         # Rotations carrying only their dtype's rounding must pass. Over 10,000 random rotations the
         # worst max|R @ R^T - I| measured 8 eps (float32), 9 eps (float64) and 0.8 eps
-        # (float16/bfloat16, built in float32 and cast), against a tolerance of 100 eps.
+        # (float16/bfloat16, built in float32 and cast), against a tolerance of 100 eps (16 eps for
+        # float16/bfloat16).
         _skip_if_dtype_unavailable(device, dtype)
         build_dtype = dtype if dtype in (torch.float32, torch.float64) else torch.float32
         generator = torch.Generator().manual_seed(0)
@@ -5114,11 +5110,69 @@ class TestCamtoworldRtToPoseRt(BaseTester):
     @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
     def test_check_rotation_integer_input(self, fn, device):
         # Integer R is accepted by these functions; the check converts it to float32 instead of crashing
-        # (torch.finfo and det have no integer support). 2 * I is exact there and is not a rotation.
+        # (torch.finfo and det have no integer support). A permutation is an exact integer rotation
+        # and passes unchanged; 2 * I is exact there and is not a rotation.
+        permutation = torch.tensor(_ASYMMETRIC_R, device=device).to(torch.int64)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device).to(torch.int64)
+        out_R, out_t = fn(permutation, translation, check_rotation=True)
+        expected_R, expected_t = fn(permutation, translation)
+        assert out_R.dtype == torch.int64
+        assert torch.equal(out_R, expected_R) and torch.equal(out_t, expected_t)
         rotation = 2 * torch.eye(3, device=device, dtype=torch.int64)[None]
-        translation = torch.zeros(1, 3, 1, device=device, dtype=torch.int64)
         with pytest.raises(ValueError, match="not a rotation matrix"):
             fn(rotation, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize(
+        "matrix",
+        [
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.5]],  # scale: R @ R^T - I is NEGATIVE (-0.75)
+            [[1.0, 0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],  # shear with det = 1
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.5, 0.5, 0.125]],  # det = 0.125 > 0
+        ],
+        ids=["scale", "shear", "near-singular"],
+    )
+    def test_check_rotation_rejects_non_rotation_with_positive_det(self, fn, matrix, device, dtype):
+        # Non-rotations whose determinant is positive, so only the orthogonality test can reject them.
+        # Every entry is dyadic, so the matrices are exact in every dtype.
+        _skip_if_dtype_unavailable(device, dtype)
+        rotation = torch.tensor([matrix], device=device, dtype=dtype)
+        translation = torch.zeros(1, 3, 1, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="not a rotation matrix"):
+            fn(rotation, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_tolerance_bracket(self, fn, device, dtype):
+        # diag(1, 1, 1 + k * eps) deviates from a rotation by max|R @ R^T - I| = 2k eps + (k eps)^2, exact
+        # in every dtype. The tolerance is 100 eps (16 eps for float16/bfloat16): a deviation of about
+        # half of it passes, one of about 1.5 times it raises.
+        _skip_if_dtype_unavailable(device, dtype)
+        eps = torch.finfo(dtype).eps
+        k_pass, k_fail = (4, 12) if dtype in (torch.float16, torch.bfloat16) else (25, 80)
+        translation = torch.zeros(1, 3, 1, device=device, dtype=dtype)
+        passing = torch.diag(torch.tensor([1.0, 1.0, 1.0 + k_pass * eps], device=device, dtype=dtype))[None]
+        failing = torch.diag(torch.tensor([1.0, 1.0, 1.0 + k_fail * eps], device=device, dtype=dtype))[None]
+        fn(passing, translation, check_rotation=True)  # must not raise
+        with pytest.raises(ValueError, match="not a rotation matrix"):
+            fn(failing, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_rejects_nan(self, fn, device, dtype):
+        # A NaN entry is not a rotation: the check must raise rather than let it through.
+        _skip_if_dtype_unavailable(device, dtype)
+        rotation, translation = _asymmetric_pose(device, dtype)
+        rotation[0, 0, 0] = float("nan")
+        with pytest.raises(ValueError, match="not a rotation matrix"):
+            fn(rotation, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_scripts(self, fn, device, dtype):
+        # Both functions stay scriptable with the new argument, checked path included.
+        _skip_if_dtype_unavailable(device, dtype)
+        rotation, translation = _asymmetric_pose(device, dtype)
+        scripted = torch.jit.script(fn)
+        for actual, expected in zip(scripted(rotation, translation, True), fn(rotation, translation)):
+            self.assert_close(actual, expected, atol=0.0, rtol=0.0)
 
 
 class TestCARKitToColmap(BaseTester):

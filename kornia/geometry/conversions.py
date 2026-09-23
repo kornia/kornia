@@ -2696,20 +2696,30 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
 
 
 def _check_is_rotation(R: torch.Tensor, fn_name: str) -> None:
-    # Opt-in validation behind check_rotation=True (kornia#3961); the default path stays unchecked.
-    # det has no half or integer kernels, so the check runs in float32 unless R is already float64;
-    # the tolerance follows R's own precision.
+    # Opt-in validation behind check_rotation=True; the default path stays unchecked.
+    # det has no half or integer kernels, so the check runs in float32 unless R is already float64.
+    # The tolerance follows R's own precision: 100 eps, but 16 eps for float16/bfloat16, where 100 eps
+    # (0.78 in bfloat16) would accept a 50% shear. Every tolerance stays below 1/3, so an R that passes
+    # the orthogonality test is non-singular and det(R) <= 0 can only mean a reflection.
+    # eps literals rather than torch.finfo, which TorchScript cannot compile.
     work = R if R.dtype == torch.float64 else R.to(torch.float32)
-    eps = torch.finfo(R.dtype).eps if R.is_floating_point() else torch.finfo(torch.float32).eps
-    tol = 100.0 * eps
+    if R.dtype == torch.float64:
+        tol = 100.0 * 2.0**-52
+    elif R.dtype == torch.bfloat16:
+        tol = 16.0 * 2.0**-7
+    elif R.dtype == torch.float16:
+        tol = 16.0 * 2.0**-10
+    else:  # float32, and integer input checked in float32
+        tol = 100.0 * 2.0**-23
     eye = torch.eye(3, device=R.device, dtype=work.dtype)
     ortho_err = (work @ work.transpose(-2, -1) - eye).abs().amax(dim=(-2, -1))
-    if (ortho_err > tol).any():
+    # "not all within" rather than "any above", so that a NaN entry fails the check.
+    if not bool((ortho_err <= tol).all()):
         raise ValueError(
-            f"{fn_name}: R is not a rotation matrix: max|R @ R^T - I| = {ortho_err.max().item():.3g} "
-            f"exceeds the tolerance {tol:.3g}."
+            f"{fn_name}: R is not a rotation matrix: max|R @ R^T - I| = {float(ortho_err.max())} "
+            f"is not within the tolerance {tol}."
         )
-    if (torch.linalg.det(work) <= 0).any():
+    if bool((torch.linalg.det(work) <= 0).any()):
         raise ValueError(f"{fn_name}: R is a reflection (det(R) < 0), not a rotation matrix.")
 
 
@@ -2744,9 +2754,8 @@ def camtoworld_to_worldtocam_Rt(
         checked, so for a non-orthogonal ``R`` the result is a transpose and
         not an inverse, silently: ``R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]]``
         gives ``max|M_inv @ M - I| = 3.0``. Pass ``check_rotation=True`` to
-        raise a ``ValueError`` instead,
-        which also rejects reflections (``det(R) < 0``). Delivered in
-        `#4817 <https://github.com/kornia/kornia/pull/4817>`_.
+        raise a ``ValueError`` instead, which also rejects reflections
+        (``det(R) < 0``).
 
     .. warning::
         The batch sizes of ``R`` and ``t`` are not checked: ``t`` is broadcast
@@ -2759,7 +2768,9 @@ def camtoworld_to_worldtocam_Rt(
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
         check_rotation: if ``True``, raise ``ValueError`` unless every ``R``
-            is a rotation. Defaults to ``False`` (unchecked).
+            is a rotation: ``max|R @ R^T - I|`` within 100 eps of the dtype of
+            ``R`` (16 eps for float16 and bfloat16) and ``det(R) > 0``.
+            Defaults to ``False`` (unchecked).
 
     Returns:
         Rinv: Rotation matrix, :math:`(B, 3, 3).`
@@ -2810,7 +2821,9 @@ def worldtocam_to_camtoworld_Rt(
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
         check_rotation: if ``True``, raise ``ValueError`` unless every ``R``
-            is a rotation. Defaults to ``False`` (unchecked).
+            is a rotation: ``max|R @ R^T - I|`` within 100 eps of the dtype of
+            ``R`` (16 eps for float16 and bfloat16) and ``det(R) > 0``.
+            Defaults to ``False`` (unchecked).
 
     Returns:
         Rinv: Rotation matrix, :math:`(B, 3, 3).`
