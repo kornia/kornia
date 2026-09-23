@@ -741,6 +741,18 @@ class TestWarpPerspective(BaseTester):
         hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 5), align_corners=True)
         self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
 
+    def test_wart_float64_identity_goes_through_a_float32_grid_4776(self, device):
+        # warp_perspective builds its sampling grid in float32 and casts it, so a float64 identity warp
+        # is exact only to float32 precision, while warp_affine is exact (#4776). Flips once the grid
+        # is built in the input dtype.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        x = torch.arange(64.0, device=device, dtype=torch.float64).view(1, 1, 8, 8) / 7.0
+        eye = torch.eye(3, device=device, dtype=torch.float64)[None]
+        affine = kornia.geometry.transform.warp_affine(x, eye[:, :2], (8, 8))
+        assert (affine - x).abs().max() < 1e-12
+        assert (kornia.geometry.transform.warp_perspective(x, eye, (8, 8)) - x).abs().max() > 1e-9
+
     def test_wart_homography_warp_pixel_path_ignores_mode_and_align_corners_4772(self, device, dtype):
         # With normalized_homography=False, homography_warp calls warp_perspective with mode="bilinear"
         # and align_corners=True whatever it was given (#4772). Reflection padding makes align_corners
