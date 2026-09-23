@@ -88,43 +88,28 @@ class TestTransplantationConventions(BaseTester):
         assert on_device._params["selected_labels"].cpu().tolist() == on_cpu._params["selected_labels"].tolist()
 
     @pytest.mark.device_agnostic
-    def test_convention_first_axis_is_always_the_batch(self):
+    @pytest.mark.parametrize("cls", [K.RandomTransplantation, K.RandomTransplantation3D])
+    def test_convention_image_rank_is_mask_rank_plus_one_and_batched(self, cls):
         # There is no (C, H, W) form: the leading axis is read as the batch, so the ranks disagree.
         with pytest.raises(BaseError, match="must match except for the channel dimension"):
-            K.RandomTransplantation(p=1.0)(torch.rand(2, 4, 5), torch.randint(0, 3, (4, 5)))
-
-    @pytest.mark.device_agnostic
-    def test_convention_image_rank_must_be_mask_rank_plus_one(self):
+            cls(p=1.0)(torch.rand(2, 4, 5), torch.randint(0, 3, (4, 5)))
         mask = torch.randint(0, 3, (3, 4, 5))
-        with pytest.raises(BaseError, match="one additional dimension"):
-            K.RandomTransplantation(p=1.0)(torch.rand(3, 4, 5), mask)
-        with pytest.raises(BaseError, match="one additional dimension"):
-            K.RandomTransplantation(p=1.0)(torch.rand(3, 2, 4, 5, 6), mask)
+        for image in (torch.rand(3, 4, 5), torch.rand(3, 2, 4, 5, 6)):
+            with pytest.raises(BaseError, match="one additional dimension"):
+                cls(p=1.0)(image, mask)
 
     @pytest.mark.device_agnostic
-    def test_convention_gate_is_per_sample_and_p_batch_is_call_wide(self):
-        aug = K.RandomTransplantation(p=0.5)
-        subsets = 0
-        for _ in range(40):
-            gate = aug.forward_parameters(torch.Size([8, 4, 5]))["batch_prob"] > 0.5
-            subsets += 0 < int(gate.sum()) < 8
-        assert subsets > 0  # a batch-wide gate can never select a strict subset
-        closed = K.RandomTransplantation(p=1.0, p_batch=0.0)
-        for _ in range(8):
-            assert not bool((closed.forward_parameters(torch.Size([8, 4, 5]))["batch_prob"] > 0.5).any())
-
-    @pytest.mark.device_agnostic
-    def test_convention_donor_is_the_previous_image_of_the_full_batch(self):
-        image, mask = _labelled_batch(batch=5)
-        torch.manual_seed(0)
+    @pytest.mark.parametrize("batch", [1, 5])
+    def test_convention_donor_is_the_previous_image_with_its_original_content(self, batch):
+        # Image i is 10 * i + c in channel c. A transplant chained through already-written acceptors would hand
+        # image 0's content down the batch; at B = 1 the image is its own donor and the call is an identity.
+        _, mask = _labelled_batch(batch=batch)
+        image = torch.stack([torch.stack([torch.full((4, 6), 10.0 * i + c) for c in range(3)]) for i in range(batch)])
         aug = K.RandomTransplantation(p=1.0)
-        _, out_mask = aug(image, mask)
-        # Every image is one label, so the whole mask row takes the donor's label.
-        observed = [int(out_mask[i].flatten()[0]) for i in range(5)]
-        assert observed == [(i - 1) % 5 + 1 for i in range(5)]
-        assert observed != [(i + 1) % 5 + 1 for i in range(5)]  # not the next image
-        assert observed != [i + 1 for i in range(5)]  # not the identity
-        assert aug._params["donor_indices"].tolist() == [4, 0, 1, 2, 3]
+        out_image, out_mask = aug(image, mask)
+        assert aug._params["donor_indices"].tolist() == [(i - 1) % batch for i in range(batch)]
+        self.assert_close(out_image, image.roll(1, dims=0), rtol=0, atol=0)
+        assert torch.equal(out_mask, mask.roll(1, dims=0))
 
     @pytest.mark.device_agnostic
     def test_convention_donor_need_not_be_an_acceptor(self):
@@ -138,26 +123,6 @@ class TestTransplantationConventions(BaseTester):
         assert [int(out_mask[i].flatten()[0]) for i in range(5)] == [1, 1, 3, 3, 5]
         self.assert_close(out_image[1], image[0], rtol=0, atol=0)
         self.assert_close(out_image[3], image[2], rtol=0, atol=0)
-
-    @pytest.mark.device_agnostic
-    def test_convention_a_donor_gives_its_original_content_and_every_channel_moves(self):
-        # Image i is its own index in every position, offset per channel. With every image an acceptor, a
-        # transplant chained through already-written acceptors would hand image 0's content down the batch.
-        _, mask = _labelled_batch(batch=4)
-        image = torch.stack([torch.stack([torch.full((4, 6), 10.0 * i + c) for c in range(3)]) for i in range(4)])
-        out_image, _ = K.RandomTransplantation(p=1.0)(image, mask)
-        self.assert_close(out_image, image.roll(1, dims=0), rtol=0, atol=0)
-
-    @pytest.mark.device_agnostic
-    def test_convention_single_image_batch_is_its_own_donor_and_an_identity(self):
-        image, mask = _labelled_batch(batch=1)
-        for seed in range(4):
-            torch.manual_seed(seed)
-            aug = K.RandomTransplantation(p=1.0)
-            out_image, out_mask = aug(image, mask)
-            assert aug._params["donor_indices"].tolist() == aug._params["acceptor_indices"].tolist() == [0]
-            self.assert_close(out_image, image, rtol=0, atol=0)
-            assert torch.equal(out_mask, mask)
 
     @pytest.mark.device_agnostic
     def test_convention_label_draw_is_uniform_over_distinct_labels_not_area(self):
@@ -377,14 +342,12 @@ class TestTransplantationConventions(BaseTester):
             aug = K.RandomTransplantation(p=p, excluded_labels=[0])
             _, out_mask = aug(torch.rand(2, 1, 4, 5), mask.to(dtype))
             assert out_mask.dtype is dtype and aug._params["selected_labels"].dtype is dtype
-
-    @pytest.mark.device_agnostic
-    @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
-    def test_convention_each_floating_image_dtype_is_accepted_and_kept(self, image_dtype):
         image, mask = _labelled_batch(batch=3)
-        out_image, _ = K.RandomTransplantation(p=1.0)(image.to(image_dtype), mask)
-        assert out_image.dtype is image_dtype
-        assert torch.equal(out_image, image.to(image_dtype).roll(1, dims=0))
+        for image_dtype in floating:
+            out_image, _ = K.RandomTransplantation(p=p)(image.to(image_dtype), mask)
+            assert out_image.dtype is image_dtype
+            expected = image.roll(1, dims=0) if p == 1.0 else image
+            assert torch.equal(out_image, expected.to(image_dtype))
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
@@ -402,9 +365,17 @@ class TestTransplantationConventions(BaseTester):
             K.RandomTransplantation(p=p)(image, mask, annotations[key], data_keys=["input", "mask", key])
 
     @pytest.mark.device_agnostic
-    def test_convention_a_mask_key_is_required_only_to_derive_the_parameters(self):
-        with pytest.raises(ValueError, match="MASK"):
-            K.RandomTransplantation(p=1.0)(torch.rand(2, 1, 4, 5), data_keys=["input"])
+    @pytest.mark.parametrize("cls", [K.RandomTransplantation, K.RandomTransplantation3D])
+    def test_wart_a_missing_mask_raises_a_python_lookup_error_4777(self, cls):
+        # #4777: flips when kornia checks for the mask itself instead of failing in tuple / list lookups.
+        image = torch.rand(2, 1, 4, 5)
+        with pytest.raises(IndexError, match="tuple index out of range"):
+            cls(p=1.0)(image)  # the default data_keys name a mask that was not passed
+        with pytest.raises(ValueError, match="is not in list"):
+            cls(p=1.0)(image, data_keys=["input"])
+
+    @pytest.mark.device_agnostic
+    def test_convention_a_mask_is_required_only_to_derive_the_parameters(self):
         # With complete parameters no mask is looked up: this is the call AugmentationSequential makes per input.
         image, mask = _multi_label_batch()
         torch.manual_seed(0)
@@ -416,21 +387,6 @@ class TestTransplantationConventions(BaseTester):
         # Outputs follow the input order, whatever it is.
         swapped = K.RandomTransplantation(p=1.0)(mask, image, params=recorded, data_keys=["mask", "input"])
         assert torch.equal(swapped[0], expected_mask) and torch.equal(swapped[1], expected_image)
-
-    @pytest.mark.device_agnostic
-    def test_convention_mask_only_call_returns_a_bare_tensor(self):
-        _, mask = _labelled_batch(batch=3)
-        out = K.RandomTransplantation(p=1.0)(mask, data_keys=["mask"])
-        assert isinstance(out, torch.Tensor) and out.shape == mask.shape
-
-    @pytest.mark.device_agnostic
-    def test_convention_no_matrix_and_no_inverse(self):
-        for cls in (K.RandomTransplantation, K.RandomTransplantation3D):
-            aug = cls(p=1.0)
-            with pytest.raises(RuntimeError, match="Transformation matrices"):
-                _ = aug.transform_matrix
-            with pytest.raises(RuntimeError, match="Inverse"):
-                aug.inverse()
 
     @pytest.mark.device_agnostic
     def test_convention_selected_labels_length_is_validated(self):

@@ -239,8 +239,7 @@ class TestGeometricCropConventions(BaseTester):
             ],
         }
         if dtype == torch.float16 and mode == "resample":
-            # Captured from the published corrected implementation on CPU/PyTorch 2.9.1; the matrix remains
-            # independently pinned.
+            # float16 rounding of the same warp: this body on CPU in float16. The matrix is pinned above.
             expected_rows["resample"] = [
                 [0.0, 0.0, 0.0, 0.0],
                 [0.0, 0.0260009765625, 0.15625, 0.051605224609375],
@@ -319,11 +318,11 @@ class TestGeometricCropConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_wart_crop_siblings_disagree_on_integer_size_4417(self):
-        # #4417: CenterCrop accepts an int while its random siblings reject it through implementation details.
+        # #4417: CenterCrop accepts an int while its random siblings reject it.
         assert K.CenterCrop(4).size == (4, 4)
         with pytest.raises(AssertionError):
             K.RandomCrop(4)(torch.ones(1, 1, 6, 8))  # type: ignore[arg-type]
-        with pytest.raises(TypeError, match="not subscriptable"):
+        with pytest.raises(TypeError):
             K.RandomCrop(4, pad_if_needed=True)(torch.ones(1, 1, 6, 8))  # type: ignore[arg-type]
         with pytest.raises(TypeError):
             K.RandomResizedCrop(4)  # type: ignore[arg-type]

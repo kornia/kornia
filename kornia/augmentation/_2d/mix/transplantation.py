@@ -85,37 +85,27 @@ class RandomTransplantation(MixAugmentationBaseV2):
               (`DataKey.MASK`).
 
     Convention:
-        - the transplant is driven by the first ``"mask"`` input. Every input keeps its own rank: an image is
-          ``(B, C, *spatial)`` and a mask ``(B, *spatial)``, for any number of spatial dimensions, including
-          none -- a ``(B,)`` mask is one label per image and moves the whole image. The first axis is always
-          the batch and there is no unbatched form. This class overrides ``forward`` wholesale, so the
-          ``(B, C, H, W)`` working layout and the rank promotion on
-          :class:`~kornia.augmentation.MixAugmentationBaseV2` do not apply to it, and its inherited
-          ``keepdim`` is inert.
-        - ``p`` gates samples and ``p_batch`` gates the whole call. Each selected image is an acceptor and its
-          donor is the previous image of the **full** batch, ``(i - 1) mod B``, so a donor need not itself be
-          an acceptor, and one that is gives its original content rather than what it received. At ``B = 1``
-          an image is its own donor and the call is an exact identity.
-        - one label is drawn uniformly from the donor's distinct labels, minus ``excluded_labels``, with
-          ``torch.randperm`` on the global CPU generator whatever the mask's device; the draw is over labels,
-          not over area. A donor with no eligible label has nothing to give, so its acceptor is dropped from
-          ``acceptor_indices``, its ``batch_prob`` entry is cleared and it receives nothing, while the rest of
-          the batch is transplanted.
-        - ``_params`` holds ``batch_prob``, ``forward_input_shape`` (the mask's shape in a direct call, the image's
-          inside a container), ``acceptor_indices``, ``donor_indices``, ``selected_labels`` and ``selection``.
-          ``selection`` is what the transform reads: row ``d`` marks the positions moved from ``donor_indices[d]``
-          into ``acceptor_indices[d]``, and a drawn ``selected_labels`` has one entry per row. A recorded ``_params``
-          passed back is used as given and completed in place, so it replays the same positions on any input of the
-          same shape. Labels are drawn only when ``selected_labels`` and ``selection`` are both missing. A missing
-          ``selection`` alone is rebuilt from the given labels against the current mask, without consulting
-          ``excluded_labels``, and a label list shorter than the acceptors leaves the trailing acceptors untouched.
-        - image inputs accept ``float16``, ``bfloat16``, ``float32`` and ``float64`` only, checked whatever the
-          gate; a mask keeps its own dtype, which may be ``bool``, ``uint8``, a signed integer or one of those
-          four floating dtypes. Only ``"input"`` / ``"image"`` and ``"mask"`` are implemented -- any other data
-          key raises a bare ``NotImplementedError`` whatever the gate. A ``"mask"`` is needed only to derive the
-          parameters, where its absence raises ``ValueError``; a call with a complete ``_params`` accepts any
-          subset of the inputs, which is how :class:`~kornia.augmentation.container.AugmentationSequential`
-          applies the transplant, one input at a time. Outputs come back in input order, a single one as a bare
+        - the transplant is driven by the first ``"mask"`` input. An image is ``(B, C, *spatial)`` and a mask
+          ``(B, *spatial)`` for any number of spatial dimensions, including none (a ``(B,)`` mask moves whole
+          images). There is no unbatched form, and the inherited ``keepdim`` is inert.
+        - ``p`` gates samples and ``p_batch`` the whole call. The donor of acceptor ``i`` is image ``(i - 1) mod B``
+          of the full batch, with its original content, whether or not it is an acceptor itself; at ``B = 1`` the
+          call is an identity.
+        - one label is drawn uniformly from the donor's distinct labels minus ``excluded_labels`` (over labels, not
+          area), on the global CPU generator whatever the mask's device. An acceptor whose donor has no eligible
+          label is dropped from ``acceptor_indices`` and its ``batch_prob`` is cleared.
+        - ``selection`` in ``_params`` is what the transform reads: row ``d`` marks the positions moved from
+          ``donor_indices[d]`` into ``acceptor_indices[d]``. A ``params`` passed back is used as given and completed
+          in place. Labels are drawn only when ``selected_labels`` and ``selection`` are both missing; a missing
+          ``selection`` alone is rebuilt from the given labels as they are (by design, ``excluded_labels`` filters
+          only drawn labels), and a label list shorter than the acceptors leaves the trailing ones untouched.
+        - images are ``float16``, ``bfloat16``, ``float32`` or ``float64``; a mask keeps its own dtype (``bool``,
+          integer or floating). Only ``"input"`` / ``"image"`` and ``"mask"`` keys are implemented; any other key
+          raises ``NotImplementedError``. A mask is needed only to draw the parameters, and a call without one
+          raises Python's ``IndexError`` or ``ValueError`` rather than a kornia error
+          (`#4777 <https://github.com/kornia/kornia/issues/4777>`_). With a complete ``params`` any subset of the
+          inputs is accepted, which is how :class:`~kornia.augmentation.container.AugmentationSequential` applies
+          the transplant, one input at a time. Outputs come back in input order, a single one as a bare
           tensor.
         - like every mix augmentation it is not geometric: ``transform_matrix`` and ``inverse()`` both raise
           ``RuntimeError``, and the ``inverse()`` of a

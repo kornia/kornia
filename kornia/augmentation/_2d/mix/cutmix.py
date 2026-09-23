@@ -78,15 +78,10 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           ``2 ** 24`` stay exact.
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
-        - ``p`` is a batch-wide gate and is applied once: one draw per call selects the whole batch with probability
-          ``p``, so ``_params["batch_prob"]`` is all ones or all zeros. Every row and mix of a selected batch receives
-          a cut and none is dropped again. With ``same_on_batch=False`` each row and mix draws its own cut size and
-          its own placement; ``same_on_batch=True`` shares both, so all rows and mixes receive one geometry. A cut
-          can still leave the image unchanged through self-pairing or a zero-sized cut.
-          At ``p=0`` the image is unchanged and each class row contains the original
-          label twice with lambda zero. The current ``cut_size`` interpretation and its rejection of a minimum of
-          ``1`` are described in its argument above; this is the repaired behavior from
-          `#4439 <https://github.com/kornia/kornia/issues/4439>`_.
+        - ``p`` is a batch-wide gate applied once: ``_params["batch_prob"]`` is all ones or all zeros, and every row
+          and mix of a selected batch receives a cut. With ``same_on_batch=False`` each row and mix draws its own cut
+          size and placement; ``same_on_batch=True`` shares one geometry. At ``p=0`` the image is unchanged and each
+          class row contains the original label twice with lambda zero.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.

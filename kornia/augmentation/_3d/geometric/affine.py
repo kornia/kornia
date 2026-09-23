@@ -73,16 +73,11 @@ class RandomAffine3D(GeometricAugmentationBase3D):
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
-        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A
-          positive roll turns a displayed ``H x W`` slice counter-clockwise, as the 2D
-          :class:`~kornia.augmentation.RandomRotation` and :func:`kornia.geometry.transform.rotate` do, and
-          opposite to :class:`RandomRotation3D`, :func:`kornia.geometry.transform.rotate3d`, and the 2D
-          :class:`~kornia.augmentation.RandomAffine`; its recorded rotation block is the transpose of
-          :class:`RandomRotation3D`'s (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-        - the default is bilinear resampling with ``align_corners=False``. With zero rotation, zero translation,
-          unit scale, and zero shear, it reproduces the input at that setting up to floating-point roundoff in
-          ``float32`` and ``float64``. In half precision the sampling grid itself is rounded, so the error grows
-          with the volume size (about ``0.5`` for a ``32 x 48 x 96`` volume in ``bfloat16``).
+        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
+          roll turns a displayed ``H x W`` slice counter-clockwise, and the rotation block is the transpose of
+          :class:`RandomRotation3D`'s; see :doc:`/get-started/conventions` for the direction of each entry point
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - the default is bilinear resampling with ``align_corners=False``.
         - a two-value ``scale=(a, b)`` is isotropic: one factor per sample is drawn from ``[a, b]`` and applied
           to all three axes, as the 2D :class:`~kornia.augmentation.RandomAffine` does. The three-pair form
           ``((a, b), (c, d), (e, f))`` draws each axis independently.

@@ -61,12 +61,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Convention:
-        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
-        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
-        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
-        ``size`` is an ``(height, width)`` tuple. A bare integer
-        is rejected, unlike :class:`CenterCrop`; the sibling split is tracked in
-        `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Here ``p`` selects or skips the whole batch together.
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        ``size`` is an ``(height, width)`` tuple; a bare integer raises, unlike :class:`CenterCrop`
+        (`#4417 <https://github.com/kornia/kornia/issues/4417>`_). ``p`` selects or skips the whole batch together.
         Within a selected batch, the generator tries ten candidate crops per image, sampling area fractions from
         ``scale`` and width/height ratios from ``ratio`` (shared with ``same_on_batch=True``). Rounded candidate
         dimensions must be positive and strictly smaller than the input on both axes. If no candidate fits,
@@ -75,12 +72,8 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         with the default ratio produces a 4x6 crop, with half the input area and width/height ratio 1.5.
         The selected crop is resized to the requested output size.
 
-        Slice mode calls index cropping with the configured interpolation and ``align_corners``; resample mode
-        calls ``crop_by_transform_mat`` with zero padding. Both default to bilinear sampling and
-        ``align_corners=True``. Under ``torch.compile``, slice mode uses tensor indexing and
-        interpolation so newly sampled crop coordinates do not trigger recompilation.
-        Only resample mode supports :meth:`inverse`; its inverse
-        resamples onto the original canvas and cannot recover information discarded by cropping or interpolation.
+        Both cropping modes use the configured interpolation and ``align_corners``. Only resample mode supports
+        :meth:`inverse`, which resamples onto the original canvas and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,

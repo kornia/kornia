@@ -45,7 +45,7 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
         - flips the height ``H`` axis (tensor axis ``-2``, coordinate ``y``). Its matrix maps ``y`` to
-          ``H - 1 - y`` using inclusive voxel coordinates when the input dtype represents that translation exactly.
+          ``H - 1 - y`` in inclusive voxel coordinates.
 
     Examples:
         >>> import torch

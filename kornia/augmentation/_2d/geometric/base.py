@@ -41,6 +41,16 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           to the batch form ``False``.
 
     Convention:
+        - this block is the shared contract of the 2D geometric classes; they point here instead of restating it.
+          Pixel coordinates are ``(x, y)`` at integer pixel centres, with corners ``(0, 0)`` and
+          ``(W - 1, H - 1)`` (see :doc:`/get-started/conventions`); rotations, shears and affine maps are centred
+          at ``((W - 1) / 2, (H - 1) / 2)``, and ``transform_matrix`` maps input pixel coordinates to output pixel
+          coordinates.
+        - the resampling classes default to bilinear interpolation with zero sampler padding. The
+          ``align_corners`` default is ``True`` for :class:`RandomRotation`, :class:`RandomRotation90` and the crop
+          and resize classes, and ``False`` for :class:`RandomAffine`, :class:`RandomShear`,
+          :class:`RandomTranslate`, :class:`RandomPerspective`, :class:`RandomElasticTransform` and
+          :class:`RandomThinPlateSpline` (`#4412 <https://github.com/kornia/kornia/issues/4412>`_).
         - this base provides a matrix-based ``inverse`` interface. Whether a concrete augmentation can invert a
           call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or

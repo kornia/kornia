@@ -34,8 +34,21 @@ def _label_dtype(image_dtype: torch.dtype) -> torch.dtype:
 
 
 class TestMixConventions(BaseTester):
-    def test_convention_mix_base_has_no_matrix_or_inverse(self):
-        aug = K.RandomMixUpV2()
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            K.RandomMixUpV2,
+            lambda: K.RandomCutMixV2(use_correct_lambda=True),
+            K.PatchMix,
+            K.RandomJigsaw,
+            K.RandomMosaic,
+            K.RandomTransplantation,
+            K.RandomTransplantation3D,
+        ],
+    )
+    def test_convention_mix_has_no_matrix_or_inverse(self, factory):
+        aug = factory()
         with pytest.raises(RuntimeError, match="Transformation matrices"):
             _ = aug.transform_matrix
         with pytest.raises(RuntimeError, match="Inverse"):
@@ -166,20 +179,28 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(
-        "factory",
+        ("factory", "per_sample"),
         [
-            lambda: K.RandomMixUpV2(p=0.5),
-            lambda: K.RandomCutMixV2(p=0.5, use_correct_lambda=True),
-            lambda: K.PatchMix(p=0.5, patch_size=2),
+            (lambda: K.RandomMixUpV2(p=0.5), False),
+            (lambda: K.RandomCutMixV2(p=0.5, use_correct_lambda=True), False),
+            (lambda: K.PatchMix(p=0.5, patch_size=2), False),
+            (lambda: K.RandomJigsaw(grid=(2, 2), p=0.5), True),
+            (lambda: K.RandomJigsaw(grid=(2, 2), p=0.5, same_on_batch=True), False),
+            (lambda: K.RandomMosaic(p=0.5), True),
+            (lambda: K.RandomTransplantation(p=0.5), True),
         ],
     )
-    def test_convention_mix_batch_gate_is_all_or_nothing(self, factory):
-        # An invariant, not a statistic: a batch-wide gate never selects a strict subset of the rows.
+    def test_convention_mix_gate_is_per_sample_or_batch_wide(self, factory, per_sample):
+        # A batch-wide gate never selects a strict subset of the rows; a per-sample one misses doing so in 20
+        # draws of 8 rows with probability (2 / 256) ** 20.
         aug = factory()
+        shape = torch.Size([8, 8, 8]) if isinstance(aug, K.RandomTransplantation) else torch.Size([8, 1, 8, 8])
+        subsets = 0
         for _ in range(20):
-            batch_prob = aug.forward_parameters(torch.Size([8, 1, 8, 8]))["batch_prob"]
-            assert batch_prob.numel() == 8
-            assert bool((batch_prob == batch_prob[0]).all())
+            gate = aug.forward_parameters(shape)["batch_prob"] > 0.5
+            assert gate.numel() == 8
+            subsets += 0 < int(gate.sum()) < 8
+        assert (subsets > 0) == per_sample
 
     def test_convention_per_sample_gate_keeps_unselected_rows(self, device, dtype):
         image = torch.arange(32, device=device, dtype=dtype).reshape(2, 1, 4, 4)
@@ -322,24 +343,6 @@ class TestMixConventions(BaseTester):
         self.assert_close(output, expected)
 
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize("dtype", [torch.uint8, torch.int64])
-    def test_convention_mix_rejects_integer_images(self, dtype):
-        with pytest.raises(TypeError, match="float16"):
-            K.RandomMixUpV2(p=1.0)(torch.ones(2, 1, 4, 4, dtype=dtype))
-
-    @pytest.mark.device_agnostic
-    def test_convention_mix_inverse_is_keyword_only(self):
-        with pytest.raises(TypeError, match="positional"):
-            K.RandomMixUpV2().inverse(torch.ones(2, 1, 4, 4))
-
-    @pytest.mark.device_agnostic
-    def test_convention_jigsaw_same_on_batch_shares_the_gate(self):
-        aug = K.RandomJigsaw(grid=(2, 2), p=0.5, same_on_batch=True)
-        for _ in range(20):
-            batch_prob = aug.forward_parameters(torch.Size([8, 1, 4, 4]))["batch_prob"]
-            assert bool((batch_prob == batch_prob[0]).all())
-
-    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
     @pytest.mark.parametrize(
         ("factory", "supported", "class_error"),
@@ -352,7 +355,7 @@ class TestMixConventions(BaseTester):
         ],
     )
     def test_convention_unsupported_key_raises_whatever_the_gate(self, factory, supported, class_error, p):
-        # Fixed by #4676: these used to pass through silently whenever the gate selected no sample (#4651).
+        # #4651 / #4676: the key is validated before the gate is consulted.
         image = torch.rand(4, 1, 8, 8)
         annotations = {
             "bbox_xyxy": torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4),
@@ -375,14 +378,15 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_jigsaw_rejects_a_nondivisible_input_whatever_the_gate(self, p, device, dtype):
-        # Fixed by #4676: (1, 3, 3, 4) with grid=(2, 2) used to come back as (1, 2, 3, 4), and p=0 returned the input.
+        # #4676: the divisibility check runs whatever the gate.
         for shape, grid in (((1, 3, 3, 4), (2, 2)), ((2, 1, 9, 13), (2, 3)), ((2, 1, 8, 13), (2, 3))):
             image = torch.rand(shape, device=device, dtype=dtype)
             with pytest.raises(RuntimeError, match="must be divisible by grid"):
                 K.RandomJigsaw(grid=grid, p=p)(image)
 
     @pytest.mark.device_agnostic
-    def test_convention_mix_class_handlers_ignore_a_replayed_partial_gate(self):
+    def test_wart_mix_class_handlers_ignore_a_replayed_partial_gate_4775(self):
+        # #4775: flips when the class handler honours batch_prob, i.e. row 1 is labelled [20, 20, 0].
         image = torch.arange(3.0).view(3, 1, 1, 1).expand(3, 1, 4, 4).clone()
         labels = torch.tensor([10, 20, 30])
         aug = K.RandomMixUpV2(p=1.0, lambda_val=(0.25, 0.25), data_keys=["input", "class"])
@@ -473,7 +477,7 @@ class TestMixConventions(BaseTester):
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_patchmix_rejects_a_patch_larger_than_the_image(self, p):
-        # Fixed by #4680: the default patch_size=16 used to draw negative corners on this image (#4650).
+        # #4650 / #4680: checked whatever the gate.
         image = torch.rand(4, 1, 8, 10)
         for patch_size in (9, 16):
             with pytest.raises(ValueError, match="`patch_size` to fit the input"):
@@ -482,8 +486,7 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_patchmix_same_on_batch_shares_the_patch_but_not_the_pairing(self):
-        # Fixed by #4680: a shared pairing draw used to argsort to the identity, so every image patched itself.
-        # Each donor's pixel value is its batch index, providing an oracle independent of patch-copy slicing.
+        # #4680. Each donor's pixel value is its batch index, an oracle independent of patch-copy slicing.
         image = torch.arange(64, dtype=torch.float32).reshape(64, 1, 1, 1).expand(-1, 1, 8, 10).clone()
         aug = K.PatchMix(patch_size=4, p=1.0, same_on_batch=True)
         output = aug(image)
@@ -586,13 +589,15 @@ class TestMixConventions(BaseTester):
             _, mixed = aug(image.double(), labels, params=params, data_keys=["input", "class"])
             assert mixed.dtype == torch.float64
 
-    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int32, torch.bool])
-    def test_convention_mix_replay_rejects_an_unsupported_dtype_with_type_error(self, image_dtype):
-        # The replayed dictionary goes through the same dtype check as a fresh draw, so the error stays a TypeError.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("replay", [False, True])
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int32, torch.int64, torch.bool])
+    def test_convention_mix_rejects_a_non_floating_image(self, image_dtype, replay):
+        # A fresh draw and a replayed dictionary go through the same dtype guard.
         image = torch.rand(2, 1, 4, 4)
         for aug_cls in (K.RandomMixUpV2, K.RandomCutMixV2, K.RandomJigsaw, K.RandomMosaic):
             aug = aug_cls(p=1.0)
-            params = aug.forward_parameters(image.shape)
+            params = aug.forward_parameters(image.shape) if replay else None
             with pytest.raises(TypeError, match="Expected input of"):
                 aug((image * 255).to(image_dtype), params=params)
 
@@ -645,24 +650,6 @@ class TestMixConventions(BaseTester):
         output = aug(picture)
         assert not (output == picture).flatten(1).all(1).any()
 
-    def test_convention_transplantation3d_is_a_mix_class_over_volumes(self, device, dtype):
-        # The base block's (B, C, H, W) working layout has one exception: the 3D transplantation class.
-        volume = torch.rand(2, 3, 4, 5, 6, device=device, dtype=dtype)
-        mask = torch.zeros(2, 4, 5, 6, device=device, dtype=torch.long)
-        mask[:, 1:3, 1:3, 1:3] = 1
-        output, _ = K.RandomTransplantation3D(p=1.0)(volume, mask, data_keys=["input", "mask"])
-        assert output.shape == volume.shape
-        # It is still a mix augmentation: no matrix and no inverse.
-        with pytest.raises(RuntimeError, match="Transformation matrices"):
-            _ = K.RandomTransplantation3D(p=1.0).transform_matrix
-        # Both transplantation classes override forward: the spatial rank is free, so the 2D class takes the
-        # same volume, and neither promotes an unbatched image.
-        flat, _ = K.RandomTransplantation(p=1.0)(volume, mask, data_keys=["input", "mask"])
-        assert flat.shape == volume.shape
-        for cls in (K.RandomTransplantation, K.RandomTransplantation3D):
-            with pytest.raises(Exception, match="must match except for the channel"):
-                cls(p=1.0)(volume[0], mask[0], data_keys=["input", "mask"])
-
     def test_convention_mosaic_start_ratio_range_is_a_sampling_range(self, device, dtype):
         # Both entries are (low, high) bounds on the SAME ratio draw, not an (x, y) position.
         image = torch.rand(8, 1, 6, 10, device=device, dtype=dtype)
@@ -675,17 +662,6 @@ class TestMixConventions(BaseTester):
         assert ratios[:, 0].unique().numel() > 1 and ratios[:, 1].unique().numel() > 1
         # "Draws a pair": the two ratios are separate draws, not one value used twice.
         assert not torch.allclose(ratios[:, 0], ratios[:, 1])
-
-    @pytest.mark.device_agnostic
-    def test_convention_jigsaw_gate_is_drawn_per_sample(self):
-        # The gate pin above supplies `batch_prob`, so nothing measures which of p / p_batch it comes from.
-        aug = K.RandomJigsaw(grid=(2, 2), p=0.5)
-        assert aug.p == 0.5 and aug.p_batch == 1.0
-        subsets = 0
-        for _ in range(20):
-            gate = aug.forward_parameters(torch.Size([8, 1, 4, 4]))["batch_prob"] > 0.5
-            subsets += 0 < int(gate.sum()) < 8
-        assert subsets > 0  # a batch-wide gate can never select a strict subset
 
     @pytest.mark.device_agnostic
     def test_convention_patchmix_patch_stays_inside_the_image(self):

@@ -63,8 +63,8 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         See :class:`~kornia.augmentation.IntensityAugmentationBase3D` for the shared 3D intensity contract.
 
         - ``angle`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
-          roll turns the blur kernel clockwise as displayed, following :class:`RandomRotation3D` and opposite to
-          the 2D :class:`~kornia.augmentation.RandomMotionBlur`, whose positive angle turns it counter-clockwise
+          roll turns the blur kernel clockwise as displayed, as :class:`RandomRotation3D` does; see
+          :doc:`/get-started/conventions` for the direction of each entry point
           (`#4408 <https://github.com/kornia/kornia/issues/4408>`_). Its default resampling is
           nearest-neighbour, unlike the geometric 3D defaults.
         - an integer ``kernel_size`` is one odd scalar applied to all three spatial axes. A tuple ``kernel_size``

@@ -40,7 +40,9 @@ class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
           ``align_corners=False`` normalization can make the applied warp differ from the recorded matrix
           (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
           Matrices use the input dtype, so integer voxel translations are rounded when that dtype cannot represent
-          them exactly (for example, float16 stores the width translation for ``W=2050`` as ``2048``).
-        - the matrix is useful for forward bookkeeping only: this base provides no 3D inverse implementation.
+          them exactly.
+        - a zero-parameter :class:`RandomAffine3D` or :class:`RandomRotation3D` warp reproduces its input up to
+          roundoff in ``float32`` and ``float64``. In half precision the sampling grid is itself rounded, so the
+          error grows with the volume size.
 
     """

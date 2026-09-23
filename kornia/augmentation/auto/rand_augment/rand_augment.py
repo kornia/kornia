@@ -55,18 +55,15 @@ class RandAugment(PolicyAugmentBase):
     Convention:
         - selects ``n`` distinct one-operation candidate sub-policies uniformly without replacement, then
           applies them in the order drawn. ``n`` must be in ``[1, len(policy)]``.
-        - ``m`` must be strictly between ``0`` and ``30``. For every magnitude-bearing selected operation it
-          sets a per-row magnitude to ``low + (high - low) * m / 30`` over that operation's magnitude range. For a
-          symmetric operation that range is ``(0, max)`` and each row independently gets a positive or negative
-          sign, so ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. Two kinds of entry depart from
-          that formula. ``posterize`` runs its range backwards, ``high - (high - low) * m / 30``, so a larger ``m``
-          keeps fewer bits. A ``translate_x`` / ``translate_y`` range is a fraction of the image width / height
-          and the value is multiplied by that size, so ``m=15`` on the default ``("translate_x", -0.1, 0.1)`` shifts
-          a 32-pixel-wide image by ``1.6`` pixels either way. The value then passes through the wrapper's magnitude
-          mapping, which is the identity for every default entry except three: ``shear_x`` / ``shear_y`` multiply
-          it by ``180``, so ``m=15`` on the default ``("shear_x", -0.3, 0.3)`` shears by ``27`` degrees and not by
-          ``0.15``, and ``posterize`` truncates it to integer bits, so the default ``("posterize", 4.0, 8.0)``
-          keeps ``7`` bits at ``m=7``, ``6`` at ``m=15`` and ``4`` at ``m=29``.
+        - ``m`` must be strictly between ``0`` and ``30`` and sets every selected operation's magnitude to
+          ``low + (high - low) * m / 30`` over its magnitude range. A symmetric operation's range is ``(0, max)``
+          with a random sign per row: ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. A
+          ``translate_x`` / ``translate_y`` value is a fraction of the image width / height, applied in pixels.
+          The operation's magnitude mapping is the identity for every default entry except ``shear_x`` /
+          ``shear_y``, which multiply by ``180`` (``27`` degrees at ``m=15`` for the default range), and
+          ``posterize``, which truncates to integer bits. ``posterize`` also runs its range backwards,
+          ``high - (high - low) * m / 30``, so a larger ``m`` keeps fewer bits (``7``, ``6`` and ``4`` at ``m=7``,
+          ``15`` and ``29``).
 
     Args:
         n: the number of augmentations to apply sequentially. Must be at least ``1`` and at

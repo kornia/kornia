@@ -31,15 +31,12 @@ class RandomElasticTransform(AugmentationBase2D):
     .. image:: _static/img/RandomElasticTransform.png
 
     Convention:
-        See the shared contract on :class:`~kornia.augmentation.AugmentationBase2D`.
-        This is a dense backward sampling field, with no ``transform_matrix`` or ``inverse`` interface.
+        This is a dense backward sampling field with no ``transform_matrix`` or ``inverse``; spatial labels in
+        containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
         Noise has shape ``(B, 2, H, W)`` with channels ``(x, y)``; ``alpha`` scales displacement in
         normalized sampling coordinates, whereas ``kernel_size`` and ``sigma`` use ``(y, x)`` order.
-        The default sampler is bilinear with zero padding and ``align_corners=False``. The displaced
-        grid is clamped to ``[-1, 1]`` before sampling. Zero ``alpha`` preserves the image up to
-        interpolation rounding for either ``align_corners`` value.
-        Spatial labels in containers have additional limitations; see
-        `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
+        The displaced grid is clamped to ``[-1, 1]`` before sampling. Zero ``alpha`` is an identity warp for
+        either ``align_corners``.
 
     Args:
         kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.

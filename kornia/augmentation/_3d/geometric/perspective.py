@@ -55,6 +55,8 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
           its size -- while the affine and rotation paths are exact to ``float64`` roundoff. The false-setting
           normalization defect is tracked in `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
         - the default interpolation is bilinear and the default ``align_corners`` is ``False``.
+        - a ``float64`` volume is warped through a float32 sampling grid, so it keeps only float32 precision
+          (`#4776 <https://github.com/kornia/kornia/issues/4776>`_).
 
     Examples:
         >>> import torch

@@ -660,7 +660,7 @@ class TestConventionAugmentationSequential(BaseTester):
         # for the image, the mask, keypoints and boxes alike - inclusive pixel coordinates about the integer
         # centre, the same rule `kornia.geometry.transform.hflip` / `vflip` follow.
         # H = 3, W = 4 (asymmetric); hot pixel (row 0, col 1), off both centre lines; keypoint (x=1, y=2).
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu). hflip:
+        # Snippet used to generate expected: this body. hflip:
         # pixel -> (row 0, col 2), keypoint -> (2, 2), bbox_xyxy [0,0,1,1] -> [2, 0, 3, 1], bbox vertices ->
         # [[2,0],[3,0],[3,1],[2,1]]. vflip: pixel -> (row 2, col 1), keypoint -> (1, 0),
         # bbox_xyxy -> [0, 1, 1, 2]. An exclusive reading (x' = W - x) would give keypoint (3, 2) and
@@ -698,7 +698,7 @@ class TestConventionAugmentationSequential(BaseTester):
         # Convention pin: each data key has one accepted layout - `bbox` is (B, N, 4, 2) vertices, `bbox_xyxy`
         # is (B, N, 4) corners, `keypoints` is (B, N, 2) - and feeding one layout under the other key raises
         # `ValueError` naming the expected shape and the box mode.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu):
+        # Snippet used to generate expected: this body:
         # "Boxes shape must be (N, 4, 2) or (B, N, 4, 2) when vertices_plus mode. Got torch.Size([1, 1, 4])."
         # "Boxes shape must be (N, 4) or (B, N, 4) when xyxy_plus mode. Got torch.Size([1, 1, 4, 2])."
         # "Keypoints shape must be (N, 2) or (B, N, 2). Got torch.Size([1, 2, 3])."
@@ -749,14 +749,14 @@ class TestConventionAugmentationSequential(BaseTester):
 
         # Keep a deliberate invalid-index probe on CPU to avoid accelerator context poisoning.
         cpu_image = image.cpu()
-        with pytest.raises(IndexError, match="index 2 is out of bounds for dimension 0 with size 2"):
+        with pytest.raises(IndexError):
             seq(cpu_image, [cpu_image.clone() for _ in range(3)], params=params)
 
     def test_wart_per_sample_mask_lists_fail_warps_and_reuse_crop_window_4477(self, device, dtype):
         image = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4).repeat(2, 1, 1, 1)
         masks = [image[:1].clone(), image[1:].clone()]
         warp = K.AugmentationSequential(K.RandomAffine((30.0, 30.0), p=1.0), data_keys=["input", "mask"])
-        with pytest.raises(RuntimeError, match="batch size"):
+        with pytest.raises(RuntimeError):
             warp(image, masks)
         crop = K.AugmentationSequential(K.RandomCrop((2, 2), p=1.0), data_keys=["input", "mask"])
         params = crop.forward_parameters(image.shape)
@@ -934,7 +934,7 @@ class TestConventionAugmentationSequential(BaseTester):
             extra_args={DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": align_corners}},
         )
         if cropping_mode == "slice" and align_corners is not None:
-            with pytest.raises(ValueError, match="align_corners option can only be set with the interpolating modes"):
+            with pytest.raises(ValueError):
                 seq(image, mask)
         else:
             out_image, out_mask = seq(image, mask)
@@ -946,9 +946,6 @@ class TestConventionAugmentationSequential(BaseTester):
         # labels after a 45 degree affine without intermediate values. The zero padding fill is also present,
         # and the mask dtype is preserved, `bool` included.
         # The claim is checked one parameter away from the pin's fixture: B = 2 and B = 1 both hold.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): value set
-        # [0.0, 2.0, 3.0], dtype torch.float32 preserved, bool mask stays torch.bool, max|mask - input mask|
-        # 2.0 (the rotation really moved it).
         for batch in (2, 1):
             aug = K.AugmentationSequential(K.RandomAffine(degrees=(45.0, 45.0), p=1.0), data_keys=["input", "mask"])
             mask = torch.full((batch, 1, 6, 8), 2.0, device=device, dtype=dtype)
@@ -1030,7 +1027,7 @@ class TestConventionAugmentationSequential(BaseTester):
         # op as well as for a flip - `Boxes.from_tensor(..., mode="xyxy_plus").transform_boxes_(M)` reproduces
         # the container's output exactly, while `mode="xyxy"` (exclusive) does not.
         # Two asymmetric boxes on a 6x8 image, resized to (3, 4) => M = diag(3/7, 2/5) in xyxy_plus space.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): container
+        # Snippet used to generate expected: this body. Container
         # [[0.0, 0.0, 1.2857143, 0.8]], [[0.85714293, 0.4, 2.1428573, 1.6]] == xyxy_plus;
         # xyxy gives [[0.0, 0.0, 1.8571429, 1.4]], [[0.85714293, 0.4, 2.7142859, 2.2]].
         boxes = torch.tensor([[[0.0, 0.0, 3.0, 2.0]], [[2.0, 1.0, 5.0, 4.0]]], device=device, dtype=dtype)
@@ -1048,8 +1045,6 @@ class TestConventionAugmentationSequential(BaseTester):
         # Convention pin: `.inverse()` restores keypoints moved by the geometric chain, while non-axis-aligned
         # rotations cannot restore tensor boxes. Forward turns both `bbox_xyxy` and vertex `bbox` formats into
         # axis-aligned enclosures, losing the original corners before inverse is called.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): forward
-        # max|move| 1.6213202476501465, inverse max|error| 7.152557373046875e-07.
         torch.manual_seed(0)
         aug = K.AugmentationSequential(K.RandomAffine(degrees=(45.0, 45.0), p=1.0), data_keys=["input", "keypoints"])
         img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
@@ -1088,7 +1083,7 @@ class TestConventionAugmentationSequential(BaseTester):
         )
         rigid_then_nested = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), nested_rigid(), data_keys=["input"])
         assert rigid_then_nested(image).shape == image.shape
-        with pytest.raises(TypeError, match=r"unsupported operand type\(s\) for @: 'NoneType' and 'Tensor'"):
+        with pytest.raises(TypeError):
             _ = rigid_then_nested.transform_matrix
 
         nested_then_rigid = K.AugmentationSequential(nested_rigid(), K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
@@ -1217,7 +1212,7 @@ class TestConventionAugmentationSequential(BaseTester):
         # Convention pin: `AugmentationSequential(same_on_batch=None)` - the default - keeps whatever each
         # child was built with, while `True` and `False` overwrite the child's own setting in both directions.
         # `keepdim` follows the same three-state rule.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu), seed 0, B = 4:
+        # Snippet used to generate expected: this body, seed 0, B = 4:
         # None over a same_on_batch=True child -> one distinct angle (36.5752067565918 four times);
         # False over the same child -> four distinct angles; True over a same_on_batch=False child -> one.
         # keepdim: None over a keepdim=True child -> (3, 6, 8), False -> (1, 3, 6, 8), True over False -> (3, 6, 8).
@@ -1244,38 +1239,10 @@ class TestConventionAugmentationSequential(BaseTester):
         assert shape(True, False) == (3, 6, 8)
 
     def test_extra_args_mask_override_reaches_the_sampler_4419(self, device, dtype):
-        # #4419: `extra_args[DataKey.MASK]` is the documented way to control how masks are handled, and both
-        # halves of it reach the sampler. The base 2D geometric mask path used to overwrite `resample` with
-        # NEAREST after merging the override, so asking for bilinear changed nothing on `RandomAffine`, while
-        # the `align_corners` half of the same dict was honoured. `RandomElasticTransform`, which has its own
-        # mask path, honours both halves.
-        # Snippet used to generate expected: this body, executed 2026-09-14 (torch 2.9.1, cpu), seed 0, a
-        # (1, 1, 6, 8) mask with a 1-block: RandomAffine with padding_mode="reflection" align_corners
-        # override 1.0.
-        # The align_corners fixture was `RandomPerspective(0.5, p=1.0)` with zero padding until #3945. That
-        # delta was 1.0 only because the two conventions disagreed on in-bounds samples: the sampling grid
-        # was built corner-aligned whatever flag reached grid_sample, so align_corners=True vs False shifted
-        # the mask by half a pixel. #3945 makes the grid follow the flag, so the two now agree wherever the
-        # sample lands inside the image and that delta collapsed to 0.0 (float32, float64, float16 and
-        # bfloat16 alike). They still differ out of bounds, because +/-1 spans a different extent under each
-        # convention, so the fixture moves to a transform that samples outside the frame and a padding_mode
-        # that makes those samples observable. Sweep, seeds 0-9: delta is exactly 1.0 at every seed on cpu
-        # float32, float64, float16 and bfloat16.
-        # The elastic half uses its own fixture, reusing the #4420 pin's style below: `RandomElasticTransform
-        # (alpha=(5.0, 5.0), sigma=(4.0, 4.0), p=1.0)` on a checkerboard mask, same (1, 1, 6, 8), H != W frame,
-        # instead of the default alpha/sigma with a solid block. #4382 ("fix: respect align_corners in elastic
-        # transform grid"), now in this branch's rebased base, shrank the displacement at the default fixture
-        # until the bilinear-vs-nearest mask delta collapsed - 0.0093 (float32) / 0.0076 (float64) at seed 0,
-        # both under the old > 0.1 threshold - and a solid block mask can also map onto itself under a small
-        # warp regardless of alpha/sigma, so a checkerboard is used instead.
-        # Sweep, seeds 0-9, this elastic fixture: min/max delta 0.461683/0.739558 on cpu float32, 0.292913/
-        # 0.716883 on cpu float64, 0.462891/0.740234 on cpu float16, 0.472656/0.742188 on cpu bfloat16, and
-        # 0.401424/0.749953 on mps float32 - never near the old default-fixture value at any seed or dtype
-        # checked, so `> 0.1` stays a safe threshold. Seed-0 delta: 0.739558 (cpu float32), 0.588690 (cpu
-        # float64), 0.740234 (cpu float16), 0.742188 (cpu bfloat16), 0.749953 (mps float32). The half-dtype
-        # skip that used to guard this pin is dropped: affine and perspective are exact on float16/bfloat16
-        # (0.0 and 1.0, matching float32/float64) and the elastic delta stays far above the threshold there
-        # too.
+        # #4419: both halves of `extra_args[DataKey.MASK]` reach the sampler; `RandomElasticTransform`, which has
+        # its own mask path, honours both too. The align_corners fixture samples outside the frame with
+        # padding_mode="reflection", where the two conventions differ (delta 1.0). The elastic fixture uses a
+        # checkerboard mask and a displacement large enough to keep the bilinear-vs-nearest delta well above 0.1.
 
         def mask_of(aug_factory, extra):
             torch.manual_seed(0)

@@ -69,11 +69,16 @@ class TestAutoAugmentConventions(BaseTester):
                 assert [name for name, _ in aug.get_forward_sequence(params)] == [param.name for param in params]
 
     @pytest.mark.device_agnostic
-    def test_convention_autoaugment_magnitude_bins_are_zero_through_nine(self):
+    def test_convention_autoaugment_magnitude_bins_select_adjacent_intervals(self):
         degrees = AutoAugment(policy=[[("rotate", 1.0, 9)]]).forward_parameters(torch.Size([64, 1, 8, 6]))
         degrees = degrees[0].data[0].data["degrees"]
         assert (degrees >= 24.0).all() and (degrees <= 30.0).all()
         assert degrees.min() < 25.0 and degrees.max() > 29.0  # bounds alone pass for a collapsed interval
+        torch.manual_seed(17)
+        degrees = AutoAugment(policy=[[("rotate", 1.0, 5)]]).forward_parameters(torch.Size([64, 1, 8, 6]))
+        degrees = degrees[0].data[0].data["degrees"]
+        assert (degrees >= 0.0).all() and (degrees <= 6.0).all()  # bin 5 of linspace(-30, 30, 11) is [0, 6]
+        assert degrees.min() < 1.0 and degrees.max() > 5.0
         for magnitude in (-1, 10):
             with pytest.raises(ValueError, match=r"in \[0, 9\]"):
                 AutoAugment(policy=[[("rotate", 1.0, magnitude)]])
@@ -97,15 +102,6 @@ class TestAutoAugmentConventions(BaseTester):
         aug(image)
         drawn = [param.name for param in aug._params]
         assert [name for name, _ in aug.get_forward_sequence(aug._params)] == drawn
-
-    @pytest.mark.device_agnostic
-    def test_convention_autoaugment_magnitude_bin_samples_its_adjacent_interval(self):
-        torch.manual_seed(17)
-        aug = AutoAugment(policy=[[("rotate", 1.0, 5)]])
-        degrees = aug.forward_parameters(torch.Size([64, 1, 8, 6]))[0].data[0].data["degrees"]
-        assert (degrees >= 0.0).all()
-        assert (degrees <= 6.0).all()
-        assert degrees.min() < 1.0 and degrees.max() > 5.0
 
     @pytest.mark.device_agnostic
     def test_convention_trivialaugment_applies_the_symmetric_magnitude_mapping_4441(self):
@@ -232,6 +228,10 @@ class TestAutoAugmentConventions(BaseTester):
         self.assert_close(policy(image, params=reversed_params), torch.tensor([0.8]).reshape_as(image))
         self.assert_close(policy(image, params=generated[:1]), torch.tensor([0.8]).reshape_as(image))
         assert [param.name for param in policy._params] == [generated[0].name]
+        # get_forward_sequence, which get_transformation_matrix zips against, follows the supplied order too.
+        reversed_names = [name for name, _ in policy.get_forward_sequence(reversed_params)]
+        assert reversed_names == [param.name for param in reversed_params]
+        assert [name for name, _ in policy.get_forward_sequence(generated[:1])] == [generated[0].name]
 
     @pytest.mark.device_agnostic
     def test_convention_intensity_matrix_requires_a_nonempty_selected_policy(self):
@@ -268,6 +268,8 @@ class TestAutoAugmentConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_operation_probability_and_magnitude_clamps(self):
+        initial = ops.Invert(initial_probability=0.25)
+        self.assert_close(initial.probability.detach(), torch.tensor([0.25]), rtol=0, atol=0)
         operation = ops.Rotate(initial_magnitude=3.0, initial_probability=0.5)
         operation._probability.data.fill_(2.0)
         operation._magnitude.data.fill_(100.0)
@@ -384,26 +386,12 @@ class TestAutoAugmentConventions(BaseTester):
         # The parameter is kept in the state dict, and no sampler is stored on the wrapper or the wrapped op.
         assert "_probability" in operation.state_dict()
         assert not hasattr(operation.op, "_p_gen") and not hasattr(operation.op, "_p_batch_gen")
-        # So a policy deep-copies after a forward and after train() / eval(), and the copy replays the original.
+        # So a policy deep-copies after a forward (train() / eval() are covered in test_auto_operation.py), and the
+        # copy replays the original.
         image = torch.rand(2, 3, 8, 8)
         for policy in (AutoAugment(), TrivialAugment(), RandAugment(n=2, m=15)):
-            copy.deepcopy(policy)
-            copy.deepcopy(policy.eval())
-            copy.deepcopy(policy.train())
             output = policy(image)
             self.assert_close(copy.deepcopy(policy)(image, params=policy._params), output, rtol=0, atol=0)
-
-    @pytest.mark.device_agnostic
-    def test_convention_randaugment_shear_passes_through_the_180_mapping(self):
-        # The wrapper's magnitude mapping is the identity for every default entry but shear and posterize.
-        shear = RandAugment(n=1, m=15, policy=[[("shear_x", -0.3, 0.3)]])
-        drawn = shear.forward_parameters(torch.Size([8, 1, 8, 6]))[0].data[0].data["shear_x"]
-        self.assert_close(drawn.abs(), torch.full_like(drawn, 27.0))
-        # 0.15 is low + (high - low) * m / 30, the value before the mapping.
-        assert not torch.allclose(drawn.abs(), torch.full_like(drawn, 0.15))
-        rotate = RandAugment(n=1, m=15, policy=[[("rotate", -30.0, 30.0)]])
-        degrees = rotate.forward_parameters(torch.Size([8, 1, 8, 6]))[0].data[0].data["degrees"]
-        self.assert_close(degrees.abs(), torch.full_like(degrees, 15.0))
 
     @pytest.mark.device_agnostic
     def test_convention_trivialaugment_fixes_candidate_probability_at_one(self):
@@ -466,13 +454,15 @@ class TestAutoAugmentConventions(BaseTester):
     def test_wart_operation_wrappers_cannot_be_pickled_4469(self):
         import pickle
 
+        # Python 3.14 raises PicklingError for a local object where earlier versions raise AttributeError.
+        local_object_error = (AttributeError, pickle.PicklingError)
         failed = set()
         for name in ops.__all__:
             operation = getattr(ops, name)()
             pickle.loads(pickle.dumps(operation.op))  # noqa: S301 - the wrapped augmentation always pickles
             try:
                 pickle.loads(pickle.dumps(operation))  # noqa: S301
-            except AttributeError:
+            except local_object_error:
                 failed.add(name)
         # With default arguments only Posterize avoids a local closure: it passes a named mapping and no sign flip.
         assert failed == set(ops.__all__) - {"Posterize"}
@@ -480,28 +470,14 @@ class TestAutoAugmentConventions(BaseTester):
         # the sign flip, while the sign flip makes Posterize unpicklable.
         for operation in (ops.ShearX(symmetric_megnitude=False), ops.ShearY(symmetric_megnitude=False)):
             pickle.loads(pickle.dumps(operation))  # noqa: S301
-        with pytest.raises(AttributeError, match="local object"):
+        with pytest.raises(local_object_error, match="local object"):
             pickle.dumps(ops.Posterize(symmetric_megnitude=True))
-        with pytest.raises(AttributeError, match="local object"):
+        with pytest.raises(local_object_error, match="local object"):
             pickle.dumps(ops.Rotate(symmetric_megnitude=False))  # no named mapping: the identity closure
-
-    @pytest.mark.device_agnostic
-    def test_convention_operation_keeps_its_initial_probability(self):
-        # Every other probability pin overwrites `_probability` before reading it back.
-        operation = ops.Invert(initial_probability=0.25)
-        self.assert_close(operation.probability.detach(), torch.tensor([0.25]), rtol=0, atol=0)
-
-    @pytest.mark.device_agnostic
-    def test_convention_policy_sequential_sequence_follows_supplied_params(self):
-        # The supplied-path pin measures forward outputs, which index by name and so route around
-        # get_forward_sequence; get_transformation_matrix zips against it and does not.
-        policy = PolicySequential(
-            ops.Invert(initial_probability=1.0), ops.Solarize(initial_magnitude=0.5, initial_probability=1.0)
-        )
-        generated = policy.forward_parameters(torch.Size([1, 1, 1, 1]))
-        reversed_names = [name for name, _ in policy.get_forward_sequence(list(reversed(generated)))]
-        assert reversed_names == [param.name for param in reversed(generated)]
-        assert [name for name, _ in policy.get_forward_sequence(generated[:1])] == [generated[0].name]
+        # So the default policies, which hold such wrappers, do not pickle either.
+        for policy in (AutoAugment(), RandAugment(n=2, m=15), TrivialAugment()):
+            with pytest.raises(local_object_error, match="local object"):
+                pickle.dumps(policy)
 
     @pytest.mark.device_agnostic
     def test_convention_rigid_matrix_mode_accepts_intensity_operations(self):

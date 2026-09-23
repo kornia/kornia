@@ -48,15 +48,11 @@ class PatchMix(MixAugmentationBaseV2):
 
     Convention:
         - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``; a larger
-          value, such as the default ``16`` on a smaller image, raises ``ValueError`` when parameters are drawn,
-          whatever the gate. Each output sample copies that square from its paired input, ``_params["mix_pairs"]``,
-          at the same sampled ``(x, y)`` top-left coordinate, ``_params["patch_coords"]``; the output image retains
-          its input shape. The sampled ``lam`` is stored in ``_params`` but is not used to blend the image or
-          produce labels.
-        - ``p`` is a batch-wide gate. ``same_on_batch=True`` shares the patch coordinate across the batch; the
-          pairing is still drawn per call as one permutation of the batch, which may pair a sample with itself.
-          This class implements image input only; requesting a class, mask, box, or keypoint key raises
-          ``NotImplementedError`` whatever the gate, as described on the base.
+          value, such as the default ``16`` on a smaller image, raises ``ValueError`` whatever the gate. Each output
+          sample copies that square from its paired input, ``_params["mix_pairs"]``, at the same sampled ``(x, y)``
+          top-left corner, ``_params["patch_coords"]``. The sampled ``lam`` is stored but blends nothing.
+        - ``p`` is a batch-wide gate. ``same_on_batch=True`` shares the patch corner, not the pairing, which may pair
+          a sample with itself. Only image input is implemented.
 
     Examples:
         >>> aug = PatchMix(alpha=1.0, patch_size=4)
