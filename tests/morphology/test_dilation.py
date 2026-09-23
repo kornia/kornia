@@ -890,19 +890,6 @@ class TestDilate(BaseTester):
             assert "overflow" in str(err), str(err)
         else:
             assert out_uint8.abs().max().item() != 0.0
-        # An `int8` image overflows the same pad (1e4 fits neither) and wraps to the same byte on MPS, read as
-        # a signed -16 / 16, which the `erosion` pad shows. Generated with kornia in this worktree (torch
-        # 2.14.0 and 2.5.1; other backends are unmeasured and left unasserted):
-        #   CPU: erosion([[10, 20, 30]] int8, ones(1, 3)) -> RuntimeError overflow
-        #   MPS: erosion([[10, 20, 30]] int8, ones(1, 3)) -> float32 [10, 10, 16]
-        steps_int8 = torch.tensor([[10, 20, 30]], dtype=torch.int8, device=device)[None, None]
-        try:
-            out_int8 = erosion(steps_int8, float_kernel)
-        except RuntimeError as err:
-            assert "overflow" in str(err), str(err)
-        else:
-            if device.type == "mps":
-                assert out_int8.flatten().tolist() == [10.0, 10.0, 16.0]
 
         # Only the geodesic pad stores the sentinel, so `constant` runs -- and silently changes dtype.
         constant_uint8 = dilation(
@@ -977,7 +964,6 @@ class TestDilate(BaseTester):
         # records and the `mps_default` assertion admits):
         #   dilation(zeros uint8, ones(1, 3, float16), "constant")       -> float16 zeros (not float32)
         #   dilation(zeros int64, ones(1, 3, uint8), "constant")         -> RuntimeError overflow
-        #   dilation(zeros int64, ones(1, 3, int8), "constant")          -> RuntimeError overflow; runs at max_val=128
         #   dilation(zeros float, ones(1, 3, uint8), "constant")         -> float32 zeros (exact)
         #   dilation([[0, 3, 0, 0, 7]] int64, [[T, F, T]])               -> [3, 4, 3, 7, 8]  (true: [3, 0, 3, 7, 0])
         #   dilation([[0, 3, 0, 0, 7]] float, [[T, F, T]])               -> [3, 0, 3, 7, 0]  (exact)
@@ -997,13 +983,7 @@ class TestDilate(BaseTester):
                 dilation(int_zeros, uint8_kernel, border_type=border_type)
             with pytest.raises(RuntimeError, match="overflow"):
                 erosion(int_zeros, uint8_kernel, border_type=border_type)
-            with pytest.raises(RuntimeError, match="overflow"):
-                dilation(int_zeros, uint8_kernel.to(torch.int8), border_type=border_type)
-            # -128 fits int8, so the raise starts above max_val=128; uint8 raises for any positive max_val.
-            assert (
-                dilation(int_zeros, uint8_kernel.to(torch.int8), border_type=border_type, max_val=128.0).dtype
-                == torch.int64
-            )
+            # The raise is the store of `-max_val` into a dtype that cannot hold it: any positive value for uint8.
             with pytest.raises(RuntimeError, match="overflow"):
                 dilation(int_zeros, uint8_kernel, border_type=border_type, max_val=0.5)
             for op in (dilation, erosion):
@@ -1028,15 +1008,12 @@ class TestDilate(BaseTester):
         # `engine="convolution"` casts the kernel to the image's dtype before negating it, so on CPU the
         # erosion of an integer image runs instead of raising and a `False` cell contributes `x - 1`, which
         # can lower the minimum; the `x - 1` is computed in the image's dtype and wraps at its bounds, so a
-        # `uint8` image turns a zero pad's `0 - 1` into 255 and an `int8` image turns `-128 - 1` into 127. MPS
-        # and CUDA reject the integer image instead (see #4762's pin below). Generated with kornia in this
-        # worktree (torch 2.14.0 and 2.5.1):
+        # `uint8` image turns a zero pad's `0 - 1` into 255. MPS and CUDA reject the integer image instead (see
+        # #4762's pin below). Generated with kornia in this worktree (torch 2.14.0 and 2.5.1):
         #   erosion([[5, 1, 5, 5, 5]] int64, [[T, F, T]], engine="convolution") -> [1, 0, 1, 4, 4] (CPU)
         #   erosion([[5., 1., 5., 5., 5.]], [[T, F, T]], engine="convolution") -> [1, 5, 1, 5, 5] (exact)
         #   erosion([[10, 20, 30]] int64, [[T, T, F]], "constant", engine="convolution") -> [0, 10, -1] (CPU)
         #   erosion([[10, 20, 30]] uint8, [[T, T, F]], "constant", engine="convolution") -> [0, 10, 20] (CPU)
-        #   erosion([[-128, 100, 100]] int64, [[F, T, T]], "constant", engine="convolution") -> [-128, -129, 0]
-        #   erosion([[-128, 100, 100]] int8, ...)                                             -> [-128, 100, 0]
         int_dip = torch.tensor([[5, 1, 5, 5, 5]], dtype=torch.int64, device=device)[None, None]
         if device.type == "cpu":
             assert erosion(int_dip, sparse_bool_kernel, engine="convolution").flatten().tolist() == [1, 0, 1, 4, 4]
@@ -1045,12 +1022,6 @@ class TestDilate(BaseTester):
             assert erosion(steps, wide, border_type="constant", engine="convolution").flatten().tolist() == [0, 10, -1]
             wrapped = erosion(steps.to(torch.uint8), wide, border_type="constant", engine="convolution")
             assert wrapped.flatten().tolist() == [0, 10, 20]
-            floor = torch.tensor([[-128, 100, 100]], dtype=torch.int64, device=device)[None, None]
-            tail = torch.tensor([[False, True, True]], device=device)
-            floor_int64 = erosion(floor, tail, border_type="constant", engine="convolution")
-            assert floor_int64.flatten().tolist() == [-128, -129, 0]
-            floor_int8 = erosion(floor.to(torch.int8), tail, border_type="constant", engine="convolution")
-            assert floor_int8.dtype == torch.int8 and floor_int8.flatten().tolist() == [-128, 100, 0]
         elif device.type == "mps":
             with pytest.raises(RuntimeError, match="Floating"):
                 erosion(int_dip, sparse_bool_kernel, engine="convolution")

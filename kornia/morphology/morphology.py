@@ -244,25 +244,24 @@ def dilation(
         - Without a ``structuring_element``, a floating-point image lends its dtype to a ``bool`` or integer
           ``kernel``, which is then only a membership mask and returns exactly what the same kernel in the
           image's dtype does. On a non-float image the masked-out cells store ``-max_val`` in the kernel's own
-          dtype instead. A ``uint8`` kernel (for any positive ``max_val``) or an ``int8`` kernel (above
-          ``128``, the default included) then raises an overflow ``RuntimeError`` under every ``border_type``
-          whose pad accepts the image (the next two items say which do not). A ``bool`` kernel stores it as
-          ``True``: every function but :func:`dilation` contains an erosion, which raises a torch error
-          (``NotImplementedError`` on recent torch, ``RuntimeError`` on older releases) except under
-          ``engine="convolution"`` with an integer image on CPU, where it runs under every such border and a
-          ``False`` cell contributes ``x - 1`` in the image's dtype, wrapping at its bounds (``0 - 1`` is
-          ``255`` for ``uint8``, ``-128 - 1`` is ``127`` for ``int8``); :func:`dilation` is silently wrong
-          under every ``border_type`` as soon as the kernel holds a ``False`` cell, which then contributes
-          ``x + 1`` (wrapping likewise) instead of being left out -- for a ``bool`` image, ``True`` everywhere
-          under every border that accepts one. With a floating ``structuring_element`` the kernel is only the
-          ``kernel == 0`` mask, and a ``uint8`` or ``bool`` kernel returns what the floating kernel does.
+          dtype instead. A kernel dtype that cannot hold ``-max_val``, ``uint8`` among them, then raises an
+          overflow ``RuntimeError`` under every ``border_type`` whose pad accepts the image (the next two items
+          say which do not). A ``bool`` kernel stores it as ``True``: every function but :func:`dilation`
+          contains an erosion, which raises a torch error (``NotImplementedError`` on recent torch,
+          ``RuntimeError`` on older releases) except under ``engine="convolution"`` with an integer image on
+          CPU, where it runs under every such border and a ``False`` cell contributes ``x - 1`` in the image's
+          dtype, wrapping at its bounds (a ``uint8`` image turns ``0 - 1`` into ``255``); :func:`dilation` is
+          silently wrong under every ``border_type`` as soon as the kernel holds a ``False`` cell, which then
+          contributes ``x + 1`` (wrapping likewise) instead of being left out -- for a ``bool`` image, ``True``
+          everywhere under every border that accepts one. With a floating ``structuring_element`` the kernel
+          is only the ``kernel == 0`` mask, and a ``uint8`` or ``bool`` kernel returns what the floating kernel
+          does.
         - The geodesic pad stores :math:`\mp` ``max_val`` in the image's dtype. A ``uint8`` image raises an
           overflow ``RuntimeError`` there on CPU and CUDA whenever the kernel needs a pad, while on MPS the
-          sentinel wraps modulo 256 instead of raising; an ``int8`` image does the same on CPU and MPS (its pad
-          reads ``-16`` and ``16``). Under the other ``border_type`` values a ``uint8`` or ``int8`` image with a
-          floating kernel runs and returns the dtype described above. An ``int64`` image is silently wrong once its
-          range approaches ``max_val``, and a ``float32`` kernel promotes it to ``float32``, which cannot
-          hold every integer above :math:`2^{24}` whatever ``max_val`` is.
+          sentinel wraps modulo 256 instead of raising. Under the other ``border_type`` values a ``uint8``
+          image with a floating kernel runs and returns the dtype described above. An ``int64`` image is
+          silently wrong once its range approaches ``max_val``, and a ``float32`` kernel promotes it to
+          ``float32``, which cannot hold every integer above :math:`2^{24}` whatever ``max_val`` is.
         - On CPU and CUDA a ``bool`` image stores the geodesic pad as ``True``. With a floating kernel, or a
           ``bool`` kernel with no ``False`` cell, :func:`dilation` returns the correct dilation plus a ``True``
           (or ``1``) border ring, as wide on each side as the kernel's members reach past that edge: the whole
