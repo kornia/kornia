@@ -205,9 +205,9 @@ class Boxes:
         - :meth:`to_tensor` reduces the vertices with ``amin``/``amax``, so every export is an axis-aligned
           bounding box and ``to_tensor('vertices_plus')`` is not the identity for a rotated box.
         - :meth:`get_boxes_shape` returns ``(heights, widths)``; padding entries of a list-backed object report
-          as 1-by-1 boxes.
-        - The :mod:`kornia.geometry.bbox` helpers read their input as inclusive (see
-          :func:`~kornia.geometry.bbox.infer_bbox_shape`): pass them the ``'vertices_plus'`` export, unbatched.
+          as 1-by-1 boxes (the inclusive ``+1``, `#3934 <https://github.com/kornia/kornia/issues/3934>`_).
+        - :func:`~kornia.geometry.bbox.infer_bbox_shape` and :func:`~kornia.geometry.bbox.bbox_to_mask` read
+          their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
           :func:`~kornia.geometry.bbox.nms` and :meth:`compute_area` use exclusive areas.
         - With ``validate_boxes=True``, a non-finite coordinate is rejected in every mode and the ``'xy*'``
           modes reject non-positive extents.
@@ -1140,8 +1140,8 @@ class Boxes3D:
         - :meth:`to_tensor` exports the ``amin``/``amax`` axis-aligned bounding box and defaults to ``'xyzxyz'``
           whatever the stored label.
         - :meth:`get_boxes_shape` returns ``(depths, heights, widths)``, inclusive.
-        - the 3-D :mod:`kornia.geometry.bbox` helpers read their input as inclusive: pass the ``'vertices_plus'``
-          export, unbatched.
+        - :func:`~kornia.geometry.bbox.infer_bbox_shape3d` and :func:`~kornia.geometry.bbox.bbox_to_mask3d` read
+          their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
         - With ``validate_boxes=True``, :meth:`from_tensor` rejects a non-finite coordinate and extents that are
           not positive in the given mode (``xmax == xmin`` fails in ``'xyzxyz'``, passes in ``'xyzxyz_plus'``).
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``;
@@ -1158,9 +1158,6 @@ class Boxes3D:
         `#4018 <https://github.com/kornia/kornia/issues/4018>`_. The :meth:`to_tensor` default differs from
         :meth:`Boxes.to_tensor`, which defaults to the stored mode:
         `#4251 <https://github.com/kornia/kornia/issues/4251>`_.
-        :meth:`to_mask` rejects
-        boxes that require grad even though :meth:`to_tensor` is differentiable; see the note on
-        :meth:`to_tensor`.
 
     """
 

@@ -156,9 +156,9 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Convention:
         Vertices are **inclusive**: a box covering pixels ``0..9`` has corners at ``0`` and ``9`` and width
-        ``10``. This is the carrier statement for the ``kornia.geometry.bbox`` helpers. The order is clockwise
-        top-left, top-right, bottom-right, bottom-left. The result is ``(heights, widths)``, read from fixed
-        vertex indices, ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1`` and
+        ``10``. The vertex-based helpers of this module share it; :func:`nms` takes exclusive ``xyxy`` instead.
+        The order is clockwise top-left, top-right, bottom-right, bottom-left. The result is
+        ``(heights, widths)``, read from fixed vertex indices, ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1`` and
         ``height = boxes[:, 2, 1] - boxes[:, 0, 1] + 1``, not from a ``max - min`` reduction, so a box in
         another vertex order (such as a rotated polygon from :func:`transform_bbox`) can give a negative extent.
         :meth:`kornia.geometry.boxes.Boxes.get_boxes_shape` is reduction based.

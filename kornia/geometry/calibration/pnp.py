@@ -90,9 +90,10 @@ def solve_pnp_dlt(
         - ``intrinsics`` is the :math:`(B, 3, 3)` ``K``; the :math:`(B, 4, 4)` matrix that a
           ``PinholeCamera`` stores is rejected.
         - ``weights`` scales the two rows each point contributes to the homogeneous linear system: a uniform
-          ``weights`` leaves the answer unchanged and a zero weight drops that point.
-        - fewer than 6 points or a non-float dtype raise :class:`~kornia.core.exceptions.BaseError` naming the
-          argument; a degenerate ``world_points`` raises :class:`AssertionError` from the check above.
+          ``weights`` leaves the answer unchanged up to rounding and a zero weight drops that point.
+        - fewer than 6 points or a dtype other than float32/float64 raise
+          :class:`~kornia.core.exceptions.BaseError` naming the argument; a degenerate ``world_points`` raises
+          :class:`AssertionError` from the check above.
 
     Args:
         world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
@@ -155,7 +156,7 @@ def solve_pnp_dlt(
     KORNIA_CHECK_IS_TENSOR(world_points)
     KORNIA_CHECK_IS_TENSOR(img_points)
     KORNIA_CHECK_IS_TENSOR(intrinsics)
-    KORNIA_CHECK(isinstance(svd_eps, float), f"svd_eps must be a float, got {type(svd_eps)}.")
+    KORNIA_CHECK(isinstance(svd_eps, float), f"svd_eps must be a float, got {type(svd_eps).__name__}.")
     KORNIA_CHECK(
         world_points.dtype in accepted_dtypes, f"world_points must be float32 or float64, got {world_points.dtype}."
     )

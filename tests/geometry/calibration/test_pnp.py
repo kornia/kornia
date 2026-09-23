@@ -207,8 +207,8 @@ class TestSolvePnpDlt(BaseTester):
         self.assert_close(shifted, expected, atol=1e-4, rtol=1e-4)
 
     def test_convention_validation_errors_name_the_argument(self, device, dtype):
-        # solve_pnp_dlt accepts float32 and float64 only and needs N >= 6 points; both checks raise a kornia
-        # BaseError that names world_points.
+        # solve_pnp_dlt accepts float32 and float64 only, needs N >= 6 points and a float svd_eps; each check
+        # raises a kornia BaseError that names its argument.
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         img_points = world_points[..., :2] / world_points[..., 2:]
@@ -218,6 +218,8 @@ class TestSolvePnpDlt(BaseTester):
             return
         with pytest.raises(BaseError, match="world_points must hold at least 6 points"):
             kornia.geometry.solve_pnp_dlt(world_points[:, :5], img_points[:, :5], K)
+        with pytest.raises(BaseError, match="svd_eps must be a float, got int"):
+            kornia.geometry.solve_pnp_dlt(world_points, img_points, K, svd_eps=1)
 
     def test_convention_rejects_4x4_intrinsics(self, device, dtype):
         # intrinsics is the (B, 3, 3) K: the (B, 4, 4) matrix a PinholeCamera stores is rejected rather than

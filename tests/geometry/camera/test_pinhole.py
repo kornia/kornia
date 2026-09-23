@@ -942,16 +942,24 @@ class TestPinholeCamera(BaseTester):
     def test_wart_unproject_fails_on_zero_padded_intrinsics_4771(self, device, dtype):
         # Wart pin for #4771: a 3x3 K zero-padded to 4x4 ([3, 3] = 0) constructs and projects correctly, but
         # unproject inverts the singular intrinsics @ extrinsics and raises. Delete or invert when #4771 is
-        # repaired (constructor validation or a 3x3-block unproject both fail this pin).
+        # repaired (constructor validation or a 3x3-block unproject both fail this pin). The control sets
+        # [3, 3] = 1 and changes nothing else, so the raise is attributable to the zero pad.
+        height, width = torch.tensor([6], device=device), torch.tensor([8], device=device)
+        point = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
+        depth = torch.tensor([[4.0]], device=device, dtype=dtype)
         K = torch.zeros(1, 4, 4, device=device, dtype=dtype)
         K[:, :3, :3] = _k44(device, dtype)[:, :3, :3]
-        cam = kornia.geometry.camera.PinholeCamera(
-            K, _e44(device, dtype), torch.tensor([6], device=device), torch.tensor([8], device=device)
-        )
-        uv = cam.project(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype))
+        cam = kornia.geometry.camera.PinholeCamera(K, _e44(device, dtype), height, width)
+        uv = cam.project(point)
         self.assert_close(uv, torch.tensor([[29.0, 53.0]], device=device, dtype=dtype))
-        with pytest.raises(Exception):
-            cam.unproject(uv, torch.tensor([[4.0]], device=device, dtype=dtype))
+        control = K.clone()
+        control[:, 3, 3] = 1.0
+        self.assert_close(
+            kornia.geometry.camera.PinholeCamera(control, _e44(device, dtype), height, width).unproject(uv, depth),
+            point,
+        )
+        with pytest.raises(RuntimeError):
+            cam.unproject(uv, depth)
 
     def test_convention_from_parameters_fills_every_batch_element_4279(self, device, dtype):
         # Regression pin for #4279: image size must be filled for every camera in the batch.

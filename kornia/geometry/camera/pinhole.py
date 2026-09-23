@@ -38,9 +38,8 @@ class PinholeCamera:
         - pixel coordinates are ``(u, v)`` = (column, row) with **integer pixel centres**: pixel ``(0, 0)`` is
           centred at ``(0, 0)``, as :func:`~kornia.geometry.grid.create_meshgrid` enumerates, so a centred image
           has ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``. COLMAP's half-pixel convention reports the same
-          principal point half a pixel larger. This is the carrier statement for ``kornia.geometry.camera``,
-          ``kornia.geometry.depth`` and ``kornia.geometry.calibration``; see
-          :doc:`/get-started/camera-conventions`.
+          principal point half a pixel larger. ``kornia.geometry.camera``, ``kornia.geometry.depth`` and
+          ``kornia.geometry.calibration`` all use this convention; see :doc:`/get-started/camera-conventions`.
         - ``depth`` is the camera-frame ``z``, except where a ``normalize`` / ``normalize_points`` flag reads it
           as the Euclidean ray length.
         - the class owns copies of the tensors it is constructed from: :meth:`scale_` and the ``tx`` / ``ty`` /

@@ -131,8 +131,7 @@ def depth_to_3d_v2(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`). It equals
           :func:`~kornia.geometry.depth.depth_to_3d` after ``permute(0, 2, 3, 1)``.
         - ``camera_matrix`` needs a leading batch dimension: without ``xyz_grid`` a bare :math:`(3, 3)` raises
-          ``ShapeError`` (`#4271 <https://github.com/kornia/kornia/issues/4271>`_); with ``xyz_grid`` it is
-          never read.
+          ``ShapeError``; with ``xyz_grid`` it is never read.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
         - ``xyz_grid`` replaces the grid construction; pass what :func:`~kornia.geometry.depth.unproject_meshgrid`
           returns for the same camera.
