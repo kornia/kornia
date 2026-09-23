@@ -200,8 +200,7 @@ def dilation(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
-            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x
-            slower. The measurements behind that rule are recorded in the ``_resolve_engine`` source.
+            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -301,8 +300,8 @@ def erosion(
     Convention:
         As :func:`dilation`, except that ``erosion`` does **not** reflect the structuring element: it is the
         Minkowski erosion :math:`\varepsilon_B f(x) = \min_{b \in B} f(x + b)`, as in ``scipy.ndimage`` and
-        OpenCV (scikit-image centres an even-sized kernel one cell earlier). ``structuring_element`` is
-        subtracted before the minimum. The known defects listed in :func:`dilation` apply here too.
+        OpenCV. ``structuring_element`` is subtracted before the minimum. The known defects listed in
+        :func:`dilation` apply here too.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -333,8 +332,7 @@ def erosion(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
-            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x
-            slower. The measurements behind that rule are recorded in the ``_resolve_engine`` source.
+            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -434,9 +432,10 @@ def opening(
     Convention:
         ``opening`` is ``dilation(erosion(tensor))`` with the same arguments in both halves. As only
         :func:`dilation` reflects the kernel, it is a morphological opening (anti-extensive and idempotent) for
-        an asymmetric kernel too, under ``geodesic`` or ``circular`` with a flat structuring element and up to
-        the ``max_val`` sentinel (`#4734 <https://github.com/kornia/kornia/issues/4734>`_). The other borders,
-        a non-flat ``structuring_element`` and ``engine="convolution"`` can break those properties.
+        an asymmetric kernel too, under ``geodesic`` or ``circular`` and up to the ``max_val`` sentinel
+        (`#4734 <https://github.com/kornia/kornia/issues/4734>`_); a non-flat ``structuring_element`` or
+        ``engine="convolution"`` holds both properties only to roundoff, and ``constant``, ``reflect`` and
+        ``replicate`` can break them.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -467,8 +466,7 @@ def opening(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
-            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x
-            slower. The measurements behind that rule are recorded in the ``_resolve_engine`` source.
+            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -540,9 +538,10 @@ def closing(
     Convention:
         ``closing`` is ``erosion(dilation(tensor))`` with the same arguments in both halves. As only
         :func:`dilation` reflects the kernel, it is a morphological closing (extensive and idempotent) for an
-        asymmetric kernel too, under ``geodesic`` or ``circular`` with a flat structuring element and up to
-        the ``max_val`` sentinel (`#4734 <https://github.com/kornia/kornia/issues/4734>`_). The other borders,
-        a non-flat ``structuring_element`` and ``engine="convolution"`` can break those properties.
+        asymmetric kernel too, under ``geodesic`` or ``circular`` and up to the ``max_val`` sentinel
+        (`#4734 <https://github.com/kornia/kornia/issues/4734>`_); a non-flat ``structuring_element`` or
+        ``engine="convolution"`` holds both properties only to roundoff, and ``constant``, ``reflect`` and
+        ``replicate`` can break them.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -573,8 +572,7 @@ def closing(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
-            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x
-            slower. The measurements behind that rule are recorded in the ``_resolve_engine`` source.
+            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -677,8 +675,7 @@ def gradient(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
-            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x
-            slower. The measurements behind that rule are recorded in the ``_resolve_engine`` source.
+            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -770,8 +767,7 @@ def top_hat(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
-            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x
-            slower. The measurements behind that rule are recorded in the ``_resolve_engine`` source.
+            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the
@@ -866,8 +862,7 @@ def bottom_hat(
             tied operand.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
-            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is up to 3.4x
-            slower. The measurements behind that rule are recorded in the ``_resolve_engine`` source.
+            else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a float32
             convolution that computes in reduced precision (macOS CPU, CUDA with TF32 enabled) rounds the
             output. ``"shift"`` takes a running max or min over the :math:`k_h k_w` shifted views of the

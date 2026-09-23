@@ -504,7 +504,8 @@ is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``
      - ``erosion(x, K, origin=[a_y, a_x])``; the default anchor is the default origin
    * - kornia call equal to their opening / closing by ``K``
      - (reference)
-     - differs at the border: no ignore mode
+     - ``opening(x, K)`` / ``closing(x, K)``, except under ``geodesic``: one ``cval`` serves both passes, so
+       ``grey_opening`` has no ignore mode
      - ``opening(x, K, origin=[(k_h - 1) // 2, (k_w - 1) // 2])`` / ``closing(x, K.flip((0, 1)))``, and likewise
        ``white_tophat`` / ``black_tophat`` for ``top_hat`` / ``bottom_hat``
      - ``MORPH_OPEN`` / ``MORPH_CLOSE`` agree only for a ``K`` symmetric about its anchor
