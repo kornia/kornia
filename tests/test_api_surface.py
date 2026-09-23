@@ -91,10 +91,13 @@ def test_no_public_name_removed(module_name):
 
 
 def _foreign_names(module_name: str) -> set:
-    """Public names of ``module_name`` bound to another package's module or to a ``typing`` object.
+    """Public names of ``module_name`` bound to an import rather than to its own API.
 
-    A module without ``__all__`` exposes whatever its star-imported submodules happen to
-    import, so ``import sys`` in one of them makes ``kornia.geometry.sys`` public (#4709).
+    That is another package's module, a ``typing`` object, or an object defined in a kornia
+    module outside ``module_name``'s own subtree. A module without ``__all__`` exposes whatever
+    its star-imported submodules happen to import, so ``import sys`` in one of them makes
+    ``kornia.geometry.sys`` public, and ``from kornia.core.utils import is_compiling`` makes
+    ``kornia.geometry.is_compiling`` public (#4709).
     """
     mod = importlib.import_module(module_name)
     found = set()
@@ -103,8 +106,17 @@ def _foreign_names(module_name: str) -> set:
         if isinstance(obj, types.ModuleType):
             if obj.__name__ != "kornia" and not obj.__name__.startswith("kornia."):
                 found.add(name)
-        elif getattr(obj, "__module__", None) == "typing":
-            found.add(name)
+        else:
+            owner = getattr(obj, "__module__", None)
+            if owner == "typing":
+                found.add(name)
+            elif (
+                isinstance(owner, str)
+                and owner.startswith("kornia.")
+                and owner != module_name
+                and not owner.startswith(module_name + ".")
+            ):
+                found.add(name)
     return found
 
 
@@ -120,8 +132,8 @@ def test_no_foreign_name_leaks_into_the_surface(module_name):
     leaked = sorted(_foreign_names(module_name) - recorded)
     assert not leaked, (
         f"{module_name} exposes {leaked}, which are imports rather than kornia API. Give the "
-        "submodule that imports them an __all__ (or import them under a private name) instead "
-        "of adding them to tests/api_surface.json."
+        "submodule that imports them an __all__ (or import them under a private name). Record a "
+        "name in tests/api_surface.json only for a deliberate cross-package re-export."
     )
 
 
