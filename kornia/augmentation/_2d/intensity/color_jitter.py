@@ -65,12 +65,16 @@ class ColorJitter(IntensityAugmentationBase2D):
         - see :class:`ColorJiggle` for how the two classes relate. This class takes the brightness factor as
           drawn, a multiplier whose identity is ``1``, and a scalar ``brightness`` above ``1`` draws from
           ``[0, 1 + brightness]``, as torchvision does.
-        - every step in the order is computed whatever the factors, so the hue step rejects any channel count
-          but three and the saturation step any but one or three. A step's result is discarded only when every
-          factor in the batch equals its guard value -- ``1`` for contrast and saturation, ``0`` for hue and, as
-          the first warning below states, for brightness; otherwise the brightness, contrast and (three-channel)
-          saturation steps clamp the whole batch into ``[0, 1]``. A fixed ``order`` without index ``0`` skips
-          the brightness step.
+        - a step's result is discarded only when every factor in the batch equals its guard value -- ``1`` for
+          contrast and saturation, ``0`` for hue and, as the #4785 warning below states, for brightness;
+          otherwise the brightness, contrast and (three-channel) saturation steps clamp the whole batch into
+          ``[0, 1]``. A fixed ``order`` without index ``0`` skips the brightness step.
+
+    .. warning::
+        Every step in the order is computed even when its factors are neutral, so the hue step rejects any
+        channel count but three and the saturation step any but one or three whatever the factors:
+        ``ColorJitter(brightness=0.2)`` raises on a grayscale image. An eager call also pays for the neutral
+        steps' colour-space round trips. Tracked in `#4813 <https://github.com/kornia/kornia/issues/4813>`_.
 
     .. warning::
         The brightness step is skipped for a factor of ``0`` instead of the neutral ``1``: a batch whose factors

@@ -1471,8 +1471,8 @@ class TestIntensityColourConventions(BaseTester):
         aug(torch.rand(1, 3, 16, 16))
         assert [int(v) for v in aug._params["bits_factor"].tolist()] == [drawn]
 
-    # ColorJiggle skips a step whose drawn factor is neutral, so the channel count only has to suit the steps
-    # that run; ColorJitter computes every step.
+    # ColorJiggle skips a step when every drawn factor is neutral, so the channel count only has to suit the
+    # steps that run.
     @pytest.mark.parametrize("channels", [1, 3, 4])
     def test_convention_color_jiggle_skips_neutral_steps(self, device, dtype, channels):
         torch.manual_seed(_FIXTURE_SEED)
@@ -1488,17 +1488,22 @@ class TestIntensityColourConventions(BaseTester):
             else:
                 with pytest.raises(ValueError, match="shape of"):
                     K.ColorJiggle(*factors, p=1.0)(image)
-        # ColorJitter computes every step, so the neutral configuration raises where ColorJiggle does not.
-        torch.manual_seed(_FORWARD_SEED)
-        if channels == 3:
-            assert K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0)(image).shape == image.shape
-        else:
-            # Which step raises first depends on the drawn order; at C=1 the saturation step passes.
-            expected = r"Input size must have a shape of \(\*, 3, H, W\)"
-            if channels != 1:
-                expected = r"Not a color or gray tensor|" + expected
-            with pytest.raises((ValueError, ImageError), match=expected):
-                K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0)(image)
+
+    # Issue #4813: ColorJitter computes every step in the order, neutral or not, so the hue and saturation steps
+    # reject a channel count that the configuration never asks them to touch -- where ColorJiggle, above, and
+    # torchvision accept it.  A fix that skips neutral steps flips the non-RGB legs; the RGB leg is the control.
+    @pytest.mark.parametrize("channels", [1, 3, 4])
+    def test_wart_color_jitter_computes_neutral_steps_4813(self, device, dtype, channels):
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, channels, 5, 5).to(device=device, dtype=dtype)
+        for factors in ((0.0, 0.0, 0.0, 0.0), (0.2, 0.0, 0.0, 0.0), (0.0, 0.2, 0.0, 0.0)):
+            torch.manual_seed(_FORWARD_SEED)
+            if channels == 3:
+                assert K.ColorJitter(*factors, p=1.0)(image).shape == image.shape
+            else:
+                # Which neutral step raises first depends on the drawn order.
+                with pytest.raises((ValueError, ImageError)):
+                    K.ColorJitter(*factors, p=1.0)(image)
 
     # The erasing box is clamped from below as well as above: scale=(0, 0) still erases one pixel and a 1x1
     # image is always erased in full.
