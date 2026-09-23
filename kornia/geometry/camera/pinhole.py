@@ -32,33 +32,28 @@ class PinholeCamera:
         - ``intrinsics`` is the :math:`(B, 4, 4)` calibration matrix whose top-left :math:`3 \times 3` block is
           ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, and ``extrinsics`` the :math:`(B, 4, 4)` **world-to-camera**
           transform ``[R | t]`` (OpenCV / COLMAP semantics): :meth:`project` takes **world** points, computes
-          ``K (R X + t)`` and returns pixels, while :meth:`unproject` inverts that step -- it takes pixels and a
-          camera-frame depth and returns **world** points. The functional API takes a ``K`` and no
-          extrinsics, so it works in the **camera** frame:
-          :func:`~kornia.geometry.camera.perspective.project_points` and
-          :func:`~kornia.geometry.camera.perspective.unproject_points` take a :math:`(*, 3, 3)` ``K``, while
-          :func:`~kornia.geometry.depth.depth_to_3d`, :func:`~kornia.geometry.depth.depth_to_3d_v2`,
-          :func:`~kornia.geometry.depth.unproject_meshgrid` and
-          :func:`~kornia.geometry.depth.depth_to_normals` need it **batched**, :math:`(B, 3, 3)`.
-        - pixel coordinates are ``(u, v)`` = ``(x, y)`` = (column, row) with **integer pixel centres**: pixel
-          ``(0, 0)`` is centred at ``(0, 0)``, which is what :func:`~kornia.geometry.grid.create_meshgrid`
-          enumerates, so a centred image has its principal point at ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``.
-          A half-pixel convention, which places the pixel *corner* at the origin (COLMAP), reports the same
-          principal point half a pixel larger on each axis. See :doc:`/get-started/camera-conventions`.
-        - ``depth`` is the camera-frame ``z`` coordinate. The ``normalize`` argument of
-          :func:`~kornia.geometry.camera.perspective.unproject_points` and the ``normalize_points`` flags of
-          :func:`~kornia.geometry.depth.depth_to_3d` and :func:`~kornia.geometry.depth.depth_to_3d_v2` read it
-          as the Euclidean ray length instead, so the unprojected point has that norm rather than that ``z``.
-        - the class owns copies of the ``intrinsics``, ``extrinsics``, ``height`` and ``width`` tensors it is
-          constructed from. :meth:`scale_` and the ``tx`` / ``ty`` / ``tz`` setters therefore update only the
-          camera's storage, while :meth:`scale` and :meth:`clone` return independently owned cameras.
+          ``K (R X + t)`` and returns pixels, while :meth:`unproject` takes pixels and a camera-frame depth and
+          returns **world** points. The functional API takes a ``3x3`` ``K`` and no extrinsics, so it works in
+          the **camera** frame.
+        - pixel coordinates are ``(u, v)`` = (column, row) with **integer pixel centres**: pixel ``(0, 0)`` is
+          centred at ``(0, 0)``, as :func:`~kornia.geometry.grid.create_meshgrid` enumerates, so a centred image
+          has ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``. COLMAP's half-pixel convention reports the same
+          principal point half a pixel larger. This is the carrier statement for ``kornia.geometry.camera``,
+          ``kornia.geometry.depth`` and ``kornia.geometry.calibration``; see
+          :doc:`/get-started/camera-conventions`.
+        - ``depth`` is the camera-frame ``z``, except where a ``normalize`` / ``normalize_points`` flag reads it
+          as the Euclidean ray length.
+        - the class owns copies of the tensors it is constructed from: :meth:`scale_` and the ``tx`` / ``ty`` /
+          ``tz`` setters update only the camera, and :meth:`scale` and :meth:`clone` return independent cameras.
 
     .. warning::
-        :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` — the half-pixel rule —
-        which disagrees with the integer pixel centres above; it is tracked as a coordinated repair in
-        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The direct projection limitation for
-        :math:`(B, N, 4, 4)` camera storage is `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The
-        behaviour described here is documented as it is; the issues above track the repairs.
+        :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` (the half-pixel rule),
+        which disagrees with the integer pixel centres above:
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. :meth:`project` rejects the
+        :math:`(B, N, 4, 4)` storage the validator admits:
+        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated: a
+        zero-padded ``K`` with ``intrinsics[3, 3] = 0`` projects but :meth:`unproject` raises on the singular
+        matrix: `#4771 <https://github.com/kornia/kornia/issues/4771>`_.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -310,18 +305,11 @@ class PinholeCamera:
 
         Convention:
             - returns a **new** camera whose focal lengths, principal point and image size are multiplied by
-              ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``, the half-pixel rule.
-            - the new camera owns its parameter storage, so writing ``tx`` / ``ty`` / ``tz`` on the returned
-              camera leaves the source where it was.
-            - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
-              point, as :meth:`scale_` does. An integer factor preserves the integer image-size dtype.
-
-            See :doc:`camera and world conventions </get-started/camera-conventions>` for image resizing and
-            the matching intrinsics scaling convention.
+              ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``.
+            - ``height`` / ``width`` take the promoted dtype of ``scale_factor * height``.
 
         .. warning::
-            The ``cx' = s * cx`` rule disagrees with the integer pixel centres the rest of the library
-            enumerates; it is tracked as a coordinated repair in
+            The ``cx' = s * cx`` rule disagrees with kornia's integer pixel centres:
             `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
 
         Args:
@@ -348,16 +336,11 @@ class PinholeCamera:
         r"""Scale the pinhole model in-place.
 
         Convention:
-            - applies the same rescaling as :meth:`scale` in place and returns ``self``. The camera owns its
-              parameter storage, so the tensors passed to the constructor are not modified.
-            - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
-              point, just as :meth:`scale` does. An integer factor preserves the integer image-size dtype.
-
-            See :doc:`camera and world conventions </get-started/camera-conventions>` for image resizing and
-            the matching intrinsics scaling convention.
+            - applies the rescaling of :meth:`scale` in place and returns ``self``; the tensors passed to the
+              constructor are not modified.
 
         .. warning::
-            The principal-point rule shared with :meth:`scale` is tracked in
+            The principal-point rule shared with :meth:`scale` is
             `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
 
         Args:
@@ -391,7 +374,8 @@ class PinholeCamera:
               perspective divide is then skipped, so the result is the undivided ``K (R X + t)``.
 
         .. warning::
-            The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+            This ``z = 0`` answer differs from :func:`~kornia.geometry.camera.perspective.project_points`, which
+            applies ``K`` after the skipped divide: `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
         Args:
             point_3d: torch.Tensor containing the 3d points to be projected
@@ -592,10 +576,8 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         Superseded by :class:`~kornia.geometry.camera.pinhole.PinholeCamera` and its ``camera_matrix`` property.
 
     .. warning::
-        The output is built as ``eye(4) + eps`` before the parameters are written, so in ``float32`` and
-        ``float64`` every remaining entry — the structural zeros and ones alike — carries ``eps``; ``eps=0.0``
-        returns the exact matrix. This legacy 12-vector API is also exported nowhere and appears on no
-        API-reference page, so this docstring renders nowhere. Tracked in
+        The output is built as ``eye(4) + eps`` before the parameters are written, so every structural zero and
+        one carries ``eps``; ``eps=0.0`` returns the exact matrix.
         `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
@@ -651,10 +633,8 @@ def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Te
 
     .. warning::
         The focal lengths are inverted as ``1 / (fx + eps)``, which inverts a perturbed matrix rather than the
-        one ``pinhole_matrix`` returns. With the default ``eps``, a zero focal length gives a large finite
-        number in ``float32``, ``float64`` and ``bfloat16``, or ``inf`` in ``float16``, rather than raising.
-        This legacy 12-vector API is also exported nowhere and appears on no API-reference page, so
-        this docstring renders nowhere. Tracked in `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
+        one ``pinhole_matrix`` returns, and a zero focal length gives a large value instead of raising.
+        `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
         pinhole: torch.Tensor with pinhole models.
@@ -765,7 +745,7 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
             pinhole = (f_x, f_y, c_x, c_y, height, width,
             r_x, r_y, r_z, t_x, t_y, t_z)
 
-        torch.where:
+        where:
             :math:`(r_x, r_y, r_z)` is the rotation vector in angle-axis
             convention.
 
@@ -818,13 +798,11 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
     See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
     Convention:
-        - ``intrinsics_inv`` is a :math:`(B, 4, 4)` inverse calibration matrix — the layout of
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, not the :math:`(*, 3, 3)` ``K`` the functional API
-          takes — and ``depth`` is the camera-frame ``z`` at each pixel of the ``(u, v, 1)`` grid.
-        - ``intrinsics_inv`` must have shape :math:`(B, 4, 4)`; other ranks or matrix sizes raise
-          :class:`ValueError` before transforming the pixel coordinates.
-        - ``depth`` must have shape ``Bx1xHxW``; multi-channel depth raises :class:`ValueError`.
-          ``pixel_coords`` must have shape ``BxHxWx3``.
+        - ``intrinsics_inv`` is a :math:`(B, 4, 4)` inverse calibration matrix (the
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera` layout, not a ``3x3`` ``K``), and ``depth`` is
+          the camera-frame ``z`` at each pixel of the ``(u, v, 1)`` grid.
+        - a wrong shape of ``depth`` (not ``Bx1xHxW``), ``intrinsics_inv`` or ``pixel_coords`` raises
+          :class:`ValueError`.
 
     Args:
         depth: the source depth maps. Shape must be Bx1xHxW.
@@ -855,16 +833,14 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
     See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
     Convention:
-        - ``dst_proj_src`` is a :math:`(B, 4, 4)` projection matrix — the layout of
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, not the :math:`(*, 3, 3)` ``K`` the functional API
-          takes — and the result is ``(u, v)`` pixel coordinates in the destination frame.
-        - the perspective division is ``x / (z + eps)`` rather than a guarded divide. With the default ``eps``,
-          a projected coordinate ``x = 100, z = 0`` gives about ``1e14`` in ``float32``, ``float64`` and
-          ``bfloat16``, and ``inf`` in ``float16`` (where ``eps`` rounds to zero). A zero numerator then gives
-          zero in the former dtypes and ``nan`` in ``float16``; ``eps`` also biases small nonzero depths.
+        - ``dst_proj_src`` is a :math:`(B, 4, 4)` projection matrix (the
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera` layout, not a ``3x3`` ``K``), and the result is
+          ``(u, v)`` pixel coordinates in the destination frame.
 
     .. warning::
-        The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        The perspective division is ``x / (z + eps)`` rather than a guarded divide, so ``z = 0`` gives a huge
+        finite value (``x / eps``, or ``inf`` where ``eps`` underflows) and ``eps`` biases every small depth:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:
         cam_coords_src: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.

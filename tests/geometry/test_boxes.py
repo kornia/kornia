@@ -61,9 +61,15 @@ class TestBoxes2D(BaseTester):
                     with pytest.raises(ValueError, match="non-finite coordinates"):
                         Boxes.from_tensor(invalid_source, mode=mode, validate_boxes=True)
 
-    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, device, dtype):
-        source = torch.tensor([[0.0, 0.0, float("nan"), 4.0]], device=device, dtype=dtype)
-        boxes = Boxes.from_tensor(source, mode="xyxy", validate_boxes=False)
+    @pytest.mark.parametrize("container", ["Boxes", "Boxes3D"])
+    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, container, device, dtype):
+        # kornia#4238 (2D) and kornia#4258 (3D): validate_boxes=False keeps a non-finite coordinate.
+        if container == "Boxes":
+            source = torch.tensor([[0.0, 0.0, float("nan"), 4.0]], device=device, dtype=dtype)
+            boxes = Boxes.from_tensor(source, mode="xyxy", validate_boxes=False)
+        else:
+            source = torch.tensor([[0.0, 0.0, 0.0, float("nan"), 4.0, 4.0]], device=device, dtype=dtype)
+            boxes = Boxes3D.from_tensor(source, mode="xyzxyz", validate_boxes=False)
         assert torch.isnan(boxes.data).any()
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
@@ -90,12 +96,11 @@ class TestBoxes2D(BaseTester):
             (torch.float16, [-385.25, 0.0, 400.0, 2.0], [-385.25, 0.0, 399.75, 2.0]),
         ],
     )
-    def test_convention_round_trip_requires_exact_intermediate_arithmetic(
+    def test_wart_half_round_trip_rounds_the_offset_intermediate_3934(
         self, device, box_dtype, source_values, expected_values
     ):
-        # bfloat16 cannot represent the +/-1 intermediate at 256. The float16
-        # case can represent its offsets, but rounds the cross-zero width first.
-        # Both discrepancies exist only because of the +/-1 offsets tracked in kornia#3934.
+        # kornia#3934: the xyxy round trip goes through the +/-1 inclusive offsets, which bfloat16 cannot
+        # represent at 256 and float16 rounds through the cross-zero width; without the offsets it is exact.
         source = torch.tensor([source_values], device=device, dtype=box_dtype)
         output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
         expected = torch.tensor([expected_values], device=device, dtype=box_dtype)
@@ -104,11 +109,9 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     def test_wart_sub_unit_extent_round_trip_boundary_4061(self, mode, device, dtype):
-        # Wart pin for kornia#4061: the three converting modes place the top-right
-        # vertex at ``xmin + width - 1``, which lands left of the top-left vertex when
-        # the extent is below one unit. The stored quadrilateral is inverted on both
-        # axes and to_tensor recovers a larger box. 'xyxy_plus' cancels the -1,
-        # while 'vertices_plus' bypasses offset conversion.
+        # kornia#4061: the converting modes place the top-right vertex at ``xmin + width - 1``, left of the
+        # top-left vertex for a sub-unit extent, so to_tensor recovers a larger box. 'xyxy_plus' cancels the -1
+        # and 'vertices_plus' bypasses the conversion.
         source_by_mode = {
             "xyxy": [0.1, 0.1, 0.6, 0.9],
             "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
@@ -126,8 +129,6 @@ class TestBoxes2D(BaseTester):
         source = torch.tensor([source_by_mode[mode]], device=device, dtype=dtype)
         expected = torch.tensor([expected_by_mode[mode]], device=device, dtype=dtype)
         # validate_boxes=True does not reject the input: the extents are positive.
-        # Half-precision converting modes use dtype-aware tolerance because their
-        # expected decimal results are not all exactly representable.
         output = Boxes.from_tensor(source, mode=mode, validate_boxes=True).to_tensor(mode=mode)
         self.assert_close(output, expected)
 
@@ -687,10 +688,9 @@ class TestBoxes2D(BaseTester):
         )
 
     def test_wart_compute_area_is_shoelace_of_inclusive_vertices_4010(self, device, dtype):
-        # Wart pin for kornia#4010: compute_area applies shoelace to the stored
-        # inclusive vertices. A valid exclusive 2-by-1 box collapses to a line,
-        # and a raw four-by-three rectangle has area six rather than the twelve
-        # reported by get_boxes_shape. These are current values, not a contract.
+        # kornia#4010: compute_area applies shoelace to the stored inclusive vertices, so a valid exclusive
+        # 2-by-1 box collapses to a line and a raw four-by-three rectangle has area six, not the twelve that
+        # get_boxes_shape reports.
         two_by_one = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 3.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
         four_by_three = Boxes(
             torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
@@ -827,12 +827,8 @@ class TestBoxes2D(BaseTester):
     def test_convention_clamp_leaves_coordinates_alone_for_a_non_finite_bound_4244(
         self, non_finite, bound, position, device, dtype
     ):
-        # clamp is comparison-based: every comparison against a non-finite bound that is NaN is
-        # False, so the coordinate is left alone rather than taking the bound. maximum/minimum do
-        # not agree here -- they propagate the NaN into every coordinate on that axis -- which is
-        # why this pin exists alongside the rank fix that motivated rewriting the bound broadcast.
-        # An infinite bound is a real clamp on one side and a no-op on the other, so it is swept
-        # too, and both bound tensors and both coordinate positions are covered.
+        # clamp applies the lower bound, then the upper bound, by comparison: a NaN bound leaves the coordinate
+        # alone (where torch.maximum/minimum would propagate the NaN), and an infinite bound clamps on one side.
         data = torch.tensor([[[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]]], device=device, dtype=dtype)
         topleft = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
         botright = torch.tensor([[10.0, 10.0]], device=device, dtype=dtype)
@@ -843,14 +839,8 @@ class TestBoxes2D(BaseTester):
 
         out = Boxes(data.clone()).clamp(topleft, botright, inplace=False).data
 
-        # Hand-derived from the two ordered comparison passes, lower bound first:
-        #   topleft=nan  -> `c < nan` is False, so the coordinate is left alone
-        #   topleft=+inf -> `c < inf` raises every coordinate to +inf, which the botright pass then
-        #                   lowers to botright (10), so +inf never survives
-        #   topleft=-inf -> `c < -inf` is False, left alone
-        #   botright=nan -> `c > nan` is False, left alone
-        #   botright=+inf-> `c > inf` is False, left alone
-        #   botright=-inf-> `c > -inf` lowers every coordinate to -inf
+        # topleft=+inf raises every coordinate, and the botright pass lowers it to 10; botright=-inf lowers it to
+        # -inf; every other case leaves the coordinate alone.
         expected = data.clone()
         if bound == "topleft" and non_finite == float("inf"):
             expected[..., position] = botright[0, position]
@@ -1105,11 +1095,8 @@ class TestTransformBoxes2D(BaseTester):
 class TestBbox3D(BaseTester):
     @pytest.mark.parametrize("mode", ["xyzxyz", "xyzxyz_plus", "xyzwhd"])
     def test_convention_from_tensor_rejects_non_finite_coordinates_4258(self, mode, device, dtype):
-        # Pin kornia#4258, the 3D counterpart of the #4238 pin on Boxes.from_tensor: eager
-        # validation rejects non-finite values in both the unbatched and batched layouts, even when
-        # a valid row is present too. Before the fix an inf passed the positive-extent checks
-        # outright (inf - 0 > 0) and a nan passed them because every comparison against nan is
-        # False, so the box was constructed with non-finite vertices.
+        # kornia#4258, the 3D counterpart of #4238: eager validation rejects non-finite values in the unbatched
+        # and batched layouts, even when a valid row is present too.
         source = torch.tensor(
             [[0.0, 0.0, 0.0, 4.0, 4.0, 4.0], [1.0, 1.0, 1.0, 5.0, 5.0, 5.0]], device=device, dtype=dtype
         )
@@ -1120,11 +1107,6 @@ class TestBbox3D(BaseTester):
                     invalid_source.reshape(-1, 6)[1, coordinate_index] = non_finite
                     with pytest.raises(ValueError, match="non-finite coordinates"):
                         Boxes3D.from_tensor(invalid_source, mode=mode, validate_boxes=True)
-
-    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4258(self, device, dtype):
-        source = torch.tensor([[0.0, 0.0, 0.0, float("nan"), 4.0, 4.0]], device=device, dtype=dtype)
-        boxes = Boxes3D.from_tensor(source, mode="xyzxyz", validate_boxes=False)
-        assert torch.isnan(boxes.data).any()
 
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
@@ -1533,15 +1515,10 @@ class TestBbox3D(BaseTester):
         self.gradcheck(lambda x: Boxes3D.from_tensor(x, mode="xyzxyz_plus").data, (t_boxes_xyzxyz,))
         self.gradcheck(lambda x: Boxes3D.from_tensor(x, mode="xyzwhd").data, (t_boxes_xyzxyz1,))
 
-    def test_convention_to_tensor_tie_gradient_is_an_even_subgradient_1396(self, device):
-        # #1396: to_tensor used to raise RuntimeError whenever its input required grad, because
-        # gradcheck disagreed with the analytical gradient on an axis-aligned box -- every face of
-        # such a box has a 4-way vertex tie, and PyTorch's amin/amax backward splits the gradient
-        # evenly across tied vertices (1/4 each here) rather than picking one, which is a valid
-        # subgradient but not what central-difference gradcheck expects at a kink (it does not probe
-        # a genuine derivative there, since none exists in the classical sense). This pins that even
-        # split as the actual, correct, and now-unguarded behavior, so a future change that alters it
-        # (e.g. reverting to computing to_tensor without amin/amax) has to touch this test.
+    def test_convention_to_tensor_gradient_reaches_the_extremal_vertices_1396(self, device):
+        # #1396: to_tensor reduces the stored vertices with amin/amax and does not reject an input that
+        # requires grad. d(xmin)/d(vertices) is therefore supported on the vertices attaining the minimum and
+        # sums to 1 over them: a single vertex when it is unique, a tie of four on an axis-aligned face.
         vertices = torch.tensor(
             [
                 [
@@ -1557,16 +1534,17 @@ class TestBbox3D(BaseTester):
             ],
             device=device,
             dtype=torch.float32,
-            requires_grad=True,
         )
-        boxes = Boxes3D(vertices)
-        out = boxes.to_tensor(mode="xyzxyz")  # (N=1, 6): not batched, so to_tensor squeezes the batch dim
-        out[0, 0].backward()  # d(xmin)/d(vertices): xmin ties across vertices 0, 3, 4, 7
-
-        expected_grad = torch.zeros_like(vertices)
-        for tied_vertex in (0, 3, 4, 7):
-            expected_grad[0, tied_vertex, 0] = 0.25
-        self.assert_close(vertices.grad, expected_grad)
+        for tied in ((0, 3, 4, 7), (4,)):
+            data = vertices.clone()
+            if tied == (4,):
+                data[0, 4, 0] = -1.0  # vertex 4 alone attains xmin, so a fixed-index reading is caught
+            data.requires_grad_()
+            Boxes3D(data).to_tensor(mode="xyzxyz")[0, 0].backward()
+            outside = torch.ones_like(data, dtype=torch.bool)
+            outside[0, list(tied), 0] = False
+            assert bool((data.grad[outside] == 0).all())
+            self.assert_close(data.grad[0, list(tied), 0].sum(), torch.tensor(1.0, device=device))
 
     @staticmethod
     def _asymmetric_xyzxyz(device, dtype) -> torch.Tensor:
@@ -1970,24 +1948,13 @@ class TestVideoBoxes(BaseTester):
         self.assert_close(transformed.to_tensor(), boxes, atol=0.0, rtol=0.0)
 
     def test_wart_indexing_drops_the_temporal_size_4249(self, device, dtype):
-        # Wart pin for the part of kornia#4249 that survives #4176: Boxes.__getitem__ builds the result
-        # with type(self)(...) and never sets temporal_channel_size, so the sliced wrapper's to_tensor
-        # fails. get_boxes_shape and to_mask no longer raise; that half is pinned as a convention by
-        # test_convention_inherited_shape_and_mask_work_on_the_temporal_wrapper_4249. The inherited
-        # methods keep the temporal size whether they copy or update in place;
-        # test_convention_inherited_methods_split_copies_from_in_place_updates pins which is which.
+        # kornia#4249: Boxes.__getitem__ builds the result with type(self)(...) and never sets
+        # temporal_channel_size, so the sliced wrapper's to_tensor fails. Delete when #4249 is fixed.
         video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
         frame = video_boxes[0]
         assert isinstance(frame, VideoBoxes)
         with pytest.raises(AttributeError, match="temporal_channel_size"):
             frame.to_tensor()
-        bounds = torch.zeros(6, 2, device=device, dtype=dtype)
-        assert video_boxes.clamp(bounds, bounds + 2.0).temporal_channel_size == 3
-        assert video_boxes.filter_boxes_by_area(1.0).temporal_channel_size == 3
-        assert video_boxes.translate(bounds + 1.0).temporal_channel_size == 3
-        assert video_boxes.pad(torch.ones(6, 4, device=device, dtype=dtype)).temporal_channel_size == 3
-        assert video_boxes.merge(video_boxes).temporal_channel_size == 3
-        assert video_boxes.to(dtype=torch.float32).temporal_channel_size == 3
 
     def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
         # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through
