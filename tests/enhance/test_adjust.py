@@ -672,6 +672,18 @@ class TestAdjustContrast(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0))
 
+    # Issue #4806: a non-RGB input blends with the mean of the whole batch, so a sample's result depends on
+    # its batch-mates; an RGB input uses each image's own mean.  A per-image fix flips the one-channel leg.
+    @pytest.mark.parametrize(("channels", "contaminated"), [(1, True), (3, False)])
+    def test_wart_mean_subtraction_non_rgb_uses_the_batch_mean_4806(self, device, dtype, channels, contaminated):
+        bright = torch.full((1, channels, 2, 2), 0.8, device=device, dtype=dtype)
+        dark = torch.full((1, channels, 2, 2), 0.2, device=device, dtype=dtype)
+        factor = torch.tensor([0.5, 0.5], device=device, dtype=dtype)
+        alone = kornia.enhance.adjust_contrast_with_mean_subtraction(dark, factor[:1])
+        batched = kornia.enhance.adjust_contrast_with_mean_subtraction(torch.cat([bright, dark]), factor)[1:]
+        self.assert_close(alone, dark)
+        assert (not torch.allclose(batched, alone)) is contaminated
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -756,6 +768,16 @@ class TestAdjustBrightness(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_brightness_accumulative, (img, 2.0))
+
+    def test_accumulative_identity_factor_clamps_by_default(self, device, dtype):
+        # The multiplicative identity 1 still clamps into [0, 1] unless clip_output=False, and the module
+        # form always clamps.
+        values = torch.tensor([-0.5, 0.5, 2.0], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        expected = values.clamp(0.0, 1.0)
+        self.assert_close(kornia.enhance.adjust_brightness_accumulative(values, 1.0), expected)
+        self.assert_close(kornia.enhance.AdjustBrightnessAccumulative(1.0)(values), expected)
+        self.assert_close(kornia.enhance.adjust_brightness_accumulative(values, 1.0, clip_output=False), values)
+        self.assert_close(kornia.enhance.adjust_brightness_accumulative(values, 0.0), torch.zeros_like(values))
 
 
 class TestAdjustSigmoid(BaseTester):

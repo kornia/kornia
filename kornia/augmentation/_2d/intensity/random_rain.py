@@ -49,28 +49,18 @@ class RandomRain(IntensityAugmentationBase2D):
         - a drop is written as the fixed value ``200 / 255``, not as a function of the image, so the rain is
           darker than every pixel above ``200 / 255`` that it falls on, inside ``[0, 1]`` or not. Every other
           pixel is carried through unclamped.
-        - both sizes must be strictly smaller than the image on their own axis. Once the larger of the two
-          sizes is at least ``2``, a drop of size ``h`` spans ``h + 1`` rows or columns end to end, so a size
-          one short of the image already reaches from edge to edge; a drop whose sizes are both at most ``1``
-          is a single pixel. ``span`` is an extent, not a count: the drop is a ``linspace`` of
-          ``max(drop_height, abs(drop_width))`` steps truncated to integers, so when the two sizes differ the
-          painted cells have gaps inside that span -- ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10``
-          image paints rows ``[0, 1, 2, 3, 5]``. A size as large as the image's, or a ``drop_height`` below
-          ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
-        - every start position that keeps the whole drop inside the image is equally likely, so the last row
-          and the last column are reachable. Reachable by a start, not necessarily painted: the gaps inside a
-          drop's span described above can still leave a column untouched -- ``drop_height=5`` with
-          ``drop_width=9`` on a ``6 x 10`` image has one legal start and never paints column ``8``.
-        - the three integer ranges are closed and uniform: every integer from the lower to the upper bound
-          is drawn with the same probability, so the default ``drop_height=(5, 20)`` reaches ``20``, the
-          default ``drop_width=(-5, 5)`` reaches ``-5`` and ``5``, and ``0`` carries no more weight than
-          any other width. Both upper bounds are live against the size rule above, which they were not
-          when they were practically never drawn: with the defaults an image 20 pixels tall, or 5 pixels
-          wide, now raises on some seeds -- and on every seed once it is 5 pixels tall or shorter, where
-          no drawable height is legal. A range that is reversed, fractional or non-finite raises
-          ``ValueError`` at construction.
-        - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
-          the same coordinates; left at ``False`` each sample draws its own.
+        - both sizes must be strictly smaller than the image on their own axis, checked on the forward pass,
+          where the image shape is known; a ``drop_height`` below ``1`` raises there too.
+        - every start position that keeps the whole drop inside the image is equally likely.
+        - the three integer ranges are closed and uniform, so the default ``drop_height=(5, 20)`` reaches ``20``
+          and the default ``drop_width=(-5, 5)`` reaches both ends. With the defaults an image 20 pixels tall, or
+          5 pixels wide, therefore raises on some draws. A range that is reversed, fractional or non-finite
+          raises ``ValueError`` at construction.
+
+    .. warning::
+        A drop whose larger size ``n`` is at least ``2`` paints ``n`` pixels spread over ``n + 1`` rows or
+        columns, so it has a one-pixel gap: ``drop_height=5`` with ``drop_width=0`` paints rows
+        ``[0, 1, 2, 3, 5]``. Tracked in `#4810 <https://github.com/kornia/kornia/issues/4810>`_.
 
     Examples:
         >>> rng = torch.manual_seed(0)

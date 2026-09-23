@@ -64,6 +64,10 @@ class RandomDissolving(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - the result is decoded by the Stable Diffusion VAE and clamped into ``[0, 1]``, whatever range the input
+          is in.
+
     .. note::
         The transform is delegated to ``kornia.filters.StableDiffusionDissolving``, which the constructor
         builds: instantiating this class needs the optional ``diffusers`` package and, on a cold cache,
