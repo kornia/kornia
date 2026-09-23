@@ -412,7 +412,6 @@ class TestQuarticSolver(BaseTester):
 
         computed_roots_sorted, _ = torch.sort(computed_roots, dim=-1)
 
-        # 1. Check Residuals (Equation satisfaction)
         residuals = (
             coeffs[:, 0:1] * computed_roots**4
             + coeffs[:, 1:2] * computed_roots**3
@@ -420,6 +419,17 @@ class TestQuarticSolver(BaseTester):
             + coeffs[:, 3:4] * computed_roots
             + coeffs[:, 4:5]
         )
+
+        bad = torch.abs(residuals) > 1e-3
+
+        if bad.any():
+            print(f"\n[{dtype}] Random quartic failures:")
+            print("true_roots:", true_roots[bad.any(dim=-1)])
+            print("computed_roots:", computed_roots[bad.any(dim=-1)])
+            print("residuals:", residuals[bad.any(dim=-1)])
+            print("max_abs_residual:", torch.abs(residuals).max().item())
+
+
         self.assert_close(residuals, torch.zeros_like(residuals), atol=1e-3, rtol=1e-3)
 
         # 2. Check Root Matching (Stronger Test)
@@ -741,3 +751,34 @@ class TestQuarticSolver(BaseTester):
         # zero-radicand gradient convention was fixed in #4339 and is covered above.
         assert bool(torch.isfinite(mixed.grad[0]).all()), mixed.grad
         self.assert_close(mixed.grad[0], alone.grad[0])
+
+    def test_cubic_fallback_for_zero_leading_coefficient(self, device, dtype):
+        # A zero leading coefficient makes this a cubic:
+        # x^3 - 6x^2 + 11x - 6 = (x - 1)(x - 2)(x - 3).
+        coeffs = torch.tensor(
+            [[0.0, 1.0, -6.0, 11.0, -6.0]],
+            device=device,
+            dtype=dtype,
+        )
+
+        roots = solver.solve_quartic(coeffs)
+
+        expected = torch.cat(
+            [
+                solver.solve_cubic(coeffs[:, 1:]),
+                torch.zeros((1, 1), device=device, dtype=dtype),
+            ],
+            dim=-1,
+        )
+
+        assert bool(torch.isfinite(roots).all()), roots
+
+        roots_sorted, _ = torch.sort(roots, dim=-1)
+        expected_sorted, _ = torch.sort(expected, dim=-1)
+
+        self.assert_close(
+            roots_sorted,
+            expected_sorted,
+            rtol=0.0,
+            atol=0.0,
+        )
