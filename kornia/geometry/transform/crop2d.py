@@ -125,6 +125,17 @@ def crop_and_resize(
     )
 
 
+def _crop_translation(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    """Return the matrix of a crop, which only moves the first ``src`` vertex onto the first ``dst`` vertex.
+
+    Solving the perspective system from the four vertices instead fails for a crop with a size-1 axis, whose
+    vertices are collinear (#4751).
+    """
+    transform = torch.eye(3, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
+    transform[:, :2, 2] = dst[:, 0] - src[:, 0]
+    return transform
+
+
 def center_crop(
     input_tensor: torch.Tensor,
     size: Tuple[int, int],
@@ -206,8 +217,10 @@ def center_crop(
         dtype=input_tensor.dtype,
     ).expand(points_src.shape[0], -1, -1)
 
-    return _crop_by_boxes_to_size(
-        input_tensor, points_src, points_dst, (dst_h, dst_w), mode, padding_mode, align_corners
+    transform = _crop_translation(points_src, points_dst)
+
+    return crop_by_transform_mat(
+        input_tensor, transform, (dst_h, dst_w), mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )
 
 
@@ -301,9 +314,9 @@ def _crop_by_boxes_to_size(
     padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` and
-    # ``center_crop`` build ``dst_box`` from ``size``, so they take this path and never read the box
-    # values back from the device -- which also keeps them capturable by ``torch.onnx.export``.
+    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` builds
+    # ``dst_box`` from ``size``, so it takes this path and never reads the box values back from the
+    # device -- which also keeps it capturable by ``torch.onnx.export``.
     if len(input_tensor.shape) != 4:
         raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
@@ -626,7 +639,7 @@ class CenterCrop2D(nn.Module):
         self.points_src[0, 3, 1] = end_y
 
         if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = get_perspective_transform(
+            transform = _crop_translation(
                 self.points_src.expand(batch_size, -1, -1).to(input),
                 self.points_dst.expand(batch_size, -1, -1).to(input),
             )

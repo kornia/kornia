@@ -20,7 +20,7 @@ import torch
 
 import kornia
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_2d_grid_sample
 
 
 class TestCropAndResize(BaseTester):
@@ -303,6 +303,53 @@ class TestCenterCrop(BaseTester):
         self.assert_close(out_resample_true, out_resample_false)
         # and both agree with the plain integer-index slice of the same region
         self.assert_close(out_resample_false, inp[:, :, 1:3, 1:3], atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("size", [(1, 3), (3, 1), (1, 1)])
+    def test_convention_center_crop_accepts_a_size_one_axis_4751(self, size, device, dtype):
+        # A crop is a translation. Solving the perspective system from the box vertices instead returned a
+        # matrix of NaNs here, because a size-1 axis makes the vertices collinear.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(25.0, device=device, dtype=dtype).view(1, 1, 5, 5)
+        top, left = (5 - size[0]) // 2, (5 - size[1]) // 2
+        expected = inp[..., top : top + size[0], left : left + size[1]]
+
+        self.assert_close(kornia.geometry.transform.center_crop(inp, size), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(
+            kornia.geometry.transform.CenterCrop2D(size, cropping_mode="resample")(inp), expected, atol=1e-4, rtol=1e-4
+        )
+
+    def test_center_crop_forwards_mode_padding_mode_and_align_corners(self, device, dtype):
+        # center_crop hands mode, padding_mode and align_corners on to the warp; each one changes this output.
+        # A 2-wide crop of a 5-wide image starts at pixel 1.5, so bilinear averages four neighbours while
+        # nearest returns one of them.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = (torch.arange(25, device=device, dtype=dtype) ** 2).view(1, 1, 5, 5)
+        bilinear = (inp[..., 1:3, 1:3] + inp[..., 1:3, 2:4] + inp[..., 2:4, 1:3] + inp[..., 2:4, 2:4]) / 4
+        self.assert_close(kornia.geometry.transform.center_crop(inp, (2, 2)), bilinear)
+        nearest = kornia.geometry.transform.center_crop(inp, (2, 2), mode="nearest")
+        assert torch.isin(nearest, inp).all()
+
+        # A 4x4 crop of a 2x2 image samples pixels -1..2, outside the image on every side.
+        small = torch.tensor([[[[1.0, 2.0], [3.0, 4.0]]]], device=device, dtype=dtype)
+        replicated = torch.tensor(
+            [[[[1.0, 1.0, 2.0, 2.0], [1.0, 1.0, 2.0, 2.0], [3.0, 3.0, 4.0, 4.0], [3.0, 3.0, 4.0, 4.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(kornia.geometry.transform.center_crop(small, (4, 4), padding_mode="border"), replicated)
+        # reflection mirrors about the edge pixel centres under align_corners=True and about the image border
+        # under align_corners=False, so the two settings disagree outside the image.
+        mirrored = torch.tensor(
+            [[[[4.0, 3.0, 4.0, 3.0], [2.0, 1.0, 2.0, 1.0], [4.0, 3.0, 4.0, 3.0], [2.0, 1.0, 2.0, 1.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        reflected = kornia.geometry.transform.center_crop(small, (4, 4), padding_mode="reflection", align_corners=True)
+        self.assert_close(reflected, mirrored)
+        reflected = kornia.geometry.transform.center_crop(small, (4, 4), padding_mode="reflection", align_corners=False)
+        self.assert_close(reflected, replicated)
 
 
 class TestCropByBoxes(BaseTester):
