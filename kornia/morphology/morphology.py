@@ -50,7 +50,7 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
 
 
 def _dtype_min(dtype: torch.dtype) -> int:
-    if dtype == torch.uint8 or dtype == torch.bool:
+    if dtype in (torch.uint8, torch.bool):
         return 0
     if dtype == torch.int8:
         return -128
@@ -64,7 +64,7 @@ def _dtype_min(dtype: torch.dtype) -> int:
 
 
 def _dtype_max(dtype: torch.dtype) -> int:
-    if dtype == torch.uint8 or dtype == torch.bool:
+    if dtype in (torch.uint8, torch.bool):
         return 1 if dtype == torch.bool else 255
     if dtype == torch.int8:
         return 127
@@ -224,7 +224,8 @@ def dilation(
         - ``border_type="geodesic"`` ignores the pixels outside the image; the other modes carry torch's pad
           names. :doc:`Conventions & Pitfalls </get-started/conventions>` maps both, and the kernel
           conventions, onto scipy, scikit-image and OpenCV.
-        - Known defects: a non-float image is not rejected (`#4735 <https://github.com/kornia/kornia/issues/4735>`_); and
+        - Known defects: a non-float image is not rejected
+          (`#4735 <https://github.com/kornia/kornia/issues/4735>`_); and
           ``engine="convolution"`` returns the image dtype where ``unfold`` and ``shift`` return the dtype
           promoted with ``structuring_element``, or with ``kernel`` when none is given
           (`#4762 <https://github.com/kornia/kornia/issues/4762>`_).
