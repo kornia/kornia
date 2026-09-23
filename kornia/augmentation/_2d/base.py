@@ -64,9 +64,8 @@ class AugmentationBase2D(_AugmentationBase):
     If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
     might be a better fit.
 
-    This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit;
-    they point here instead of restating it. Mix and 3D augmentation bases have their own public contracts;
-    do not infer this class's probability, RNG, replay, or serialization behavior from their common internals.
+    This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit.
+    Mix and 3D augmentations have their own bases and contracts.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -81,10 +80,9 @@ class AugmentationBase2D(_AugmentationBase):
         - the working layout is ``(B, C, H, W)`` float. A ``(C, H, W)`` input is promoted to ``(1, C, H, W)``
           and an ``(H, W)`` input to ``(1, 1, H, W)``; ``keepdim=True`` restores the input rank on the way out
           and never drops a real batch dimension. The dtype guard accepts ``float16``, ``bfloat16``, ``float32``
-          and ``float64`` and raises ``TypeError`` naming those four on an integer tensor. The output keeps the
-          input's device. Individual augmentations may have dtype-specific behavior; see their own docs.
-        - unsupported ranks and container entry points report validation errors through different paths.
-          Tracked in `#4424 <https://github.com/kornia/kornia/issues/4424>`_.
+          and ``float64`` and raises ``TypeError`` on an integer tensor. The output keeps the input's device.
+        - a wrong input rank raises different exception types depending on the entry point that sees it
+          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
           see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. The gate selects after the transform
@@ -93,64 +91,23 @@ class AugmentationBase2D(_AugmentationBase):
         - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
           see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
-        - reproducibility goes through torch's global generators on the devices used for sampling:
-          ``torch.manual_seed`` before the call reproduces the draw for the same backend and dtype.
-          There is no per-instance generator; ``generator=`` raises at
-          construction and is silently dropped by ``forward``, as any other unknown keyword is.
-        - :doc:`/get-started/conventions` is the canonical statement of all of this: the seeding,
-          ``DataLoader``-worker and consumption-order rules, sampling versus returned parameter placement,
-          the ``set_rng_device_and_dtype`` limitations, and what a serialization round trip carries.
-        - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale rather
-          than merging into it and stores the caller's dict by reference. A complete generated dictionary
-          is not extended; if ``batch_prob`` is absent, ``forward`` inserts an all-true gate into that same
-          dictionary. Replaying parameters reproduces the output bitwise, the ``RandomPlasma*`` noise included
-          since it is drawn into ``_params``, except for :class:`RandomDissolving`, which samples VAE latents
-          during application; that draw is not stored and requires controlling the global seed too.
-        - range configuration and serialization behavior vary by generator. Some range buffers are inert after
-          ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_). Built-in lazy
-          matrix state keeps only the input's shape, dtype and device alongside the transformation parameters.
-          Lazy subclasses overriding ``transform_tensor``, ``generate_transformation_matrix``,
-          ``compute_transformation`` or ``identity_matrix`` retain the input until the matrix is read or another
-          forward replaces the state.
-        - an empty batch is an empty output on the classes that accept one, but it is not a package-wide
-          guarantee: a minority of the classes raise on ``B = 0``, in several unrelated exception families.
+        - reproducibility goes through torch's global generators; there is no per-instance generator.
+          ``generator=`` raises at construction, and ``forward`` silently drops it like any other unknown keyword
+          (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). :doc:`/get-started/conventions` states the
+          seeding, ``DataLoader``-worker, parameter-placement and serialization rules.
+        - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale, stores the
+          caller's dict by reference and, if ``batch_prob`` is absent, inserts an all-true gate into it. Replaying
+          parameters reproduces the output, except for :class:`RandomDissolving`, whose VAE latents are drawn
+          during application and are not stored.
+        - some ``_param_generator.*`` range buffers in ``state_dict()`` do not update the samplers when loaded
+          (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+        - an empty batch gives an empty output, except on a minority of classes that raise on ``B = 0``
+          (`#4429 <https://github.com/kornia/kornia/issues/4429>`_).
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
-          displayed (top-left origin, y pointing down), as :func:`~kornia.geometry.transform.rotate` documents.
-          The ``*Affine*`` classes deviate and turn clockwise -- see :class:`RandomAffine` (tracked in
-          `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-        - ``torch.jit.script`` does not support these modules. ``torch.compile`` commonly works in its default,
-          graph-break-tolerant mode, while ``fullgraph=True`` depends on the augmentation, flags, and input.
-
-    .. warning::
-        One wrong input rank can raise different exception types depending on the entry point that sees it.
-        Tracked in `#4424 <https://github.com/kornia/kornia/issues/4424>`_.
-
-    .. warning::
-        Concrete constructors expose ``p_batch`` inconsistently, so the base probability model is not a
-        universal constructor contract. Tracked in `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
-
-    .. warning::
-        ``set_rng_device_and_dtype`` has incomplete sampler migration. It rebuilds what it can, but some
-        generators retain internal CPU tensors or ignore the requested precision, some generator/device
-        combinations can still fail during forward, and the returned parameters can stay CPU ``float32``
-        while ``batch_prob`` follows the request. Tracked in
-        `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
-
-    .. warning::
-        ``forward`` swallows ``generator=`` -- and every other unknown keyword -- without a warning, so a
-        per-instance generator looks accepted and is ignored. Tracked in
-        `#4427 <https://github.com/kornia/kornia/issues/4427>`_.
-
-    .. warning::
-        With numeric constructor ranges, the copied ``_param_generator.*`` range buffers in ``state_dict()``
-        do not update the samplers when loaded. Tracked in
-        `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
-
-    .. warning::
-        ``B = 0`` raises on a minority of the concrete classes instead of returning an empty batch, which
-        contradicts the library-wide empty-in/empty-out convention of
-        `#4115 <https://github.com/kornia/kornia/issues/4115>`_. Tracked in
-        `#4429 <https://github.com/kornia/kornia/issues/4429>`_.
+          displayed (top-left origin, y pointing down), as :func:`~kornia.geometry.transform.rotate` documents;
+          :class:`RandomAffine` turns clockwise (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - ``torch.jit.script`` is not supported; ``torch.compile(fullgraph=True)`` works for some augmentations
+          and flags only.
 
     """
 
@@ -197,11 +154,9 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
           recognizes geometric children, so custom rigid subclasses need integration work of their own. See
           `#4481 <https://github.com/kornia/kornia/issues/4481>`_.
         - the matrix of the last call is readable as ``transform_matrix``. Subclasses opt into lazy construction
-          with ``_compute_matrix_lazily``. Built-in lazy matrices keep only the input's shape, dtype and device
-          alongside the transformation parameters. Lazy subclasses overriding ``transform_tensor``,
-          ``generate_transformation_matrix``, ``compute_transformation`` or ``identity_matrix`` keep the input
-          until the matrix is read or another forward replaces the state; unchanged inherited implementations
-          keep the compact metadata state.
+          with ``_compute_matrix_lazily``; a lazy matrix keeps only the input's shape, dtype and device, unless the
+          subclass overrides ``transform_tensor``, ``generate_transformation_matrix``, ``compute_transformation``
+          or ``identity_matrix``, in which case the input is kept until the matrix is read or replaced.
         - this base does not implement an inverse operation.
 
     """

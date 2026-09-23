@@ -20,7 +20,7 @@ import torch
 
 from kornia.morphology import closing
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, supports_replicate_padding
 from testing.parametrized_tester import parametrized_test
 
 
@@ -140,3 +140,59 @@ class TestClosing(BaseTester):
         closed = closing(tensor, kernel, origin=[0, 0])
         assert (closed >= tensor).all()
         assert torch.equal(closing(closed, kernel, origin=[0, 0]), closed)
+
+    def test_convention_closing_is_a_morphological_closing(self, device, dtype):
+        # `closing` is `erosion(dilation(x))` with the same kernel in both halves; as only `dilation`
+        # reflects, it is extensive and idempotent for an asymmetric kernel too, and leaves a block that is
+        # already closed untouched.
+        # Generated with scipy 1.17.1 / scikit-image 0.26.0 / opencv-python-headless 5.0.0 / numpy 2.0.0:
+        #   blk = np.zeros((9, 11), np.float32); blk[3:6, 3:7] = 1.0; A = np.array([[0, 1, 1]], bool)
+        #   ndi.grey_closing(blk, footprint=A, mode="constant", cval=np.inf) == blk  -> True
+        #   sm.closing(blk, A, mode="ignore") == blk                                 -> True
+        #   cv2.morphologyEx(blk, cv2.MORPH_CLOSE, A.astype(np.uint8)) == blk        -> False
+        asymmetric = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        block = torch.zeros(1, 1, 9, 11, device=device, dtype=dtype)
+        block[..., 3:6, 3:7] = 1.0
+        assert torch.equal(closing(block, asymmetric), block)
+
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        for kernel in (l_kernel, asymmetric):
+            closed = closing(tensor, kernel)
+            assert (closed >= tensor).all()
+            assert torch.equal(closing(closed, kernel), closed)
+
+        # `[[1, 0, 0]]` reads `x(p + 1)` in the dilation half and `y(p - 1)` in the erosion half. Under
+        # `replicate` the first column becomes `x(1)`, so the closing is not extensive (idempotence
+        # survives); under `circular` the two shifts cancel and the closing is exactly `x`.
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        if supports_replicate_padding(device, dtype):
+            dip = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)[None, None]
+            replicated = closing(dip, side_kernel, border_type="replicate")
+            assert replicated.flatten().tolist() == [0.0, 0.0, 1.0]
+            assert not bool((replicated >= dip).all())
+            assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
+        assert torch.equal(closing(tensor, side_kernel, border_type="circular"), tensor)
+
+    def test_wart_closing_sentinel_round_trip_4734(self, device, dtype):
+        # Under `geodesic` the dilation window of `[[1, 0, 0]]` leaves the image on the right, so it can emit
+        # `x - max_val`, and the erosion's `+ max_val` returns `x` quantised to `max_val`'s spacing:
+        # extensivity, and on negative data idempotence, miss by less than one ULP of `max_val` in the
+        # image's dtype, in the columns next to the empty window. A true infinity would miss by exactly 0.
+        # Tracked in #4734. `torch.finfo(dtype).eps * 8192` is that ULP for the default `max_val=1e4`.
+        one_ulp = torch.finfo(dtype).eps * 8192.0
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        # A float64 frame drawn in float32 has no bits below float64's ULP of `max_val`, so draw it natively.
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
+        tensor = tensor.to(device=device, dtype=dtype)
+
+        closed = closing(tensor, side_kernel)
+        shortfall = (tensor - closed).clamp(min=0)
+        assert 0.0 < shortfall.max() < one_ulp
+        assert not bool(shortfall[..., :-2].any())
+        assert torch.equal(closing(closed, side_kernel), closed)
+
+        negative = -tensor
+        negative_closed = closing(negative, side_kernel)
+        drift = (closing(negative_closed, side_kernel) - negative_closed).abs()
+        assert 0.0 < drift.max() < one_ulp

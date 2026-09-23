@@ -51,7 +51,7 @@ def harris_response(
     .. math::
         R = max(0, det(M) - k \cdot trace(M)^2)
 
-    torch.where:
+    where:
 
     .. math::
         M = \sum_{(x,y) \in W}
@@ -137,7 +137,7 @@ def gftt_response(
     .. math::
         R = min(eig(M))
 
-    torch.where:
+    where:
 
     .. math::
         M = \sum_{(x,y) \in W}
@@ -213,7 +213,7 @@ def hessian_response(
     .. math::
         R = det(H)
 
-    torch.where:
+    where:
 
     .. math::
         M = \sum_{(x,y) \in W}
