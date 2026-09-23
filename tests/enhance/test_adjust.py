@@ -672,6 +672,18 @@ class TestAdjustContrast(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0))
 
+    # Issue #4806: a non-RGB input blends with the mean of the whole batch, so a sample's result depends on
+    # its batch-mates; an RGB input uses each image's own mean.  A per-image fix flips the one-channel leg.
+    @pytest.mark.parametrize(("channels", "contaminated"), [(1, True), (3, False)])
+    def test_wart_mean_subtraction_non_rgb_uses_the_batch_mean_4806(self, device, dtype, channels, contaminated):
+        bright = torch.full((1, channels, 2, 2), 0.8, device=device, dtype=dtype)
+        dark = torch.full((1, channels, 2, 2), 0.2, device=device, dtype=dtype)
+        factor = torch.tensor([0.5, 0.5], device=device, dtype=dtype)
+        alone = kornia.enhance.adjust_contrast_with_mean_subtraction(dark, factor[:1])
+        batched = kornia.enhance.adjust_contrast_with_mean_subtraction(torch.cat([bright, dark]), factor)[1:]
+        self.assert_close(alone, dark)
+        assert (not torch.allclose(batched, alone)) is contaminated
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

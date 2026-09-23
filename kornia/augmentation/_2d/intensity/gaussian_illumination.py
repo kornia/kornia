@@ -76,9 +76,13 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
           multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
           narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel; at ``sigma=0``,
-          which the constructor admits, the kernel is the unit impulse.
-        - ``.compile()`` swaps in a compiled transform, after which the module no longer pickles or passes through
-          ``torch.save``; it still deep-copies.
+          which the constructor admits, the kernel puts all its weight on the sample nearest the centre, or
+          splits it evenly between the two that tie on an even-length axis.
+
+    .. warning::
+        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``, which
+        breaks a ``DataLoader`` with workers under ``spawn``. Tracked in
+        `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
 
     .. warning::
         An all-negative input can come back as an all-zero image when the sampled gradient does not raise it

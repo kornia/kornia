@@ -110,24 +110,12 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert _lit_extent(make((1, 5))(transposed)[0, 0]) == ([3], [0, 1, 2, 3, 4])
 
-    # Row 6c-19, the median half: a rank filter cannot be read off an impulse, so the detector is a
-    # one-row bar.  A (1, kW) window slides along that row and keeps it; a (kH, 1) window spans five
-    # rows of which four are zero, so the median is zero and the bar is erased.  Checked under
-    # relabelling on the transposed bar.
-    # Snippet used to generate expected:
-    #   bar = torch.zeros(1, 1, 7, 9); bar[0, 0, 3, :] = 1.0
-    #   for ks in ((1, 5), (5, 1)):
-    #       torch.manual_seed(0); print(ks, K.RandomMedianBlur(ks, p=1.0)(bar)[0, 0].sum(-1).tolist())
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `(1, 5)` keeps row sums
-    # [0, 0, 0, 9, 0, 0, 0] and `(5, 1)` gives [0, 0, 0, 0, 0, 0, 0]; with the bar on row 2 the
-    # surviving sum moves to index 2, and on the transposed 9x7 bar the roles of the two kernels swap.
     def test_convention_median_blur_border_median_is_over_zero_padding(self, device, dtype):
         # A constant-ones image: the 3x3 window at a corner holds 5 zeros and 4 ones, so the corner comes
         # back 0 while an edge pixel (3 zeros, 6 ones) stays 1.  Replicate padding would return 1 at both.
         # Snippet used to generate expected:
         #   torch.manual_seed(0); y = K.RandomMedianBlur((3, 3), p=1.0)(torch.ones(1, 1, 4, 4)); print(y[0, 0, 0, :2])
         #   torch.manual_seed(0); print(K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6))[0, 0, 0])
-        # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `[0., 1.]`; `[0., 0., 1., 1., 0., 0.]`.
         ones = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomMedianBlur((3, 3), p=1.0)(ones)
@@ -160,6 +148,13 @@ class TestBlurConventions(BaseTester):
             assert lit[:, 0].unique().tolist() == rows and lit[:, 1].unique().tolist() == cols
             self.assert_close(out.sum(), impulse.sum())
 
+    # A rank filter cannot be read off an impulse, so the detector is a one-row bar.  A (1, kW) window slides
+    # along that row and keeps it; a (kH, 1) window spans five rows of which four are zero, so the median is
+    # zero and the bar is erased.
+    # Snippet used to generate expected:
+    #   bar = torch.zeros(1, 1, 7, 9); bar[0, 0, 3, :] = 1.0
+    #   for ks in ((1, 5), (5, 1)):
+    #       torch.manual_seed(0); print(ks, K.RandomMedianBlur(ks, p=1.0)(bar)[0, 0].sum(-1).tolist())
     def test_convention_median_blur_kernel_size_is_height_then_width(self, device, dtype):
         bar = torch.zeros(1, 1, 7, 9, device=device, dtype=dtype)
         bar[0, 0, 3, :] = 1.0
@@ -430,28 +425,17 @@ class TestBlurConventions(BaseTester):
         self.assert_close(out, make()(half_impulse) * 2.0)
         self.assert_close(make()(-half_impulse), -make()(half_impulse))
 
-    # Issue #4559, fixed: RandomBoxBlur, RandomGaussianBlur and RandomSharpness now raise a kornia
-    # `ValueError` naming the class, the kernel and the input shape, where they used to let a raw torch
-    # padding error out.  The thresholds are unchanged, and they are what the message states: the two
-    # blurs reflect-pad, so an axis must be longer than the kernel radius (`k // 2`, one pixel for the
-    # 3x3 default); RandomSharpness convolves without padding, so it needs the full 3x3.
-    # RandomMedianBlur and RandomMotionBlur accept the same degenerate image, which is what made the
-    # split a defect rather than a package-wide rule, and they are unchanged.
+    # Issue #4559: RandomBoxBlur, RandomGaussianBlur and RandomSharpness raise a kornia `ValueError` naming
+    # the class, the kernel and the input shape.  The two blurs reflect-pad, so an axis must be longer than the
+    # kernel radius (`k // 2`, one pixel for the 3x3 default); RandomSharpness convolves without padding, so
+    # it needs the full 3x3.  RandomMedianBlur and, at its default constant border, RandomMotionBlur accept
+    # the same degenerate image.
     # Snippet used to generate expected:
     #   for shape in ((2, 3, 1, 8), (2, 3, 2, 2), (2, 3, 3, 3)):
     #       x = torch.rand(*shape)
     #       torch.manual_seed(0); K.RandomBoxBlur(p=1.0)(x)  # and the four other classes
-    # executed 2026-09-18 (torch 2.5.0, cpu) -> on (2, 3, 1, 8) the two blurs raise `ValueError:
-    # RandomBoxBlur cannot filter an image this small: kernel_size=(3, 3) with border_type='reflect'
-    # needs at least 2 pixel(s) along height, but the input is (2, 3, 1, 8)` and RandomSharpness the
-    # same shape of message with `border_type='valid'` and 3 pixels; on (2, 3, 2, 2) only
-    # RandomSharpness raises; on (2, 3, 3, 3) all five run; RandomMedianBlur and RandomMotionBlur run
-    # on every shape.
     def test_convention_blur_and_sharpness_name_the_size_they_need_4559(self, device, dtype):
-        # The skip is scoped to the legs that actually reflect-pad.  RandomSharpness fails through
-        # F.conv2d, and RandomMedianBlur and RandomMotionBlur run on a 1x8 image with no reflect padding
-        # at all, so skipping the whole test where reflection_pad2d is missing -- the torch 2.5.1 float16
-        # leg -- would drop three legs of #4559 for a reason that does not apply to them.
+        # Only the legs that reflect-pad are skipped where reflection_pad2d is unavailable.
         reflect_ok = supports_reflect_padding(device, dtype)
         torch.manual_seed(_FIXTURE_SEED)
         thin = torch.rand(2, 3, 1, 8).to(device=device, dtype=dtype)
@@ -471,8 +455,7 @@ class TestBlurConventions(BaseTester):
             torch.manual_seed(_FORWARD_SEED)
             assert make()(small).shape == small.shape, f"{name} should still accept a 2x2 image"
         # The threshold is per axis, half the kernel's extent along that axis: a (7, 3) kernel runs on a
-        # 2-column image (2 > 3 // 2) and raises on a 3-row one (3 <= 7 // 2), in both classes (measured on
-        # cpu in all four dtypes and on mps float32).
+        # 2-column image (2 > 3 // 2) and raises on a 3-row one (3 <= 7 // 2), in both classes.
         rectangular = {
             "RandomBoxBlur": lambda: K.RandomBoxBlur((7, 3), p=1.0),
             "RandomGaussianBlur": lambda: K.RandomGaussianBlur((7, 3), (1.0, 1.0), p=1.0),
@@ -1282,17 +1265,31 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert bool(K.RandomGaussianIllumination(p=1.0)(image).isfinite().all())
 
-    # After ``.compile()`` RandomGaussianIllumination no longer pickles or passes through torch.save, but
-    # still deep-copies; the linear classes keep pickling.  "compile" in the name is load-bearing: conftest
-    # deselects it unless KORNIA_TEST_OPTIMIZER is set, which keeps ``torch.compile``'s process-wide side
-    # effects (it disables Distribution argument validation) out of the ordinary CPU legs.
+    # Issue #4807: the classes with their own ``.compile()`` store a compiled callable and then no longer
+    # pickle or pass through torch.save, though they still deep-copy; the linear illumination classes, which
+    # use torch's ``Module.compile``, keep pickling.  A fix makes the first three pickle and flips it.
+    # "compile" in the name is load-bearing: conftest deselects it unless KORNIA_TEST_OPTIMIZER is set, which
+    # keeps ``torch.compile``'s process-wide side effects (it disables Distribution argument validation) out
+    # of the ordinary CPU legs.
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize(
-        "name", ["RandomGaussianIllumination", "RandomLinearIllumination", "RandomLinearCornerIllumination"]
+        ("name", "own_compile"),
+        [
+            ("RandomGaussianIllumination", True),
+            ("RandomGaussianBlur", True),
+            ("ColorJitter", True),
+            ("RandomLinearIllumination", False),
+            ("RandomLinearCornerIllumination", False),
+        ],
     )
     @pytest.mark.device_agnostic
-    def test_convention_compiled_illumination_pickling(self, name):
-        compiled = _illumination(name)
+    def test_wart_compiled_intensity_augmentation_does_not_pickle_4807(self, name, own_compile):
+        if name == "RandomGaussianBlur":
+            compiled = K.RandomGaussianBlur((3, 3), (1.0, 1.0), p=1.0)
+        elif name == "ColorJitter":
+            compiled = K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)
+        else:
+            compiled = _illumination(name)
         validate_args = Distribution._validate_args
         try:
             compiled.compile()
@@ -1303,7 +1300,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         cloned = copy.deepcopy(compiled)
         assert isinstance(cloned, type(compiled))
         assert cloned(constant).shape == constant.shape
-        if name == "RandomGaussianIllumination":
+        if own_compile:
             with pytest.raises(pickle.PicklingError):
                 pickle.dumps(compiled)
             with pytest.raises(pickle.PicklingError):

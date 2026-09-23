@@ -43,7 +43,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
     Convention:
         - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming :func:`kornia.enhance.equalize` and that
           range, instead of being transformed. The check guards a 256-entry lookup indexed with
-          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]`` is still admitted.
+          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]`` is still admitted, up
+          to the rounding of ``input * 255`` in the input's dtype.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`.

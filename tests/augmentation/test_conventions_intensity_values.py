@@ -24,7 +24,6 @@ import warnings
 import pytest
 import torch
 
-import kornia
 import kornia.augmentation as K
 from kornia.augmentation.random_generator import RectangleEraseGenerator
 from kornia.core.exceptions import BaseError, ImageError, ShapeError
@@ -137,22 +136,31 @@ _OUT_OF_RANGE_ON_FIXTURES = (
     "RandomSnow",
 )
 # The only factory that rejects these fixtures.
-_REJECTS_AUDIT_FIXTURES = ("RandomEqualize",)
+_REJECTS_OUT_OF_RANGE_FIXTURES = ("RandomEqualize",)
 
-# These factories return zeros for the negative fixture at seed 0 (#4430); a different draw can lift
-# the draw-dependent ones above zero.  RandomPosterize is not here: its uint8 conversion of a negative
-# float is platform-dependent (test_wart_random_posterize_out_of_range_wraps_4430).
-_COLLAPSES_ON_NEGATIVE_FIXTURE = (
-    "ColorJitter",
-    "RandomContrast",
-    "RandomGaussianIllumination",
-    "RandomLinearIllumination",
-    "RandomLinearCornerIllumination",
-    "RandomPlasmaShadow",
-    "RandomSnow",
-    "RandomSharpness",
-    "RandomSolarize",
-)
+# These factories return zeros for a constant -1 image on every draw (#4430): no admissible draw lifts it
+# above zero.  RandomPosterize is not here: its uint8 conversion of a negative float is platform-dependent
+# (test_wart_random_posterize_out_of_range_wraps_4430).
+_COLLAPSES_ON_CONSTANT_MINUS_ONE = {
+    **{
+        name: _INTENSITY_FACTORIES[name]
+        for name in (
+            "ColorJitter",
+            "RandomBrightness",
+            "RandomContrast",
+            "RandomGaussianIllumination",
+            "RandomLinearIllumination",
+            "RandomLinearCornerIllumination",
+            "RandomPlasmaBrightness",
+            "RandomPlasmaShadow",
+            "RandomSnow",
+            "RandomSharpness",
+            "RandomSolarize",
+        )
+    },
+    "RandomBrightness-default": lambda: K.RandomBrightness(p=1.0),
+    "ColorJiggle-contrast": lambda: K.ColorJiggle(0.0, 0.3, 0.0, 0.0, p=1.0),
+}
 
 # Fixture seed for the shared out-of-range images, and the seed drawn before each construct-and-forward.
 _FIXTURE_SEED = 1234
@@ -176,9 +184,10 @@ def _sync(device) -> None:
 
 
 def _kornia_warnings(caught: list[warnings.WarningMessage]) -> list[warnings.WarningMessage]:
-    # Warnings attributed to kornia's own source, as opposed to torch's or the test's.
-    root = os.path.dirname(kornia.__file__) + os.sep
-    return [w for w in caught if w.filename.startswith(root)]
+    # Every warning but torch's own: a kornia warning may be attributed to kornia's source or, through
+    # ``stacklevel``, to the caller.
+    root = os.path.dirname(torch.__file__) + os.sep
+    return [w for w in caught if not w.filename.startswith(root)]
 
 
 def _run(name: str, image: torch.Tensor, seed: int | None = None) -> torch.Tensor:
@@ -195,15 +204,20 @@ class TestIntensityValueRangeConventions(BaseTester):
     #   torch.manual_seed(1234); base = torch.rand(2, 3, 6, 8)
     #   for x in (base * 2.0, base - 1.0): torch.manual_seed(0); print(name, factory()(x).aminmax())
     @pytest.mark.parametrize("name", sorted(_INTENSITY_FACTORIES))
-    def test_convention_value_range_on_audit_fixtures(self, device, dtype, name):
-        groups = (_BOUNDED_ON_FIXTURES, _UPPER_BOUNDED_ON_FIXTURES, _OUT_OF_RANGE_ON_FIXTURES, _REJECTS_AUDIT_FIXTURES)
+    def test_convention_value_range_on_out_of_range_fixtures(self, device, dtype, name):
+        groups = (
+            _BOUNDED_ON_FIXTURES,
+            _UPPER_BOUNDED_ON_FIXTURES,
+            _OUT_OF_RANGE_ON_FIXTURES,
+            _REJECTS_OUT_OF_RANGE_FIXTURES,
+        )
         assert set().union(*groups) == set(_INTENSITY_FACTORIES)
-        if name in _REJECTS_AUDIT_FIXTURES and device.type == "cuda":
+        if name in _REJECTS_OUT_OF_RANGE_FIXTURES and device.type == "cuda":
             pytest.skip("CUDA: the value assert is a device-side assert that invalidates the context")
         if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         fixtures = _out_of_range_fixtures(device, dtype)
-        if name in _REJECTS_AUDIT_FIXTURES:
+        if name in _REJECTS_OUT_OF_RANGE_FIXTURES:
             # kornia's own value check, which names the range.
             for image in fixtures.values():
                 with pytest.raises(RuntimeError, match=r"\[0, 1\]"):
@@ -224,7 +238,7 @@ class TestIntensityValueRangeConventions(BaseTester):
                     break
             if moved:
                 break
-        assert moved, f"{name} returned the audit fixtures unchanged on every seed tried"
+        assert moved, f"{name} returned the out-of-range fixtures unchanged on every seed tried"
         if name in _BOUNDED_ON_FIXTURES:
             for tag, (low, high) in ranges.items():
                 assert float(low) >= -tol, f"{name} on {tag} left the lower end unclamped"
@@ -282,19 +296,41 @@ class TestIntensityValueRangeConventions(BaseTester):
         out = aug(image)
         self.assert_close(out, torch.full_like(image, expected))
 
-    # Issue #4430: these factories silently return an all-zero image for the all-negative fixture.  The
-    # pin asserts the silence as well as the zeros, so a fix that rejects or warns flips it; a fix that
-    # instead rules the clamp to be the policy renames it to a convention pin.
+    # Issue #4430: these factories silently return an all-zero image for an all-negative input.  The pin
+    # asserts the silence as well as the zeros, so a fix that rejects or warns flips it; a fix that instead
+    # rules the clamp to be the policy renames it to a convention pin.
     # Snippet used to generate expected:
-    #   torch.manual_seed(1234); x = torch.rand(2, 3, 6, 8) - 1.0
-    #   torch.manual_seed(0); print(factory()(x).abs().max())
-    @pytest.mark.parametrize("name", _COLLAPSES_ON_NEGATIVE_FIXTURE)
-    def test_wart_intensity_negative_input_collapses_to_zero_4430(self, device, dtype, name):
-        image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
+    #   x = torch.full((2, 3, 6, 8), -1.0); torch.manual_seed(seed); print(factory()(x).abs().max())
+    @pytest.mark.parametrize("name", sorted(_COLLAPSES_ON_CONSTANT_MINUS_ONE))
+    @pytest.mark.parametrize("seed", [0, 1, 2])
+    def test_wart_intensity_negative_input_collapses_to_zero_4430(self, device, dtype, name, seed):
+        image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
+        torch.manual_seed(seed)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            out = _run(name, image, seed=0)
+            out = _COLLAPSES_ON_CONSTANT_MINUS_ONE[name]()(image)
+            _sync(image.device)
         assert float(out.abs().max()) == 0.0
+        assert not _kornia_warnings(caught)
+
+    # Issue #4430, RandomPlasmaContrast: ``(x - 0.5) * 4 * plasma + 0.5`` sends a constant -1 image to zero
+    # wherever the map is at least 1/12, so whether it collapses depends on the drawn map.  The draw is
+    # pinned by replaying ``params`` with a constant map.
+    @pytest.mark.parametrize(("level", "collapses"), [(0.5, True), (0.0, False)])
+    def test_wart_random_plasma_contrast_negative_collapse_depends_on_the_map_4430(
+        self, device, dtype, level, collapses
+    ):
+        image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
+        aug = K.RandomPlasmaContrast(p=1.0)
+        torch.manual_seed(_FORWARD_SEED)
+        aug(image)
+        params = dict(aug._params)
+        params["plasma"] = torch.full_like(params["plasma"], level)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            out = aug(image, params=params)
+            _sync(image.device)
+        assert (float(out.abs().max()) == 0.0) is collapses
         assert not _kornia_warnings(caught)
 
     # Issue #4430: RandomPosterize posterizes the `uint8` conversion of the raw float, not of the clamped
@@ -334,22 +370,22 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert torch.equal(out, image)
 
     # Issue #4430: on a negative input `x ** gamma` is NaN for a non-integer gamma and the clamp keeps it;
-    # an integer gamma stays finite.
+    # an integer gamma stays finite, and the default gamma=1 clamps every negative value to 0.
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); neg = torch.rand(2, 3, 6, 8) - 1.0
     #   torch.manual_seed(0); print(K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(neg).isnan().all())
-    @pytest.mark.parametrize(("gamma", "nan_expected"), [(0.5, True), (2.0, False)])
-    def test_wart_random_gamma_negative_input_is_nan_4430(self, device, dtype, gamma, nan_expected):
+    @pytest.mark.parametrize(("gamma", "expected"), [(0.5, "nan"), (1.0, "zero"), (2.0, "positive")])
+    def test_wart_random_gamma_negative_input_is_nan_4430(self, device, dtype, gamma, expected):
         image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
         assert float(image.max()) < 0.0, "the fixture must be strictly negative for the power to be NaN"
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(image)
         _sync(image.device)
-        if nan_expected:
+        if expected == "nan":
             assert bool(out.isnan().all()), f"gamma={gamma} on a negative input should be NaN throughout"
         else:
             assert bool(out.isfinite().all()), f"an integer gamma={gamma} should stay finite"
-            assert float(out.abs().max()) > 0.0
+            assert (float(out.abs().max()) > 0.0) is (expected == "positive")
 
     # RandomEqualize rejects an out-of-range input with kornia's error naming the [0, 1] range.  The guard
     # is `input * 255` inside (-1, 256), so less than one 8-bit code outside the range is admitted.
@@ -381,10 +417,7 @@ class TestIntensityValueRangeConventions(BaseTester):
     #   torch.manual_seed(0); K.RandomEqualize(p=0.0)(x)  # and K.RandomClahe(p=0.0)(x)
     #   v = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1).requires_grad_()
     #   torch.manual_seed(0); y = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(v); y.sum().backward()
-    #   print(torch.equal(y, v), v.grad.flatten().tolist())
-    # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32) -> both
-    # classes raise (`equalize expects input values in [0, 1]`, `index ... is out of bounds`; on mps the
-    # named message since #4600), then `True [nan, 1.0, 1.0, nan, 1.0, 1.0]`.
+    #   print(torch.equal(y, v), v.grad.flatten().tolist())  # -> True [nan, 1.0, 1.0, nan, 1.0, 1.0]
     def test_wart_p_gate_computes_the_skipped_samples_4576(self, device, dtype):
         if device.type == "cuda":
             pytest.skip("not on CUDA: the value asserts are device-side asserts that poison the context")
@@ -394,9 +427,7 @@ class TestIntensityValueRangeConventions(BaseTester):
             torch.manual_seed(_FORWARD_SEED)
             # It has to be the value check that fires, not merely some RuntimeError: the claim is that
             # the transform ran on a sample `p=0.0` was supposed to skip.
-            # MPS runs the value check too since #4600, so only the named error qualifies there.
-            gate_rejection = r"\[0, 1\]|out of bounds" if device.type == "cpu" else r"\[0, 1\]"
-            with pytest.raises(RuntimeError, match=gate_rejection):
+            with pytest.raises(RuntimeError, match=r"\[0, 1\]"):
                 _sync(cls(p=0.0)(image).device)
         values = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1)
         values = values.to(device=device, dtype=dtype).requires_grad_()
@@ -538,14 +569,16 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(cls(0.0, 0.0, 0.0, 0.0, p=1.0)(image), image)
 
-    # Issue #4430, ColorJitter: whether an all-negative input collapses depends on the order.  The brightness
-    # step clamps what is still negative to zero, but a contrast or saturation factor above 1 applied before
-    # it lifts part of the image first; a fixed order without index 0 skips the brightness clamp.
+    # Issue #4785, ColorJitter: the brightness guard tests the factor against 0, not the multiplier's neutral 1,
+    # so the factor 1 drawn by the default ``brightness=0.0`` still runs the clamping step.  Run first, it
+    # clamps an all-negative input to zero; a contrast or saturation factor above 1 applied before it lifts
+    # part of the image first.  A fix that skips a factor of 1 flips the brightness-first leg.  A fixed order
+    # without index 0 skips the step and its clamp.
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); neg = torch.rand(1, 3, 8, 8) - 1.0
     #   print(K.ColorJitter(p=1.0, order=order, contrast=(1.9, 1.9))(neg).aminmax())
     @pytest.mark.parametrize(("step", "kwargs"), [(1, {"contrast": (1.9, 1.9)}), (2, {"saturation": (1.9, 1.9)})])
-    def test_convention_color_jitter_negative_collapse_depends_on_the_order(self, device, dtype, step, kwargs):
+    def test_wart_color_jitter_default_brightness_step_clamps_4785(self, device, dtype, step, kwargs):
         torch.manual_seed(_FIXTURE_SEED)
         negative = (torch.rand(1, 3, 8, 8) - 1.0).to(device=device, dtype=dtype)
         brightness_first = K.ColorJitter(p=1.0, order=(0, step), **kwargs)(negative)
@@ -908,7 +941,8 @@ class TestIntensityColourConventions(BaseTester):
     def test_wart_random_rgb_shift_tuple_limit_raises_a_raw_type_error_4782(self):
         with pytest.raises(TypeError) as info:
             K.RandomRGBShift((0.1, 0.5), p=1.0)
-        assert type(info.value) is TypeError
+        # A kornia rejection would name the argument; the raw error from the unary minus does not.
+        assert "limit" not in str(info.value)
 
     # `pl` is a persistent buffer holding the table the mode selects -- 25 rows for blackbody, 23 for CIED --
     # and `select_from` narrows it.
@@ -1114,19 +1148,19 @@ class TestIntensityColourConventions(BaseTester):
                 "hue_scalar_above_half",
                 "construction",
                 ValueError,
-                r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\), got tensor\(\[-0\.6000,  0\.6000\]\)",
+                r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\), got tensor\(\[-0\.6\d*,\s*0\.6\d*\]\)",
             ),
             (
                 "brightness_scalar_above_two",
                 "construction",
                 ValueError,
-                r"brightness out of bounds\. Expected inside \(0\.0, 2\.0\), got tensor\(\[-2\.,  4\.\]\)",
+                r"brightness out of bounds\. Expected inside \(0\.0, 2\.0\), got tensor\(\[-2\.\d*,\s*4\.\d*\]\)",
             ),
             (
                 "solarize_scalar_threshold_above_half",
                 "construction",
                 ValueError,
-                r"thresholds out of bounds\. Expected inside \(0\.0, 1\.0\), got tensor\(\[-1\.5000,  2\.5000\]\)",
+                r"thresholds out of bounds\. Expected inside \(0\.0, 1\.0\), got tensor\(\[-1\.5\d*,\s*2\.5\d*\]\)",
             ),
         ],
     )
@@ -1204,21 +1238,27 @@ class TestIntensityColourConventions(BaseTester):
     @pytest.mark.device_agnostic
     def test_convention_scalar_magnitude_floors_low_and_rejects_high(self):
         for ctor, message in (
-            (lambda: K.RandomHue(0.7, p=1.0), r"hue out of bounds\. .*got tensor\(\[-0\.7000,  0\.7000\]\)"),
-            (lambda: K.RandomBrightness(3.0, p=1.0), r"brightness out of bounds\. .*got tensor\(\[-2\.,  4\.\]\)"),
+            (lambda: K.RandomHue(0.7, p=1.0), r"hue out of bounds\. .*got tensor\(\[-0\.7\d*,\s*0\.7\d*\]\)"),
+            (
+                lambda: K.RandomBrightness(3.0, p=1.0),
+                r"brightness out of bounds\. .*got tensor\(\[-2\.\d*,\s*4\.\d*\]\)",
+            ),
             (
                 lambda: K.ColorJiggle(brightness=1.5, p=1.0),
-                r"brightness out of bounds\. .*got tensor\(\[-0\.5000,  2\.5000\]\)",
+                r"brightness out of bounds\. .*got tensor\(\[-0\.5\d*,\s*2\.5\d*\]\)",
             ),
             (
                 lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
-                r"thresholds out of bounds\. .*got tensor\(\[-1\.5000,  2\.5000\]\)",
+                r"thresholds out of bounds\. .*got tensor\(\[-1\.5\d*,\s*2\.5\d*\]\)",
             ),
             (
                 lambda: K.RandomMotionBlur(3, 45.0, 2.0, p=1.0),
-                r"direction out of bounds\. .*got tensor\(\[-2\.,  2\.\]\)",
+                r"direction out of bounds\. .*got tensor\(\[-2\.\d*,\s*2\.\d*\]\)",
             ),
-            (lambda: K.RandomJPEG(90.0, p=1.0), r"jpeg_quality out of bounds\. .*got tensor\(\[-40\., 140\.\]\)"),
+            (
+                lambda: K.RandomJPEG(90.0, p=1.0),
+                r"jpeg_quality out of bounds\. .*got tensor\(\[-40\.\d*,\s*140\.\d*\]\)",
+            ),
         ):
             with pytest.raises(ValueError, match=message):
                 ctor()
@@ -1320,7 +1360,8 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         with pytest.raises(RuntimeError) as info:
             _sync(K.RandomClahe(p=1.0)(torch.rand(1, 1, 8, 8, device=device, dtype=dtype)).device)
-        assert type(info.value) in (RuntimeError, torch.AcceleratorError)
+        # A kornia error would name the grid; torch's padding error does not.
+        assert "grid" not in str(info.value).lower()
 
     # Issue #4572: each image is equalized with its own `clip_limit_factor` draw, not the first sample's.
     @pytest.mark.device_agnostic
@@ -1339,9 +1380,9 @@ class TestIntensityColourConventions(BaseTester):
         first = int((clip - clip[0]).abs().argmax())
         assert not torch.equal(out[first : first + 1], equalize_clahe(image[first : first + 1], float(clip[0]), (2, 2)))
 
-    # When every draw is equal the batch is equalized in one call; the result equals the per-image path.
+    # With `same_on_batch=True` every image is equalized with the one shared draw.
     @pytest.mark.device_agnostic
-    def test_convention_random_clahe_equal_clip_limits_take_the_batched_path_4572(self):
+    def test_convention_random_clahe_same_on_batch_shares_one_clip_limit_4572(self):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(8, 1, 32, 32) ** 3
         torch.manual_seed(_FORWARD_SEED)
@@ -1350,7 +1391,6 @@ class TestIntensityColourConventions(BaseTester):
         clip = aug._params["clip_limit_factor"]
         assert bool((clip == clip[0]).all())
         assert torch.equal(out, equalize_clahe(image, float(clip[0]), (2, 2)))
-        # The per-image path must agree with it row by row, so the fast path is an optimization only.
         for row in range(image.shape[0]):
             assert torch.equal(out[row : row + 1], equalize_clahe(image[row : row + 1], float(clip[0]), (2, 2)))
 

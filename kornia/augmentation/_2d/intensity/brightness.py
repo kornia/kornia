@@ -28,8 +28,9 @@ from kornia.enhance.adjust import adjust_brightness
 class RandomBrightness(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the brightness of a torch.Tensor image.
 
-    The shift is additive: the output is ``input + (factor - 1)``. torchvision's and PIL's brightness is
-    multiplicative (``input * factor``); :class:`ColorJitter`'s brightness step is that formula.
+    The shift is additive: the output is ``input + (factor - 1)``, before the default clamp. torchvision's and
+    PIL's brightness is multiplicative (``input * factor``); :class:`ColorJitter`'s brightness step is that
+    formula.
 
     .. image:: _static/img/RandomBrightness.png
 

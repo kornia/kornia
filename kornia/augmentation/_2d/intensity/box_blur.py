@@ -48,10 +48,11 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
 
     Convention:
         - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.box_blur`. An even
-          entry is accepted and centres the window half a pixel toward the top-left, where
-          :class:`RandomGaussianBlur` raises.
+          entry is accepted and shifts the image half a pixel toward the top-left -- for an even extent ``k``, output
+          ``i`` averages inputs ``i - k // 2 + 1`` to ``i + k // 2`` -- where :class:`RandomGaussianBlur` raises.
         - the output is not clamped. At the default ``border_type="reflect"`` every output value is a mean of
-          input values and stays between the input's extremes; ``border_type="constant"`` pads with zeros, which
+          input values and stays between the input's extremes, up to the rounding of the kernel weights;
+          ``border_type="constant"`` pads with zeros, which
           pulls a border pixel toward ``0``.
 
     .. note::

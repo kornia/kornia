@@ -47,8 +47,10 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
         - these classes assume the ``[0, 1]`` float image range stated under "Image tensors" in
           :doc:`/get-started/conventions`. The base does not validate it. Outside that range each class applies
           the policy its own page states: some clamp, some rescale or round-trip through ``uint8``,
-          :class:`RandomPlanckianJitter` clamps only the upper end, the rest pass values through, and
-          :class:`RandomEqualize` and :class:`RandomClahe` raise a ``RuntimeError`` naming the range.
+          :class:`RandomPlanckianJitter` clamps only the upper end, :class:`RandomEqualize` and
+          :class:`RandomClahe` raise a ``RuntimeError`` naming the range, and the rest do not clamp -- though
+          the colour-space classes (:class:`RandomSaturation`, :class:`RandomHue`, :class:`RandomSnow`) can
+          still move an out-of-range pixel, as their pages state.
         - what this block and the class pages say about an output describes the samples the ``p`` gate
           transforms; every other sample comes back with its input values. Below ``p=1`` the transform is
           still computed for every sample and the gate then selects, so a skipped sample that fails a value
@@ -61,15 +63,18 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`Denormalize` and :class:`RandomDissolving` hard-code ``same_on_batch=True``. A drawn
           whole-image field (``gaussian_noise``, ``gradient``, ``plasma``, and :class:`RandomSaltAndPepperNoise`'s
           ``mask_salt`` and ``mask_pepper``) is stored with the batched ``(B, C, H, W)`` input shape, even for a
-          ``(C, H, W)`` input with ``keepdim=True``. With ``same_on_batch=True``, ``gaussian_noise`` is stored as
+          ``(C, H, W)`` input with ``keepdim=True``; :class:`RandomPlasmaShadow`'s single-channel map is
+          ``(B, 1, H, W)``. With ``same_on_batch=True``, ``gaussian_noise`` is stored as
           ``(1, C, H, W)`` and the plasma classes store an expanded view that shares one map across the batch.
-        - where a class documents bounds for a parameter, a range outside them raises at construction. A scalar
-          magnitude ``x`` means ``center ± x`` with its lower end floored at the bound, so ``contrast=1.5`` reads
-          as ``[0, 2.5]``, while an upper end past the bound raises. These checks run on the forward pass
+        - where a class documents bounds for a parameter, a range outside them usually raises at construction;
+          a class page states its exceptions. For a parameter centred on a neutral value, a scalar magnitude
+          ``x`` means ``center ± x`` with its lower end floored at the bound, so ``contrast=1.5`` reads as
+          ``[0, 2.5]``, while an upper end past the bound raises. These checks run on the forward pass
           instead: :class:`RandomGamma`'s non-negative ``gamma`` and ``gain``; :class:`RandomGaussianBlur`'s
-          ``sigma`` of ``0`` and even ``kernel_size``; :class:`RandomRain`'s drop sizes against the image;
-          :class:`RandomMotionBlur`'s drawn kernel size below ``3``; and :class:`RandomChannelDropout`'s
-          ``num_drop_channels`` against the channel count.
+          ``sigma`` of ``0`` and even ``kernel_size``; :class:`RandomMedianBlur`'s even ``kernel_size``, with a
+          raw error (`#4781 <https://github.com/kornia/kornia/issues/4781>`_); :class:`RandomRain`'s drop sizes
+          against the image; :class:`RandomMotionBlur`'s drawn kernel size below ``3``; and
+          :class:`RandomChannelDropout`'s ``num_drop_channels`` against the channel count.
 
     .. warning::
         Several of these classes return an all-zero image, with no warning, for an input whose values are all

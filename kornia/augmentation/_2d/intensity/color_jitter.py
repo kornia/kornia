@@ -65,16 +65,26 @@ class ColorJitter(IntensityAugmentationBase2D):
         - see :class:`ColorJiggle` for how the two classes relate. This class takes the brightness factor as
           drawn, a multiplier whose identity is ``1``, and a scalar ``brightness`` above ``1`` draws from
           ``[0, 1 + brightness]``, as torchvision does.
-        - every step in the order is computed, even when its factor is neutral: the hue step rejects any channel
-          count but three and the saturation step any but one or three. The brightness, contrast and
-          (three-channel) saturation steps clamp into ``[0, 1]``, and a scalar ``brightness`` -- the default
-          ``0.0`` included, which draws ``1`` -- runs the brightness step, so ``ColorJitter(0, 0, 0, 0)`` is the
-          identity only for an input in ``[0, 1]``. A fixed ``order`` without index ``0`` skips that step.
+        - every step in the order is computed, and its result discarded when its factor is neutral, so the hue
+          step rejects any channel count but three and the saturation step any but one or three, whatever the
+          factors. The brightness, contrast and (three-channel) saturation steps clamp into ``[0, 1]`` when they
+          apply. A fixed ``order`` without index ``0`` skips the brightness step.
 
     .. warning::
-        A drawn brightness factor of ``0`` is treated as neutral: a batch whose factors are all ``0``, such as
-        ``brightness=(0.0, 0.0)``, comes back unchanged instead of black. Tracked in
+        The brightness step is guarded against a drawn factor of ``0`` instead of the multiplier's neutral ``1``.
+        A batch whose factors are all ``0``, such as ``brightness=(0.0, 0.0)``, comes back unchanged instead of
+        black, and the factor ``1`` that the default ``brightness=0.0`` draws still runs the clamping step, so
+        ``ColorJitter(0, 0, 0, 0)`` clamps an out-of-range input. Tracked in
         `#4785 <https://github.com/kornia/kornia/issues/4785>`_.
+
+    .. warning::
+        On an input that is not three-channel, which a fixed ``order`` leaving out the steps that reject it admits,
+        the contrast step blends each sample with the mean of the whole batch rather than its own. Tracked in
+        `#4806 <https://github.com/kornia/kornia/issues/4806>`_.
+
+    .. warning::
+        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
+        Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
 
     .. warning::
         Because the brightness, contrast and saturation steps clamp, an all-negative input can come back as an

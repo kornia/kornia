@@ -68,14 +68,14 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
         - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]`` with
           shape ``(B,)``, so every sample uses that size even with ``same_on_batch=False``; angle and direction
-          are drawn per sample. A tuple range draws each odd size inside it with equal probability, bounds
-          included, so ``(3, 20)`` draws ``3, 5, ..., 19``. A range that holds no odd size is rounded up out of
-          the requested range, so ``(4, 4)`` draws ``5``; a reversed one such as ``(20, 3)`` raises at
-          construction.
+          are drawn per sample unless ``same_on_batch=True``. A tuple range draws each odd size inside it with
+          equal probability, bounds included, so ``(3, 20)`` draws ``3, 5, ..., 19``. A range that holds no odd
+          size is rounded up out of the requested range, so ``(4, 4)`` draws ``5``; a reversed one such as
+          ``(20, 3)`` raises at construction.
         - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a border
           pixel is pulled toward ``0``. With ``border_type="reflect"`` the result stays between the input's
-          extremes at ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative
-          weights, and the result can overshoot both extremes.
+          extremes, up to rounding, at ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives
+          the kernel negative weights, and the result can overshoot both extremes.
         - an image smaller than the kernel is accepted, down to ``1 x 1``, at the default
           ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` needs each spatial axis longer than
           the kernel radius along it, and ``"circular"`` at least that long.

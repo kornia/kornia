@@ -114,7 +114,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
           channels, a brightness- or contrast-only configuration accepts any. The brightness and contrast steps
           clamp into ``[0, 1]``; saturation and hue do not clamp the RGB result.
         - a fixed ``order`` makes a three-channel transform ``torch.compile`` fullgraph-safe; the default sampled
-          order does not. Differentiating the compiled transform needs torch ``2.7`` or newer.
+          order does not.
 
     .. warning::
         Because the brightness and contrast steps clamp, an all-negative input can come back as an all-zero

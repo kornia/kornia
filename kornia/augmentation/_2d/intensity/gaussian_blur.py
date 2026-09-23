@@ -60,14 +60,18 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
           truncate the Gaussian narrows the blur along its axis.
         - the defaults ``separable=True`` and ``border_type="reflect"`` are the function's own defaults.
         - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
-          mean of input values and stays between the input's extremes; ``border_type="constant"`` pads with
-          zeros, which pulls a border pixel toward ``0``.
+          mean of input values and stays between the input's extremes, up to the rounding of the kernel weights;
+          ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``.
 
     .. note::
         The padding sets a minimum image size: at ``border_type="reflect"`` each spatial axis must be longer than
         the kernel's radius along it, and at ``"circular"`` at least that long; a smaller image raises a
         ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` run
         down to a single pixel.
+
+    .. warning::
+        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
+        Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
 
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.

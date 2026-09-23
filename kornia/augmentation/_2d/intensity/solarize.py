@@ -59,7 +59,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
 
     .. warning::
         An input entirely outside ``[0, 1]`` can collapse at either end. An all-negative input comes back as an
-        all-zero image when the drawn addition does not lift it above zero. At the upper end,
+        all-zero image when the drawn addition does not lift it above zero and the drawn threshold is above ``0``;
+        a threshold of ``0`` inverts the clamped zeros into ones. At the upper end,
         ``clamp(x + a, 0, 1)`` sends every ``x >= 1.5`` to exactly ``1.0`` for any admissible ``a``, which the
         inversion returns as ``0``, so such an input is an all-zero image on every draw. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.

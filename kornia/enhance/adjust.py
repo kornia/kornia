@@ -1467,7 +1467,9 @@ class AdjustContrast(nn.Module):
 class AdjustContrastWithMeanSubtraction(nn.Module):
     r"""Adjust Contrast of an image.
 
-    It blends the image with its grayscale mean, ``factor * image + (1 - factor) * mean``, as torchvision and PIL do.
+    For an RGB image it blends the image with its grayscale mean, ``factor * image + (1 - factor) * mean``, as
+    torchvision and PIL do. Any other channel count takes the mean over the whole batch rather than per image
+    (`#4806 <https://github.com/kornia/kornia/issues/4806>`_).
     The input image is expected to be in the range of [0, 1].
 
     Args:
