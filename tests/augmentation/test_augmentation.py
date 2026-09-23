@@ -3975,9 +3975,9 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.5000, 2.0000],
-                        [4.0000, 4.5000, 5.0000],
-                        [7.0000, 7.5000, 8.0000],
+                        [3.0000, 4.0000, 5.0000],
+                        [4.5000, 5.5000, 6.5000],
+                        [6.0000, 7.0000, 8.0000],
                     ]
                 ]
             ],
@@ -3985,13 +3985,14 @@ class TestRandomResizedCrop(BaseTester):
             dtype=dtype,
         )
         rrc = RandomResizedCrop(size=(3, 3), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         self.assert_close(out, expected)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
-            [[[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]]],
+            [[[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]],
             device=device,
             dtype=dtype,
         )
@@ -4013,10 +4014,10 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.3333, 1.6667, 2.0000],
-                        [3.0000, 3.3333, 3.6667, 4.0000],
-                        [5.0000, 5.3333, 5.6667, 6.0000],
-                        [7.0000, 7.3333, 7.6667, 8.0000],
+                        [3.0000, 3.6667, 4.3333, 5.0000],
+                        [4.0000, 4.6667, 5.3333, 6.0000],
+                        [5.0000, 5.6667, 6.3333, 7.0000],
+                        [6.0000, 6.6667, 7.3333, 8.0000],
                     ]
                 ]
             ],
@@ -4025,14 +4026,15 @@ class TestRandomResizedCrop(BaseTester):
         )
 
         rrc = RandomResizedCrop(size=(4, 4), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         assert out.shape == torch.Size([1, 1, 4, 4])
         self.assert_close(out, exp, low_tolerance=True)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
-            [[[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]]],
+            [[[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]],
             device=device,
             dtype=dtype,
         )
@@ -4054,16 +4056,16 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.5000, 2.0000],
-                        [4.0000, 4.5000, 5.0000],
-                        [7.0000, 7.5000, 8.0000],
+                        [3.0000, 4.0000, 5.0000],
+                        [4.5000, 5.5000, 6.5000],
+                        [6.0000, 7.0000, 8.0000],
                     ]
                 ],
                 [
                     [
-                        [0.0000, 0.5000, 1.0000],
-                        [3.0000, 3.5000, 4.0000],
-                        [6.0000, 6.5000, 7.0000],
+                        [0.0000, 1.0000, 2.0000],
+                        [1.5000, 2.5000, 3.5000],
+                        [3.0000, 4.0000, 5.0000],
                     ]
                 ],
             ],
@@ -4071,15 +4073,16 @@ class TestRandomResizedCrop(BaseTester):
             dtype=dtype,
         )
         rrc = RandomResizedCrop(size=(3, 3), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (2, 2) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         self.assert_close(out, expected)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
             [
-                [[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]],
-                [[[0.0, 1.0, 0.0], [3.0, 4.0, 0.0], [6.0, 7.0, 0.0]]],
+                [[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]],
+                [[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [0.0, 0.0, 0.0]]],
             ],
             device=device,
             dtype=dtype,

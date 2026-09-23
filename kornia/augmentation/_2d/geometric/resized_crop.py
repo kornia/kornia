@@ -66,10 +66,11 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         (`#4417 <https://github.com/kornia/kornia/issues/4417>`_). ``p`` selects or skips the whole batch together.
         Within a selected batch, the generator tries ten candidate crops per image, sampling area fractions from
         ``scale`` and width/height ratios from ``ratio`` (shared with ``same_on_batch=True``), and resizes the first
-        that fits to the requested output size. A candidate must be strictly smaller than the input on both axes,
-        and the fallback compares height/width, not width/height, with ``min(ratio)``, so ``scale=(1.0, 1.0)``
-        never keeps a square or portrait image and can leave both ranges: an 8x6 input gives a 4x6 crop where
-        torchvision keeps 8x6 (`#4814 <https://github.com/kornia/kornia/issues/4814>`_).
+        that fits to the requested output size. As in torchvision's ``get_params``, a candidate may equal the input,
+        and when none fits the fallback size keeps an input whose width/height is within ``ratio`` whole, so
+        ``scale=(1.0, 1.0)`` keeps the whole image; otherwise it keeps the full width (input narrower than
+        ``min(ratio)``) or the full height (wider than ``max(ratio)``). Unlike torchvision, which centres the fallback
+        crop, it is placed at a random position like any other crop.
 
         Both cropping modes use the configured interpolation and ``align_corners``, so slice mode raises for
         ``resample="nearest"`` unless ``align_corners=None``
@@ -91,13 +92,13 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1., cropping_mode="resample")
         >>> out = aug(inputs)
         >>> out
-        tensor([[[[1.0000, 1.5000, 2.0000],
-                  [4.0000, 4.5000, 5.0000],
-                  [7.0000, 7.5000, 8.0000]]]])
+        tensor([[[[3.0000, 4.0000, 5.0000],
+                  [4.5000, 5.5000, 6.5000],
+                  [6.0000, 7.0000, 8.0000]]]])
         >>> aug.inverse(out, padding_mode="border")
-        tensor([[[[1., 1., 2.],
-                  [4., 4., 5.],
-                  [7., 7., 8.]]]])
+        tensor([[[[3., 4., 5.],
+                  [3., 4., 5.],
+                  [6., 7., 8.]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
