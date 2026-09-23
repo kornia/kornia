@@ -54,8 +54,7 @@ def _download_image(url: str, filename: str = "") -> Path:
 def png_image(tmp_path_factory):
     url = "https://github.com/kornia/data/raw/main/simba.png"
     filename = tmp_path_factory.mktemp("data") / "image.png"
-    filename = _download_image(url, str(filename))
-    return filename
+    return _download_image(url, str(filename))
 
 
 @pytest.fixture(scope="session")
@@ -71,8 +70,7 @@ def rgba_png_image(tmp_path_factory):
 def jpg_image(tmp_path_factory):
     url = "https://github.com/kornia/data/raw/main/crowd.jpg"
     filename = tmp_path_factory.mktemp("data") / "image.jpg"
-    filename = _download_image(url, str(filename))
-    return filename
+    return _download_image(url, str(filename))
 
 
 @pytest.fixture(scope="session")

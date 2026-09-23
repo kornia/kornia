@@ -39,9 +39,7 @@ class TestSolvePnpDlt(BaseTester):
         kornia.geometry.project_points can be used.
         """
         cam_points = kornia.geometry.transform_points(world_to_cam_4x4, world_points)
-        img_points = kornia.geometry.project_points(cam_points, repeated_intrinsics)
-
-        return img_points
+        return kornia.geometry.project_points(cam_points, repeated_intrinsics)
 
     @staticmethod
     def _get_world_points_and_img_points(cam_points, world_to_cam_4x4, repeated_intrinsics):
