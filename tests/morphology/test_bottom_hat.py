@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.morphology import bottom_hat, closing
+from kornia.morphology import morphology as morphology_module
 
 from testing.base import BaseTester, assert_close
 from testing.parametrized_tester import parametrized_test
@@ -123,12 +124,12 @@ class TestBottomHat(BaseTester):
 
         assert_close(actual, expected)
 
-    def test_convention_bottom_hat_is_closing_minus_image(self, device, dtype):
+    def test_convention_bottom_hat_is_closing_minus_image(self, device, dtype, monkeypatch):
         # `bottom_hat` is exactly `closing(x) - x` with the same kernel and the same options, so every
         # convention of :func:`kornia.morphology.closing` applies to it unchanged. This pins the
         # composition: both sides call the same `closing`, whose conventions are pinned in
-        # test_closing.py. The equality is repeated with a non-default `border_type`, `border_value` and
-        # `origin`, so a `bottom_hat` that dropped one of the options would show.
+        # test_closing.py. The equality is repeated with a non-default `border_type`, `border_value`, `origin`
+        # and `max_val`, so a `bottom_hat` that dropped one of the options would show.
         # `bottom_hat` evaluates that very expression, so the two sides are bitwise equal in every dtype.
         # Generated with:
         #   L = torch.tensor([[0., 0., 0.], [0., 1., 1.], [0., 1., 0.]])
@@ -140,5 +141,18 @@ class TestBottomHat(BaseTester):
         assert torch.equal(bottom_hat(tensor, l_kernel), closing(tensor, l_kernel) - tensor)
         # The closing is extensive, so the bottom hat is non-negative.
         assert (bottom_hat(tensor, l_kernel) >= 0).all()
-        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0]}
+        # `max_val=0.1` is inside the data range, so a `bottom_hat` that dropped it for the default `1e4` would show.
+        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0], "max_val": 0.1}
         assert torch.equal(bottom_hat(tensor, l_kernel, **options), closing(tensor, l_kernel, **options) - tensor)
+
+        # ... and both halves of the `closing` receive the caller's `engine`, which the result need not reveal.
+        seen = []
+        resolve = morphology_module._resolve_engine
+
+        def record(engine, *args):
+            seen.append(engine)
+            return resolve(engine, *args)
+
+        monkeypatch.setattr(morphology_module, "_resolve_engine", record)
+        bottom_hat(tensor, l_kernel, engine="unfold")
+        assert seen == ["unfold", "unfold"]

@@ -86,7 +86,7 @@ class TestErode(BaseTester):
         # the error scales with `max_val` rather than with the image range; under `replicate` the same
         # fixture's gap is 2.98e-8, and MPS measures exactly 0 here (torch 2.14.0), so the backend matters
         # too. One float32 ULP at the default `max_val=1e4` is 9.7656e-4, and the largest
-        # engine gap measured (rand(1, 1, 9, 11) seed 0, ones(3, 3)) is 1.2736e-3, i.e. ~1.3 ULP.
+        # erosion engine gap measured (rand(1, 1, 9, 11) seed 0, ones(3, 3)) is 1.2360e-3, i.e. ~1.3 ULP.
         # The relative figure exceeds `rtol=1e-3`; the assertion passes on `atol=1e-3`, because the
         # error is absolute and the tightest entry here is `expected == 0.2`, where the absolute error
         # measures 2.9297e-4, i.e. the reported relative figure is (2.9297e-4 / 0.2).
@@ -442,9 +442,10 @@ class TestErode(BaseTester):
         # and it holds its default origin cell [1, 1], so no window is empty. Every value is a small
         # integer, exact in every dtype. The empty-window counterexample is pinned in
         # test_wart_dilation_max_val_sentinel_leaks_4734.
-        # Measured with kornia in this worktree (torch 2.14.0, CPU, float64): 6000 random kernels with their
-        # origin cell set, random origins, sizes 1-4 and integer images, a third with an integer non-flat
-        # structuring element -- geodesic 0 and circular 0 failures, replicate 2, reflect 3, constant 10.
+        # Measured with kornia in this worktree (torch 2.14.0, CPU, float64, `torch.Generator().manual_seed(0)`):
+        # 6000 random kernels of size 1-4 with a random origin whose cell is set, integer images in [-5, 5] of
+        # size 4-7, a third with an integer non-flat structuring element in [-3, 3], and the tightest
+        # y = dilation(x) -- geodesic 0 and circular 0 failures, replicate 2819, reflect 4179, constant 4837.
         x = torch.tensor(
             [[3.0, 0.0, 5.0, 1.0, 2.0, 7.0], [0.0, 4.0, 1.0, 6.0, 0.0, 2.0], [2.0, 1.0, 0.0, 3.0, 5.0, 1.0]],
             device=device,
@@ -589,7 +590,6 @@ class TestErode(BaseTester):
         # modes still disagree, because the OUTER members still reach outside the image.
         gapped_row = torch.tensor([[0.0, 9.0, 9.0, 9.0, 9.0]], device=device, dtype=dtype)[None, None]
         gapped_kernel = torch.tensor([[1.0, 0.0, 1.0, 0.0, 1.0]], device=device, dtype=dtype)
-        assert gapped_kernel[0, 2] != 0
         assert torch.equal(
             erosion(gapped_row, gapped_kernel),
             torch.tensor([[0.0, 9.0, 0.0, 9.0, 9.0]], device=device, dtype=dtype)[None, None],

@@ -18,7 +18,8 @@
 import pytest
 import torch
 
-from kornia.morphology import closing
+from kornia.morphology import closing, dilation, erosion
+from kornia.morphology import morphology as morphology_module
 
 from testing.base import BaseTester, assert_close, supports_replicate_padding
 from testing.parametrized_tester import parametrized_test
@@ -141,7 +142,7 @@ class TestClosing(BaseTester):
         assert (closed >= tensor).all()
         assert torch.equal(closing(closed, kernel, origin=[0, 0]), closed)
 
-    def test_convention_closing_is_a_morphological_closing(self, device, dtype):
+    def test_convention_closing_is_a_morphological_closing(self, device, dtype, monkeypatch):
         # `closing` is `erosion(dilation(x))` with the SAME kernel in both halves, so it is a
         # morphological closing: extensive and idempotent for an asymmetric kernel. That holds EXACTLY
         # for the two kernels below at the default origin (and, for ones(3, 3) at origin=[0, 0], in
@@ -152,7 +153,8 @@ class TestClosing(BaseTester):
         # to `closing(x, A.flip((0, 1)))` and differs from `closing(x, A)` on 5 border pixels of
         # column 0 (the interiors agree); the same flipped-kernel equality holds for the L kernel and, at
         # the default origin, for the even kernels [[1, 0]], ones(2, 2), [[1, 1, 0, 1]] and [[0, 1, 1, 1]]
-        # (rand(1, 1, 7, 10) seeds 0-2, float64). scipy has no ignore mode: `grey_closing(..., mode="constant",
+        # (`torch.rand(1, 1, 7, 10, dtype=torch.float64)` with `torch.Generator().manual_seed(s)`, s = 0..2).
+        # scipy has no ignore mode: `grey_closing(..., mode="constant",
         # cval=inf)` pads its dilation half with +inf as well, so it is extensive but differs from
         # kornia's at the border (0.40 for A on `np.random.default_rng(0).random((7, 9))`) and returns inf on
         # the whole first column for `[[1, 0, 0]]`; it equals `blk` below only because that frame's border is
@@ -199,20 +201,32 @@ class TestClosing(BaseTester):
         # 7.8804e-13 (worst of 20 seeds 8.96e-13), under that ULP of 1.8190e-12 but not zero.
         # Over 20 seeds in all four dtypes the shortfall stays in columns W-2 and W-1, the column whose
         # dilation window is empty and the one before it, so everywhere else the extensivity is exact.
-        # That confinement is what can still fail in half precision, where the bound `2 * eps * 1e4`
-        # (19.5 in float16, 156 in bfloat16) is wider than the data.
-        # idempotence survives this kernel exactly; it is the opening half that loses it
-        # (see tests/morphology/test_opening.py). Tracked in #4734.
+        # That confinement is what can still fail in half precision, where one ULP of `max_val` (8 in float16,
+        # 64 in bfloat16) is wider than the data. `torch.finfo(dtype).eps * 8192` is that ULP for the default
+        # `max_val=1e4`, which lies in [8192, 16384); over 1000 frames the miss stays within half of it.
+        # On this non-negative frame idempotence survives this kernel exactly; it is the opening half that
+        # loses it (see tests/morphology/test_opening.py). Tracked in #4734.
+        one_ulp = torch.finfo(dtype).eps * 8192.0
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
         side_closed = closing(tensor, side_kernel)
         shortfall = (tensor - side_closed).clamp(min=0)
-        assert shortfall.max() <= 2.0 * torch.finfo(dtype).eps * 1e4
+        assert shortfall.max() < one_ulp
         assert not bool(shortfall[..., :-2].any())
         assert torch.equal(closing(side_closed, side_kernel), side_closed)
+        genuine = tensor
         if dtype == torch.float64:
             genuine = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=dtype).to(device)
             genuine_shortfall = (genuine - closing(genuine, side_kernel)).clamp(min=0).max()
-            assert 0.0 < genuine_shortfall < torch.finfo(dtype).eps * 8192.0
+            assert 0.0 < genuine_shortfall < one_ulp
+        # On negative data the erosion half's empty window (column 0, `max_val + m`) carries the data into the
+        # next closing's round trip, so the geodesic closing loses idempotence too, by less than that ULP.
+        # Measured with kornia in this worktree (torch 2.14.0 and 2.5.1, CPU and MPS) on the negated frame:
+        # float32 3.5977e-04 in column 1, float16 0.99707 and bfloat16 0.99609 in columns 1-2, genuine float64
+        # 3.6238e-13.
+        negative = -genuine
+        negative_closed = closing(negative, side_kernel)
+        drift = (closing(negative_closed, side_kernel) - negative_closed).abs()
+        assert 0.0 < drift.max() < one_ulp
 
         # That is the geodesic story only. `dilation` reads `x(p + 1)` and `erosion` reads `y(p - 1)`, so
         # under `replicate` the first column of the closing is `x(1)`, not `x(0)`, and the closing is not
@@ -228,3 +242,21 @@ class TestClosing(BaseTester):
             assert not bool((replicated >= dip).all())
             assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(closing(tensor, side_kernel, border_type="circular"), tensor)
+
+        # The composition itself: both halves get every option. `max_val=0.1` is inside the data range, so a
+        # half that fell back to the default `1e4` would show.
+        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0], "max_val": 0.1}
+        halves = erosion(dilation(tensor, l_kernel, **options), l_kernel, **options)
+        assert torch.equal(closing(tensor, l_kernel, **options), halves)
+
+        # ... and each half receives the caller's `engine`, which its result alone need not reveal.
+        seen = []
+        resolve = morphology_module._resolve_engine
+
+        def record(engine, *args):
+            seen.append(engine)
+            return resolve(engine, *args)
+
+        monkeypatch.setattr(morphology_module, "_resolve_engine", record)
+        closing(tensor, l_kernel, engine="unfold")
+        assert seen == ["unfold", "unfold"]

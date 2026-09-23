@@ -18,7 +18,8 @@
 import pytest
 import torch
 
-from kornia.morphology import opening
+from kornia.morphology import dilation, erosion, opening
+from kornia.morphology import morphology as morphology_module
 
 from testing.base import BaseTester, assert_close, supports_replicate_padding
 from testing.parametrized_tester import parametrized_test
@@ -146,7 +147,7 @@ class TestOpening(BaseTester):
         assert (opened <= tensor).all()
         assert torch.equal(opening(opened, kernel, origin=[0, 0]), opened)
 
-    def test_convention_opening_is_a_morphological_opening(self, device, dtype):
+    def test_convention_opening_is_a_morphological_opening(self, device, dtype, monkeypatch):
         # `opening` is `dilation(erosion(x))` with the SAME kernel in both halves. Because `dilation`
         # reflects the kernel and `erosion` does not, the composition is a morphological opening:
         # anti-extensive and idempotent for an asymmetric kernel, and it leaves a block that is a union
@@ -160,7 +161,8 @@ class TestOpening(BaseTester):
         # scikit-image mirrors the footprint inside `opening`, and on the 7x10 rand(seed 0)
         # frame `sm.opening(x, A, mode="ignore")` is bit-equal to `opening(x, A)`; so is the L kernel's.
         # For the even kernels [[1, 0]], ones(2, 2), [[1, 1, 0, 1]] and [[0, 1, 1, 1]] it is bit-equal to
-        # `opening(x, K, origin=[(k_h - 1) // 2, (k_w - 1) // 2])` (rand(1, 1, 7, 10) seeds 0-2, float64),
+        # `opening(x, K, origin=[(k_h - 1) // 2, (k_w - 1) // 2])` (`torch.rand(1, 1, 7, 10, dtype=torch.float64)`
+        # with `torch.Generator().manual_seed(s)`, s = 0..2),
         # where its erosion half anchors. For the three multi-cell ones it equals neither `opening(x, K)`
         # nor the flipped-kernel opening at the default origin (ones(2, 2): 0.805 apart on seed 0); for
         # `[[1, 0]]` the flipped-kernel opening and the earlier-origin one are both the identity, so it
@@ -210,21 +212,36 @@ class TestOpening(BaseTester):
         # 6.6624e-13 (worst of 20 seeds 9.07e-13), under that ULP of 1.8190e-12 but not zero.
         # Over 20 seeds in all four dtypes the miss stays in columns W-3 and W-2, the two before the column
         # whose dilation window is empty, so everywhere else the idempotence is exact. That confinement is
-        # what can still fail in half precision, where the bound `2 * eps * 1e4` (19.5 in float16, 156 in
-        # bfloat16) is wider than the data.
-        # anti-extensivity survives this kernel exactly; extensivity is the half that fails for
-        # `closing` (see tests/morphology/test_closing.py). Tracked in #4734.
+        # what can still fail in half precision, where one ULP of `max_val` (8 in float16, 64 in bfloat16)
+        # is wider than the data. `torch.finfo(dtype).eps * 8192` is that ULP for the default `max_val=1e4`,
+        # which lies in [8192, 16384); over 1000 frames the miss stays within half of it.
+        # On this non-negative frame anti-extensivity survives this kernel exactly; extensivity is the half
+        # that fails for `closing` (see tests/morphology/test_closing.py). Tracked in #4734.
+        one_ulp = torch.finfo(dtype).eps * 8192.0
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
         side_opened = opening(tensor, side_kernel)
         assert (side_opened <= tensor).all()
         deviation = (opening(side_opened, side_kernel) - side_opened).abs()
-        assert deviation.max() <= 2.0 * torch.finfo(dtype).eps * 1e4
+        assert deviation.max() < one_ulp
         assert not bool(deviation[..., :-3].any())
+        assert not bool(deviation[..., -1].any())
+        genuine = tensor
         if dtype == torch.float64:
             genuine = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=dtype).to(device)
             genuine_opened = opening(genuine, side_kernel)
             genuine_miss = (opening(genuine_opened, side_kernel) - genuine_opened).abs().max()
-            assert 0.0 < genuine_miss < torch.finfo(dtype).eps * 8192.0
+            assert 0.0 < genuine_miss < one_ulp
+        # On negative data the empty erosion window's `max_val + min(0, m)` carries `m` through the round trip,
+        # so the geodesic opening loses anti-extensivity too, by less than that ULP. Measured with kornia in
+        # this worktree (torch 2.14.0 and 2.5.1, CPU and MPS) on the negated frame: float32 3.5977e-04 in
+        # column 1, float16 0.99707 and bfloat16 0.99609 in columns 0-1, genuine float64 2.8855e-13.
+        negative = -genuine
+        overshoot = (opening(negative, side_kernel) - negative).clamp(min=0)
+        assert 0.0 < overshoot.max() < one_ulp
+        # An empty window is not an infinity here, and not always the sentinel either: `[0.5, 0.7]` opens to
+        # `[0.5, 0.0]` in every dtype, where scikit-image's `mode="ignore"` gives `[0.5, -inf]`.
+        pair = torch.tensor([[0.5, 0.7]], device=device, dtype=dtype)[None, None]
+        assert opening(pair, side_kernel).flatten().tolist() == [0.5, 0.0]
 
         # That is the geodesic story only. `erosion` reads `x(p - 1)` and `dilation` reads `y(p + 1)`, so
         # under `replicate` the last column of the opening is `x(W - 2)`, not `x(W - 1)`, and the opening
@@ -240,3 +257,21 @@ class TestOpening(BaseTester):
             assert not bool((replicated <= bump).all())
             assert torch.equal(opening(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(opening(tensor, side_kernel, border_type="circular"), tensor)
+
+        # The composition itself: both halves get every option. `max_val=0.1` is inside the data range, so a
+        # half that fell back to the default `1e4` would show.
+        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0], "max_val": 0.1}
+        halves = dilation(erosion(tensor, l_kernel, **options), l_kernel, **options)
+        assert torch.equal(opening(tensor, l_kernel, **options), halves)
+
+        # ... and each half receives the caller's `engine`, which its result alone need not reveal.
+        seen = []
+        resolve = morphology_module._resolve_engine
+
+        def record(engine, *args):
+            seen.append(engine)
+            return resolve(engine, *args)
+
+        monkeypatch.setattr(morphology_module, "_resolve_engine", record)
+        opening(tensor, l_kernel, engine="unfold")
+        assert seen == ["unfold", "unfold"]

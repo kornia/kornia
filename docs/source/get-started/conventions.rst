@@ -470,11 +470,12 @@ Morphology
 
 - :func:`kornia.morphology.dilation` **reflects** the structuring element (the Minkowski convention, as in
   ``scipy.ndimage``); :func:`kornia.morphology.erosion` does not. For an asymmetric kernel scikit-image returns
-  kornia's dilation by the *flipped* kernel, and OpenCV returns that dilation at
-  ``origin=[(k_h - 1) // 2, (k_w - 1) // 2]`` -- the default origin for an odd size, one cell earlier for an even one.
+  kornia's dilation by the *flipped* kernel, and OpenCV's ``anchor=(a_x, a_y)`` returns that dilation at
+  ``origin=[k_h - 1 - a_y, k_w - 1 - a_x]``, which at its default anchor is the default origin for an odd size and
+  one cell earlier for an even one.
 - ``origin`` is the ``[row, col]`` index of the structuring-element cell placed on the output pixel, not an offset
-  from the centre, and OpenCV's ``anchor`` is the same index in ``(x, y)`` order. The default is
-  ``[k_h // 2, k_w // 2]`` for even sizes too.
+  from the centre, and OpenCV's ``anchor`` is the same index in ``(x, y)`` order for erosion (for dilation see the
+  flip above). The default is ``[k_h // 2, k_w // 2]`` for even sizes too.
 - ``border_type``'s ``reflect`` does not mean what the same word means in scipy and scikit-image (``constant``
   does): torch's ``reflect`` is their ``mirror``, while their own ``reflect`` -- also their default -- repeats the
   edge sample and has no kornia spelling. See :func:`kornia.morphology.dilation` for the full convention block.
@@ -492,7 +493,7 @@ Morphology
      - yes
      - no
      - no
-   * - ``ones(2, 2)`` on a hot pixel at ``(2, 3)``
+   * - ``dilation`` by ``ones(2, 2)`` of a hot pixel at ``(2, 3)``
      - rows 1-2, cols 2-3
      - rows 1-2, cols 2-3
      - rows 1-2, cols 2-3
