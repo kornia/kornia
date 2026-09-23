@@ -412,6 +412,7 @@ class TestQuarticSolver(BaseTester):
 
         computed_roots_sorted, _ = torch.sort(computed_roots, dim=-1)
 
+        # 1. Check Residuals (Equation satisfaction)
         residuals = (
             coeffs[:, 0:1] * computed_roots**4
             + coeffs[:, 1:2] * computed_roots**3
@@ -419,17 +420,6 @@ class TestQuarticSolver(BaseTester):
             + coeffs[:, 3:4] * computed_roots
             + coeffs[:, 4:5]
         )
-
-        bad = torch.abs(residuals) > 1e-3
-
-        if bad.any():
-            print(f"\n[{dtype}] Random quartic failures:")
-            print("true_roots:", true_roots[bad.any(dim=-1)])
-            print("computed_roots:", computed_roots[bad.any(dim=-1)])
-            print("residuals:", residuals[bad.any(dim=-1)])
-            print("max_abs_residual:", torch.abs(residuals).max().item())
-
-
         self.assert_close(residuals, torch.zeros_like(residuals), atol=1e-3, rtol=1e-3)
 
         # 2. Check Root Matching (Stronger Test)
