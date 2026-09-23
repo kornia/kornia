@@ -559,10 +559,9 @@ class TestErode(BaseTester):
         #   erosion(..., border_type="constant")                                    -> 1 only at (1, 1:3)
         #   erosion(..., border_value=-5.0)                                         -> all 1 (ignored)
         #   erosion(..., border_type="constant", border_value=-5.0)                 -> -5 on the border
-        #   erosion(..., border_type="reflect", border_value=-5.0)
-        #       -> RuntimeError: Padding mode "reflect" doesn't take in value argument
-        # `border_value` is not merely ignored outside `constant`: kornia always forwards it to
-        # `F.pad`, and `reflect`, `replicate` and `circular` reject any value other than 0.0 (#4748).
+        #   erosion(..., border_type="reflect", border_value=-5.0)                  -> all 1 (ignored)
+        # `reflect`, `replicate` and `circular` ignore `border_value` as well; before #4748 was fixed
+        # kornia forwarded it to `F.pad`, which rejects any value other than 0.0 for those modes.
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
@@ -574,10 +573,15 @@ class TestErode(BaseTester):
         padded[..., 1, 1:3] = 1.0
         assert torch.equal(erosion(tensor, kernel, border_type="constant", border_value=-5.0), padded)
 
-        # Outside `geodesic` and `constant` a non-zero `border_value` is not ignored -- it raises.
+        # Outside `geodesic` and `constant` a non-zero `border_value` is ignored too: filled in, the -5
+        # would reach the border pixels, as it does under `constant` above. (torch 2.5.1 has no half-precision
+        # CPU `reflect`/`replicate` pad, so those two are probed first.)
         for border_type in ("reflect", "replicate", "circular"):
-            with pytest.raises(RuntimeError, match="doesn't take in value argument"):
-                erosion(tensor, kernel, border_type=border_type, border_value=-5.0)
+            if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+                continue
+            if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+                continue
+            assert torch.equal(erosion(tensor, kernel, border_type=border_type, border_value=-5.0), tensor)
 
     def test_convention_border_type_names_match_scipy_modes(self, device, dtype):
         # `border_type` accepts the four `torch.nn.functional.pad` modes on top of `geodesic`, and the

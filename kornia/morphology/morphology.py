@@ -219,14 +219,16 @@ def dilation(
         ``engine="convolution"``. The same sentinel is used in all seven functions. Keep it well above that
         range and finite in the operands' dtypes: a finite ``max_val`` above 65504 makes the geodesic pad of
         a ``float16`` image raise on CPU and CUDA but round on MPS, and storing it into a ``float16`` kernel or
-        structuring element raises on MPS and on CPU with torch 2.5.1 but rounds on CPU and CUDA with torch
-        2.14 (to ``-65504``, or to ``-inf`` from 65520).
+        structuring element -- which includes a ``bool`` or integer kernel on a ``float16`` image, since the
+        image lends it its dtype -- raises on MPS and on CPU with torch 2.5.1 but rounds on CPU and CUDA with
+        torch 2.14 (to ``-65504``, or to ``-inf`` from 65520).
         Tracked in `#4734 <https://github.com/kornia/kornia/issues/4734>`_.
 
     .. warning::
-        Only floating-point operands are supported. The ``max_val`` sentinel is stored into the image's
-        geodesic pad *and* into the kernel -- into ``structuring_element`` instead when one is given -- so what
-        a non-float call does depends on the pair of dtypes. The ``unfold`` and ``shift`` engines return
+        Only floating-point images are supported; on one, a ``bool`` or integer ``kernel`` is fine (see the
+        first item below). The ``max_val`` sentinel is stored into the image's geodesic pad *and* into the
+        kernel -- into ``structuring_element`` instead when one is given -- so what a non-float call does
+        depends on the pair of dtypes. The ``unfold`` and ``shift`` engines return
         their promoted dtype (``torch.promote_types`` of ``tensor`` and ``kernel``, or of ``tensor`` and
         ``structuring_element``):
         under a border other than ``geodesic``, a ``uint8`` image with a ``float64`` kernel returns
@@ -238,16 +240,18 @@ def dilation(
         cell a member), MPS and CUDA reject every integer image, and a ``bool`` image raises on all three
         (`#4762 <https://github.com/kornia/kornia/issues/4762>`_).
 
-        - Without a ``structuring_element``, the masked-out cells store ``-max_val`` in the kernel's dtype.
-          A ``uint8`` kernel therefore raises an overflow ``RuntimeError`` under every ``border_type``. A
-          ``bool`` kernel stores it as ``True``: every function but :func:`dilation` contains an erosion,
-          which raises a torch error (``NotImplementedError`` on recent torch, ``RuntimeError`` on older
-          releases) except under ``engine="convolution"``, where it runs and a ``False`` cell contributes
-          ``x - 1``; :func:`dilation` is silently wrong under every ``border_type`` as soon as the kernel
-          holds a ``False`` cell, which then contributes ``x + 1`` instead of being left out -- for a
-          ``bool`` image, ``True`` everywhere under every border that accepts one. With a floating
-          ``structuring_element`` the kernel is only the ``kernel == 0`` mask, and a ``uint8`` or ``bool``
-          kernel returns what the floating kernel does.
+        - Without a ``structuring_element``, a floating-point image lends its dtype to a ``bool`` or integer
+          ``kernel``, which is then only a membership mask and returns exactly what the same kernel in the
+          image's dtype does. On a non-float image the masked-out cells store ``-max_val`` in the kernel's own
+          dtype instead. A ``uint8`` kernel then raises an overflow ``RuntimeError`` under every
+          ``border_type``. A ``bool`` kernel stores it as ``True``: every function but :func:`dilation`
+          contains an erosion, which raises a torch error (``NotImplementedError`` on recent torch,
+          ``RuntimeError`` on older releases) except under ``engine="convolution"`` with an integer image on
+          CPU, where it runs and a ``False`` cell contributes ``x - 1``; :func:`dilation` is silently wrong
+          under every ``border_type`` as soon as the kernel holds a ``False`` cell, which then contributes
+          ``x + 1`` instead of being left out -- for a ``bool`` image, ``True`` everywhere under every border
+          that accepts one. With a floating ``structuring_element`` the kernel is only the ``kernel == 0``
+          mask, and a ``uint8`` or ``bool`` kernel returns what the floating kernel does.
         - The geodesic pad stores :math:`\mp` ``max_val`` in the image's dtype. A ``uint8`` image raises an
           overflow ``RuntimeError`` there on CPU and CUDA whenever the kernel needs a pad, while on MPS the sentinel
           wraps modulo 256 instead of raising; under the other ``border_type`` values a ``uint8`` image with a
@@ -281,8 +285,7 @@ def dilation(
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
-            ``kernel``'s; that is not checked, and a mismatched two-dimensional shape is reported by an
-            internal ``IndexError`` (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            ``kernel``'s, and any other shape raises a ``ValueError``.
         origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
             Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
             (``[1, 1]`` for a :math:`2 \times 2` kernel).
@@ -291,13 +294,10 @@ def dilation(
             :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``.
             ``reflect`` and ``circular`` additionally require the pad the kernel needs to stay below the
             image size (``reflect``) or at most match it (``circular``), and raise a ``RuntimeError``
-            otherwise. An unrecognised value is reported by ``torch`` without naming this argument
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
-            ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
+            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning above.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
@@ -437,7 +437,7 @@ def erosion(
         negated.
 
         The two ``.. warning::`` blocks in :func:`dilation` describe this function too, including what a
-        ``bool`` kernel does to an erosion.
+        ``bool`` kernel does to an erosion of a non-float image.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -447,8 +447,7 @@ def erosion(
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
-            ``kernel``'s; that is not checked, and a mismatched two-dimensional shape is reported by an
-            internal ``IndexError`` (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            ``kernel``'s, and any other shape raises a ``ValueError``.
         origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
             Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
             (``[1, 1]`` for a :math:`2 \times 2` kernel).
@@ -457,13 +456,10 @@ def erosion(
             :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``.
             ``reflect`` and ``circular`` additionally require the pad the kernel needs to stay below the
             image size (``reflect``) or at most match it (``circular``), and raise a ``RuntimeError``
-            otherwise. An unrecognised value is reported by ``torch`` without naming this argument
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
-            ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
+            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -616,8 +612,7 @@ def opening(
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
-            ``kernel``'s; that is not checked, and a mismatched two-dimensional shape is reported by an
-            internal ``IndexError`` (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            ``kernel``'s, and any other shape raises a ``ValueError``.
         origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
             Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
             (``[1, 1]`` for a :math:`2 \times 2` kernel).
@@ -626,13 +621,10 @@ def opening(
             :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``.
             ``reflect`` and ``circular`` additionally require the pad the kernel needs to stay below the
             image size (``reflect``) or at most match it (``circular``), and raise a ``RuntimeError``
-            otherwise. An unrecognised value is reported by ``torch`` without naming this argument
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
-            ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
+            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -755,8 +747,7 @@ def closing(
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
-            ``kernel``'s; that is not checked, and a mismatched two-dimensional shape is reported by an
-            internal ``IndexError`` (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            ``kernel``'s, and any other shape raises a ``ValueError``.
         origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
             Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
             (``[1, 1]`` for a :math:`2 \times 2` kernel).
@@ -765,13 +756,10 @@ def closing(
             :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``.
             ``reflect`` and ``circular`` additionally require the pad the kernel needs to stay below the
             image size (``reflect``) or at most match it (``circular``), and raise a ``RuntimeError``
-            otherwise. An unrecognised value is reported by ``torch`` without naming this argument
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
-            ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
+            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -864,8 +852,7 @@ def gradient(
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
-            ``kernel``'s; that is not checked, and a mismatched two-dimensional shape is reported by an
-            internal ``IndexError`` (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            ``kernel``'s, and any other shape raises a ``ValueError``.
         origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
             Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
             (``[1, 1]`` for a :math:`2 \times 2` kernel).
@@ -874,13 +861,10 @@ def gradient(
             :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``.
             ``reflect`` and ``circular`` additionally require the pad the kernel needs to stay below the
             image size (``reflect``) or at most match it (``circular``), and raise a ``RuntimeError``
-            otherwise. An unrecognised value is reported by ``torch`` without naming this argument
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
-            ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
+            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -964,8 +948,7 @@ def top_hat(
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
-            ``kernel``'s; that is not checked, and a mismatched two-dimensional shape is reported by an
-            internal ``IndexError`` (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            ``kernel``'s, and any other shape raises a ``ValueError``.
         origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
             Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
             (``[1, 1]`` for a :math:`2 \times 2` kernel).
@@ -974,13 +957,10 @@ def top_hat(
             :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``.
             ``reflect`` and ``circular`` additionally require the pad the kernel needs to stay below the
             image size (``reflect``) or at most match it (``circular``), and raise a ``RuntimeError``
-            otherwise. An unrecognised value is reported by ``torch`` without naming this argument
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
-            ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
+            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
@@ -1067,8 +1047,7 @@ def bottom_hat(
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
-            ``kernel``'s; that is not checked, and a mismatched two-dimensional shape is reported by an
-            internal ``IndexError`` (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            ``kernel``'s, and any other shape raises a ``ValueError``.
         origin: ``[row, col]`` index of the structuring-element cell placed on the output pixel.
             Default: ``None``, which uses ``[k_h // 2, k_w // 2]`` for odd and for even sizes alike
             (``[1, 1]`` for a :math:`2 \times 2` kernel).
@@ -1077,13 +1056,10 @@ def bottom_hat(
             :func:`torch.nn.functional.pad` modes ``constant``, ``reflect``, ``replicate`` and ``circular``.
             ``reflect`` and ``circular`` additionally require the pad the kernel needs to stay below the
             image size (``reflect``) or at most match it (``circular``), and raise a ``RuntimeError``
-            otherwise. An unrecognised value is reported by ``torch`` without naming this argument
-            (`#4736 <https://github.com/kornia/kornia/issues/4736>`_).
+            otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
             ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` any value other than ``0.0`` raises a
-            ``RuntimeError``, because it is always forwarded to :func:`torch.nn.functional.pad`
-            (`#4748 <https://github.com/kornia/kornia/issues/4748>`_).
+            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
         max_val: Finite stand-in for the infinite elements of the kernel. See the first warning in
             :func:`dilation`.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``

@@ -809,12 +809,23 @@ class TestDilate(BaseTester):
             with pytest.raises(RuntimeError, match="overflow"):
                 dilation(empty_window, corner, origin=[0, 0], max_val=65510.0)
         half_gapped = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=torch.float16)
+        above = None
         try:
             above = dilation(half_image, half_gapped, max_val=65510.0, border_type="constant")
         except RuntimeError as err:
             assert "overflow" in str(err), str(err)
         else:
             assert torch.equal(above, dilation(half_image, half_gapped, max_val=65504.0, border_type="constant"))
+        # A `bool` or integer kernel on a float16 image is given the image's dtype (#4744), so it stores the
+        # sentinel in float16 as well and takes the same branch as the float16 kernel above.
+        for mask_dtype in (torch.bool, torch.int64):
+            try:
+                above_mask = dilation(half_image, half_gapped.to(mask_dtype), max_val=65510.0, border_type="constant")
+            except RuntimeError as err:
+                assert "overflow" in str(err), str(err)
+                assert above is None, mask_dtype
+            else:
+                assert above is not None and torch.equal(above_mask, above), mask_dtype
 
     def test_wart_integer_and_bool_input_4735(self, device):
         # The `max_val` sentinel is written into a tensor of the INPUT's dtype, so only floating-point
@@ -917,49 +928,60 @@ class TestDilate(BaseTester):
 
         # The sentinel is also stored into the KERNEL (into the structuring element when one is given), and
         # under `unfold` and `shift` the result takes the promoted dtype of image and kernel, so the image
-        # dtype alone does not decide the outcome. Generated with kornia in this worktree (torch 2.14.0;
-        # CPU and MPS agree on every line below):
+        # dtype alone does not decide the outcome. A floating-point image lends its dtype to a `bool` or
+        # integer kernel (#4744), so only a non-float image stores the sentinel in the kernel's own dtype.
+        # Generated with kornia in this worktree (torch 2.14.0 and 2.5.1; CPU and MPS agree on every line):
         #   dilation(zeros uint8, ones(1, 3, float16), "constant")       -> float16 zeros (not float32)
-        #   dilation(zeros float, ones(1, 3, uint8), "constant")         -> RuntimeError overflow
-        #   dilation([[0, 3, 0, 0, 7]], [[T, F, T]])                     -> [3, 4, 3, 7, 8]  (true: [3, 0, 3, 7, 0])
+        #   dilation(zeros int64, ones(1, 3, uint8), "constant")         -> RuntimeError overflow
+        #   dilation(zeros float, ones(1, 3, uint8), "constant")         -> float32 zeros (exact)
+        #   dilation([[0, 3, 0, 0, 7]] int64, [[T, F, T]])               -> [3, 4, 3, 7, 8]  (true: [3, 0, 3, 7, 0])
+        #   dilation([[0, 3, 0, 0, 7]] float, [[T, F, T]])               -> [3, 0, 3, 7, 0]  (exact)
         #   dilation(hot_bool, [[T, F, T]]), geodesic and "constant"     -> all True
-        #   erosion(float image, bool kernel)                            -> NotImplementedError / RuntimeError
+        #   erosion(int64 image, bool kernel)                            -> NotImplementedError / RuntimeError
         #   dilation(hot_bool, ones(1, 3) float)                         -> float32 ring + correct interior
         #   erosion(~hot_bool, [[1., 0., 1.]] float)                     -> float32, exact under geodesic
         #   gradient(hot_bool, ones(1, 3) float)                         -> float32, the dilation's ring
         zeros_uint8 = torch.zeros(1, 1, 1, 5, dtype=torch.uint8, device=device)
         half_kernel = torch.ones(1, 3, dtype=torch.float16, device=device)
         assert dilation(zeros_uint8, half_kernel, border_type="constant").dtype == torch.float16
+        int_zeros = torch.zeros(1, 1, 1, 5, dtype=torch.int64, device=device)
         float_zeros = torch.zeros(1, 1, 1, 5, device=device)
         uint8_kernel = torch.ones(1, 3, dtype=torch.uint8, device=device)
         for border_type in ("constant", "circular"):
             with pytest.raises(RuntimeError, match="overflow"):
-                dilation(float_zeros, uint8_kernel, border_type=border_type)
+                dilation(int_zeros, uint8_kernel, border_type=border_type)
             with pytest.raises(RuntimeError, match="overflow"):
-                erosion(float_zeros, uint8_kernel, border_type=border_type)
+                erosion(int_zeros, uint8_kernel, border_type=border_type)
+            for op in (dilation, erosion):
+                float_out = op(float_zeros, uint8_kernel, border_type=border_type)
+                assert float_out.dtype == torch.float32
+                assert float_out.flatten().tolist() == [0.0] * 5
 
-        # A `False` kernel cell stores -max_val as `True`, so it contributes `x + 1` instead of dropping out.
+        # On a non-float image a `False` kernel cell stores -max_val as `True`, so it contributes `x + 1`
+        # instead of dropping out. A floating-point image makes the same kernel a plain membership mask.
         sparse_bool_kernel = torch.tensor([[True, False, True]], device=device)
-        ramp = torch.tensor([[0.0, 3.0, 0.0, 0.0, 7.0]], device=device)[None, None]
-        assert dilation(ramp, sparse_bool_kernel).flatten().tolist() == [3.0, 4.0, 3.0, 7.0, 8.0]
-        assert dilation(ramp, torch.tensor([[1.0, 0.0, 1.0]], device=device)).flatten().tolist() == [
-            3.0,
-            0.0,
-            3.0,
-            7.0,
-            0.0,
-        ]
+        int_ramp = torch.tensor([[0, 3, 0, 0, 7]], dtype=torch.int64, device=device)[None, None]
+        ramp = int_ramp.float()
+        assert dilation(int_ramp, sparse_bool_kernel).flatten().tolist() == [3, 4, 3, 7, 8]
+        exact_ramp = [3.0, 0.0, 3.0, 7.0, 0.0]
+        assert dilation(ramp, torch.tensor([[1.0, 0.0, 1.0]], device=device)).flatten().tolist() == exact_ramp
+        assert dilation(ramp, sparse_bool_kernel).flatten().tolist() == exact_ramp
         for border_type in ("geodesic", "constant"):
             assert dilation(hot_bool, sparse_bool_kernel, border_type=border_type).all()
         with pytest.raises((NotImplementedError, RuntimeError), match="bool"):
-            erosion(ramp, sparse_bool_kernel)
-        # `engine="convolution"` casts the kernel to the image's dtype before negating it, so the erosion
-        # runs instead of raising and a `False` cell contributes `x - 1`, which can lower the minimum.
-        # Generated with kornia in this worktree (torch 2.14.0; CPU and MPS agree):
-        #   erosion([[5., 1., 5., 5., 5.]], [[T, F, T]], engine="convolution") -> [1, 0, 1, 4, 4]
-        #   erosion([[5., 1., 5., 5., 5.]], [[1., 0., 1.]])                    -> [1, 5, 1, 5, 5]
-        dip = torch.tensor([[5.0, 1.0, 5.0, 5.0, 5.0]], device=device)[None, None]
-        assert erosion(dip, sparse_bool_kernel, engine="convolution").flatten().tolist() == [1.0, 0.0, 1.0, 4.0, 4.0]
+            erosion(int_ramp, sparse_bool_kernel)
+        assert erosion(ramp, sparse_bool_kernel).flatten().tolist() == [3.0, 0.0, 0.0, 0.0, 0.0]
+        # `engine="convolution"` casts the kernel to the image's dtype before negating it, so on CPU the
+        # erosion of an integer image runs instead of raising and a `False` cell contributes `x - 1`, which
+        # can lower the minimum. MPS and CUDA reject the integer image instead (see #4762's pin below).
+        # Generated with kornia in this worktree (torch 2.14.0 and 2.5.1):
+        #   erosion([[5, 1, 5, 5, 5]] int64, [[T, F, T]], engine="convolution") -> [1, 0, 1, 4, 4] (CPU)
+        #   erosion([[5., 1., 5., 5., 5.]], [[T, F, T]], engine="convolution") -> [1, 5, 1, 5, 5] (exact)
+        int_dip = torch.tensor([[5, 1, 5, 5, 5]], dtype=torch.int64, device=device)[None, None]
+        if device.type == "cpu":
+            assert erosion(int_dip, sparse_bool_kernel, engine="convolution").flatten().tolist() == [1, 0, 1, 4, 4]
+        dip = int_dip.float()
+        assert erosion(dip, sparse_bool_kernel, engine="convolution").flatten().tolist() == [1.0, 5.0, 1.0, 5.0, 5.0]
         # With a floating structuring element the sentinel is stored there instead, the kernel is only the
         # `kernel == 0` mask, and a `uint8` or `bool` kernel returns what the floating kernel does.
         frame = torch.rand(1, 1, 4, 5, generator=torch.Generator().manual_seed(0)).to(device)
@@ -1054,28 +1076,3 @@ class TestDilate(BaseTester):
             with pytest.raises((NotImplementedError, RuntimeError)):
                 dilation(small, pair, border_type="constant", engine="convolution")
         assert dilation(small, pair, border_type="constant", engine="unfold").flatten().tolist() == [20.0, 30.0, 30.0]
-
-    def test_wart_validation_messages_4736(self, device, dtype):
-        # Three argument errors are raised by torch rather than by kornia, so the message names neither
-        # the kornia argument nor the accepted values. Tracked in #4736.
-        # Generated with kornia in this worktree (torch 2.14.0, CPU, float32):
-        #   dilation(x, ones(3, 3), border_type="banana")
-        #       -> NotImplementedError: Unrecognised padding mode banana
-        #   dilation(x, ones(1, 4), structuring_element=zeros(1, 3))
-        #       -> IndexError: The shape of the mask [1, 4] at index 1 does not match ... [1, 3] ...
-        #   dilation(x, ones(3, 3, dtype=torch.uint8))
-        #       -> RuntimeError: value cannot be converted to type uint8_t without overflow
-        tensor = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
-
-        with pytest.raises(NotImplementedError, match="padding mode"):
-            dilation(tensor, torch.ones(3, 3, device=device, dtype=dtype), border_type="banana")
-
-        with pytest.raises(IndexError, match="does not match"):
-            dilation(
-                tensor,
-                torch.ones(1, 4, device=device, dtype=dtype),
-                structuring_element=torch.zeros(1, 3, device=device, dtype=dtype),
-            )
-
-        with pytest.raises(RuntimeError, match="overflow"):
-            dilation(tensor, torch.ones(3, 3, dtype=torch.uint8, device=device))
