@@ -853,7 +853,7 @@ def remap(
                   [0., 0.]]]])
 
     .. note::
-        This function is often used in conjunction with :func:`kornia.geometry.create_meshgrid`.
+        This function is often used in conjunction with :func:`kornia.geometry.grid.create_meshgrid`.
 
     """
     KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
