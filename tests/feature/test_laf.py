@@ -394,6 +394,17 @@ class TestELL2LAF(BaseTester):
         assert not torch.isfinite(laf[0, 0, :, :2]).all()
         self.assert_close(laf[0, 0, :, 2], inp[0, 0, :2])  # the centre is untouched
 
+    @pytest.mark.parametrize(
+        "abc", [(-1.0, 0.0, 4.0), (3.0, 0.0, -4.0), (-3.0, 0.5, -4.0), (3.0, 4.0, 4.0), (3.0, -4.0, 4.0)]
+    )
+    def test_not_positive_definite_ellipse_is_non_finite(self, device, dtype, abc):
+        # A negative a or c, or b * b > a * c, is not an ellipse; the old formula took abs(a) and abs(c) and
+        # ignored b on the diagonal, so it returned a finite LAF for all of these.
+        inp = torch.tensor([[[1.0, 2.0, *abc]]], device=device, dtype=dtype)
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert not torch.isfinite(laf[0, 0, :, :2]).all()
+        self.assert_close(laf[0, 0, :, 2], inp[0, 0, :2])
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         inp = self._well_conditioned_ellipses(device, dtype)
         op = kornia.feature.ellipse_to_laf

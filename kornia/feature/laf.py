@@ -277,9 +277,11 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
         LAF :math:`(B, N, 2, 3)`
 
     Note:
-        The conversion does not raise. An ellipse that is degenerate or indefinite after rounding to ``ells.dtype``
-        (``a``, ``c`` or ``a * c - b * b`` not positive) is not a bounded region and gives a LAF with ``inf`` or
-        ``nan`` entries; screen results with :func:`laf_is_valid` rather than an ``isnan`` test. In ``float16`` an
+        The conversion does not raise and does not check its input. An ellipse that is degenerate or indefinite
+        (``a``, ``c`` or ``a * c - b * b`` not positive) is not a bounded region; its LAF has ``inf`` or ``nan``
+        entries, or huge finite ones where rounding leaves ``a - b * b / c`` barely positive. Rounding also works the
+        other way: a nearly singular valid ellipse can give ``inf`` or ``nan``. Screen results with
+        :func:`laf_is_valid` rather than an ``isnan`` test. In ``float16`` an
         ``a`` or ``c`` below roughly ``3e-8`` (half the smallest subnormal) rounds to ``0``, and a backend that
         flushes subnormals to zero raises that cutoff to the smallest normal, about ``6e-5``.
 

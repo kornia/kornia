@@ -40,6 +40,14 @@ class OverflowShape(torch.nn.Module):
         return torch.cat([tiny, one, tiny], dim=-1)
 
 
+class NearlySingularShape(torch.nn.Module):
+    # In float32, a * c - b * b is positive (6e-8) but a - (b / sqrt(c)) ** 2, the square of the first diagonal
+    # entry of the inverse LAF that ellipse_to_laf forms, rounds to 0.
+    def forward(self, patches: torch.Tensor) -> torch.Tensor:
+        zero = patches.mean(dim=(-2, -1), keepdim=False).unsqueeze(-1) * 0
+        return torch.cat([zero + 1.0, zero + 0.9235056042671204, zero + 0.8528626561164856], dim=-1)
+
+
 class SingularAffNetOutput(torch.nn.Module):
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
         zero = patches.mean(dim=(-3, -2, -1), keepdim=True) * 0
@@ -254,6 +262,19 @@ class TestLAFAffineShapeEstimator(BaseTester):
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
         out = LAFAffineShapeEstimator(32, OverflowShape(), preserve_orientation=True).to(device, dtype)(laf, img)
+        assert torch.isfinite(out).all()
+        self.assert_close(out, laf)
+        out.sum().backward()
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+        assert laf.grad is not None
+        assert torch.isfinite(laf.grad).all()
+
+    def test_nearly_singular_shape_falls_back_with_finite_backward(self, device):
+        dtype = torch.float32
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
+        laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
+        out = LAFAffineShapeEstimator(32, NearlySingularShape(), preserve_orientation=True).to(device, dtype)(laf, img)
         assert torch.isfinite(out).all()
         self.assert_close(out, laf)
         out.sum().backward()
