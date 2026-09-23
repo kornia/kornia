@@ -39,9 +39,12 @@ Exceptions
 
 .. currentmodule:: kornia.core.exceptions
 
-The errors raised by kornia's input checks, such as a tensor with the wrong
-shape. All of them derive from :exc:`BaseError`, which derives from
-:exc:`Exception`, so ``except BaseError`` catches any of them.
+The errors raised by kornia's ``KORNIA_CHECK*`` validation helpers in
+``kornia.core.check``, such as a tensor with the wrong shape. All of them derive
+from :exc:`BaseError`, which derives from :exc:`Exception`, so
+``except BaseError`` catches any of them. It does not catch every input error:
+many functions validate their inputs themselves and raise the built-in
+:exc:`ValueError` or :exc:`TypeError` instead.
 
 .. autoexception:: BaseError
     :show-inheritance:
