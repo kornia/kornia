@@ -290,7 +290,8 @@ class ScalePyramid(nn.Module):
         """Create the first image level and its scale metadata.
 
         The method optionally doubles image resolution, then applies initial
-        Gaussian blur so the first level reaches ``self.init_sigma``.
+        Gaussian blur so the first level reaches ``self.init_sigma``. An
+        ``init_sigma`` below the assumed input blur leaves the level unblurred.
 
         Args:
             input: Image tensor with shape :math:`(B, C, H, W)`.
@@ -341,10 +342,9 @@ class ScalePyramid(nn.Module):
             Three lists with one entry per octave. ``pyr`` contains stacked
             image levels, ``sigmas`` contains the octave-relative nominal blur
             sigma for each level (multiply by the matching ``pixel_dists``
-            entry for the nominal absolute blur in original-image pixels — see
-            the class Convention block for when the true blur exceeds this
-            nominal value), and ``pixel_dists`` contains the pixel spacing of
-            each level relative to the original image.
+            entry for the nominal absolute blur in original-image pixels), and
+            ``pixel_dists`` contains the pixel spacing of each level relative
+            to the original image.
         """
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
