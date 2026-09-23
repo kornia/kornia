@@ -349,6 +349,36 @@ class CommonTests(BaseTester):
         self.gradcheck(self._create_augmentation_from_params(**params, p=1.0), (input_tensor,))
 
 
+def test_p_gated_equalize_skipped_invalid_row_4576(device, dtype):
+    x = torch.linspace(0, 1, 1024, device=device, dtype=dtype).reshape(1, 1, 32, 32).repeat(2, 3, 1, 1)
+    x[1] *= 2
+
+    output = RandomEqualize(p=0.0)(x)
+
+    assert torch.equal(output, x)
+
+
+def test_p_gated_clahe_skipped_invalid_row_4576(device, dtype):
+    x = torch.linspace(0, 1, 1024, device=device, dtype=dtype).reshape(1, 1, 32, 32).repeat(2, 3, 1, 1)
+    x[1] *= 2
+
+    output = RandomClahe(p=0.0)(x)
+
+    assert torch.equal(output, x)
+
+
+def test_p_gated_gamma_identity_gradient_4576(device, dtype):
+    x = torch.tensor([0.0, 0.25, 1.0], device=device, dtype=dtype).view(1, 1, 1, 3).repeat(2, 1, 1, 1)
+    x.requires_grad_()
+
+    output = RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(x)
+    output.sum().backward()
+
+    assert torch.equal(output, x)
+    assert torch.equal(x.grad, torch.ones_like(x))
+    assert not torch.isnan(x.grad).any()
+
+
 class TestRandomEqualizeAlternative(CommonTests):
     possible_params: Dict["str", Tuple] = {}
 

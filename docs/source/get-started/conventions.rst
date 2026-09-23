@@ -411,9 +411,7 @@ Randomness in augmentations
   one probability contract. Check the concrete class rather than inferring
   its gate from the base signature. Exposing ``p_batch`` is also
   constructor-dependent (`#4425 <https://github.com/kornia/kornia/issues/4425>`_).
-  The gate selects after the transform has been computed for the whole batch,
-  so a skipped sample can still raise or carry a NaN gradient
-  (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+  A call whose gate selects no sample does not compute the transform.
 - Under :class:`torch.utils.data.DataLoader`, each worker's global CPU
   generator is seeded ``base_seed + worker_id``. Reproducibility also depends
   on worker configuration and consumption order. A ``worker_init_fn`` that

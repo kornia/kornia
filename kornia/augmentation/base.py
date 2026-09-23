@@ -408,9 +408,8 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         self.validate_tensor(in_tensor)
 
-        output_transformed = self.apply_transform(in_tensor, params, flags, transform=transform)
-
         if self.p == 1.0 and self.p_batch == 1.0:
+            output_transformed = self.apply_transform(in_tensor, params, flags, transform=transform)
             # Always applied (static probabilities): the output is unconditionally the
             # transformed one. Skip the non-transform branch and the blend entirely — this
             # also makes shape-changing augmentations (e.g. Resize) fullgraph-compilable,
@@ -421,7 +420,46 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:
             to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
             output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-            output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
+
+            if not bool(to_apply.any()):
+                output = output_not_transformed
+            elif bool(to_apply.all()):
+                output = self.apply_transform(in_tensor, params, flags, transform=transform)
+            else:
+                indices = torch.where(to_apply)[0]
+                selected_input = in_tensor.index_select(0, indices)
+
+                selected_params = {
+                    name: value.index_select(0, indices)
+                    if isinstance(value, torch.Tensor) and value.ndim > 0 and value.shape[0] == in_tensor.shape[0]
+                    else value
+                    for name, value in params.items()
+                }
+
+                selected_transform = transform
+                if (
+                    isinstance(transform, torch.Tensor)
+                    and transform.ndim > 0
+                    and transform.shape[0] == in_tensor.shape[0]
+                ):
+                    selected_transform = transform.index_select(0, indices)
+
+                output_transformed = self.apply_transform(
+                    selected_input,
+                    selected_params,
+                    flags,
+                    transform=selected_transform,
+                )
+
+                if output_transformed.shape[1:] == output_not_transformed.shape[1:]:
+                    output = output_not_transformed.clone()
+                    output.index_copy_(0, indices, output_transformed)
+                else:
+                    output = self._blend_by_prob(
+                        self.apply_transform(in_tensor, params, flags, transform=transform),
+                        output_not_transformed,
+                        to_apply,
+                    )
 
         if is_autocast_enabled():
             output = output.type(input.dtype)
