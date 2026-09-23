@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry import create_meshgrid
 from kornia.image import draw_convex_polygon, draw_rectangle
 from kornia.image.draw import draw_line, draw_point2d
@@ -88,6 +89,44 @@ class TestDrawPoint(BaseTester):
         drawn_mat_img = draw_point2d(mat_img, points, color_mat)
         # Ensure that we get the same underlying image back
         self.assert_close(drawn_vec_img, drawn_mat_img)
+
+    def test_draw_point2d_single_1d_point(self, dtype, device):
+        """A single [x, y] vector used to TypeError via zip over 0-d scalars."""
+        points = torch.tensor([1, 3], device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        self.assert_close(img[:, 3, 1], color.to(img.dtype))
+
+    def test_draw_point2d_empty_points(self, dtype, device):
+        """An empty (0, 2) point set used to fail unpacking zip(*points)."""
+        points = torch.zeros(0, 2, device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.arange(3 * 8 * 8, device=device).reshape(3, 8, 8).to(dtype)
+        expected = img.clone()
+        out = draw_point2d(img, points, color)
+        assert out is img
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize(
+        "shape, match",
+        [
+            ((0,), "1D points tensor"),
+            ((3,), "1D points tensor"),
+            ((0, 3), "shape \\(N, 2\\)"),
+            ((5, 0), "shape \\(N, 2\\)"),
+            ((2, 3), "shape \\(N, 2\\)"),
+            ((2, 2, 2), "shape \\(N, 2\\)"),
+        ],
+        ids=["empty-1d", "three-1d", "empty-three-columns", "zero-columns", "three-columns", "batched"],
+    )
+    def test_draw_point2d_rejects_malformed_points(self, shape, match, dtype, device):
+        """Only (N, 2) and (2,) are accepted, including when the tensor is empty."""
+        points = torch.zeros(shape, dtype=torch.int64, device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match=match):
+            draw_point2d(img, points, color)
 
 
 class TestDrawLine(BaseTester):
