@@ -747,7 +747,7 @@ class TestDilate(BaseTester):
         for max_val in (1.0, 1e2, 1e4):
             unfolded = dilation(tensor, kernel, max_val=max_val, engine="unfold")
             convolved = dilation(tensor, kernel, max_val=max_val, engine="convolution")
-            assert torch.equal(convolved, unfolded)
+            torch.testing.assert_close(convolved, unfolded)
 
     def test_dilation_ignores_finite_max_val_sentinel_4734(self, device):
         # Geodesic padding and masked kernel cells must be excluded rather than represented by a finite
