@@ -81,10 +81,11 @@ class TestErode(BaseTester):
         assert_close(erosion(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
         # The convolution engine measures 3.9062e-4 absolute / 1.4649e-3 relative error on THIS
         # fixture (re-measured for `erosion`; `dilation`'s relative figure is 4.3405e-4, not this one),
-        # above the harness's generic float32 default (atol=1e-5, rtol=1e-4). The cause is the
-        # `-max_val` sentinel, not the platform: `engine="convolution"` routes every window through
-        # `F.conv2d` with `-max_val` in the bias, so the error scales with `max_val` rather than with
-        # the image range. One float32 ULP at the default `max_val=1e4` is 9.7656e-4, and the largest
+        # above the harness's generic float32 default (atol=1e-5, rtol=1e-4). The cause is the geodesic
+        # `+max_val` pad, which `engine="convolution"` feeds through `F.conv2d` together with the image, so
+        # the error scales with `max_val` rather than with the image range; under `replicate` the same
+        # fixture's gap is 2.98e-8, and MPS measures exactly 0 here (torch 2.14.0), so the backend matters
+        # too. One float32 ULP at the default `max_val=1e4` is 9.7656e-4, and the largest
         # engine gap measured (rand(1, 1, 9, 11) seed 0, ones(3, 3)) is 1.2736e-3, i.e. ~1.3 ULP.
         # The relative figure exceeds `rtol=1e-3`; the assertion passes on `atol=1e-3`, because the
         # error is absolute and the tightest entry here is `expected == 0.2`, where the absolute error
@@ -108,9 +109,9 @@ class TestErode(BaseTester):
             atol=1e-4,
             rtol=1e-4,
         )
-        # See test_kernel: the convolution engine needs an explicit tolerance because the `-max_val`
-        # sentinel it carries in the conv bias costs on the order of one ULP of `max_val` (9.7656e-4
-        # in float32 at the default `max_val=1e4`). Tracked in #4734.
+        # See test_kernel: the convolution engine needs an explicit tolerance because the geodesic
+        # `+max_val` pad it feeds through `F.conv2d` costs on the order of one ULP of `max_val`
+        # (9.7656e-4 in float32 at the default `max_val=1e4`) on CPU. Tracked in #4734.
         assert_close(
             erosion(
                 tensor,
@@ -132,9 +133,9 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        # See test_kernel: the convolution engine needs an explicit tolerance because the `-max_val`
-        # sentinel it carries in the conv bias costs on the order of one ULP of `max_val` (9.7656e-4
-        # in float32 at the default `max_val=1e4`). Tracked in #4734.
+        # See test_kernel: the convolution engine needs an explicit tolerance because the geodesic
+        # `+max_val` pad it feeds through `F.conv2d` costs on the order of one ULP of `max_val`
+        # (9.7656e-4 in float32 at the default `max_val=1e4`) on CPU. Tracked in #4734.
         assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_exception(self, device, dtype):
@@ -434,27 +435,44 @@ class TestErode(BaseTester):
         self.assert_close(erosion(ramp, even_kernel, origin=[0, 1]), skimage_expected)
 
     def test_convention_adjunction_without_empty_windows(self, device, dtype):
-        # `dilation` and `erosion` with the same kernel and origin are an adjoint pair,
-        # `dilation(x) <= y` everywhere exactly when `x <= erosion(y)` everywhere, while no window is empty
-        # and the image range stays well below `max_val`. The kernel changes under a 180-degree flip, so a reflection
-        # mismatch between the two would break the pair, and it holds its default origin cell [1, 1], so
-        # no window is empty. Every value is a small integer, exact in every dtype. The empty-window
-        # counterexample is pinned in test_wart_dilation_max_val_sentinel_leaks_4734.
+        # Under `border_type="geodesic"` or `"circular"`, `dilation` and `erosion` with the same kernel and
+        # origin are an adjoint pair, `dilation(x) <= y` everywhere exactly when `x <= erosion(y)`
+        # everywhere, while no window is empty and the image range stays well below `max_val`. The kernel
+        # changes under a 180-degree flip, so a reflection mismatch between the two would break the pair,
+        # and it holds its default origin cell [1, 1], so no window is empty. Every value is a small
+        # integer, exact in every dtype. The empty-window counterexample is pinned in
+        # test_wart_dilation_max_val_sentinel_leaks_4734.
+        # Measured with kornia in this worktree (torch 2.14.0, CPU, float64): 6000 random kernels with their
+        # origin cell set, random origins, sizes 1-4 and integer images, a third with an integer non-flat
+        # structuring element -- geodesic 0 and circular 0 failures, replicate 2, reflect 3, constant 10.
         x = torch.tensor(
             [[3.0, 0.0, 5.0, 1.0, 2.0, 7.0], [0.0, 4.0, 1.0, 6.0, 0.0, 2.0], [2.0, 1.0, 0.0, 3.0, 5.0, 1.0]],
             device=device,
             dtype=dtype,
         )[None, None]
         kernel = torch.tensor([[1.0, 1.0, 0.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
-        dilated = dilation(x, kernel)
-        # y = dilation(x) is the smallest y with dilation(x) <= y, so x <= erosion(y) must hold ...
-        assert bool((x <= erosion(dilated, kernel)).all())
-        # ... and lowering y at any one pixel breaks the left side, so it must break the right side too.
-        for row in range(x.shape[-2]):
-            for col in range(x.shape[-1]):
-                lowered = dilated.clone()
-                lowered[..., row, col] -= 1
-                assert not bool((x <= erosion(lowered, kernel)).all()), (row, col)
+        for border_type in ("geodesic", "circular"):
+            dilated = dilation(x, kernel, border_type=border_type)
+            # y = dilation(x) is the smallest y with dilation(x) <= y, so x <= erosion(y) must hold ...
+            assert bool((x <= erosion(dilated, kernel, border_type=border_type)).all()), border_type
+            # ... and lowering y at any one pixel breaks the left side, so it must break the right side too.
+            for row in range(x.shape[-2]):
+                for col in range(x.shape[-1]):
+                    lowered = dilated.clone()
+                    lowered[..., row, col] -= 1
+                    assert not bool((x <= erosion(lowered, kernel, border_type=border_type)).all()), (
+                        border_type,
+                        row,
+                        col,
+                    )
+
+        # The other pads can break the pair with no window empty. Under `constant` (border_value 0) with
+        # ones(3, 3) and x = y = -1, the dilation reads the 0 pad on the border and exceeds y, while the
+        # erosion's min(-1, 0) is -1 >= x everywhere.
+        minus_one = torch.full((1, 1, 3, 4), -1.0, device=device, dtype=dtype)
+        box = torch.ones(3, 3, device=device, dtype=dtype)
+        assert not bool((dilation(minus_one, box, border_type="constant") <= minus_one).all())
+        assert bool((minus_one <= erosion(minus_one, box, border_type="constant")).all())
 
     def test_convention_geodesic_border_ignores_outside(self, device, dtype):
         # The default `border_type="geodesic"` makes the operation ignore the pixels outside the image,
@@ -523,12 +541,21 @@ class TestErode(BaseTester):
             "circular": [4.0, 5.0, 1.0, 2.0, 3.0],
             "constant": [0.0, 0.0, 1.0, 2.0, 3.0],
         }
+        # torch 2.5.1 has no float16 CPU `reflection_pad2d` / `replication_pad2d`; those rows follow the probes.
+        supported = {
+            "reflect": supports_reflect_padding(device, dtype),
+            "replicate": supports_replicate_padding(device, dtype),
+        }
         for border_type, row in expected.items():
+            if not supported.get(border_type, True):
+                continue
             actual = erosion(ramp, kernel, border_type=border_type, border_value=0.0)
             expected_row = torch.tensor([row], device=device, dtype=dtype)[None, None]
             assert torch.equal(actual, expected_row), border_type
 
     def test_convention_geodesic_is_not_replicate(self, device, dtype):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
         # `geodesic` and `replicate` are different modes. They can differ once the structuring element
         # can reach outside the image -- reaching outside is necessary but not sufficient, and it is
         # NOT only when the element stops covering the output pixel itself that they part: the

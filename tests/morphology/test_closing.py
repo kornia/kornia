@@ -20,7 +20,7 @@ import torch
 
 from kornia.morphology import closing
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, supports_replicate_padding
 from testing.parametrized_tester import parametrized_test
 
 
@@ -154,10 +154,11 @@ class TestClosing(BaseTester):
         # the default origin, for the even kernels [[1, 0]], ones(2, 2), [[1, 1, 0, 1]] and [[0, 1, 1, 1]]
         # (rand(1, 1, 7, 10) seeds 0-2, float64). scipy has no ignore mode: `grey_closing(..., mode="constant",
         # cval=inf)` pads its dilation half with +inf as well, so it is extensive but differs from
-        # kornia's at the border (0.40 for A on a 7x9 rand frame) and returns inf on the whole first
-        # column for `[[1, 0, 0]]`; it equals `blk` below only because that frame's border is already 0.
-        # OpenCV's `MORPH_CLOSE` composes without a flip and is not a closing for an asymmetric kernel
-        # at all.
+        # kornia's at the border (0.40 for A on `np.random.default_rng(0).random((7, 9))`) and returns inf on
+        # the whole first column for `[[1, 0, 0]]`; it equals `blk` below only because that frame's border is
+        # already 0. OpenCV's `MORPH_CLOSE` composes without a flip and is not a closing for an asymmetric
+        # kernel at all, nor for an even-sized one at its default anchor (`ones(2, 2)`: extensive on 0 of
+        # 100 random 6x8 frames, where the odd symmetric `[[1, 0, 1]]` is on all 100).
         # `max`/`min` only select an already-present value of the input, so the idempotence compares
         # with `torch.equal` and the `>=` never needs a tolerance.
         # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
@@ -193,23 +194,37 @@ class TestClosing(BaseTester):
         # Generated with kornia in this worktree (torch 2.14.0, CPU, same rand(1, 1, 7, 10) seed 0):
         #   max(x - closing(x)).clamp(min=0):  float32 4.7034e-04, float64 0, float16 9.7998e-01,
         #   bfloat16 9.8047e-01   (float32 ULP of max_val=1e4 is 9.7656e-4; float16's is 8, bf16's 64)
+        # The float64 0 is an artefact of this frame, which is float32 `rand` cast up and so has no bits
+        # below float64's ULP of `max_val`: `torch.rand(..., dtype=torch.float64)` seed 0 falls short by
+        # 7.8804e-13 (worst of 20 seeds 8.96e-13), under that ULP of 1.8190e-12 but not zero.
+        # Over 20 seeds in all four dtypes the shortfall stays in columns W-2 and W-1, the column whose
+        # dilation window is empty and the one before it, so everywhere else the extensivity is exact.
+        # That confinement is what can still fail in half precision, where the bound `2 * eps * 1e4`
+        # (19.5 in float16, 156 in bfloat16) is wider than the data.
         # idempotence survives this kernel exactly; it is the opening half that loses it
         # (see tests/morphology/test_opening.py). Tracked in #4734.
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
         side_closed = closing(tensor, side_kernel)
-        shortfall = (tensor - side_closed).clamp(min=0).max()
-        assert shortfall <= 2.0 * torch.finfo(dtype).eps * 1e4
+        shortfall = (tensor - side_closed).clamp(min=0)
+        assert shortfall.max() <= 2.0 * torch.finfo(dtype).eps * 1e4
+        assert not bool(shortfall[..., :-2].any())
         assert torch.equal(closing(side_closed, side_kernel), side_closed)
+        if dtype == torch.float64:
+            genuine = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=dtype).to(device)
+            genuine_shortfall = (genuine - closing(genuine, side_kernel)).clamp(min=0).max()
+            assert 0.0 < genuine_shortfall < torch.finfo(dtype).eps * 8192.0
 
         # That is the geodesic story only. `dilation` reads `x(p + 1)` and `erosion` reads `y(p - 1)`, so
         # under `replicate` the first column of the closing is `x(1)`, not `x(0)`, and the closing is not
         # extensive at all (idempotence survives); under `circular` the two shifts cancel and the closing
-        # is exactly `x`. Measured with kornia in this worktree (torch 2.14.0, CPU, float32) over 20 seeds
-        # of rand(1, 1, 7, 10): worst replicate extensivity miss 0.987, worst replicate idempotence miss 0,
-        # worst circular deviation from `x` 0.
-        dip = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)[None, None]
-        replicated = closing(dip, side_kernel, border_type="replicate")
-        assert replicated.flatten().tolist() == [0.0, 0.0, 1.0]
-        assert not bool((replicated >= dip).all())
-        assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
+        # is exactly `x`. Measured with kornia in this worktree (torch 2.14.0, CPU, float32) over
+        # rand(1, 1, 7, 10) with `torch.Generator().manual_seed(s)`, s = 0..19: worst replicate extensivity
+        # miss 0.914, worst replicate idempotence miss 0, worst circular deviation from `x` 0.
+        # torch 2.5.1 has no float16 CPU `replication_pad2d`, so the replicate lines follow the probe.
+        if supports_replicate_padding(device, dtype):
+            dip = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)[None, None]
+            replicated = closing(dip, side_kernel, border_type="replicate")
+            assert replicated.flatten().tolist() == [0.0, 0.0, 1.0]
+            assert not bool((replicated >= dip).all())
+            assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(closing(tensor, side_kernel, border_type="circular"), tensor)

@@ -20,7 +20,7 @@ import torch
 
 from kornia.morphology import opening
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, supports_replicate_padding
 from testing.parametrized_tester import parametrized_test
 
 
@@ -155,16 +155,20 @@ class TestOpening(BaseTester):
         # last block of this test pins the kernel where it does NOT hold exactly, so the docstring's
         # `max_val` qualification is on record rather than assumed.
         # OpenCV composes without a flip, so its `MORPH_OPEN` is not an opening for an asymmetric
-        # kernel. scikit-image mirrors the footprint inside `opening`, and on the 7x10 rand(seed 0)
+        # kernel, nor for an even-sized one at its default anchor (`ones(2, 2)`: anti-extensive on 0 of
+        # 100 random 6x8 frames, where the odd symmetric `[[1, 0, 1]]` is on all 100).
+        # scikit-image mirrors the footprint inside `opening`, and on the 7x10 rand(seed 0)
         # frame `sm.opening(x, A, mode="ignore")` is bit-equal to `opening(x, A)`; so is the L kernel's.
         # For the even kernels [[1, 0]], ones(2, 2), [[1, 1, 0, 1]] and [[0, 1, 1, 1]] it is bit-equal to
         # `opening(x, K, origin=[(k_h - 1) // 2, (k_w - 1) // 2])` (rand(1, 1, 7, 10) seeds 0-2, float64),
-        # where its erosion half anchors, and equals neither `opening(x, K)` nor the flipped-kernel opening
-        # at the default origin (ones(2, 2): 0.805 apart on seed 0). scipy has no ignore
+        # where its erosion half anchors. For the three multi-cell ones it equals neither `opening(x, K)`
+        # nor the flipped-kernel opening at the default origin (ones(2, 2): 0.805 apart on seed 0); for
+        # `[[1, 0]]` the flipped-kernel opening and the earlier-origin one are both the identity, so it
+        # equals that one too. scipy has no ignore
         # mode: `grey_opening(..., mode="constant", cval=-inf)` pads its erosion half with -inf as well,
         # so it is anti-extensive but differs from kornia's at the border (0.61 for A, 0.37 for
-        # ones(3, 3) on a 7x9 rand frame) and returns -inf on the whole last column for `[[1, 0, 0]]`;
-        # it equals `blk` below only because that frame's border is already 0.
+        # ones(3, 3) on `np.random.default_rng(0).random((7, 9))`) and returns -inf on the whole last column
+        # for `[[1, 0, 0]]`; it equals `blk` below only because that frame's border is already 0.
         # 0/1 fixtures are exact in every dtype and `max`/`min` only ever select an already-present
         # value, so both the block equality and the idempotence compare with `torch.equal`.
         # Generated with (scipy 1.17.1, scikit-image 0.26.0, opencv-python-headless 5.0.0, numpy 2.0.0):
@@ -201,23 +205,38 @@ class TestOpening(BaseTester):
         # Generated with kornia in this worktree (torch 2.14.0, CPU, same rand(1, 1, 7, 10) seed 0):
         #   max|opening(opening(x)) - opening(x)|:  float32 2.0671e-04, float64 0, float16 9.2969e-01,
         #   bfloat16 9.2969e-01   (float32 ULP of max_val=1e4 is 9.7656e-4; float16's is 8, bf16's 64)
+        # The float64 0 is an artefact of this frame, which is float32 `rand` cast up and so has no bits
+        # below float64's ULP of `max_val`: `torch.rand(..., dtype=torch.float64)` seed 0 misses by
+        # 6.6624e-13 (worst of 20 seeds 9.07e-13), under that ULP of 1.8190e-12 but not zero.
+        # Over 20 seeds in all four dtypes the miss stays in columns W-3 and W-2, the two before the column
+        # whose dilation window is empty, so everywhere else the idempotence is exact. That confinement is
+        # what can still fail in half precision, where the bound `2 * eps * 1e4` (19.5 in float16, 156 in
+        # bfloat16) is wider than the data.
         # anti-extensivity survives this kernel exactly; extensivity is the half that fails for
         # `closing` (see tests/morphology/test_closing.py). Tracked in #4734.
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
         side_opened = opening(tensor, side_kernel)
         assert (side_opened <= tensor).all()
-        deviation = (opening(side_opened, side_kernel) - side_opened).abs().max()
-        assert deviation <= 2.0 * torch.finfo(dtype).eps * 1e4
+        deviation = (opening(side_opened, side_kernel) - side_opened).abs()
+        assert deviation.max() <= 2.0 * torch.finfo(dtype).eps * 1e4
+        assert not bool(deviation[..., :-3].any())
+        if dtype == torch.float64:
+            genuine = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=dtype).to(device)
+            genuine_opened = opening(genuine, side_kernel)
+            genuine_miss = (opening(genuine_opened, side_kernel) - genuine_opened).abs().max()
+            assert 0.0 < genuine_miss < torch.finfo(dtype).eps * 8192.0
 
         # That is the geodesic story only. `erosion` reads `x(p - 1)` and `dilation` reads `y(p + 1)`, so
         # under `replicate` the last column of the opening is `x(W - 2)`, not `x(W - 1)`, and the opening
         # is not anti-extensive at all (idempotence survives); under `circular` the two shifts cancel and
         # the opening is exactly `x`. Measured with kornia in this worktree (torch 2.14.0, CPU, float32)
-        # over 20 seeds of rand(1, 1, 7, 10): worst replicate anti-extensivity miss 0.979, worst replicate
-        # idempotence miss 0, worst circular deviation from `x` 0.
-        bump = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)[None, None]
-        replicated = opening(bump, side_kernel, border_type="replicate")
-        assert replicated.flatten().tolist() == [0.0, 1.0, 1.0]
-        assert not bool((replicated <= bump).all())
-        assert torch.equal(opening(replicated, side_kernel, border_type="replicate"), replicated)
+        # over rand(1, 1, 7, 10) with `torch.Generator().manual_seed(s)`, s = 0..19: worst replicate
+        # anti-extensivity miss 0.862, worst replicate idempotence miss 0, worst circular deviation from `x` 0.
+        # torch 2.5.1 has no float16 CPU `replication_pad2d`, so the replicate lines follow the probe.
+        if supports_replicate_padding(device, dtype):
+            bump = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)[None, None]
+            replicated = opening(bump, side_kernel, border_type="replicate")
+            assert replicated.flatten().tolist() == [0.0, 1.0, 1.0]
+            assert not bool((replicated <= bump).all())
+            assert torch.equal(opening(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(opening(tensor, side_kernel, border_type="circular"), tensor)

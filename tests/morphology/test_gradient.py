@@ -126,8 +126,11 @@ class TestGradient(BaseTester):
     def test_convention_gradient_is_dilation_minus_erosion(self, device, dtype):
         # `gradient` is exactly `dilation(x) - erosion(x)` with the same kernel and the same options,
         # so every convention of :func:`kornia.morphology.dilation` applies to it unchanged -- including
-        # the kernel reflection in the dilation half and its absence in the erosion half. The L kernel
-        # is asymmetric under the flip, so this cannot pass by accident on a symmetric kernel.
+        # the kernel reflection in the dilation half and its absence in the erosion half. This pins the
+        # composition, not those conventions: both sides call the same `dilation` and `erosion`, so a
+        # reflection bug would move both sides alike (reflection is pinned in test_dilation.py and
+        # test_erosion.py). The equality is repeated with a non-default `border_type`, `border_value` and
+        # `origin`, so a half that dropped one of the options would show.
         # `gradient` evaluates that very expression, so the two sides are bitwise equal in every dtype.
         # Generated with:
         #   L = torch.tensor([[0., 0., 0.], [0., 1., 1.], [0., 1., 0.]])
@@ -139,3 +142,8 @@ class TestGradient(BaseTester):
         assert torch.equal(gradient(tensor, l_kernel), dilation(tensor, l_kernel) - erosion(tensor, l_kernel))
         # A morphological gradient is non-negative wherever the kernel covers the pixel itself.
         assert (gradient(tensor, l_kernel) >= 0).all()
+        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0]}
+        assert torch.equal(
+            gradient(tensor, l_kernel, **options),
+            dilation(tensor, l_kernel, **options) - erosion(tensor, l_kernel, **options),
+        )

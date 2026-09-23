@@ -125,8 +125,10 @@ class TestTopHat(BaseTester):
 
     def test_convention_top_hat_is_image_minus_opening(self, device, dtype):
         # `top_hat` is exactly `x - opening(x)` with the same kernel and the same options, so every
-        # convention of :func:`kornia.morphology.dilation` applies to it unchanged. The L kernel is
-        # asymmetric under the flip, so this cannot pass by accident on a symmetric kernel.
+        # convention of :func:`kornia.morphology.opening` applies to it unchanged. This pins the
+        # composition: both sides call the same `opening`, whose conventions are pinned in
+        # test_opening.py. The equality is repeated with a non-default `border_type`, `border_value` and
+        # `origin`, so a `top_hat` that dropped one of the options would show.
         # `top_hat` evaluates that very expression, so the two sides are bitwise equal in every dtype.
         # Generated with:
         #   L = torch.tensor([[0., 0., 0.], [0., 1., 1.], [0., 1., 0.]])
@@ -138,3 +140,5 @@ class TestTopHat(BaseTester):
         assert torch.equal(top_hat(tensor, l_kernel), tensor - opening(tensor, l_kernel))
         # The opening is anti-extensive, so the top hat is non-negative.
         assert (top_hat(tensor, l_kernel) >= 0).all()
+        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0]}
+        assert torch.equal(top_hat(tensor, l_kernel, **options), tensor - opening(tensor, l_kernel, **options))
