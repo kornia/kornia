@@ -226,8 +226,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
 
     .. warning::
         At the default non-positive ``shade_intensity``, an input whose values are all negative comes back as
-        an all-zero image; a positive ``shade_intensity``, which the constructor accepts, can lift it. Tracked
-        in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        an all-zero image. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> rng = torch.manual_seed(0)

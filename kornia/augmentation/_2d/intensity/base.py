@@ -45,12 +45,8 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           (:class:`RandomErasing` also erases masks). It adds no ``inverse``:
           :class:`~kornia.augmentation.container.AugmentationSequential.inverse` skips 2D intensity children.
         - these classes assume the ``[0, 1]`` float image range stated under "Image tensors" in
-          :doc:`/get-started/conventions`. The base does not validate it. Outside that range each class applies
-          the policy its own page states: some clamp, some rescale or round-trip through ``uint8``,
-          :class:`RandomPlanckianJitter` clamps only the upper end, :class:`RandomEqualize` and
-          :class:`RandomClahe` raise a ``RuntimeError`` naming the range, and the rest do not clamp -- though
-          the colour-space classes (:class:`RandomSaturation`, :class:`RandomHue`, :class:`RandomSnow`) can
-          still move an out-of-range pixel, as their pages state.
+          :doc:`/get-started/conventions`. The base does not validate it; each class page states what the class
+          does outside that range, and a class whose page is silent does not clamp.
         - what this block and the class pages say about an output describes the samples the ``p`` gate
           transforms; every other sample comes back with its input values. Below ``p=1`` the transform is
           still computed for every sample and the gate then selects, so a skipped sample that fails a value
@@ -67,14 +63,11 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           ``(B, 1, H, W)``. With ``same_on_batch=True``, ``gaussian_noise`` is stored as
           ``(1, C, H, W)`` and the plasma classes store an expanded view that shares one map across the batch.
         - where a class documents bounds for a parameter, a range outside them usually raises at construction;
-          a class page states its exceptions. For a parameter centred on a neutral value, a scalar magnitude
-          ``x`` means ``center ± x`` with its lower end floored at the bound, so ``contrast=1.5`` reads as
-          ``[0, 2.5]``, while an upper end past the bound raises. These checks run on the forward pass
-          instead: :class:`RandomGamma`'s non-negative ``gamma`` and ``gain``; :class:`RandomGaussianBlur`'s
-          ``sigma`` of ``0`` and even ``kernel_size``; :class:`RandomMedianBlur`'s even ``kernel_size``, with a
-          raw error (`#4781 <https://github.com/kornia/kornia/issues/4781>`_); :class:`RandomRain`'s drop sizes
-          against the image; :class:`RandomMotionBlur`'s drawn kernel size below ``3``; and
-          :class:`RandomChannelDropout`'s ``num_drop_channels`` against the channel count.
+          the class page states a bound it does not enforce, or checks only on the forward pass. A scalar
+          magnitude ``x`` usually means ``center ± x`` around a centre the class fixes -- the neutral value, for a
+          factor such as ``contrast`` -- with its lower end floored at the bound, so ``contrast=1.5`` reads as
+          ``[0, 2.5]``, while an upper end past the bound raises. :class:`RandomSharpness` reads a scalar as
+          ``[0, x]`` and :class:`RandomPosterize` as ``[x, 8]``.
 
     .. warning::
         Several of these classes return an all-zero image, with no warning, for an input whose values are all

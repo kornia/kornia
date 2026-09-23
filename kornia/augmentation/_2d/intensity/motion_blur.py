@@ -63,15 +63,14 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - ``direction`` re-weights the kernel along that line before it is rotated: ``0`` spreads the weight evenly, and
           ``-1`` and ``+1`` pile it at opposite ends. The rotation then resamples the kernel with ``resample``:
           ``"nearest"`` can drop or duplicate taps, so the line's length and end weights change with ``angle``, and
-          ``"bilinear"`` or ``"bicubic"`` also spread weight off the line. The ends belong to the rotated line, so which
-          side of the image they fall on turns with ``angle`` and is not read off the image axes.
+          ``"bilinear"`` or ``"bicubic"`` also spread weight off the line.
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
         - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]`` with
           shape ``(B,)``, so every sample uses that size even with ``same_on_batch=False``; angle and direction
           are drawn per sample unless ``same_on_batch=True``. A tuple range draws each odd size inside it with
           equal probability, bounds included, so ``(3, 20)`` draws ``3, 5, ..., 19``. A range that holds no odd
           size is rounded up out of the requested range, so ``(4, 4)`` draws ``5``; a reversed one such as
-          ``(20, 3)`` raises at construction.
+          ``(20, 3)`` raises at construction, and a drawn size below ``3`` raises on the forward pass.
         - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a border
           pixel is pulled toward ``0``. With ``border_type="reflect"`` the result stays between the input's
           extremes, up to rounding, at ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives
@@ -86,8 +85,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         class and the shape. Tracked in `#4784 <https://github.com/kornia/kornia/issues/4784>`_.
 
     Note:
-        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
         Please set ``resample`` to ``'bilinear'`` if more meaningful gradients wanted.

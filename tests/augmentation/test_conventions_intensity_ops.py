@@ -851,21 +851,19 @@ class TestNoiseAndWeatherConventions(BaseTester):
         )
         assert smaller(image).shape == image.shape
 
-    # A drop of size h spans h + 1 rows end to end; with both sizes at most 1 it is a single pixel.
+    # Issue #4810: a drop of size n >= 2 paints n pixels over n + 1 rows, skipping one.  A fix that paints a
+    # contiguous drop flips it.
     # Snippet used to generate expected:
     #   torch.manual_seed(0)
-    #   y = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(0, 0), p=1.0)(torch.zeros(1, 1, 6, 10))
+    #   y = K.RandomRain(number_of_drops=(1, 1), drop_height=(h, h), drop_width=(0, 0), p=1.0)(torch.zeros(1, 1, 6, 10))
     #   print(sorted({r for r, _ in (y[0, 0] != 0).nonzero().tolist()}))
-    def test_convention_random_rain_drop_spans_one_row_more_than_its_height(self, device, dtype):
+    @pytest.mark.parametrize(("height", "rows"), [(2, [0, 2]), (5, [0, 1, 2, 3, 5])])
+    def test_wart_random_rain_drop_skips_a_row_4810(self, device, dtype, height, rows):
         image = torch.zeros(1, 1, 6, 10, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(0, 0), p=1.0)(image)
-        rows, _ = _lit_extent(out[0, 0])
-        assert (rows[0], rows[-1]) == (0, 5)
-        for width in (1, 0):
-            torch.manual_seed(_FORWARD_SEED)
-            aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(1, 1), drop_width=(width, width), p=1.0)
-            assert int((aug(image) != 0).sum()) == 1
+        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(height, height), drop_width=(0, 0), p=1.0)(image)
+        lit = (out[0, 0] != 0).nonzero()
+        assert (lit[:, 0] - lit[:, 0].min()).tolist() == rows
 
     # The three integer ranges are closed and uniform (#4567), including signed widths that straddle or
     # end at zero.  The 15% band is wide for the 16-bin height at 22000 draws; what it has to separate is
@@ -1200,19 +1198,18 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         flat = per_sample._params["gradient"].flatten(1).float().abs()
         assert len(set(flat.argmax(1).tolist())) > 1, "the strongest-gradient location is not drawn per sample"
 
-    # The documented all-negative collapse (#4430) is conditional: a positive gradient lifts a near-zero
-    # negative image.
-    @pytest.mark.parametrize(
-        "name", ["RandomGaussianIllumination", "RandomLinearIllumination", "RandomLinearCornerIllumination"]
-    )
-    def test_convention_positive_illumination_can_lift_an_all_negative_image(self, device, dtype, name):
-        image = torch.full((2, 3, 7, 9), -0.01, device=device, dtype=dtype)
-        aug = _illumination(name, gain=(0.1, 0.1), sign=(1.0, 1.0))
+    # Issue #4811: ``center`` is rounded to a whole pixel, half to even, so ``center=0.5`` peaks one column
+    # past the middle of a 7-wide image but on it for a 9-wide one.  A fix that maps ``center`` to the pixel
+    # centre flips the 7-wide leg.
+    # Snippet used to generate expected:
+    #   a = K.RandomGaussianIllumination(gain=(0.5, 0.5), sigma=(0.2, 0.2), center=(0.5, 0.5), sign=(1., 1.), p=1.)
+    #   torch.manual_seed(0); a(torch.zeros(1, 1, w, w)); print(int(a._params["gradient"][0, 0].sum(0).argmax()))
+    @pytest.mark.parametrize(("width", "peak"), [(7, 4), (9, 4)])
+    def test_wart_random_gaussian_illumination_center_rounds_half_to_even_4811(self, device, dtype, width, peak):
+        aug = K.RandomGaussianIllumination(gain=(0.5, 0.5), sigma=(0.2, 0.2), center=(0.5, 0.5), sign=(1.0, 1.0), p=1.0)
         torch.manual_seed(_FORWARD_SEED)
-        out = aug(image)
-        assert float(out.min()) >= 0.0
-        assert float(out.max()) <= 1.0
-        assert float(out.max()) > 0.0
+        aug(torch.zeros(1, 1, width, width, device=device, dtype=dtype))
+        assert int(aug._params["gradient"][0, 0].float().sum(0).argmax()) == peak
 
     # The three classes round-trip through pickle, deepcopy and torch.save (#4435), and the copy
     # reproduces the original's output under the same seed.

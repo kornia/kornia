@@ -58,9 +58,6 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         Because the sum is clamped, an input whose values are all at or below ``-limit`` comes back as an
         all-zero image on every draw. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
-    Note:
-        Input torch.Tensor must be float and normalized into [0, 1].
-
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)

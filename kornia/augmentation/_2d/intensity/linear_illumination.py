@@ -46,16 +46,14 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
 
     Convention:
         - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
-          so the output stays inside that range even when the input does not; once ``gain`` exceeds the headroom
-          between an in-range image and the bound, the sum is cut there rather than rescaled.
+          so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
           edge where the gradient is strongest is drawn separately, per sample.
 
     .. warning::
-        An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
-        above zero; a positive sampled gradient can recover values instead. Tracked in
+        An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
@@ -169,16 +167,14 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
 
     Convention:
         - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
-          so the output stays inside that range even when the input does not; once ``gain`` exceeds the headroom
-          between an in-range image and the bound, the sum is cut there rather than rescaled.
+          so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
           corner where the gradient is strongest is drawn separately, per sample.
 
     .. warning::
-        An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
-        above zero; a positive sampled gradient can recover values instead. Tracked in
+        An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::

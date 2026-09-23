@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import math
-import os
 import warnings
 
 import pytest
@@ -139,7 +138,8 @@ _OUT_OF_RANGE_ON_FIXTURES = (
 _REJECTS_OUT_OF_RANGE_FIXTURES = ("RandomEqualize",)
 
 # These factories return zeros for a constant -1 image on every draw (#4430): no admissible draw lifts it
-# above zero.  RandomPosterize is not here: its uint8 conversion of a negative float is platform-dependent
+# above zero.  The plasma brightness and contrast maps are unbounded draws, so those two are pinned by replay
+# instead.  RandomPosterize is not here: its uint8 conversion of a negative float is platform-dependent
 # (test_wart_random_posterize_out_of_range_wraps_4430).
 _COLLAPSES_ON_CONSTANT_MINUS_ONE = {
     **{
@@ -151,7 +151,6 @@ _COLLAPSES_ON_CONSTANT_MINUS_ONE = {
             "RandomGaussianIllumination",
             "RandomLinearIllumination",
             "RandomLinearCornerIllumination",
-            "RandomPlasmaBrightness",
             "RandomPlasmaShadow",
             "RandomSnow",
             "RandomSharpness",
@@ -181,13 +180,6 @@ def _sync(device) -> None:
     # otherwise surface inside an unrelated later test.
     if device.type == "mps":
         torch.mps.synchronize()
-
-
-def _kornia_warnings(caught: list[warnings.WarningMessage]) -> list[warnings.WarningMessage]:
-    # Every warning but torch's own: a kornia warning may be attributed to kornia's source or, through
-    # ``stacklevel``, to the caller.
-    root = os.path.dirname(torch.__file__) + os.sep
-    return [w for w in caught if not w.filename.startswith(root)]
 
 
 def _run(name: str, image: torch.Tensor, seed: int | None = None) -> torch.Tensor:
@@ -311,27 +303,36 @@ class TestIntensityValueRangeConventions(BaseTester):
             out = _COLLAPSES_ON_CONSTANT_MINUS_ONE[name]()(image)
             _sync(image.device)
         assert float(out.abs().max()) == 0.0
-        assert not _kornia_warnings(caught)
+        assert not caught
 
-    # Issue #4430, RandomPlasmaContrast: ``(x - 0.5) * 4 * plasma + 0.5`` sends a constant -1 image to zero
-    # wherever the map is at least 1/12, so whether it collapses depends on the drawn map.  The draw is
-    # pinned by replaying ``params`` with a constant map.
-    @pytest.mark.parametrize(("level", "collapses"), [(0.5, True), (0.0, False)])
-    def test_wart_random_plasma_contrast_negative_collapse_depends_on_the_map_4430(
-        self, device, dtype, level, collapses
-    ):
+    # Issue #4430, the plasma classes: whether a constant -1 image collapses depends on the drawn map.
+    # RandomPlasmaContrast, ``(x - 0.5) * 4 * plasma + 0.5``, zeroes it wherever the map is at least 1/12;
+    # RandomPlasmaBrightness, ``x + (2 * plasma - 1) * intensity``, at intensity 1 zeroes it wherever the map
+    # is at most 1.  The draw is pinned by replaying ``params`` with a constant map.
+    @pytest.mark.parametrize(
+        ("name", "level", "collapses"),
+        [
+            ("RandomPlasmaContrast", 0.5, True),
+            ("RandomPlasmaContrast", 0.0, False),
+            ("RandomPlasmaBrightness", 0.5, True),
+            ("RandomPlasmaBrightness", 1.5, False),
+        ],
+    )
+    def test_wart_random_plasma_negative_collapse_depends_on_the_map_4430(self, device, dtype, name, level, collapses):
         image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
-        aug = K.RandomPlasmaContrast(p=1.0)
+        aug = getattr(K, name)(p=1.0)
         torch.manual_seed(_FORWARD_SEED)
         aug(image)
         params = dict(aug._params)
         params["plasma"] = torch.full_like(params["plasma"], level)
+        if "intensity" in params:
+            params["intensity"] = torch.ones_like(params["intensity"])
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             out = aug(image, params=params)
             _sync(image.device)
         assert (float(out.abs().max()) == 0.0) is collapses
-        assert not _kornia_warnings(caught)
+        assert not caught
 
     # Issue #4430: RandomPosterize posterizes the `uint8` conversion of the raw float, not of the clamped
     # input.  What that conversion does outside [0, 255] is platform-dependent (it wraps or saturates), so
@@ -375,12 +376,15 @@ class TestIntensityValueRangeConventions(BaseTester):
     #   torch.manual_seed(1234); neg = torch.rand(2, 3, 6, 8) - 1.0
     #   torch.manual_seed(0); print(K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(neg).isnan().all())
     @pytest.mark.parametrize(("gamma", "expected"), [(0.5, "nan"), (1.0, "zero"), (2.0, "positive")])
-    def test_wart_random_gamma_negative_input_is_nan_4430(self, device, dtype, gamma, expected):
+    def test_wart_random_gamma_negative_input_depends_on_gamma_4430(self, device, dtype, gamma, expected):
         image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
         assert float(image.max()) < 0.0, "the fixture must be strictly negative for the power to be NaN"
         torch.manual_seed(_FORWARD_SEED)
-        out = K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(image)
-        _sync(image.device)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            out = K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(image)
+            _sync(image.device)
+        assert not caught
         if expected == "nan":
             assert bool(out.isnan().all()), f"gamma={gamma} on a negative input should be NaN throughout"
         else:
@@ -572,8 +576,9 @@ class TestIntensityColourConventions(BaseTester):
     # Issue #4785, ColorJitter: the brightness guard tests the factor against 0, not the multiplier's neutral 1,
     # so the factor 1 drawn by the default ``brightness=0.0`` still runs the clamping step.  Run first, it
     # clamps an all-negative input to zero; a contrast or saturation factor above 1 applied before it lifts
-    # part of the image first.  A fix that skips a factor of 1 flips the brightness-first leg.  A fixed order
-    # without index 0 skips the step and its clamp.
+    # part of the image first.  A fix that skips a factor of 1 flips the brightness-first leg; removing the guard
+    # altogether leaves it green, because the clamp is then #4430's.  A fixed order without index 0 skips the
+    # step and its clamp.
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); neg = torch.rand(1, 3, 8, 8) - 1.0
     #   print(K.ColorJitter(p=1.0, order=order, contrast=(1.9, 1.9))(neg).aminmax())
@@ -807,7 +812,7 @@ class TestIntensityColourConventions(BaseTester):
             warnings.simplefilter("always")
             out = K.RandomSolarize(p=1.0)(image)
         assert bool((out == 0).all())
-        assert not _kornia_warnings(caught)
+        assert not caught
         # A fixture that straddles the bound does not collapse.
         torch.manual_seed(_FIXTURE_SEED)
         straddling = (torch.rand(2, 3, 6, 8) * 2.0).to(device=device, dtype=dtype)
@@ -933,7 +938,7 @@ class TestIntensityColourConventions(BaseTester):
                 warnings.simplefilter("always")
                 out = K.RandomRGBShift(p=1.0)(image)
             assert float(out.abs().max()) == 0.0, seed
-            assert not _kornia_warnings(caught)
+            assert not caught
 
     # Issue #4782: a tuple limit is neither read as a range nor rejected by name; it dies on the unary
     # minus that builds `(-limit, limit)`.  A fix that accepts the tuple, or raises a kornia error, flips it.
@@ -942,7 +947,7 @@ class TestIntensityColourConventions(BaseTester):
         with pytest.raises(TypeError) as info:
             K.RandomRGBShift((0.1, 0.5), p=1.0)
         # A kornia rejection would name the argument; the raw error from the unary minus does not.
-        assert "limit" not in str(info.value)
+        assert not any(word in str(info.value) for word in ("limit", "shift"))
 
     # `pl` is a persistent buffer holding the table the mode selects -- 25 rows for blackbody, 23 for CIED --
     # and `select_from` narrows it.
@@ -1148,19 +1153,19 @@ class TestIntensityColourConventions(BaseTester):
                 "hue_scalar_above_half",
                 "construction",
                 ValueError,
-                r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\), got tensor\(\[-0\.6\d*,\s*0\.6\d*\]\)",
+                r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\), got tensor\(\[-0\.60*,\s*0\.60*\]\)",
             ),
             (
                 "brightness_scalar_above_two",
                 "construction",
                 ValueError,
-                r"brightness out of bounds\. Expected inside \(0\.0, 2\.0\), got tensor\(\[-2\.\d*,\s*4\.\d*\]\)",
+                r"brightness out of bounds\. Expected inside \(0\.0, 2\.0\), got tensor\(\[-2\.0*,\s*4\.0*\]\)",
             ),
             (
                 "solarize_scalar_threshold_above_half",
                 "construction",
                 ValueError,
-                r"thresholds out of bounds\. Expected inside \(0\.0, 1\.0\), got tensor\(\[-1\.5\d*,\s*2\.5\d*\]\)",
+                r"thresholds out of bounds\. Expected inside \(0\.0, 1\.0\), got tensor\(\[-1\.50*,\s*2\.50*\]\)",
             ),
         ],
     )
@@ -1238,26 +1243,26 @@ class TestIntensityColourConventions(BaseTester):
     @pytest.mark.device_agnostic
     def test_convention_scalar_magnitude_floors_low_and_rejects_high(self):
         for ctor, message in (
-            (lambda: K.RandomHue(0.7, p=1.0), r"hue out of bounds\. .*got tensor\(\[-0\.7\d*,\s*0\.7\d*\]\)"),
+            (lambda: K.RandomHue(0.7, p=1.0), r"hue out of bounds\. .*got tensor\(\[-0\.70*,\s*0\.70*\]\)"),
             (
                 lambda: K.RandomBrightness(3.0, p=1.0),
-                r"brightness out of bounds\. .*got tensor\(\[-2\.\d*,\s*4\.\d*\]\)",
+                r"brightness out of bounds\. .*got tensor\(\[-2\.0*,\s*4\.0*\]\)",
             ),
             (
                 lambda: K.ColorJiggle(brightness=1.5, p=1.0),
-                r"brightness out of bounds\. .*got tensor\(\[-0\.5\d*,\s*2\.5\d*\]\)",
+                r"brightness out of bounds\. .*got tensor\(\[-0\.50*,\s*2\.50*\]\)",
             ),
             (
                 lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
-                r"thresholds out of bounds\. .*got tensor\(\[-1\.5\d*,\s*2\.5\d*\]\)",
+                r"thresholds out of bounds\. .*got tensor\(\[-1\.50*,\s*2\.50*\]\)",
             ),
             (
                 lambda: K.RandomMotionBlur(3, 45.0, 2.0, p=1.0),
-                r"direction out of bounds\. .*got tensor\(\[-2\.\d*,\s*2\.\d*\]\)",
+                r"direction out of bounds\. .*got tensor\(\[-2\.0*,\s*2\.0*\]\)",
             ),
             (
                 lambda: K.RandomJPEG(90.0, p=1.0),
-                r"jpeg_quality out of bounds\. .*got tensor\(\[-40\.\d*,\s*140\.\d*\]\)",
+                r"jpeg_quality out of bounds\. .*got tensor\(\[-40\.0*,\s*140\.0*\]\)",
             ),
         ):
             with pytest.raises(ValueError, match=message):
@@ -1360,8 +1365,8 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         with pytest.raises(RuntimeError) as info:
             _sync(K.RandomClahe(p=1.0)(torch.rand(1, 1, 8, 8, device=device, dtype=dtype)).device)
-        # A kornia error would name the grid; torch's padding error does not.
-        assert "grid" not in str(info.value).lower()
+        # A kornia error would name the grid or its tiles; torch's padding error does not.
+        assert not any(word in str(info.value).lower() for word in ("grid", "tile"))
 
     # Issue #4572: each image is equalized with its own `clip_limit_factor` draw, not the first sample's.
     @pytest.mark.device_agnostic
@@ -1382,7 +1387,7 @@ class TestIntensityColourConventions(BaseTester):
 
     # With `same_on_batch=True` every image is equalized with the one shared draw.
     @pytest.mark.device_agnostic
-    def test_convention_random_clahe_same_on_batch_shares_one_clip_limit_4572(self):
+    def test_convention_random_clahe_same_on_batch_shares_one_clip_limit(self):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(8, 1, 32, 32) ** 3
         torch.manual_seed(_FORWARD_SEED)

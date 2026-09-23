@@ -68,25 +68,25 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
 
     Convention:
         - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
-          so the output stays inside that range even when the input does not; once ``gain`` exceeds the headroom
-          between an in-range image and the bound, the sum is cut there rather than rescaled.
+          so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample.
         - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
           multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
-          narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel; at ``sigma=0``,
-          which the constructor admits, the kernel puts all its weight on the sample nearest the centre, or
-          splits it evenly between the two that tie on an even-length axis.
+          narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel, ``0`` included.
 
     .. warning::
-        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``, which
-        breaks a ``DataLoader`` with workers under ``spawn``. Tracked in
-        `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
+        The drawn ``center`` is rounded to a whole pixel, half to even, so on an odd-length axis the peak can sit
+        a pixel past the pixel-centre position ``center * L - 0.5``: ``center=0.5`` lands on column ``4`` of a
+        7-pixel-wide image. Tracked in `#4811 <https://github.com/kornia/kornia/issues/4811>`_.
 
     .. warning::
-        An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
-        above zero; a positive sampled gradient can recover values instead. Tracked in
+        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
+        Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
+
+    .. warning::
+        An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::

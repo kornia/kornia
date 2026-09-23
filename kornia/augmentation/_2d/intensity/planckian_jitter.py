@@ -129,9 +129,6 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         does not load into an instance built with the other. Tracked in
         `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
 
-    .. note::
-        Input torch.Tensor must be float and normalized into [0, 1].
-
     Examples:
         To apply planckian jitter based on mode
 

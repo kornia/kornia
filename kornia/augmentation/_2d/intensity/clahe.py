@@ -53,7 +53,6 @@ class RandomClahe(IntensityAugmentationBase2D):
           that range, as :class:`RandomEqualize` does. The check guards a 256-entry lookup indexed with
           ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]`` is still admitted, up
           to the rounding of ``input * 255`` in the input's dtype.
-        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw.
         - ``grid_size`` tiles the two axes independently, and a grid that does not divide the image pads it, so
           ``grid_size=(3, 3)`` works on a ``10 x 10`` image. A grid larger than the image raises a ``ValueError``.
 

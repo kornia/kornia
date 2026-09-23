@@ -47,8 +47,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``, an
           ``int`` or ``float`` in ``[0, 1]`` checked at construction. Every other channel is left exactly as it
           came in, so the input's value range is carried through.
-        - the dropped channels are drawn independently per sample; ``same_on_batch=True`` collapses the
-          draw to one set of channels for the whole batch.
+        - ``num_drop_channels`` is checked against the input's channel count on the forward pass.
         - ``fill_value`` is held in a non-persistent buffer, so ``.to(...)`` moves and casts it while
           ``state_dict()`` gains no key for it.
 

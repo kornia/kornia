@@ -65,21 +65,22 @@ class ColorJitter(IntensityAugmentationBase2D):
         - see :class:`ColorJiggle` for how the two classes relate. This class takes the brightness factor as
           drawn, a multiplier whose identity is ``1``, and a scalar ``brightness`` above ``1`` draws from
           ``[0, 1 + brightness]``, as torchvision does.
-        - every step in the order is computed, and its result discarded when its factor is neutral, so the hue
-          step rejects any channel count but three and the saturation step any but one or three, whatever the
-          factors. The brightness, contrast and (three-channel) saturation steps clamp into ``[0, 1]`` when they
-          apply. A fixed ``order`` without index ``0`` skips the brightness step.
+        - every step in the order is computed whatever the factors, so the hue step rejects any channel count
+          but three and the saturation step any but one or three. A step's result is discarded only when every
+          factor in the batch equals its guard value -- ``1`` for contrast and saturation, ``0`` for hue and, as
+          the first warning below states, for brightness; otherwise the brightness, contrast and (three-channel)
+          saturation steps clamp the whole batch into ``[0, 1]``. A fixed ``order`` without index ``0`` skips
+          the brightness step.
 
     .. warning::
-        The brightness step is guarded against a drawn factor of ``0`` instead of the multiplier's neutral ``1``.
-        A batch whose factors are all ``0``, such as ``brightness=(0.0, 0.0)``, comes back unchanged instead of
-        black, and the factor ``1`` that the default ``brightness=0.0`` draws still runs the clamping step, so
-        ``ColorJitter(0, 0, 0, 0)`` clamps an out-of-range input. Tracked in
+        The brightness step is skipped for a factor of ``0`` instead of the neutral ``1``: a batch whose factors
+        are all ``0`` comes back unchanged instead of black, and ``ColorJitter(0, 0, 0, 0)`` clamps an
+        out-of-range input. Tracked in
         `#4785 <https://github.com/kornia/kornia/issues/4785>`_.
 
     .. warning::
-        On an input that is not three-channel, which a fixed ``order`` leaving out the steps that reject it admits,
-        the contrast step blends each sample with the mean of the whole batch rather than its own. Tracked in
+        On an input that is not three-channel, which only a fixed ``order`` admits, the contrast step blends each
+        sample with the mean of the whole batch rather than its own. Tracked in
         `#4806 <https://github.com/kornia/kornia/issues/4806>`_.
 
     .. warning::

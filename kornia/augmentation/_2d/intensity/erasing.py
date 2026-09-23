@@ -69,8 +69,7 @@ class RandomErasing(IntensityAugmentationBase2D):
           in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
 
     Note:
-        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:

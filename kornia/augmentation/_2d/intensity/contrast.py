@@ -49,7 +49,8 @@ class RandomContrast(IntensityAugmentationBase2D):
 
     Convention:
         - the drawn factor reaches :func:`kornia.enhance.adjust_contrast` unchanged -- it is not re-based the way
-          :class:`RandomBrightness` re-bases its own -- so ``1.0`` is the identity for an input in ``[0, 1]``.
+          :class:`RandomBrightness` re-bases its own -- so ``1.0`` is the identity: for any input with
+          ``clip_output=False``, and for an input in ``[0, 1]`` at the default.
         - at the default ``clip_output=True`` the result is clamped into ``[0, 1]``; with ``clip_output=False``
           the raw product is returned.
 

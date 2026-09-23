@@ -57,7 +57,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     .. warning::
         Outside ``[0, 1]`` the output is the posterized ``uint8`` conversion of the raw float, not of the clamped
-        input, and that conversion of an out-of-range float is undefined (it wraps or saturates by platform). A
+        input, and that conversion of an out-of-range float is undefined. A
         sample that draws ``bits=8`` skips the conversion and keeps its out-of-range values. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 

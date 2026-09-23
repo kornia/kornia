@@ -48,20 +48,15 @@ class RandomSnow(IntensityAugmentationBase2D):
           raises on the forward pass.
         - ``snow_coefficient`` is checked against ``[0, 1]`` at construction, where ``brightness`` must be
           ``1`` or greater.
-        - one ``snow_coefficient`` and one ``brightness`` are drawn per sample; ``same_on_batch=True``
-          collapses both to a single value for the batch.
         - the output as a whole is not clamped. Only a snow-covered pixel -- one whose lightness is below the
           drawn ``snow_coefficient`` -- has its lightness scaled by ``brightness`` and clamped into ``[0, 1]``, so
-          it comes back white once its scaled lightness reaches ``1`` and black when its lightness is zero or
-          negative. A pixel the snow misses goes through the HLS round trip unclamped, except at the two
-          out-of-range points where the HLS saturation is undefined: a lightness of exactly ``1`` with a channel
-          above ``1``, such as ``(1.5, 0.5, 0.5)``, comes back white, and a lightness of exactly ``0``, such as
-          ``(2.0, -2.0, -2.0)``, black.
+          it comes back white once its scaled lightness reaches ``1``. A pixel the snow misses goes through the
+          HLS round trip unclamped, except where the HLS saturation is undefined: a lightness of exactly ``1``
+          with a channel above ``1``, such as ``(1.5, 0.5, 0.5)``, comes back white.
 
     .. warning::
-        An input whose values are all negative comes back as an all-zero image, and a pixel whose lightness is
-        zero or negative comes back black in any image -- including an out-of-range pixel such as
-        ``(2.0, -2.0, -2.0)``, which is neither all-negative nor has a negative lightness. Tracked in
+        An input whose values are all negative comes back as an all-zero image, and any pixel whose lightness is
+        zero or negative, such as ``(2.0, -2.0, -2.0)``, comes back black. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:

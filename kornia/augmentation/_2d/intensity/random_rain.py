@@ -50,19 +50,17 @@ class RandomRain(IntensityAugmentationBase2D):
           darker than every pixel above ``200 / 255`` that it falls on, inside ``[0, 1]`` or not. Every other
           pixel is carried through unclamped.
         - both sizes must be strictly smaller than the image on their own axis, checked on the forward pass,
-          where the image shape is known; a ``drop_height`` below ``1`` raises there too. Once the larger of the
-          two sizes is at least ``2``, a drop of size ``h`` spans ``h + 1`` rows or columns end to end; a drop
-          whose sizes are both at most ``1`` is a single pixel. The drop is a ``linspace`` of
-          ``max(drop_height, abs(drop_width))`` steps truncated to integers, so when the two sizes differ the
-          painted cells have gaps inside that span: ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10`` image
-          paints rows ``[0, 1, 2, 3, 5]``.
+          where the image shape is known; a ``drop_height`` below ``1`` raises there too.
         - every start position that keeps the whole drop inside the image is equally likely.
         - the three integer ranges are closed and uniform, so the default ``drop_height=(5, 20)`` reaches ``20``
           and the default ``drop_width=(-5, 5)`` reaches both ends. With the defaults an image 20 pixels tall, or
           5 pixels wide, therefore raises on some draws. A range that is reversed, fractional or non-finite
           raises ``ValueError`` at construction.
-        - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
-          the same coordinates; left at ``False`` each sample draws its own.
+
+    .. warning::
+        A drop whose larger size ``n`` is at least ``2`` paints ``n`` pixels spread over ``n + 1`` rows or
+        columns, so it has a one-pixel gap: ``drop_height=5`` with ``drop_width=0`` paints rows
+        ``[0, 1, 2, 3, 5]``. Tracked in `#4810 <https://github.com/kornia/kornia/issues/4810>`_.
 
     Examples:
         >>> rng = torch.manual_seed(0)

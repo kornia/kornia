@@ -109,12 +109,10 @@ class ColorJiggle(IntensityAugmentationBase2D):
           replayed ``params`` replaces it.
         - ``brightness`` is bounded to ``[0, 2]`` in both argument forms: ``(0.0, 3.0)`` and the scalar ``1.5``,
           whose implied range reaches ``2.5``, raise at construction, where :class:`ColorJitter` accepts either.
-        - a step whose drawn factor is neutral is skipped, so ``ColorJiggle(0, 0, 0, 0)`` is the identity for any
-          input, and the channel count only has to suit the steps that run: saturation and hue need three
-          channels, a brightness- or contrast-only configuration accepts any. The brightness and contrast steps
-          clamp into ``[0, 1]``; saturation and hue do not clamp the RGB result.
-        - a fixed ``order`` makes a three-channel transform ``torch.compile`` fullgraph-safe; the default sampled
-          order does not.
+        - a step is skipped when every drawn factor in the batch is neutral, so ``ColorJiggle(0, 0, 0, 0)`` is
+          the identity for any input, and the channel count only has to suit the steps that run: saturation and
+          hue need three channels, a brightness- or contrast-only configuration accepts any. The brightness and
+          contrast steps clamp into ``[0, 1]``; saturation and hue do not clamp the RGB result.
 
     .. warning::
         Because the brightness and contrast steps clamp, an all-negative input can come back as an all-zero
