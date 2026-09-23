@@ -89,11 +89,16 @@ def solve_pnp_dlt(
           camera-to-world pose.
         - ``intrinsics`` is the :math:`(B, 3, 3)` ``K``; the :math:`(B, 4, 4)` matrix that a
           ``PinholeCamera`` stores is rejected.
-        - ``weights`` scales the two rows each point contributes to the homogeneous linear system: a uniform
-          ``weights`` leaves the answer unchanged up to rounding and a zero weight drops that point.
-        - fewer than 6 points or a dtype other than float32/float64 raise
-          :class:`~kornia.core.exceptions.BaseError` naming the argument; a degenerate ``world_points`` raises
-          :class:`AssertionError` from the check above.
+        - ``weights`` scales the two rows each point contributes to the homogeneous linear system, so a uniform
+          ``weights`` leaves the answer unchanged up to rounding.
+        - fewer than 6 points, or a ``world_points``, ``img_points`` or ``intrinsics`` in a dtype other than
+          float32/float64, raise :class:`~kornia.core.exceptions.BaseError` naming the argument; a degenerate
+          ``world_points`` raises :class:`AssertionError` from the check above.
+
+    .. warning::
+        A zero weight removes a point's rows but not the point: it still enters the normalization and the
+        degeneracy check, so coplanar points plus zero-weight points off the plane pass the check and return a
+        wrong pose: `#4799 <https://github.com/kornia/kornia/issues/4799>`_.
 
     Args:
         world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing

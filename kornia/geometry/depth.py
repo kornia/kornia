@@ -130,24 +130,25 @@ def depth_to_3d_v2(
           column and ``v`` the row (integer pixel centres; see
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`). It equals
           :func:`~kornia.geometry.depth.depth_to_3d` after ``permute(0, 2, 3, 1)``.
-        - ``camera_matrix`` needs a leading batch dimension: without ``xyz_grid`` a bare :math:`(3, 3)` raises
-          ``ShapeError``; with ``xyz_grid`` it is never read.
+        - without ``xyz_grid``, ``camera_matrix`` must be exactly :math:`(B, 3, 3)` (another shape raises
+          ``ShapeError``); with ``xyz_grid`` it is never read.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
         - ``xyz_grid`` replaces the grid construction; pass what :func:`~kornia.geometry.depth.unproject_meshgrid`
           returns for the same camera.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
-        camera_matrix: tensor containing the camera intrinsics with shape :math:`(*, 3, 3)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
         xyz_grid: explicit xyz point values.
 
     Return:
         tensor with a 3d point per pixel of the same resolution as the input, :math:`(*, H, W, 3)`, whose
-        leading dimensions are the broadcast of ``depth``'s and ``camera_matrix``'s: the Example broadcasts a
+        leading dimensions are the broadcast of ``depth``'s and the grid's: the Example broadcasts a
         :math:`(4, 4)` depth against a :math:`(2, 3, 3)` camera to :math:`(2, 4, 4, 3)`, and a
-        :math:`(B, T, H, W)` depth with a :math:`(B, 1, 3, 3)` camera returns :math:`(B, T, H, W, 3)`.
+        :math:`(B, T, H, W)` depth with an ``xyz_grid`` of shape :math:`(B, 1, H, W, 3)` returns
+        :math:`(B, T, H, W, 3)`.
 
     Example:
         >>> depth = torch.rand(4, 4)
@@ -305,7 +306,8 @@ def depth_from_plane_equation(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`), normalized here with ``camera_matrix``.
         - the result is the camera-frame ``z`` of each pixel, :math:`(B, N)`: a list of depths, not a map.
         - a ray-plane dot product inside :math:`(-eps, eps)` is replaced by :math:`\pm` ``eps`` with its sign
-          (``+eps`` for an exact zero), so a grazing ray returns a large signed depth rather than ``inf``.
+          (``+eps`` for an exact zero), so a grazing ray returns a large signed depth rather than ``inf``, except
+          where ``eps`` underflows in the input dtype (the default ``1e-8`` in float16).
 
     Args:
         plane_normals (torch.Tensor): Plane normal vectors of shape (B, 3).
@@ -452,7 +454,8 @@ class DepthWarper(nn.Module):
         this class's ``src`` (holding the depth) is that function's ``dst``, and ``patch_dst`` is its
         ``image_src``; reading "dst" as "dst" across the two gives the inverse warp:
         `#4273 <https://github.com/kornia/kornia/issues/4273>`_. The two agree to rounding for float32/float64
-        away from ``z = 0``, and split at ``z = 0``, where ``cam2pixel`` sends the pixel far outside the image:
+        away from ``z = 0``, and split at ``z = 0``, where ``cam2pixel`` sends every pixel with a nonzero
+        projected numerator far outside the image:
         `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:

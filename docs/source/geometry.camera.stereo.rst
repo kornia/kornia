@@ -127,7 +127,7 @@ where :math:`Q` is
 
 The :math:`Q` that :class:`StereoCamera` builds is exactly this matrix with :math:`tx = P_1[0, 3] / fx`, which the constructor requires to be strictly negative (a zero baseline or swapped cameras raise). The class's ``tx`` attribute is the positive baseline :math:`-P_1[0, 3] / fx`, so do not substitute it for :math:`tx` above.
 
-The :math:`Q[3, 3]` term is always zero in practice: the constructor rejects differing :math:`cx_{left}` and :math:`cx_{right}` (`#4270 <https://github.com/kornia/kornia/issues/4270>`_).
+The :math:`Q[3, 3]` term is zero on every rig :class:`StereoCamera` accepts in eager mode: the constructor rejects differing :math:`cx_{left}` and :math:`cx_{right}` (`#4270 <https://github.com/kornia/kornia/issues/4270>`_).
 
 Assuming :math:`fx = fy` you can further reduce this to:
 
@@ -157,7 +157,7 @@ Using the :math:`Q` matrix we can obtain the 3D points by:
     1
     \end{bmatrix}
 
-where the Euclidean 3D point is :math:`(X/W, Y/W, Z/W)`, :math:`u` is the pixel **column** and :math:`v` the **row**, as in ``cv2.reprojectImageTo3D`` (`#4269 <https://github.com/kornia/kornia/issues/4269>`_). A zero disparity gives :math:`W = 0`; the divide is then skipped and a finite point, behind the camera on a real rig, is returned instead of a point at infinity (`#4267 <https://github.com/kornia/kornia/issues/4267>`_).
+where the Euclidean 3D point is :math:`(X/W, Y/W, Z/W)`.
 
 .. autoclass:: StereoCamera
     :members:

@@ -156,7 +156,9 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Convention:
         Vertices are **inclusive**: a box covering pixels ``0..9`` has corners at ``0`` and ``9`` and width
-        ``10``. The vertex-based helpers of this module share it; :func:`nms` takes exclusive ``xyxy`` instead.
+        ``10``. The vertex-based helpers of this module share it, except :func:`bbox_generator3d`
+        (`#4018 <https://github.com/kornia/kornia/issues/4018>`_); :func:`nms` takes exclusive ``xyxy`` and
+        :func:`transform_bbox` converts ``'xywh'`` exclusively (``xmax = xmin + width``).
         The order is clockwise top-left, top-right, bottom-right, bottom-left. The result is
         ``(heights, widths)``, read from fixed vertex indices, ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1`` and
         ``height = boxes[:, 2, 1] - boxes[:, 0, 1] + 1``, not from a ``max - min`` reduction, so a box in
@@ -207,7 +209,9 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
 
     Convention:
         Vertices are inclusive (see :func:`infer_bbox_shape`), in :func:`validate_bbox3d` order. The result is
-        ``(depths, heights, widths)``, each ``max - min + 1`` along one edge. Pass the ``'vertices_plus'``
+        ``(depths, heights, widths)``, each read from fixed vertex indices like :func:`infer_bbox_shape` (for
+        example ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1``), so another vertex order can give a negative
+        extent. Pass the ``'vertices_plus'``
         export of :class:`~kornia.geometry.boxes.Boxes3D`; ``'vertices'`` reads one larger per axis.
         :math:`(B, N, 8, 3)` input raises :class:`~kornia.core.exceptions.ShapeError`; flatten it first.
 

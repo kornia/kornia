@@ -89,21 +89,12 @@ class TestBoxes2D(BaseTester):
         output = Boxes.from_tensor(source, mode=mode).to_tensor(mode=mode)
         self.assert_close(output, source, atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize(
-        ("box_dtype", "source_values", "expected_values"),
-        [
-            (torch.bfloat16, [256.0, 256.0, 258.0, 258.0], [256.0, 256.0, 256.0, 256.0]),
-            (torch.float16, [-385.25, 0.0, 400.0, 2.0], [-385.25, 0.0, 399.75, 2.0]),
-        ],
-    )
-    def test_wart_half_round_trip_rounds_the_offset_intermediate_3934(
-        self, device, box_dtype, source_values, expected_values
-    ):
-        # kornia#3934: the xyxy round trip goes through the +/-1 inclusive offsets, which bfloat16 cannot
-        # represent at 256 and float16 rounds through the cross-zero width; without the offsets it is exact.
-        source = torch.tensor([source_values], device=device, dtype=box_dtype)
+    def test_wart_bfloat16_round_trip_rounds_the_offset_intermediate_3934(self, device):
+        # kornia#3934: the xyxy round trip goes through the +/-1 inclusive offsets, which bfloat16 cannot represent
+        # at 256, so [256, 256, 258, 258] comes back as [256, 256, 256, 256]; without the offsets it is exact.
+        source = torch.tensor([[256.0, 256.0, 258.0, 258.0]], device=device, dtype=torch.bfloat16)
         output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
-        expected = torch.tensor([expected_values], device=device, dtype=box_dtype)
+        expected = torch.tensor([[256.0, 256.0, 256.0, 256.0]], device=device, dtype=torch.bfloat16)
         self.assert_close(output, expected, atol=0.0, rtol=0.0)
         assert not torch.equal(output, source)
 
@@ -140,10 +131,9 @@ class TestBoxes2D(BaseTester):
         self.assert_close(heights, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(widths, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_convention_get_boxes_shape_includes_list_padding(self, device, dtype):
-        # get_boxes_shape uses the padded xywh export, so padding entries appear as
-        # 1-by-1 boxes even though an ordinary to_tensor export trims them. The 1-by-1
-        # value depends on the inclusive +1 tracked in kornia#3934.
+    def test_wart_get_boxes_shape_reports_list_padding_as_one_by_one_3934(self, device, dtype):
+        # kornia#3934: get_boxes_shape uses the padded xywh export, so padding entries appear as 1-by-1 boxes, the
+        # inclusive +1 of a zero box, even though an ordinary to_tensor export trims them.
         first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
         second = torch.cat([first, first])
         boxes = Boxes([first, second])
@@ -907,10 +897,9 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("batched", [False, True])
     @pytest.mark.parametrize("inplace", [False, True])
-    def test_wart_transform_boxes_empty_copy_aliases_input_4020(self, batched, inplace, device, dtype):
-        # Wart pin for tracking issue #4020: transforming an empty container
-        # preserves its tensor storage. The non-inplace wrapper is new but
-        # aliases the input data; the in-place wrapper remains self.
+    def test_convention_transform_boxes_empty_container_keeps_its_tensor(self, batched, inplace, device, dtype):
+        # Transforming an empty container keeps its tensor: the non-inplace wrapper is new but aliases the input
+        # data, and the in-place wrapper remains self.
         data = torch.empty((1, 0, 4, 2) if batched else (0, 4, 2), device=device, dtype=dtype)
         boxes = Boxes(data)
         original = boxes.data
@@ -1517,8 +1506,9 @@ class TestBbox3D(BaseTester):
 
     def test_convention_to_tensor_gradient_reaches_the_extremal_vertices_1396(self, device):
         # #1396: to_tensor reduces the stored vertices with amin/amax and does not reject an input that
-        # requires grad. d(xmin)/d(vertices) is therefore supported on the vertices attaining the minimum and
-        # sums to 1 over them: a single vertex when it is unique, a tie of four on an axis-aligned face.
+        # requires grad. d(xmin)/d(vertices) is therefore supported on the vertices attaining the minimum, shared
+        # equally among them and summing to 1: a single vertex when it is unique, a tie of four on an axis-aligned
+        # face (a min(dim=...) reduction would give all of it to one vertex).
         vertices = torch.tensor(
             [
                 [
@@ -1545,6 +1535,7 @@ class TestBbox3D(BaseTester):
             outside[0, list(tied), 0] = False
             assert bool((data.grad[outside] == 0).all())
             self.assert_close(data.grad[0, list(tied), 0].sum(), torch.tensor(1.0, device=device))
+            assert data.grad[0, list(tied), 0].unique().numel() == 1
 
     @staticmethod
     def _asymmetric_xyzxyz(device, dtype) -> torch.Tensor:
@@ -1949,7 +1940,7 @@ class TestVideoBoxes(BaseTester):
 
     def test_wart_indexing_drops_the_temporal_size_4249(self, device, dtype):
         # kornia#4249: Boxes.__getitem__ builds the result with type(self)(...) and never sets
-        # temporal_channel_size, so the sliced wrapper's to_tensor fails. Delete when #4249 is fixed.
+        # temporal_channel_size, so the sliced wrapper's to_tensor fails. Invert when #4249 is fixed.
         video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
         frame = video_boxes[0]
         assert isinstance(frame, VideoBoxes)

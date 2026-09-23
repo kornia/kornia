@@ -35,7 +35,7 @@ Pixel-centre conventions
    * - ``grid_sample``, ``align_corners=True``
      - normalized: corner pixels map to ±1 exactly
      - —
-     - torch ``grid_sample``, kornia ``create_meshgrid(normalized_coordinates=True)`` today
+     - torch ``grid_sample``, kornia ``create_meshgrid(normalized_coordinates=True)``
    * - ``grid_sample``, ``align_corners=False``
      - normalized: pixel *areas* span [−1, 1]; centers at ±(1−1/N)
      - —
@@ -86,8 +86,7 @@ rest of the functional camera API assume.
 
    :meth:`kornia.geometry.camera.pinhole.PinholeCamera.scale` (and ``scale_``, and
    :meth:`kornia.sensors.camera.PinholeModel.scale`) rescale the principal point as ``cx' = s * cx`` — the COLMAP
-   rule — which disagrees with the integer pixel centres the rest of the library uses. It is documented as it
-   is and tracked as a coordinated repair in
+   rule — which disagrees with the integer pixel centres the rest of the library uses:
    `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
 
 Camera and world frames
@@ -240,8 +239,9 @@ Intrinsics layout
   ``intrinsics @ extrinsics`` and :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` inverts that
   ``4x4`` product, so a non-zero ``intrinsics[0, 3]`` shifts every projected ``u`` by ``intrinsics[0, 3] / z``,
   ``intrinsics[3, 3]`` rescales every unprojected point, and a ``3x3`` ``K`` zero-padded without
-  ``intrinsics[3, 3] = 1`` makes ``unproject`` fail on a singular matrix. Its class docstring documents the
-  layout and the deviations.
+  ``intrinsics[3, 3] = 1`` makes ``unproject`` fail on a singular matrix
+  (`#4771 <https://github.com/kornia/kornia/issues/4771>`_). Its class docstring documents the layout and the
+  zero-padded case.
 - **Depth means two different things.** It is the camera-frame ``z`` by default, and the Euclidean ray length
   when :func:`kornia.geometry.camera.perspective.unproject_points` is called with ``normalize=True`` (the
   ``normalize_points`` flags of :func:`kornia.geometry.depth.depth_to_3d` and

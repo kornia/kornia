@@ -48,8 +48,10 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
         - the ``z > 0`` precondition above is not validated.
 
     .. warning::
-        At ``z = 0`` the divide is plain: each component is ``inf``, ``-inf`` or ``nan`` (zero numerator)
-        according to its numerator. `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        The divide is plain at every ``z``: at ``z = 0`` a component is infinite, or ``nan`` for a zero
+        numerator. :func:`~kornia.geometry.camera.perspective.project_points` instead skips its divide at
+        ``abs(z) <= 1e-8`` and returns finite pixels there, so the two disagree below that threshold:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:
         points_in_camera: torch.Tensor representing the points to project with shape (..., 3).

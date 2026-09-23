@@ -48,8 +48,8 @@ class PinholeCamera:
     .. warning::
         :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` (the half-pixel rule),
         which disagrees with the integer pixel centres above:
-        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. :meth:`project` rejects the
-        :math:`(B, N, 4, 4)` storage the validator admits:
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. With the :math:`(B, N, 4, 4)` storage the
+        validator admits, :meth:`project` raises on :math:`(B, N, 3)` points:
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated: a
         zero-padded ``K`` with ``intrinsics[3, 3] = 0`` projects but :meth:`unproject` raises on the singular
         matrix: `#4771 <https://github.com/kornia/kornia/issues/4771>`_.
@@ -575,8 +575,8 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         Superseded by :class:`~kornia.geometry.camera.pinhole.PinholeCamera` and its ``camera_matrix`` property.
 
     .. warning::
-        The output is built as ``eye(4) + eps`` before the parameters are written, so every structural zero and
-        one carries ``eps``; ``eps=0.0`` returns the exact matrix.
+        The output is built as ``eye(4) + eps`` before the parameters are written, so every structural zero
+        carries ``eps``; ``eps=0.0`` returns the exact matrix.
         `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
@@ -800,8 +800,9 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         - ``intrinsics_inv`` is a :math:`(B, 4, 4)` inverse calibration matrix (the
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera` layout, not a ``3x3`` ``K``), and ``depth`` is
           the camera-frame ``z`` at each pixel of the ``(u, v, 1)`` grid.
-        - a wrong shape of ``depth`` (not ``Bx1xHxW``), ``intrinsics_inv`` or ``pixel_coords`` raises
-          :class:`ValueError`.
+        - a ``depth`` that is not ``Bx1xHxW``, an ``intrinsics_inv`` that is not :math:`(B, 4, 4)` or a
+          ``pixel_coords`` that is not ``BxHxWx3`` raises :class:`ValueError`; that ``pixel_coords`` matches
+          the ``H`` and ``W`` of ``depth`` is not checked.
 
     Args:
         depth: the source depth maps. Shape must be Bx1xHxW.
@@ -837,8 +838,9 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
           ``(u, v)`` pixel coordinates in the destination frame.
 
     .. warning::
-        The perspective division is ``x / (z + eps)`` rather than a guarded divide, so ``z = 0`` gives a huge
-        finite value (``x / eps``, or ``inf`` where ``eps`` underflows) and ``eps`` biases every small depth:
+        The perspective division is ``x / (z + eps)`` rather than a guarded divide, so ``z = 0`` gives
+        ``x / eps``, huge for a nonzero ``x`` (``inf`` where ``eps`` underflows), and ``eps`` biases every small
+        depth:
         `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:

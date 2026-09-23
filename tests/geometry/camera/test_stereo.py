@@ -419,10 +419,10 @@ class TestStereoCamera(BaseTester):
         self.assert_close(self._asymmetric_stereo(device, dtype, fy=50.0).Q, asymmetric_q)
         assert (symmetric_q - asymmetric_q).abs().max().item() > 1.0
 
-    def test_wart_reproject_disparity_zero_disparity_returns_the_numerator_4267(self, device, dtype):
-        # Wart pin for #4267: zero disparity (a point at infinity) gives W = 0, and the masked homogeneous divide
-        # returns the numerator, a finite point -- behind the camera on a real rig -- so Q and -Q disagree
-        # there. Delete or invert when #4267 settles one singular-input policy.
+    def test_wart_reproject_disparity_zero_disparity_returns_the_numerator_4555(self, device, dtype):
+        # kornia#4555: zero disparity (a point at infinity) gives W = 0, and the masked homogeneous divide (the
+        # #4267 rule) returns the numerator as a finite placeholder -- behind the camera on a real rig, and Q and
+        # -Q disagree there -- with nothing flagging it invalid. Update when #4555 adds a validity signal.
         disparity = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
         self.assert_close(
             self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity),

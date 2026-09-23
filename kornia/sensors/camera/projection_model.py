@@ -41,9 +41,9 @@ class Z1Projection:
               not in pixels: the map is ``xy / z``, with no epsilon and no validation.
 
         .. warning::
-            A point with :math:`z = 0` projects to ``inf`` (``nan`` for a zero numerator) instead of raising,
-            and a point behind the camera to a finite coordinate.
-            `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+            A point with :math:`z = 0` projects to an infinity (``nan`` for a zero numerator) instead of raising:
+            `#4267 <https://github.com/kornia/kornia/issues/4267>`_. A point behind the camera projects to a
+            finite coordinate and is not flagged: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
         Args:
             points: Vector3 representing the points to project.

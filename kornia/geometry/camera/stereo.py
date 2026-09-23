@@ -57,7 +57,9 @@ class StereoCamera:
           the same matrix with ``-tx * fx`` in the last column for the right one. The constructor requires the
           two to be equal outside that last column.
         - the baseline is read back as the attribute :attr:`tx` ``= -P_right[0, 3] / fx``, which must be
-          strictly **positive** for every rig in the batch: a zero baseline and swapped cameras both raise.
+          strictly **positive** for every rig in the batch: a zero baseline and swapped cameras both raise. A
+          non-finite ``P_right[0, 3]`` is not screened, and these checks and the equal-intrinsics check are
+          skipped under ``torch.export``.
           The :doc:`/geometry.camera.stereo` page's symbol ``tx`` is the negation of this attribute; :attr:`Q`
           is the page's matrix evaluated at the page's ``tx``.
         - ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``; with the divide by ``W = -fy * disparity``
@@ -70,9 +72,10 @@ class StereoCamera:
 
     .. warning::
         A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
-        case, so it is always zero: `#4270 <https://github.com/kornia/kornia/issues/4270>`_. A zero disparity
-        (a point at infinity) makes ``W = 0``; the divide is then skipped and a finite point, behind the camera
-        on a real rig, is returned: `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        case, so it is zero on every rig the constructor accepts in eager mode:
+        `#4270 <https://github.com/kornia/kornia/issues/4270>`_. A zero disparity (a point at infinity) makes
+        ``W = 0``; the divide is then skipped and a finite placeholder, behind the camera on a real rig, is
+        returned and not flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
     .. warning::
         The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on

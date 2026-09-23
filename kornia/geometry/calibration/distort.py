@@ -32,8 +32,8 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
           ``return_inverse=False`` returns ``Pz @ R`` (OpenCV's tilt projection) and ``return_inverse=True`` its
           inverse, the branch :func:`~kornia.geometry.calibration.undistort_points` applies. Zero angles give
           ``eye(3)``.
-        - scalar angles return :math:`(3, 3)`; otherwise a trailing singleton angle axis is consumed and the
-          leading dimensions are the batch shape.
+        - scalar angles return :math:`(3, 3)`; otherwise a trailing singleton angle axis, if present, is
+          consumed and the remaining dimensions are the batch shape.
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.

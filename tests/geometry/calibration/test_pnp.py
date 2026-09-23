@@ -248,6 +248,27 @@ class TestSolvePnpDlt(BaseTester):
         with pytest.raises(AssertionError, match="last singular value"):
             kornia.geometry.solve_pnp_dlt(planar, kornia.geometry.project_points(planar, K), K)
 
+    def test_wart_zero_weight_point_still_enters_the_degeneracy_check_4799(self, device, dtype):
+        # kornia#4799: the same coplanar set plus two off-plane points recovers [I | 0]; with those two points at
+        # weight 0 it still passes the degeneracy check, which ignores the weights, and the rank-deficient system
+        # returns a wrong pose. A fix that checks the weighted points raises here instead.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        planar = torch.stack(
+            [world_points[0, :, 0], world_points[0, :, 1], torch.full_like(world_points[0, :, 0], 5.0)], -1
+        )[None]
+        off_plane = torch.tensor([[[0.0, 0.0, 8.0], [1.0, -1.0, 11.0]]], device=device, dtype=dtype)
+        points = torch.cat([planar, off_plane], 1)
+        img_points = kornia.geometry.project_points(points, K)
+        weights = torch.ones(1, points.shape[1], device=device, dtype=dtype)
+        pose = kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
+        assert pose[0, :, 3].abs().max() < 1e-2
+        weights[0, -2:] = 0.0
+        pose = kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
+        assert pose[0, :, 3].abs().max() > 1.0
+
 
 class TestNormalization(BaseTester):
     @pytest.mark.parametrize("dimension", (2, 3, 5))

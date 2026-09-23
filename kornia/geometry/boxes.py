@@ -208,9 +208,9 @@ class Boxes:
           as 1-by-1 boxes (the inclusive ``+1``, `#3934 <https://github.com/kornia/kornia/issues/3934>`_).
         - :func:`~kornia.geometry.bbox.infer_bbox_shape` and :func:`~kornia.geometry.bbox.bbox_to_mask` read
           their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
-          :func:`~kornia.geometry.bbox.nms` and :meth:`compute_area` use exclusive areas.
-        - With ``validate_boxes=True``, a non-finite coordinate is rejected in every mode and the ``'xy*'``
-          modes reject non-positive extents.
+          :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
+        - With ``validate_boxes=True``, the ``'xy*'`` modes reject a non-finite coordinate and non-positive
+          extents; the vertex modes are not validated.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
           checked by its first element's dtype); :meth:`from_tensor` casts integer input to the default dtype.
         - :meth:`merge` and :meth:`index_put` are non-mutating by default.
@@ -220,8 +220,9 @@ class Boxes:
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_. A sub-unit extent (normalized ``[0, 1]`` boxes)
         is corrupted by the ``- 1`` of the converting modes: `#4061 <https://github.com/kornia/kornia/issues/4061>`_.
         Passing the ``'vertices'`` export to the bbox helpers reads one pixel larger:
-        `#4009 <https://github.com/kornia/kornia/issues/4009>`_. :meth:`compute_area` and
-        :func:`~kornia.geometry.bbox.nms` are exclusive: `#4010 <https://github.com/kornia/kornia/issues/4010>`_,
+        `#4009 <https://github.com/kornia/kornia/issues/4009>`_. :meth:`compute_area` is the shoelace area of the
+        stored inclusive vertices, ``(width - 1) * (height - 1)``:
+        `#4010 <https://github.com/kornia/kornia/issues/4010>`_. :func:`~kornia.geometry.bbox.nms` is exclusive:
         `#4008 <https://github.com/kornia/kornia/issues/4008>`_. :meth:`to_mask` and
         :func:`~kornia.geometry.bbox.bbox_to_mask` take opposite size orders:
         `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input split is
@@ -652,8 +653,8 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form. With shape :math:`(N, 4, 2)`,
                   :math:`(B, N, 4, 2)`.
 
-            validate_boxes: Reject a non-finite coordinate, and check extents for the ``'xy*'`` modes in each
-                mode's convention. The extent half has no validation effect for vertex modes; see the warning on
+            validate_boxes: For the ``'xy*'`` modes, reject a non-finite coordinate and non-positive extents in
+                each mode's convention. The vertex modes are not validated; see the warning on
                 :class:`~kornia.geometry.boxes.Boxes`.
 
         Returns:
@@ -1026,7 +1027,8 @@ class VideoBoxes(Boxes):
           dtype, and another shape or a list raises ``ValueError``.
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`).
-        - a transformation matrix is :math:`(B \cdot T, 3, 3)`; a :math:`(3, 3)` matrix raises ``ValueError``.
+        - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a :math:`(3, 3)` matrix raises ``ValueError``
+          unless :math:`B \cdot T = 1`.
         - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area` and
           :meth:`merge` return a new :class:`VideoBoxes`; :meth:`pad`, :meth:`unpad`, :meth:`to` and
           :meth:`type` update ``self`` in place.
@@ -1152,8 +1154,8 @@ class Boxes3D:
     .. warning::
         The inclusive ``+1`` is `#3934 <https://github.com/kornia/kornia/issues/3934>`_ and the ``'vertices'``
         export trap `#4009 <https://github.com/kornia/kornia/issues/4009>`_. The integer-input split is
-        `#4012 <https://github.com/kornia/kornia/issues/4012>`_, the validator split with
-        :func:`~kornia.geometry.bbox.validate_bbox` `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
+        `#4012 <https://github.com/kornia/kornia/issues/4012>`_ and the validator split with
+        :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
         Boxes from :func:`~kornia.geometry.bbox.bbox_generator3d` measure one larger than requested:
         `#4018 <https://github.com/kornia/kornia/issues/4018>`_. The :meth:`to_tensor` default differs from
         :meth:`Boxes.to_tensor`, which defaults to the stored mode:

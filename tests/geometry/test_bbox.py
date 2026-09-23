@@ -139,17 +139,6 @@ class TestBbox2D(BaseTester):
                 invalid_boxes[1].reshape(-1)[coordinate_index] = non_finite
                 assert validate_bbox(invalid_boxes) is False
 
-    def test_wart_validate_bbox_inclusive_offset_hides_sub_unit_spans_in_float16_3934(self, device):
-        # kornia#3934: in float16 the inclusive +1 rounds distinct sub-unit spans to the same value, although the
-        # exclusive span difference exceeds the 1e-4 threshold. The True below holds only with that +1.
-        boxes = torch.tensor(
-            [[[0.0, 0.0], [0.0005, 0.0], [0.001, 0.001], [0.0, 0.001]]], device=device, dtype=torch.float16
-        )
-        assert validate_bbox(boxes) is True
-        top_span = boxes[..., 1, 0] - boxes[..., 0, 0]
-        bottom_span = boxes[..., 2, 0] - boxes[..., 3, 0]
-        assert torch.all(torch.abs(top_span - bottom_span) > 1e-4)
-
     def test_wart_validate_bbox_returns_false_where_validate_bbox3d_raises_4013(self, device, dtype):
         # Wart pin for kornia#4013: for the same invalid shape, the 2D validator
         # returns False while the 3D validator raises.

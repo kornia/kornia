@@ -37,9 +37,10 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`.
 
     .. warning::
-        A point with ``z = 0`` does not raise: the divide is skipped and ``K`` is applied to the undivided
-        point, giving ``fx x + cx``; a point behind the camera is projected silently.
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        At ``abs(z) <= 1e-8`` the divide is skipped and ``K`` is applied to the undivided point, giving the
+        finite placeholder ``fx x + cx``; the other projection entry points do not follow this rule yet:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_. Neither that placeholder nor a point behind the
+        camera is flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
     Args:
         point_3d: tensor containing the 3d points to be projected

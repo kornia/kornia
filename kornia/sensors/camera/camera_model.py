@@ -127,8 +127,9 @@ class CameraModelBase:
 
     .. warning::
         Batched ``(B, 4)`` intrinsics apply along the **last point axis**, not the camera axis: with
-        ``(B, N, 3)`` points they silently pair with the wrong points when ``B == N`` and raise otherwise,
-        whereas the geometry functions apply them per camera:
+        ``(B, N, 3)`` points and ``B > 1`` they silently pair with the wrong points when ``B == N``,
+        :meth:`project` broadcasts to a ``(B, B, 2)`` result when ``N == 1``, and other ``N`` raise, whereas the
+        geometry functions apply them per camera:
         `#4274 <https://github.com/kornia/kornia/issues/4274>`_. :meth:`project` divides by ``z`` with no guard,
         so ``z = 0`` gives infinities where :func:`~kornia.geometry.camera.perspective.project_points` returns
         finite pixels: `#4267 <https://github.com/kornia/kornia/issues/4267>`_.

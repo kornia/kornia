@@ -227,10 +227,11 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(projected, project_points(points, cam.matrix()), atol=0.0, rtol=0.0)
         self.assert_close(unprojected, unproject_points(pixels, depth[..., None], cam.matrix()), atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize("num_points", [2, 3])
+    @pytest.mark.parametrize("num_points", [1, 2, 3])
     def test_wart_batched_intrinsics_differ_from_geometry_4274(self, device, dtype, num_points):
         # Wart pin for #4274: sensors aligns (B,) intrinsics with the trailing axis of (B, N) points while geometry
-        # inserts a point axis, so with B == N the cameras are silently reassociated and B != N raises.
+        # inserts a point axis, so with B == N the cameras are silently reassociated, N == 1 projects to a (B, B, 2)
+        # outer broadcast (unproject raises) and other N raise.
         # Hand-computed: camera 0 projects [1, 2, 4] to [3, 4], camera 1 to [4, 8]; at unit depth [9, 10]
         # unprojects to [1, 2, 1] / [1.5, .75, 1]. Delete or update when #4274 is repaired.
         params = torch.tensor([[8.0, 4.0, 1.0, 2.0], [4.0, 8.0, 3.0, 4.0]], device=device, dtype=dtype)
@@ -255,6 +256,11 @@ class TestPinholeCamera(BaseTester):
             self.assert_close(unprojected, per_camera_unprojected[None].expand(2, 2, 3), atol=0.0, rtol=0.0)
             assert not torch.equal(projected, geometry_projected)
             assert not torch.equal(unprojected, geometry_unprojected)
+        elif num_points == 1:
+            projected = cam.project(Vector3(points)).data
+            self.assert_close(projected, per_camera_projected[None].expand(2, 2, 2), atol=0.0, rtol=0.0)
+            with pytest.raises(RuntimeError):
+                cam.unproject(Vector2(pixels), depth)
         else:
             with pytest.raises(RuntimeError):
                 cam.project(Vector3(points))

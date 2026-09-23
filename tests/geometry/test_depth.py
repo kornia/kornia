@@ -1251,7 +1251,7 @@ class TestDepthFromPlaneEquation(BaseTester):
         # Snippet used to generate expected: depth_from_plane_equation([[0, 1, 2.384185791015625e-09]], [[2.0]],
         # [[[4.0, 3.0]]], K, eps=1e-8) and the negated normal
         if dtype == torch.float16:
-            pytest.skip("float16: the tiny normal component underflows to 0, so the probe is not inside the mask")
+            pytest.skip("float16: eps = 1e-8 underflows to 0 and 2e8 is past the float16 range, so the depth is inf")
         camera_matrix = _k_asymmetric(device, dtype)
         offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
         principal_point = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
