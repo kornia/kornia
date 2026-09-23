@@ -363,42 +363,44 @@ class TestErode(BaseTester):
 
         self.assert_close(erosion(tensor, kernel), op_optimized(tensor, kernel))
 
-    def test_shift_engine_forward_only_matches_autograd_safe(self, device):
-        tensor = torch.rand(2, 3, 9, 9, device=device)
-        kernel = torch.randn(3, 3, device=device)
+    def test_shift_engine_forward_only_matches_autograd_safe(self, device, dtype):
+        tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
+        kernel = torch.randn(3, 3, device=device, dtype=dtype)
 
         forward = erosion(tensor, kernel, engine="shift")
         safe = erosion(tensor.clone().requires_grad_(True), kernel, engine="shift").detach()
 
         assert torch.equal(forward, safe)
 
-    def test_shift_engine_structuring_element_forward_ad(self, device, dtype):
+    @pytest.mark.parametrize("operand", ["image", "structuring_element"])
+    def test_shift_engine_forward_ad(self, device, dtype, operand):
+        # ``out=`` ops have no forward-mode AD formula, so a tangent on either operand must keep the
+        # out-of-place reduction. ``make_dual`` is used because ``torch.func.jvp`` is a functorch transform,
+        # which the in-place gate declines before it looks at the tangents.
         if dtype not in (torch.float32, torch.float64):
-            pytest.skip("forward AD test requires floating point dtype")
+            pytest.skip("half-precision sums tie, and tied tangents differ between engines")
 
         tensor = torch.rand(1, 1, 9, 11, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
         structuring_element = torch.randn(3, 3, device=device, dtype=dtype)
-        tangent = torch.ones_like(structuring_element)
+        primal = tensor if operand == "image" else structuring_element
+        tangent = torch.randn_like(primal)
 
-        actual, actual_tangent = torch.func.jvp(
-            lambda se: erosion(tensor, kernel, se, engine="shift"),
-            (structuring_element,),
-            (tangent,),
-        )
-        expected, expected_tangent = torch.func.jvp(
-            lambda se: erosion(tensor, kernel, se, engine="unfold"),
-            (structuring_element,),
-            (tangent,),
-        )
+        def run(engine):
+            with torch.autograd.forward_ad.dual_level():
+                dual = torch.autograd.forward_ad.make_dual(primal, tangent)
+                if operand == "image":
+                    output = erosion(dual, kernel, structuring_element, engine=engine)
+                else:
+                    output = erosion(tensor, kernel, dual, engine=engine)
+                return torch.autograd.forward_ad.unpack_dual(output)
 
-        assert torch.equal(actual, expected)
-        assert torch.equal(actual_tangent, expected_tangent)
+        actual, expected = run("shift"), run("unfold")
+
+        self.assert_close(actual.primal, expected.primal)
+        self.assert_close(actual.tangent, expected.tangent)
 
     def test_shift_engine_vmap(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("vmap test requires floating point dtype")
-
         tensor = torch.rand(2, 3, 1, 9, 11, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
@@ -418,6 +420,8 @@ class TestErode(BaseTester):
     def test_shift_engine_onnx_trace(self, device, dtype):
         import io
 
+        if device.type != "cpu":
+            pytest.skip("the TorchScript-based ONNX export is checked on CPU")
         pytest.importorskip("onnx")
 
         class Morphology(torch.nn.Module):
