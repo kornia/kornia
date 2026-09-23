@@ -79,8 +79,7 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
-        # `engine="convolution"` feeds the geodesic `+max_val` pad through `F.conv2d`, so its error scales with
-        # `max_val` (about one float32 ULP of the default 1e4 on CPU); `engine="unfold"` is exact. Tracked in #4734.
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_structural_element(self, device, dtype):
@@ -99,7 +98,7 @@ class TestErode(BaseTester):
             atol=1e-4,
             rtol=1e-4,
         )
-        # See test_kernel: the convolution engine's error scales with `max_val` (#4734).
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(
             erosion(
                 tensor,
@@ -121,7 +120,7 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        # See test_kernel: the convolution engine's error scales with `max_val` (#4734).
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_exception(self, device, dtype):
@@ -568,7 +567,8 @@ class TestErode(BaseTester):
         # origin are an adjoint pair, `dilation(x) <= y` everywhere exactly when `x <= erosion(y)`
         # everywhere, while no window is empty. The kernel changes under a 180-degree flip, so a reflection
         # mismatch between the two would break the pair, and it holds its default origin cell [1, 1], so no
-        # window is empty. The empty-window counterexample is test_wart_dilation_max_val_sentinel_leaks_4734.
+        # window is empty. Empty windows use the reduction identity; see
+        # test_dilation_ignores_finite_max_val_sentinel_4734.
         x = torch.tensor(
             [[3.0, 0.0, 5.0, 1.0, 2.0, 7.0], [0.0, 4.0, 1.0, 6.0, 0.0, 2.0], [2.0, 1.0, 0.0, 3.0, 5.0, 1.0]],
             device=device,
@@ -694,7 +694,7 @@ class TestErode(BaseTester):
         # when its origin cell is a member (`[[1, 0, 1, 0, 1]]`); they agree for a rectangle of ones, where
         # every pixel the replicate pad duplicates is already inside the window.
         # With a single-cell kernel that reads `x(p - 2)`, the two leftmost `geodesic` windows are empty (what
-        # they return is the #4734 wart, pinned in test_dilation.py), while `replicate` returns `x(0)`.
+        # they return is the reduction identity, while `replicate` returns `x(0)`.
         ramp = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0]], device=device, dtype=dtype)[None, None]
         side_kernel = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
 

@@ -174,25 +174,15 @@ class TestClosing(BaseTester):
             assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(closing(tensor, side_kernel, border_type="circular"), tensor)
 
-    def test_wart_closing_sentinel_round_trip_4734(self, device, dtype):
-        # Under `geodesic` the dilation window of `[[1, 0, 0]]` leaves the image on the right, so it can emit
-        # `x - max_val`, and the erosion's `+ max_val` returns `x` quantised to `max_val`'s spacing:
-        # extensivity, and on negative data idempotence, miss by less than one ULP of `max_val` in the
-        # image's dtype, in the columns next to the empty window. A true infinity would miss by exactly 0.
-        # Tracked in #4734. `torch.finfo(dtype).eps * 8192` is that ULP for the default `max_val=1e4`.
-        one_ulp = torch.finfo(dtype).eps * 8192.0
+    def test_closing_handles_empty_geodesic_windows_4734(self, device, dtype):
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
-        # A float64 frame drawn in float32 has no bits below float64's ULP of `max_val`, so draw it natively.
-        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
-        tensor = tensor.to(device=device, dtype=dtype)
+        tensor = torch.rand(
+            1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64
+        ).to(device=device, dtype=dtype)
 
         closed = closing(tensor, side_kernel)
-        shortfall = (tensor - closed).clamp(min=0)
-        assert 0.0 < shortfall.max() < one_ulp
-        assert not bool(shortfall[..., :-2].any())
-        assert torch.equal(closing(closed, side_kernel), closed)
 
-        negative = -tensor
-        negative_closed = closing(negative, side_kernel)
-        drift = (closing(negative_closed, side_kernel) - negative_closed).abs()
-        assert 0.0 < drift.max() < one_ulp
+        expected = torch.cat((torch.full_like(tensor[..., :1], float("inf")), tensor[..., 1:]), dim=-1)
+        assert torch.equal(closed, expected)
+        assert (closed >= tensor).all()
+        assert torch.equal(closing(closed, side_kernel), closed)

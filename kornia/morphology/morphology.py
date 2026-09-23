@@ -48,6 +48,34 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     return kernel.view(h * w, 1, h, w)
 
 
+
+def _dtype_min(dtype: torch.dtype) -> int:
+    if dtype == torch.uint8 or dtype == torch.bool:
+        return 0
+    if dtype == torch.int8:
+        return -128
+    if dtype == torch.int16:
+        return -32768
+    if dtype == torch.int32:
+        return -2147483648
+    if dtype == torch.int64:
+        return -9223372036854775807 - 1
+    return 0
+
+
+def _dtype_max(dtype: torch.dtype) -> int:
+    if dtype == torch.uint8 or dtype == torch.bool:
+        return 1 if dtype == torch.bool else 255
+    if dtype == torch.int8:
+        return 127
+    if dtype == torch.int16:
+        return 32767
+    if dtype == torch.int32:
+        return 2147483647
+    if dtype == torch.int64:
+        return 9223372036854775807
+    return 0
+
 @torch.jit.unused
 def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
     if torch.jit.is_tracing() or torch._C._are_functorch_transforms_active():
@@ -58,6 +86,7 @@ def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
 def _shift_reduce(
     padded: torch.Tensor,
     offsets: torch.Tensor,
+    kernel: torch.Tensor,
     height: int,
     width: int,
     dilate: bool,
@@ -76,9 +105,18 @@ def _shift_reduce(
     against 1627 MiB in that same cell). :func:`_resolve_engine` accounts for both regimes.
     """
     kh, kw = offsets.shape
+    if padded.is_floating_point():
+        reduction_value: float = -float("inf") if dilate else float("inf")
+    else:
+        reduction_value = float(_dtype_min(padded.dtype) if dilate else _dtype_max(padded.dtype))
     # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
     # down to a scalar would instead apply wrapped-scalar rules and silently keep ``padded.dtype``.
     output = padded[..., 0:height, 0:width] + offsets[0:1, 0:1]
+    output = torch.where(
+        kernel[0, 0] != 0,
+        output,
+        torch.full_like(output, reduction_value),
+    )
     # ``unfold`` reduces the kernel-height dimension first and then kernel width; keep that traversal so
     # tied values are met in the same order. Which of two tied operands a backend's ``max``/``min``
     # returns is its own choice (CPU keeps the first, MPS the second), so the sign of a zero result is
@@ -88,6 +126,11 @@ def _shift_reduce(
             if i == 0 and j == 0:
                 continue
             shifted = padded[..., i : i + height, j : j + width] + offsets[i : i + 1, j : j + 1]
+            shifted = torch.where(
+                kernel[i, j] != 0,
+                shifted,
+                torch.full_like(shifted, reduction_value),
+            )
             if inplace:
                 torch.maximum(output, shifted, out=output) if dilate else torch.minimum(output, shifted, out=output)
             else:
@@ -181,9 +224,7 @@ def dilation(
         - ``border_type="geodesic"`` ignores the pixels outside the image; the other modes carry torch's pad
           names. :doc:`Conventions & Pitfalls </get-started/conventions>` maps both, and the kernel
           conventions, onto scipy, scikit-image and OpenCV.
-        - Known defects: the finite ``max_val`` sentinel reaches the output in an empty window and once the
-          data range approaches it (`#4734 <https://github.com/kornia/kornia/issues/4734>`_); a non-float
-          image is not rejected (`#4735 <https://github.com/kornia/kornia/issues/4735>`_); and
+        - Known defects: a non-float image is not rejected (`#4735 <https://github.com/kornia/kornia/issues/4735>`_); and
           ``engine="convolution"`` returns the image dtype where ``unfold`` and ``shift`` return the dtype
           promoted with ``structuring_element``, or with ``kernel`` when none is given
           (`#4762 <https://github.com/kornia/kornia/issues/4762>`_).
@@ -253,11 +294,21 @@ def dilation(
     # pad
     # The kernel is reflected below (Minkowski dilation), so the window is anchored at the reflected origin.
     pad_e: List[int] = [se_w - origin[1] - 1, origin[1], se_h - origin[0] - 1, origin[0]]
+    is_geodesic = border_type == "geodesic"
     if border_type == "geodesic":
-        border_value = -max_val
-        border_type = "constant"
-    if border_type == "constant":
-        output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
+        if tensor.is_floating_point():
+            border_value = 0.0 if engine == "convolution" else -float("inf")
+            output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=border_value)
+        else:
+            output = F.pad(tensor, pad_e, mode="constant", value=0.0)
+            valid = F.pad(torch.ones_like(tensor), pad_e, mode="constant", value=0.0)
+            output = torch.where(
+                valid != 0,
+                output,
+                torch.full_like(output, _dtype_min(tensor.dtype)),
+            )
+    elif border_type == "constant":
+        output = F.pad(tensor, pad_e, mode=border_type, value=border_value)
     else:
         output = F.pad(tensor, pad_e, mode=border_type)
 
@@ -267,30 +318,53 @@ def dilation(
         # floating-point image lends it its dtype. A float kernel keeps its own, which may widen the result.
         nb_dtype = tensor.dtype if tensor.is_floating_point() and not kernel.is_floating_point() else kernel.dtype
         neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
-        neighborhood[kernel == 0] = -max_val
     else:
         neighborhood = structuring_element.clone()
-        neighborhood[kernel == 0] = -max_val
+        neighborhood[kernel == 0] = 0
 
     # The max-plus terms compute in the promoted dtype, which the dtype rule of ``auto`` has to see: a
     # float16 image with a float32 kernel computes, and differentiates, in float32.
     compute_dtype = torch.promote_types(tensor.dtype, neighborhood.dtype)
     recording_grad = _records_grad(tensor, structuring_element)
     engine = _resolve_engine(engine, tensor, recording_grad, compute_dtype)
+
+    if output.is_floating_point():
+        reduction_min: float = -float("inf")
+    else:
+        reduction_min = float(_dtype_min(output.dtype))
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-        output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
+        output = output + neighborhood.flip((0, 1))
+        output = output.masked_fill(
+            kernel.flip((0, 1)).view(1, 1, 1, 1, se_h, se_w) == 0,
+            reduction_min,
+        )
+        output, _ = torch.max(output, 4)
         output, _ = torch.max(output, 4)
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         h_pad, w_pad = output.shape[-2:]
         reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
-        output, _ = F.conv2d(
+        conv_neighborhood = neighborhood.masked_fill(kernel == 0, 0.0)
+
+        output = F.conv2d(
             output.view(B * C, 1, h_pad, w_pad),
             reshape_kernel,
             padding=0,
-            bias=neighborhood.view(-1).flip(0).to(dtype=output.dtype),
-        ).max(dim=1)
+            bias=conv_neighborhood.view(-1).flip(0).to(dtype=output.dtype),
+        )
+
+        output = output.masked_fill(
+            kernel.view(-1).flip(0).view(1, -1, 1, 1) == 0, -float("inf")
+        )
+
+        if is_geodesic:
+            valid = torch.ones((1, 1, H, W), dtype=output.dtype, device=output.device)
+            valid = F.pad(valid, pad_e, mode="constant", value=0.0)
+            valid = F.conv2d(valid, reshape_kernel, padding=0)
+            output = output.masked_fill(valid == 0, -float("inf"))
+
+        output = output.max(dim=1).values
         output = output.view(B, C, H, W)
     elif engine == "shift":
         offsets = neighborhood.flip((0, 1))
@@ -300,6 +374,7 @@ def dilation(
         output = _shift_reduce(
             output,
             offsets,
+            kernel.flip((0, 1)),
             tensor.shape[-2],
             tensor.shape[-1],
             True,
@@ -396,11 +471,21 @@ def erosion(
 
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    is_geodesic = border_type == "geodesic"
     if border_type == "geodesic":
-        border_value = max_val
-        border_type = "constant"
-    if border_type == "constant":
-        output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
+        if tensor.is_floating_point():
+            border_value = 0.0 if engine == "convolution" else float("inf")
+            output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=border_value)
+        else:
+            output = F.pad(tensor, pad_e, mode="constant", value=0.0)
+            valid = F.pad(torch.ones_like(tensor), pad_e, mode="constant", value=0.0)
+            output = torch.where(
+                valid != 0,
+                output,
+                torch.full_like(output, _dtype_max(tensor.dtype)),
+            )
+    elif border_type == "constant":
+        output = F.pad(tensor, pad_e, mode=border_type, value=border_value)
     else:
         output = F.pad(tensor, pad_e, mode=border_type)
 
@@ -410,30 +495,53 @@ def erosion(
         # floating-point image lends it its dtype. A float kernel keeps its own, which may widen the result.
         nb_dtype = tensor.dtype if tensor.is_floating_point() and not kernel.is_floating_point() else kernel.dtype
         neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
-        neighborhood[kernel == 0] = -max_val
     else:
         neighborhood = structuring_element.clone()
-        neighborhood[kernel == 0] = -max_val
+        neighborhood[kernel == 0] = 0
 
     # The max-plus terms compute in the promoted dtype, which the dtype rule of ``auto`` has to see: a
     # float16 image with a float32 kernel computes, and differentiates, in float32.
     compute_dtype = torch.promote_types(tensor.dtype, neighborhood.dtype)
     recording_grad = _records_grad(tensor, structuring_element)
     engine = _resolve_engine(engine, tensor, recording_grad, compute_dtype)
+
+    if output.is_floating_point():
+        reduction_max: float = float("inf")
+    else:
+        reduction_max = float(_dtype_max(output.dtype))
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-        output, _ = torch.min(output - neighborhood, 4)
+        output = output - neighborhood
+        output = output.masked_fill(
+            kernel.view(1, 1, 1, 1, se_h, se_w) == 0,
+            reduction_max,
+        )
+        output, _ = torch.min(output, 4)
         output, _ = torch.min(output, 4)
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         Hpad, Wpad = output.shape[-2:]
         reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
-        output, _ = F.conv2d(
+        conv_neighborhood = neighborhood.masked_fill(kernel == 0, 0.0)
+
+        output = F.conv2d(
             output.view(B * C, 1, Hpad, Wpad),
             reshape_kernel,
             padding=0,
-            bias=-neighborhood.view(-1).to(dtype=output.dtype),
-        ).min(dim=1)
+            bias=-conv_neighborhood.view(-1).to(dtype=output.dtype),
+        )
+
+        output = output.masked_fill(
+            kernel.view(-1).view(1, -1, 1, 1) == 0, float("inf")
+        )
+
+        if is_geodesic:
+            valid = torch.ones((1, 1, H, W), dtype=output.dtype, device=output.device)
+            valid = F.pad(valid, pad_e, mode="constant", value=0.0)
+            valid = F.conv2d(valid, reshape_kernel, padding=0)
+            output = output.masked_fill(valid == 0, float("inf"))
+
+        output = output.min(dim=1).values
         output = output.view(B, C, H, W)
     elif engine == "shift":
         offsets = -neighborhood
@@ -443,6 +551,7 @@ def erosion(
         output = _shift_reduce(
             output,
             offsets,
+            kernel,
             tensor.shape[-2],
             tensor.shape[-1],
             False,
@@ -473,8 +582,7 @@ def opening(
     Convention:
         ``opening`` is ``dilation(erosion(tensor))`` with the same arguments in both halves. As only
         :func:`dilation` reflects the kernel, it is a morphological opening (anti-extensive and idempotent) for
-        an asymmetric kernel too, under ``geodesic`` or ``circular`` and up to the ``max_val`` sentinel
-        (`#4734 <https://github.com/kornia/kornia/issues/4734>`_); a non-flat ``structuring_element`` or
+        an asymmetric kernel too, under ``geodesic`` or ``circular``; a non-flat ``structuring_element`` or
         ``engine="convolution"`` holds both properties only to roundoff, and ``constant``, ``reflect`` and
         ``replicate`` can break them.
 
@@ -579,8 +687,7 @@ def closing(
     Convention:
         ``closing`` is ``erosion(dilation(tensor))`` with the same arguments in both halves. As only
         :func:`dilation` reflects the kernel, it is a morphological closing (extensive and idempotent) for an
-        asymmetric kernel too, under ``geodesic`` or ``circular`` and up to the ``max_val`` sentinel
-        (`#4734 <https://github.com/kornia/kornia/issues/4734>`_); a non-flat ``structuring_element`` or
+        asymmetric kernel too, under ``geodesic`` or ``circular``; a non-flat ``structuring_element`` or
         ``engine="convolution"`` holds both properties only to roundoff, and ``constant``, ``reflect`` and
         ``replicate`` can break them.
 
