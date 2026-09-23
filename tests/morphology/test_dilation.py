@@ -145,6 +145,44 @@ class TestDilate(BaseTester):
         with pytest.raises(NotImplementedError, match="unknown"):
             dilation(tensor, kernel, engine="invalid_engine")
 
+        with pytest.raises(ValueError, match="Unknown `border_type`"):
+            dilation(tensor, kernel, border_type="banana")
+
+        with pytest.raises(ValueError, match="`structuring_element` shape must match `kernel` shape"):
+            dilation(tensor, kernel, structuring_element=torch.ones(3, 2, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("kernel_dtype", [torch.bool, torch.uint8, torch.int8, torch.int64])
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "auto"])
+    def test_non_float_kernel_matches_float_kernel(self, device, dtype, kernel_dtype, engine):
+        # The kernel is only a membership mask (#4736): a bool or integer kernel must give exactly the
+        # float kernel's result and dtype. The cross has zeros, so an excluded neighbor that leaks in shows.
+        tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        kernel = torch.tensor([[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        expected = dilation(tensor, kernel, engine=engine)
+        actual = dilation(tensor, kernel.to(kernel_dtype), engine=engine)
+        assert actual.dtype == expected.dtype
+        assert torch.equal(actual, expected)
+
+    def test_integer_image_keeps_the_kernel_dtype(self, device):
+        # Only a floating-point image lends its dtype to a non-float kernel (#4736). An integer image
+        # keeps the kernel's own dtype, as before: int32 with int64 computes and returns int64.
+        tensor = torch.tensor([[0, 3, 0, 0, 7]], dtype=torch.int32, device=device)[None, None]
+        kernel = torch.tensor([[1, 0, 1]], dtype=torch.int64, device=device)
+        actual = dilation(tensor, kernel)
+        assert actual.dtype == torch.int64
+        assert actual.flatten().tolist() == [3, 0, 3, 7, 0]
+
+    @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
+    def test_accepted_border_types(self, device, dtype, border_type):
+        # Every documented border_type must pass the validation (#4736).
+        if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        tensor = torch.rand(1, 2, 5, 6, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+        assert dilation(tensor, kernel, border_type=border_type).shape == tensor.shape
+
     def test_custom_origin(self, device, dtype):
         # Custom origin shifts the structuring element anchor point
         tensor = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)

@@ -23,6 +23,25 @@ import torch.nn.functional as F
 __all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "top_hat"]
 
 
+def _validate_morphology_inputs(
+    kernel: torch.Tensor, structuring_element: Optional[torch.Tensor], border_type: str
+) -> None:
+    if not isinstance(kernel, torch.Tensor):
+        raise TypeError(f"Kernel type is not a torch.Tensor. Got {type(kernel)}")
+    if len(kernel.shape) != 2:
+        raise ValueError(f"Kernel size must have 2 dimensions. Got {kernel.dim()}")
+    if structuring_element is not None and structuring_element.shape != kernel.shape:
+        raise ValueError(
+            f"`structuring_element` shape must match `kernel` shape. "
+            f"Got {structuring_element.shape} and {kernel.shape}."
+        )
+    if border_type not in ["geodesic", "constant", "reflect", "replicate", "circular"]:
+        raise ValueError(
+            f"Unknown `border_type`: {border_type}. "
+            "Expected one of ['geodesic', 'constant', 'reflect', 'replicate', 'circular']."
+        )
+
+
 def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     h, w = kernel.size()
     kernel = torch.eye(h * w, dtype=kernel.dtype, device=kernel.device)
@@ -185,11 +204,7 @@ def dilation(
     if len(tensor.shape) != 4:
         raise ValueError(f"Input size must have 4 dimensions. Got {tensor.dim()}")
 
-    if not isinstance(kernel, torch.Tensor):
-        raise TypeError(f"Kernel type is not a torch.Tensor. Got {type(kernel)}")
-
-    if len(kernel.shape) != 2:
-        raise ValueError(f"Kernel size must have 2 dimensions. Got {kernel.dim()}")
+    _validate_morphology_inputs(kernel, structuring_element, border_type)
 
     # origin
     se_h, se_w = kernel.shape
@@ -206,7 +221,10 @@ def dilation(
 
     # computation
     if structuring_element is None:
-        neighborhood = torch.zeros_like(kernel)
+        # ``kernel`` is only a membership mask: a bool or integer kernel cannot hold ``-max_val``, so a
+        # floating-point image lends it its dtype. A float kernel keeps its own, which may widen the result.
+        nb_dtype = tensor.dtype if tensor.is_floating_point() and not kernel.is_floating_point() else kernel.dtype
+        neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
         neighborhood[kernel == 0] = -max_val
     else:
         neighborhood = structuring_element.clone()
@@ -301,11 +319,7 @@ def erosion(
     if len(tensor.shape) != 4:
         raise ValueError(f"Input size must have 4 dimensions. Got {tensor.dim()}")
 
-    if not isinstance(kernel, torch.Tensor):
-        raise TypeError(f"Kernel type is not a torch.Tensor. Got {type(kernel)}")
-
-    if len(kernel.shape) != 2:
-        raise ValueError(f"Kernel size must have 2 dimensions. Got {kernel.dim()}")
+    _validate_morphology_inputs(kernel, structuring_element, border_type)
 
     # origin
     se_h, se_w = kernel.shape
@@ -321,7 +335,10 @@ def erosion(
 
     # computation
     if structuring_element is None:
-        neighborhood = torch.zeros_like(kernel)
+        # ``kernel`` is only a membership mask: a bool or integer kernel cannot hold ``-max_val``, so a
+        # floating-point image lends it its dtype. A float kernel keeps its own, which may widen the result.
+        nb_dtype = tensor.dtype if tensor.is_floating_point() and not kernel.is_floating_point() else kernel.dtype
+        neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
         neighborhood[kernel == 0] = -max_val
     else:
         neighborhood = structuring_element.clone()
