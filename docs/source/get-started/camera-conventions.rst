@@ -175,15 +175,17 @@ Intrinsics layout
 - The functional API (:func:`kornia.geometry.camera.perspective.project_points`,
   :func:`kornia.geometry.depth.depth_to_3d`, :func:`kornia.geometry.calibration.undistort_points`, …) takes a
   row-major ``3x3`` ``K`` with ``fx = K[0, 0]``, ``fy = K[1, 1]``, ``cx = K[0, 2]``, ``cy = K[1, 2]``, and
-  :class:`kornia.sensors.camera.CameraModelBase` exposes that same layout through its ``K()`` method. The skew
-  entry ``K[0, 1]`` is ignored by
-  :func:`kornia.geometry.conversions.normalize_points_with_intrinsics` and its inverse.
+  :class:`kornia.sensors.camera.CameraModelBase` exposes that same layout through its ``K()`` method. The
+  functional pinhole model has no skew, like OpenCV's: the skew entry ``K[0, 1]`` is ignored by
+  :func:`kornia.geometry.conversions.normalize_points_with_intrinsics`, its inverse and
+  :func:`kornia.geometry.camera.perspective.project_points` alike; the first one's docstring gives the workaround
+  for a skewed ``K``.
 - :class:`kornia.geometry.camera.pinhole.PinholeCamera` instead stores a ``4x4`` ``intrinsics`` whose canonical
   form is the homogeneous embedding ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0], [0, 0, 0, 1]]``. The whole
   matrix participates: :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.project` multiplies the full
   ``intrinsics @ extrinsics`` and :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` inverts that
-  ``4x4`` product, so a non-zero ``intrinsics[0, 3]`` shifts every projected ``u`` by ``intrinsics[0, 3] / z``,
-  ``intrinsics[3, 3]`` rescales every unprojected point. The layout is not validated: a ``3x3`` ``K`` zero-padded
+  ``4x4`` product, so a non-zero ``intrinsics[0, 3]`` shifts every projected ``u`` by ``intrinsics[0, 3] / z``
+  and ``intrinsics[3, 3]`` rescales every unprojected point. The layout is not validated: a ``3x3`` ``K`` zero-padded
   without ``intrinsics[3, 3] = 1`` still projects, but ``unproject`` fails on a singular matrix
   (`#4771 <https://github.com/kornia/kornia/issues/4771>`_). Its class docstring documents the layout and the
   deviations.
