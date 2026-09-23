@@ -125,9 +125,9 @@ where :math:`Q` is
     0       & 0       & -fy & fy * (cx_{left} -cx_{right})
     \end{bmatrix}
 
-The point cloud is obtained by a homogeneous transform by :math:`Q` followed by the division by :math:`W`. When :math:`|W| > 10^{-8}`, an overall sign on :math:`Q` cancels in that divide, so :math:`Q` and :math:`-Q` give the same points. When :math:`|W| \leq 10^{-8}`, Kornia's homogeneous conversion returns the numerator unchanged, so the two matrices give opposing values. :class:`StereoCamera` builds exactly the matrix above, with :math:`tx = P_1[0, 3] / fx` as :math:`P_1` defines it; its constructor requires that product to be strictly negative for every rig in the batch, so :math:`tx` here is negative on every rig it accepts. The class's ``tx`` attribute is the negation of this symbol, :math:`-P_1[0, 3] / fx`. Substituting the attribute's value for :math:`tx` above gives neither the class's :math:`Q` nor its negation, because the last row carries no :math:`tx` and does not flip.
+The :math:`Q` that :class:`StereoCamera` builds is exactly this matrix with :math:`tx = P_1[0, 3] / fx`, which the constructor requires to be strictly negative (a zero baseline or swapped cameras raise). The class's ``tx`` attribute is the positive baseline :math:`-P_1[0, 3] / fx`, so do not substitute it for :math:`tx` above.
 
-The :math:`Q[3, 3]` term carries :math:`fy * (cx_{left} - cx_{right})` for a setup whose principal points differ in :math:`cx`, but :class:`StereoCamera` rejects such a pair today: its constructor requires the two projection matrices to be equal outside the last column, so :math:`cx_{left} = cx_{right}` and that factor is zero. This is tracked in `#4270 <https://github.com/kornia/kornia/issues/4270>`_.
+The :math:`Q[3, 3]` term is always zero in practice: the constructor rejects differing :math:`cx_{left}` and :math:`cx_{right}` (`#4270 <https://github.com/kornia/kornia/issues/4270>`_).
 
 Assuming :math:`fx = fy` you can further reduce this to:
 
@@ -157,7 +157,7 @@ Using the :math:`Q` matrix we can obtain the 3D points by:
     1
     \end{bmatrix}
 
-where the Euclidean 3D point is :math:`(X/W, Y/W, Z/W)`.
+where the Euclidean 3D point is :math:`(X/W, Y/W, Z/W)`, :math:`u` is the pixel **column** and :math:`v` the **row**, as in ``cv2.reprojectImageTo3D`` (`#4269 <https://github.com/kornia/kornia/issues/4269>`_). A zero disparity gives :math:`W = 0`; the divide is then skipped and a finite point, behind the camera on a real rig, is returned instead of a point at infinity (`#4267 <https://github.com/kornia/kornia/issues/4267>`_).
 
 .. autoclass:: StereoCamera
     :members:
