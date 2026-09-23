@@ -35,6 +35,5 @@ class IntensityAugmentationBase3D(RigidAffineAugmentationBase3D):
     Convention:
         - these augmentations leave voxel coordinates in place: they record an identity ``(B, 4, 4)`` matrix,
           and a container skips them on its inverse path.
-        - their image-value requirements are class-specific; see each class.
 
     """

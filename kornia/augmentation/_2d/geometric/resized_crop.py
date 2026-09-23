@@ -65,17 +65,16 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         ``size`` is an ``(height, width)`` tuple; a bare integer raises, unlike :class:`CenterCrop`
         (`#4417 <https://github.com/kornia/kornia/issues/4417>`_). ``p`` selects or skips the whole batch together.
         Within a selected batch, the generator tries ten candidate crops per image, sampling area fractions from
-        ``scale`` and width/height ratios from ``ratio`` (shared with ``same_on_batch=True``). Rounded candidate
-        dimensions must be positive and strictly smaller than the input on both axes. If no candidate fits,
-        a fallback chooses dimensions by comparing input height/width with ``min(ratio)``, then clamps them to
-        the input size. This fallback can violate both requested ranges: on an 8x6 input, ``scale=(1.0, 1.0)``
-        with the default ratio produces a 4x6 crop, with half the input area and width/height ratio 1.5.
-        The selected crop is resized to the requested output size.
+        ``scale`` and width/height ratios from ``ratio`` (shared with ``same_on_batch=True``), and resizes the first
+        that fits to the requested output size. A candidate must be strictly smaller than the input on both axes,
+        and the fallback compares height/width, not width/height, with ``min(ratio)``, so ``scale=(1.0, 1.0)``
+        never keeps a square or portrait image and can leave both ranges: an 8x6 input gives a 4x6 crop where
+        torchvision keeps 8x6 (`#4814 <https://github.com/kornia/kornia/issues/4814>`_).
 
         Both cropping modes use the configured interpolation and ``align_corners``, so slice mode raises for
         ``resample="nearest"`` unless ``align_corners=None``
         (`#4802 <https://github.com/kornia/kornia/issues/4802>`_). At ``align_corners=False`` the two modes give
-        different images, and slice mode no longer follows ``transform_matrix``
+        different images, and slice mode does not follow ``transform_matrix``
         (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). Only resample mode supports :meth:`inverse`,
         which resamples onto the original canvas and cannot recover discarded information.
 

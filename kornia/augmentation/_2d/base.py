@@ -65,8 +65,7 @@ class AugmentationBase2D(_AugmentationBase):
     might be a better fit.
 
     This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit.
-    Mix and 3D augmentation bases have their own public contracts;
-    do not infer this class's probability, RNG, replay, or serialization behavior from their common internals.
+    Mix and 3D augmentations have their own bases and contracts.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -106,7 +105,7 @@ class AugmentationBase2D(_AugmentationBase):
           (`#4429 <https://github.com/kornia/kornia/issues/4429>`_).
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
           displayed (top-left origin, y pointing down), as :func:`~kornia.geometry.transform.rotate` documents;
-          the ``*Affine*`` classes turn clockwise (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+          :class:`RandomAffine` turns clockwise (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - ``torch.jit.script`` is not supported; ``torch.compile(fullgraph=True)`` works for some augmentations
           and flags only.
 

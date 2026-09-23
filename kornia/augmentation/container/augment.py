@@ -99,8 +99,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     mask path (`#4802 <https://github.com/kornia/kornia/issues/4802>`_); ``cropping_mode='resample'``
                     accepts them. ``None`` works in both modes.
                     :class:`~kornia.augmentation.RandomElasticTransform` has its own mask path and honours
-                    both entries, but requires a ``kornia.constants.Resample`` member rather than a
-                    string.
+                    both entries. Unlike the constructors, the override is not normalized: a string ``resample``
+                    raises ``AttributeError`` wherever the mask is resampled, so pass a
+                    ``kornia.constants.Resample`` member (`#4815 <https://github.com/kornia/kornia/issues/4815>`_).
 
     Convention:
         - each child keeps the contract of its own base and class; mix and 3D children do not inherit every

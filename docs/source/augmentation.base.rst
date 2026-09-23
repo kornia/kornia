@@ -206,14 +206,10 @@ Some Further Notes
 
 Probabilities
 ^^^^^^^^^^^^^
-`_BasicAugmentationBase` has a per-sample `p` and a whole-batch `p_batch` gate. A concrete constructor can
-map its public ``p`` to either gate, so consult that class's contract. For example, `RandomMixUpV2` gates the
-batch, while `RandomJigsaw` gates individual samples. Mixing classes do not inherit all of the
-`AugmentationBase2D` forward conventions.
-
-When ``0 < p_batch < 1``, the base draws a batch Bernoulli before the per-sample gate; endpoints skip the
-Bernoulli draw. With ``p=1.0, p_batch=0.0`` no sample is selected. Only some concrete constructors expose
-``p_batch`` directly; `#4425 <https://github.com/kornia/kornia/issues/4425>`_ tracks that limitation.
+:class:`AugmentationBase2D` states the ``p`` / ``p_batch`` model. A concrete constructor can map its public ``p``
+to either gate: `RandomMixUpV2` gates the batch and `RandomJigsaw` individual samples
+(`#4425 <https://github.com/kornia/kornia/issues/4425>`_). When ``0 < p_batch < 1``, the base draws the batch
+Bernoulli before the per-sample gate; endpoints skip that draw, and ``p=1.0, p_batch=0.0`` selects no sample.
 
 Random Generators
 ^^^^^^^^^^^^^^^^^
@@ -224,17 +220,13 @@ generate simple uniform parameters with less boilerplate code.
 
 Random Reproducibility
 ^^^^^^^^^^^^^^^^^^^^^^
-Parameter sampling generally runs on CPU, independently of the image device. ``set_rng_device_and_dtype`` does
-not move every sampler, and the returned parameters need not follow it
-(`#4426 <https://github.com/kornia/kornia/issues/4426>`_). See :doc:`/get-started/conventions` for seeding,
-worker seeds, consumption order and replay, and :class:`AugmentationBase2D` for what ``params=`` replays.
+See :class:`AugmentationBase2D` for where parameters are sampled and what ``params=`` replays, and
+:doc:`/get-started/conventions` for seeding, worker seeds and consumption order.
 
 Serialization
 ^^^^^^^^^^^^^
 - Several constructors that accept ``nn.Parameter`` ranges propagate gradients to them.
-- Numeric range buffers in ``state_dict()`` do not update the samplers when loaded; reconstruct the augmentation
-  to change its ranges (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - The default ``kornia.augmentation.auto`` policies cannot be pickled
   (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
-- A lazily built transformation matrix keeps only the input's shape, dtype and device, so pickling a module does
-  not carry the last image batch; see :class:`RigidAffineAugmentationBase2D` for the overrides that change this.
+- :class:`AugmentationBase2D` covers the range buffers in ``state_dict()``, and
+  :class:`RigidAffineAugmentationBase2D` what a lazily built matrix keeps.
