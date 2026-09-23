@@ -275,7 +275,8 @@ Augmentations
 - Geometric children normally resample masks with nearest interpolation, so
   labels are not blended, but padding can introduce its fill value. The container
   processes a mask in the dtype of the image it is working on (the most recent
-  image argument before the mask) and returns it in the mask's own dtype, so
+  image argument before the mask, or the call's first image when the mask
+  comes first) and returns it in the mask's own dtype, so
   integer labels outside that dtype's exact range change even through a flip:
   ``2049`` becomes ``2048`` in ``float16``
   (`#4478 <https://github.com/kornia/kornia/issues/4478>`_). A direct
@@ -302,17 +303,16 @@ Augmentations
 - The 2D intensity augmentations assume float input in ``[0, 1]``, and no
   base-class check enforces it. Outside that range each class follows its own
   policy -- some clamp, rescale or round-trip through ``uint8``, some do not
-  clamp, and :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
-  upper end. :class:`kornia.augmentation.RandomEqualize` and
+  clamp, :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
+  upper end, and :class:`kornia.augmentation.RandomGamma` does not clamp, so a
+  negative input gives NaN for a non-integer ``gamma``. Several classes return
+  an all-zero image for an all-negative input, and
+  :class:`kornia.augmentation.RandomSolarize` does so when every value is at
+  least ``1.5``. :class:`kornia.augmentation.RandomEqualize` and
   :class:`kornia.augmentation.RandomClahe` raise an error naming the range; the
   check is asynchronous, so on an accelerator the error can surface at a later
-  synchronizing call. Several classes return an all-zero image for an
-  all-negative input, and :class:`kornia.augmentation.RandomSolarize` does so
-  when every value is at least ``1.5``
-  (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
-  :class:`kornia.augmentation.RandomGamma` does not clamp, so a negative input
-  gives NaN for a non-integer ``gamma``. See
-  :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
+  synchronizing call (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+  See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
   documentation.
 
 .. code-block:: python
@@ -361,7 +361,7 @@ Randomness in augmentations
   seeded pipeline is not bit-stable across kornia versions.
 - ``same_on_batch=True`` shares the per-sample gate and the sampled factors
   across the batch; it does not make mix pairing indices equal. The colour
-  order of ``ColorJiggle`` and ``ColorJitter`` is one permutation per batch
+  order of ``ColorJiggle`` and ``ColorJitter`` is shared across the batch
   regardless. On ``AugmentationSequential``, ``same_on_batch=None`` keeps each
   child's setting, and ``True`` or ``False`` overwrites it.
 - Whether a constructor's ``p`` sets the per-sample or the whole-batch gate,
@@ -374,18 +374,18 @@ Randomness in augmentations
 Serializing an augmentation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- ``state_dict()`` does not hold an augmentation's configuration: rebuild it
-  from its constructor arguments. Numeric ranges create no trainable
-  parameters, while ``nn.Parameter`` ranges (``RandomRotation`` and
-  ``RandomAffine`` among others) are registered and receive gradients. Some
-  numeric ranges are copied into ``_param_generator.*`` buffers that loading
-  does not feed back into the samplers
-  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_); the 3D and mix
-  augmentations have an empty ``state_dict()``.
+- ``state_dict()`` is not a complete record of an augmentation's
+  configuration: rebuild the augmentation from its constructor arguments.
+  Numeric ranges create no trainable parameters, and with numeric ranges the
+  3D and mix augmentations have an empty ``state_dict()``. ``nn.Parameter``
+  ranges (``RandomRotation`` and ``RandomAffine`` among others) are registered
+  and receive gradients. Some numeric ranges are copied into
+  ``_param_generator.*`` buffers that loading does not feed back into the
+  samplers (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
   ``_params``, which replay on the same input. The default
-  ``kornia.augmentation.auto`` policies cannot be pickled (a policy can be only
-  when every operation wrapper in it can), though they deep-copy
+  ``kornia.augmentation.auto`` policies cannot be pickled (a policy can be
+  pickled only when every operation wrapper in it can), though they deep-copy
   (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). What lazily
   computed matrices retain is described in :doc:`/augmentation.base`.
 
@@ -472,7 +472,8 @@ Quick self-review for generated code, most common first:
     ``RandomFisheye`` to move boxes and keypoints with the image — they do not.
 17. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
     through an intensity augmentation — some clamp, some rescale,
-    ``RandomEqualize`` and ``RandomClahe`` raise, and several return zeros.
+    ``RandomEqualize`` and ``RandomClahe`` raise, and several return zeros
+    (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
 
 .. tip::
 

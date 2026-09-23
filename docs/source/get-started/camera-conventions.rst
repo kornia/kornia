@@ -178,8 +178,8 @@ Intrinsics layout
   :class:`kornia.sensors.camera.CameraModelBase` exposes that same layout through its ``K()`` method. The
   functional pinhole model has no skew, like OpenCV's: the skew entry ``K[0, 1]`` is ignored by
   :func:`kornia.geometry.conversions.normalize_points_with_intrinsics`, its inverse and
-  :func:`kornia.geometry.camera.perspective.project_points` alike; the first one's docstring gives the workaround
-  for a skewed ``K``.
+  :func:`kornia.geometry.camera.perspective.project_points` alike. With a skewed ``K``, apply ``inv(K)`` to homogeneous
+  pixel coordinates, or ``K`` to normalized ones, directly.
 - :class:`kornia.geometry.camera.pinhole.PinholeCamera` instead stores a ``4x4`` ``intrinsics`` whose canonical
   form is the homogeneous embedding ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0], [0, 0, 0, 1]]``. The whole
   matrix participates: :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.project` multiplies the full
