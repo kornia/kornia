@@ -382,6 +382,21 @@ class TestAdjustContrast(BaseTester):
         out = kornia.enhance.adjust_contrast_with_mean_subtraction(img, 0.5)
         assert out.shape == shape
 
+    @pytest.mark.parametrize("shape", [(4, 2, 3), (2, 1, 2, 3), (2, 3, 4, 2, 3)])
+    def test_non_rgb_mean_with_leading_dimensions(self, device, dtype, shape):
+        numel = torch.Size(shape).numel()
+        image = torch.arange(numel, device=device, dtype=dtype).reshape(shape) / numel
+        factor = torch.linspace(0.25, 0.75, image[..., 0, 0, 0].numel(), device=device, dtype=dtype).reshape(
+            image.shape[:-3]
+        )
+        factor_broadcast = factor.reshape(*factor.shape, 1, 1, 1)
+        expected = image * factor_broadcast + image.mean((-3, -2, -1), keepdim=True) * (1 - factor_broadcast)
+
+        actual = kornia.enhance.adjust_contrast_with_mean_subtraction(image, factor)
+
+        assert actual.shape == shape
+        self.assert_close(actual, expected)
+
     def test_factor_zero(self, device, dtype):
         # prepare input data
         data = torch.tensor(
@@ -672,17 +687,16 @@ class TestAdjustContrast(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0))
 
-    # Issue #4806: a non-RGB input blends with the mean of the whole batch, so a sample's result depends on
-    # its batch-mates; an RGB input uses each image's own mean.  A per-image fix flips the one-channel leg.
-    @pytest.mark.parametrize(("channels", "contaminated"), [(1, True), (3, False)])
-    def test_wart_mean_subtraction_non_rgb_uses_the_batch_mean_4806(self, device, dtype, channels, contaminated):
+    # Regression for #4806: every channel count must use each image's own mean.
+    @pytest.mark.parametrize("channels", [1, 3, 4])
+    def test_mean_subtraction_is_batch_independent_4806(self, device, dtype, channels):
         bright = torch.full((1, channels, 2, 2), 0.8, device=device, dtype=dtype)
         dark = torch.full((1, channels, 2, 2), 0.2, device=device, dtype=dtype)
         factor = torch.tensor([0.5, 0.5], device=device, dtype=dtype)
         alone = kornia.enhance.adjust_contrast_with_mean_subtraction(dark, factor[:1])
         batched = kornia.enhance.adjust_contrast_with_mean_subtraction(torch.cat([bright, dark]), factor)[1:]
         self.assert_close(alone, dark)
-        assert (not torch.allclose(batched, alone)) is contaminated
+        self.assert_close(batched, alone)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
