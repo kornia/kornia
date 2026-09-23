@@ -159,10 +159,11 @@ class ScalePyramid(nn.Module):
         - ``forward`` returns ``(pyr, sigmas, pixel_dists)``, one entry per octave: ``pyr[o]`` is
           :math:`(B, C, L, H_o, W_o)` with ``L = n_levels + extra_levels``, and ``sigmas[o]`` and
           ``pixel_dists[o]`` are :math:`(B, L)` nominal values (the targeted blur, not a measurement)
-        - ``sigmas`` is octave-relative: the blur in input pixels is ``sigmas[o] * pixel_dists[o]``.
-          An ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
-          ``double_image=True``) replaces octave 0's first entry by that blur, and the true blur
-          of the levels built from it then exceeds the nominal value
+        - ``sigmas`` is octave-relative: the blur in input pixels is ``sigmas[o] * pixel_dists[o]``
+        - an ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
+          ``double_image=True``) leaves the first level at that blur, but ``sigmas`` still counts
+          from ``init_sigma``, so later levels are labelled below their real blur
+          (`#4796 <https://github.com/kornia/kornia/issues/4796>`_)
         - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter
 
     Args:

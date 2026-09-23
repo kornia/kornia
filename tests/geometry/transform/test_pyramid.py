@@ -147,11 +147,11 @@ class TestScalePyramid(BaseTester):
 
         self.gradcheck(sp_tuple, (img,), nondet_tol=1e-4)
 
-    def test_convention_octave0_sigmas_example(self, device, dtype):
-        # Pins the Convention block's worked example: with n_levels=1 (default
-        # extra_levels=3), init_sigma=0.25 below the assumed input blur (0.5) makes
-        # octave 0's first sigma the input blur itself, while octave 1+ starts from
-        # init_sigma as usual -- the two octaves diverge only in that first entry.
+    def test_wart_scale_pyramid_sigmas_underreport_blur_4796(self, device, dtype):
+        # With init_sigma=0.25 below the assumed input blur (0.5), level 0 stays at 0.5 but the
+        # sigma bookkeeping restarts at init_sigma, so level 1 (real blur about 0.66) is also
+        # labelled 0.5 (#4796). Flips once the labels follow the real blur or such an
+        # init_sigma is rejected.
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
         _, sigmas, _ = sp(inp)

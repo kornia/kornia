@@ -30,7 +30,6 @@ _STATED_DEFAULTS = [
     ("remap", "align_corners", None),
     ("elastic_transform2d", "align_corners", False),
     ("warp_image_tps", "align_corners", False),
-    ("warp_image_tps", "padding_mode", "zeros"),
     ("crop_by_indices", "align_corners", None),
     ("affine3d", "align_corners", False),
     ("rotate3d", "align_corners", False),
