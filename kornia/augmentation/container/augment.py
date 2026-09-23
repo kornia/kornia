@@ -24,6 +24,7 @@ from torch import nn
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_autocast_enabled, is_exporting
@@ -735,6 +736,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # TODO: handle 3d scenarios
         if isinstance(in_arg, Boxes):
             return out_arg
+        if isinstance(in_arg, torch.Tensor) and not isinstance(out_arg, VideoBoxes):
+            # A dense input stays dense; padding added by an augmentation (e.g. RandomMosaic) is exported as zeros.
+            return _boxes_to_padded_tensor(out_arg, mode)
 
         return out_arg.to_tensor(mode=mode)
 
