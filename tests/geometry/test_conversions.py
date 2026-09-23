@@ -5020,8 +5020,8 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         _assert_strictly_batched(op_name, shapes, device)
 
     def test_wart_non_orthogonal_rotation_is_transposed_not_inverted_3961(self, device, dtype):
-        # Wart pin for kornia#3961: R is ASSUMED orthogonal and the assumption is never checked, so
-        # for any other matrix the result is a transpose that is not an inverse -- silently, with no
+        # Wart pin for kornia#3961: R is ASSUMED orthogonal and the assumption is not checked by default,
+        # so for any other matrix the result is a transpose that is not an inverse -- silently, with no
         # error and no warning. Three cells, each a different observable of the same root:
         #   (1) the returned rotation is exactly R.T even though R.T is not R^-1 here;
         #   (2) composing the two 4x4 matrices misses the identity by 3.0, i.e. not by a rounding
@@ -5029,12 +5029,9 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         #   (3) even the round trip breaks, the translation coming back 9.0 away from the input;
         #       cell (3) is kept separate from (2) because a fix that validated only the rotation
         #       would leave the translation error in place for a caller who ignores the raise.
-        # There is deliberately NO companion strict xfail: the intended behavior is undecided -- a
-        # fix could raise on a non-orthogonal R, or fall back to a true inverse -- and an
-        # assertion-shaped xfail could express only one of those and would stay silently XFAIL if
-        # the other were chosen. Same shape as the #3959 and #3957 wart pins in this file.
-        # If any cell fails, #3961 was (partly) fixed -- remove this pin. NOT a contract that a
-        # non-orthogonal R must keep producing these numbers.
+        # Resolved by kornia#3961 without changing the default: check_rotation=False keeps R
+        # unchecked by design, so this pins that default -- the call below deliberately omits
+        # the argument. The opt-in validation is covered by the check_rotation tests.
         # R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]] has det = 2 and dyadic entries, so every literal
         # below is exact in every dtype.
         # Snippet used to generate expected (torch only, executed on cpu):

@@ -2695,7 +2695,27 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     return matrix4x4_to_Rt(mat4x4)
 
 
-def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def _check_is_rotation(R: torch.Tensor, fn_name: str) -> None:
+    # Opt-in validation behind check_rotation=True (kornia#3961); the default path stays unchecked.
+    # det has no half or integer kernels, so the check runs in float32 unless R is already float64;
+    # the tolerance follows R's own precision.
+    work = R if R.dtype == torch.float64 else R.to(torch.float32)
+    eps = torch.finfo(R.dtype).eps if R.is_floating_point() else torch.finfo(torch.float32).eps
+    tol = 100.0 * eps
+    eye = torch.eye(3, device=R.device, dtype=work.dtype)
+    ortho_err = (work @ work.transpose(-2, -1) - eye).abs().amax(dim=(-2, -1))
+    if (ortho_err > tol).any():
+        raise ValueError(
+            f"{fn_name}: R is not a rotation matrix: max|R @ R^T - I| = {ortho_err.max().item():.3g} "
+            f"exceeds the tolerance {tol:.3g}."
+        )
+    if (torch.linalg.det(work) <= 0).any():
+        raise ValueError(f"{fn_name}: R is a reflection (det(R) < 0), not a rotation matrix.")
+
+
+def camtoworld_to_worldtocam_Rt(
+    R: torch.Tensor, t: torch.Tensor, check_rotation: bool = False
+) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert camtoworld to worldtocam frame used in Colmap.
 
     See
@@ -2720,11 +2740,13 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
         - the shapes are :math:`(B, 3, 3)` and :math:`(B, 3, 1)`
 
     .. warning::
-        ``R`` is **assumed** to be a rotation and this is never checked, so for
-        a non-orthogonal ``R`` the result is a transpose and not an inverse,
-        silently: ``R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]]`` gives
-        ``max|M_inv @ M - I| = 3.0``. Tracked in
-        `#3961 <https://github.com/kornia/kornia/issues/3961>`_.
+        ``R`` is **assumed** to be a rotation and by default this is not
+        checked, so for a non-orthogonal ``R`` the result is a transpose and
+        not an inverse, silently: ``R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]]``
+        gives ``max|M_inv @ M - I| = 3.0``. Pass ``check_rotation=True`` to
+        raise a ``ValueError`` instead,
+        which also rejects reflections (``det(R) < 0``). Delivered in
+        `#NNNN <https://github.com/kornia/kornia/pull/NNNN>`_.
 
     .. warning::
         The batch sizes of ``R`` and ``t`` are not checked: ``t`` is broadcast
@@ -2736,6 +2758,8 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
+        check_rotation: if ``True``, raise ``ValueError`` unless every ``R``
+            is a rotation. Defaults to ``False`` (unchecked).
 
     Returns:
         Rinv: Rotation matrix, :math:`(B, 3, 3).`
@@ -2754,13 +2778,18 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
 
+    if check_rotation:
+        _check_is_rotation(R, "camtoworld_to_worldtocam_Rt")
+
     R_inv = R.transpose(1, 2)
     new_t: torch.Tensor = -R_inv @ t
 
     return (R_inv, new_t)
 
 
-def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def worldtocam_to_camtoworld_Rt(
+    R: torch.Tensor, t: torch.Tensor, check_rotation: bool = False
+) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert worldtocam frame used in Colmap to camtoworld.
 
     Convention:
@@ -2780,6 +2809,8 @@ def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
+        check_rotation: if ``True``, raise ``ValueError`` unless every ``R``
+            is a rotation. Defaults to ``False`` (unchecked).
 
     Returns:
         Rinv: Rotation matrix, :math:`(B, 3, 3).`
@@ -2797,6 +2828,9 @@ def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+
+    if check_rotation:
+        _check_is_rotation(R, "worldtocam_to_camtoworld_Rt")
 
     R_inv = R.transpose(1, 2)
     new_t: torch.Tensor = -R_inv @ t
