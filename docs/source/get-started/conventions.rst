@@ -44,7 +44,7 @@ Coordinates and sizes
   ``align_corners=True`` — not to its default, ``align_corners=False``,
   which places the same values up to half a pixel off — exactly half a
   pixel at the image borders, and identically at the image center.
-  :func:`kornia.geometry.create_meshgrid` returns a normalized grid by
+  :func:`kornia.geometry.grid.create_meshgrid` returns a normalized grid by
   default (``normalized_coordinates=True``).
 - 3D grids and 3D pixel coordinates are ``(d, x, y)`` — depth first, not
   ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
