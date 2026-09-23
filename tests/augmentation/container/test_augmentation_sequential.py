@@ -110,6 +110,31 @@ class TestAugmentationSequential:
         out = aug_list(input)
         assert out.shape == input.shape
 
+    def test_3d_augmentation_rejects_4d_input(self, device, dtype):
+        input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)
+        aug_list = K.AugmentationSequential(K.RandomAffine3D(360.0, p=1.0), data_keys=["input"])
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"3D augmentations in AugmentationSequential expect input shape",
+        ):
+            aug_list(input)
+
+    def test_3d_augmentation_rejects_4d_input_when_replaying_params(self, device, dtype):
+        input_5d = torch.randn(1, 2, 3, 5, 6, device=device, dtype=dtype)
+        aug_list = K.AugmentationSequential(K.RandomAffine3D(360.0, p=1.0), data_keys=["input"])
+
+        aug_list(input_5d)
+        params = aug_list._params
+
+        input_4d = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"3D augmentations in AugmentationSequential expect input shape",
+        ):
+            aug_list(input_4d, params=params)
+
     def test_identity_matrix_3d(self, device, dtype):
         input = torch.rand(2, 1, 3, 4, 5, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomDepthicalFlip3D(p=1.0))
@@ -747,6 +772,46 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(out_masks[1], output[:1])
         assert not torch.equal(out_masks[1], output[1:])
 
+    def test_mix_augmentation_inverse_raises_4693(self, device, dtype):
+        image = torch.stack([torch.full((2, 4, 6), float(i + 1), device=device, dtype=dtype) for i in range(3)])
+        mask = torch.zeros(3, 4, 6, device=device, dtype=torch.long)
+
+        for i in range(3):
+            mask[i, :2, :3] = i + 1
+
+        seq = K.AugmentationSequential(
+            K.RandomTransplantation(p=1.0),
+            data_keys=["input", "mask"],
+        )
+
+        torch.manual_seed(7)
+        output = seq(image, mask)
+
+        assert not torch.equal(output[0], image)
+
+        with pytest.raises(RuntimeError, match="Inverse for RandomTransplantation is not supported"):
+            seq.inverse(*output)
+
+    def test_mix_augmentation_3d_inverse_raises_4693(self, device, dtype):
+        image = torch.stack([torch.full((2, 3, 4, 5), float(i + 1), device=device, dtype=dtype) for i in range(3)])
+        mask = torch.zeros(3, 3, 4, 5, device=device, dtype=torch.long)
+
+        for i in range(3):
+            mask[i, :2, :2, :3] = i + 1
+
+        seq = K.AugmentationSequential(
+            K.RandomTransplantation3D(p=1.0),
+            data_keys=["input", "mask"],
+        )
+
+        torch.manual_seed(7)
+        output = seq(image, mask)
+
+        assert not torch.equal(output[0], image)
+
+        with pytest.raises(RuntimeError, match="Inverse for RandomTransplantation3D is not supported"):
+            seq.inverse(*output)
+
     def test_mix_children_dispatch_annotation_keys_4493(self, device, dtype):
         # Regression (#4493): mix children used to fall through Mask/Box/KeypointSequentialOps to a silent
         # passthrough, so annotations desynchronized from the mixed image. The container now dispatches to
@@ -790,30 +855,53 @@ class TestConventionAugmentationSequential(BaseTester):
                 image, torch.tensor([0, 1], device=device)
             )
 
-    def test_wart_dictionary_mask_before_image_loses_float64_precision_4478(self):
-        # On a fresh container, masks preceding the image fall back to float32 before being cast back.
+    def test_convention_dictionary_mask_before_image_keeps_float64_precision_4478(self):
+        # Convention pin for kornia#4478: a mask is converted with this call's image dtype wherever it sits in the
+        # dictionary. Until the fix, a mask inserted before the image was converted with the previous call's image
+        # dtype, or float32 on a fresh container, so these float64 values, which float32 cannot hold, came back
+        # rounded even though the image was float64. Both insertion orders now return the mask bit for bit.
         image = torch.zeros(1, 1, 1, 2, dtype=torch.float64)
         mask = torch.tensor([1.0 + 2**-30, 2.0 + 2**-29], dtype=torch.float64).reshape_as(image)
         early_mask = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
         image_first = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
-        early_output = early_mask({"mask": mask, "image": image})["mask"]
         expected = mask.flip(-1)
-        self.assert_close(early_output, expected.float().double(), rtol=0, atol=0)
-        assert not torch.equal(early_output, expected)
-        self.assert_close(image_first({"image": image, "mask": mask})["mask"], expected, rtol=0, atol=0)
+        early_output = early_mask({"mask": mask, "image": image})["mask"]
+        assert early_output.dtype == torch.float64
+        assert torch.equal(early_output, expected)
+        assert torch.equal(image_first({"image": image, "mask": mask})["mask"], expected)
 
     @pytest.mark.parametrize("mask_dtypes", [(torch.int64, torch.bool), (torch.bool, torch.int64)])
-    def test_wart_mask_outputs_use_the_last_mask_dtype_4478(self, mask_dtypes, device, dtype):
+    def test_convention_each_mask_keeps_its_own_dtype_4478(self, mask_dtypes, device, dtype):
+        # Convention pin for kornia#4478: each mask output comes back in the dtype of its own argument. Until the
+        # fix every mask output was cast to the dtype of the LAST mask argument, so an integer semantic mask
+        # followed by a boolean one came back boolean and labels 2, 3 and 5 collapsed to True. Both orders are
+        # covered, so the pin fails whichever mask used to win.
         image = torch.arange(24, device=device, dtype=dtype).reshape(2, 1, 3, 4)
         labels = torch.tensor([0, 2, 3, 5], device=device).reshape(1, 1, 1, 4).expand(2, 1, 3, 4)
         first, second = (labels.to(mask_dtype) for mask_dtype in mask_dtypes)
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask", "mask"])
         _, out_first, out_second = seq(image, first, second)
-        assert out_first.dtype == out_second.dtype == mask_dtypes[-1]
-        self.assert_close(out_first, first.flip(-1).to(mask_dtypes[-1]))
-        self.assert_close(out_second, second.flip(-1))
-        if mask_dtypes[-1] == torch.bool:
-            assert out_first.unique().tolist() == [False, True]  # integer labels 2, 3 and 5 are lost
+        assert (out_first.dtype, out_second.dtype) == mask_dtypes
+        assert torch.equal(out_first, first.flip(-1))
+        assert torch.equal(out_second, second.flip(-1))
+        integer_output = out_first if mask_dtypes[0] == torch.int64 else out_second
+        assert integer_output.unique().tolist() == [0, 2, 3, 5]  # the labels survive next to a boolean mask
+        assert seq.mask_dtype == mask_dtypes[1]  # the attribute still records the last mask argument's dtype
+
+    @pytest.mark.parametrize("mask_dtypes", [(torch.int64, torch.bool), (torch.bool, torch.int64)])
+    def test_convention_each_list_mask_element_keeps_its_own_dtype_4478(self, mask_dtypes, device, dtype):
+        # Convention pin for kornia#4478: a list mask comes back per element in each entry's own dtype. Until the
+        # fix every element was cast to the list's first dtype, so a boolean entry after an integer one came back
+        # int64 as [1, 1, 1, 0]. Both orders are covered, so the pin fails whichever element used to win.
+        image = torch.arange(16, device=device, dtype=dtype).reshape(2, 1, 2, 4)
+        labels = torch.tensor([0, 2, 3, 5], device=device).reshape(1, 1, 1, 4).expand(1, 1, 2, 4)
+        entries = [labels.to(mask_dtype) for mask_dtype in mask_dtypes]
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        _, out = seq(image, entries)
+        assert [m.dtype for m in out] == list(mask_dtypes)
+        for out_entry, entry in zip(out, entries):
+            assert torch.equal(out_entry, entry.flip(-1))
+        assert seq.mask_dtype == mask_dtypes[0]  # the attribute records the first element of the last list mask
 
     @pytest.mark.parametrize("key", ["bbox_xyxy", "bbox_xywh"])
     @pytest.mark.parametrize("suffix", ["", "_2", "-a"])
@@ -1048,11 +1136,21 @@ class TestConventionAugmentationSequential(BaseTester):
         assert output.dtype == torch.int64
         assert torch.equal(output, torch.full_like(mask, label - 1))
 
-    def test_wart_empty_batch_with_mask_raises_4478(self, device, dtype):
+    @pytest.mark.parametrize("mask_dtype", [None, torch.int64, torch.bool])
+    def test_convention_empty_batch_with_mask_4478(self, mask_dtype, device, dtype):
+        # Convention pin for kornia#4478: an empty batch with a mask returns an empty mask, forward and inverse,
+        # in the mask's own dtype. Until the fix it raised IndexError before any op ran: the dtype read tested
+        # ``isinstance(inp, list)`` on the accumulator, which is always a list, and so indexed the tensor mask at
+        # ``arg[0]``.
         image = torch.empty(0, 1, 2, 2, device=device, dtype=dtype)
+        mask = image.clone() if mask_dtype is None else torch.empty(0, 1, 2, 2, device=device, dtype=mask_dtype)
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
-        with pytest.raises(IndexError):
-            seq(image, image.clone())
+        out_image, out_mask = seq(image, mask)
+        assert out_image.shape == out_mask.shape == (0, 1, 2, 2)
+        assert out_mask.dtype == mask.dtype
+        restored_image, restored_mask = seq.inverse(out_image, out_mask)
+        assert restored_image.shape == restored_mask.shape == (0, 1, 2, 2)
+        assert restored_mask.dtype == mask.dtype
 
     def test_dictionary_preserves_metadata_and_input_4483(self, device, dtype):
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)

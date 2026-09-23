@@ -122,3 +122,21 @@ class TestClosing(BaseTester):
         expected = op(tensor, kernel)
 
         assert_close(actual, expected)
+
+    def test_closing_custom_origin_is_extensive_and_idempotent(self, device, dtype):
+        # closing = erosion(dilation(x)) must stay extensive (closing(x) >= x) and idempotent
+        # (closing(closing(x)) == closing(x)) under a custom origin too, not just the default
+        # centred one. `dilation`'s origin bug broke both for origin=[0, 0]. Mirrors
+        # TestOpening.test_opening_custom_origin_is_anti_extensive_and_idempotent. The `>=` on
+        # the rand fixture never needs a tolerance (selection only, no interpolation), and
+        # repeating `closing` on its own (already-closed) output is likewise exact, so
+        # `torch.equal` is fine.
+        # Generated with:
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0))
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        closed = closing(tensor, kernel, origin=[0, 0])
+        assert (closed >= tensor).all()
+        assert torch.equal(closing(closed, kernel, origin=[0, 0]), closed)

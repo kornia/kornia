@@ -38,8 +38,7 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
     t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)
     t1_t2: torch.Tensor = tensor1.matmul(tensor2.transpose(1, 2))
     square_dist: torch.Tensor = -2 * t1_t2 + t1_sq + t2_sq
-    square_dist = square_dist.clamp(min=0)  # handle possible numerical errors
-    return square_dist
+    return square_dist.clamp(min=0)  # handle possible numerical errors
 
 
 def _kernel_distance(squared_distances: torch.Tensor) -> torch.Tensor:

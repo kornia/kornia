@@ -25,12 +25,13 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
 )
-from kornia.core.utils import _torch_histc_cast
+from kornia.core.utils import _torch_histc_cast, is_compiling
 from kornia.image.utils import perform_keep_shape_image, perform_keep_shape_video
 
 
@@ -48,6 +49,47 @@ def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
     torch._assert_async(cond, msg)
 
 
+# ``aten::_assert_async.msg`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
+_MPS_HAS_ASSERT_ASYNC = torch_version_ge(2, 13)
+
+
+def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
+    """Validate the input domain of a 256-entry lookup, including on MPS.
+
+    Same as :func:`_assert_async_value_check` on CPU and CUDA. On MPS that helper skips the check, and an
+    index the lookup cannot use then surfaces as torch's raw ``gather: index ... is out of bounds`` error,
+    which names neither the op nor the range it needs. From torch ``2.13`` the assert has an MPS kernel, so
+    the same asynchronous check runs there: no host read, and the named error is reported at the next
+    synchronization. Older releases have none, and the lookups guarded here consume the whole input anyway,
+    so the condition is read on the host instead: one stream sync per call. A host read would break a
+    ``torch.compile`` graph, so only that older fallback keeps the skip while compiling.
+    """
+    if cond.device.type == "mps" and not _MPS_HAS_ASSERT_ASYNC:
+        if not is_compiling() and not bool(cond):
+            raise RuntimeError(msg)
+        return
+    torch._assert_async(cond, msg)
+
+
+def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
+    """Right-pad ``factor`` with singleton dimensions so it broadcasts against ``image``.
+
+    A ``factor`` with more dimensions than ``image`` can never reach the image rank by appending
+    dimensions, so padding it would loop forever. Reject it here instead of hanging. The padding
+    only lines the ranks up: shapes that still do not broadcast are reported by the op itself.
+    """
+    if factor.dim() > image.dim():
+        raise ValueError(
+            f"Factor has more dimensions than the image and cannot be broadcast: got factor shape "
+            f"{tuple(factor.shape)} for image shape {tuple(image.shape)}."
+        )
+
+    while factor.dim() != image.dim():
+        factor = factor[..., None]
+
+    return factor
+
+
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
@@ -62,9 +104,7 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # unpack the hsv values
     h, s, v = torch.chunk(image, chunks=3, dim=-3)
@@ -120,9 +160,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     x_other: torch.Tensor = rgb_to_grayscale(image)
 
@@ -164,16 +202,41 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
         torch.Size([2, 3, 3, 3])
 
     """
-    # convert the rgb image to hsv
-    x_hsv: torch.Tensor = rgb_to_hsv(image)
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # perform the conversion
-    x_adjusted: torch.Tensor = adjust_saturation_raw(x_hsv, factor)
+    # Reordering the HSV arithmetic has visibly different rounding in half precision (up to
+    # ~7e-3 in float16 and ~6e-2 in bfloat16 over the unit cube). Keep the established path there;
+    # the direct formula below agrees to float32 precision and targets the common augmentation dtype.
+    if not image.is_floating_point() or image.dtype in (torch.float16, torch.bfloat16):
+        return hsv_to_rgb(adjust_saturation_raw(rgb_to_hsv(image), factor))
 
-    # convert back to rgb
-    out: torch.Tensor = hsv_to_rgb(x_adjusted)
+    if isinstance(factor, float):
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
+    else:
+        factor = factor.to(image.device, image.dtype)
 
-    return out
+    factor = _make_factor_broadcastable(factor, image)
+    if factor.shape[-3] != 1:
+        raise ValueError(f"Factor must hold one value per image, not per channel. Got shape {factor.shape}")
+
+    # Scaling saturation in HSV keeps value (the maximum RGB channel) and hue fixed, so it is
+    # equivalent to scaling each channel's distance from the minimum RGB channel. Expressing that
+    # relation directly avoids materialising an HSV image and the expensive HSV-to-RGB sextant
+    # selection. Keep rgb_to_hsv's guarded divisors so gradients stay finite at black and
+    # grayscale pixels.
+    max_rgb = image.amax(dim=-3, keepdim=True)
+    min_rgb = image.amin(dim=-3, keepdim=True)
+    delta = max_rgb - min_rgb
+    value_divisor = torch.where(max_rgb == 0, torch.ones_like(max_rgb), max_rgb + 1e-8)
+    saturation = delta / value_divisor
+    saturation = torch.clamp(saturation * factor, min=0, max=1)
+
+    adjusted_delta = max_rgb * saturation
+    delta_divisor = torch.where(delta == 0, torch.ones_like(delta), delta)
+    return (image - min_rgb) * (adjusted_delta / delta_divisor) + (max_rgb - adjusted_delta)
 
 
 def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
@@ -192,9 +255,7 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
     factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # unpack the hsv values
     h, s, v = torch.chunk(image, chunks=3, dim=-3)
@@ -318,11 +379,8 @@ def adjust_gamma(
         "Gain must be non-negative. Clamp it first: max(gain, 0.0) for floats, gain.clamp_min(0.0) for tensors.",
     )
 
-    for _ in range(len(input.shape) - len(gamma.shape)):
-        gamma = torch.unsqueeze(gamma, dim=-1)
-
-    for _ in range(len(input.shape) - len(gain.shape)):
-        gain = torch.unsqueeze(gain, dim=-1)
+    gamma = _make_factor_broadcastable(gamma, input)
+    gain = _make_factor_broadcastable(gain, input)
 
     # Apply the gamma correction
     x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
@@ -389,9 +447,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     _assert_async_value_check(
         (factor >= 0).all(),
@@ -448,9 +504,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
@@ -462,9 +516,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
 
-    img_adjust = img_adjust.clamp(min=0.0, max=1.0)
-
-    return img_adjust
+    return img_adjust.clamp(min=0.0, max=1.0)
 
 
 def adjust_brightness(
@@ -523,9 +575,7 @@ def adjust_brightness(
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # shift pixel values
     img_adjust: torch.Tensor = image + factor
@@ -578,9 +628,7 @@ def adjust_brightness_accumulative(
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # shift pixel values
     img_adjust: torch.Tensor = image * factor
@@ -973,8 +1021,9 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # Input is expected in [0, 1]. The histogram index below is clamped, but the LUT lookup indexes
     # with the unclamped ``scaled.long()``, which is out of bounds unless ``scaled`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
-    # inputs the lookup can index keep working exactly as before.
-    _assert_async_value_check(
+    # on MPS before torch 2.13 it costs one host sync instead (see ``_lookup_value_check``). Inputs the
+    # lookup can index keep working exactly as before.
+    _lookup_value_check(
         ((scaled > -1.0) & (scaled < 256.0)).all(),
         "equalize expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
@@ -1066,8 +1115,9 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     .. note::
        The input is expected in :math:`[0, 1]`, and each channel is equalized from a 256-bin histogram.
        Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
-       naming the range. The check runs on CPU and CUDA (via ``torch._assert_async``); on MPS it is
-       skipped, as for :func:`adjust_gamma`.
+       naming the range. The check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``;
+       on an older MPS release the condition is read on the host instead, one device sync per call, and is
+       skipped there under ``torch.compile``.
 
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
@@ -1095,10 +1145,12 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     .. note::
        The input is expected in :math:`[0, 1]`, and each channel's whole :math:`(D, H, W)` volume is
        equalized from one 256-bin histogram. The lookup step is an integer division by 255, so a volume
-       with no more than 255 voxels per channel is returned unchanged; just above that, whether it changes
+       with no more than 255 voxels per channel is returned unchanged up to floating-point roundoff; just
+       above that, whether it changes
        depends on the values. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
-       raise a ``RuntimeError`` naming the range. The check runs on CPU and CUDA (via
-       ``torch._assert_async``); on MPS it is skipped.
+       raise a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS
+       kernel from torch ``2.13``; on an older MPS release the condition is read on the host instead, one
+       device sync per call, and is skipped there under ``torch.compile``.
 
     """
     # Scales each channel independently (each (D, H, W) volume), batched over (B, C).

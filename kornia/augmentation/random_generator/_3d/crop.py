@@ -30,6 +30,8 @@ from kornia.geometry.bbox import bbox_generator3d
 class CropGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ```crop``` transformation for crop transform.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomCrop3D`.
+
     Args:
         size (tuple): Desired size of the crop operation, like (d, h, w).
             If torch.Tensor, it must be (B, 3).
@@ -93,8 +95,10 @@ class CropGenerator3D(RandomGeneratorBase):
         y_diff = height - size[:, 1] + 1
         z_diff = depth - size[:, 0] + 1
 
+        # ``*_diff`` is the number of valid start offsets, so it is 1 when the crop covers the whole
+        # axis and 0 when the crop is one voxel too large. The guard has to reject that zero as well.
         # The size check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and ((x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any()):
+        if not is_exporting() and ((x_diff <= 0).any() or (y_diff <= 0).any() or (z_diff <= 0).any()):
             raise ValueError(
                 f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
             )
@@ -166,6 +170,8 @@ def center_crop_generator3d(
     device: Union[str, torch.device, None] = None,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
+
+    See the Convention block on :class:`~kornia.augmentation.CenterCrop3D`.
 
     Args:
         batch_size (int): the torch.Tensor batch size.

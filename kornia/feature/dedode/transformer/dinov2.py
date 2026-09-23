@@ -257,9 +257,7 @@ class DinoVisionTransformer(nn.Module):
             x = torch.where(masks.unsqueeze(-1), self.mask_token.to(x.dtype).unsqueeze(0), x)
 
         x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
-        x = x + self.interpolate_pos_encoding(x, w, h)
-
-        return x
+        return x + self.interpolate_pos_encoding(x, w, h)
 
     def forward_features(self, x, masks=None):
         """Compute transformer features for one image tensor.
@@ -371,7 +369,7 @@ def init_weights_vit_timm(module: nn.Module, name: str = ""):
 
 def vit_small(patch_size=16, **kwargs) -> DinoVisionTransformer:
     """Return ViT Small."""
-    model = DinoVisionTransformer(
+    return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=384,
         depth=12,
@@ -380,12 +378,11 @@ def vit_small(patch_size=16, **kwargs) -> DinoVisionTransformer:
         block_fn=partial(Block, attn_class=MemEffAttention),
         **kwargs,
     )
-    return model
 
 
 def vit_base(patch_size=16, **kwargs) -> DinoVisionTransformer:
     """Return ViT Base."""
-    model = DinoVisionTransformer(
+    return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=768,
         depth=12,
@@ -394,12 +391,11 @@ def vit_base(patch_size=16, **kwargs) -> DinoVisionTransformer:
         block_fn=partial(Block, attn_class=MemEffAttention),
         **kwargs,
     )
-    return model
 
 
 def vit_large(patch_size=16, **kwargs) -> DinoVisionTransformer:
     """Return ViT Large."""
-    model = DinoVisionTransformer(
+    return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1024,
         depth=24,
@@ -408,12 +404,11 @@ def vit_large(patch_size=16, **kwargs) -> DinoVisionTransformer:
         block_fn=partial(Block, attn_class=MemEffAttention),
         **kwargs,
     )
-    return model
 
 
 def vit_giant2(patch_size=16, **kwargs):
     """Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64."""
-    model = DinoVisionTransformer(
+    return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1536,
         depth=40,
@@ -422,4 +417,3 @@ def vit_giant2(patch_size=16, **kwargs):
         block_fn=partial(Block, attn_class=MemEffAttention),
         **kwargs,
     )
-    return model

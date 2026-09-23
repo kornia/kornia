@@ -277,6 +277,20 @@ class TestRandomMixUpV2(BaseTester):
         if untouched.any():
             self.assert_close(output[untouched], input[untouched])
 
+    def test_mixup_prob_single_gate(self, device, dtype):
+        # Regression test for #4649: p must not be applied twice
+        torch.manual_seed(42)
+        x = torch.rand(4, 1, 8, 8, device=device, dtype=dtype)
+        aug = RandomMixUpV2(p=0.5)
+        assert aug._param_generator.p == 1.0
+
+        for _ in range(20):
+            aug(x)
+            bp = aug._params["batch_prob"]
+            if bp[0] > 0:
+                # All rows in a selected batch must be mixed
+                assert (aug._params["mixup_lambdas"] > 0).all()
+
 
 class TestRandomCutMixV2(BaseTester):
     def test_smoke(self):
@@ -492,6 +506,24 @@ class TestRandomCutMixV2(BaseTester):
 
         self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
 
+    def test_cutmix_prob_single_gate(self, device, dtype):
+        # Regression test for #4649: p must not be applied twice
+        from kornia.geometry.bbox import infer_bbox_shape
+
+        torch.manual_seed(42)
+        x = torch.rand(4, 1, 16, 16, device=device, dtype=dtype)
+        aug = RandomCutMixV2(p=0.5, cut_size=(0.2, 0.8), use_correct_lambda=True)
+        assert aug._param_generator.p == 1.0
+
+        for _ in range(20):
+            aug(x)
+            bp = aug._params["batch_prob"]
+            if bp[0] > 0:
+                # All rows in a selected batch must have non-empty crops
+                w, h = infer_bbox_shape(aug._params["crop_src"][0])
+                assert (w > 0).all()
+                assert (h > 0).all()
+
 
 class TestRandomMosaic(BaseTester):
     def test_non_square_input_preserves_hw_4438(self):
@@ -680,6 +712,13 @@ class TestRandomJigsaw(BaseTester):
         with pytest.raises(RuntimeError, match="must be divisible by grid"):
             aug(image, params=params)
 
+    def test_single_cell_grid(self, device, dtype):
+        # A 1 x 1 grid has one permutation, the one ensure_perm rejects; drawing used to loop forever.
+        with pytest.raises(ValueError, match="at least two patches"):
+            RandomJigsaw(grid=(1, 1))
+        image = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        self.assert_close(RandomJigsaw(grid=(1, 1), p=1.0, ensure_perm=False)(image), image)
+
     def test_smoke(self, device, dtype):
         f = RandomJigsaw(data_keys=["input"])
         repr = "RandomJigsaw(grid=(4, 4), p=0.5, p_batch=1.0, same_on_batch=False, grid=(4, 4))"
@@ -707,10 +746,10 @@ class TestRandomJigsaw(BaseTester):
                 [[[2.0, 3.0, 0.0, 1.0], [6.0, 7.0, 4.0, 5.0], [8.0, 9.0, 10.0, 11.0], [12.0, 13.0, 14.0, 15.0]]],
                 [
                     [
-                        [16.0, 17.0, 18.0, 19.0],
-                        [20.0, 21.0, 22.0, 23.0],
-                        [24.0, 25.0, 26.0, 27.0],
-                        [28.0, 29.0, 30.0, 31.0],
+                        [24.0, 25.0, 18.0, 19.0],
+                        [28.0, 29.0, 22.0, 23.0],
+                        [16.0, 17.0, 26.0, 27.0],
+                        [20.0, 21.0, 30.0, 31.0],
                     ]
                 ],
             ],

@@ -81,8 +81,7 @@ def _bilateral_blur(
     space_kernel = space_kernel.view(-1, 1, 1, 1, ky, kx)
 
     kernel = space_kernel * color_kernel
-    out = (unfolded_input * kernel).sum((-2, -1)) / kernel.sum((-2, -1))
-    return out
+    return (unfolded_input * kernel).sum((-2, -1)) / kernel.sum((-2, -1))
 
 
 def bilateral_blur(

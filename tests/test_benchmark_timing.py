@@ -19,6 +19,7 @@
 
 import argparse
 import importlib.util
+import re
 import subprocess
 import sys
 import time
@@ -96,11 +97,20 @@ def test_benchmark_imports_its_checkout(tmp_path, suite):
 @pytest.mark.device_agnostic
 def test_filter_benchmark_operation_selection():
     flagship = _load_filter_flagship()
+    parser = argparse.ArgumentParser()
+    flagship.add_flagship_args(parser, ops=flagship.AVAILABLE_OPS)
 
-    assert flagship.parse_ops("motion_blur, otsu_threshold") == frozenset({"motion_blur", "otsu_threshold"})
-    assert flagship.parse_ops("") is None
-    with pytest.raises(argparse.ArgumentTypeError, match=r"unknown operation.*Available:.*otsu_threshold"):
-        flagship.parse_ops("not_a_filter")
+    selected = parser.parse_args(["--ops", "motion_blur, otsu_threshold"]).ops
+    assert selected == frozenset({"motion_blur", "otsu_threshold"})
+    assert parser.parse_args(["--ops", ""]).ops is None
+
+    # The script's own main() must register its op names, or an unknown name would run zero rows.
+    script = Path(__file__).resolve().parents[1] / "benchmarks/filters/flagship.py"
+    result = subprocess.run(  # noqa: S603 - fixed script and interpreter; no shell or external input.
+        [sys.executable, str(script), "--ops", "not_a_filter"], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 2
+    assert re.search(r"unknown operation.*not_a_filter.*Available:.*otsu_threshold", result.stderr)
 
 
 @pytest.mark.device_agnostic

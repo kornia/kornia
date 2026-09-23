@@ -15,11 +15,10 @@
 # limitations under the License.
 #
 
-from typing import Callable, Dict, List, Optional, Self, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 
 import torch
 from torch import nn
-from torch.distributions import Bernoulli, RelaxedBernoulli
 
 from kornia.augmentation.base import _AugmentationBase
 
@@ -35,9 +34,40 @@ class OperationBase(nn.Module):
             The magnitude parameter name shall align with the attribute inside the random_generator
             in each augmentation. If None, the augmentation will be randomly applied according to
             the augmentation sampling range.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
+        temperature: retained for API compatibility.
         is_batch_operation: determine if to obtain the probability from `p` or `p_batch`.
             Set to True for most non-shape-persistent operations (e.g. cropping).
+
+    Convention:
+        - this wrapper owns a probability parameter and, when configured, one learnable magnitude. The
+          ``probability`` property clamps to the closed interval ``[1e-7, 1 - 1e-7]`` and ``magnitude`` clamps to
+          the wrapped generator's configured range. The probability parameter is initialized from the wrapped
+          augmentation's ``p`` (``p_batch`` for a batch operation) and kept in ``state_dict()`` for API and
+          checkpoint compatibility; it does not take part in sampling. The gate is drawn from the wrapped
+          augmentation's own float ``p`` and ``p_batch``, the sampled ``batch_prob`` is a hard ``0`` or ``1``, and
+          the probability parameter receives no gradient, while the magnitude does. ``forward_parameters`` draws
+          the wrapped augmentation's parameters and substitutes the supplied or learned magnitude. The wrapper
+          builds no probability sampler, on itself or on the wrapped augmentation, which keeps its own parameter
+          samplers; ``copy.deepcopy`` therefore works before and after a forward pass or a ``train()`` / ``eval()``
+          call.
+        - ``forward`` linearly blends the wrapped augmentation's output with the input using ``batch_prob``.
+          With supplied fractional gates, the wrapped augmentation first keeps rows whose gate is at most ``0.5``
+          unchanged, unless both its ``p`` and ``p_batch`` equal ``1``. Only that unconditional configuration
+          blends every row with the fully transformed image; otherwise rows at or below the threshold stay
+          unchanged even after the outer blend.
+        - a symmetric magnitude first applies the configured magnitude mapping, then chooses an independent sign
+          for every row. Sign selection preserves the mapped magnitude, but the mapping can first quantize it to
+          zero. For example, ``Posterize`` maps ``0.5`` to zero with ``magnitude_range=(0, 8)``.
+        - :class:`~kornia.augmentation.auto.PolicySequential` samples each operation through
+          ``forward_parameters``, so the magnitude mapping applies under every policy container.
+        - The concrete operation classes in ``kornia.augmentation.auto.operations.ops`` only configure this
+          wrapper around public 2D augmentations; their input, dtype, RNG, and replay contracts are those of
+          their wrapped augmentation and :doc:`/get-started/conventions`. Serialization is the exception: this
+          wrapper stores its magnitude mapping as a local closure unless the concrete class supplies its own
+          named mapping and ``symmetric_megnitude`` is false, and a local closure does not pickle even though
+          all the wrapped augmentations do. With default arguments only ``Posterize`` pickles;
+          ``ShearX`` and ``ShearY`` also do with ``symmetric_megnitude=False``
+          (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
 
     """
 
@@ -58,7 +88,7 @@ class OperationBase(nn.Module):
 
         self._init_magnitude(initial_magnitude)
 
-        # Avoid skipping the sampling in `__batch_prob_generator__`
+        # Keep the legacy probability state for API and checkpoint compatibility.
         self.probability_range = (1e-7, 1 - 1e-7)
         self._is_batch_operation = is_batch_operation
         if is_batch_operation:
@@ -118,37 +148,6 @@ class OperationBase(nn.Module):
             if initial_magnitude[0][1] is not None:
                 self._magnitude = nn.Parameter(torch.empty(1).fill_(initial_magnitude[0][1]))
 
-    def _update_probability_gen(self, relaxation: bool) -> None:
-        if relaxation:
-            if self._is_batch_operation:
-                self.op._p_batch_gen = RelaxedBernoulli(self.temperature, self.probability)
-            else:
-                self.op._p_gen = RelaxedBernoulli(self.temperature, self.probability)
-        elif self._is_batch_operation:
-            self.op._p_batch_gen = Bernoulli(self.probability)
-        else:
-            self.op._p_gen = Bernoulli(self.probability)
-
-    def train(self, mode: bool = True) -> Self:
-        """Switch training mode and refresh probability samplers.
-
-        Args:
-            mode: ``True`` for training mode, ``False`` for evaluation mode.
-
-        Returns:
-            This module.
-        """
-        self._update_probability_gen(relaxation=mode)
-        return super().train(mode=mode)
-
-    def eval(self) -> Self:
-        """Switch to evaluation mode.
-
-        Returns:
-            This module.
-        """
-        return self.train(False)
-
     def forward_parameters(
         self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
@@ -165,7 +164,6 @@ class OperationBase(nn.Module):
         if mag is None:
             mag = self.magnitude
 
-        self._update_probability_gen(relaxation=True)
         params = self.op.forward_parameters(batch_shape)
 
         if mag is not None:
@@ -187,8 +185,9 @@ class OperationBase(nn.Module):
                 sampled from ``input.shape``.
 
         Returns:
-            Tensor where each sample is either transformed or left unchanged
-            according to ``batch_prob``.
+            Tensor blended with the wrapped augmentation's output according to
+            ``batch_prob``. The wrapped augmentation's own gate runs before this
+            blend, as described in the class's Convention block.
         """
         if params is None:
             params = self.forward_parameters(input.shape)
@@ -233,5 +232,4 @@ class OperationBase(nn.Module):
         Returns:
             Probability tensor clamped to ``probability_range``.
         """
-        p = self._probability.clamp(*self.probability_range)
-        return p
+        return self._probability.clamp(*self.probability_range)

@@ -17,20 +17,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.utils._crop import _compiled_slice_resize
-from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.helpers import _constant_tensor, _pad_with_fill
 from kornia.constants import Resample
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
+from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat
+from kornia.geometry.transform.crop2d import _crop_translation
 
 
 class RandomCrop(GeometricAugmentationBase2D):
@@ -49,9 +49,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         pad_if_needed: It will F.pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
-        fill: Pixel fill value for constant fill. Default is 0. If a tuple of
-            length 3, it is used to fill R, G, B channels respectively.
-            This value is only used when the padding_mode is constant.
+        fill: Pixel fill value for constant fill. Default is 0. A sequence gives one value per channel,
+            so it must be as long as the input's channel dimension. This value is only used when the
+            padding_mode is constant, and a sequence requires it.
         padding_mode: Type of padding. Should be: constant, reflect, replicate.
         resample: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
@@ -88,6 +88,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         or two-value shorthand is expanded. ``pad_if_needed=True`` takes the per-side maximum of that padding and
         the positive crop-minus-input size difference on each axis. Without explicit padding this is symmetric;
         asymmetric explicit padding can remain asymmetric after the merge.
+        In :class:`~kornia.augmentation.container.AugmentationSequential`, a per-channel ``fill`` applies to the
+        image while mask padding defaults to zero because the mask can have a different channel count. Set a mask
+        ``fill`` through ``extra_args[DataKey.MASK]`` to override that default. A scalar ``fill`` retains the
+        previous behavior and applies to both the image and mask.
 
         With ``pad_if_needed=False``, an oversized request does not raise. Slice mode resizes the available slice
         to the requested size. Resample mode instead uses a mis-scaled warp that can blend in zero padding; when
@@ -140,7 +144,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         size: Tuple[int, int],
         padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False,
-        fill: int = 0,
+        fill: Union[float, Sequence[float]] = 0,
         padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
@@ -200,7 +204,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             padding = self.compute_padding(input.shape)
 
         if any(padding):
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            input = _pad_with_fill(input, padding, flags["fill"], flags["padding_mode"])
 
         return input
 
@@ -210,7 +214,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         if flags["cropping_mode"] in ("resample", "slice"):
             src = params["src"].to(input)
             dst = params["dst"].to(input)
-            transform: torch.Tensor = get_perspective_transform(src, dst)
+            transform = _crop_translation(src, dst)
 
             # Scale against the canvas represented by the effective replay parameters.
             # During export, retain the static-shape path rather than reading padding_size back to host.

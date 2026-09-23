@@ -22,7 +22,7 @@ import torch
 
 import kornia.augmentation as K
 
-from testing.base import BaseTester, supports_2d_border_padding
+from testing.base import BaseTester, supports_2d_border_padding, supports_bilinear_2d_grid_sample
 
 
 class TestGeometricCropConventions(BaseTester):
@@ -45,13 +45,33 @@ class TestGeometricCropConventions(BaseTester):
         nearest = K.CenterCrop((4, 4), resample="nearest", align_corners=False, cropping_mode="resample")
         self.assert_close(nearest(x), expected)
 
-    def test_wart_center_crop_slice_aliases_input_4413(self, device, dtype):
-        # #4413: default slice mode returns its direct tensor slice. The write lands at the crop's centre offset.
+    @pytest.mark.parametrize("size", [(1, 3), (3, 1), (1, 1)])
+    def test_convention_crop2d_accepts_a_size_one_axis_4751(self, size, device, dtype):
+        # A crop is a translation. Solving the perspective system from the box vertices instead returned a
+        # matrix of NaNs here, because a size-1 axis makes the vertices collinear.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        x = torch.arange(20, device=device, dtype=dtype).reshape(1, 1, 4, 5)
+        for augmentation in (
+            K.CenterCrop(size, cropping_mode="resample", p=1.0),
+            K.RandomCrop(size, cropping_mode="resample", p=1.0),
+        ):
+            output = augmentation(x)
+            left, top = augmentation._params["src"][0, 0].long().tolist()
+            self.assert_close(output, x[..., top : top + size[0], left : left + size[1]])
+
+    @pytest.mark.parametrize("size", [(4, 4), (4, 8), (6, 8)])
+    def test_convention_center_crop_slice_returns_a_copy_4413(self, device, dtype, size):
+        # #4413: default slice mode used to return a view, so writing to the output changed the input.
+        # (4, 8) keeps whole rows and (6, 8) is the full image: both slices are already contiguous.
         x = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8)
-        output = K.CenterCrop(4, cropping_mode="slice")(x)
-        assert output.untyped_storage().data_ptr() == x.untyped_storage().data_ptr()
-        output[0, 0, 0, 0] = -99
-        assert x[0, 0, 1, 2] == -99
+        original = x.clone()
+        output = K.CenterCrop(size, cropping_mode="slice")(x)
+        input_storage = x.untyped_storage().data_ptr()
+        output_storage = output.untyped_storage().data_ptr()
+        assert output_storage != input_storage
+        output.fill_(-99)
+        self.assert_close(x, original)
 
     def test_convention_random_crop_padding_modes_and_inverse(self, device, dtype):
         x = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3)

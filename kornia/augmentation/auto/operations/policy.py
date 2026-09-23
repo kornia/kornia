@@ -33,8 +33,22 @@ from kornia.core.utils import is_exporting
 class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     """Policy tuple for applying multiple operations.
 
+    Convention:
+        - accepts only :class:`~kornia.augmentation.auto.operations.OperationBase` children. Generated parameters
+          apply every child in construction order. Supplied ``params`` define the execution path instead: their
+          order and membership select the referenced children, so they may replay a reordered or partial path.
+          ``forward`` stores the ``ParamItem`` objects for the path it executed in ``_params``; those parameters can
+          replay the same operations through ``forward(input, params=...)``.
+        - its transformation matrix is the ordered product of its geometric wrapped operations. Intensity
+          operations do not contribute to that matrix.
+        - ``forward_parameters`` samples each child through
+          :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`, so a policy entry gets
+          the operation's magnitude and magnitude mapping, including the random sign of a symmetric magnitude,
+          as it does under :class:`~kornia.augmentation.auto.RandAugment`. The gate comes from the wrapped
+          augmentation's ``p``. Policy augmentations use their own samplers where needed.
+
     Args:
-        operations: a list of operations to perform.
+        operations: the operations to perform, passed as positional arguments rather than as one list.
 
     """
 
@@ -154,7 +168,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
             module = cast(OperationBase, module)
-            mod_param = module.op.forward_parameters(batch_shape)
+            mod_param = module.forward_parameters(batch_shape)
             param = ParamItem(name, mod_param)
             params.append(param)
         return params

@@ -17,13 +17,44 @@
 
 import math
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from torch.distributions import Beta, Uniform
 
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.keypoints import Keypoints
+
+
+def _pad_with_fill(
+    input: torch.Tensor, padding: List[int], fill: Union[float, Sequence[float]], mode: str
+) -> torch.Tensor:
+    """Pad ``input`` with a scalar or with one constant per channel.
+
+    ``torch.nn.functional.pad`` only accepts a scalar ``value``, so a sequence ``fill`` is applied by padding
+    with zeros and writing the per-channel constants into the region the padding added. A sequence is only
+    meaningful for ``mode="constant"``.
+    """
+    if isinstance(fill, (int, float)):
+        return F.pad(input, padding, value=float(fill), mode=mode)
+
+    if mode != "constant":
+        raise ValueError(f"A sequence `fill` needs `padding_mode='constant'`, got '{mode}'.")
+
+    channels = input.shape[1]
+    # Built in-graph rather than lifted from a host list, so a compiled CUDA call issues no host-device copy.
+    if isinstance(fill, (list, tuple)):
+        values = _constant_tensor(fill, device=input.device, dtype=input.dtype).flatten()
+    else:
+        values = torch.as_tensor(fill, device=input.device, dtype=input.dtype).flatten()
+    if values.numel() != channels:
+        raise ValueError(f"`fill` must hold one value per channel: got {values.numel()} for {channels} channels.")
+
+    padded = F.pad(input, padding, value=0.0, mode=mode)
+    # 1 where a voxel came from the input, 0 where the padding added one. Negative padding crops both alike.
+    inside = F.pad(torch.ones_like(input[:, :1]), padding, value=0.0, mode=mode)
+    return torch.where(inside.bool(), padded, values.view(1, channels, *([1] * (padded.ndim - 2))))
 
 
 def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int = 0) -> None:
@@ -509,3 +540,42 @@ class MultiprocessWrapper:
         kwargs = {key: val.clone() if isinstance(val, torch.Tensor) else val for key, val in kwargs.items()}
 
         super().__init__(*args, **kwargs)
+
+
+#: How small an image each padding mode can filter, given the kernel extent ``k`` along that axis.
+#: ``filter2d`` pads an even kernel asymmetrically -- ``(k - 1) // 2`` in front and ``k // 2``
+#: behind -- so the constraint is against the wider of the two, ``k // 2``, not against the radius.
+#: ``reflect`` cannot mirror a pad as wide as the axis and ``circular`` cannot wrap one wider than
+#: it; ``"valid"`` is the no-padding case, where the kernel itself must fit. ``constant`` and
+#: ``replicate`` invent their padding and run on a 1-pixel axis.
+_MIN_FILTERED_SIZE: Dict[str, Callable[[int], int]] = {
+    "reflect": lambda extent: extent // 2 + 1,
+    "circular": lambda extent: extent // 2,
+    "valid": lambda extent: extent,
+}
+
+
+def _check_filter_min_size(
+    name: str,
+    input: torch.Tensor,
+    kernel_size: Union[int, Tuple[int, int], List[int]],
+    border_type: str = "reflect",
+) -> None:
+    """Refuse an image the filter's padding cannot handle, naming the class and the shape.
+
+    torch raises about "padding size" or "calculated padded input size" from two layers below,
+    which names neither the augmentation nor the image the caller passed.
+    """
+    size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else tuple(kernel_size)
+    smallest = _MIN_FILTERED_SIZE.get(str(border_type).lower())
+    if smallest is None:
+        return
+    for axis, (extent, side) in enumerate(zip(size, input.shape[-2:])):
+        minimum = smallest(int(extent))
+        if side < minimum:
+            raise ValueError(
+                f"{name} cannot filter an image this small: kernel_size="
+                f"{tuple(int(s) for s in size)} with border_type={border_type!r} needs at least "
+                f"{minimum} pixel(s) along {'height' if axis == 0 else 'width'}, but the input is "
+                f"{tuple(int(s) for s in input.shape)}."
+            )

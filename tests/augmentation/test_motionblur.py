@@ -65,13 +65,45 @@ class TestRandomMotionBlur(BaseTester):
 
         expected = motion_blur(
             input,
-            f._params["ksize_factor"].unique().item(),
+            # The whole batch is blurred with the kernel size at `idx`; the per-sample draws can differ.
+            int(f._params["ksize_factor"][f._params["idx"][0]]),
             f._params["angle_factor"],
             f._params["direction_factor"],
             f.flags["border_type"].name.lower(),
         )
 
         self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("kernel_size", [5, (3, 9)])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    def test_seeded_parameters_and_replay(self, kernel_size, same_on_batch, p, device, dtype):
+        torch.manual_seed(42)
+        image = torch.rand(8, 1, 16, 16).to(device=device, dtype=dtype)
+        aug = RandomMotionBlur(kernel_size, (-45.0, 45.0), (-1.0, 1.0), same_on_batch=same_on_batch, p=p)
+        torch.manual_seed(0)
+        output = aug(image)
+        params = {key: value.clone() for key, value in aug._params.items()}
+        torch.manual_seed(0)
+        self.assert_close(aug(image), output, rtol=0, atol=0)
+        for key, value in params.items():
+            self.assert_close(aug._params[key], value, rtol=0, atol=0)
+        self.assert_close(aug(image, params=params), output, rtol=0, atol=0)
+        blurred = motion_blur(
+            image, int(params["ksize_factor"][params["idx"][0]]), params["angle_factor"], params["direction_factor"]
+        )
+        expected = torch.where(params["batch_prob"].to(device=device).view(-1, 1, 1, 1) > 0.5, blurred, image)
+        self.assert_close(output, expected)
+
+    def test_replay_legacy_per_sample_kernel_sizes(self, device, dtype):
+        torch.manual_seed(0)
+        image = torch.rand(3, 1, 16, 16).to(device=device, dtype=dtype)
+        aug = RandomMotionBlur((3, 9), (0.0, 0.0), (0.0, 0.0), p=1.0)
+        params = aug.forward_parameters(image.shape)
+        params["ksize_factor"] = torch.tensor([3, 5, 7], dtype=torch.int32)
+        params["idx"] = torch.tensor([1])
+        expected = motion_blur(image, 5, params["angle_factor"], params["direction_factor"])
+        self.assert_close(aug(image, params=params), expected)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):

@@ -125,6 +125,17 @@ def crop_and_resize(
     )
 
 
+def _crop_translation(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    """Return the matrix of a crop, which only moves the first ``src`` vertex onto the first ``dst`` vertex.
+
+    Solving the perspective system from the four vertices instead fails for a crop with a size-1 axis, whose
+    vertices are collinear (#4751).
+    """
+    transform = torch.eye(3, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
+    transform[:, :2, 2] = dst[:, 0] - src[:, 0]
+    return transform
+
+
 def center_crop(
     input_tensor: torch.Tensor,
     size: Tuple[int, int],
@@ -206,8 +217,10 @@ def center_crop(
         dtype=input_tensor.dtype,
     ).expand(points_src.shape[0], -1, -1)
 
-    return _crop_by_boxes_to_size(
-        input_tensor, points_src, points_dst, (dst_h, dst_w), mode, padding_mode, align_corners
+    transform = _crop_translation(points_src, points_dst)
+
+    return crop_by_transform_mat(
+        input_tensor, transform, (dst_h, dst_w), mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )
 
 
@@ -301,9 +314,9 @@ def _crop_by_boxes_to_size(
     padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` and
-    # ``center_crop`` build ``dst_box`` from ``size``, so they take this path and never read the box
-    # values back from the device -- which also keeps them capturable by ``torch.onnx.export``.
+    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` builds
+    # ``dst_box`` from ``size``, so it takes this path and never reads the box values back from the
+    # device -- which also keeps it capturable by ``torch.onnx.export``.
     if len(input_tensor.shape) != 4:
         raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
@@ -412,12 +425,10 @@ def crop_by_indices(
         - unlike the other crop operators in this module: ``interpolation=`` (not
           ``mode=``), ``align_corners=None`` by default (not ``True``), and an
           ``antialias=False`` option
-        - ``shape_compensation`` (``'resize'`` by default) only takes effect when
-          ``src_box`` is not literally identical across the batch (same position and
-          size for every item); when ``src_box`` **is** identical across the batch,
-          ``shape_compensation`` is ignored — the result is an exact integer slice
-          when the slice shape already matches ``size`` (or when ``size=None``), and
-          is resized to ``size`` otherwise
+        - ``shape_compensation`` (``'resize'`` by default) applies whenever the cropped
+          slice does not match ``size``, whether or not ``src_box`` is identical across
+          the batch — each row's output depends only on its own box. Graph export is the
+          exception: it always resamples (see the note below)
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -471,12 +482,27 @@ def crop_by_indices(
     # every loop iteration — the coordinates index Python-level slicing, so they must be host ints.
     x1l, x2l, y1l, y2l = torch.stack([x1, x2, y1, y2], dim=0).tolist()
 
-    if x1l.count(x1l[0]) == B and x2l.count(x2l[0]) == B and y1l.count(y1l[0]) == B and y2l.count(y2l[0]) == B:
+    # ``B > 0``: an empty batch has no first box to compare against, and takes the general path below,
+    # which returns an empty ``(0, C, *size)`` tensor (#4429).
+    if (
+        B > 0
+        and x1l.count(x1l[0]) == B
+        and x2l.count(x2l[0]) == B
+        and y1l.count(y1l[0]) == B
+        and y2l.count(y2l[0]) == B
+    ):
         out = input_tensor[..., y1l[0] : y2l[0], x1l[0] : x2l[0]]
         if size is not None and out.shape[-2:] != size:
-            return resize(
-                out, size, interpolation=interpolation, align_corners=align_corners, side="short", antialias=antialias
-            )
+            if shape_compensation == "resize":
+                return resize(
+                    out,
+                    size,
+                    interpolation=interpolation,
+                    align_corners=align_corners,
+                    side="short",
+                    antialias=antialias,
+                )
+            return F.pad(out, [0, size[1] - out.shape[-1], 0, size[0] - out.shape[-2]])
 
     if size is None:
         h, w = infer_bbox_shape(src)
@@ -618,7 +644,7 @@ class CenterCrop2D(nn.Module):
         self.points_src[0, 3, 1] = end_y
 
         if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = get_perspective_transform(
+            transform = _crop_translation(
                 self.points_src.expand(batch_size, -1, -1).to(input),
                 self.points_dst.expand(batch_size, -1, -1).to(input),
             )

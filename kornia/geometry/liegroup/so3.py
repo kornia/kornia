@@ -164,12 +164,11 @@ class So3(nn.Module):
         safe_real = torch.where(nonzero, real, torch.zeros_like(real))
         safe_real_recip = torch.where(nonzero, torch.ones_like(real), real)
         # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
-        omega = torch.where(
+        return torch.where(
             nonzero[..., None],
             2 * safe_real[..., None].acos() * vec / safe_theta[..., None],
             2 * vec / safe_real_recip[..., None],
         )
-        return omega
 
     @staticmethod
     def hat(v: Vector3 | torch.Tensor) -> torch.Tensor:
@@ -414,12 +413,11 @@ class So3(nn.Module):
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
-        Jr = (
+        return (
             I
             - ((1 - torch.cos(theta)) / theta**2) * R_skew
             + ((theta - torch.sin(theta)) / theta**3) * (R_skew @ R_skew)
         )
-        return Jr
 
     @staticmethod
     def Jr(vec: torch.Tensor) -> torch.Tensor:
@@ -450,12 +448,11 @@ class So3(nn.Module):
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
-        Jl = (
+        return (
             I
             + ((1 - torch.cos(theta)) / theta**2) * R_skew
             + ((theta - torch.sin(theta)) / theta**3) * (R_skew @ R_skew)
         )
-        return Jl
 
     @staticmethod
     def Jl(vec: torch.Tensor) -> torch.Tensor:

@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType
 from kornia.filters import box_blur
 
@@ -61,12 +62,13 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
           weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
           the input's minimum for a positive image, and above its maximum for a negative one.
 
-    .. warning::
-        At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel's extent
-        along that axis raises a raw torch ``RuntimeError`` about the padding rather than a kornia error naming the
-        class or the shape. ``"constant"`` and ``"replicate"`` run on the same image; ``"circular"`` raises a padding
-        error of its own, also raw, once the kernel radius exceeds that axis. Tracked in `#4559
-        <https://github.com/kornia/kornia/issues/4559>`_.
+    .. note::
+        The padding sets a minimum image size. An even kernel extent ``k`` is padded asymmetrically, with the
+        wider ``k // 2`` pad behind, so the bound is stated against that pad rather than the radius: at the default
+        ``border_type="reflect"`` each spatial axis must be longer than ``k // 2`` along it (``3`` pixels for a
+        ``4``-wide kernel), and ``"circular"`` needs at least ``k // 2``; both raise a ``ValueError`` naming the
+        class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` invent their padding and run down
+        to a single pixel.
 
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
@@ -104,10 +106,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return box_blur(
-            input,
-            flags["kernel_size"],
-            # a per-call `border_type` override reaches `flags` unnormalized, so normalize here too
-            border_type=BorderType.get(flags["border_type"]).name.lower(),
-            separable=flags["normalized"],
-        )
+        # a per-call `border_type` override reaches `flags` unnormalized, so normalize here too
+        border_type = BorderType.get(flags["border_type"]).name.lower()
+        _check_filter_min_size("RandomBoxBlur", input, flags["kernel_size"], border_type=border_type)
+        return box_blur(input, flags["kernel_size"], border_type=border_type, separable=flags["normalized"])
