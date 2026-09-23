@@ -412,12 +412,9 @@ def crop_by_indices(
         - unlike the other crop operators in this module: ``interpolation=`` (not
           ``mode=``), ``align_corners=None`` by default (not ``True``), and an
           ``antialias=False`` option
-        - ``shape_compensation`` (``'resize'`` by default) only takes effect when
-          ``src_box`` is not literally identical across the batch (same position and
-          size for every item); when ``src_box`` **is** identical across the batch,
-          ``shape_compensation`` is ignored — the result is an exact integer slice
-          when the slice shape already matches ``size`` (or when ``size=None``), and
-          is resized to ``size`` otherwise
+        - ``shape_compensation`` (``'resize'`` by default) applies whenever the cropped
+          slice does not match ``size``, whether or not ``src_box`` is identical across
+          the batch — each row's output depends only on its own box
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -482,9 +479,16 @@ def crop_by_indices(
     ):
         out = input_tensor[..., y1l[0] : y2l[0], x1l[0] : x2l[0]]
         if size is not None and out.shape[-2:] != size:
-            return resize(
-                out, size, interpolation=interpolation, align_corners=align_corners, side="short", antialias=antialias
-            )
+            if shape_compensation == "resize":
+                return resize(
+                    out,
+                    size,
+                    interpolation=interpolation,
+                    align_corners=align_corners,
+                    side="short",
+                    antialias=antialias,
+                )
+            return F.pad(out, [0, size[1] - out.shape[-1], 0, size[0] - out.shape[-2]])
 
     if size is None:
         h, w = infer_bbox_shape(src)
