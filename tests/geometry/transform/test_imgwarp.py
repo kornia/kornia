@@ -666,6 +666,18 @@ class TestWarpPerspective(BaseTester):
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (h_out, w_out))
         assert img_a.shape == (batch_size, channels, h_out, w_out)
 
+    @pytest.mark.parametrize("size", [8, 64])
+    def test_identity_float64_precision(self, device, size):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # the sampling grid is built in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff like warp_affine, not to float32 grid precision
+        img = torch.rand(1, 1, size, size, device=device, dtype=torch.float64)
+        homo = torch.eye(3, device=device, dtype=torch.float64)[None]
+        out = kornia.geometry.warp_perspective(img, homo, (size, size), align_corners=True)
+        assert out.dtype == torch.float64
+        self.assert_close(out, img, rtol=0.0, atol=1e-12)
+
     def test_exception(self, device, dtype):
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         homo = torch.eye(3, device=device, dtype=dtype)[None]
@@ -740,18 +752,6 @@ class TestWarpPerspective(BaseTester):
         Hn = kornia.geometry.conversions.normalize_homography(H, (4, 6), (3, 5))
         hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 5), align_corners=True)
         self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
-
-    def test_wart_float64_identity_goes_through_a_float32_grid_4776(self, device):
-        # warp_perspective builds its sampling grid in float32 and casts it, so a float64 identity warp
-        # is exact only to float32 precision, while warp_affine is exact (#4776). Flips once the grid
-        # is built in the input dtype.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
-        x = torch.arange(64.0, device=device, dtype=torch.float64).view(1, 1, 8, 8) / 7.0
-        eye = torch.eye(3, device=device, dtype=torch.float64)[None]
-        affine = kornia.geometry.transform.warp_affine(x, eye[:, :2], (8, 8))
-        assert (affine - x).abs().max() < 1e-12
-        assert (kornia.geometry.transform.warp_perspective(x, eye, (8, 8)) - x).abs().max() > 1e-9
 
     def test_wart_homography_warp_pixel_path_ignores_mode_and_align_corners_4772(self, device, dtype):
         # With normalized_homography=False, homography_warp calls warp_perspective with mode="bilinear"

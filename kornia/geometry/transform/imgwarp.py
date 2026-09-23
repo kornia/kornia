@@ -229,8 +229,6 @@ def warp_perspective(
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
           (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
-        - a ``float64`` input is sampled through a ``float32`` grid, so it is warped only to float32
-          precision (`#4776 <https://github.com/kornia/kornia/issues/4776>`_)
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -303,8 +301,8 @@ def warp_perspective(
     # Substitutes F.affine_grid (which only handles the affine 2x3 case) by applying the full 3x3
     # projective transform to every grid point directly.
     grid = create_meshgrid(
-        h_out, w_out, normalized_coordinates=True, device=src.device, align_corners=align_corners
-    ).to(src.dtype)
+        h_out, w_out, normalized_coordinates=True, device=src.device, dtype=src.dtype, align_corners=align_corners
+    )
     if torch.jit.is_tracing():
         # Under tracing/ONNX use the reference transform_points path (its op set exports cleanly).
         grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid.expand(B, h_out, w_out, 2))
@@ -1633,8 +1631,6 @@ def warp_perspective3d(
         - border_mode: ``'zeros'`` by default
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
-        - a ``float64`` input is sampled through a ``float32`` grid, so it is warped only to float32
-          precision (`#4776 <https://github.com/kornia/kornia/issues/4776>`_)
 
     Args:
         src: input image with shape :math:`(B, C, D, H, W)`.
@@ -1837,7 +1833,12 @@ def homography_warp3d(
 
     depth, height, width = dsize
     grid = create_meshgrid3d(
-        depth, height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device
+        depth,
+        height,
+        width,
+        normalized_coordinates=normalized_coordinates,
+        device=patch_src.device,
+        dtype=torch.promote_types(patch_src.dtype, src_homo_dst.dtype),
     )
     # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
     # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and

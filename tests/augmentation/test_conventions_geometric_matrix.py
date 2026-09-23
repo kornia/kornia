@@ -135,14 +135,15 @@ class TestConventionGeometricMatrices(BaseTester):
         )
 
     @pytest.mark.parametrize("align_corners", [False, True])
-    def test_wart_random_perspective_float64_identity_goes_through_a_float32_grid_4776(self, device, align_corners):
-        # #4776: warp_perspective builds its grid in float32, so a float64 identity warp keeps only float32
-        # precision (RandomAffine's warp_affine is exact on the same input). Flips when the grid follows the dtype.
+    def test_random_perspective_float64_identity_is_exact_4776(self, device, align_corners):
+        # #4776: warp_perspective builds its grid in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff, like RandomAffine's warp_affine on the same input.
         if device.type == "mps":
             pytest.skip("MPS has no float64")
         image = torch.arange(35, device=device, dtype=torch.float64).reshape(1, 1, 5, 7) / 35
         output = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image)
-        assert (output - image).abs().max() > 1e-12
+        assert output.dtype == torch.float64
+        assert (output - image).abs().max() < 1e-12
 
     @pytest.mark.parametrize("size", [(1, 7), (5, 1), (1, 1)])
     @pytest.mark.parametrize("align_corners", [False, True])

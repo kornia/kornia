@@ -429,17 +429,15 @@ class Test3DAugmentationConventions(BaseTester):
         self.assert_close(K.RandomCrop3D((4, 5, 6), p=1.0)(volume), volume)
 
     @pytest.mark.device_agnostic
-    def test_wart_perspective3d_float64_identity_uses_a_float32_grid_4776(self):
-        # #4776: flips to `residual < 1e-12` once the grid is built in float64; the rotation path already is.
-        volume = torch.rand(1, 1, 4, 5, 6, dtype=torch.float64)
-        rotation = float((K.RandomRotation3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
-        residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
-        assert rotation < 1e-12
-        assert 1e-9 < residual < 1e-5
-        # The float32-grid error grows with the volume size.
-        large = torch.rand(1, 1, 8, 16, 32, dtype=torch.float64)
-        large_residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(large) - large).abs().max())
-        assert residual < large_residual < 1e-4
+    def test_perspective3d_float64_identity_is_exact_4776(self):
+        # #4776: the perspective sampling grid is built in float64, so the identity warp is exact to float64
+        # roundoff like the rotation path, at any size.
+        for shape in ((1, 1, 4, 5, 6), (1, 1, 8, 16, 32)):
+            volume = torch.rand(*shape, dtype=torch.float64)
+            rotation = float((K.RandomRotation3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
+            residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
+            assert rotation < 1e-12
+            assert residual < 1e-12
 
     @pytest.mark.device_agnostic
     def test_convention_random_crop3d_offset_reaches_both_ends(self):

@@ -204,8 +204,7 @@ covers a slightly different extent of the source image.
    convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
    ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
    volume by up to ``55.1`` there, against roundoff at ``align_corners=True``: exactly
-   ``0`` in ``float32`` on torch 2.14 and about ``2e-6`` on torch 2.5.1. The grid is built
-   in ``float32``, so a ``float64`` volume is reproduced only to about ``1e-6`` even there. Pass
+   ``0`` in ``float32`` on torch 2.14 and about ``2e-6`` on torch 2.5.1. Pass
    ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
    `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
