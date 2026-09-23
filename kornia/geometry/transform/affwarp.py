@@ -145,9 +145,10 @@ def affine(
     .. image:: _static/img/warp_affine.png
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
+        defaults and sampling rules.
+
         - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of
@@ -204,8 +205,7 @@ def affine3d(
 
     Convention:
         - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 3, 4)`
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - align_corners: ``False`` by default (the 2D :func:`affine` defaults to ``True``)
 
     Args:
         tensor: The image tensor to be warped in shapes of
@@ -269,8 +269,6 @@ def rotate(
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
         - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -340,8 +338,7 @@ def rotate3d(
     Convention:
         - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
           slice (``z = 0``); defaults to the tensor center
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - align_corners: ``False`` by default (the 2D :func:`rotate` defaults to ``True``)
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
@@ -411,8 +408,6 @@ def translate(
 
     Convention:
         - ``translation`` is ``(dx, dy)`` in pixels
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -466,8 +461,6 @@ def scale(
 
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -532,8 +525,8 @@ def shear(
 
     Convention:
         - ``shear`` is ``(shx, shy)``
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - align_corners: ``False`` by default (differs from the other 2D affine warps and from
+          :class:`Shear`, which default to ``True``)
 
     Args:
         tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
@@ -712,7 +705,7 @@ def resize_to_be_divisible(
     """Resize the input tensor to be divisible by a certain factor.
 
     Convention:
-        - align_corners: ``None`` by default; see the convention block of :func:`resize`
+        - see the convention block of :func:`resize`
         - rounds ``height``/``width`` to the nearest multiple of ``divisible_factor`` before
           delegating to :func:`resize`
 
@@ -754,8 +747,6 @@ def rescale(
     Convention:
         - ``factor`` is ``(factor_h, factor_w)`` when a pair — height first (contrast
           :func:`scale`, whose ``scale_factor`` is x-first)
-        - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
-          see the convention block of :func:`resize`)
         - delegates to :func:`resize` after converting ``factor`` to an output ``size``
 
     Args:
@@ -796,7 +787,6 @@ class Resize(nn.Module):
         conventions. When resizing camera images, see
         :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
 
-        - align_corners: ``None`` by default, matching :func:`resize`
         - See the convention block of :func:`resize`.
 
     Args:
@@ -866,7 +856,6 @@ class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`affine`
         - See the convention block of :func:`affine`.
 
     Args:
@@ -1041,7 +1030,6 @@ class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`rotate`
         - See the convention block of :func:`rotate`.
 
     Args:
@@ -1103,7 +1091,6 @@ class Translate(nn.Module):
     r"""Translate the tensor in pixel units.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`translate`
         - See the convention block of :func:`translate`.
 
     Args:
@@ -1160,7 +1147,6 @@ class Scale(nn.Module):
     r"""Scale the tensor by a factor.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`scale`
         - See the convention block of :func:`scale`.
 
     Args:

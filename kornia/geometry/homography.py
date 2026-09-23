@@ -257,6 +257,12 @@ def find_homography_dlt(
             # is solved for the rest. A fixed h33=1 gauge is invalid whenever the bottom-right
             # entry is zero. Five or more points keep the normal-equation formulation above.
             Aw = A if w_full is None else A * w_full.transpose(-2, -1)
+            # torch.linalg.qr on CUDA can spin forever on a design matrix that mixes NaN with the
+            # structured zeros of the DLT rows (#4770). Hand QR and the solve finite entries only,
+            # and report the affected batch elements as NaN below, as the CPU path already does.
+            finite_entries = Aw.isfinite()
+            finite = finite_entries.flatten(1).all(-1)
+            Aw = torch.where(finite_entries, Aw, torch.zeros_like(Aw))
             gauge_dtype = torch.float64 if dtype == torch.float64 else torch.float32
             Q, _ = torch.linalg.qr(Aw.detach().to(gauge_dtype).transpose(-2, -1), mode="complete")
             null = Q[..., -1]
@@ -277,6 +283,7 @@ def find_homography_dlt(
             sol = torch.where(
                 positions == gauge[:, None], torch.ones_like(positions, dtype=sol.dtype), sol.gather(-1, source)
             )
+            sol = torch.where(finite[:, None], sol, torch.full_like(sol, float("nan")))
         H = sol.reshape(-1, 3, 3)
     else:
         raise NotImplementedError

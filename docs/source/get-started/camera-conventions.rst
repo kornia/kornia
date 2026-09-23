@@ -3,7 +3,7 @@ Camera and world conventions across the ecosystem
 
 .. meta::
    :description: How Kornia's pixel centres, camera frames, extrinsics and intrinsics relate to OpenCV, COLMAP,
-      OpenGL, ARKit, ARCore, PyTorch3D and Direct3D, and which Kornia converter crosses each boundary.
+      OpenGL, ARKit, ARCore and PyTorch3D, and which Kornia converter crosses each boundary.
 
 Kornia's camera stack follows the OpenCV pinhole model: pixel coordinates are ``(u, v)`` = ``(x, y)`` =
 (column, row) with **integer pixel centres**, ``extrinsics`` is the **world-to-camera** transform, and ``depth``
@@ -35,29 +35,22 @@ Pixel-centre conventions
    * - ``grid_sample``, ``align_corners=True``
      - normalized: corner pixels map to ±1 exactly
      - —
-     - torch ``grid_sample``, kornia ``create_meshgrid(normalized_coordinates=True)`` today
+     - torch ``grid_sample``, kornia ``create_meshgrid(normalized_coordinates=True)``
    * - ``grid_sample``, ``align_corners=False``
      - normalized: pixel *areas* span [−1, 1]; centers at ±(1−1/N)
      - —
-     - torch default since 1.3
+     - torch default
 
-The "Used by" column names only projects whose own documentation states the convention — COLMAP's FAQ,
-quoted under the frame table, covers OpenCV, Kalibr and COLMAP itself. Learned-reconstruction code often fits
-neither row cleanly, so read the code rather than the README. DUSt3R and VGGT enumerate integer pixel
-coordinates (`DUSt3R xy_grid
-<https://github.com/naver/dust3r/blob/4c24a6ebf04809f2cfe59915e51779c8984aaa40/dust3r/utils/geometry.py#L15-L19>`__,
-`VGGT meshgrid
-<https://github.com/facebookresearch/vggt/blob/a288dd0f14786c93483e45524328726ab7b1b4ce/vggt/utils/geometry.py#L107>`__)
-but place the principal point at ``(W/2, H/2)`` (`DUSt3R
+The "Used by" column names only projects whose own documentation states the convention; COLMAP's `FAQ
+<https://colmap.github.io/faq.html>`_ covers OpenCV, Kalibr and COLMAP itself. Learned-reconstruction code often
+fits neither row, so read the code: DUSt3R and VGGT enumerate integer pixel coordinates but place the principal
+point at ``(W/2, H/2)`` (`DUSt3R
 <https://github.com/naver/dust3r/blob/4c24a6ebf04809f2cfe59915e51779c8984aaa40/dust3r/cloud_opt/init_im_poses.py#L237>`__,
 `VGGT
 <https://github.com/facebookresearch/vggt/blob/a288dd0f14786c93483e45524328726ab7b1b4ce/vggt/utils/pose_enc.py#L118-L119>`__),
-half a pixel off the first row. MoGe returns intrinsics normalized to the unit square with the principal point at
-``(0.5, 0.5)`` (`MoGe v3
-<https://github.com/microsoft/MoGe/blob/74fbce054ebed49800de42d0ad0e83495065719a/moge/model/v3.py#L311-L319>`__)
-on a grid whose first pixel centre is ``(0.5/W, 0.5/H)`` (`utils3d uv_map
-<https://github.com/EasternJournalist/utils3d-moge/blob/62f09d58509485564e24d5d9f6aac9ee9ebc0c37/utils3d_moge/torch/maps.py#L37-L76>`__)
-— the second row scaled by the image size, which the third rule below converts.
+half a pixel off the first row. MoGe returns intrinsics normalized to the unit square on a half-pixel grid (`MoGe
+<https://github.com/microsoft/MoGe/blob/74fbce054ebed49800de42d0ad0e83495065719a/moge/model/v3.py#L311-L319>`__),
+which the third rule below converts.
 
 Three rules follow from the first two rows:
 
@@ -93,9 +86,8 @@ rest of the functional camera API assume.
 Camera and world frames
 -----------------------
 
-Each non-Kornia cell below is taken from, or derived from, the upstream documentation linked in the same row,
-and the derivations are spelled out under the table; a cell reads "not stated" when that documentation does not
-say.
+Each non-Kornia cell below is taken from, or derived from, the upstream documentation linked in the same row; a
+cell reads "not stated" when that documentation does not say.
 
 .. list-table::
    :header-rows: 1
@@ -126,17 +118,20 @@ say.
        :func:`kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` for the pose;
        :func:`kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs` from ARKit; the principal-point rule
        above has no helper
-   * - **OpenGL**
+   * - **OpenGL**, **ARCore**
      - +X right, +Y up, −Z forward
      - right-handed
-     - set by the ``gluLookAt`` up vector
-     - half-pixel with a **lower-left** window origin: the lower-left pixel is centred at ``(0.5, 0.5)``, and NDC
-       ``±1`` are the viewport edges, so OpenGL NDC is the ``align_corners=False`` row above with ``y`` reversed
+     - OpenGL: set by the ``gluLookAt`` up vector; ARCore: not stated
+     - OpenGL: half-pixel with a **lower-left** window origin: the lower-left pixel is centred at ``(0.5, 0.5)``,
+       and NDC ``±1`` are the viewport edges, so OpenGL NDC is the ``align_corners=False`` row above with ``y``
+       reversed; ARCore: not stated
      - `gluLookAt <https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/gluLookAt.xml>`_,
        `glFrustum <https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glFrustum.xml>`_,
        `gl_FragCoord <https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_FragCoord.xhtml>`_,
-       `glViewport <https://registry.khronos.org/OpenGL-Refpages/gl4/html/glViewport.xhtml>`_; the handedness
-       from `ARCore Pose <https://developers.google.com/ar/reference/java/com/google/ar/core/Pose>`_
+       `glViewport <https://registry.khronos.org/OpenGL-Refpages/gl4/html/glViewport.xhtml>`_;
+       `ARCore Camera <https://developers.google.com/ar/reference/java/com/google/ar/core/Camera>`_,
+       `ARCore Pose <https://developers.google.com/ar/reference/java/com/google/ar/core/Pose>`_ (which also states
+       OpenGL's handedness)
      - for the pose only: :func:`kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4` /
        :func:`kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt` and the inverse pair
        :func:`kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4` /
@@ -149,14 +144,6 @@ say.
      - not stated
      - `ARCamera.transform <https://developer.apple.com/documentation/arkit/arcamera/transform>`_
      - :func:`kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs`
-   * - **ARCore**
-     - +X right, +Y up, −Z in the direction the camera is looking
-     - right-handed
-     - not stated
-     - not stated
-     - `ARCore Camera <https://developers.google.com/ar/reference/java/com/google/ar/core/Camera>`_,
-       `Pose <https://developers.google.com/ar/reference/java/com/google/ar/core/Pose>`_
-     - none — converter candidate
    * - **PyTorch3D**
      - +X left, +Y up, +Z from us to the scene
      - right-handed
@@ -164,49 +151,6 @@ say.
      - corner-based: ``(0, 0)`` is the top-left corner of the top-left pixel
      - `PyTorch3D cameras <https://pytorch3d.org/docs/cameras>`_
      - none — converter candidate
-   * - **Direct3D**
-     - +X right, +Y up; +Z follows from the left-hand rule
-     - left-handed
-     - not stated
-     - not stated
-     - `Coordinate Systems (Direct3D 9)
-       <https://learn.microsoft.com/en-us/windows/win32/direct3d9/coordinate-systems>`_
-     - none — converter candidate
-
-What each row rests on:
-
-- OpenCV states the projection as ``u = fx * Xc/Zc + cx``, ``v = fy * Yc/Zc + cy`` with the coordinates
-  ``(u, v)`` "measured in pixels from the top-left corner of the image", and its cheirality check "means that
-  the triangulated 3D points should have positive depth". ``+Xc`` therefore grows with the column index,
-  ``+Yc`` with the row index, and a point in front of the camera has ``Zc > 0``; the handedness follows from
-  those three directions. OpenCV's own prose never names the axis directions, so that cell is **derived** from
-  these three quotes rather than quoted. The pixel-centre cell is COLMAP's statement about OpenCV, quoted
-  below.
-- COLMAP: "The local camera coordinate system of an image is defined in a way that the X axis points to the
-  right, the Y axis to the bottom, and the Z axis to the front as seen from the image", it "uses a corner-based
-  pixel convention, in which the center of the top-left pixel is at ``(0.5, 0.5)``", and — about the other
-  convention — "OpenCV and Kalibr place integer coordinates at pixel *centers*, so their centered principal
-  point is ``((width - 1) / 2, (height - 1) / 2)``".
-- OpenGL: ``gluLookAt`` "maps the reference point to the negative z axis and the eye point to the origin", and
-  the up vector "is mapped to the positive y axis so that it points upward in the viewport"; ``glFrustum``
-  places the near plane at ``-nearVal`` with ``nearVal`` positive, "assuming that the eye is located at
-  (0, 0, 0)". No fetched Khronos page states the handedness, so that cell is ARCore's characterisation of
-  OpenGL — "Coordinate system is right-handed, like OpenGL conventions" — and its ``Pose`` reference is linked
-  in the OpenGL row for that reason. ``gl_FragCoord`` "assumes a lower-left origin for window coordinates and
-  assumes pixel centers are located at half-pixel centers. For example, the (x, y) location (0.5, 0.5) is
-  returned for the lower-left-most pixel in a window", and ``glViewport`` maps normalized device coordinates to
-  window coordinates as ``x_w = (x_nd + 1) * width / 2 + x`` — the edges ``±1`` land on the viewport edges, not
-  on the outer pixel centres.
-- ARKit: "the x-axis points to the right when the device is in landscapeLeft orientation […] The y-axis points
-  upward (with respect to landscapeLeft orientation), and the z-axis points away from the device on the screen
-  side" — the screen side faces the user, so the rear camera's viewing direction is ``-Z``; world space
-  "follows a right-handed convention, but is oriented based on the session configuration".
-- ARCore: the camera pose has "+X pointing right, +Y pointing up, and -Z pointing in the direction the camera
-  is looking", and its coordinate system "is right-handed, like OpenGL conventions".
-- PyTorch3D: "+X:left", "+Y: up" and "+Z: from us to scene (right-handed)"; in screen coordinates "(0,0) is the
-  top left corner of the top left pixel".
-- Direct3D: "In both coordinate systems, the positive x-axis points to the right, and the positive y-axis
-  points up", and "Direct3D uses a left-handed coordinate system".
 
 Extrinsics semantics
 --------------------
@@ -231,17 +175,20 @@ Intrinsics layout
 - The functional API (:func:`kornia.geometry.camera.perspective.project_points`,
   :func:`kornia.geometry.depth.depth_to_3d`, :func:`kornia.geometry.calibration.undistort_points`, …) takes a
   row-major ``3x3`` ``K`` with ``fx = K[0, 0]``, ``fy = K[1, 1]``, ``cx = K[0, 2]``, ``cy = K[1, 2]``, and
-  :class:`kornia.sensors.camera.CameraModelBase` exposes that same layout through its ``K()`` method. The skew
-  entry ``K[0, 1]`` is ignored by
-  :func:`kornia.geometry.conversions.normalize_points_with_intrinsics` and its inverse.
+  :class:`kornia.sensors.camera.CameraModelBase` exposes that same layout through its ``K()`` method. The
+  functional pinhole model has no skew, like OpenCV's: the skew entry ``K[0, 1]`` is ignored by
+  :func:`kornia.geometry.conversions.normalize_points_with_intrinsics`, its inverse and
+  :func:`kornia.geometry.camera.perspective.project_points` alike. With a skewed ``K``, apply ``inv(K)`` to homogeneous
+  pixel coordinates, or ``K`` to normalized ones, directly.
 - :class:`kornia.geometry.camera.pinhole.PinholeCamera` instead stores a ``4x4`` ``intrinsics`` whose canonical
   form is the homogeneous embedding ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0], [0, 0, 0, 1]]``. The whole
   matrix participates: :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.project` multiplies the full
   ``intrinsics @ extrinsics`` and :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` inverts that
-  ``4x4`` product, so a non-zero ``intrinsics[0, 3]`` shifts every projected ``u`` by ``intrinsics[0, 3] / z``,
-  ``intrinsics[3, 3]`` rescales every unprojected point, and a ``3x3`` ``K`` zero-padded without
-  ``intrinsics[3, 3] = 1`` makes ``unproject`` fail on a singular matrix. Its class docstring documents the
-  layout and the deviations.
+  ``4x4`` product, so a non-zero ``intrinsics[0, 3]`` shifts every projected ``u`` by ``intrinsics[0, 3] / z``
+  and ``intrinsics[3, 3]`` rescales every unprojected point. The layout is not validated: a ``3x3`` ``K`` zero-padded
+  without ``intrinsics[3, 3] = 1`` still projects, but ``unproject`` fails on a singular matrix
+  (`#4771 <https://github.com/kornia/kornia/issues/4771>`_). Its class docstring documents the layout and the
+  deviations.
 - **Depth means two different things.** It is the camera-frame ``z`` by default, and the Euclidean ray length
   when :func:`kornia.geometry.camera.perspective.unproject_points` is called with ``normalize=True`` (the
   ``normalize_points`` flags of :func:`kornia.geometry.depth.depth_to_3d` and
