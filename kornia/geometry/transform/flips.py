@@ -158,9 +158,8 @@ def rot180(input: torch.Tensor) -> torch.Tensor:
     Convention:
         - flips both the height and width axes (equivalent to :func:`vflip` followed by
           :func:`hflip`)
-        - requires rank ≥ 2 (operates on dim ``-2``, flipping dims ``-2`` and ``-1``):
-          unbatched :math:`(H, W)`/:math:`(C, H, W)` or batched :math:`(*, C, H, W)`
-          all work
+        - requires rank ≥ 2: unbatched :math:`(H, W)`/:math:`(C, H, W)` or batched
+          :math:`(*, C, H, W)` all work
 
     Args:
         input: input torch.Tensor.
@@ -179,8 +178,7 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - flips the last dimension (dim ``-1``); accepts any rank :math:`\geq 1`
-          (rank-0 input is currently returned unchanged, but that behavior is
-          outside the documented contract)
+          (rank 0 is outside the contract)
 
     Args:
         input: input torch.Tensor.
