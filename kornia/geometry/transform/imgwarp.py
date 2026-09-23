@@ -229,8 +229,6 @@ def warp_perspective(
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
           (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
-        - a ``float64`` input is sampled through a ``float32`` grid, so it is warped only to float32
-          precision (`#4776 <https://github.com/kornia/kornia/issues/4776>`_)
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -1633,8 +1631,6 @@ def warp_perspective3d(
         - border_mode: ``'zeros'`` by default
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
-        - a ``float64`` input is sampled through a ``float32`` grid, so it is warped only to float32
-          precision (`#4776 <https://github.com/kornia/kornia/issues/4776>`_)
 
     Args:
         src: input image with shape :math:`(B, C, D, H, W)`.
