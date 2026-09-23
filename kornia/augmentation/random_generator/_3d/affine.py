@@ -142,20 +142,25 @@ class AffineGenerator3D(RandomGeneratorBase):
 
         # check scale range
         self._scale: Optional[torch.Tensor] = None
+        self._isotropic_scale: bool = False
         if self.scale is not None:
             _scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
             if _scale.shape == torch.Size([2]):
+                # (a, b) is isotropic: one factor per sample is drawn and used on all three axes.
+                _singular_range_check(_scale, "scale", bounds=(0, float("inf")), mode="2d")
                 self._scale = _scale.unsqueeze(0).repeat(3, 1)
+                self._isotropic_scale = True
+                self.scale_sampler = UniformDistribution(_scale[0], _scale[1], validate_args=False)
             elif _scale.shape != torch.Size([3, 2]):
                 raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self.scale}.")
             else:
                 self._scale = _scale
-            _singular_range_check(self._scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
-            _singular_range_check(self._scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
-            _singular_range_check(self._scale[2], "scale-z", bounds=(0, float("inf")), mode="2d")
-            self.scale_1_sampler = UniformDistribution(self._scale[0, 0], self._scale[0, 1], validate_args=False)
-            self.scale_2_sampler = UniformDistribution(self._scale[1, 0], self._scale[1, 1], validate_args=False)
-            self.scale_3_sampler = UniformDistribution(self._scale[2, 0], self._scale[2, 1], validate_args=False)
+                _singular_range_check(self._scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
+                _singular_range_check(self._scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
+                _singular_range_check(self._scale[2], "scale-z", bounds=(0, float("inf")), mode="2d")
+                self.scale_1_sampler = UniformDistribution(self._scale[0, 0], self._scale[0, 1], validate_args=False)
+                self.scale_2_sampler = UniformDistribution(self._scale[1, 0], self._scale[1, 1], validate_args=False)
+                self.scale_3_sampler = UniformDistribution(self._scale[2, 0], self._scale[2, 1], validate_args=False)
 
         self.yaw_sampler = UniformDistribution(degrees[0][0], degrees[0][1], validate_args=False)
         self.pitch_sampler = UniformDistribution(degrees[1][0], degrees[1][1], validate_args=False)
@@ -186,7 +191,9 @@ class AffineGenerator3D(RandomGeneratorBase):
         angles = torch.stack([yaw, pitch, roll], dim=1)
 
         # compute tensor ranges
-        if self._scale is not None:
+        if self._scale is not None and self._isotropic_scale:
+            scale = _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch).unsqueeze(1).repeat(1, 3)
+        elif self._scale is not None:
             scale = torch.stack(
                 [
                     _adapted_rsampling((batch_size,), self.scale_1_sampler, same_on_batch),

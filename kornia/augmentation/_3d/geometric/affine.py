@@ -83,9 +83,9 @@ class RandomAffine3D(GeometricAugmentationBase3D):
           unit scale, and zero shear, it reproduces the input at that setting up to floating-point roundoff in
           ``float32`` and ``float64``. In half precision the sampling grid itself is rounded, so the error grows
           with the volume size (about ``0.5`` for a ``32 x 48 x 96`` volume in ``bfloat16``).
-        - a two-value ``scale=(a, b)`` is documented as isotropic but currently draws the three axes
-          independently, unlike the 2D :class:`~kornia.augmentation.RandomAffine`
-          (`#4704 <https://github.com/kornia/kornia/issues/4704>`_).
+        - a two-value ``scale=(a, b)`` is isotropic: one factor per sample is drawn from ``[a, b]`` and applied
+          to all three axes, as the 2D :class:`~kornia.augmentation.RandomAffine` does. The three-pair form
+          ``((a, b), (c, d), (e, f))`` draws each axis independently.
 
     Examples:
         >>> import torch
