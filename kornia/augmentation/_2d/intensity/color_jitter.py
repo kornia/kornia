@@ -34,9 +34,10 @@ from kornia.enhance import (
 class ColorJitter(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision. However, it does not
-    follow the color theory and is not be actively maintained. Prefer using
-    :func:`kornia.augmentation.ColorJiggle`
+    The four steps are torchvision's formulas -- brightness multiplies the image by the factor, contrast blends it
+    with its grayscale mean, saturation with its grayscale, and hue is torchvision's ``adjust_hue`` shift -- so this
+    is the class to port ``torchvision.transforms.ColorJitter`` code to. It is not actively maintained; prefer
+    :class:`ColorJiggle` for new code.
 
     .. image:: _static/img/ColorJitter.png
 
@@ -61,40 +62,24 @@ class ColorJitter(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - this class and :class:`ColorJiggle` draw the same factor values and the same random application
-          ``order`` from the same seed when their effective sampling bounds match and both modules stay on
-          the CPU. A scalar ``brightness > 1`` is where they part: :class:`ColorJiggle` rejects it, because
-          its bound is ``[0, 2]``, while this class draws from ``[0, 1 + brightness]``. Off the CPU the
-          ``order`` diverges, because this class always draws it on the CPU where :class:`ColorJiggle`
-          draws it on the sampler device; and this class keeps the sampler dtype for its factors where
-          :class:`ColorJiggle` returns them in the dtype of its constructor arguments (``float32`` for
-          Python floats). Both classes accept an ``order`` constructor argument that replaces the
-          sampled order with a fixed one. The classes use different primitives for three adjustments:
-          :func:`kornia.enhance.adjust_brightness_accumulative` against
-          :func:`kornia.enhance.adjust_brightness`,
-          :func:`kornia.enhance.adjust_contrast_with_mean_subtraction` against
-          :func:`kornia.enhance.adjust_contrast`, and
-          :func:`kornia.enhance.adjust_saturation_with_gray_subtraction` against
-          :func:`kornia.enhance.adjust_saturation`. Both call :func:`kornia.enhance.adjust_hue`.
-        - the brightness factor is not re-based here: it reaches
-          :func:`kornia.enhance.adjust_brightness_accumulative` as drawn, where :class:`ColorJiggle` and
-          :class:`RandomBrightness` subtract ``1`` first.
-        - with the random ``order``, ``ColorJitter(0, 0, 0, 0)`` is the identity only for a three-channel input in
-          ``[0, 1]``. Every step in the order is computed even when its result is then discarded, so the hue step
-          rejects any channel count but three and the saturation step any but one or three, and the brightness step
-          is applied whenever any drawn brightness factor is not ``0`` -- for every scalar ``brightness``, including
-          the default ``0.0``, which draws ``1``. Its primitive clamps into ``[0, 1]``, as the contrast primitive
-          does and the saturation primitive does for a three-channel image (a one-channel image passes through it
-          unchanged), although there is no final output clamp. The explicit tuple ``brightness=(0.0, 0.0)``, or a
-          fixed ``order`` without index ``0``, skips the brightness step; with the other factors at their defaults,
-          either lets an out-of-range value through.
+        - see :class:`ColorJiggle` for how the two classes relate. This class takes the brightness factor as
+          drawn, a multiplier whose identity is ``1``, and a scalar ``brightness`` above ``1`` draws from
+          ``[0, 1 + brightness]``, as torchvision does.
+        - every step in the order is computed, even when its factor is neutral: the hue step rejects any channel
+          count but three and the saturation step any but one or three. The brightness, contrast and
+          (three-channel) saturation steps clamp into ``[0, 1]``, and a scalar ``brightness`` -- the default
+          ``0.0`` included, which draws ``1`` -- runs the brightness step, so ``ColorJitter(0, 0, 0, 0)`` is the
+          identity only for an input in ``[0, 1]``. A fixed ``order`` without index ``0`` skips that step.
 
     .. warning::
-        An input whose values are all negative can come back as an all-zero image: the brightness and contrast steps,
-        and the saturation step on a three-channel image, each clamp into ``[0, 1]``, and a scalar ``brightness``, the
-        default included, runs the brightness step unless a fixed ``order`` leaves it out. The collapse depends on the
-        draw: a contrast or saturation factor above ``1`` applied before the brightness step can lift part of the image
-        above zero first. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        A drawn brightness factor of ``0`` is treated as neutral: a batch whose factors are all ``0``, such as
+        ``brightness=(0.0, 0.0)``, comes back unchanged instead of black. Tracked in
+        `#4785 <https://github.com/kornia/kornia/issues/4785>`_.
+
+    .. warning::
+        Because the brightness, contrast and saturation steps clamp, an all-negative input can come back as an
+        all-zero image, depending on the draw and the order. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness_accumulative`,

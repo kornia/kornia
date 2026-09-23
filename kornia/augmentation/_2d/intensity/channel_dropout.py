@@ -44,13 +44,9 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
 
     Convention:
-        - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``,
-          which has to be an ``int`` or a ``float`` in ``[0, 1]``: this class's own ``__init__`` rejects
-          anything outside the bounds, and anything that is not a Python ``int`` or ``float`` on type. As with
-          :class:`RandomErasing`'s ``value``, ``0`` and ``1`` are accepted, and so are ``False`` and ``True``.
-          ``ChannelDropoutGenerator`` never sees ``fill_value`` -- unlike :class:`RandomErasing`, whose
-          ``value`` guard does live in its generator. Every other channel is left exactly as it came in, so the
-          input's value range is carried through.
+        - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``, an
+          ``int`` or ``float`` in ``[0, 1]`` checked at construction. Every other channel is left exactly as it
+          came in, so the input's value range is carried through.
         - the dropped channels are drawn independently per sample; ``same_on_batch=True`` collapses the
           draw to one set of channels for the whole batch.
         - ``fill_value`` is held in a non-persistent buffer, so ``.to(...)`` moves and casts it while

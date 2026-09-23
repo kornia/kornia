@@ -28,7 +28,8 @@ from kornia.enhance.adjust import adjust_brightness
 class RandomBrightness(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the brightness of a torch.Tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The shift is additive: the output is ``input + (factor - 1)``. torchvision's and PIL's brightness is
+    multiplicative (``input * factor``); :class:`ColorJitter`'s brightness step is that formula.
 
     .. image:: _static/img/RandomBrightness.png
 
@@ -46,20 +47,16 @@ class RandomBrightness(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - ``brightness`` is centred on ``1.0``, and the drawn factor is re-based before it is applied:
-          ``factor - 1`` is what reaches :func:`kornia.enhance.adjust_brightness`, whose own identity is
-          ``0.0``. A class factor of ``1.0`` is therefore the identity for an input in ``[0, 1]`` -- the
-          default clamp below still applies to one outside it -- and the same number passed straight to the
-          primitive means something else.
-        - ``clip_output`` is live. Left at its default ``True`` the result is clamped into ``[0, 1]``;
-          with ``clip_output=False`` the raw sum is returned. It can remain outside that interval or
-          move inside it through the brightness shift.
+        - ``brightness`` is centred on ``1.0``: the drawn factor is re-based to ``factor - 1`` before it reaches
+          :func:`kornia.enhance.adjust_brightness`, whose own identity is ``0.0``, so the same number passed
+          straight to the primitive means something else.
+        - at the default ``clip_output=True`` the result is clamped into ``[0, 1]``; with ``clip_output=False``
+          the raw sum is returned.
 
     .. warning::
-        At the default ``clip_output=True`` an input whose values are all negative comes back as an all-zero
-        image whenever the drawn shift does not lift it above zero. At the class default
-        ``brightness=(1.0, 1.0)`` the shift is ``0``, so it always does. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        At the default ``clip_output=True`` an all-negative input comes back as an all-zero image whenever the
+        drawn shift does not lift it above zero, which at the default ``brightness=(1.0, 1.0)`` is always.
+        Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`

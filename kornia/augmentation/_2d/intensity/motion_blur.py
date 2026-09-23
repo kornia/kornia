@@ -66,29 +66,24 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           ``"bilinear"`` or ``"bicubic"`` also spread weight off the line. The ends belong to the rotated line, so which
           side of the image they fall on turns with ``angle`` and is not read off the image axes.
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
-        - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]``
-          with shape ``(B,)``. All samples use that size, even with ``same_on_batch=False``; angle and
-          direction are sampled per image unless ``same_on_batch=True``. Previously saved parameters
-          with differing kernel sizes still select one entry via ``_params["idx"]`` for the whole batch.
-          A tuple range draws each odd size inside it with equal probability, bounds included, so
-          ``kernel_size=(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws ``3, 5, ..., 19``. A range that
-          holds no odd size is rounded **up** out of the requested range instead, so ``(4, 4)`` draws ``5``;
-          a reversed one such as ``(20, 3)`` raises at construction. Because the whole range is drawn, and
-          not just its lowest odd size, every size in it is live against the image-size rule below: with
-          ``border_type="reflect"`` a ``kernel_size=(3, 5)`` on a ``2 x 2`` image raises on the draws of
-          ``5`` -- about half of them -- where a constant ``3`` always fit.
-        - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
-          border pixel is blended with ``0`` and pulled toward it: below the input's own minimum for a
-          positive image, and above its maximum for a negative one. With
-          ``border_type="reflect"`` the result stays between the input's extremes, up to rounding, at
-          ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative weights,
-          and the result can overshoot both extremes.
+        - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]`` with
+          shape ``(B,)``, so every sample uses that size even with ``same_on_batch=False``; angle and direction
+          are drawn per sample. A tuple range draws each odd size inside it with equal probability, bounds
+          included, so ``(3, 20)`` draws ``3, 5, ..., 19``. A range that holds no odd size is rounded up out of
+          the requested range, so ``(4, 4)`` draws ``5``; a reversed one such as ``(20, 3)`` raises at
+          construction.
+        - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a border
+          pixel is pulled toward ``0``. With ``border_type="reflect"`` the result stays between the input's
+          extremes at ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative
+          weights, and the result can overshoot both extremes.
         - an image smaller than the kernel is accepted, down to ``1 x 1``, at the default
-          ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` raises once a spatial axis is
-          no longer than half the kernel size along it, and ``"circular"`` raises a padding error of its
-          own once the kernel radius exceeds a spatial axis. Unlike :class:`RandomBoxBlur`,
-          :class:`RandomGaussianBlur` and :class:`RandomSharpness`, which name the class and the shape,
-          both of these surface as raw torch errors.
+          ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` needs each spatial axis longer than
+          the kernel radius along it, and ``"circular"`` at least that long.
+
+    .. warning::
+        Under ``"reflect"`` and ``"circular"`` an image too small for the drawn kernel raises a raw torch padding
+        error, where :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise a ``ValueError`` naming the
+        class and the shape. Tracked in `#4784 <https://github.com/kornia/kornia/issues/4784>`_.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.

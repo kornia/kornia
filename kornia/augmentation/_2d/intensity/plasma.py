@@ -74,9 +74,8 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - the sampled fractal map is recorded as ``_params["plasma"]`` with the original normalized
-          ``(B, C, H, W)`` input shape, so a forward replayed with ``params=`` reproduces the first output
-          bitwise. A ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
+        - the sampled fractal map is recorded as ``_params["plasma"]``, so a forward replayed with ``params=``
+          reproduces the first output bitwise.
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
@@ -148,9 +147,8 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - the sampled fractal map is recorded as ``_params["plasma"]`` with the original normalized
-          ``(B, C, H, W)`` input shape, so a forward replayed with ``params=`` reproduces the first output
-          bitwise. A ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
+        - the sampled fractal map is recorded as ``_params["plasma"]``, so a forward replayed with ``params=``
+          reproduces the first output bitwise.
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
@@ -219,10 +217,9 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - the sampled fractal map is recorded as ``_params["plasma"]`` with the original normalized
-          ``(B, 1, H, W)`` input shape. Its single channel means one shade mask is applied to every channel
-          of a sample; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
-          A forward replayed with ``params=`` reproduces the first output bitwise.
+        - the sampled fractal map is recorded as ``_params["plasma"]`` with a single channel, ``(B, 1, H, W)``: one
+          shade mask is applied to every channel of a sample. A forward replayed with ``params=`` reproduces the
+          first output bitwise.
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.

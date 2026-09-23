@@ -46,17 +46,17 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           other channel count raises an ``ImageError``. The class draws three named shifts per sample --
           ``_params["r_shift"]``, ``["g_shift"]`` and ``["b_shift"]``, each of shape ``(B,)`` -- adds each to
           its channel, and the sum is clamped into ``[0, 1]`` by :func:`kornia.enhance.shift_rgb`.
-        - each ``*_shift_limit`` is a half-width, not a maximum shift in one direction: that channel's
-          shift is sampled from ``[-limit, limit]``, so a limit of ``0`` adds nothing to the channel. The
-          clamp still applies, so such a channel comes back unchanged only if it was inside ``[0, 1]``. Each
-          limit is a non-negative scalar: a negative one raises a named ``ValueError`` and a tuple raises a raw
-          ``TypeError: bad operand type for unary -: 'tuple'`` at construction.
+        - each ``*_shift_limit`` is a non-negative half-width: that channel's shift is sampled from
+          ``[-limit, limit]``, so a limit of ``0`` adds nothing to the channel, though the clamp still applies. A
+          negative limit raises a ``ValueError`` at construction.
+
+    .. warning::
+        A tuple limit raises a raw ``TypeError`` at construction rather than being read as a range or rejected
+        by name. Tracked in `#4782 <https://github.com/kornia/kornia/issues/4782>`_.
 
     .. warning::
         Because the sum is clamped, an input whose values are all at or below ``-limit`` comes back as an
-        all-zero image on every draw: at the default limits of ``0.5``, a constant ``-0.5`` image is zeros on
-        100 of 100 seeds, and a constant ``-0.3`` one on 24 of 100, depending on the drawn shifts. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        all-zero image on every draw. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1].

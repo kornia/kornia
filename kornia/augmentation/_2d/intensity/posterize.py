@@ -48,22 +48,18 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     Convention:
         - ``bits=(k, k)`` with ``k < 8`` leaves at most ``2 ** k`` distinct values, so ``0`` gives a constant
-          image; the reduction is a ``uint8`` round trip inside :func:`kornia.enhance.posterize`. A sample
-          that draws ``8`` is returned unchanged, without the round trip. The drawn factor is integral: a
-          non-integral ``bits`` is rounded half to even.
-        - the round trip is a step function, so a posterized sample carries no gradient. The output still has
-          ``requires_grad=True``, but the gradient with respect to the input is identically ``0`` below
-          ``bits=8``; at ``bits=8``, which skips the round trip, it is the identity.
+          image; the reduction is a ``uint8`` round trip inside :func:`kornia.enhance.posterize`. A sample that
+          draws ``8`` is returned unchanged, without the round trip.
+        - the round trip is a step function: the output still has ``requires_grad=True``, but its gradient with
+          respect to the input is identically ``0`` below ``bits=8``, and the identity at ``8``.
         - an ``int`` argument is the lower bound of the sampled range ``[x, 8]`` -- the opposite reading
           from :class:`RandomSharpness`, whose scalar argument is an upper bound.
 
     .. warning::
-        Outside ``[0, 1]`` the output is the posterized ``uint8`` conversion of the raw float, which
-        wraps or saturates depending on the platform and torch version, and bears no relation to the
-        clamped input: an input above ``1`` can come back as a full-range posterized image instead of a
-        clipped one, and an all-negative input as an all-zero one. A sample that draws ``bits=8`` skips the
-        conversion and keeps its out-of-range values, and a scalar ``bits`` below ``8`` can draw ``8`` for any
-        sample. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        Outside ``[0, 1]`` the output is the posterized ``uint8`` conversion of the raw float, not of the clamped
+        input, and that conversion of an out-of-range float is undefined (it wraps or saturates by platform). A
+        sample that draws ``bits=8`` skips the conversion and keeps its out-of-range values. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.

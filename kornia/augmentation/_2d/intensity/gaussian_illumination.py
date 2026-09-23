@@ -67,26 +67,18 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
-          input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
-          It adds the field to the image and
-          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not; once ``gain`` exceeds the headroom
+          between an in-range image and the bound, the sum is cut there rather than rescaled.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample.
-        - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
-          bound, the sum is cut there rather than rescaled.
         - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
           multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
-          narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel, including the
-          ``0`` the constructor's check admits: :func:`kornia.filters.gaussian` measures each sample's
-          squared distance from the **nearest sample** rather than from the mean, so that sample always
-          weighs ``exp(0) = 1`` and the normalizing sum cannot underflow. At ``sigma=0`` the kernel is the
-          unit impulse -- all the weight on the nearest sample, or split evenly between the two that tie
-          half a pixel either side of the mean on an even-length axis.
-        - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
-          original's output under the same seed. After ``.compile()``, which swaps in a compiled transform,
-          it no longer pickles or passes through ``torch.save``, although it still deep-copies.
+          narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel; at ``sigma=0``,
+          which the constructor admits, the kernel is the unit impulse.
+        - ``.compile()`` swaps in a compiled transform, after which the module no longer pickles or passes through
+          ``torch.save``; it still deep-copies.
 
     .. warning::
         An all-negative input can come back as an all-zero image when the sampled gradient does not raise it

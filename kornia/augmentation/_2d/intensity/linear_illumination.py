@@ -45,18 +45,13 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
-          input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
-          It adds the field to the image and
-          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not; once ``gain`` exceeds the headroom
+          between an in-range image and the bound, the sum is cut there rather than rescaled.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
           edge where the gradient is strongest is drawn separately, per sample.
-        - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
-          bound, the sum is cut there rather than rescaled.
-        - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
-          original's output under the same seed.
 
     .. warning::
         An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
@@ -173,18 +168,13 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
-          input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
-          It adds the field to the image and
-          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not; once ``gain`` exceeds the headroom
+          between an in-range image and the bound, the sum is cut there rather than rescaled.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
           corner where the gradient is strongest is drawn separately, per sample.
-        - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
-          bound, the sum is cut there rather than rescaled.
-        - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
-          original's output under the same seed.
 
     .. warning::
         An all-negative input can come back as an all-zero image when the sampled gradient does not raise it

@@ -47,28 +47,18 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
-          :func:`kornia.filters.box_blur`. An even entry is accepted and centres the window half a pixel toward
-          the top-left rather than raising -- a ``(2, 2)`` window on an impulse spreads it over the impulse's
-          own row and column and the one before each -- where :class:`RandomGaussianBlur` and
-          :class:`RandomMedianBlur` raise on the forward pass.
-        - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
-          rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
-          a constant image survives either up to the rounding of the kernel weights. ``border_type`` defaults
-          to ``"reflect"``, as the function does, and ``normalized=True`` matches
-          :func:`kornia.filters.box_blur`'s ``separable=True`` default.
-        - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
-          average of input values and stays between the input's own extremes, up to the rounding of the kernel
-          weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
-          the input's minimum for a positive image, and above its maximum for a negative one.
+        - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.box_blur`. An even
+          entry is accepted and centres the window half a pixel toward the top-left, where
+          :class:`RandomGaussianBlur` raises.
+        - the output is not clamped. At the default ``border_type="reflect"`` every output value is a mean of
+          input values and stays between the input's extremes; ``border_type="constant"`` pads with zeros, which
+          pulls a border pixel toward ``0``.
 
     .. note::
-        The padding sets a minimum image size. An even kernel extent ``k`` is padded asymmetrically, with the
-        wider ``k // 2`` pad behind, so the bound is stated against that pad rather than the radius: at the default
-        ``border_type="reflect"`` each spatial axis must be longer than ``k // 2`` along it (``3`` pixels for a
-        ``4``-wide kernel), and ``"circular"`` needs at least ``k // 2``; both raise a ``ValueError`` naming the
-        class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` invent their padding and run down
-        to a single pixel.
+        The padding sets a minimum image size: at ``border_type="reflect"`` each spatial axis must be longer than
+        ``k // 2`` for a kernel extent ``k`` along it, and at ``"circular"`` at least that long; a smaller image
+        raises a ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and
+        ``"replicate"`` run down to a single pixel.
 
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
