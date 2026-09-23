@@ -231,7 +231,7 @@ worker seeds, consumption order and replay, and :class:`AugmentationBase2D` for 
 
 Serialization
 ^^^^^^^^^^^^^
-- Constructors that accept ``nn.Parameter`` ranges propagate gradients to them.
+- Several constructors that accept ``nn.Parameter`` ranges propagate gradients to them.
 - Numeric range buffers in ``state_dict()`` do not update the samplers when loaded; reconstruct the augmentation
   to change its ranges (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - The default ``kornia.augmentation.auto`` policies cannot be pickled

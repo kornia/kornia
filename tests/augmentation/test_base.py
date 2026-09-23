@@ -946,7 +946,8 @@ class TestConventionAugmentationBase2D(BaseTester):
             torch.set_default_dtype(original_dtype)
 
     def test_wart_set_rng_device_moves_sampling_but_not_returned_parameters_4426(self, device):
-        # #4426: flips when the returned angle follows the requested device like `batch_prob` does.
+        # #4426: flips when the returned angle follows the requested device like `batch_prob` does; only an
+        # accelerator leg can see that, since on CPU both devices are the same.
         aug = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)
         aug.set_rng_device_and_dtype(device, torch.float32)
         assert aug._param_generator.degree_sampler.low.device == device

@@ -72,8 +72,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         with the default ratio produces a 4x6 crop, with half the input area and width/height ratio 1.5.
         The selected crop is resized to the requested output size.
 
-        Both cropping modes use the configured interpolation and ``align_corners``. Only resample mode supports
-        :meth:`inverse`, which resamples onto the original canvas and cannot recover discarded information.
+        Both cropping modes use the configured interpolation and ``align_corners``, so slice mode raises for
+        ``resample="nearest"`` unless ``align_corners=None``
+        (`#4802 <https://github.com/kornia/kornia/issues/4802>`_). Only resample mode supports :meth:`inverse`,
+        which resamples onto the original canvas and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,

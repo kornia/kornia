@@ -145,6 +145,7 @@ class TestGeometricCropConventions(BaseTester):
         points = image.new_tensor([[[2, 2]]])
         boxes = image.new_tensor([[[[1, 1], [2, 1], [2, 2], [1, 2]]]])
         output, out_points, out_boxes = seq(image, points, boxes, params=params)
+        # The matrix starts from the padded canvas (#4801); the keypoint and box handlers add the padding.
         self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
         self.assert_close(out_points, image.new_tensor([[[3, 3]]]))
         self.assert_close(out_boxes, boxes + 1)
@@ -326,6 +327,28 @@ class TestGeometricCropConventions(BaseTester):
             K.RandomCrop(4, pad_if_needed=True)(torch.ones(1, 1, 6, 8))  # type: ignore[arg-type]
         with pytest.raises(TypeError):
             K.RandomResizedCrop(4)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    def test_wart_random_crop_matrix_starts_from_the_padded_canvas_4801(self, device, dtype, mode):
+        # #4801: flips when the recorded matrix includes the padding offset and maps (2, 1) to (3, 2).
+        image = torch.zeros(1, 1, 3, 4, device=device, dtype=dtype)
+        image[0, 0, 1, 2] = 1  # pixel (x=2, y=1); cropping the whole padded canvas has one placement
+        seq = K.AugmentationSequential(
+            K.RandomCrop((5, 6), padding=1, cropping_mode=mode, p=1.0), data_keys=["input", "keypoints"]
+        )
+        output, points = seq(image, image.new_tensor([[[2.0, 1.0]]]))
+        assert output[0, 0].argmax().item() == 2 * 6 + 3
+        self.assert_close(points, image.new_tensor([[[3.0, 2.0]]]))
+        self.assert_close(seq.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])
+
+    @pytest.mark.device_agnostic
+    def test_wart_random_resized_crop_slice_mode_rejects_nearest_4802(self):
+        # #4802: flips when slice mode drops the default align_corners for nearest resampling.
+        image = torch.rand(1, 1, 8, 8)
+        for kwargs in ({"cropping_mode": "resample"}, {"align_corners": None}):
+            assert K.RandomResizedCrop((4, 4), resample="nearest", p=1.0, **kwargs)(image).shape == (1, 1, 4, 4)
+        with pytest.raises(ValueError):
+            K.RandomResizedCrop((4, 4), resample="nearest", p=1.0)(image)
 
     def test_convention_resize_side_policies_and_inverse(self, device, dtype):
         x = torch.arange(70, device=device, dtype=dtype).reshape(1, 1, 7, 10)

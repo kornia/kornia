@@ -45,7 +45,8 @@ class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
         - flips the depth ``D`` axis (tensor axis ``-3``, coordinate ``z``). Its matrix maps ``z`` to
-          ``D - 1 - z`` in inclusive voxel coordinates.
+          ``D - 1 - z`` in inclusive voxel coordinates, rounded where the dtype cannot
+          represent it (see the base).
 
     Examples:
         >>> import torch

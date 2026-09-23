@@ -102,10 +102,11 @@ class RandomTransplantation(MixAugmentationBaseV2):
         - images are ``float16``, ``bfloat16``, ``float32`` or ``float64``; a mask keeps its own dtype (``bool``,
           integer or floating). Only ``"input"`` / ``"image"`` and ``"mask"`` keys are implemented; any other key
           raises ``NotImplementedError``. A mask is needed only to draw the parameters, and a call without one
-          raises Python's ``IndexError`` or ``ValueError`` rather than a kornia error
-          (`#4777 <https://github.com/kornia/kornia/issues/4777>`_). With a complete ``params`` any subset of the
-          inputs is accepted, which is how :class:`~kornia.augmentation.container.AugmentationSequential` applies
-          the transplant, one input at a time. Outputs come back in input order, a single one as a bare
+          fails with Python's ``IndexError`` or ``ValueError``, or a generic key-count error, rather than a kornia
+          error naming the mask (`#4777 <https://github.com/kornia/kornia/issues/4777>`_). With a complete
+          ``params`` any subset of the inputs is accepted, which is how
+          :class:`~kornia.augmentation.container.AugmentationSequential` applies the transplant, one input at a
+          time. Outputs come back in input order, a single one as a bare
           tensor.
         - like every mix augmentation it is not geometric: ``transform_matrix`` and ``inverse()`` both raise
           ``RuntimeError``, and the ``inverse()`` of a

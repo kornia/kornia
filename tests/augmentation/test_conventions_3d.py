@@ -211,9 +211,10 @@ class Test3DAugmentationConventions(BaseTester):
         ("axis", "rotation_position", "affine_position"),
         [(0, (1, 4, 3), (3, 2, 3)), (1, (3, 2, 3), (1, 2, 5)), (2, (1, 2, 5), (1, 4, 3))],
     )
-    def test_convention_affine_and_rotation3d_move_an_asymmetric_marker(
+    def test_wart_affine_and_rotation3d_move_an_asymmetric_marker_opposite_ways_4408(
         self, axis, rotation_position, affine_position, device, dtype
     ):
+        # #4408: RandomAffine3D turns the other way from RandomRotation3D; flips when either follows the other.
         if not supports_nearest_3d_grid_sample(device, dtype):
             pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
         # Odd, unequal D/H/W dimensions put the rotation centre on voxels and make all axes observable.
@@ -360,7 +361,8 @@ class Test3DAugmentationConventions(BaseTester):
         "padding,size,marker",
         [(1, (5, 5, 5), (2, 2, 2)), ((1, 2, 3), (9, 7, 5), (4, 3, 2))],
     )
-    def test_convention_random_crop3d_matrix_uses_the_padded_source_frame(self, padding, size, marker, device, dtype):
+    def test_wart_random_crop3d_matrix_uses_the_padded_source_frame_4801(self, padding, size, marker, device, dtype):
+        # #4801: flips when the recorded matrix includes the padding offset.
         if not supports_nearest_3d_grid_sample(device, dtype):
             pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
         volume = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
@@ -433,6 +435,10 @@ class Test3DAugmentationConventions(BaseTester):
         residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(volume) - volume).abs().max())
         assert rotation < 1e-12
         assert 1e-9 < residual < 1e-5
+        # The float32-grid error grows with the volume size.
+        large = torch.rand(1, 1, 8, 16, 32, dtype=torch.float64)
+        large_residual = float((K.RandomPerspective3D(0.0, p=1.0, align_corners=True)(large) - large).abs().max())
+        assert residual < large_residual < 1e-4
 
     @pytest.mark.device_agnostic
     def test_convention_random_crop3d_offset_reaches_both_ends(self):

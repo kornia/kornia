@@ -131,12 +131,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - supported geometric data-key handlers share the recorded transform, subject to the mask limitations
           above. Custom rigid subclasses are not dispatched solely because they supply a matrix
-          (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid child has no matrix, so the
-          coordinate keys are left unchanged; see the warning below.
+          (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid warp child has no matrix, so
+          the coordinate keys are left unchanged; see the warning below.
         - ``.inverse()`` undoes the 2D geometric steps and leaves intensity and non-rigid steps applied. Slice-mode
-          crops and 3D geometric children raise ``NotImplementedError``. Tensor boxes come back as axis-aligned
-          enclosures; pass :class:`~kornia.geometry.boxes.Boxes` to keep rotated corners. Content lost to
-          cropping, padding or interpolation is not recovered.
+          crops and 3D geometric children raise ``NotImplementedError``, mix children ``RuntimeError``. Tensor
+          boxes come back as axis-aligned enclosures; pass :class:`~kornia.geometry.boxes.Boxes` to keep rotated
+          corners. Content lost to cropping, padding or interpolation is not recovered.
         - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
           ``True`` or ``False`` overrides it.
         - ``.transform_matrix`` of a chain holding a nested container is unreliable: it can raise, omit the

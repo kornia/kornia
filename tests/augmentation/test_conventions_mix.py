@@ -397,6 +397,16 @@ class TestMixConventions(BaseTester):
         output, mixed = aug(image, labels, params=params)
         self.assert_close(output[:, 0, 0, 0], torch.tensor([0.25, 1.0, 1.5]))  # row 1 keeps its image
         self.assert_close(mixed, torch.tensor([[10.0, 20.0, 0.25], [20.0, 30.0, 0.25], [30.0, 10.0, 0.25]]))
+        # RandomCutMixV2 has the same handler split: a 2 x 2 cut, and row 1 is gated off.
+        aug = K.RandomCutMixV2(p=1.0, use_correct_lambda=True, data_keys=["input", "class"])
+        aug(image, labels)
+        params = dict(aug._params)
+        params["mix_pairs"] = torch.tensor([[1, 2, 0]])
+        params["crop_src"] = torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]).expand(1, 3, 4, 2).clone()
+        params["batch_prob"] = torch.tensor([1.0, 0.0, 1.0])
+        output, mixed = aug(image, labels, params=params)
+        self.assert_close(output[1], image[1])
+        self.assert_close(mixed[0], torch.tensor([[10.0, 20.0, 0.75], [20.0, 30.0, 0.75], [30.0, 10.0, 0.75]]))
 
     @pytest.mark.device_agnostic
     def test_convention_cutmix_compatibility_lambda_warns(self):

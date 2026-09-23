@@ -79,9 +79,10 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
         - ``p`` is a batch-wide gate applied once: ``_params["batch_prob"]`` is all ones or all zeros, and every row
-          and mix of a selected batch receives a cut. With ``same_on_batch=False`` each row and mix draws its own cut
-          size and placement; ``same_on_batch=True`` shares one geometry. At ``p=0`` the image is unchanged and each
-          class row contains the original label twice with lambda zero.
+          and mix of a selected batch receives a cut, though self-pairing or a zero-sized cut can leave a row
+          unchanged. With ``same_on_batch=False`` each row and mix draws its own cut size and placement;
+          ``same_on_batch=True`` shares one geometry. At ``p=0`` the image is unchanged and each class row contains
+          the original label twice with lambda zero.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.

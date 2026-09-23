@@ -35,9 +35,9 @@ class RandomThinPlateSpline(AugmentationBase2D):
         Five control points use normalized ``(x, y)`` coordinates: ``(-1, -1)``, ``(-1, 1)``,
         ``(1, -1)``, ``(1, 1)``, and ``(0, 0)``. Each destination coordinate receives uniform
         noise between ``-scale`` and ``scale``; zero scale leaves these points unchanged.
-        Sampling is bilinear, with no interpolation-mode argument. Zero scale is an identity warp for either
-        ``align_corners``. There is no ``transform_matrix`` or ``inverse``; spatial labels in containers have
-        limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        Sampling is bilinear, with no interpolation-mode argument. Zero scale is an identity warp up to
+        interpolation roundoff for either ``align_corners``. There is no ``transform_matrix`` or ``inverse``;
+        spatial labels in containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
     Args:
         scale: the non-negative scale factor to apply to the destination points.

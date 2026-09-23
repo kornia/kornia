@@ -371,7 +371,7 @@ class TestTransplantationConventions(BaseTester):
         image = torch.rand(2, 1, 4, 5)
         with pytest.raises(IndexError, match="tuple index out of range"):
             cls(p=1.0)(image)  # the default data_keys name a mask that was not passed
-        with pytest.raises(ValueError, match="is not in list"):
+        with pytest.raises(ValueError, match="not in list"):  # Python 3.14 reworded list.index's message
             cls(p=1.0)(image, data_keys=["input"])
 
     @pytest.mark.device_agnostic

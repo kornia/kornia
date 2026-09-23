@@ -386,10 +386,11 @@ class TestAutoAugmentConventions(BaseTester):
         # The parameter is kept in the state dict, and no sampler is stored on the wrapper or the wrapped op.
         assert "_probability" in operation.state_dict()
         assert not hasattr(operation.op, "_p_gen") and not hasattr(operation.op, "_p_batch_gen")
-        # So a policy deep-copies after a forward (train() / eval() are covered in test_auto_operation.py), and the
-        # copy replays the original.
+        # So a policy deep-copies after a forward and after train() / eval(), and the copy replays the original.
         image = torch.rand(2, 3, 8, 8)
         for policy in (AutoAugment(), TrivialAugment(), RandAugment(n=2, m=15)):
+            copy.deepcopy(policy.eval())
+            copy.deepcopy(policy.train())
             output = policy(image)
             self.assert_close(copy.deepcopy(policy)(image, params=policy._params), output, rtol=0, atol=0)
 
