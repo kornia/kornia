@@ -41,8 +41,7 @@ def drop_path(x: torch.Tensor, drop_prob: Optional[float] = 0.0, training: bool 
     random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
     if keep_prob > 0.0:
         random_tensor.div_(keep_prob)
-    output = x * random_tensor
-    return output
+    return x * random_tensor
 
 
 class DropPath(nn.Module):

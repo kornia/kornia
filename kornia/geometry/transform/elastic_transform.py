@@ -136,8 +136,6 @@ def elastic_transform2d(
     identity = torch.eye(2, 3, device=image.device, dtype=grid_dtype).unsqueeze(0)
     grid = F.affine_grid(identity, [1, 1, h, w], align_corners=align_corners)
     grid = grid.to(image.dtype)
-    warped = F.grid_sample(
+    return F.grid_sample(
         image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
     )
-
-    return warped

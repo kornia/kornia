@@ -146,8 +146,7 @@ class _DissolvingWraper_HF:
             # user dtype (e.g. float64) must be cast to it, not only moved to the device.
             image = (image / 0.5 - 1).to(device=self.model.device, dtype=self.model.vae.dtype)
             latents = self.model.vae.encode(image)["latent_dist"].sample()
-            latents = latents * 0.18215
-        return latents
+            return latents * 0.18215
 
     @torch.no_grad()
     def decode_tensor_to_latent(self, latents: torch.Tensor) -> torch.Tensor:
@@ -194,16 +193,14 @@ class _DissolvingWraper_HF:
         else:
             noise_pred = self.model.unet(latent, t, cond_embeddings).sample
 
-        pred_x0 = self.predict_start_from_noise(noise_pred, t, latent)
-        return pred_x0
+        return self.predict_start_from_noise(noise_pred, t, latent)
 
     @torch.no_grad()
     def dissolve(self, image: torch.Tensor, t: int) -> torch.Tensor:
         self.init_prompt("")
         latent = self.encode_tensor_to_latent(image)
         ddim_latents = self.one_step_dissolve(latent, t)
-        dissolved = self.decode_tensor_to_latent(ddim_latents)
-        return dissolved
+        return self.decode_tensor_to_latent(ddim_latents)
 
 
 class StableDiffusionDissolving(ImageModule):

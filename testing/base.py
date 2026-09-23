@@ -253,6 +253,20 @@ def supports_nearest_3d_grid_sample(device: torch.device, dtype: torch.dtype) ->
     return _supports_kernel_probe(_nearest_3d_grid_sample_op, device.type, dtype)
 
 
+def _unit_size_3d_affine_grid_op(device_type: str, dtype: torch.dtype) -> None:
+    theta = _probe_zeros(device_type, dtype, 1, 3, 4)
+    F.affine_grid(theta, [1, 1, 1, 2, 2], align_corners=True)
+
+
+def supports_unit_size_3d_affine_grid(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether 3D ``affine_grid`` with ``align_corners=True`` can build a grid with a size-1 axis for ``dtype``.
+
+    PyTorch builds a size-1 axis through ``torch.tensor``, which has no CPU kernel for half precision.
+    Probed at runtime and cached per (device type, dtype).
+    """
+    return _supports_kernel_probe(_unit_size_3d_affine_grid_op, device.type, dtype)
+
+
 def _reflect_padding_op(device_type: str, dtype: torch.dtype) -> None:
     F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2), (1, 1, 1, 1), mode="reflect")
 

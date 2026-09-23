@@ -117,14 +117,27 @@ svhn_policy: List[SUBPOLICY_CONFIG] = [
 class AutoAugment(PolicyAugmentBase):
     """Apply AutoAugment :cite:`cubuk2018autoaugment` searched strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects one sub-policy uniformly for each forward call. A sub-policy is an ordered sequence of
+          ``(name, probability, magnitude_bin)`` entries, so every listed operation is considered in order.
+        - a magnitude bin selects the adjacent interval of that operation's eleven-point scale. Bins ``0``
+          through ``9`` are valid for operations with a magnitude; operations that ignore magnitude accept any
+          value. The wrapped operation samples a value inside its selected interval for every batch row;
+          ``posterize`` then rounds to the nearest integer number of bits (so bin ``1``, spanning ``4.4`` to
+          ``4.8``, produces ``4`` or ``5``), ``translate_x`` / ``translate_y`` multiply it by the image size in
+          pixels, and ``shear_x`` / ``shear_y``, whose scale is a shear fraction from ``-0.3`` to ``0.3``, multiply
+          it by ``180`` to give degrees.
+
     Args:
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
                                     If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
-                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
-                                    modules will trigger errors.
+                                    If `rigid`, the result is the same for a policy: every operation wrapper
+                                    contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:

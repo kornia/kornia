@@ -97,9 +97,7 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 
     joint_kernel_values = torch.matmul(kernel_values1.transpose(1, 2), kernel_values2)
     normalization = torch.sum(joint_kernel_values, dim=(1, 2)).view(-1, 1, 1) + epsilon
-    pdf = joint_kernel_values / normalization
-
-    return pdf
+    return joint_kernel_values / normalization
 
 
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
@@ -158,9 +156,18 @@ def histogram2d(
     _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
     _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
-    pdf = joint_pdf(kernel_values1, kernel_values2)
+    return joint_pdf(kernel_values1, kernel_values2)
 
-    return pdf
+
+def _restore_float_dtype(hist: torch.Tensor, image: torch.Tensor, auto_centers: bool) -> torch.Tensor:
+    """Hand back the image's own dtype after wider bin centers promoted the result.
+
+    Only for auto-built centers on a floating-point image: an integer image or explicit ``centers`` keep the promoted
+    dtype they always had, and casting a KDE result into an integer dtype would truncate it (uint8 wraps modulo 256).
+    """
+    if auto_centers and image.is_floating_point():
+        return hist.to(image.dtype)
+    return hist
 
 
 def image_histogram2d(
@@ -232,8 +239,12 @@ def image_histogram2d(
     if bandwidth is None:
         bandwidth = (max - min) / n_bins
 
+    auto_centers = centers is None
     if centers is None:
-        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=image.dtype) + 0.5)
+        # Build the bin-center grid at a dtype that represents the bin indices exactly: image.dtype alone collapses
+        # distinct centers for float16/bfloat16, and a fixed float32 would downgrade a float64 image.
+        compute_dtype = torch.promote_types(image.dtype, torch.float32)
+        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=compute_dtype) + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
 
     u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
@@ -253,6 +264,7 @@ def image_histogram2d(
         raise ValueError(f"Kernel must be 'triangular', 'gaussian', 'uniform' or 'epanechnikov'. Got {kernel}.")
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
+    hist = _restore_float_dtype(hist, image, auto_centers)
 
     if return_pdf:
         normalization = torch.sum(hist, dim=-1, keepdim=True) + eps

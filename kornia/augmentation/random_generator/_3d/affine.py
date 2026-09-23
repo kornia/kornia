@@ -33,6 +33,8 @@ from kornia.core.utils import _extract_device_dtype
 class AffineGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ```3d affine``` transformation random affine transform.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomAffine3D`.
+
     Args:
         degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
@@ -57,7 +59,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.
-            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
+            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (shear[i, 0], shear[i, 1])
             will be applied.
 
     Returns:
@@ -65,7 +67,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             - translations (torch.Tensor): element-wise translations with a shape of (B, 3).
             - center (torch.Tensor): element-wise center with a shape of (B, 3).
             - scale (torch.Tensor): element-wise scales with a shape of (B, 3).
-            - angle (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
+            - angles (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
             - sxy (torch.Tensor): element-wise x-y-facet shears with a shape of (B,).
             - sxz (torch.Tensor): element-wise x-z-facet shears with a shape of (B,).
             - syx (torch.Tensor): element-wise y-x-facet shears with a shape of (B,).
@@ -118,8 +120,7 @@ class AffineGenerator3D(RandomGeneratorBase):
         self.scale = scale
 
     def __repr__(self) -> str:
-        repr = f"degrees={self.degrees}, shears={self.shears}, translate={self.translate}, scale={self.scale}"
-        return repr
+        return f"degrees={self.degrees}, shears={self.shears}, translate={self.translate}, scale={self.scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype, "degrees", (-360, 360))
@@ -141,20 +142,25 @@ class AffineGenerator3D(RandomGeneratorBase):
 
         # check scale range
         self._scale: Optional[torch.Tensor] = None
+        self._isotropic_scale: bool = False
         if self.scale is not None:
             _scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
             if _scale.shape == torch.Size([2]):
+                # (a, b) is isotropic: one factor per sample is drawn and used on all three axes.
+                _singular_range_check(_scale, "scale", bounds=(0, float("inf")), mode="2d")
                 self._scale = _scale.unsqueeze(0).repeat(3, 1)
+                self._isotropic_scale = True
+                self.scale_sampler = UniformDistribution(_scale[0], _scale[1], validate_args=False)
             elif _scale.shape != torch.Size([3, 2]):
                 raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self.scale}.")
             else:
                 self._scale = _scale
-            _singular_range_check(self._scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
-            _singular_range_check(self._scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
-            _singular_range_check(self._scale[2], "scale-z", bounds=(0, float("inf")), mode="2d")
-            self.scale_1_sampler = UniformDistribution(self._scale[0, 0], self._scale[0, 1], validate_args=False)
-            self.scale_2_sampler = UniformDistribution(self._scale[1, 0], self._scale[1, 1], validate_args=False)
-            self.scale_3_sampler = UniformDistribution(self._scale[2, 0], self._scale[2, 1], validate_args=False)
+                _singular_range_check(self._scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
+                _singular_range_check(self._scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
+                _singular_range_check(self._scale[2], "scale-z", bounds=(0, float("inf")), mode="2d")
+                self.scale_1_sampler = UniformDistribution(self._scale[0, 0], self._scale[0, 1], validate_args=False)
+                self.scale_2_sampler = UniformDistribution(self._scale[1, 0], self._scale[1, 1], validate_args=False)
+                self.scale_3_sampler = UniformDistribution(self._scale[2, 0], self._scale[2, 1], validate_args=False)
 
         self.yaw_sampler = UniformDistribution(degrees[0][0], degrees[0][1], validate_args=False)
         self.pitch_sampler = UniformDistribution(degrees[1][0], degrees[1][1], validate_args=False)
@@ -185,7 +191,9 @@ class AffineGenerator3D(RandomGeneratorBase):
         angles = torch.stack([yaw, pitch, roll], dim=1)
 
         # compute tensor ranges
-        if self._scale is not None:
+        if self._scale is not None and self._isotropic_scale:
+            scale = _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch).unsqueeze(1).repeat(1, 3)
+        elif self._scale is not None:
             scale = torch.stack(
                 [
                     _adapted_rsampling((batch_size,), self.scale_1_sampler, same_on_batch),

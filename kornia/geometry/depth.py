@@ -391,8 +391,7 @@ def depth_from_plane_equation(
     denom = torch.where(zero_mask, signed_eps, denom)
 
     # Compute depth from plane equation
-    depth = plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)
-    return depth
+    return plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)
 
 
 def warp_frame_depth(

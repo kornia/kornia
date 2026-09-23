@@ -64,8 +64,7 @@ def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = N
         device = torch.device("cpu")
     window_grid2d = create_meshgrid(h, w, False, device=device)
     window_grid2d = normalize_pixel_coordinates(window_grid2d, h, w)
-    conv_kernel = window_grid2d.permute(3, 0, 1, 2)
-    return conv_kernel
+    return window_grid2d.permute(3, 0, 1, 2)
 
 
 def _get_center_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> torch.Tensor:
@@ -162,8 +161,7 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.dev
     else:  # only onr channel with index == 0
         z = torch.zeros(1, 1, 1, 1, device=device)
     grid3d = torch.cat([z.repeat(1, h, w, 1).contiguous(), grid2d.repeat(d, 1, 1, 1)], 3)
-    conv_kernel = grid3d.permute(3, 0, 1, 2).unsqueeze(1)
-    return conv_kernel
+    return grid3d.permute(3, 0, 1, 2).unsqueeze(1)
 
 
 class ConvSoftArgmax2d(nn.Module):

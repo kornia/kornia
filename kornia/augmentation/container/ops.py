@@ -329,6 +329,8 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            input = module.inverse(**extra_args)
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d inverse operations are not yet supported. You are welcome to file a PR in our repo."
@@ -393,6 +395,18 @@ class ClassSequentialOps(SequentialOpsInterface[torch.Tensor]):
 class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
+    @staticmethod
+    def _mask_extra_args(module: Any, extra_args: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        extra_args = {} if extra_args is None else extra_args
+        # A per-channel image fill has no unambiguous meaning for a semantic mask, whose channel count
+        # commonly differs from the image. Default mask padding to background while preserving an explicit
+        # per-mask override and the legacy behavior of scalar fills.
+        fill = module.flags.get("fill")
+        if fill is not None and not isinstance(fill, (int, float)):
+            extra_args = dict(extra_args)
+            extra_args.setdefault("fill", 0.0)
+        return extra_args
+
     @classmethod
     def transform(
         cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
@@ -410,6 +424,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            extra_args = cls._mask_extra_args(module, extra_args)
             input = module.transform_masks(
                 input,
                 params=cls.get_instance_module_param(param),
@@ -464,6 +479,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if extra_args is None:
             extra_args = {}
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            extra_args = cls._mask_extra_args(module, extra_args)
             tfm_input = []
             params = cls.get_instance_module_param(param)
             params_i = copy.deepcopy(params)

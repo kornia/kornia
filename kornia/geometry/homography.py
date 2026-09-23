@@ -281,8 +281,7 @@ def find_homography_dlt(
     else:
         raise NotImplementedError
     H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
-    H_norm = H / (H[..., -1:, -1:] + eps)
-    return H_norm
+    return H / (H[..., -1:, -1:] + eps)
 
 
 def find_homography_dlt_iterated(
@@ -347,8 +346,7 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
     right_sign = torch.sign(_orient(p2_i, p2_j, p2_k))
 
     # Valid if all four orientation signs match across views
-    sample_is_valid = (left_sign == right_sign).all(dim=1)
-    return sample_is_valid
+    return (left_sign == right_sign).all(dim=1)
 
 
 def find_homography_lines_dlt(
@@ -420,8 +418,7 @@ def find_homography_lines_dlt(
 
     H = V[..., -1].view(-1, 3, 3)
     H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
-    H_norm = H / (H[..., -1:, -1:] + eps)
-    return H_norm
+    return H / (H[..., -1:, -1:] + eps)
 
 
 def find_homography_lines_dlt_iterated(
