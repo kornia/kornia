@@ -41,11 +41,12 @@ class OverflowShape(torch.nn.Module):
 
 
 class NearlySingularShape(torch.nn.Module):
-    # In float32, a * c - b * b is positive (6e-8) but a - (b / sqrt(c)) ** 2, the square of the first diagonal
-    # entry of the inverse LAF that ellipse_to_laf forms, rounds to 0.
+    # In float32, a * c - b * b is positive (3e-8) but a - (b / sqrt(c)) ** 2, the square of the first diagonal
+    # entry of the inverse LAF that ellipse_to_laf forms, rounds to 0. c is a perfect square, so sqrt(c) is exact on
+    # every backend and only the correctly rounded multiplications and division decide where the two paths land.
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
         zero = patches.mean(dim=(-2, -1), keepdim=False).unsqueeze(-1) * 0
-        return torch.cat([zero + 1.0, zero + 0.9235056042671204, zero + 0.8528626561164856], dim=-1)
+        return torch.cat([zero + 0.75, zero + 0.6495190262794495, zero + 0.5625], dim=-1)
 
 
 class SingularAffNetOutput(torch.nn.Module):
@@ -274,6 +275,9 @@ class TestLAFAffineShapeEstimator(BaseTester):
         dtype = torch.float32
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
+        a, b, c = NearlySingularShape()(img).unbind(-1)
+        assert a * c - b * b > 0
+        assert a - (b / c.sqrt()).square() <= 0
         out = LAFAffineShapeEstimator(32, NearlySingularShape(), preserve_orientation=True).to(device, dtype)(laf, img)
         assert torch.isfinite(out).all()
         self.assert_close(out, laf)
