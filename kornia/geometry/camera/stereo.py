@@ -72,7 +72,7 @@ class StereoCamera:
 
     .. warning::
         A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
-        case, so it is zero on every rig the constructor accepts in eager mode:
+        case, so it is zero on every rig the constructor accepts outside ``torch.export``:
         `#4270 <https://github.com/kornia/kornia/issues/4270>`_. A zero disparity (a point at infinity) makes
         ``W = 0``; the divide is then skipped and a finite placeholder, behind the camera on a real rig, is
         returned and not flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.

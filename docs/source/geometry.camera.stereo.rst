@@ -127,7 +127,7 @@ where :math:`Q` is
 
 The :math:`Q` that :class:`StereoCamera` builds is exactly this matrix with :math:`tx = P_1[0, 3] / fx`, which the constructor requires to be strictly negative (a zero baseline or swapped cameras raise). The class's ``tx`` attribute is the positive baseline :math:`-P_1[0, 3] / fx`, so do not substitute it for :math:`tx` above.
 
-The :math:`Q[3, 3]` term is zero on every rig :class:`StereoCamera` accepts in eager mode: the constructor rejects differing :math:`cx_{left}` and :math:`cx_{right}` (`#4270 <https://github.com/kornia/kornia/issues/4270>`_).
+The :math:`Q[3, 3]` term is zero on every rig :class:`StereoCamera` accepts outside ``torch.export``: the constructor rejects differing :math:`cx_{left}` and :math:`cx_{right}` (`#4270 <https://github.com/kornia/kornia/issues/4270>`_).
 
 Assuming :math:`fx = fy` you can further reduce this to:
 

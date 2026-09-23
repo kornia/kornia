@@ -210,7 +210,7 @@ class Boxes:
           their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
         - With ``validate_boxes=True``, the ``'xy*'`` modes reject a non-finite coordinate and non-positive
-          extents; the vertex modes are not validated.
+          extents.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
           checked by its first element's dtype); :meth:`from_tensor` casts integer input to the default dtype.
         - :meth:`merge` and :meth:`index_put` are non-mutating by default.
