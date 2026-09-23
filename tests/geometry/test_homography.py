@@ -213,6 +213,9 @@ class TestFindHomographyDLT(BaseTester):
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
 
+    # A NaN in a minimal sample used to make torch.linalg.qr spin forever on CUDA (#4770). The
+    # thread method aborts the session instead of letting a stuck kernel stall the whole run.
+    @pytest.mark.timeout(120, method="thread")
     def test_nocrash(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -223,8 +226,6 @@ class TestFindHomographyDLT(BaseTester):
         # Reading the values synchronizes the device, so a hang surfaces in this test (#4770).
         assert H.isnan().all().item()
 
-    # A NaN in a minimal sample used to make torch.linalg.qr spin forever on CUDA (#4770). The
-    # thread method aborts the session instead of letting a stuck kernel stall the whole run.
     @pytest.mark.timeout(120, method="thread")
     def test_nocrash_lu(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
