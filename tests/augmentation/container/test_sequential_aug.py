@@ -81,30 +81,24 @@ class TestConventionImageSequential(BaseTester):
     `.venv/bin/python` (torch 2.14.0, python 3.11, cpu, float32).
     """
 
-    def test_wart_if_unsupported_ops_is_neither_honoured_nor_validated_4423(self, device, dtype):
-        # Wart pin (#4423): `ImageSequential.if_unsupported_ops` ("raise" by default) never fires. A plain
-        # `nn.Module` in the chain is silently skipped on the inverse path under every value of the flag -
-        # including an invalid one, which is accepted without validation - so `inverse` undoes only the
-        # invertible ops and returns something that is not the input, with no warning.
-        # The deterministic checkerboard ensures the omitted blur visibly changes the output: for every
-        # if_unsupported_ops value in ("raise", "skip", "bogus"), inverse equals hflip(output) exactly
-        # (only the flip was undone) and differs from the input.
-        # The fix lands in the repair window; do not "correct" this pin here.
+    def test_convention_if_unsupported_ops_skip_leaves_plain_modules_applied_4423(self, device, dtype):
+        # #4423: the inverse used to skip a plain `nn.Module` under every value of the flag. That behavior is now
+        # what "skip" selects: `inverse` undoes only the invertible members and returns something that is not the
+        # input. The deterministic checkerboard ensures the omitted blur visibly changes the output.
         if device.type == "mps" and torch_version_lt(2, 6, 0):
             pytest.skip("torch 2.5.1 MPS inverse of expanded matrices can abort the process")
         yy, xx = torch.meshgrid(torch.arange(6, device=device), torch.arange(8, device=device), indexing="ij")
         x = ((yy + xx) % 2).to(dtype).expand(2, 3, 6, 8)
         assert K.ImageSequential(K.RandomHorizontalFlip(p=1.0)).if_unsupported_ops == "raise"
-        for mode in ("raise", "skip", "bogus"):
-            seq = K.ImageSequential(
-                K.RandomHorizontalFlip(p=1.0),
-                kornia.filters.GaussianBlur2d((3, 3), (1.5, 1.5)),
-                if_unsupported_ops=mode,
-            )
-            out = seq(x)
-            inverted = seq.inverse(out)
-            self.assert_close(inverted, out.flip(-1))  # only the flip was undone, the blur was skipped
-            assert (inverted - x).abs().max().item() > 0.1  # and the round trip is not the input
+        seq = K.ImageSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            kornia.filters.GaussianBlur2d((3, 3), (1.5, 1.5)),
+            if_unsupported_ops="skip",
+        )
+        out = seq(x)
+        inverted = seq.inverse(out)
+        self.assert_close(inverted, out.flip(-1))  # only the flip was undone, the blur was skipped
+        assert (inverted - x).abs().max().item() > 0.1  # and the round trip is not the input
 
     def test_convention_slice_crop_inverse_raises(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
@@ -127,13 +121,9 @@ class TestConventionImageSequential(BaseTester):
         assert current is not None and recomputed is not None
         assert not torch.equal(current, recomputed)
 
-    @pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason="Tracked in #4423")
     def test_convention_if_unsupported_ops_raise_raises_not_implemented(self, device, dtype):
-        # Strict xfail (#4423): the intended reading is the argument's own contract - `if_unsupported_ops`
-        # defaults to "raise", so inverting a chain that holds a non-invertible plain `nn.Module` must raise
-        # `NotImplementedError` rather than silently skip it. This turns XPASS when the repair lands, which
-        # is the signal to delete the wart pin above. Executed 2026-09-11 (torch 2.14.0, cpu): inverse returns
-        # quietly.
+        # #4423: `if_unsupported_ops` defaults to "raise", so inverting a chain that holds a non-invertible
+        # plain `nn.Module` raises `NotImplementedError` rather than silently skipping it.
         if device.type == "mps" and torch_version_lt(2, 6, 0):
             pytest.skip("torch 2.5.1 MPS inverse of expanded matrices can abort the process")
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
@@ -146,9 +136,57 @@ class TestConventionImageSequential(BaseTester):
         with pytest.raises(NotImplementedError):
             seq.inverse(out)
 
-    @pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason="Tracked in #4423")
+    def test_convention_if_unsupported_ops_raise_leaves_intensity_augmentations_applied_4423(self, device, dtype):
+        # #4423: "raise" is about plain `nn.Module` members only. An intensity augmentation has no geometry to
+        # undo and is left applied on the inverse path, as before, under both settings.
+        if device.type == "mps" and torch_version_lt(2, 6, 0):
+            pytest.skip("torch 2.5.1 MPS inverse of expanded matrices can abort the process")
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = K.ImageSequential(K.RandomHorizontalFlip(p=1.0), K.ColorJiggle(0.3, 0.3, p=1.0))
+        out = seq(x)
+        self.assert_close(seq.inverse(out), out.flip(-1))
+
+    def test_convention_if_unsupported_ops_applies_to_each_container_own_members_4423(self, device, dtype):
+        # #4423: a nested container inverts its own members, so its own setting decides for the plain modules it
+        # holds, and a nested container is never itself an unsupported member of the outer one.
+        if device.type == "mps" and torch_version_lt(2, 6, 0):
+            pytest.skip("torch 2.5.1 MPS inverse of expanded matrices can abort the process")
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        blur = kornia.filters.GaussianBlur2d((3, 3), (1.5, 1.5))
+
+        inner_skips = K.ImageSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            K.ImageSequential(blur, if_unsupported_ops="skip"),
+            if_unsupported_ops="raise",
+        )
+        out = inner_skips(x)
+        self.assert_close(inner_skips.inverse(out), out.flip(-1))
+
+        inner_raises = K.ImageSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            K.ImageSequential(blur, if_unsupported_ops="raise"),
+            if_unsupported_ops="skip",
+        )
+        out = inner_raises(x)
+        with pytest.raises(NotImplementedError, match="GaussianBlur2d"):
+            inner_raises.inverse(out)
+
+    def test_convention_video_sequential_passes_if_unsupported_ops_through_4423(self, device, dtype):
+        # #4423: VideoSequential inverts through ImageSequential, so it takes the same setting.
+        x = torch.rand(1, 3, 3, 6, 8, device=device, dtype=dtype)
+        blur = kornia.filters.GaussianBlur2d((3, 3), (1.5, 1.5))
+        raises = K.VideoSequential(K.RandomHorizontalFlip(p=1.0), blur)
+        assert raises.if_unsupported_ops == "raise"
+        out = raises(x)
+        with pytest.raises(NotImplementedError, match="GaussianBlur2d"):
+            raises.inverse(out)
+        skips = K.VideoSequential(K.RandomHorizontalFlip(p=1.0), blur, if_unsupported_ops="skip")
+        out = skips(x)
+        self.assert_close(skips.inverse(out), out.flip(-1))
+        with pytest.raises(ValueError):
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0), if_unsupported_ops="bogus")
+
     def test_convention_if_unsupported_ops_rejects_invalid_value(self):
-        # Strict xfail (#4423): construction accepts only "raise" and "skip". Executed 2026-09-11 (torch
-        # 2.14.0, cpu): "bogus" is accepted without validation.
+        # #4423: construction accepts only "raise" and "skip".
         with pytest.raises(ValueError):
             K.ImageSequential(K.RandomHorizontalFlip(p=1.0), if_unsupported_ops="bogus")

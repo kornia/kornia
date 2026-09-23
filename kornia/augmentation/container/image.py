@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 import kornia.augmentation as K
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase, _BasicAugmentationBase
 from kornia.augmentation.utils import override_parameters
 from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
@@ -71,8 +71,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             If False, the whole list of args will be processed as a sequence in original order.
         random_apply_weights: a list of selection weights for each operation. The length shall be as
             same as the number of operations. By default, operations are sampled uniformly.
-        if_unsupported_ops: intended to choose between raising and skipping an uninvertible plain ``nn.Module``.
-            It is neither validated nor enforced, and the inverse path skips such a module under every value.
+        if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, which has no inverse:
+            ``'raise'`` raises ``NotImplementedError`` naming it, before anything is inverted, and ``'skip'``
+            leaves it applied and inverts the other members. Any other value raises ``ValueError``.
 
     Convention:
         - this container takes image tensors only. It has no ``data_keys``, so masks, boxes and keypoints go
@@ -85,14 +86,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
           samples ordinary members and mix augmentations through separate paths; a mix member's insertion
           does not honor its ordinary selection weight. Each selected member is recorded in ``_params``, but
           a plain module records a ``None`` payload: only augmentation members carry a parameter draw to replay.
-        - ``inverse`` skips uninvertible plain ``nn.Module`` members. Augmentation children can still raise,
-          for example a slice-mode crop or a 3D geometric augmentation, while non-rigid augmentation children
+        - ``inverse`` treats a plain ``nn.Module`` member according to ``if_unsupported_ops``, and a nested
+          container according to its own setting. Augmentation children can still raise, for example a
+          slice-mode crop or a 3D geometric augmentation, while intensity and non-rigid augmentation children
           are left applied; the round trip is not in general the input.
-
-    .. warning::
-        ``if_unsupported_ops`` never fires: a plain ``nn.Module`` in the chain is skipped on the inverse path
-        under every value of the flag, an invalid value included, and nothing is raised or warned. Tracked in
-        `#4423 <https://github.com/kornia/kornia/issues/4423>`_.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
@@ -150,6 +147,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         disable_item_features: bool = True,
         disable_sequential_features: bool = False,
     ) -> None:
+        if if_unsupported_ops not in ("raise", "skip"):
+            raise ValueError(f"`if_unsupported_ops` must be either `raise` or `skip`. Got {if_unsupported_ops!r}.")
         if disable_item_features:
             self.disable_item_features(*args)
         if disable_sequential_features:
@@ -362,6 +361,35 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                     mat = module.identity_matrix(input) if _mat is None else _mat
                 res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
+
+    def inverse_inputs(
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
+        """Apply inverse transforms for an input tensor.
+
+        Args:
+            input: Tensor produced by :meth:`transform_inputs`.
+            params: Parameters used during forward execution.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Tensor mapped back through inverse operations.
+
+        Raises:
+            NotImplementedError: if ``if_unsupported_ops`` is ``'raise'`` and ``params`` records a plain
+                ``nn.Module``, which has no inverse.
+        """
+        if self.if_unsupported_ops == "raise":
+            # Checked before inverting anything, so a raise never leaves a partial inverse behind.
+            invertible = (_BasicAugmentationBase, ImageSequentialBase, K.auto.operations.OperationBase)
+            for name, module in self.get_forward_sequence(params):
+                if not isinstance(module, invertible):
+                    raise NotImplementedError(
+                        f"Cannot invert `{name}` ({type(module).__name__}): a plain `nn.Module` has no inverse, "
+                        "so the result would keep it applied. Pass `if_unsupported_ops='skip'` to invert the "
+                        "other members and leave it in place."
+                    )
+        return super().inverse_inputs(input, params, extra_args=extra_args)
 
     # TODO: Make this as a class property to avoid running every time.
     def is_intensity_only(self, strict: bool = True) -> bool:

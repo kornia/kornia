@@ -1,0 +1,7 @@
+`ImageSequential(if_unsupported_ops=...)` now takes effect. `inverse` used to skip a plain `nn.Module` member
+(a `kornia.filters` blur, for example) under every value of the argument, returning the input with that module
+still applied and without an error. With the default `'raise'` it now raises `NotImplementedError` naming the
+module, before anything is inverted; `'skip'` keeps the previous behavior. Code that inverted through a plain
+module must now pass `if_unsupported_ops='skip'`. A value other than `'raise'` or `'skip'` raises `ValueError`
+at construction, where it was stored silently. `VideoSequential` inverts through the same path and now takes
+the same argument. `AugmentationSequential` and `PatchSequential` are unaffected. Fixes #4423.
