@@ -414,7 +414,8 @@ def crop_by_indices(
           ``antialias=False`` option
         - ``shape_compensation`` (``'resize'`` by default) applies whenever the cropped
           slice does not match ``size``, whether or not ``src_box`` is identical across
-          the batch — each row's output depends only on its own box
+          the batch — each row's output depends only on its own box. Graph export is the
+          exception: it always resamples (see the note below)
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).

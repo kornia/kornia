@@ -511,6 +511,12 @@ class TestCropByIndices(BaseTester):
         expected_grow = torch.nn.functional.pad(inp[..., 0:2, 0:2], [0, 1, 0, 1])
         self.assert_close(out_pad_grow, expected_grow, atol=0.0, rtol=0.0)
 
+        # identical 3x3 box to (4, 2): grows the height and trims the width, so the two axes'
+        # pad amounts differ and a swapped F.pad argument order changes the result.
+        out_pad_mixed = kornia.geometry.transform.crop_by_indices(inp, box_3x3, size=(4, 2), shape_compensation="pad")
+        expected_mixed = torch.nn.functional.pad(inp[..., 0:3, 0:3], [0, -1, 0, 1])
+        self.assert_close(out_pad_mixed, expected_mixed, atol=0.0, rtol=0.0)
+
         # --- non-uniform batch (box 0 != box 1): shape_compensation genuinely takes effect ---
         src_box = torch.tensor(
             [
