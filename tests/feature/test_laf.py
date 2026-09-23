@@ -304,16 +304,18 @@ class TestELL2LAF(BaseTester):
         self.assert_close(kornia.feature.ellipse_to_laf(ells), kornia.feature.make_upright(laf))
 
     def test_tiny_valid_ellipse_is_finite(self, device, dtype):
-        # a == c == tiny with b == tiny / 2 is a valid, strongly tilted ellipse: the Schur complement
-        # a - b^2 / c = 0.75 tiny is a subnormal, and the LAF must still be finite and correct.
+        # a == c == 16 tiny with b == 8 tiny is a valid, strongly tilted ellipse (b / a == 0.5) at the bottom
+        # of the normal range: its determinant 192 tiny^2 is subnormal or zero in every dtype and any eps a
+        # clamp would use is orders of magnitude above the inputs, yet every intermediate of the correct
+        # formula (b / sqrt(c), the Schur complement 12 tiny, sqrt(det) formed as sqrt(c) * sqrt(schur)) is a
+        # normal number, so this also runs on backends that flush subnormals. The LAF must be finite and
+        # match the closed form, evaluated in double so that the check does not depend on the implementation.
         tiny = torch.finfo(dtype).tiny
-        inp = torch.tensor([[[0.0, 0.0, tiny, tiny / 2, tiny]]], device=device, dtype=dtype)
-        if (inp[0, 0, 2] - 0.5 * inp[0, 0, 3]) == 0:
-            pytest.skip("backend flushes the subnormal Schur complement to zero, so this ellipse is degenerate here")
+        inp = torch.tensor([[[0.0, 0.0, 16.0 * tiny, 8.0 * tiny, 16.0 * tiny]]], device=device, dtype=dtype)
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
         expected = torch.tensor(
-            [[1.0 / math.sqrt(0.75 * tiny), 0.0], [-0.5 / math.sqrt(0.75 * tiny), 1.0 / math.sqrt(tiny)]],
+            [[1.0 / math.sqrt(12.0 * tiny), 0.0], [-0.5 / math.sqrt(12.0 * tiny), 1.0 / math.sqrt(16.0 * tiny)]],
             device=device,
             dtype=dtype,
         )
