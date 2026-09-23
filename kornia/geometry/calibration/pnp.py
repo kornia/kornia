@@ -65,8 +65,8 @@ def solve_pnp_dlt(
 ) -> torch.Tensor:
     r"""Attempt to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).
 
-    Given a batch (torch.where batch size is :math:`B`) of :math:`N` 3D points
-    (torch.where :math:`N \geq 6`) in the world space, a batch of :math:`N`
+    Given a batch (where batch size is :math:`B`) of :math:`N` 3D points
+    (where :math:`N \geq 6`) in the world space, a batch of :math:`N`
     corresponding 2D points in the image space and a batch of
     intrinsic matrices, this function tries to estimate a batch of
     world to camera transformation matrices.
@@ -85,16 +85,20 @@ def solve_pnp_dlt(
 
     Convention:
         - the returned :math:`(B, 3, 4)` matrix is the **world-to-camera** ``[R | t]``: it maps a world point
-          into the camera frame, rather than storing a camera-to-world pose. If the camera frame is the world
-          frame shifted so that ``X_cam = X_world + (1, 0, 0)``, the recovered ``t`` is ``(+1, 0, 0)`` and not
-          ``(-1, 0, 0)``.
+          into the camera frame (``X_cam = X_world + (1, 0, 0)`` gives ``t = (+1, 0, 0)``), not a
+          camera-to-world pose.
         - ``intrinsics`` is the :math:`(B, 3, 3)` ``K``; the :math:`(B, 4, 4)` matrix that a
-          ``PinholeCamera`` stores is rejected by the shape check.
-        - ``weights`` scales the two rows each point contributes to the linear system. That system is
-          homogeneous, so a uniform ``weights`` leaves the answer unchanged up to rounding, and a zero weight
-          drops that point from the fit.
-        - too few points raise a ``BaseError`` whose message names no argument, while a degenerate
-          ``world_points`` raises :class:`AssertionError` from the singular-value check described above.
+          ``PinholeCamera`` stores is rejected.
+        - ``weights`` scales the two rows each point contributes to the homogeneous linear system, so a uniform
+          ``weights`` leaves the answer unchanged up to rounding.
+        - fewer than 6 points, or a ``world_points``, ``img_points`` or ``intrinsics`` in a dtype other than
+          float32/float64, raise :class:`~kornia.core.exceptions.BaseError` naming the argument; a degenerate
+          ``world_points`` raises :class:`AssertionError` from the check above.
+
+    .. warning::
+        A zero weight removes a point's rows but not the point: it still enters the normalization and the
+        degeneracy check, so coplanar points plus zero-weight points off the plane pass the check and return a
+        wrong pose: `#4799 <https://github.com/kornia/kornia/issues/4799>`_.
 
     Args:
         world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
@@ -157,15 +161,20 @@ def solve_pnp_dlt(
     KORNIA_CHECK_IS_TENSOR(world_points)
     KORNIA_CHECK_IS_TENSOR(img_points)
     KORNIA_CHECK_IS_TENSOR(intrinsics)
-    KORNIA_CHECK(isinstance(svd_eps, float))
-    KORNIA_CHECK(world_points.dtype in accepted_dtypes)
-    KORNIA_CHECK(img_points.dtype in accepted_dtypes)
-    KORNIA_CHECK(intrinsics.dtype in accepted_dtypes)
+    KORNIA_CHECK(isinstance(svd_eps, float), f"svd_eps must be a float, got {type(svd_eps).__name__}.")
+    KORNIA_CHECK(
+        world_points.dtype in accepted_dtypes, f"world_points must be float32 or float64, got {world_points.dtype}."
+    )
+    KORNIA_CHECK(img_points.dtype in accepted_dtypes, f"img_points must be float32 or float64, got {img_points.dtype}.")
+    KORNIA_CHECK(intrinsics.dtype in accepted_dtypes, f"intrinsics must be float32 or float64, got {intrinsics.dtype}.")
     KORNIA_CHECK_SHAPE(world_points, ["B", "N", "3"])
     KORNIA_CHECK_SHAPE(img_points, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(intrinsics, ["B", "3", "3"])
     KORNIA_CHECK_SAME_SHAPE(world_points[:, :, 0], img_points[:, :, 0])
-    KORNIA_CHECK(world_points.shape[1] >= 6)
+    KORNIA_CHECK(
+        world_points.shape[1] >= 6,
+        f"world_points must hold at least 6 points (N >= 6), got N = {world_points.shape[1]}.",
+    )
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights)
 
