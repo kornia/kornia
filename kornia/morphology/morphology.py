@@ -217,69 +217,23 @@ def dilation(
         therefore reaches the output whenever a geodesic window is empty or the range of ``x`` plus
         ``structuring_element`` approaches it, and the geodesic pad bounds the accuracy of
         ``engine="convolution"``. The same sentinel is used in all seven functions. Keep it well above that
-        range and finite in the operands' dtypes: a finite ``max_val`` above 65504 makes the geodesic pad of
-        a ``float16`` image raise on CPU and CUDA but round on MPS, and storing it into a ``float16`` kernel or
-        structuring element -- which includes a ``bool`` or integer kernel on a ``float16`` image, since the
-        image lends it its dtype -- raises on MPS and on CPU with torch 2.5.1 but rounds on CPU and CUDA with
-        torch 2.14 (to ``-65504``, or to ``-inf`` from 65520); that store converts the scalar before it looks
-        for a zero cell, so a kernel of all ones raises there too.
+        range and finite in the operands' dtypes (at most 65504 for ``float16``); a larger value raises or
+        rounds depending on the backend and the torch release.
         Tracked in `#4734 <https://github.com/kornia/kornia/issues/4734>`_.
 
     .. warning::
-        Only floating-point images are supported; on one, a ``bool`` or integer ``kernel`` is fine (see the
-        first item below). The ``max_val`` sentinel is stored into the image's geodesic pad *and* into the
-        kernel -- into ``structuring_element`` instead when one is given -- so what a non-float call does
-        depends on the pair of dtypes. The ``unfold`` and ``shift`` engines return
-        their promoted dtype (``torch.promote_types`` of ``tensor`` and ``kernel``, or of ``tensor`` and
-        ``structuring_element``):
-        under a border other than ``geodesic``, a ``uint8`` image with a ``float64`` kernel returns
-        ``float64``, not ``float32``. ``engine="convolution"`` casts the kernel and the sentinel to the
-        image's dtype and returns that dtype instead: on CPU a ``uint8`` image then gets an out-of-range cast
-        of the sentinel, which wraps or saturates depending on the platform, the torch release and the kernel
-        cell (dilating ``[10, 20, 30]`` by ``[[1, 1, 0]]`` under ``border_type="constant"`` gives
-        ``[240, 250, 30]`` where ``-max_val`` wraps, while a ``-max_val`` saturated to ``0`` makes the masked
-        cell a member), MPS and CUDA reject every integer image, and a ``bool`` image raises on all three
+        Only floating-point images are supported. On one, a ``bool`` or integer ``kernel`` takes the image's
+        dtype and is only a membership mask: it returns exactly what the same kernel in the image's dtype
+        returns, and with a floating ``structuring_element`` the kernel is only the ``kernel == 0`` mask.
+        A non-float image is not rejected yet; depending on the ``border_type``, the engine, the backend and
+        the torch release it raises, wraps the ``max_val`` sentinel, returns a wrong result or returns another
+        dtype. Tracked in `#4735 <https://github.com/kornia/kornia/issues/4735>`_.
+
+        The ``unfold`` and ``shift`` engines return the promoted dtype of ``tensor`` and ``kernel`` (or of
+        ``tensor`` and ``structuring_element``), while ``engine="convolution"`` casts the kernel and the
+        sentinel to the image's dtype and returns that dtype: a ``float16`` image with a ``float32`` kernel
+        comes back ``float32`` from ``unfold`` and ``shift`` but ``float16`` from ``convolution``
         (`#4762 <https://github.com/kornia/kornia/issues/4762>`_).
-
-        - Without a ``structuring_element``, a floating-point image lends its dtype to a ``bool`` or integer
-          ``kernel``, which is then only a membership mask and returns exactly what the same kernel in the
-          image's dtype does. On a non-float image the masked-out cells store ``-max_val`` in the kernel's own
-          dtype instead. A kernel dtype that cannot hold ``-max_val``, ``uint8`` among them, then raises an
-          overflow ``RuntimeError`` under every ``border_type`` whose pad accepts the image (the next two items
-          say which do not). A ``bool`` kernel stores it as ``True``: every function but :func:`dilation`
-          contains an erosion, which raises a torch error (``NotImplementedError`` on recent torch,
-          ``RuntimeError`` on older releases) except under ``engine="convolution"`` with an integer image on
-          CPU, where it runs under every such border and a ``False`` cell contributes ``x - 1`` in the image's
-          dtype, wrapping at its bounds (a ``uint8`` image turns ``0 - 1`` into ``255``); :func:`dilation` is
-          silently wrong under every ``border_type`` as soon as the kernel holds a ``False`` cell, which then
-          contributes ``x + 1`` (wrapping likewise) instead of being left out -- for a ``bool`` image, ``True``
-          everywhere under every border that accepts one. With a floating ``structuring_element`` the kernel
-          is only the ``kernel == 0`` mask, and a ``uint8`` or ``bool`` kernel returns what the floating kernel
-          does.
-        - The geodesic pad stores :math:`\mp` ``max_val`` in the image's dtype. A ``uint8`` image raises an
-          overflow ``RuntimeError`` there on CPU and CUDA whenever the kernel needs a pad, while on MPS the
-          sentinel wraps modulo 256 instead of raising. Under the other ``border_type`` values a ``uint8``
-          image with a floating kernel runs and returns the dtype described above. An ``int64`` image is
-          silently wrong once its range approaches ``max_val``, and a ``float32`` kernel promotes it to
-          ``float32``, which cannot hold every integer above :math:`2^{24}` whatever ``max_val`` is.
-        - On CPU and CUDA a ``bool`` image stores the geodesic pad as ``True``. With a floating kernel, or a
-          ``bool`` kernel with no ``False`` cell, :func:`dilation` returns the correct dilation plus a ``True``
-          (or ``1``) border ring, as wide on each side as the kernel's members reach past that edge: the whole
-          pad for a rectangle of ones, the right side only for ``[[1, 1, 0, 0, 0]]``. The ring alone fills only an
-          image no larger than itself (an all-``False`` :math:`1 \times 5` under ``ones(1, 3)`` keeps three
-          ``False`` pixels); the :math:`1 \times 5` of the issue comes back all ``True`` because the ring and
-          the true dilation of its centre pixel together cover it. The result is exact with a
-          :math:`1 \times 1` kernel, with ``border_type="constant"`` and with ``circular``, which pads the
-          image's own values. With a floating kernel and the ``shift`` engine, :func:`erosion` is exact under
-          the geodesic pad, because ``True`` cannot lower a minimum, and :func:`gradient` inherits the ring
-          from :func:`dilation`; under ``unfold`` (the ``"auto"`` choice on CUDA) the erosion raises. On CPU
-          and CUDA the ``reflect`` and ``replicate`` pads raise on a ``bool`` image. MPS stores the raw bytes of
-          :math:`\mp` ``max_val`` modulo 256 in the pad instead of ``True`` (240 and 16 for ``1e4``), which
-          torch 2.14 reads as ``True`` unless they are ``0`` and torch 2.5.1 as signed integers, so there the
-          ring and the exactness of :func:`erosion` depend on ``max_val``: ``1e4`` leaves no ring on torch 2.5.1
-          (``-16`` with a floating kernel), and ``9984`` leaves no ring and erodes the border to ``0`` on both.
-
-        Tracked in `#4735 <https://github.com/kornia/kornia/issues/4735>`_.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -417,33 +371,23 @@ def erosion(
         scikit-image centres an even-sized footprint one cell earlier, so it matches kornia's ``erosion`` at
         ``origin=[(k_h - 1) // 2, (k_w - 1) // 2]`` instead.
         Under ``border_type="geodesic"`` a window with no in-image kernel cell is empty. scipy and
-        scikit-image return ``inf`` there and OpenCV the dtype's largest value (``FLT_MAX`` for ``float32``),
-        while kornia returns a finite value that depends on the image. For a flat kernel with at least one
-        non-zero cell, an image and kernel of one dtype (a floating-point image lends its dtype to a ``bool``
-        or integer kernel) and any engine but ``"convolution"``, it is ``s + min(0, m)`` rounded to that dtype,
-        where ``s`` is the value that dtype stores for ``max_val`` (``9984`` in ``bfloat16``) and ``m`` the
-        smallest in-image pixel under a masked-out cell of that window (``min(0, m)`` is ``0`` when there is
-        none). A negative pixel there can pull it below ``max_val``: ``x=[[-2.]]`` with ``kernel=[[0, 1]]``
-        and ``origin=[0, 0]`` returns ``9998`` in ``float32``, and ``x=[[-34.]]`` returns ``9920`` in
-        ``bfloat16`` (``9984 - 34`` rounded), not ``9984`` (``1e4 - 34`` rounded). :func:`dilation` mirrors it
-        with ``-s + max(0, M)``, ``M`` the largest such pixel.
+        scikit-image return ``inf`` there, while kornia returns a finite value built from ``max_val`` and the
+        image (``-max_val`` and the image in :func:`dilation`), not an infinity; see the first warning in
+        :func:`dilation`.
 
         Under ``border_type="geodesic"`` or ``"circular"``, with a flat structuring element and any engine but
         ``"convolution"``, ``dilation`` and ``erosion`` with the same ``kernel`` and ``origin`` are an adjoint
         pair -- ``dilation(x) <= y`` everywhere exactly when ``x <= erosion(y)`` everywhere -- while no window
-        is empty and :math:`|x|` stays well below ``max_val``. The finite sentinel breaks the pair
-        otherwise: with ``max_val=1``, ``x = y = [[-2.]]``, ``kernel=[[0, 1]]`` and ``origin=[0, 0]``,
-        ``dilation(x) <= y`` is false while ``x <= erosion(y)`` is true. The ``constant``, ``reflect`` and
-        ``replicate`` pads can break it with no window empty: under ``border_type="constant"`` with
-        ``ones(3, 3)`` and ``x = y = -1`` everywhere, the same two tests disagree. The duality of
+        is empty and :math:`|x|` stays well below ``max_val``. Otherwise the finite sentinel can break the
+        pair, and the ``constant``, ``reflect`` and ``replicate`` pads can break it with no window empty. The
+        duality of
         ``dilation`` and ``erosion`` under negation is ``erosion(tensor, kernel, origin=origin)`` equals
         ``-dilation(-tensor, kernel.flip((0, 1)), origin=[k_h - 1 - origin[0], k_w - 1 - origin[1]])``, which
         is exact up to the sign of a zero for a flat structuring element and, under ``border_type="constant"``,
         ``border_value=0``; a non-flat ``structuring_element`` has to be flipped with the kernel, and under
         ``constant`` a non-zero ``border_value`` has to be negated (the other borders ignore it).
 
-        The two ``.. warning::`` blocks in :func:`dilation` describe this function too, including what a
-        ``bool`` kernel does to an erosion of a non-float image.
+        The two ``.. warning::`` blocks in :func:`dilation` describe this function too.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -587,9 +531,8 @@ def opening(
         below ``max_val``, the invariants are exact for ``[[0, 1, 1]]`` and for
         ``[[0, 0, 0], [0, 1, 1], [0, 1, 0]]`` at the default origin and for ``ones(3, 3)`` at
         ``origin=[0, 0]``; the ``constant`` and ``reflect`` borders can break them even for those kernels,
-        and so can a non-flat ``structuring_element``, which is subtracted and added back and rounds on the
-        way (``structuring_element=[[0.7]]`` with ``ones(1, 1)`` opens ``0.1`` to ``0.10000002`` in
-        ``float32``), and ``engine="convolution"`` wherever its ``conv2d`` rounds.
+        and so can a non-flat ``structuring_element``, which is subtracted and added back and can round on
+        the way, and ``engine="convolution"`` wherever its ``conv2d`` rounds.
         ``[[1, 0, 0]]``, whose window leaves the image on one side only, depends on the border: under the
         default ``geodesic`` it can miss idempotence, and on negative data anti-extensivity too, by less than
         one ULP of ``max_val`` in the image's dtype; under ``replicate`` it stays idempotent but is not
@@ -601,14 +544,9 @@ def opening(
         bit-equal to ``opening`` at that origin on random frames for odd and even kernels alike while no
         window is empty (an empty one returns an infinity there and a finite value here: the sentinel, or an
         ordinary-looking one such as ``0``).
-        ``scipy.ndimage.grey_opening`` has no ignore mode, and a single ``cval=-inf`` pads its erosion half
-        with ``-inf`` as well, so it is anti-extensive but differs from ``opening`` at the border and can
-        return ``-inf`` there (the whole last column for ``[[1, 0, 0]]``). At their shared default
-        ``mode="reflect"`` neither is anti-extensive for ``[[1, 0, 0]]``, while the symmetric ``[[1, 0, 1]]``,
-        which omits its origin too, stays anti-extensive there. OpenCV's ``MORPH_OPEN`` composes without a
-        flip, so it is an opening only for a kernel symmetric about its anchor: an asymmetric kernel, or an
-        even-sized one at the default anchor such as ``ones(2, 2)``, makes it alter a block that ``opening``
-        leaves untouched. Conventions otherwise as in :func:`dilation`.
+        ``scipy.ndimage.grey_opening`` has no ignore mode, so it differs from ``opening`` at the border.
+        OpenCV's ``MORPH_OPEN`` composes without a flip, so it agrees with ``opening`` only for a kernel
+        symmetric about its anchor. Conventions otherwise as in :func:`dilation`.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -723,9 +661,8 @@ def closing(
         below ``max_val``, the invariants are exact for ``[[0, 1, 1]]`` and for
         ``[[0, 0, 0], [0, 1, 1], [0, 1, 0]]`` at the default origin and for ``ones(3, 3)`` at
         ``origin=[0, 0]``; the ``constant`` and ``reflect`` borders can break them even for those kernels,
-        and so can a non-flat ``structuring_element``, which is added and subtracted back and rounds on the
-        way (``structuring_element=[[0.3]]`` with ``ones(1, 1)`` closes ``0.1`` to ``0.09999999`` in
-        ``float32``), and ``engine="convolution"`` wherever its ``conv2d`` rounds.
+        and so can a non-flat ``structuring_element``, which is added and subtracted back and can round on
+        the way, and ``engine="convolution"`` wherever its ``conv2d`` rounds.
         ``[[1, 0, 0]]``, whose window leaves the image on one side only, depends on the border: under the
         default ``geodesic`` it can miss extensivity, and on negative data idempotence too, by less than one
         ULP of ``max_val`` in the image's dtype; under ``replicate`` it stays idempotent but is not extensive
@@ -736,14 +673,9 @@ def closing(
         ``closing(x, kernel.flip((0, 1)))`` on random frames for odd-sized and even-sized kernels alike while
         no window is empty (an empty one returns an infinity there and a finite value here: the sentinel, or
         an ordinary-looking one) -- so it is a closing too, but a different one for an asymmetric kernel.
-        ``scipy.ndimage.grey_closing`` has no ignore mode, and a single ``cval=+inf`` pads its dilation half
-        with ``+inf`` as well, so it is extensive but differs from ``closing`` at the border and can return
-        ``inf`` there (the whole first column for ``[[1, 0, 0]]``). At their shared default ``mode="reflect"``
-        neither is extensive for ``[[1, 0, 0]]``, while the symmetric ``[[1, 0, 1]]``, which omits its origin
-        too, stays extensive there. OpenCV's ``MORPH_CLOSE`` composes without a flip, so it is a closing only
-        for a kernel symmetric about its anchor: an asymmetric kernel, or an even-sized one at the default
-        anchor such as ``ones(2, 2)``, makes it alter a block that ``closing`` leaves untouched. Conventions
-        otherwise as in :func:`dilation`.
+        ``scipy.ndimage.grey_closing`` has no ignore mode, so it differs from ``closing`` at the border.
+        OpenCV's ``MORPH_CLOSE`` composes without a flip, so it agrees with ``closing`` only for a kernel
+        symmetric about its anchor. Conventions otherwise as in :func:`dilation`.
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
