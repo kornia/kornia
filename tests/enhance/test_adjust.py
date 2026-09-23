@@ -1428,11 +1428,15 @@ _FACTOR_OPS = [
     kornia.enhance.adjust_contrast_with_mean_subtraction,
     kornia.enhance.adjust_brightness,
     kornia.enhance.adjust_brightness_accumulative,
+    kornia.enhance.adjust_gamma,
 ]
 
 
 class TestFactorBroadcast(BaseTester):
-    """A factor carrying more dimensions than the image used to spin forever while broadcasting."""
+    """A factor carrying more dimensions than the image must raise.
+
+    The other factor ops used to spin forever while broadcasting it; ``adjust_gamma`` returned a larger tensor.
+    """
 
     @pytest.mark.parametrize("op", _FACTOR_OPS)
     @pytest.mark.parametrize("img_shape", [(3, 4, 4), (2, 3, 4, 4)])
@@ -1465,3 +1469,9 @@ class TestFactorBroadcast(BaseTester):
         factor = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
         out = kornia.enhance.adjust_brightness(img, factor)
         assert out.shape == img.shape
+
+    def test_overranked_gain_raises(self, device, dtype):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        gain = torch.ones(2, 1, 1, 1, 1, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            kornia.enhance.adjust_gamma(img, 1.0, gain)
