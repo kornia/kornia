@@ -18,7 +18,8 @@
 import pytest
 import torch
 
-from kornia.morphology import top_hat
+from kornia.morphology import morphology as morphology_module
+from kornia.morphology import opening, top_hat
 
 from testing.base import BaseTester, assert_close
 from testing.parametrized_tester import parametrized_test
@@ -122,3 +123,36 @@ class TestTopHat(BaseTester):
         expected = op(sample, kernel)
 
         assert_close(actual, expected)
+
+    def test_convention_top_hat_is_image_minus_opening(self, device, dtype, monkeypatch):
+        # `top_hat` is exactly `x - opening(x)` with the same kernel and the same options, so every
+        # convention of :func:`kornia.morphology.opening` applies to it unchanged. This pins the
+        # composition: both sides call the same `opening`, whose conventions are pinned in
+        # test_opening.py. The equality is repeated with a non-default `border_type`, `border_value`, `origin`
+        # and `max_val`, so a `top_hat` that dropped one of the options would show.
+        # `top_hat` evaluates that very expression, so the two sides are bitwise equal in every dtype.
+        # Generated with:
+        #   L = torch.tensor([[0., 0., 0.], [0., 1., 1.], [0., 1., 0.]])
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0))
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+
+        assert torch.equal(top_hat(tensor, l_kernel), tensor - opening(tensor, l_kernel))
+        # The opening is anti-extensive, so the top hat is non-negative.
+        assert (top_hat(tensor, l_kernel) >= 0).all()
+        # `max_val=0.1` is inside the data range, so a `top_hat` that dropped it for the default `1e4` would show.
+        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0], "max_val": 0.1}
+        assert torch.equal(top_hat(tensor, l_kernel, **options), tensor - opening(tensor, l_kernel, **options))
+
+        # ... and both halves of the `opening` receive the caller's `engine`, which the result need not reveal.
+        seen = []
+        resolve = morphology_module._resolve_engine
+
+        def record(engine, *args):
+            seen.append(engine)
+            return resolve(engine, *args)
+
+        monkeypatch.setattr(morphology_module, "_resolve_engine", record)
+        top_hat(tensor, l_kernel, engine="unfold")
+        assert seen == ["unfold", "unfold"]

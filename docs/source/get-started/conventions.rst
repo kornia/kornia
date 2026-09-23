@@ -465,6 +465,55 @@ Serializing an augmentation
   forward replaces the pending state. Unchanged inherited implementations
   keep the compact metadata state. See :doc:`/augmentation.base` for details.
 
+Morphology
+----------
+
+- :func:`kornia.morphology.dilation` **reflects** the structuring element (the Minkowski convention, as in
+  ``scipy.ndimage``); :func:`kornia.morphology.erosion` does not. For an asymmetric kernel scikit-image returns
+  kornia's dilation by the *flipped* kernel, and OpenCV's ``anchor=(a_x, a_y)`` returns that dilation at
+  ``origin=[k_h - 1 - a_y, k_w - 1 - a_x]``, which at its default anchor is the default origin for an odd size and
+  one cell earlier for an even one.
+- ``origin`` is the ``[row, col]`` index of the structuring-element cell placed on the output pixel, not an offset
+  from the centre, and OpenCV's ``anchor`` is the same index in ``(x, y)`` order for erosion (for dilation see the
+  flip above). The default is ``[k_h // 2, k_w // 2]`` for even sizes too.
+- ``border_type``'s ``reflect`` does not mean what the same word means in scipy and scikit-image (``constant``
+  does): torch's ``reflect`` is their ``mirror``, while their own ``reflect`` -- also their default -- repeats the
+  edge sample and has no kornia spelling. See :func:`kornia.morphology.dilation` for the full convention block.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Behaviour
+     - kornia
+     - ``scipy.ndimage``
+     - scikit-image
+     - OpenCV
+   * - ``dilation`` reflects the kernel
+     - yes
+     - yes
+     - no
+     - no
+   * - ``dilation`` by ``ones(2, 2)`` of a hot pixel at ``(2, 3)``
+     - rows 1-2, cols 2-3
+     - rows 1-2, cols 2-3
+     - rows 1-2, cols 2-3
+     - rows 2-3, cols 3-4
+   * - origin/anchor semantics
+     - ``[row, col]`` index
+     - offset from ``k // 2``
+     - not exposed
+     - ``(x, y)`` index
+   * - default border
+     - ``geodesic`` (ignore outside)
+     - ``reflect`` (scipy's own rule, **not** torch's ``reflect``)
+     - ``reflect`` (same rule as scipy's)
+     - ignore outside
+   * - name of torch's ``reflect``
+     - ``reflect``
+     - ``mirror``
+     - ``mirror``
+     - ``BORDER_REFLECT_101``
+
 Pitfall checklist
 -----------------
 
