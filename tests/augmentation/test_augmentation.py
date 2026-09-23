@@ -1347,6 +1347,8 @@ class TestColorJiggle(BaseTester):
         assert torch.equal(sampled(image, params=params), expected)
         with pytest.raises(ValueError, match=r"entries must be in 0\.\.3"):
             ColorJiggle(order=(0, 1, 9))
+        with pytest.raises(ValueError, match="must not repeat an index"):
+            ColorJiggle(order=(0, 0, 1))
 
     @pytest.mark.device_agnostic
     def test_fixed_order_keeps_distribution_validation(self):
@@ -1803,8 +1805,10 @@ class TestColorJitter(BaseTester):
         img = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         out = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(img)
         assert out.shape == img.shape
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"entries must be in 0\.\.3"):
             ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 1, 9))
+        with pytest.raises(ValueError, match="must not repeat an index"):
+            ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 0, 1))
 
     def test_dynamo_fixed_order(self, device, dtype, torch_optimizer):
         # A fixed `order` avoids iterating the random order tensor, so it is fullgraph-safe.
