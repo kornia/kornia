@@ -1433,7 +1433,10 @@ _FACTOR_OPS = [
 
 
 class TestFactorBroadcast(BaseTester):
-    """A factor carrying more dimensions than the image used to spin forever while broadcasting."""
+    """A factor carrying more dimensions than the image must raise.
+
+    The other factor ops used to spin forever while broadcasting it; ``adjust_gamma`` returned a larger tensor.
+    """
 
     @pytest.mark.parametrize("op", _FACTOR_OPS)
     @pytest.mark.parametrize("img_shape", [(3, 4, 4), (2, 3, 4, 4)])
