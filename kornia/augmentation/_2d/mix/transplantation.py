@@ -124,8 +124,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
           the ``(B, *spatial)`` mask: the labels and ``selection`` come from its spatial layout and it comes back in
           its own ``(B, 1, *spatial)`` layout. That is the layout a container hands on once any other augmentation
           has run, so the transplant works at any position in a pipeline, not only as the first step
-          (`#4707 <https://github.com/kornia/kornia/issues/4707>`_). With no image in the call, a mask keeps its
-          own rank and a size-1 first spatial axis is not squeezed.
+          (`#4707 <https://github.com/kornia/kornia/issues/4707>`_). A further mask one rank above the driving
+          mask is read as ``(B, C, *spatial)``, and every channel moves through the same ``selection``. With no
+          image in the call, a mask keeps its own rank and a size-1 first spatial axis is not squeezed.
 
     Examples:
         >>> import torch

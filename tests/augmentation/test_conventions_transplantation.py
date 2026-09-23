@@ -537,6 +537,19 @@ class TestTransplantationConventions(BaseTester):
         assert aug._params["selection"].shape == (3, 1, 5)
 
     @pytest.mark.device_agnostic
+    def test_convention_a_multi_channel_extra_mask_moves_every_channel_4707(self):
+        # A further mask one rank above the driving mask is read as ``(B, C, *spatial)``: every channel moves
+        # through the same selection as the driving ``(B, *spatial)`` mask.
+        image, mask = _multi_label_batch(batch=3)
+        extra = torch.stack([mask, mask + 10], dim=1)
+        torch.manual_seed(5)
+        _, out_mask, out_extra = K.RandomTransplantation(p=1.0)(image, mask, extra, data_keys=["input", "mask", "mask"])
+        assert out_extra.shape == extra.shape
+        assert not torch.equal(out_mask, mask)  # something really moved
+        assert torch.equal(out_extra[:, 0], out_mask)
+        assert torch.equal(out_extra[:, 1], out_mask + 10)
+
+    @pytest.mark.device_agnostic
     @pytest.mark.parametrize(
         "cls, spatial", [(K.RandomTransplantation, (4, 6)), (K.RandomTransplantation3D, (3, 4, 6))], ids=["2d", "3d"]
     )
