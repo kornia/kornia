@@ -441,19 +441,68 @@ class TestTransplantationConventions(BaseTester):
             K.AugmentationSequential(inner, data_keys=["image", "mask"])(image, mask)
 
     @pytest.mark.device_agnostic
-    def test_wart_container_runs_the_transplant_only_as_the_first_step_4707(self):
-        image, mask = _labelled_batch(batch=3)
-        first = K.AugmentationSequential(
-            K.RandomTransplantation(p=1.0), K.RandomHorizontalFlip(p=0.0), data_keys=["image", "mask"]
-        )
-        _, out_mask = first(image, mask)
-        assert out_mask.shape == (3, 1, 4, 6)  # the later step promoted the mask ...
-        assert not torch.equal(out_mask[:, 0], mask)
-        later = K.AugmentationSequential(
-            K.RandomHorizontalFlip(p=0.0), K.RandomTransplantation(p=1.0), data_keys=["image", "mask"]
-        )
-        with pytest.raises(BaseError, match="one additional dimension"):  # ... and that layout is refused
-            later(image, mask)
+    @pytest.mark.parametrize(
+        "before, seen",
+        [
+            (lambda: K.RandomHorizontalFlip(p=0.0), lambda image: image),
+            (lambda: K.Normalize(0.5, 0.5), lambda image: (image - 0.5) / 0.5),
+        ],
+        ids=["closed-gate-flip", "normalize"],
+    )
+    def test_convention_container_runs_the_transplant_after_another_step_4707(self, before, seen):
+        # Until #4707 any earlier child left the mask as (B, 1, H, W) and the transplant refused it with
+        # "one additional dimension". It now moves exactly what a direct call on the (B, H, W) mask moves.
+        image, mask = _multi_label_batch(batch=3)
+        inner = K.RandomTransplantation(p=1.0)
+        torch.manual_seed(7)
+        out_image, out_mask = K.AugmentationSequential(before(), inner, data_keys=["image", "mask"])(image, mask)
+        assert out_mask.shape == (3, 1, *mask.shape[1:])
+        assert inner._params["selection"].shape == (3, *mask.shape[1:])  # driven by the spatial layout
+        replay = {k: v.clone() for k, v in inner._params.items()}
+        direct_image, direct_mask = K.RandomTransplantation(p=1.0)(seen(image), mask, params=replay)
+        self.assert_close(out_image, direct_image)
+        assert torch.equal(out_mask[:, 0], direct_mask)
+        assert not torch.equal(direct_mask, mask)  # something really moved
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "cls, spatial", [(K.RandomTransplantation, (4, 6)), (K.RandomTransplantation3D, (3, 4, 6))], ids=["2d", "3d"]
+    )
+    def test_convention_a_singleton_channel_mask_is_the_spatial_mask_4707(self, cls, spatial):
+        # A direct call with a (B, 1, *spatial) mask next to a (B, C, *spatial) image selects the same positions as
+        # the (B, *spatial) mask and keeps the caller's layout.
+        image, mask = _labelled_batch(batch=3, spatial=spatial)
+        torch.manual_seed(3)
+        flat_image, flat_mask = cls(p=1.0)(image, mask)
+        torch.manual_seed(3)
+        chan_image, chan_mask = cls(p=1.0)(image, mask[:, None])
+        assert chan_mask.shape == (3, 1, *spatial)
+        self.assert_close(chan_image, flat_image)
+        assert torch.equal(chan_mask[:, 0], flat_mask)
+
+    @pytest.mark.device_agnostic
+    def test_convention_a_mask_only_call_keeps_its_own_rank_4707(self):
+        # With no image to compare against, a (B, 1, W) mask is a (B, *spatial) mask whose first spatial axis is 1:
+        # it is not squeezed, and its selection has that full shape.
+        mask = torch.stack([torch.full((1, 5), i + 1, dtype=torch.long) for i in range(3)])
+        aug = K.RandomTransplantation(p=1.0)
+        torch.manual_seed(0)
+        out = aug(mask, data_keys=["mask"])
+        assert out.shape == mask.shape
+        assert aug._params["selection"].shape == (3, 1, 5)
+
+    @pytest.mark.device_agnostic
+    def test_convention_a_multi_channel_extra_mask_moves_every_channel_4707(self):
+        # A further mask one rank above the driving mask is read as ``(B, C, *spatial)``: every channel moves
+        # through the same selection as the driving ``(B, *spatial)`` mask.
+        image, mask = _multi_label_batch(batch=3)
+        extra = torch.stack([mask, mask + 10], dim=1)
+        torch.manual_seed(5)
+        _, out_mask, out_extra = K.RandomTransplantation(p=1.0)(image, mask, extra, data_keys=["input", "mask", "mask"])
+        assert out_extra.shape == extra.shape
+        assert not torch.equal(out_mask, mask)  # something really moved
+        assert torch.equal(out_extra[:, 0], out_mask)
+        assert torch.equal(out_extra[:, 1], out_mask + 10)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(
