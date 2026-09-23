@@ -281,6 +281,27 @@ class TestSpatialGradient(BaseTester):
         assert actual.is_contiguous()
         assert actual.shape == (3, 3, 2, 5, 5)
 
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_second_order_normalized_quadratics(self, mode, device, dtype):
+        # With normalized=True every second order channel estimates the derivative itself, so on a quadratic
+        # surface the channels are the exact second derivatives and dxx * dyy - dxy**2 is the exact determinant
+        # of the Hessian. Before, dxy had a scale of its own.
+        coords = torch.arange(9, device=device, dtype=dtype)
+        y, x = torch.meshgrid(coords, coords, indexing="ij")
+        surfaces = torch.stack([x * x, x * y, y * y, x * x + y * y, (x + y) ** 2 / 2])[:, None]
+        out = spatial_gradient(surfaces, mode, order=2, normalized=True)[..., 3:-3, 3:-3]
+
+        expected = torch.tensor(
+            [[2.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 2.0], [2.0, 0.0, 2.0], [1.0, 1.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(out, expected[:, None, :, None, None].expand_as(out))
+
+        det = out[:, :, 0] * out[:, :, 2] - out[:, :, 1] ** 2
+        expected_det = torch.tensor([0.0, -1.0, 0.0, 4.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(det, expected_det[:, None, None, None].expand_as(det))
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)

@@ -74,6 +74,27 @@ def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     return input / (norm[..., None, None])
 
 
+def _normalize_kernel2d_2nd_order(input: torch.Tensor) -> torch.Tensor:
+    r"""Scale a stack of second order derivative kernels ``(dxx, dxy, dyy)`` to derivative estimates.
+
+    Each kernel is divided by the magnitude of its response to the quadratic whose second derivative it
+    estimates, ``x**2 / 2`` for ``dxx``, ``x * y`` for ``dxy`` and ``y**2 / 2`` for ``dyy``, so the three
+    channels come out in the same units. Dividing every kernel by its own absolute sum instead, as
+    :func:`normalize_kernel2d` does, scales the mixed kernel differently from the pure ones.
+    """
+    KORNIA_CHECK_SHAPE(input, ["3", "H", "W"])
+
+    h, w = input.shape[-2:]
+    y = torch.arange(h, device=input.device, dtype=torch.float32) - (h - 1) / 2
+    x = torch.arange(w, device=input.device, dtype=torch.float32) - (w - 1) / 2
+    y, x = torch.meshgrid(y, x, indexing="ij")
+    quadratics = torch.stack([x * x / 2, x * y, y * y / 2])
+
+    norm = (input * quadratics).sum(dim=(-2, -1)).abs().to(input.dtype)
+
+    return input / norm[:, None, None]
+
+
 def gaussian(
     window_size: int,
     sigma: torch.Tensor | float,
