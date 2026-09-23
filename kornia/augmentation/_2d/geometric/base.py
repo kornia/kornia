@@ -41,6 +41,21 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           to the batch form ``False``.
 
     Convention:
+        - pixel coordinates are ``(x, y)`` at integer pixel centres, with corners ``(0, 0)`` and
+          ``(W - 1, H - 1)`` (see :doc:`/get-started/conventions`); rotations, shears and affine maps are centred
+          at ``((W - 1) / 2, (H - 1) / 2)``, and ``transform_matrix`` maps input pixel coordinates to output pixel
+          coordinates. Two exceptions: with pre-crop padding (``padding`` or ``pad_if_needed``), the matrix of
+          :class:`RandomCrop` starts from the padded canvas
+          (`#4801 <https://github.com/kornia/kornia/issues/4801>`_); at ``align_corners=False``, the bilinear and
+          bicubic interpolation of :class:`Resize`, :class:`LongestMaxSize`, :class:`SmallestMaxSize` and
+          slice-mode :class:`RandomResizedCrop` samples on a half-pixel grid that the matrix does not follow
+          (`#4804 <https://github.com/kornia/kornia/issues/4804>`_).
+        - the resampling classes, including the non-rigid :class:`RandomElasticTransform` and
+          :class:`RandomThinPlateSpline`, default to bilinear interpolation with zero sampler padding. The
+          ``align_corners`` default is ``True`` for :class:`RandomRotation`, :class:`RandomRotation90` and the crop
+          and resize classes, and ``False`` for :class:`RandomAffine`, :class:`RandomShear`,
+          :class:`RandomTranslate`, :class:`RandomPerspective`, :class:`RandomElasticTransform` and
+          :class:`RandomThinPlateSpline` (`#4412 <https://github.com/kornia/kornia/issues/4412>`_).
         - this base provides a matrix-based ``inverse`` interface. Whether a concrete augmentation can invert a
           call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or
