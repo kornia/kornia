@@ -85,7 +85,6 @@ class HomographyWarper(BaseWarper):
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
         coordinates and sampling conventions.
 
-        - align_corners: ``False`` by default, matching :func:`homography_warp`
         - See the convention block of :func:`homography_warp`.
 
     Args:
