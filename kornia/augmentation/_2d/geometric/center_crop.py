@@ -53,18 +53,14 @@ class CenterCrop(GeometricAugmentationBase2D):
         This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
 
     Convention:
-        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
-        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
-        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
-        ``size`` accepts an integer for a square crop or an
-        ``(height, width)`` tuple. The fixed centre crop is shared by every selected image in a batch.
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        ``size`` accepts an integer for a square crop or an ``(height, width)`` tuple, unlike
+        :class:`RandomCrop` and :class:`RandomResizedCrop` (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
 
-        When the crop is selected, ``cropping_mode="slice"`` indexes the input directly and returns a copy of the
-        indexed region, so writing to the result leaves the input unchanged. ``cropping_mode="resample"`` uses
-        ``crop_by_transform_mat`` with the configured ``resample`` (bilinear by default), ``align_corners`` (``True``
-        by default), and zero padding. Only resample mode supports
-        :meth:`inverse`; it resamples onto the original canvas with zero padding by default and cannot restore discarded
-        data. The inverse call can override ``padding_mode``, for example with ``padding_mode="border"``.
+        ``cropping_mode="slice"`` indexes the input and returns a copy, so writing to the result leaves the input
+        unchanged. ``cropping_mode="resample"`` warps with the configured ``resample`` and ``align_corners``. Only
+        resample mode supports :meth:`inverse`, which resamples onto the original canvas (zero padding unless the
+        call passes ``padding_mode``) and cannot restore discarded data.
 
     Examples:
         >>> import torch

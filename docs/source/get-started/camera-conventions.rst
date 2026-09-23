@@ -79,8 +79,7 @@ rest of the functional camera API assume.
 
    :meth:`kornia.geometry.camera.pinhole.PinholeCamera.scale` (and ``scale_``, and
    :meth:`kornia.sensors.camera.PinholeModel.scale`) rescale the principal point as ``cx' = s * cx`` — the COLMAP
-   rule — which disagrees with the integer pixel centres the rest of the library uses. It is documented as it
-   is and tracked as a coordinated repair in
+   rule — which disagrees with the integer pixel centres the rest of the library uses:
    `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
 
 Camera and world frames
@@ -188,7 +187,7 @@ Intrinsics layout
   and ``intrinsics[3, 3]`` rescales every unprojected point. The layout is not validated: a ``3x3`` ``K`` zero-padded
   without ``intrinsics[3, 3] = 1`` still projects, but ``unproject`` fails on a singular matrix
   (`#4771 <https://github.com/kornia/kornia/issues/4771>`_). Its class docstring documents the layout and the
-  deviations.
+  zero-padded case.
 - **Depth means two different things.** It is the camera-frame ``z`` by default, and the Euclidean ray length
   when :func:`kornia.geometry.camera.perspective.unproject_points` is called with ``normalize=True`` (the
   ``normalize_points`` flags of :func:`kornia.geometry.depth.depth_to_3d` and

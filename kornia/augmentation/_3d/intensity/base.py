@@ -33,9 +33,7 @@ class IntensityAugmentationBase3D(RigidAffineAugmentationBase3D):
           form ``False``.
 
     Convention:
-        - these augmentations leave voxel coordinates in place and record an identity ``(B, 4, 4)`` matrix.
-          They still have no direct ``inverse`` method; a container skips them on its inverse path.
-        - their image-value requirements are class-specific. In particular, :class:`RandomEqualize3D` documents
-          ``[0, 1]`` as its intended range and qualifies its device-specific validation.
+        - these augmentations leave voxel coordinates in place: they record an identity ``(B, 4, 4)`` matrix,
+          and a container skips them on its inverse path.
 
     """

@@ -81,14 +81,16 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         - ``size`` and the output shape are ordered ``(D, H, W)``. A scalar ``padding`` expands to every side;
           three values expand as ``(left/right, top/bottom, front/back)``, and six are passed to
           :func:`torch.nn.functional.pad` as ``(left, right, top, bottom, front, back)`` before the crop is drawn.
-        - ``transform_matrix`` maps the padded volume to the crop, not the original input to the crop. Add the
-          left, top, and front padding to an original ``(x, y, z)`` point before applying this matrix. For example,
-          padding a ``3 x 3 x 3`` input by ``1`` and cropping the full ``5 x 5 x 5`` volume records an identity
-          matrix even though the original voxel ``(1, 1, 1)`` moves to ``(2, 2, 2)``.
+        - ``transform_matrix`` maps the padded volume to the crop, not the original input to the crop
+          (`#4801 <https://github.com/kornia/kornia/issues/4801>`_). Add the left, top, and front padding to an
+          original ``(x, y, z)`` point before applying this matrix: padding a ``3 x 3 x 3`` input by ``1`` and
+          cropping the full ``5 x 5 x 5`` volume records an identity matrix although voxel ``(1, 1, 1)`` moves to
+          ``(2, 2, 2)``.
         - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped: a
-          crop larger than the padded volume along any axis, even by one voxel, raises ``ValueError``
-          (:class:`CenterCrop3D` rejects the same request with ``AssertionError``); a crop equal to it is valid.
-          A valid gated-off call returns the input itself -- unpadded, at the input shape rather than ``size`` --
+          crop larger than the padded volume along any axis, even by one voxel, raises; a crop equal to it is
+          valid. The exception types differ from :class:`CenterCrop3D`'s, and an ``int`` ``size`` is rejected
+          (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
+          A valid gated-off call returns the input unchanged -- unpadded, at the input shape rather than ``size`` --
           with an identity ``transform_matrix``.
           Defaults are bilinear resampling and ``align_corners=True``.
 

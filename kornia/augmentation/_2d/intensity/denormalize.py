@@ -45,16 +45,10 @@ class Denormalize(IntensityAugmentationBase2D):
         Denormalised tensor with same size as input :math:`(*, C, H, W)`.
 
     Convention:
-        - ``mean`` and ``std`` accept a float, a per-channel sequence or tensor, or a per-sample ``(B, C)``
-          tensor; a length that is neither ``1`` nor the channel count raises.
-        - ``p`` gates the whole batch rather than each sample: the constructor hard-codes
-          ``same_on_batch=True``, which collapses the per-sample draw to a single one, and it takes no
-          ``same_on_batch`` argument of its own -- the ``Args`` entry that claimed one was part of
-          `#4496 <https://github.com/kornia/kornia/issues/4496>`_ and is removed here.
-        - the statistics live in ``flags`` rather than in a buffer, so ``state_dict()`` is empty and
-          ``Module.to(...)`` leaves their device and dtype alone.
-        - this class inverts :class:`Normalize` built with the same float, integer, sequence or tensor ``mean`` and
-          ``std``, up to float rounding, when both apply -- each draws its own ``p`` gate.
+        - the ``mean`` and ``std`` forms, the batch-wide ``p`` gate and the storage in ``flags`` are those of
+          :class:`Normalize`.
+        - this class inverts :class:`Normalize` built with the same ``mean`` and ``std``, up to float rounding,
+          when both apply -- each draws its own ``p`` gate.
         - the result is not clamped: it is ``input * std + mean`` whatever range the input is in.
 
     .. note::
