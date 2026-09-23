@@ -423,6 +423,107 @@ class TestErode(BaseTester):
 
         self.assert_close(erosion(tensor, kernel), op_optimized(tensor, kernel))
 
+    def test_shift_engine_forward_only_matches_autograd_safe(self, device, dtype):
+        tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
+        kernel = torch.randn(3, 3, device=device, dtype=dtype)
+
+        forward = erosion(tensor, kernel, engine="shift")
+        safe = erosion(tensor.clone().requires_grad_(True), kernel, engine="shift").detach()
+
+        assert torch.equal(forward, safe)
+
+    @pytest.mark.parametrize("operand", ["image", "structuring_element"])
+    def test_shift_engine_forward_ad(self, device, dtype, operand):
+        # ``out=`` ops have no forward-mode AD formula, so a tangent on either operand must keep the
+        # out-of-place reduction. ``make_dual`` is used because ``torch.func.jvp`` is a functorch transform,
+        # which the in-place gate declines before it looks at the tangents.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half-precision sums tie, and tied tangents differ between engines")
+
+        tensor = torch.rand(1, 1, 9, 11, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+        structuring_element = torch.randn(3, 3, device=device, dtype=dtype)
+        primal = tensor if operand == "image" else structuring_element
+        tangent = torch.randn_like(primal)
+
+        def run(engine):
+            with torch.autograd.forward_ad.dual_level():
+                dual = torch.autograd.forward_ad.make_dual(primal, tangent)
+                if operand == "image":
+                    output = erosion(dual, kernel, structuring_element, engine=engine)
+                else:
+                    output = erosion(tensor, kernel, dual, engine=engine)
+                return torch.autograd.forward_ad.unpack_dual(output)
+
+        actual, expected = run("shift"), run("unfold")
+
+        self.assert_close(actual.primal, expected.primal)
+        self.assert_close(actual.tangent, expected.tangent)
+
+    def test_shift_engine_vmap(self, device, dtype):
+        tensor = torch.rand(2, 3, 1, 9, 11, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        actual = torch.func.vmap(lambda x: erosion(x, kernel, engine="shift"))(tensor)
+        expected = torch.func.vmap(lambda x: erosion(x, kernel, engine="unfold"))(tensor)
+
+        assert torch.equal(actual, expected)
+
+    def test_shift_engine_jit_save(self, device, dtype):
+        import io
+
+        scripted = torch.jit.script(erosion)
+        buffer = io.BytesIO()
+        torch.jit.save(scripted, buffer)
+        assert buffer.getbuffer().nbytes > 0
+
+    def test_shift_engine_onnx_trace(self, device, dtype):
+        import io
+
+        if device.type != "cpu":
+            pytest.skip("the TorchScript-based ONNX export is checked on CPU")
+        pytest.importorskip("onnx")
+
+        class Morphology(torch.nn.Module):
+            def forward(self, x):
+                kernel = torch.ones(3, 3, device=x.device, dtype=x.dtype)
+                return erosion(x, kernel, engine="shift")
+
+        tensor = torch.rand(1, 1, 9, 11, device=device, dtype=dtype)
+        buffer = io.BytesIO()
+
+        torch.onnx.export(
+            Morphology(),
+            (tensor,),
+            buffer,
+            dynamo=False,
+        )
+
+        assert buffer.getbuffer().nbytes > 0
+
+    def test_shift_engine_reduces_in_place_only_without_grad(self, device, dtype, monkeypatch):
+        calls = []
+        original = morphology_module._shift_reduce
+
+        def wrapped(*args, **kwargs):
+            calls.append(args[-1])
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(morphology_module, "_shift_reduce", wrapped)
+
+        tensor = torch.rand(1, 1, 9, 11, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        erosion(tensor, kernel, engine="shift")
+
+        with torch.enable_grad():
+            erosion(tensor.requires_grad_(True), kernel, engine="shift")
+
+        with torch.no_grad():
+            erosion(tensor, kernel, engine="shift")
+
+        assert calls == [True, False, True]
+
     def test_shift_engine_jit(self, device, dtype):
         op_script = torch.jit.script(erosion)
         tensor = torch.rand(1, 2, 7, 7, device=device, dtype=dtype)

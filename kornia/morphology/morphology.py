@@ -48,7 +48,21 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     return kernel.view(h * w, 1, h, w)
 
 
-def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, width: int, dilate: bool) -> torch.Tensor:
+@torch.jit.unused
+def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
+    if torch.jit.is_tracing() or torch._C._are_functorch_transforms_active():
+        return False
+    return all(torch.autograd.forward_ad.unpack_dual(t).tangent is None for t in (padded, offsets))
+
+
+def _shift_reduce(
+    padded: torch.Tensor,
+    offsets: torch.Tensor,
+    height: int,
+    width: int,
+    dilate: bool,
+    inplace: bool,
+) -> torch.Tensor:
     """Running max (``dilate``) or min over the ``k_h * k_w`` shifted views of ``padded`` plus their offsets.
 
     The ``shift`` engine: output pixel ``(y, x)`` reduces ``padded[y + i, x + j] + offsets[i, j]`` over the
@@ -74,7 +88,10 @@ def _shift_reduce(padded: torch.Tensor, offsets: torch.Tensor, height: int, widt
             if i == 0 and j == 0:
                 continue
             shifted = padded[..., i : i + height, j : j + width] + offsets[i : i + 1, j : j + 1]
-            output = torch.maximum(output, shifted) if dilate else torch.minimum(output, shifted)
+            if inplace:
+                torch.maximum(output, shifted, out=output) if dilate else torch.minimum(output, shifted, out=output)
+            else:
+                output = torch.maximum(output, shifted) if dilate else torch.minimum(output, shifted)
     return output
 
 
@@ -258,7 +275,8 @@ def dilation(
     # The max-plus terms compute in the promoted dtype, which the dtype rule of ``auto`` has to see: a
     # float16 image with a float32 kernel computes, and differentiates, in float32.
     compute_dtype = torch.promote_types(tensor.dtype, neighborhood.dtype)
-    engine = _resolve_engine(engine, tensor, _records_grad(tensor, structuring_element), compute_dtype)
+    recording_grad = _records_grad(tensor, structuring_element)
+    engine = _resolve_engine(engine, tensor, recording_grad, compute_dtype)
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
@@ -275,7 +293,18 @@ def dilation(
         ).max(dim=1)
         output = output.view(B, C, H, W)
     elif engine == "shift":
-        output = _shift_reduce(output, neighborhood.flip((0, 1)), tensor.shape[-2], tensor.shape[-1], True)
+        offsets = neighborhood.flip((0, 1))
+        inplace = False
+        if not torch.jit.is_scripting():
+            inplace = not recording_grad and _can_reduce_in_place(output, offsets)
+        output = _shift_reduce(
+            output,
+            offsets,
+            tensor.shape[-2],
+            tensor.shape[-1],
+            True,
+            inplace,
+        )
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
     return output.view_as(tensor)
@@ -389,7 +418,8 @@ def erosion(
     # The max-plus terms compute in the promoted dtype, which the dtype rule of ``auto`` has to see: a
     # float16 image with a float32 kernel computes, and differentiates, in float32.
     compute_dtype = torch.promote_types(tensor.dtype, neighborhood.dtype)
-    engine = _resolve_engine(engine, tensor, _records_grad(tensor, structuring_element), compute_dtype)
+    recording_grad = _records_grad(tensor, structuring_element)
+    engine = _resolve_engine(engine, tensor, recording_grad, compute_dtype)
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.min(output - neighborhood, 4)
@@ -406,7 +436,18 @@ def erosion(
         ).min(dim=1)
         output = output.view(B, C, H, W)
     elif engine == "shift":
-        output = _shift_reduce(output, -neighborhood, tensor.shape[-2], tensor.shape[-1], False)
+        offsets = -neighborhood
+        inplace = False
+        if not torch.jit.is_scripting():
+            inplace = not recording_grad and _can_reduce_in_place(output, offsets)
+        output = _shift_reduce(
+            output,
+            offsets,
+            tensor.shape[-2],
+            tensor.shape[-1],
+            False,
+            inplace,
+        )
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
 
