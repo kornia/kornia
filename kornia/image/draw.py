@@ -45,9 +45,8 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
     )
     points = points.to(dtype=torch.int64, device=image.device)
     # A single [x, y] vector is a common call shape; zip(*points) iterated 0-d
-    # scalars and raised TypeError. An empty (0, 2) set used to fail unpacking.
-    if points.numel() == 0:
-        return image
+    # scalars and raised TypeError. An empty (0, 2) set used to fail unpacking;
+    # indexing with empty columns now leaves the image unchanged.
     if points.ndim == 1:
         KORNIA_CHECK(points.numel() == 2, "A 1D points tensor must have shape (2,) as [x, y]")
         points = points.unsqueeze(0)
