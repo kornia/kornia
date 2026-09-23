@@ -199,9 +199,9 @@ def dilation(
         ``structuring_element`` approaches it, and the geodesic pad bounds the accuracy of
         ``engine="convolution"``. The same sentinel is used in all seven functions. Keep it well above that
         range and finite in the operands' dtypes: a finite ``max_val`` above 65504 makes the geodesic pad of
-        a ``float16`` image raise on CPU but round on MPS, and storing it into a ``float16`` kernel or
-        structuring element raises on MPS and on CPU with torch 2.5.1 but rounds on CPU with torch 2.14 (to
-        ``-65504``, or to ``-inf`` from 65520).
+        a ``float16`` image raise on CPU and CUDA but round on MPS, and storing it into a ``float16`` kernel or
+        structuring element raises on MPS and on CPU with torch 2.5.1 but rounds on CPU and CUDA with torch
+        2.14 (to ``-65504``, or to ``-inf`` from 65520).
         Tracked in `#4734 <https://github.com/kornia/kornia/issues/4734>`_.
 
     .. warning::
@@ -216,7 +216,7 @@ def dilation(
         of the sentinel, which wraps or saturates depending on the platform, the torch release and the kernel
         cell (dilating ``[10, 20, 30]`` by ``[[1, 1, 0]]`` under ``border_type="constant"`` gives
         ``[240, 250, 30]`` where ``-max_val`` wraps, while a ``-max_val`` saturated to ``0`` makes the masked
-        cell a member), MPS rejects every integer image, and a ``bool`` image raises on both
+        cell a member), MPS and CUDA reject every integer image, and a ``bool`` image raises on all three
         (`#4762 <https://github.com/kornia/kornia/issues/4762>`_).
 
         - Without a ``structuring_element``, the masked-out cells store ``-max_val`` in the kernel's dtype.
@@ -230,15 +230,15 @@ def dilation(
           ``structuring_element`` the kernel is only the ``kernel == 0`` mask, and a ``uint8`` or ``bool``
           kernel returns what the floating kernel does.
         - The geodesic pad stores :math:`\mp` ``max_val`` in the image's dtype. A ``uint8`` image raises an
-          overflow ``RuntimeError`` there on CPU whenever the kernel needs a pad, while on MPS the sentinel
+          overflow ``RuntimeError`` there on CPU and CUDA whenever the kernel needs a pad, while on MPS the sentinel
           wraps modulo 256 instead of raising; under the other ``border_type`` values a ``uint8`` image with a
           floating kernel runs and returns the dtype described above. An ``int64`` image is silently wrong once its
           range approaches ``max_val``, and a ``float32`` kernel promotes it to ``float32``, which cannot
           hold every integer above :math:`2^{24}` whatever ``max_val`` is.
-        - On CPU a ``bool`` image stores the geodesic pad as ``True``. With a floating kernel, or a ``bool`` kernel
-          with no ``False`` cell, :func:`dilation` returns the correct dilation plus a ``True`` (or ``1``)
-          border ring, as wide on each side as the kernel's members reach past that edge: the whole pad for a
-          rectangle of ones, the right side only for ``[[1, 1, 0, 0, 0]]``. The ring alone fills only an
+        - On CPU and CUDA a ``bool`` image stores the geodesic pad as ``True``. With a floating kernel, or a
+          ``bool`` kernel with no ``False`` cell, :func:`dilation` returns the correct dilation plus a ``True``
+          (or ``1``) border ring, as wide on each side as the kernel's members reach past that edge: the whole
+          pad for a rectangle of ones, the right side only for ``[[1, 1, 0, 0, 0]]``. The ring alone fills only an
           image no larger than itself (an all-``False`` :math:`1 \times 5` under ``ones(1, 3)`` keeps three
           ``False`` pixels); the :math:`1 \times 5` of the issue comes back all ``True`` because the ring and
           the true dilation of its centre pixel together cover it. The result is exact with a
@@ -246,7 +246,7 @@ def dilation(
           image's own values. With a floating kernel and the ``shift`` engine, :func:`erosion` is exact under
           the geodesic pad, because ``True`` cannot lower a minimum, and :func:`gradient` inherits the ring
           from :func:`dilation`; under ``unfold`` (the ``"auto"`` choice on CUDA) the erosion raises. On CPU
-          the ``reflect`` and ``replicate`` pads raise on a ``bool`` image. MPS stores the raw bytes of
+          and CUDA the ``reflect`` and ``replicate`` pads raise on a ``bool`` image. MPS stores the raw bytes of
           :math:`\mp` ``max_val`` modulo 256 in the pad instead of ``True`` (240 and 16 for ``1e4``), which
           torch 2.14 reads as ``True`` unless they are ``0`` and torch 2.5.1 as signed integers, so there the
           ring and the exactness of :func:`erosion` depend on ``max_val``: ``1e4`` leaves no ring on torch 2.5.1

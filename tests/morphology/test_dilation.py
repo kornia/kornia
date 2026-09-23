@@ -726,22 +726,23 @@ class TestDilate(BaseTester):
         assert erosion(five, torch.zeros(1, 1, device=device, dtype=dtype)).item() == 10005.0
 
         # float16 cannot hold a `max_val` above 65504, and what happens depends on where the sentinel is stored.
-        # The geodesic pad of a float16 image raises on CPU but rounds to -65504 on MPS. Storing it into a
-        # float16 kernel raises on MPS and on CPU with torch 2.5.1, and rounds on CPU with torch 2.14 (to -65504
-        # below 65520, to -inf from there), which leaves the value unchanged. Generated with kornia in this
-        # worktree (torch 2.14.0 and 2.5.1, CPU and MPS):
-        #   dilation(half image, ones(3, 3) float32, max_val=65510.)             CPU -> overflow; MPS -> runs
+        # The geodesic pad of a float16 image raises on CPU and CUDA but rounds to -65504 on MPS. Storing it
+        # into a float16 kernel raises on MPS and on CPU with torch 2.5.1, and rounds on CPU and CUDA with
+        # torch 2.14 (to -65504 below 65520, to -inf from there), which leaves the value unchanged. Generated
+        # with kornia in this worktree (torch 2.14.0 and 2.5.1, CPU and MPS; torch 2.14.0, CUDA 13.0):
+        #   dilation(half image, ones(3, 3) float32, max_val=65510.)    CPU, CUDA -> overflow; MPS -> runs
         #   dilation(half image, [[1., 0., 1.]] half, max_val=65510., "constant")
-        #       CPU 2.14 -> runs; CPU 2.5.1 and MPS -> overflow
+        #       CPU 2.14, CUDA 2.14 -> runs; CPU 2.5.1 and MPS -> overflow
         half_image = torch.rand(1, 1, 4, 4, generator=torch.Generator().manual_seed(0)).to(device, torch.float16)
         # A float32 kernel keeps the kernel store out of float16, so only the pad is exercised here, and the
         # window of `[[0, 1]]` at origin [0, 0] on a 1x1 image is empty, so the result shows the pad itself:
         # -65504 on MPS, where the masked in-image cell contributes -65510 in float32 and a -inf pad would lose.
+        # The pad is a backend cast, so other backends are left unasserted until someone measures them.
         empty_window = torch.zeros(1, 1, 1, 1, device=device, dtype=torch.float16)
         corner = torch.tensor([[0.0, 1.0]], device=device)
         if device.type == "mps":
             assert dilation(empty_window, corner, origin=[0, 0], max_val=65510.0).item() == -65504.0
-        else:
+        elif device.type in ("cpu", "cuda"):
             with pytest.raises(RuntimeError, match="overflow"):
                 dilation(empty_window, corner, origin=[0, 0], max_val=65510.0)
         half_gapped = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=torch.float16)
@@ -764,7 +765,7 @@ class TestDilate(BaseTester):
         # scipy, scikit-image and OpenCV all accept these dtypes. Tracked in #4735. Dtypes are
         # explicit here (the claim is about non-float dtypes), so this pin takes `device` only.
         # Generated with kornia in this worktree (torch 2.14.0):
-        #   CPU: dilation(torch.zeros(1, 1, 1, 5, dtype=torch.uint8), torch.ones(1, 3))
+        #   CPU, CUDA: dilation(torch.zeros(1, 1, 1, 5, dtype=torch.uint8), torch.ones(1, 3))
         #        -> RuntimeError: value cannot be converted to type uint8_t without overflow
         #   MPS: the same call does NOT raise; the store wraps (-1e4 mod 256 == 240) and returns
         #        float32 [240, 0, 0, 0, 240]. The backends disagree, so the pin asserts the consequence
@@ -801,17 +802,19 @@ class TestDilate(BaseTester):
         hot_bool = torch.zeros(1, 1, 1, 9, dtype=torch.bool, device=device)
         hot_bool[..., 4] = True
         bool_kernel = torch.ones(1, 3, dtype=torch.bool, device=device)
-        # The ring is a CPU fact. MPS stores the raw byte of -max_val mod 256 (240 for 1e4) in the bool pad:
+        # The ring is a CPU and CUDA fact (CUDA measured on torch 2.14.0 only, where it also holds at
+        # max_val=9984). MPS stores the raw byte of -max_val mod 256 (240 for 1e4) in the bool pad:
         # torch 2.14 reads it as `True` unless it is 0, torch 2.5.1 as a signed integer, so at the default
         # max_val=1e4 torch 2.5.1 shows no ring (and -16 with a floating kernel), and at max_val=9984 neither
-        # release does. Measured with kornia in this worktree (torch 2.14.0 and 2.5.1).
-        on_cpu = device.type == "cpu"
+        # release does. Measured with kornia in this worktree (torch 2.14.0 and 2.5.1). Other backends are
+        # unmeasured and left unasserted.
+        pads_true = device.type in ("cpu", "cuda")
         if device.type == "mps":
             no_ring = dilation(hot_bool, bool_kernel, max_val=9984.0)
             assert no_ring.flatten().tolist() == [False, False, False, True, True, True, False, False, False]
         # The correct dilation is cols {3, 4, 5}; cols 0 and 8 are the `True` ring left by the pad.
         ring_plus_dilation = [True, False, False, True, True, True, False, False, True]
-        if on_cpu:
+        if pads_true:
             assert dilation(hot_bool, bool_kernel).flatten().tolist() == ring_plus_dilation
         # A 1x1 kernel needs no pad, a `constant` pad of 0.0 is `False`, and a `circular` pad is the
         # image's own values: all three are exact. (`reflect` and `replicate` raise on a `bool` image on
@@ -839,7 +842,7 @@ class TestDilate(BaseTester):
         #   dilation(zeros(1, 1, 1, 9, bool), [[1., 1., 0., 0., 0.]]) -> [0, 0, 0, 0, 0, 0, 0, 1, 1]
         one_sided = torch.tensor([[1.0, 1.0, 0.0, 0.0, 0.0]], device=device)
         cold_row = torch.zeros(1, 1, 1, 9, dtype=torch.bool, device=device)
-        if on_cpu:
+        if pads_true:
             assert dilation(cold_small, bool_kernel).flatten().tolist() == [True, False, False, False, True]
             assert dilation(cold_tiny, bool_kernel).flatten().tolist() == [True, True]
             assert dilation(small_bool, bool_kernel).flatten().tolist() == [True, True, True, True, True]
@@ -910,7 +913,7 @@ class TestDilate(BaseTester):
         # return the floating dtype.
         ring_dilation = dilation(hot_bool, float_kernel, engine="shift")
         assert ring_dilation.dtype == torch.float32
-        if on_cpu:
+        if pads_true:
             assert ring_dilation.flatten().tolist() == [float(v) for v in ring_plus_dilation]
         cold_bool = ~hot_bool
         gapped_float_kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device)
@@ -922,11 +925,12 @@ class TestDilate(BaseTester):
         assert torch.equal(cold_erosion, erosion(cold_bool.float(), gapped_float_kernel, engine="shift"))
         ring_gradient = gradient(hot_bool, float_kernel, engine="shift")
         assert ring_gradient.dtype == torch.float32
-        if on_cpu:
+        if pads_true:
             assert ring_gradient.flatten().tolist() == [1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0]
         # The other engines do not: `unfold` (the `auto` choice on CUDA) subtracts from the `bool` image in
         # the erosion, and `convolution` rejects a `bool` image outright ("slow_conv2d_cpu" not implemented
-        # for 'Bool' on CPU, "Convolution is supported only for Floating types" on MPS) because it casts the
+        # for 'Bool' on CPU, "Convolution is supported only for Floating types" on MPS,
+        # "getCudnnDataTypeFromScalarType() not supported for Bool" on CUDA) because it casts the
         # kernel to the image's dtype (#4762), so a fix for #4762 has to revisit this line too.
         with pytest.raises((NotImplementedError, RuntimeError), match="bool"):
             erosion(cold_bool, gapped_float_kernel, engine="unfold")
@@ -965,10 +969,12 @@ class TestDilate(BaseTester):
         # which C leaves undefined: it wraps (-1e4 mod 256 == 240) or saturates to 0 depending on the platform,
         # the torch release and whether the cell lands in a vectorised chunk (on macOS arm64 with torch 2.14.0,
         # `torch.full((9,), -1e4).to(torch.uint8)` is 0 in its first eight cells and 240 in the ninth). So the
-        # pin replays torch's own cast of the same three-element bias rather than hardcoding one outcome: 240
-        # makes a masked cell contribute `(x + 240) mod 256`, and 0 makes it a member. `unfold` returns the
-        # correct float32 [20, 30, 30]. MPS rejects integer images in `conv2d` ("Convolution is supported only
-        # for Floating types"); CUDA is unmeasured.
+        # pin replays torch's own cast of the same three-element bias rather than hardcoding one outcome, and
+        # rebuilds the one-hot `conv2d` in uint8 arithmetic: the masked cell contributes `(x + s) mod 256` for
+        # whatever byte `s` the cast produced (240 when it wraps, making it a member when it saturates to 0).
+        # `unfold` returns the correct float32 [20, 30, 30]. `conv2d` rejects integer images on MPS
+        # ("Convolution is supported only for Floating types") and on CUDA (cuDNN: "unable to find an engine
+        # to execute this computation"); other backends are unmeasured and left unasserted.
         #   dilation([[10, 20, 30]] uint8, [[1., 1., 0.]], "constant", engine="convolution")
         #       -> [240, 250, 30] on CPU, macOS arm64, torch 2.14.0 and 2.5.1
         small = torch.tensor([[10, 20, 30]], dtype=torch.uint8, device=device)[None, None]
@@ -976,9 +982,12 @@ class TestDilate(BaseTester):
         if device.type == "cpu":
             wrapped = dilation(small, pair, border_type="constant", engine="convolution")
             assert wrapped.dtype == torch.uint8
-            sentinel = int(torch.tensor([-1e4, 0.0, 0.0]).to(torch.uint8)[0])
-            assert wrapped.flatten().tolist() == {240: [240, 250, 30], 0: [20, 30, 30]}[sentinel]
-        else:
+            # The bias is the flipped neighborhood [-max_val, 0, 0]; the padded row is [0, 10, 20, 30, 0].
+            bias = torch.tensor([-1e4, 0.0, 0.0]).to(torch.uint8).tolist()
+            padded = [0, 10, 20, 30, 0]
+            expected = [max((padded[i + j] + bias[j]) % 256 for j in range(3)) for i in range(3)]
+            assert wrapped.flatten().tolist() == expected
+        elif device.type in ("mps", "cuda"):
             with pytest.raises((NotImplementedError, RuntimeError)):
                 dilation(small, pair, border_type="constant", engine="convolution")
         assert dilation(small, pair, border_type="constant", engine="unfold").flatten().tolist() == [20.0, 30.0, 30.0]
