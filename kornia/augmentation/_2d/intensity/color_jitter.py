@@ -114,7 +114,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         # keeps the original random per-call order.
         if order is not None:
             order = tuple(int(i) for i in order)
-            if not set(order) <= {0, 1, 2, 3}:
+            if not set(order) <= {0, 1, 2, 3} or len(order) != len(set(order)):
                 raise ValueError(
                     f"`order` entries must be in 0..3 (brightness, contrast, saturation, hue). Got {order}"
                 )

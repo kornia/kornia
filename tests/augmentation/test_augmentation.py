@@ -1707,6 +1707,8 @@ class TestColorJitter(BaseTester):
         assert out.shape == img.shape
         with pytest.raises(ValueError):
             ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 1, 9))
+        with pytest.raises(ValueError):
+            ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 0, 1))
 
     def test_dynamo_fixed_order(self, device, dtype, torch_optimizer):
         # A fixed `order` avoids iterating the random order tensor, so it is fullgraph-safe.
