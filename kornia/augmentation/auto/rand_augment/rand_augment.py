@@ -83,6 +83,7 @@ class RandAugment(PolicyAugmentBase):
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:
+        >>> import torch
         >>> import kornia.augmentation as K
         >>> from kornia.augmentation.auto import RandAugment
         >>> in_tensor = torch.rand(5, 3, 30, 30)
