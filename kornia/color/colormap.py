@@ -254,9 +254,8 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
 
     output = torch.gather(colors.expand(B, C, -1, -1), 2, indices)
     # (B, C, H*W, channels_cmap) -> (B, C*channels_cmap, H, W)
-    output = output.permute(0, 1, 3, 2).reshape(B, C * channels_cmap, H, W)
 
-    return output
+    return output.permute(0, 1, 3, 2).reshape(B, C * channels_cmap, H, W)
 
 
 class ApplyColorMap(nn.Module):

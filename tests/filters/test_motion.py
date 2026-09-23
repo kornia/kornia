@@ -81,6 +81,27 @@ class TestMotionBlur(BaseTester):
         assert actual.shape == (batch_size, ksize, ksize)
         self.assert_close(actual.sum(), expected.sum())
 
+    def test_get_motion_kernel2d_directional_weights(self, device, dtype):
+        direction = torch.tensor([-1.0, 0.0, 1.0], device=device, dtype=dtype)
+        actual = get_motion_kernel2d(5, torch.zeros_like(direction), direction)
+
+        expected = torch.zeros((3, 5, 5), device=device, dtype=dtype)
+        expected[0, 2] = torch.tensor([0.0, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
+        expected[1, 2] = 0.2
+        expected[2, 2] = torch.tensor([0.4, 0.3, 0.2, 0.1, 0.0], device=device, dtype=dtype)
+        self.assert_close(actual, expected)
+
+    def test_get_motion_kernel2d_direction_gradcheck(self, device):
+        direction = torch.tensor([-0.5, 0.5], device=device, dtype=torch.float64, requires_grad=True)
+        angle = torch.zeros_like(direction)
+        self.gradcheck(lambda direction: get_motion_kernel2d(5, angle, direction), (direction,))
+
+    def test_get_motion_kernel2d_mismatched_batch_size(self, device, dtype):
+        angle = torch.zeros(3, device=device, dtype=dtype)
+        direction = torch.zeros(2, device=device, dtype=dtype)
+        with pytest.raises(Exception, match=r"direction and angle must have the same length. Got 2 and 3."):
+            get_motion_kernel2d(3, angle, direction)
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)

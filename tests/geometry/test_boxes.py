@@ -728,7 +728,7 @@ class TestBoxes2D(BaseTester):
             torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype),
             mode="xyxy",
         )
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"\(B, 2\).*torch\.Tensor.*tuple"):
             boxes.clamp((0, 0), (5, 5))
         clamped = boxes.clamp(
             torch.tensor([[0.0, 0.0]], device=device, dtype=dtype),
@@ -747,9 +747,9 @@ class TestBoxes2D(BaseTester):
         # Wart pin for kornia#4017: both documented entry points raise instead
         # of implementing their advertised operations.
         boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"Boxes\.trim.*not implemented"):
             boxes.trim()
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"fast.*not implemented.*warp"):
             boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="fast")
 
     def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):

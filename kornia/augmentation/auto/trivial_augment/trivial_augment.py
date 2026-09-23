@@ -47,14 +47,28 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 class TrivialAugment(PolicyAugmentBase):
     """Apply TrivialAugment :cite:`muller2021trivialaugment` augmentation strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects one candidate sub-policy uniformly for each forward call. Each candidate holds one operation
+          whose probability is fixed at ``1``, so the selected operation is applied to every row and no
+          probability is sampled; a candidate's second and third entries are its magnitude range, not a
+          probability, unlike :class:`~kornia.augmentation.auto.AutoAugment`. Only the magnitude is drawn
+          independently for every batch row.
+        - sampling bypasses the operation wrapper's magnitude mapping. For example, a ``("rotate", -30, 30)``
+          candidate draws angles in ``[0, 30]`` without applying the random sign; for ``shear_x`` / ``shear_y``
+          the same bypass also drops the mapping's factor of ``180``, so those candidates shear by at most
+          ``0.3`` degrees. This follows the :class:`~kornia.augmentation.auto.PolicySequential` limitation
+          tracked in `#4441 <https://github.com/kornia/kornia/issues/4441>`_.
+
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
                                     If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
-                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
-                                    modules will trigger errors.
+                                    If `rigid`, the result is the same for a policy: every operation wrapper
+                                    contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:

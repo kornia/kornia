@@ -189,12 +189,11 @@ class ONNXRuntimeMixin:
         if session_options is None:
             sess_options = ort.SessionOptions()  # type:ignore
             sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED  # type:ignore
-        session = ort.InferenceSession(  # type:ignore
+        return ort.InferenceSession(  # type:ignore
             op.SerializeToString(),
             sess_options=sess_options,
             providers=providers or ["CPUExecutionProvider"],
         )
-        return session
 
     def set_session(self, session: ort.InferenceSession) -> None:  # type: ignore
         """Set a custom ONNXRuntime InferenceSession.
@@ -283,9 +282,7 @@ class ONNXRuntimeMixin:
         """
         ort_inputs = self._session.get_inputs()
         ort_input_values = {ort_inputs[i].name: inputs[i] for i in range(len(ort_inputs))}
-        outputs = self._session.run(None, ort_input_values)
-
-        return outputs
+        return self._session.run(None, ort_input_values)
 
 
 class ONNXMixin:
@@ -400,8 +397,7 @@ class ONNXMixin:
                 Example: [("version", 0.1)], [("date", 20240909)].
 
         """
-        op = kornia.onnx.utils.add_metadata(op, additional_metadata)
-        return op
+        return kornia.onnx.utils.add_metadata(op, additional_metadata)
 
     def _onnx_version_conversion(
         self,

@@ -17,9 +17,11 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 from kornia.core._compat import torch_version
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
+from kornia.filters.kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
 from testing.base import BaseTester
 
@@ -143,6 +145,22 @@ class TestSpatialGradient(BaseTester):
         edges = spatial_gradient(inp, normalized=True)
         self.assert_close(edges, expected)
 
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_sobel_preserves_nonfinite_kernel_behavior(self, normalized, device, dtype):
+        inp = torch.zeros(1, 1, 3, 3, device=device, dtype=dtype)
+        inp[..., 0, 0] = float("nan")
+        inp[..., 1, 1] = float("inf")
+
+        kernel = get_spatial_gradient_kernel2d("sobel", 1, device=device, dtype=dtype)
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
+        expected = F.conv2d(F.pad(inp, [1, 1, 1, 1], "replicate"), kernel[:, None])
+        actual = spatial_gradient(inp, normalized=normalized).reshape_as(expected)
+
+        assert torch.equal(torch.isnan(actual), torch.isnan(expected))
+        assert torch.equal(torch.isinf(actual), torch.isinf(expected))
+        self.assert_close(torch.nan_to_num(actual), torch.nan_to_num(expected))
+
     def test_edges_sep(self, device, dtype):
         inp = torch.tensor(
             [
@@ -235,6 +253,23 @@ class TestSpatialGradient(BaseTester):
 
         edges = spatial_gradient(inp, "diff", normalized=True)
         self.assert_close(edges, expected)
+
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_second_order_quadratics(self, mode, device, dtype):
+        coords = torch.arange(7, device=device, dtype=dtype)
+        y, x = torch.meshgrid(coords, coords, indexing="ij")
+        # one image per quadratic surface: x^2, x*y, y^2
+        inp = torch.stack([x * x, x * y, y * y])[:, None]
+        # the unnormalized (dxx, dxy, dyy) response of each surface is constant away from the border
+        if mode == "sobel":
+            expected = torch.tensor(
+                [[128.0, 0.0, 0.0], [0.0, 64.0, 0.0], [0.0, 0.0, 128.0]], device=device, dtype=dtype
+            )
+        else:
+            expected = torch.tensor([[2.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 2.0]], device=device, dtype=dtype)
+
+        actual = spatial_gradient(inp, mode, order=2, normalized=False)[:, 0, :, 2:-2, 2:-2]
+        self.assert_close(actual, expected[..., None, None].expand_as(actual))
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -415,6 +450,16 @@ class TestSpatialGradient3d(BaseTester):
 
         edges = spatial_gradient3d(inp)
         self.assert_close(edges, expected)
+
+    def test_second_order_quadratics(self, device, dtype):
+        coords = torch.arange(5, device=device, dtype=dtype)
+        z, y, x = torch.meshgrid(coords, coords, coords, indexing="ij")
+        # one volume per quadratic surface, in the order of the output channels (dxx, dyy, dzz, dxy, dyz, dxz)
+        inp = torch.stack([x * x, y * y, z * z, x * y, y * z, x * z])[:, None]
+        expected = torch.diag(torch.tensor([2.0, 2.0, 2.0, 4.0, 4.0, 4.0], device=device, dtype=dtype))
+
+        actual = spatial_gradient3d(inp, "diff", order=2)[:, 0, :, 1:-1, 1:-1, 1:-1]
+        self.assert_close(actual, expected[..., None, None, None].expand_as(actual))
 
     def test_gradcheck(self, device):
         img = torch.rand(1, 1, 1, 3, 4, device=device, dtype=torch.float64)

@@ -16,6 +16,9 @@
 #
 
 from enum import Enum
+from functools import update_wrapper
+from inspect import getattr_static
+from types import FunctionType
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
@@ -58,8 +61,7 @@ class _BasicAugmentationBase(nn.Module):
 
     ``set_rng_device_and_dtype`` updates RNG-related state, but sampler migration and returned parameter
     placement are not uniform across generators. See :doc:`/get-started/conventions` and the limitations
-    tracked in `#4415 <https://github.com/kornia/kornia/issues/4415>`_ and
-    `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
+    tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
@@ -82,6 +84,26 @@ class _BasicAugmentationBase(nn.Module):
     # Users can introspect via ``aug.exportable``; CI iterates the known-exportable
     # subset in ``tests/augmentation/test_onnx_export.py``.
     ONNX_EXPORTABLE = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Dynamo caches by code object. Sharing an inherited forward across all augmentation
+        # classes exhausts its recompilation limit after only a few distinct augmentations.
+        # Copy the implementation (not a wrapper that re-enters the shared frame), once per
+        # class. Keep overrides and the original globals/closure, including zero-argument super.
+        # This isolates the entry frame only: graph-break resumptions inside shared helpers
+        # can still share caches (for example RandomCrop padding in a mixed pipeline).
+        forward = getattr_static(cls, "forward")
+        if "forward" not in cls.__dict__ and isinstance(forward, FunctionType):
+            code = forward.__code__.replace(
+                co_name=f"{cls.__name__}.forward", co_qualname=f"{cls.__qualname__}.forward"
+            )
+            clone = FunctionType(code, forward.__globals__, "forward", forward.__defaults__, forward.__closure__)
+            update_wrapper(clone, forward)
+            clone.__kwdefaults__ = forward.__kwdefaults__
+            clone.__qualname__ = f"{cls.__qualname__}.forward"
+            clone.__module__ = cls.__module__
+            cls.forward = clone
 
     @property
     def exportable(self) -> bool:
@@ -174,9 +196,10 @@ class _BasicAugmentationBase(nn.Module):
         .. warning::
             This updates both the gate and the parameter generator's samplers, but returned parameters
             can be cast to a different device/dtype; inspecting ``_params`` alone does not reveal where
-            sampling occurred. Some classes fail after moving their samplers to an accelerator. Tracked in
-            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
-            :doc:`/get-started/conventions` page describes placement and the affected classes.
+            sampling occurred. Some generators also retain internal CPU tensors or ignore the requested
+            precision, and some generator/device combinations can still fail during forward. Tracked in
+            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the :doc:`/get-started/conventions`
+            page describes placement and the affected classes.
 
         """
         self.device = device
@@ -405,8 +428,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         # `_transform_output_shape` only reshapes (preserves dtype), so no second autocast cast is
         # needed after it — the cast above already restored `input.dtype`.
-        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
-        return output
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
     def transform_masks(
         self,
@@ -434,8 +456,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
-        output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
-        return output
+        return _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
 
     def transform_boxes(
         self,
@@ -525,9 +546,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         output_transformed = self.apply_transform_class(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_class(input, params, flags, transform=transform)
 
-        output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
-
-        return output
+        return self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
     def apply_non_transform_mask(
         self,
@@ -618,6 +637,4 @@ class _AugmentationBase(_BasicAugmentationBase):
         if flags is None:
             flags = self.flags
 
-        output = self.transform_inputs(in_tensor, params, flags)
-
-        return output
+        return self.transform_inputs(in_tensor, params, flags)

@@ -622,8 +622,7 @@ class ResidualBlock(nn.Module):
         """
         if self.pre_norm is None:
             return self.main(x)
-        else:
-            return self.main(self.pre_norm(x))
+        return self.main(self.pre_norm(x))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply the residual wrapper to an input tensor.

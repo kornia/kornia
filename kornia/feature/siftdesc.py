@@ -71,6 +71,32 @@ def _gradient_magnitude_orientation(
     return mag.to(dtype), ori.to(dtype)
 
 
+def _dense_sift_histograms_from_gradients(
+    gx: torch.Tensor, gy: torch.Tensor, num_ang_bins: int, eps: float
+) -> torch.Tensor:
+    """Return unnormalised, per-pixel SIFT angular histogram maps.
+
+    This is the gradient stage shared by :class:`DenseSIFTDescriptor` and sparse
+    consumers which pool a scale pyramid themselves.  In particular it deliberately
+    does *not* materialise the ``num_ang_bins * num_spatial_bins**2`` dense
+    descriptor tensor.
+    """
+    mag, ori = _gradient_magnitude_orientation(gx, gy, eps)
+    o_big = float(num_ang_bins) * ori / (2.0 * pi)
+    bo0 = torch.floor(o_big)
+    w1 = o_big - bo0
+    bo0 = bo0 % num_ang_bins
+    bo1 = (bo0 + 1) % num_ang_bins
+    w0 = (1.0 - w1) * mag
+    w1 = w1 * mag
+    return torch.cat([(bo0 == i).to(gx.dtype) * w0 + (bo1 == i).to(gx.dtype) * w1 for i in range(num_ang_bins)], 1)
+
+
+def _dense_sift_histograms(input: torch.Tensor, num_ang_bins: int, eps: float) -> torch.Tensor:
+    grads = spatial_gradient(input, "diff")
+    return _dense_sift_histograms_from_gradients(grads[:, :, 0], grads[:, :, 1], num_ang_bins, eps)
+
+
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     r"""Return a weighted pooling kernel for SIFT descriptor.
 
@@ -83,8 +109,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     """
     ks_2: float = float(ksize) / 2.0
     xc2 = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()
-    kernel = torch.ger(xc2, xc2) / (ks_2**2)
-    return kernel
+    return torch.ger(xc2, xc2) / (ks_2**2)
 
 
 def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple[int, int, int]:
@@ -379,6 +404,16 @@ class DenseSIFTDescriptor(nn.Module):
         """
         return self.bin_pooling_kernel.weight.detach().clone()
 
+    def get_gradient_histograms(self, input: torch.Tensor) -> torch.Tensor:
+        """Return unnormalised angular histogram maps before spatial pooling.
+
+        The result has shape ``(B, num_ang_bins, H, W)``.  It is useful when a
+        caller shares an image pyramid between orientation assignment and sparse
+        descriptor extraction.
+        """
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
+        return _dense_sift_histograms(input, self.num_ang_bins, self.eps)
+
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Compute dense SIFT descriptors over a full image grid.
 
@@ -400,23 +435,13 @@ class DenseSIFTDescriptor(nn.Module):
         poolingconv_bias = self.PoolingConv.bias
         if poolingconv_bias is not None:
             poolingconv_bias = poolingconv_bias.to(input.dtype).to(input.device)
-        grads = spatial_gradient(input, "diff")
-        # unpack the edges
-        gx = grads[:, :, 0]
-        gy = grads[:, :, 1]
-        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
-        o_big = float(self.num_ang_bins) * ori / (2.0 * pi)
-
-        bo0_big_ = torch.floor(o_big)
-        wo1_big_ = o_big - bo0_big_
-        bo0_big = bo0_big_ % self.num_ang_bins
-        bo1_big = (bo0_big + 1) % self.num_ang_bins
-        wo0_big = (1.0 - wo1_big_) * mag
-        wo1_big = wo1_big_ * mag
+        histograms = self.get_gradient_histograms(input)
+        # Keep the original per-bin convolution batch: folding angular bins into
+        # the batch can select different kernels and alter established numerics.
         ang_bins = torch.cat(
             [
                 F.conv2d(
-                    (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big,
+                    histograms[:, i : i + 1].contiguous(),
                     bin_pooling_weight,
                     bin_pooling_bias,
                     self.bin_pooling_kernel.stride,

@@ -74,8 +74,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
         )
 
     transformed_boxes: torch.Tensor = transform_points(M, points)
-    transformed_boxes = transformed_boxes.view_as(boxes)
-    return transformed_boxes
+    return transformed_boxes.view_as(boxes)
 
 
 def _boxes_to_polygons(
@@ -151,9 +150,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
     else:
         raise ValueError(f"Unknown mode {mode}")
 
-    quadrilaterals = quadrilaterals if batched else quadrilaterals.squeeze(0)
-
-    return quadrilaterals
+    return quadrilaterals if batched else quadrilaterals.squeeze(0)
 
 
 def _boxes3d_to_polygons3d(
@@ -183,8 +180,7 @@ def _boxes3d_to_polygons3d(
     back_vertices = front_vertices.clone()
     back_vertices[..., 2] += depth.unsqueeze(-1) - 1
 
-    polygons3d = torch.cat([front_vertices, back_vertices], dim=-2)
-    return polygons3d
+    return torch.cat([front_vertices, back_vertices], dim=-2)
 
 
 class Boxes:
@@ -559,7 +555,10 @@ class Boxes:
             provided bounds.
         """
         if not (isinstance(topleft, torch.Tensor) and isinstance(botright, torch.Tensor)):
-            raise NotImplementedError
+            raise NotImplementedError(
+                "`Boxes.clamp` accepts `topleft` and `botright` as `(B, 2)` torch.Tensor bounds; "
+                f"got topleft={type(topleft).__name__} and botright={type(botright).__name__}."
+            )
         if inplace:
             _data = self._data
         else:
@@ -601,7 +600,7 @@ class Boxes:
             NotImplementedError: Always.
 
         """
-        raise NotImplementedError
+        raise NotImplementedError("`Boxes.trim` is not implemented.")
 
     def filter_boxes_by_area(
         self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
@@ -988,10 +987,10 @@ class Boxes:
 
         """
         if method == "fast":
-            raise NotImplementedError
-        elif method == "warp":
-            pass
-        else:
+            raise NotImplementedError(
+                "`Boxes.translate(method='fast')` is not implemented; use `method='warp'` instead."
+            )
+        if method != "warp":
             raise NotImplementedError
 
         M: torch.Tensor = eye_like(3, size)
@@ -1478,8 +1477,7 @@ class Boxes3D:
 
             boxes = _boxes3d_to_polygons3d(xmin, ymin, zmin, width, height, depth)
 
-        boxes = boxes if self._is_batched else boxes.squeeze(0)
-        return boxes
+        return boxes if self._is_batched else boxes.squeeze(0)
 
     def to_mask(self, depth: int, height: int, width: int) -> torch.Tensor:
         """Convert 3D boxes to masks. Covered area is 1 and the remaining is 0.

@@ -448,6 +448,17 @@ class TestCropByIndices(BaseTester):
         expected = op(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize("size", [(2, 3), None])
+    def test_crop_by_indices_empty_batch(self, size, device, dtype):
+        # Empty in, empty out (#4429): the uniform-box fast path read the first box of an empty batch
+        # and raised IndexError. With ``size`` the output takes that size; without it there is no box
+        # to infer one from, so the spatial dimensions are zero.
+        img = torch.rand(0, 3, 5, 4, device=device, dtype=dtype)
+        src_box = torch.zeros(0, 4, 2, device=device, dtype=torch.int64)
+        out = kornia.geometry.transform.crop_by_indices(img, src_box, size=size)
+        assert out.shape == (0, 3, *(size or (0, 0)))
+        assert out.dtype == dtype
+
     def test_crop_by_indices_variable_sizes_exception(self, device, dtype):
         img = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
         src_box = torch.tensor(

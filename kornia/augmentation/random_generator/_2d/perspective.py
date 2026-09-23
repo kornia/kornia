@@ -58,8 +58,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         self.sampling_method = sampling_method
 
     def __repr__(self) -> str:
-        repr = f"distortion_scale={self.distortion_scale}"
-        return repr
+        return f"distortion_scale={self.distortion_scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)

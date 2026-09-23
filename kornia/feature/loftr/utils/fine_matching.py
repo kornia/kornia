@@ -80,7 +80,13 @@ class FineMatching(nn.Module):
 
         # compute std over <x, y>
         var = torch.sum(grid_normalized**2 * heatmap.view(-1, WW, 1), dim=1) - coords_normalized**2  # [M, 2]
-        std = torch.sum(torch.sqrt(torch.clamp(var, min=1e-10)), -1)  # [M]  clamp needed for numerical stability
+        # A clamp floor under sqrt bounds the value, not the gradient: 1e-10 is 0 in float16, and torch < 2.14 passes
+        # clamp's gradient through at the bound, so sqrt'(0) = inf reached the features as nan (#4229). Differentiate
+        # sqrt only above the floor; at or below it the value is still sqrt(floor), with zero gradient.
+        floor = torch.full_like(var, 1e-10)
+        above = var > floor
+        safe_var = torch.where(above, var, torch.ones_like(var))
+        std = torch.sum(torch.where(above, safe_var.sqrt(), floor.sqrt()), -1)  # [M]
 
         # for fine-level supervision
         data.update({"expec_f": torch.cat([coords_normalized, std.unsqueeze(1)], -1)})

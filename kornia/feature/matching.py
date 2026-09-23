@@ -55,8 +55,7 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
 
 
 def _get_default_fginn_params() -> Dict[str, Any]:
-    config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
-    return config
+    return {"th": 0.85, "mutual": False, "spatial_th": 10.0}
 
 
 def _get_lazy_distance_matrix(
@@ -484,14 +483,13 @@ class DescriptorMatcherWithSteerer(nn.Module):
         """
         if self.match_mode == "nn":
             return match_nn(d1, d2, dm=dm)
-        elif self.match_mode == "mnn":
+        if self.match_mode == "mnn":
             return match_mnn(d1, d2, dm=dm)
-        elif self.match_mode == "snn":
+        if self.match_mode == "snn":
             return match_snn(d1, d2, self.th, dm=dm)
-        elif self.match_mode == "smnn":
+        if self.match_mode == "smnn":
             return match_smnn(d1, d2, self.th, dm=dm)
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def forward(
         self,

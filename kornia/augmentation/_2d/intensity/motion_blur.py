@@ -30,11 +30,14 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomMotionBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
+            If Tuple[int, int] or a two-element list, it will randomly generate one odd value from the closed
+            range for the whole batch.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
@@ -46,12 +49,46 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         border_type: the padding mode to be applied before convolving.
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3.
         resample: the interpolation mode.
+        same_on_batch: apply the same angle and direction across the batch. The kernel size is always shared.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - a positive ``angle`` turns the blur line counter-clockwise as the image is displayed, as in
+          :func:`kornia.filters.motion_blur` and :func:`kornia.filters.get_motion_kernel2d`.
+        - ``direction`` re-weights the kernel along that line before it is rotated: ``0`` spreads the weight evenly, and
+          ``-1`` and ``+1`` pile it at opposite ends. The rotation then resamples the kernel with ``resample``:
+          ``"nearest"`` can drop or duplicate taps, so the line's length and end weights change with ``angle``, and
+          ``"bilinear"`` or ``"bicubic"`` also spread weight off the line. The ends belong to the rotated line, so which
+          side of the image they fall on turns with ``angle`` and is not read off the image axes.
+        - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
+        - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]``
+          with shape ``(B,)``. All samples use that size, even with ``same_on_batch=False``; angle and
+          direction are sampled per image unless ``same_on_batch=True``. Previously saved parameters
+          with differing kernel sizes still select one entry via ``_params["idx"]`` for the whole batch.
+          A tuple range draws each odd size inside it with equal probability, bounds included, so
+          ``kernel_size=(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws ``3, 5, ..., 19``. A range that
+          holds no odd size is rounded **up** out of the requested range instead, so ``(4, 4)`` draws ``5``;
+          a reversed one such as ``(20, 3)`` raises at construction. Because the whole range is drawn, and
+          not just its lowest odd size, every size in it is live against the image-size rule below: with
+          ``border_type="reflect"`` a ``kernel_size=(3, 5)`` on a ``2 x 2`` image raises on the draws of
+          ``5`` -- about half of them -- where a constant ``3`` always fit.
+        - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
+          border pixel is blended with ``0`` and pulled toward it: below the input's own minimum for a
+          positive image, and above its maximum for a negative one. With
+          ``border_type="reflect"`` the result stays between the input's extremes, up to rounding, at
+          ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative weights,
+          and the result can overshoot both extremes.
+        - an image smaller than the kernel is accepted, down to ``1 x 1``, at the default
+          ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` raises once a spatial axis is
+          no longer than half the kernel size along it, and ``"circular"`` raises a padding error of its
+          own once the kernel radius exceeds a spatial axis. Unlike :class:`RandomBoxBlur`,
+          :class:`RandomGaussianBlur` and :class:`RandomSharpness`, which name the class and the shape,
+          both of these surface as raw torch errors.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -84,7 +121,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Union[int, Tuple[int, int]],
+        kernel_size: Union[int, Tuple[int, int], List[int]],
         angle: Union[torch.Tensor, float, Tuple[float, float]],
         direction: Union[torch.Tensor, float, Tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
@@ -117,8 +154,8 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             # Fixed kernel size: static value, no data-dependent indexing -> stays fullgraph.
             kernel_size = self._fixed_kernel_size
         else:
-            # Sampled from a range. We apply the same kernel size to all samples in the batch,
-            # taking the previously selected random index `params["idx"][0]` to pick it.
+            # Generated sizes are shared. Retain indexed selection for replay of older parameters
+            # that contain differing sizes, using one selected size for the whole batch.
             # (`VideoSequential` flattens the first two dims and repeats that index, so all
             # entries are equal and taking the first is legit.) This branch is inherently
             # data-dependent and not fullgraph-compilable.

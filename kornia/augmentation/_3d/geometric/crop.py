@@ -15,15 +15,28 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple, Union
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.augmentation.utils.helpers import _pad_with_fill
 from kornia.constants import Resample
-from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
+from kornia.geometry import crop_by_transform_mat3d
+
+
+def _crop_translation3d(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    """Return the matrix of a crop, which only moves the first ``src`` vertex onto the first ``dst`` vertex.
+
+    Solving the perspective system from the eight vertices instead fails for a crop with a size-1 axis, whose
+    vertices are coplanar (#4705).
+    """
+    transform = torch.eye(4, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
+    transform[:, :3, 3] = dst[:, 0] - src[:, 0]
+    return transform
 
 
 class RandomCrop3D(GeometricAugmentationBase3D):
@@ -33,20 +46,22 @@ class RandomCrop3D(GeometricAugmentationBase3D):
 
     Args:
         p: probability of applying the transformation for the whole batch.
+            When skipped, the input is returned without padding or cropping.
         size: Desired output size (out_d, out_h, out_w) of the crop.
             Must be Tuple[int, int, int], then out_d = size[0], out_h = size[1], out_w = size[2].
         padding: Optional padding on each border of the image.
-            Default is None, i.e no padding. If a sequence of length 6 is provided, it is used to F.pad
-            left, top, right, bottom, front, back borders respectively.
+            Default is None, i.e no padding. If a sequence of length 6 is provided, it is passed to F.pad as
+            left, right, top, bottom, front, back borders respectively.
             If a sequence of length 3 is provided, it is used to F.pad left/right,
             top/bottom, front/back borders, respectively.
         pad_if_needed: It will F.pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
-        fill: Pixel fill value for constant fill. Default is 0. If a tuple of
-            length 3, it is used to fill R, G, B channels respectively.
-            This value is only used when the padding_mode is constant.
-        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
+        fill: Voxel fill value for constant fill. Default is 0. A sequence gives one value per channel,
+            so it must be as long as the input's channel dimension. This value is only used when the
+            padding_mode is constant, and a sequence requires it.
+        padding_mode: Type of padding, passed to F.pad. Should be: constant, reflect, replicate or circular.
+            Default is constant.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
@@ -54,13 +69,28 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
-        - Output: :math:`(B, C, , out_d, out_h, out_w)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
+        - Output: :math:`(B, C, out_d, out_h, out_w)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``size`` and the output shape are ordered ``(D, H, W)``. A scalar ``padding`` expands to every side;
+          three values expand as ``(left/right, top/bottom, front/back)``, and six are passed to
+          :func:`torch.nn.functional.pad` as ``(left, right, top, bottom, front, back)`` before the crop is drawn.
+        - ``transform_matrix`` maps the padded volume to the crop, not the original input to the crop. Add the
+          left, top, and front padding to an original ``(x, y, z)`` point before applying this matrix. For example,
+          padding a ``3 x 3 x 3`` input by ``1`` and cropping the full ``5 x 5 x 5`` volume records an identity
+          matrix even though the original voxel ``(1, 1, 1)`` moves to ``(2, 2, 2)``.
+        - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped: a
+          crop larger than the padded volume along any axis, even by one voxel, raises ``ValueError``
+          (:class:`CenterCrop3D` rejects the same request with ``AssertionError``); a crop equal to it is valid.
+          A valid gated-off call returns the input itself -- unpadded, at the input shape rather than ``size`` --
+          with an identity ``transform_matrix``.
+          Defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:
         >>> import torch
@@ -87,7 +117,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         size: Tuple[int, int, int],
         padding: Optional[Union[int, Tuple[int, int, int], Tuple[int, int, int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False,
-        fill: int = 0,
+        fill: Union[float, Sequence[float]] = 0,
         padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
@@ -108,8 +138,10 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         }
         self._param_generator = rg.CropGenerator3D(size, None)
 
-    def precrop_padding(self, input: torch.Tensor, flags: Optional[Dict[str, Any]] = None) -> torch.Tensor:
-        flags = self.flags if flags is None else flags
+    def _compute_padding(self, shape: Tuple[int, ...], flags: Dict[str, Any]) -> List[List[int]]:
+        """Compute successive padding steps without modifying the input volume."""
+        padding_steps: List[List[int]] = []
+        depth, height, width = shape[-3:]
         padding = flags["padding"]
         if padding is not None:
             if isinstance(padding, int):
@@ -120,28 +152,35 @@ class RandomCrop3D(GeometricAugmentationBase3D):
                 padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]
             else:
                 raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {padding}.")
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            padding_steps.append(padding)
+            depth += padding[4] + padding[5]
+            height += padding[2] + padding[3]
+            width += padding[0] + padding[1]
 
-        if flags["pad_if_needed"] and input.shape[-3] < flags["size"][0]:
-            padding = [0, 0, 0, 0, flags["size"][0] - input.shape[-3], flags["size"][0] - input.shape[-3]]
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+        if flags["pad_if_needed"] and depth < flags["size"][0]:
+            padding_steps.append([0, 0, 0, 0, flags["size"][0] - depth, flags["size"][0] - depth])
 
-        if flags["pad_if_needed"] and input.shape[-2] < flags["size"][1]:
-            padding = [0, 0, (flags["size"][1] - input.shape[-2]), flags["size"][1] - input.shape[-2], 0, 0]
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+        if flags["pad_if_needed"] and height < flags["size"][1]:
+            padding_steps.append([0, 0, flags["size"][1] - height, flags["size"][1] - height, 0, 0])
 
-        if flags["pad_if_needed"] and input.shape[-1] < flags["size"][2]:
-            padding = [flags["size"][2] - input.shape[-1], flags["size"][2] - input.shape[-1], 0, 0, 0, 0]
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+        if flags["pad_if_needed"] and width < flags["size"][2]:
+            padding_steps.append([flags["size"][2] - width, flags["size"][2] - width, 0, 0, 0, 0])
+
+        return padding_steps
+
+    def precrop_padding(self, input: torch.Tensor, flags: Optional[Dict[str, Any]] = None) -> torch.Tensor:
+        flags = self.flags if flags is None else flags
+        # Keep fixed and automatic padding separate to preserve non-constant boundary values.
+        for padding in self._compute_padding(tuple(input.shape), flags):
+            input = _pad_with_fill(input, padding, flags["fill"], flags["padding_mode"])
 
         return input
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
-        transform = transform.expand(input.shape[0], -1, -1)
-        return transform
+        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
+        return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(
         self,
@@ -153,13 +192,16 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
 
+        input = self.precrop_padding(input, flags)
         return crop_by_transform_mat3d(
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None, **kwargs: Any
-    ) -> torch.Tensor:
-        # TODO: need to align 2D implementations
-        input = self.precrop_padding(input)
-        return super().forward(input, params)
+    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        # Sample crop coordinates on the padded canvas, while keeping the skip path unpadded.
+        padded_shape = list(batch_shape)
+        for padding in self._compute_padding(batch_shape, self.flags):
+            padded_shape[-3] += padding[4] + padding[5]
+            padded_shape[-2] += padding[2] + padding[3]
+            padded_shape[-1] += padding[0] + padding[1]
+        return super().forward_parameters(tuple(padded_shape))

@@ -27,37 +27,76 @@ machine-readable JSON export so every run is comparable and citable.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import math
 import os
 import platform
+import random
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Callable, Optional
 
 import torch
 import torch.utils.benchmark as bench
 
 
-def time_us(
-    fn: Callable[[], object], min_run_time: float = 1.0, sync: Optional[Callable[[], None]] = None
-) -> tuple[float, float]:
-    """Median and interquartile-range wall clock of ``fn`` in microseconds.
+def warm_up_cpu(seconds: float = 3.0) -> None:
+    """Keep PyTorch's intra-op thread pool under sustained load before any timing.
+
+    Hybrid CPUs schedule lightly loaded threads on efficiency cores and move them to performance
+    cores only after sustained load; under WSL2 the guest cannot pin them. On an i7-14700K a 5x5
+    oneDNN convolution measured 0.56 ms before and 0.22 ms after this warm-up, while a lighter
+    implementation of the same filter was barely affected, so an unwarmed run can reverse A/B
+    conclusions. ``blocked_autorange``'s own short warmup does not reach that state.
+    """
+    a = torch.rand(1024, 1024)
+    end = time.perf_counter() + seconds
+    while time.perf_counter() < end:
+        a @ a
+
+
+def time_us_or_error(
+    fn: Callable[[], object],
+    min_run_time: float = 1.0,
+    sync: Optional[Callable[[], None]] = None,
+    num_threads: Optional[int] = None,
+) -> tuple[float, float, Optional[str]]:
+    """Median and interquartile-range wall clock of ``fn`` in microseconds, plus the failure's name.
 
     ``blocked_autorange`` warms up, runs many repeats, and synchronizes CUDA. Devices it does
-    not sync (MPS) pass their sync as ``sync`` so it lands inside the timed region. Returns
-    ``(nan, nan)`` if ``fn`` raises, so callers can render a skip cell instead of dying.
+    not sync (MPS) pass their sync as ``sync`` so it lands inside the timed region. If ``fn``
+    raises, returns ``(nan, nan, exception class name)`` from that same call, so callers can render
+    a skip cell and say why without calling ``fn`` again. ``num_threads`` controls the timed calls
+    and defaults to the current ``torch.get_num_threads()``; Timer would otherwise override the
+    caller's thread count with one.
     """
     stmt = "fn(); sync()" if sync is not None else "fn()"
     try:
-        m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}).blocked_autorange(min_run_time=min_run_time)
-        return m.median * 1e6, m.iqr * 1e6
-    except Exception:
-        return float("nan"), float("nan")
+        threads = torch.get_num_threads() if num_threads is None else num_threads
+        m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}, num_threads=threads).blocked_autorange(
+            min_run_time=min_run_time
+        )
+        return m.median * 1e6, m.iqr * 1e6, None
+    except Exception as exc:
+        return float("nan"), float("nan"), type(exc).__name__
+
+
+def time_us(
+    fn: Callable[[], object],
+    min_run_time: float = 1.0,
+    sync: Optional[Callable[[], None]] = None,
+    num_threads: Optional[int] = None,
+) -> tuple[float, float]:
+    """``time_us_or_error`` without the failure name: ``(nan, nan)`` if ``fn`` raises."""
+    median, iqr, _ = time_us_or_error(fn, min_run_time=min_run_time, sync=sync, num_threads=num_threads)
+    return median, iqr
 
 
 def git_commit() -> str:
@@ -88,10 +127,18 @@ def _optional_version(module: str) -> Optional[str]:
         return None
 
 
+def _opencv_num_threads() -> Optional[int]:
+    """OpenCV's thread count if a suite imported it, else ``None``; never imports it itself."""
+    cv2 = sys.modules.get("cv2")
+    return cv2.getNumThreads() if cv2 is not None else None
+
+
 def run_metadata(device: torch.device) -> dict[str, Any]:
     """Hardware/software metadata embedded in every result file (W3: date, hardware, versions)."""
     import kornia
 
+    # Read before the version probes below, which import cv2 even in a suite that left it alone.
+    opencv_num_threads = _opencv_num_threads()
     meta: dict[str, Any] = {
         "timestamp_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_commit": git_commit(),
@@ -102,12 +149,14 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "kornia": kornia.__version__,
         "device": str(device),
         "torch_num_threads": torch.get_num_threads(),
+        "opencv_num_threads": opencv_num_threads,
         "opencv": _optional_version("cv2"),
         "torchvision": _optional_version("torchvision"),
         "numpy": _optional_version("numpy"),
         "albumentations": _optional_version("albumentations"),
         "kornia_rs": _optional_version("kornia_rs"),
         "pillow": _optional_version("PIL"),
+        "skimage": _optional_version("skimage"),
     }
     if device.type == "cuda":
         meta["cuda_device"] = torch.cuda.get_device_name(device)
@@ -139,7 +188,7 @@ def save_json(path: str | Path, metadata: dict[str, Any], results: list[dict[str
 
 def versions_line(meta: dict[str, Any]) -> str:
     """One-line software-stack summary for printed table headers (the JSON carries the same data)."""
-    keys = ("torch", "kornia", "python", "opencv", "torchvision", "albumentations", "pillow", "kornia_rs")
+    keys = ("torch", "kornia", "python", "opencv", "torchvision", "albumentations", "pillow", "kornia_rs", "skimage")
     return "# " + ", ".join(f"{k} {meta.get(k) or '-'}" for k in keys)
 
 
@@ -258,7 +307,7 @@ def run_batch_sweep(
     items_fn: Optional[Callable[[Any], float]] = None,
     units: str = "",
     label_width: int = 26,
-    col_width: int = 14,
+    col_width: int = 17,
     min_run_time: float = 1.0,
 ) -> list[dict[str, Any]]:
     """Sweep configurations, print one throughput table per config, and return JSON-ready rows.
@@ -272,7 +321,9 @@ def run_batch_sweep(
     the CPU-only ``"kornia-rs"`` backend never matches).
 
     A config is a batch size by default: it labels the row ``batch=<b>``, is written to the row's
-    ``"batch"`` field, and is the per-call item count the throughput divides by. A suite whose
+    ``"batch"`` field, and is the per-call item count the throughput divides by. A backend that
+    raises while timed prints ``✗`` and gets a row with ``null`` timings and its exception name in
+    ``error``. A suite whose
     config is not a single batch size (a ``(batch, n)`` pair, say) passes ``label_fn`` for the
     printed label, ``items_fn`` for the item count, and a ``"batch"`` key in ``row_fields`` — the
     committed-result schema requires that field to stay an ``int``. ``units`` names what the
@@ -281,13 +332,15 @@ def run_batch_sweep(
     label_of = label_fn if label_fn is not None else (lambda b: f"batch={b}")
     items_of = items_fn if items_fn is not None else (lambda b: b)
     results: list[dict[str, Any]] = []
+    failed: list[str] = []
     header = ""
     for b in batches:
         ops, compile_failures = build_ops(b)
         if compile_failures:
             exc_names = sorted(set(compile_failures.values()))
             print(f"# NOTE: torch.compile warmup failed ({', '.join(exc_names)}) for: {', '.join(compile_failures)}")
-        header = f"{label_of(b):<{label_width}}" + "".join(f"{n[:col_width]:>{col_width + 1}}" for n in backends)
+        width = max([label_width, len(label_of(b)) + 1] + [len(op) + 1 for op in ops])
+        header = f"{label_of(b):<{width}}" + "".join(f"{n[:col_width]:>{col_width + 1}}" for n in backends)
         print("-" * len(header))
         print(header + (f"   ({units})" if units else ""))
         print("-" * len(header))
@@ -316,21 +369,289 @@ def run_batch_sweep(
                     cells.append(f"{'-':>{col_width + 1}}")
                     continue
                 backend_sync = sync if backend.startswith(torch_backends) else None
-                median, iqr = time_us(fn, min_run_time=min_run_time, sync=backend_sync)
-                thr = items / (median * 1e-6) if not math.isnan(median) else float("nan")
-                results.append(
-                    {
-                        "op": op_name,
-                        "backend": backend,
-                        "batch": b,
-                        **row_fields(b),
-                        "median_us": median,
-                        "iqr_us": iqr,
-                        "throughput_per_s": thr,
-                    }
-                )
+                median, iqr, error = time_us_or_error(fn, min_run_time=min_run_time, sync=backend_sync)
+                row_out: dict[str, Any] = {"op": op_name, "backend": backend, "batch": b, **row_fields(b)}
+                if error is not None:
+                    # The JSON says why the cell is empty, like it does for a compile failure.
+                    results.append(
+                        {
+                            **row_out,
+                            "median_us": None,
+                            "iqr_us": None,
+                            "throughput_per_s": None,
+                            "error": error,
+                        }
+                    )
+                    failed.append(f"{op_name}/{backend}")
+                    cells.append(f"{'✗':>{col_width + 1}}")
+                    continue
+                thr = items / (median * 1e-6)
+                results.append({**row_out, "median_us": median, "iqr_us": iqr, "throughput_per_s": thr})
                 cells.append(f"{thr:>{col_width + 1}.0f}")
-            print(f"{op_name:<{label_width}}" + "".join(cells))
+            print(f"{op_name:<{width}}" + "".join(cells))
     if header:
         print("-" * len(header))
+    if failed:
+        names = ", ".join(dict.fromkeys(failed))
+        print(f"# NOTE: '✗' = the call raised (exception name in the JSON 'error' field): {names}")
     return results
+
+
+Backend = Optional[Callable[[], object]]
+
+#: The checkout this file lives in. Suites put it at ``sys.path[0]`` before importing kornia so
+#: the measured kornia is this tree, not a wheel or another editable checkout.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def optional_import(name: str) -> tuple[Optional[ModuleType], Optional[str]]:
+    """Import an optional baseline library, returning ``(module, None)`` or ``(None, reason)``."""
+    try:
+        return importlib.import_module(name), None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def parse_names(value: str) -> frozenset[str]:
+    """Comma-separated names (``--ops``, ``--skip-compile-ops``) as a set; empty items are dropped."""
+    return frozenset(s.strip() for s in value.split(",") if s.strip())
+
+
+def add_flagship_args(
+    parser: argparse.ArgumentParser, *, ops: Sequence[str] = (), batches: str = "1,8,32", size: int = 256
+) -> None:
+    """The command-line options every suite shares, so every suite is driven the same way.
+
+    ``ops`` lists the suite's row names; ``--ops`` rejects any other name instead of silently
+    running nothing. Suites whose configuration is not a batch sweep (``feature/laf_ops.py``) pass
+    ``batches=""`` and add their own sweep option; ``--batches`` is then not registered.
+    """
+
+    def parse_ops(value: str) -> Optional[frozenset[str]]:
+        selected = parse_names(value)
+        unknown = selected.difference(ops)
+        if ops and unknown:
+            raise argparse.ArgumentTypeError(
+                f"unknown operation(s): {', '.join(sorted(unknown))}. Available: {', '.join(ops)}"
+            )
+        return selected or None
+
+    if batches:
+        parser.add_argument("--batches", type=str, default=batches, help="comma-separated batch sizes to sweep")
+    parser.add_argument("--size", type=int, default=size, help="square image side")
+    parser.add_argument("--device", type=str, default="cpu", help="cpu, cuda, or mps")
+    parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float16", "bfloat16", "float64"])
+    parser.add_argument("--threads", type=int, default=4, help="torch intra-op threads")
+    parser.add_argument("--compile", action="store_true", help="also time torch.compile'd kornia")
+    parser.add_argument("--ops", type=parse_ops, default=None, help="comma-separated op rows to run (default: all)")
+    parser.add_argument(
+        "--skip-compile-ops",
+        type=parse_names,
+        default=frozenset(),
+        help="comma-separated op names to keep eager-only (workaround for faulting compiled kernels)",
+    )
+    parser.add_argument("--min-run-time", type=float, default=1.0, help="seconds of repeats per measurement")
+    parser.add_argument("--json", type=str, default=None, help="write machine-readable results to this path")
+    add_contribute_args(parser)
+
+
+def setup_run(
+    args: argparse.Namespace, opencv: bool = True
+) -> tuple[torch.device, torch.dtype, Optional[Callable[[], None]]]:
+    """Thread counts, CPU warm-up and pinned seeds; returns ``(device, dtype, sync)``.
+
+    ``--threads`` pins OpenCV as well as torch when OpenCV is installed. Left alone, OpenCV uses
+    every core while torch uses ``--threads``, and the header would report only torch's count.
+    Some OpenCV builds ignore the request (the GCD backend of the macOS wheels); ``start_run``
+    then prints the count OpenCV actually uses. Suites without an OpenCV or albumentations column
+    pass ``opencv=False``: OpenCV is then not imported, and the header and metadata leave it out.
+
+    ``sync`` is the MPS synchronize for ``time_us`` (``blocked_autorange`` already syncs CUDA). The
+    CPU warm-up runs on accelerator runs too, because they still time CPU-only baselines.
+    """
+    torch.set_num_threads(args.threads)
+    cv2, _ = optional_import("cv2") if opencv else (None, None)
+    if cv2 is not None:
+        cv2.setNumThreads(args.threads)
+    warm_up_cpu()
+    torch.manual_seed(0)
+    random.seed(0)
+    try:
+        import numpy as np
+
+        np.random.seed(0)  # noqa: NPY002 - albumentations samples from the legacy global RNG
+    except ImportError:
+        pass
+    device = torch.device(args.device)
+    return device, getattr(torch, args.dtype), (torch.mps.synchronize if device.type == "mps" else None)
+
+
+def kornia_provenance(module_file: Optional[str]) -> tuple[str, str]:
+    """``(console path, exported field)`` for the imported kornia package.
+
+    The console gets the resolved absolute path, which answers "which tree did I measure?". The
+    exported ``kornia_module`` field is checkout-relative (or ``"outside-checkout"``): a contributed
+    file is public, and the privacy rule keeps home directories out of it.
+    """
+    if module_file is None:
+        return "unknown", "outside-checkout"
+    resolved = Path(module_file).resolve()
+    if REPO_ROOT in resolved.parents:
+        return str(resolved), resolved.relative_to(REPO_ROOT).as_posix()
+    return str(resolved), "outside-checkout"
+
+
+def start_run(
+    title: str,
+    args: argparse.Namespace,
+    device: torch.device,
+    *,
+    units: str,
+    regimes: Sequence[str] = (),
+    missing: Sequence[tuple[str, Optional[str]]] = (),
+) -> dict[str, Any]:
+    """Print the shared run header and return the metadata to export.
+
+    Every suite prints the same header in the same order: title, commit and platform; the
+    software stack; the kornia source; the CUDA device; the run configuration with the throughput
+    unit; the regime of each backend; and one ``NOTE`` per unavailable library or eager-only op.
+    ``missing`` is ``(library, reason)`` for each baseline that could not be imported.
+    """
+    import kornia
+
+    meta = run_metadata(device)
+    meta["load"] = collect_load_metrics()
+    console_path, module_field = kornia_provenance(kornia.__file__)
+    meta["kornia_module"] = module_field
+    # The docs page and the llms digest label the throughput column from this key.
+    meta["units"] = units
+    if args.contribute:
+        print_preflight(meta["load"])
+    print(f"# {title} benchmark — commit {meta['git_commit']} — {platform.platform()}")
+    print(versions_line(meta))
+    print(f"# kornia source: {console_path}")
+    if module_field == "outside-checkout":
+        # git_commit() reports this checkout's HEAD, so a kornia from anywhere else means the
+        # numbers and the commit label describe different code.
+        print(f"# WARNING: kornia resolved outside {REPO_ROOT} - these numbers are NOT this checkout's.")
+    if device.type == "cuda":
+        print(f"# CUDA device: {meta['cuda_device']} (CUDA {meta['cuda_version']})")
+    size = f", size={args.size}" if getattr(args, "size", None) else ""
+    cv_threads = f" (opencv {meta['opencv_num_threads']})" if meta["opencv_num_threads"] is not None else ""
+    print(
+        f"# device={device}, dtype={args.dtype}, threads={torch.get_num_threads()}{cv_threads}{size}"
+        f" — throughput {units}"
+    )
+    if meta["opencv_num_threads"] not in (None, torch.get_num_threads()):
+        # macOS wheels build OpenCV on GCD, which ignores setNumThreads.
+        print(
+            f"# NOTE: OpenCV ignored --threads {torch.get_num_threads()} (its parallel backend does not honour "
+            f"setNumThreads) and runs on {meta['opencv_num_threads']} threads"
+        )
+    for line in regimes:
+        print(f"# {line}")
+    print("# '-' = skipped: backend unavailable, no counterpart, or compile failure (see the JSON 'error' field)")
+    for name, reason in missing:
+        print(f"# NOTE: {name} not available ({reason}) — its column is skipped")
+    if getattr(args, "skip_compile_ops", None):
+        print(f"# NOTE: --skip-compile-ops keeps eager-only: {', '.join(sorted(args.skip_compile_ops))}")
+    if getattr(args, "ops", None):
+        print(f"# selected rows: {', '.join(sorted(args.ops))}")
+    return meta
+
+
+def finish_run(args: argparse.Namespace, suite: str, meta: dict[str, Any], results: list[dict[str, Any]]) -> None:
+    """Write ``--json`` and ``--contribute`` outputs with the same messages for every suite."""
+    if args.json:
+        out = save_json(args.json, meta, results)
+        print(f"# results written to {out}")
+    if args.contribute:
+        contribute_result(args.contribute, suite, meta, results, slug_override=args.machine_slug)
+
+
+class KorniaRows:
+    """Build the ``kornia (eager)`` / ``kornia (compiled)`` cells of one config's op rows.
+
+    ``rows(label, target, *args)`` returns ``{"kornia (eager)": ..., "kornia (compiled)": ...}``
+    where eager calls ``target(*args)`` and compiled calls ``torch.compile(target)(*args)`` after
+    a warmup outside the timed region. A failed warmup leaves the compiled cell ``None`` and
+    records the exception name in ``compile_failures`` for ``run_batch_sweep`` to report.
+
+    ``step`` wraps both cells, e.g. to add a backward pass; the warmup runs the wrapped call, so
+    a backward graph also compiles outside the timed region.
+
+    ``reset_per_op`` resets dynamo before each op. The image suites need it: kornia's
+    augmentation classes share one ``forward`` code object, so a config with more ops than the
+    recompile limit would otherwise fall back to eager silently. A suite of distinct functions can
+    reset once per config instead (``feature/laf_ops.py``), which keeps every earlier op's
+    compiled graph valid until it is timed.
+    """
+
+    def __init__(
+        self,
+        device: torch.device,
+        do_compile: bool,
+        skip_compile: frozenset[str] = frozenset(),
+        reset_per_op: bool = True,
+        step: Optional[Callable[[Callable[[], object]], Callable[[], object]]] = None,
+    ) -> None:
+        self.device = device
+        self.step = step if step is not None else (lambda call: call)
+        self.do_compile = do_compile
+        self.skip_compile = skip_compile
+        self.reset_per_op = reset_per_op
+        self.compile_failures: dict[str, str] = {}
+        if do_compile and not reset_per_op:
+            torch._dynamo.reset()
+
+    def __call__(self, label: str, target: Callable[..., object], *args: Any) -> dict[str, Backend]:
+        row: dict[str, Backend] = {"kornia (eager)": self.step(lambda: target(*args))}
+        if not self.do_compile or label in self.skip_compile:
+            return row
+        if self.reset_per_op:
+            torch._dynamo.reset()
+        compiled = torch.compile(target)
+        compiled_call = self.step(lambda: compiled(*args))
+        try:
+            compiled_call()  # warmup: compile + autotune before the timed region
+            if self.device.type == "cuda":
+                torch.cuda.synchronize()  # surface async kernel faults HERE, not at the next op
+            row["kornia (compiled)"] = compiled_call
+        except Exception as e:
+            errors = str(e)
+            if self.device.type == "cuda":
+                try:
+                    torch.cuda.synchronize()  # a FAILED warmup may still have launched kernels
+                except Exception as sync_err:
+                    errors += " | " + str(sync_err)
+            if "illegal memory access" in errors:
+                raise SystemExit(
+                    f"FATAL: CUDA context poisoned during torch.compile warmup of '{label}' "
+                    "(illegal memory access); no later measurement would be trustworthy. "
+                    f"Rerun with --skip-compile-ops {label} to keep it eager-only, or without "
+                    "--compile; CUDA_LAUNCH_BLOCKING=1 localizes the kernel."
+                ) from e
+            row["kornia (compiled)"] = None
+            self.compile_failures[label] = type(e).__name__
+        return row
+
+
+def image_batch(b: int, h: int, w: int, device: torch.device, dtype: torch.dtype) -> tuple[list[Any], torch.Tensor]:
+    """The shared seeded input: ``b`` uint8 HWC RGB images and the same batch as float BCHW in [0, 1]."""
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    imgs_u8 = [(rng.random((h, w, 3)) * 255).astype(np.uint8) for _ in range(b)]
+    batch_f = (
+        torch.stack([torch.from_numpy(im).permute(2, 0, 1) for im in imgs_u8]).to(device=device, dtype=dtype).div(255)
+    )
+    return imgs_u8, batch_f
+
+
+def image_row_fields(args: argparse.Namespace) -> Callable[[Any], dict[str, Any]]:
+    """Per-row config fields of an image suite: the square size and dtype."""
+    return lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype}
+
+
+def batch_list(args: argparse.Namespace) -> list[int]:
+    return [int(x) for x in args.batches.split(",") if x.strip()]

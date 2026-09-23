@@ -404,9 +404,6 @@ class TestDeviceAgnosticAugmentationParameters(BaseTester):
         self.assert_close(matrix[1], torch.eye(4, device=device, dtype=dtype))
 
     def test_mix_augmentation_blends_cpu_params_with_accelerator_input(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RandomMixUpV2 promotes half inputs because mixup_lambdas are float32")
-
         input = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 2, 2)
         augmentation = RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input"])
         params = self._cpu_partial_batch_params(augmentation, input)
@@ -617,7 +614,10 @@ class TestConventionAugmentationBase2D(BaseTester):
         rows = []
         for seed in range(8):
             torch.manual_seed(seed)
-            kwargs = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            kwargs: dict = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            # PatchMix's default patch_size of 16 does not fit this 6x8 input.
+            if augmentation_cls is K.PatchMix:
+                kwargs = {"patch_size": 4}
             params = augmentation_cls(p=0.5, **kwargs).forward_parameters((4, 3, 6, 8))
             rows.append(params["batch_prob"].tolist())
         assert all(len(set(row)) == 1 for row in rows)
@@ -1042,25 +1042,22 @@ class TestConventionAugmentationBase2D(BaseTester):
     @pytest.mark.parametrize(
         "name,error,message",
         [
-            ("RandomCrop", IndexError, "list index out of range"),
             ("LongestMaxSize", KeyError, "output_size"),
             ("RandomAutoContrast", ValueError, "Invalid input tensor, it is empty."),
-            ("Normalize", RuntimeError, "cannot reshape tensor of 0 elements"),
         ],
     )
-    def test_wart_zero_batch_raises_in_four_exception_families_4429(self, name, error, message, device, dtype):
+    def test_wart_zero_batch_raises_in_two_exception_families_4429(self, name, error, message, device, dtype):
         # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". These representative
         # augmentations raise through distinct failure paths; RandomAutoContrast is a deliberate validation
-        # error and the others expose implementation details.
+        # error and the other exposes an implementation detail.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu):
-        # RandomCrop IndexError('list index out of range'), LongestMaxSize KeyError('output_size'),
-        # RandomAutoContrast ValueError('Invalid input tensor, it is empty.'),
-        # Normalize RuntimeError('cannot reshape tensor of 0 elements into shape [0, 3, -1] ...').
+        # LongestMaxSize KeyError('output_size'), RandomAutoContrast ValueError('Invalid input tensor, it is
+        # empty.').
+        # Normalize used to be a further family, fixed by #4681; RandomCrop's IndexError from
+        # crop_by_indices was another.
         builders = {
-            "RandomCrop": lambda: K.RandomCrop((4, 6), p=1.0),
             "LongestMaxSize": lambda: K.LongestMaxSize(16, p=1.0),
             "RandomAutoContrast": lambda: K.RandomAutoContrast(p=1.0),
-            "Normalize": lambda: K.Normalize(0.5, 0.5, p=1.0),
         }
         with pytest.raises(error, match=re.escape(message)):
             builders[name]()(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
@@ -1068,11 +1065,9 @@ class TestConventionAugmentationBase2D(BaseTester):
     @pytest.mark.parametrize(
         ("augmentation", "shape"),
         [
-            pytest.param(
-                lambda: K.RandomCrop((4, 6), p=1.0),
-                (0, 3, 4, 6),
-                marks=pytest.mark.xfail(strict=True, raises=IndexError, reason="Tracked in #4429"),
-            ),
+            pytest.param(lambda: K.RandomCrop((4, 6), p=1.0), (0, 3, 4, 6), id="RandomCrop"),
+            pytest.param(lambda: K.RandomCrop((8, 10), pad_if_needed=True, p=1.0), (0, 3, 8, 10), id="RandomCrop-pad"),
+            pytest.param(lambda: K.RandomResizedCrop((4, 4), p=1.0), (0, 3, 4, 4), id="RandomResizedCrop"),
             pytest.param(
                 lambda: K.LongestMaxSize(16, p=1.0),
                 (0, 3, 12, 16),
@@ -1082,11 +1077,6 @@ class TestConventionAugmentationBase2D(BaseTester):
                 lambda: K.RandomAutoContrast(p=1.0),
                 (0, 3, 6, 8),
                 marks=pytest.mark.xfail(strict=True, raises=ValueError, reason="Tracked in #4429"),
-            ),
-            pytest.param(
-                lambda: K.Normalize(0.5, 0.5, p=1.0),
-                (0, 3, 6, 8),
-                marks=pytest.mark.xfail(strict=True, raises=RuntimeError, reason="Tracked in #4429"),
             ),
         ],
     )

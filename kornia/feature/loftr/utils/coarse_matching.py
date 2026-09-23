@@ -76,8 +76,7 @@ def compute_max_candidates(p_m0: torch.Tensor, p_m1: torch.Tensor) -> torch.Tens
     """
     h0s, w0s = p_m0.sum(1).max(-1)[0], p_m0.sum(-1).max(-1)[0]
     h1s, w1s = p_m1.sum(1).max(-1)[0], p_m1.sum(-1).max(-1)[0]
-    max_cand = torch.sum(torch.min(torch.stack([h0s * w0s, h1s * w1s], -1), -1)[0])
-    return max_cand
+    return torch.sum(torch.min(torch.stack([h0s * w0s, h1s * w1s], -1), -1)[0])
 
 
 class CoarseMatching(nn.Module):
@@ -267,15 +266,16 @@ class CoarseMatching(nn.Module):
                 (max(num_matches_train - num_matches_pred, self.train_pad_num_gt_min),),
                 device=_device,
             )
-            mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device)  # set conf of gt paddings to all zero
+            # set conf of gt paddings to all zero, in mconf's own dtype -- mconf can be
+            # float16/bfloat16 under autocast, and defaulting this to float32 would
+            # silently upcast the padded mconf below via torch.cat's type promotion.
+            mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device, dtype=mconf.dtype)
 
             b_ids, i_ids, j_ids, mconf = (  # type: ignore
                 torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)
                 for x, y in zip(
-                    [b_ids, data["spv_b_ids"]],
-                    [i_ids, data["spv_i_ids"]],
-                    [j_ids, data["spv_j_ids"]],
-                    [mconf, mconf_gt],
+                    [b_ids, i_ids, j_ids, mconf],
+                    [data["spv_b_ids"], data["spv_i_ids"], data["spv_j_ids"], mconf_gt],
                 )
             )
 

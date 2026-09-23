@@ -36,23 +36,22 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-if hasattr(torch.amp, "custom_fwd"):
-    AMP_CUSTOM_FWD_F32 = torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
-else:
-    # ``torch.amp.custom_fwd`` was introduced after Kornia's minimum supported Torch;
-    # the CUDA-specific spelling provides the same behavior on older releases.
-    AMP_CUSTOM_FWD_F32 = torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
-
-
-@AMP_CUSTOM_FWD_F32
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
         size = torch.tensor(size)[None]
+    # Under an active autocast, cast fp16/bf16 inputs to fp32 so the normalisation
+    # arithmetic runs at full precision regardless of the accelerator.
+    # Deriving the autocast device from the input tensor itself is correct for any
+    # backend (CUDA, NPU, XPU, MPS) and on CPU-only builds where
+    # ``torch.accelerator.current_accelerator()`` would be ``None``.
+    device_type = kpts.device.type
+    if kpts.is_floating_point() and kpts.dtype in (torch.float16, torch.bfloat16):
+        if torch.is_autocast_enabled(device_type):
+            kpts = kpts.to(torch.float32)
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
-    kpts = (kpts - shift[:, None]) / scale[:, None, None]
-    return kpts
+    return (kpts - shift[:, None]) / scale[:, None, None]
 
 
 def pad_to_length(x: torch.Tensor, length: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -162,10 +161,9 @@ class Attention(nn.Module):
             args = [x.half().contiguous() for x in [q, k, v]]
             v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
             return v if mask is None else v.nan_to_num()
-        else:
-            args = [x.contiguous() for x in [q, k, v]]
-            v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
-            return v if mask is None else v.nan_to_num()
+        args = [x.contiguous() for x in [q, k, v]]
+        v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
+        return v if mask is None else v.nan_to_num()
 
 
 class SelfBlock(nn.Module):
@@ -341,10 +339,9 @@ class TransformerLayer(nn.Module):
         """
         if mask0 is not None and mask1 is not None:
             return self.masked_forward(desc0, desc1, encoding0, encoding1, mask0, mask1)
-        else:
-            desc0 = self.self_attn(desc0, encoding0)
-            desc1 = self.self_attn(desc1, encoding1)
-            return self.cross_attn(desc0, desc1)
+        desc0 = self.self_attn(desc0, encoding0)
+        desc1 = self.self_attn(desc1, encoding1)
+        return self.cross_attn(desc0, desc1)
 
     # This part is compiled and allows padding inputs
     def masked_forward(
@@ -690,7 +687,8 @@ class LightGlue(nn.Module):
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
         """
-        with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
+        device_type = data["image0"]["keypoints"].device.type
+        with torch.autocast(enabled=self.conf.mp, device_type=device_type):
             return self._forward(data)
 
     def _forward(self, data: dict) -> dict:  # type: ignore
@@ -872,7 +870,7 @@ class LightGlue(nn.Module):
             prune0 = torch.ones_like(mscores0) * self.conf.n_layers
             prune1 = torch.ones_like(mscores1) * self.conf.n_layers
 
-        pred = {
+        return {
             "log_assignment": scores,
             "matches0": m0,
             "matches1": m1,
@@ -884,8 +882,6 @@ class LightGlue(nn.Module):
             "prune0": prune0,
             "prune1": prune1,
         }
-
-        return pred
 
     def confidence_threshold(self, layer_index: int) -> float:
         """Scaled confidence threshold."""
@@ -924,5 +920,4 @@ class LightGlue(nn.Module):
         """
         if self.conf.flash and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]
-        else:
-            return self.pruning_keypoint_thresholds[device.type]
+        return self.pruning_keypoint_thresholds[device.type]

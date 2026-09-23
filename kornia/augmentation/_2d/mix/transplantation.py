@@ -49,7 +49,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
     Args:
         excluded_labels: sequence of labels which should not be transplanted from a donor. This can be useful if only
           parts of the image are annotated and the non-annotated regions (with a specific label index) should be
-          excluded from the augmentation. If no label is left in the donor image, nothing is transplanted.
+          excluded from the augmentation. If no label is left in a donor image, that acceptor receives nothing
+          while the rest of the batch is transplanted as usual.
         p: probability for applying an augmentation to an image. This parameter controls how many images in a batch
           receive a transplant.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
@@ -63,7 +64,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
         - This augmentation requires that segmentation masks are available for all images in the batch and that at
           least some objects in the image are annotated.
         - When using this class directly (`RandomTransplantation()(...)`), it works for arbitrary spatial dimensions
-          including 2D and 3D images. When wrapping in :class:`kornia.augmentation.AugmentationSequential`, use
+          including 2D and 3D images. When wrapping in
+          :class:`kornia.augmentation.container.AugmentationSequential`, use
           :class:`kornia.augmentation.RandomTransplantation` for 2D and
           :class:`kornia.augmentation.RandomTransplantation3D` for 3D images.
 
@@ -81,6 +83,46 @@ class RandomTransplantation(MixAugmentationBaseV2):
             - Augmented mask tensors: :math:`(B, *)`.
             - Additional augmented image or mask tensors: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)`
               (`DataKey.MASK`).
+
+    Convention:
+        - the transplant is driven by the first ``"mask"`` input. Every input keeps its own rank: an image is
+          ``(B, C, *spatial)`` and a mask ``(B, *spatial)``, for any number of spatial dimensions, including
+          none -- a ``(B,)`` mask is one label per image and moves the whole image. The first axis is always
+          the batch and there is no unbatched form. This class overrides ``forward`` wholesale, so the
+          ``(B, C, H, W)`` working layout and the rank promotion on
+          :class:`~kornia.augmentation.MixAugmentationBaseV2` do not apply to it, and its inherited
+          ``keepdim`` is inert.
+        - ``p`` gates samples and ``p_batch`` gates the whole call. Each selected image is an acceptor and its
+          donor is the previous image of the **full** batch, ``(i - 1) mod B``, so a donor need not itself be
+          an acceptor, and one that is gives its original content rather than what it received. At ``B = 1``
+          an image is its own donor and the call is an exact identity.
+        - one label is drawn uniformly from the donor's distinct labels, minus ``excluded_labels``, with
+          ``torch.randperm`` on the global CPU generator whatever the mask's device; the draw is over labels,
+          not over area. A donor with no eligible label has nothing to give, so its acceptor is dropped from
+          ``acceptor_indices``, its ``batch_prob`` entry is cleared and it receives nothing, while the rest of
+          the batch is transplanted.
+        - ``_params`` holds ``batch_prob``, ``forward_input_shape`` (the mask's shape in a direct call, the image's
+          inside a container), ``acceptor_indices``, ``donor_indices``, ``selected_labels`` and ``selection``.
+          ``selection`` is what the transform reads: row ``d`` marks the positions moved from ``donor_indices[d]``
+          into ``acceptor_indices[d]``, and a drawn ``selected_labels`` has one entry per row. A recorded ``_params``
+          passed back is used as given and completed in place, so it replays the same positions on any input of the
+          same shape. Labels are drawn only when ``selected_labels`` and ``selection`` are both missing. A missing
+          ``selection`` alone is rebuilt from the given labels against the current mask, without consulting
+          ``excluded_labels``, and a label list shorter than the acceptors leaves the trailing acceptors untouched.
+        - image inputs accept ``float16``, ``bfloat16``, ``float32`` and ``float64`` only, checked whatever the
+          gate; a mask keeps its own dtype, which may be ``bool``, ``uint8``, a signed integer or one of those
+          four floating dtypes. Only ``"input"`` / ``"image"`` and ``"mask"`` are implemented -- any other data
+          key raises a bare ``NotImplementedError`` whatever the gate. A ``"mask"`` is needed only to derive the
+          parameters, where its absence raises ``ValueError``; a call with a complete ``_params`` accepts any
+          subset of the inputs, which is how :class:`~kornia.augmentation.container.AugmentationSequential`
+          applies the transplant, one input at a time. Outputs come back in input order, a single one as a bare
+          tensor.
+        - like every mix augmentation it is not geometric: ``transform_matrix`` and ``inverse()`` both raise
+          ``RuntimeError``, and the ``inverse()`` of a
+          :class:`~kornia.augmentation.container.AugmentationSequential` holding one raises the same error. The
+          container hands a mask on as ``(B, 1, H, W)`` once any other augmentation has run, which the rank rule
+          above refuses, so the transplant only works there as the first step
+          (`#4707 <https://github.com/kornia/kornia/issues/4707>`_).
 
     Examples:
         >>> import torch
@@ -253,11 +295,13 @@ class RandomTransplantation(MixAugmentationBaseV2):
         if "donor_indices" not in params:
             params["donor_indices"] = (params["acceptor_indices"] - 1) % len(params["batch_prob"])
 
-        if "selected_labels" not in params:
+        # Labels exist only to build a selection, so an explicit selection is never second-guessed by a draw.
+        if "selected_labels" not in params and "selection" not in params:
             if self.excluded_labels.device != mask.device:
                 self.excluded_labels = self.excluded_labels.to(mask.device)
 
             donor_labels: list[torch.Tensor] = []
+            eligible: list[int] = []
             for d in range(len(params["donor_indices"])):
                 # Select a random label from the donor image
                 current_mask = mask[params["donor_indices"][d]]
@@ -270,10 +314,30 @@ class RandomTransplantation(MixAugmentationBaseV2):
                     labels = labels[(labels.view(1, -1) != self.excluded_labels.view(-1, 1)).all(dim=0)]
 
                 if len(labels) > 0:
-                    selected_label = labels[torch.randperm(len(labels))[0]]
-                    donor_labels.append(selected_label)
+                    donor_labels.append(labels[torch.randperm(len(labels))[0]])
+                    eligible.append(d)
 
-            params["selected_labels"] = torch.stack(donor_labels) if len(donor_labels) > 0 else torch.empty(0)
+            if len(eligible) < len(params["donor_indices"]):
+                # A donor without an eligible label has nothing to give, so its acceptor is not an acceptor.
+                # Dropping the pair keeps `selected_labels` aligned with the donors it is zipped against below;
+                # merely skipping the label would shift every later label onto the wrong donor. No placeholder
+                # label can stand in for "nothing": every value of a bounded dtype may occur in a mask. The gate
+                # is closed for the dropped acceptors too, so a replay that rebuilds `acceptor_indices` from
+                # `batch_prob` stays aligned with the pruned rows.
+                keep = torch.tensor(eligible, dtype=torch.long, device=params["donor_indices"].device)
+                dropped = torch.ones(len(params["acceptor_indices"]), dtype=torch.bool, device=keep.device)
+                dropped[keep] = False
+                batch_prob = params["batch_prob"].clone()
+                batch_prob[params["acceptor_indices"][dropped]] = 0
+                params["batch_prob"] = batch_prob
+                params["acceptor_indices"] = params["acceptor_indices"][keep]
+                params["donor_indices"] = params["donor_indices"][keep]
+
+            params["selected_labels"] = (
+                torch.stack(donor_labels)
+                if len(donor_labels) > 0
+                else torch.empty(0, dtype=mask.dtype, device=mask.device)
+            )
 
         if "selection" not in params:
             selection = torch.zeros(
@@ -286,9 +350,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
             )
             KORNIA_CHECK(
                 len(selected_labels) <= len(params["acceptor_indices"]),
-                f"There cannot be more selected labels ({len(selected_labels)}) than images "
-                f"torch.where this augmentation "
-                f"should be applied ({len(params['acceptor_indices'])}).",
+                f"There cannot be more selected labels ({len(selected_labels)}) than images where this "
+                f"augmentation should be applied ({len(params['acceptor_indices'])}).",
             )
 
             for d, selected_label in zip(range(len(params["donor_indices"])), selected_labels):
@@ -352,5 +415,5 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         if len(outputs) == 1:
             return outputs[0]
-        else:
-            return outputs
+
+        return outputs

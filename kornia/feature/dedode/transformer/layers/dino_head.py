@@ -76,22 +76,20 @@ class DINOHead(nn.Module):
         x = self.mlp(x)
         eps = 1e-6 if x.dtype == torch.float16 else 1e-12
         x = nn.functional.normalize(x, dim=-1, p=2, eps=eps)
-        x = self.last_layer(x)
-        return x
+        return self.last_layer(x)
 
 
 def _build_mlp(nlayers, in_dim, bottleneck_dim, hidden_dim=None, use_bn=False, bias=True):
     if nlayers == 1:
         return nn.Linear(in_dim, bottleneck_dim, bias=bias)
-    else:
-        layers = [nn.Linear(in_dim, hidden_dim, bias=bias)]
+    layers = [nn.Linear(in_dim, hidden_dim, bias=bias)]
+    if use_bn:
+        layers.append(nn.BatchNorm1d(hidden_dim))
+    layers.append(nn.GELU())
+    for _ in range(nlayers - 2):
+        layers.append(nn.Linear(hidden_dim, hidden_dim, bias=bias))
         if use_bn:
             layers.append(nn.BatchNorm1d(hidden_dim))
         layers.append(nn.GELU())
-        for _ in range(nlayers - 2):
-            layers.append(nn.Linear(hidden_dim, hidden_dim, bias=bias))
-            if use_bn:
-                layers.append(nn.BatchNorm1d(hidden_dim))
-            layers.append(nn.GELU())
-        layers.append(nn.Linear(hidden_dim, bottleneck_dim, bias=bias))
-        return nn.Sequential(*layers)
+    layers.append(nn.Linear(hidden_dim, bottleneck_dim, bias=bias))
+    return nn.Sequential(*layers)

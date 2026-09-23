@@ -52,36 +52,36 @@ def _bilateral_blur(
 
     if isinstance(sigma_color, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ["B"])
-        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1)
+        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1, 1)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     pad_y, pad_x = _compute_zero_padding(kernel_size)
 
+    # Keep both patch axes: flattening them would copy every overlapping window.
     padded_input = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
-    unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, Ky x Kx)
+    unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1)  # (B, C, H, W, Ky, Kx)
 
     if guidance is None:
         guidance = input
         unfolded_guidance = unfolded_input
     else:
         padded_guidance = F.pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
-        unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, Ky x Kx)
+        unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1)  # (B, C, H, W, Ky, Kx)
 
-    diff = unfolded_guidance - guidance.unsqueeze(-1)
+    diff = unfolded_guidance - guidance[..., None, None]
     if color_distance_type == "l1":
         color_distance_sq = diff.abs().sum(1, keepdim=True).square()
     elif color_distance_type == "l2":
         color_distance_sq = diff.square().sum(1, keepdim=True)
     else:
         raise ValueError("color_distance_type only accepts l1 or l2")
-    color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, Ky x Kx)
+    color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, Ky, Kx)
 
     space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
-    space_kernel = space_kernel.view(-1, 1, 1, 1, kx * ky)
+    space_kernel = space_kernel.view(-1, 1, 1, 1, ky, kx)
 
     kernel = space_kernel * color_kernel
-    out = (unfolded_input * kernel).sum(-1) / kernel.sum(-1)
-    return out
+    return (unfolded_input * kernel).sum((-2, -1)) / kernel.sum((-2, -1))
 
 
 def bilateral_blur(

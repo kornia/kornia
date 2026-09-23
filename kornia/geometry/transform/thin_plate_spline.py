@@ -38,19 +38,22 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
     t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)
     t1_t2: torch.Tensor = tensor1.matmul(tensor2.transpose(1, 2))
     square_dist: torch.Tensor = -2 * t1_t2 + t1_sq + t2_sq
-    square_dist = square_dist.clamp(min=0)  # handle possible numerical errors
-    return square_dist
+    return square_dist.clamp(min=0)  # handle possible numerical errors
 
 
-def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+def _kernel_distance(squared_distances: torch.Tensor) -> torch.Tensor:
     r"""Compute the TPS kernel distance function: :math:`r^2 log(r)`, where `r` is the euclidean distance.
 
     Since
     :math: `\log(r) = 1/2 \log(r^2)`, this function takes the squared distance matrix and calculates
     :math: `0.5 r^2 log(r^2)`.
     """
-    # r^2 * log(r) = 1/2 * r^2 * log(r^2)
-    return 0.5 * squared_distances * squared_distances.add(eps).log()
+    safe = torch.where(squared_distances > 0, squared_distances, torch.ones_like(squared_distances))
+    return torch.where(
+        squared_distances > 0,
+        0.5 * squared_distances * safe.log(),
+        torch.zeros_like(squared_distances),
+    )
 
 
 def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -68,7 +71,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           mapping (``points_src == points_dst``) yields kernel weights and an affine
           that are mathematically zero/identity, realized only up to linear-solver
           (LU) round-off — not bit-exact in general, and the residual size is
-          dtype- and backend-dependent; float16 currently produces NaN weights
+          dtype- and backend-dependent
         - neither :func:`warp_points_tps` nor :func:`warp_image_tps` calls this
           function — the caller composes them explicitly; whichever tensor is
           passed as this function's **second** positional argument is

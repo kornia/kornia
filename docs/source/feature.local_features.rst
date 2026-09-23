@@ -38,6 +38,27 @@ Local features (detector and descriptor together)
 .. autoclass:: SIFTFeature
    :members: forward
 
+The scale-space SIFT preset supports ``descriptor_backend="pyramid"`` for
+specialized sparse extraction from the detector's Gaussian pyramid::
+
+    feature = kornia.feature.SIFTFeatureScaleSpace(
+        num_features=4096, descriptor_backend="pyramid"
+    )
+    lafs, responses, descriptors = feature(grayscale_image)
+
+This path uses a dedicated DoG detector, with strict sparse extrema, iterative
+subpixel refinement, and top-K ranking by absolute response. It applies neither
+contrast nor edge rejection. Precise doubling and integer octave decimation keep
+pixel coordinates aligned. The converged integer Gaussian layer and refined
+continuous scale are retained separately. Gradients are computed once per used
+layer and shared between orientation and description. It returns one descriptor per detection and the same fixed feature
+budget as the default patch backend. Its sampling and Gaussian support differ
+from patch extraction, so descriptors are not numerically interchangeable.
+No pyramid is retained between calls. For this backend, ``compile_modules``
+accepts ``scale_pyr`` and ``subpix`` (or ``True`` for both); sparse orientation
+and description run eagerly. The default ``patch`` backend retains the existing
+generic detector and its compilation options.
+
 .. autoclass:: SIFTFeatureScaleSpace
    :members: forward
 

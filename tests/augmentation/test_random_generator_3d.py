@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from unittest.mock import patch
+
 import pytest
 import torch
 
@@ -691,3 +693,105 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
         assert_close(res["ksize_factor"], expected["ksize_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["angle_factor"], expected["angle_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["direction_factor"], expected["direction_factor"], rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_is_constant_across_batch(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 7),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        for seed in range(20):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((6,)), same_on_batch=False)
+
+            assert res["ksize_factor"].shape == (6,)
+            assert res["ksize_factor"].unique().numel() == 1
+            assert int(res["ksize_factor"][0]) in {3, 5, 7}
+
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_includes_upper_bound(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 7),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        seen = set()
+        for seed in range(1000):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((1,)), same_on_batch=False)
+            seen.add(int(res["ksize_factor"][0]))
+
+        assert seen == {3, 5, 7}
+
+    # Issue #4672: an even upper bound used to admit the odd size above it -- `ks[1] // 2 + 1` took the
+    # `+ 1` off `ks[1] // 2` rather than off the largest odd size in the range -- so (3, 20) drew 21 and
+    # (3, 4) drew 5.  The bound is now the largest odd size not above `ks[1]`, as in 2D after #4610.
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_even_upper_bound_caps_at_largest_odd(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 20),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        seen = set()
+        for seed in range(1000):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((1,)), same_on_batch=False)
+            seen.add(int(res["ksize_factor"][0]))
+
+        assert seen == {3, 5, 7, 9, 11, 13, 15, 17, 19}
+
+    # A range holding no odd size keeps rounding up out of the range, which 2D documents as well: the
+    # half-size floor is taken from the lower bound, so (4, 4) draws 5 and (2, 2) draws 3.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("kernel_size", "expected"), [((4, 4), 5), ((2, 2), 3)])
+    def test_ranged_kernel_size_without_an_odd_size_rounds_up(self, kernel_size, expected, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=kernel_size,
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+
+        seen = set()
+        for seed in range(200):
+            torch.manual_seed(seed)
+            res = param_gen(batch_shape=torch.Size((1,)), same_on_batch=False)
+            seen.add(int(res["ksize_factor"][0]))
+
+        assert seen == {expected}
+
+    # The sampler is half-open on [lo, hi + 1), so a float32 draw can round up onto `hi + 1` itself and
+    # leave the range.  Forcing the largest float below 1 through the sampler used to draw 7 for (3, 5).
+    @pytest.mark.device_agnostic
+    def test_ranged_kernel_size_top_draw_stays_in_range(self, device, dtype):
+        param_gen = MotionBlurGenerator3D(
+            kernel_size=(3, 5),
+            angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+            direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+        )
+        param_gen.make_samplers(device, dtype)
+
+        def _top_draw(*args, **kwargs):
+            shape = args[0] if args else kwargs["size"]
+            forwarded = {k: v for k, v in kwargs.items() if k in ("dtype", "device")}
+            return torch.full(shape, 1 - 2**-24, **forwarded)
+
+        with patch("torch.rand", _top_draw):
+            res = param_gen(batch_shape=torch.Size((4,)), same_on_batch=False)
+
+        assert int(res["ksize_factor"].max()) == 5
+
+    # A reversed pair used to be accepted and drew a constant above *both* bounds: (20, 3) drew 9.
+    @pytest.mark.device_agnostic
+    def test_reversed_kernel_size_raises(self, device, dtype):
+        # `make_samplers` runs from `__post_init__`, so the pair is refused as the generator is built.
+        with pytest.raises(ValueError, match="should be smaller than or equal to"):
+            MotionBlurGenerator3D(
+                kernel_size=(20, 3),
+                angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
+                direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
+            )

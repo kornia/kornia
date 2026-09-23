@@ -108,14 +108,21 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``image``, ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints``, ``label`` and ``class``
           (``input`` is an alias of ``image``, ``class`` of ``label``). Any other spelling -- ``boxes``,
           ``points``, ``bboxes``, ``keypoint`` -- raises ``KeyError``. With ``data_keys=None`` the call takes a
-          dict instead. Dictionary names are matched by raw prefixes and the container removes entries while
-          processing them. Prefixes can therefore route unrelated names (for example, ``imagenet_id``) as data
-          keys; use positional arguments for reliable key selection. Tracked in
-          `#4483 <https://github.com/kornia/kornia/issues/4483>`_.
+          dict instead. Dictionary names match these same names, optionally followed by an underscore or
+          hyphen suffix, with the longest name taking precedence. Unrecognized names (for example,
+          ``imagenet_id``, ``images``, ``masks``, ``labels``, ``bboxes``, ``inputs`` and ``keypoint``) are
+          returned unchanged as metadata, without a warning; unlike positional mode, dict mode does not
+          reject these names. Use recognized names such as ``mask_2`` and ``keypoints`` for augmentation.
+          ``class`` and any key beginning with ``class_`` or ``class-`` (for example, ``class_id`` or
+          ``class_weights``) route to labels and inherit label limitations, including unsupported
+          label-changing mix augmentations. A coordinate-box name must be followed by ``_``
+          or ``-`` to retain its format: ``bbox_xyxy2`` instead matches ``bbox`` and requires vertex boxes.
+          The input dictionary is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
-          Feeding a coordinate layout under another coordinate key raises ``ValueError`` naming the expected shape.
-          ``N = 0`` is
+          For 3D augmentations, inputs must be ``(D, H, W)`` or ``(B, C, D, H, W)``; rank-4 input is rejected
+          because ``(C, D, H, W)`` and ``(B, C, H, W)`` are ambiguous. Feeding a coordinate layout under another
+          coordinate key raises ``ValueError`` naming the expected shape. ``N = 0`` is
           accepted on every one of them. A ``mask`` is the one key whose rank changes: a ``(B, H, W)`` mask is
           accepted and returned as ``(B, 1, H, W)``. A wrong input *rank* raises ``RuntimeError`` here rather than
           the ``ValueError`` a bare augmentation raises.
@@ -126,22 +133,19 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           the mask, the keypoints and all three box spellings alike, and ``bbox_xywh`` keeps its ``w`` and
           ``h``. Labels are passed through untouched by a geometric step.
         - mask resampling normally uses nearest interpolation, but this does not guarantee label preservation:
-          padding can introduce a fill value.
-          Put the image before the masks, including
-          in dictionary insertion order, so mask conversion uses that image's working dtype. Masks preceding
-          the image use the previous call's image dtype, or ``float32`` on a fresh container. The container
-          casts every mask output to the last mask argument's dtype (the first
-          element's dtype if that argument is a list). A single mask or masks with a common dtype therefore
-          keep that dtype, ``bool`` included. Conversion through the image working dtype can round integer
-          labels that dtype cannot represent exactly, and mixed mask dtypes can lose labels, for example when a
-          final boolean mask makes an integer semantic mask boolean too. Tracked in
-          `#4478 <https://github.com/kornia/kornia/issues/4478>`_.
+          padding can introduce a fill value. Masks are converted to the image working dtype: that of the most
+          recent image argument before the mask, or of the call's first image when none precedes it, which can
+          happen in dictionary insertion order (a list ``data_keys`` must start with the image). Each mask output
+          comes back in the dtype of its own argument (per element for a list), ``bool`` included, so masks of
+          different dtypes do not affect each other. The conversion through the image working dtype can still
+          round integer labels that dtype cannot represent exactly, for example ``2049`` through ``float16``.
+          Tracked in `#4478 <https://github.com/kornia/kornia/issues/4478>`_.
         - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
           has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
           children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
           list can become desynchronized from the image when the gate differs across samples. A list longer
-          than the batch raises ``IndexError``. Use separate ``mask`` data keys with a common dtype for
-          separate full-batch masks. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
+          than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
+          Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - supported geometric data-key handlers share the recorded transform, subject to the mask limitations
           above. Custom rigid subclasses are not dispatched solely because they supply a matrix
           (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid child has no transform matrix,
@@ -289,12 +293,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         >>> [value.shape for value in out]
         [torch.Size([2, 3, 32, 32]), torch.Size([2, 3, 32, 32]), torch.Size([2, 2, 32, 32])]
 
-    With ``data_keys=None``, dictionary keys are matched to data-key prefixes. Use the exact keys
-    ``bbox_xyxy`` and ``bbox_xywh`` for coordinate boxes: suffixed versions match ``bbox`` and require
-    vertices instead. Use ``label`` for labels, since ``class`` and its prefixes are treated as unrelated
-    metadata. Unrecognized items are popped from the caller's dictionary and returned without augmentation.
-    Raw prefix matching can also misroute unrelated names such as ``imagenet_id``. Tracked in
-    `#4483 <https://github.com/kornia/kornia/issues/4483>`_.
+    With ``data_keys=None``, dictionary keys match data-key names case-insensitively, optionally followed
+    by an underscore or hyphen suffix (for example, ``image_2`` or ``bbox_xyxy-left``). The longest matching
+    name wins, so coordinate boxes with an underscore/hyphen suffix retain their coordinate format.
+    Without that separator, ``bbox_xyxy2`` matches ``bbox`` and requires vertex boxes. ``input`` and ``class`` are
+    aliases of ``image`` and ``label``. Unrecognized items are returned without augmentation, and the
+    caller's dictionary is left intact.
 
         >>> import kornia.augmentation as K
         >>> img = torch.randn(1, 3, 256, 256)
@@ -396,8 +400,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """Return identity matrix."""
         if self.contains_3d_augmentation:
             return eye_like(4, input)
-        else:
-            return eye_like(3, input)
+
+        return eye_like(3, input)
 
     def inverse(  # type: ignore[override]
         self,
@@ -465,21 +469,37 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # TODO: validate args batching, and its consistency
 
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
+        # Resolve this call's image dtype before any mask is converted, so a mask that precedes the image in
+        # dictionary insertion order uses it too, rather than the previous call's image dtype (or ``float32`` on
+        # a fresh container). It is kept in a local rather than read back from ``self.input_dtype``, so the same
+        # conversion happens under ``torch.export``, where that attribute is deliberately left untouched. Masks
+        # after an image use the most recent image, as before; a call with no image falls back to the attribute.
+        working_dtype = self.input_dtype
+        for arg, dcate in zip(args, data_keys):
+            if DataKey.get(dcate) in _IMG_OPTIONS:
+                working_dtype = cast(torch.Tensor, arg).dtype
+                break
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
                 arg = cast(torch.Tensor, arg)
+                working_dtype = arg.dtype
                 if not is_exporting():
                     self.input_dtype = arg.dtype
                 inp.append(arg)
             elif DataKey.get(dcate) in _MSK_OPTIONS:
-                if isinstance(inp, list):
-                    arg = cast(List[torch.Tensor], arg)
-                    self.mask_dtype = arg[0].dtype
-                else:
-                    arg = cast(torch.Tensor, arg)
-                    self.mask_dtype = arg.dtype
-                inp.append(self._preproc_mask(arg))
+                # Output dtypes are read back per argument in ``_arguments_postproc``; ``mask_dtype`` only records
+                # the last mask's dtype for callers that read the attribute. The test is on ``arg``: it used to be
+                # on the accumulator ``inp``, which is always a list, so a tensor mask was indexed at ``arg[0]``
+                # and an empty batch raised ``IndexError``. Like ``input_dtype``, the attribute is not written under
+                # ``torch.export``: creating an instance attribute during capture fails the export on torch 2.9.
+                if not is_exporting():
+                    if isinstance(arg, list):
+                        if len(arg) > 0:
+                            self.mask_dtype = arg[0].dtype
+                    else:
+                        self.mask_dtype = cast(torch.Tensor, arg).dtype
+                inp.append(self._preproc_mask(arg, working_dtype))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
@@ -500,7 +520,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
             elif DataKey.get(dcate) in _MSK_OPTIONS:
-                _out_m = self._postproc_mask(cast(MaskDataType, out_arg))
+                _out_m = self._postproc_mask(cast(MaskDataType, out_arg), cast(MaskDataType, in_arg))
                 out.append(_out_m)
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
@@ -559,14 +579,24 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
+        if DataKey.INPUT in self.transform_op.data_keys:
+            inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
+            if not isinstance(inp, torch.Tensor):
+                raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
+            if self.contains_3d_augmentation and len(inp.shape) == 4:
+                raise RuntimeError(
+                    f"3D augmentations in AugmentationSequential expect input shape "
+                    f"(D, H, W) or (B, C, D, H, W), but got {inp.shape}."
+                )
+
         if params is None:
             # image data must exist if params is not provided.
             if DataKey.INPUT in self.transform_op.data_keys:
                 inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
-                if not isinstance(inp, torch.Tensor):
-                    raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
-                if self.contains_video_sequential or self.contains_3d_augmentation:
+                if self.contains_video_sequential:
+                    _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
+                elif self.contains_3d_augmentation:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 else:
                     _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
@@ -663,29 +693,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         keys = tuple(data.keys())
         data_keys, invalid_keys = self._read_datakeys_from_dict(keys)
-        invalid_data = {i: data.pop(i) for i in invalid_keys} if invalid_keys else None
+        invalid_data = {i: data[i] for i in invalid_keys} if invalid_keys else None
         keys = tuple(k for k in keys if k not in invalid_keys) if invalid_keys else keys
-        data_unpacked = tuple(data.values())
+        data_unpacked = tuple(data[k] for k in keys)
 
         return keys, data_keys, data_unpacked, invalid_data
 
     def _read_datakeys_from_dict(self, keys: Sequence[str]) -> Tuple[List[DataKey], Optional[List[str]]]:
+        # Include aliases and prefer coordinate box names over their BBOX prefix.
+        names = sorted(DataKey.__members__, key=len, reverse=True)
+
         def retrieve_key(key: str) -> DataKey:
-            """Try to retrieve the datakey value by matching `<datakey>*`."""
-            # Alias cases, like INPUT, will not be get by the enum iterator.
-            if key.upper().startswith("INPUT"):
-                return DataKey.INPUT
-
-            for dk in DataKey:
-                if key.upper() in {"BBOX_XYXY", "BBOX_XYWH"}:
-                    return DataKey.get(key.upper())
-                if key.upper().startswith(dk.name):
-                    return DataKey.get(dk.name)
-
-            allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
-            raise ValueError(
-                f"Your input data dictionary keys should start with some of datakey values: {allowed_dk}. Got `{key}`"
-            )
+            """Match a data-key name exactly or before an underscore/hyphen suffix."""
+            upper_key = key.upper()
+            for name in names:
+                if upper_key == name or upper_key.startswith((name + "_", name + "-")):
+                    return DataKey.get(name)
+            raise ValueError(f"Unrecognized data dictionary key: {key}")
 
         valid_data_keys = []
         invalid_keys = []
@@ -697,29 +721,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return valid_data_keys, invalid_keys
 
-    def _preproc_mask(self, arg: MaskDataType) -> MaskDataType:
+    def _preproc_mask(self, arg: MaskDataType, dtype: Optional[torch.dtype]) -> MaskDataType:
+        # ``dtype`` is the calling image's working dtype, resolved by ``_arguments_preproc``; ``float32`` when the
+        # call has no image and no earlier call recorded one.
+        working = dtype if dtype is not None else torch.float
         if isinstance(arg, list):
-            new_arg = []
-            for a in arg:
-                a_new = a.to(self.input_dtype) if self.input_dtype else a.to(torch.float)
-                new_arg.append(a_new)
-            return new_arg
+            return [a.to(working) for a in arg]
+        return arg.to(working)
 
-        else:
-            arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
-        return arg
-
-    def _postproc_mask(self, arg: MaskDataType) -> MaskDataType:
+    def _postproc_mask(self, arg: MaskDataType, like: MaskDataType) -> MaskDataType:
+        # Each mask output goes back to the dtype of its own argument, per element for a list. A single shared
+        # dtype would cast every mask to whichever mask came last: an integer semantic mask followed by a boolean
+        # one came back boolean, and its labels collapsed to ``True``.
         if isinstance(arg, list):
-            new_arg = []
-            for a in arg:
-                a_new = a.to(self.mask_dtype) if self.mask_dtype else a.to(torch.float)
-                new_arg.append(a_new)
-            return new_arg
-
-        else:
-            arg = arg.to(self.mask_dtype) if self.mask_dtype else arg.to(torch.float)
-        return arg
+            likes = like if isinstance(like, list) else [like] * len(arg)
+            return [a.to(ref.dtype) for a, ref in zip(arg, likes)]
+        ref = like[0] if isinstance(like, list) else like
+        return arg.to(ref.dtype)
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
         if DataKey.get(dcate) in [DataKey.BBOX]:
@@ -732,14 +750,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
         if isinstance(arg, Boxes):
             return arg
-        elif self.contains_video_sequential:
+        if self.contains_video_sequential:
             arg = cast(torch.Tensor, arg)
             return VideoBoxes.from_tensor(arg)
-        elif self.contains_3d_augmentation:
+        if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
-        else:
-            arg = cast(torch.Tensor, arg)
-            return Boxes.from_tensor(arg, mode=mode)
+        arg = cast(torch.Tensor, arg)
+        return Boxes.from_tensor(arg, mode=mode)
 
     def _postproc_boxes(
         self, in_arg: DataType, out_arg: Boxes, dcate: DataKey
@@ -756,8 +773,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # TODO: handle 3d scenarios
         if isinstance(in_arg, Boxes):
             return out_arg
-        else:
-            return out_arg.to_tensor(mode=mode)
+
+        return out_arg.to_tensor(mode=mode)
 
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
         dtype = None
@@ -773,23 +790,22 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 arg = arg.float()
             video_result = VideoKeypoints.from_tensor(arg)
             return video_result.type(dtype) if dtype else video_result
-        elif self.contains_3d_augmentation:
+        if self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
-        elif isinstance(arg, Keypoints):
+        if isinstance(arg, Keypoints):
             return arg
-        else:
-            arg = cast(torch.Tensor, arg)
-            if not torch.is_floating_point(arg):
-                dtype = arg.dtype
-                arg = arg.float()
-            # TODO: Add List[torch.Tensor] in the future.
-            result = Keypoints.from_tensor(arg)
-            return result.type(dtype) if dtype else result
+        arg = cast(torch.Tensor, arg)
+        if not torch.is_floating_point(arg):
+            dtype = arg.dtype
+            arg = arg.float()
+        # TODO: Add List[torch.Tensor] in the future.
+        result = Keypoints.from_tensor(arg)
+        return result.type(dtype) if dtype else result
 
     def _postproc_keypoint(
         self, in_arg: DataType, out_arg: Keypoints, dcate: DataKey
     ) -> Union[torch.Tensor, List[torch.Tensor], Keypoints]:
         if isinstance(in_arg, Keypoints):
             return out_arg
-        else:
-            return out_arg.to_tensor()
+
+        return out_arg.to_tensor()

@@ -180,11 +180,10 @@ class ImageModuleMixIn:
             if x.dim() == 3:
                 x = x.permute(1, 2, 0)
                 return Image.fromarray(x.byte().numpy())  # type: ignore
-            elif x.dim() == 4:
+            if x.dim() == 4:
                 x = x.permute(0, 2, 3, 1)
                 return [Image.fromarray(_x.byte().numpy()) for _x in x]  # type: ignore
-            else:
-                raise NotImplementedError
+            raise NotImplementedError
         if isinstance(x, np.ndarray):  # type: ignore
             raise NotImplementedError
         if isinstance(x, Image.Image):  # type: ignore
