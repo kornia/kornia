@@ -347,6 +347,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             keepdim=keepdim,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
+            # `inverse` below leaves a plain `nn.Module` child applied; keep that when nested in another container.
+            if_unsupported_ops="skip",
         )
 
         self._parse_transformation_matrix_mode(transformation_matrix_mode)

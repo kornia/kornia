@@ -171,6 +171,39 @@ class TestConventionImageSequential(BaseTester):
         with pytest.raises(NotImplementedError, match="GaussianBlur2d"):
             inner_raises.inverse(out)
 
+    def test_convention_if_unsupported_ops_ignores_members_random_apply_did_not_select_4423(self, device, dtype):
+        # #4423: only the members recorded in `params` are checked, so a plain module that `random_apply` did not
+        # select cannot make "raise" fire.
+        if device.type == "mps" and torch_version_lt(2, 6, 0):
+            pytest.skip("torch 2.5.1 MPS inverse of expanded matrices can abort the process")
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        blur = kornia.filters.GaussianBlur2d((3, 3), (1.5, 1.5))
+        seq = K.ImageSequential(K.RandomHorizontalFlip(p=1.0), blur, random_apply=1, random_apply_weights=[1.0, 0.0])
+        out = seq(x)
+        assert [p.name for p in seq._params] == ["RandomHorizontalFlip_0"]
+        self.assert_close(seq.inverse(out), out.flip(-1))
+
+    def test_convention_augmentation_sequential_leaves_plain_modules_applied_4423(self, device, dtype):
+        # #4423: `AugmentationSequential` does not take `if_unsupported_ops`; it leaves a plain module child applied,
+        # also when nested in another container, while a nested `ImageSequential` follows its own setting.
+        if device.type == "mps" and torch_version_lt(2, 6, 0):
+            pytest.skip("torch 2.5.1 MPS inverse of expanded matrices can abort the process")
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        blur = kornia.filters.GaussianBlur2d((3, 3), (1.5, 1.5))
+
+        nested_aug = K.ImageSequential(
+            K.RandomHorizontalFlip(p=1.0), K.AugmentationSequential(K.RandomVerticalFlip(p=1.0), blur)
+        )
+        out = nested_aug(x)
+        self.assert_close(nested_aug.inverse(out), out.flip(-2).flip(-1))
+
+        nested_image = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0), K.ImageSequential(K.RandomVerticalFlip(p=1.0), blur)
+        )
+        out = nested_image(x)
+        with pytest.raises(NotImplementedError, match="GaussianBlur2d"):
+            nested_image.inverse(out)
+
     def test_convention_video_sequential_passes_if_unsupported_ops_through_4423(self, device, dtype):
         # #4423: VideoSequential inverts through ImageSequential, so it takes the same setting.
         x = torch.rand(1, 3, 3, 6, 8, device=device, dtype=dtype)
