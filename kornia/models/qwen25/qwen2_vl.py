@@ -52,8 +52,7 @@ class Qwen2VLPatchMerger(Module):
         x = self.conv(x)
         x = x.flatten(2)
         x = x.transpose(1, 2)
-        x = self.ln_q(x)
-        return x
+        return self.ln_q(x)
 
 
 class Qwen2VLRotaryEmbedding(Module):
@@ -128,8 +127,7 @@ class Qwen2VLVisionAttention(Module):
         x = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0)
 
         x = x.transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        return x
+        return self.proj(x)
 
 
 class Qwen2VLMLP(Module):
@@ -195,8 +193,7 @@ class Qwen2VLVisionBlock(Module):
             residual connections.
         """
         x = x + self.attn(self.norm1(x), rot_pos_emb=rot_pos_emb)
-        x = x + self.mlp(self.norm2(x))
-        return x
+        return x + self.mlp(self.norm2(x))
 
 
 class Qwen2VLVisionTransformer(Module):

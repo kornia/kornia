@@ -167,8 +167,7 @@ class LayerNorm2d(nn.Module):
         u = x.mean(1, keepdim=True)
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / (s + self.eps).sqrt()
-        x = self.weight[:, None, None] * x + self.bias[:, None, None]
-        return x
+        return self.weight[:, None, None] * x + self.bias[:, None, None]
 
 
 def window_partition(x: torch.Tensor, window_size: int) -> tuple[torch.Tensor, tuple[int, int]]:
