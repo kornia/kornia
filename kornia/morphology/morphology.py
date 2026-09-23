@@ -221,7 +221,8 @@ def dilation(
         a ``float16`` image raise on CPU and CUDA but round on MPS, and storing it into a ``float16`` kernel or
         structuring element -- which includes a ``bool`` or integer kernel on a ``float16`` image, since the
         image lends it its dtype -- raises on MPS and on CPU with torch 2.5.1 but rounds on CPU and CUDA with
-        torch 2.14 (to ``-65504``, or to ``-inf`` from 65520).
+        torch 2.14 (to ``-65504``, or to ``-inf`` from 65520); that store converts the scalar before it looks
+        for a zero cell, so a kernel of all ones raises there too.
         Tracked in `#4734 <https://github.com/kornia/kornia/issues/4734>`_.
 
     .. warning::
@@ -243,15 +244,16 @@ def dilation(
         - Without a ``structuring_element``, a floating-point image lends its dtype to a ``bool`` or integer
           ``kernel``, which is then only a membership mask and returns exactly what the same kernel in the
           image's dtype does. On a non-float image the masked-out cells store ``-max_val`` in the kernel's own
-          dtype instead. A ``uint8`` kernel then raises an overflow ``RuntimeError`` under every
+          dtype instead. A ``uint8`` or ``int8`` kernel then raises an overflow ``RuntimeError`` under every
           ``border_type``. A ``bool`` kernel stores it as ``True``: every function but :func:`dilation`
           contains an erosion, which raises a torch error (``NotImplementedError`` on recent torch,
           ``RuntimeError`` on older releases) except under ``engine="convolution"`` with an integer image on
-          CPU, where it runs and a ``False`` cell contributes ``x - 1``; :func:`dilation` is silently wrong
-          under every ``border_type`` as soon as the kernel holds a ``False`` cell, which then contributes
-          ``x + 1`` instead of being left out -- for a ``bool`` image, ``True`` everywhere under every border
-          that accepts one. With a floating ``structuring_element`` the kernel is only the ``kernel == 0``
-          mask, and a ``uint8`` or ``bool`` kernel returns what the floating kernel does.
+          CPU, where it runs and a ``False`` cell contributes ``x - 1`` (modulo 256 for a ``uint8`` image,
+          which stores that ``-1`` as ``255``); :func:`dilation` is silently wrong under every ``border_type``
+          as soon as the kernel holds a ``False`` cell, which then contributes ``x + 1`` instead of being left
+          out -- for a ``bool`` image, ``True`` everywhere under every border that accepts one. With a
+          floating ``structuring_element`` the kernel is only the ``kernel == 0`` mask, and a ``uint8`` or
+          ``bool`` kernel returns what the floating kernel does.
         - The geodesic pad stores :math:`\mp` ``max_val`` in the image's dtype. A ``uint8`` image raises an
           overflow ``RuntimeError`` there on CPU and CUDA whenever the kernel needs a pad, while on MPS the sentinel
           wraps modulo 256 instead of raising; under the other ``border_type`` values a ``uint8`` image with a
@@ -415,9 +417,10 @@ def erosion(
         Under ``border_type="geodesic"`` a window with no in-image kernel cell is empty. scipy and
         scikit-image return ``inf`` there and OpenCV the dtype's largest value (``FLT_MAX`` for ``float32``),
         while kornia returns a finite value that depends on the image. For a flat kernel with at least one
-        non-zero cell, an image and kernel of one dtype that holds ``max_val`` exactly (``bfloat16`` stores
-        ``1e4`` as ``9984``) and any engine but ``"convolution"``, it is ``max_val + min(0, m)`` rounded to
-        that dtype, where ``m`` is the smallest in-image pixel under a masked-out cell of that window
+        non-zero cell, an image and kernel of one dtype (a ``bool`` or integer kernel takes the image's) that
+        holds ``max_val`` exactly (``bfloat16`` stores ``1e4`` as ``9984``) and any engine but
+        ``"convolution"``, it is ``max_val + min(0, m)`` rounded to that dtype, where ``m`` is the smallest
+        in-image pixel under a masked-out cell of that window
         (``min(0, m)`` is ``0`` when there is none). A negative pixel there can pull it below
         ``max_val``: ``x=[[-2.]]`` with ``kernel=[[0, 1]]`` and ``origin=[0, 0]`` returns ``9998`` in
         ``float32``. :func:`dilation` mirrors it with ``-max_val + max(0, M)``, ``M`` the largest such pixel.
@@ -432,9 +435,9 @@ def erosion(
         ``ones(3, 3)`` and ``x = y = -1`` everywhere, the same two tests disagree. The duality of
         ``dilation`` and ``erosion`` under negation is ``erosion(tensor, kernel, origin=origin)`` equals
         ``-dilation(-tensor, kernel.flip((0, 1)), origin=[k_h - 1 - origin[0], k_w - 1 - origin[1]])``, which
-        is exact up to the sign of a zero for a flat structuring element and ``border_value=0``; a non-flat
-        ``structuring_element`` has to be flipped with the kernel, and a non-zero ``border_value`` has to be
-        negated.
+        is exact up to the sign of a zero for a flat structuring element and, under ``border_type="constant"``,
+        ``border_value=0``; a non-flat ``structuring_element`` has to be flipped with the kernel, and under
+        ``constant`` a non-zero ``border_value`` has to be negated (the other borders ignore it).
 
         The two ``.. warning::`` blocks in :func:`dilation` describe this function too, including what a
         ``bool`` kernel does to an erosion of a non-float image.
