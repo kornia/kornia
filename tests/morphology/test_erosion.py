@@ -583,6 +583,49 @@ class TestErode(BaseTester):
                 continue
             assert torch.equal(erosion(tensor, kernel, border_type=border_type, border_value=-5.0), tensor)
 
+    def test_convention_duality_under_negation_borders(self, device, dtype):
+        # `erosion(x, kernel, origin=o) == -dilation(-x, kernel.flip((0, 1)), origin=[k_h-1-o0, k_w-1-o1])`
+        # holds under every border and engine with a flat structuring element: `geodesic` pads -max_val on
+        # the dilation side and +max_val on the erosion side, the pixel-copying pads are symmetric under
+        # negation, and `constant` needs `border_value` negated on the dilation side. The other borders ignore
+        # `border_value` (#4758), so there an unnegated value keeps the identity; under `constant` it breaks
+        # it. The asymmetric kernel and off-centre origin make the flip and the origin map load-bearing, and
+        # both sides only select and negate values of `x`, so `torch.equal` is exact in every dtype.
+        # Generated with kornia in this worktree (torch 2.14.0 and 2.5.1, CPU and MPS): equal on all
+        # 5 borders x 3 engines; under `constant` with `border_value=5.0` on both sides the two differ.
+        # torch 2.5.1 has no half-precision CPU reflect/replicate pad, so those two follow the probes.
+        tensor = torch.rand(2, 1, 7, 9, generator=torch.Generator().manual_seed(3)) * 2 - 1
+        tensor = tensor.to(device=device, dtype=dtype)
+        kernel = torch.tensor(
+            [[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 1.0, 0.0], [1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype
+        )
+        k_h, k_w = kernel.shape
+        origin = [0, 3]
+        dual_origin = [k_h - 1 - origin[0], k_w - 1 - origin[1]]
+        flipped = kernel.flip((0, 1))
+        for border_type in ("geodesic", "constant", "reflect", "replicate", "circular"):
+            if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+                continue
+            if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+                continue
+            for engine in ("shift", "unfold", "convolution"):
+                lhs = erosion(tensor, kernel, origin=origin, border_type=border_type, border_value=5.0, engine=engine)
+                dual_value = -5.0 if border_type == "constant" else 5.0
+                rhs = -dilation(
+                    -tensor,
+                    flipped,
+                    origin=dual_origin,
+                    border_type=border_type,
+                    border_value=dual_value,
+                    engine=engine,
+                )
+                assert torch.equal(lhs, rhs), (border_type, engine)
+                if border_type == "constant":
+                    unnegated = -dilation(
+                        -tensor, flipped, origin=dual_origin, border_type=border_type, border_value=5.0, engine=engine
+                    )
+                    assert not torch.equal(lhs, unnegated), engine
+
     def test_convention_border_type_names_match_scipy_modes(self, device, dtype):
         # `border_type` accepts the four `torch.nn.functional.pad` modes on top of `geodesic`, and the
         # NAMES are a trap: torch's `reflect` is scipy's / scikit-image's `mirror` (the edge sample is
