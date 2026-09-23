@@ -147,22 +147,21 @@ class TestScalePyramid(BaseTester):
 
         self.gradcheck(sp_tuple, (img,), nondet_tol=1e-4)
 
-    def test_wart_scale_pyramid_sigmas_underreport_blur_4796(self, device, dtype):
-        # With init_sigma=0.25 below the assumed input blur (0.5), level 0 stays at 0.5 but the
-        # sigma bookkeeping restarts at init_sigma, so level 1 (real blur about 0.66) is also
-        # labelled 0.5 (#4796). Flips once the labels follow the real blur or such an
-        # init_sigma is rejected.
+    @pytest.mark.parametrize(("double_image", "input_sigma"), [(False, 0.5), (True, 1.0)])
+    def test_init_sigma_below_input_blur(self, device, dtype, double_image, input_sigma):
+        # An init_sigma below the assumed input blur leaves the first level at the input blur,
+        # so the pyramid and its sigmas must match the one built with init_sigma == input blur
+        # (#4796).
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
-        sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
-        _, sigmas, _ = sp(inp)
-        # Snippet used to generate expected (requires only this module):
-        # sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
-        # _, sigmas, _ = sp(torch.rand(1, 1, 32, 32))
-        # sigmas[0][0].tolist(), sigmas[1][0].tolist()
-        expected_octave0 = torch.tensor([0.5, 0.5, 1.0, 2.0], device=device, dtype=dtype)
-        expected_octave1 = torch.tensor([0.25, 0.5, 1.0, 2.0], device=device, dtype=dtype)
-        self.assert_close(sigmas[0][0], expected_octave0, rtol=1e-3, atol=1e-3)
-        self.assert_close(sigmas[1][0], expected_octave1, rtol=1e-3, atol=1e-3)
+        low = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=input_sigma / 2, double_image=double_image)
+        ref = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=input_sigma, double_image=double_image)
+        pyr, sigmas, _ = low.to(device)(inp)
+        ref_pyr, ref_sigmas, _ = ref.to(device)(inp)
+        expected = torch.tensor([1.0, 2.0, 4.0, 8.0], device=device, dtype=dtype) * input_sigma
+        for octave in range(len(sigmas)):
+            self.assert_close(sigmas[octave][0], expected)
+            self.assert_close(sigmas[octave], ref_sigmas[octave])
+            self.assert_close(pyr[octave], ref_pyr[octave])
 
 
 class TestBuildPyramid(BaseTester):
