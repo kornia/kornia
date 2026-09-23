@@ -77,8 +77,8 @@ class RandomCrop(GeometricAugmentationBase2D):
         See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
         ``size`` is an ``(height, width)`` tuple; a bare integer raises, unlike :class:`CenterCrop`
         (`#4417 <https://github.com/kornia/kornia/issues/4417>`_). ``p`` selects or skips the whole batch
-        together; a skipped batch is returned unchanged, padding included. With ``padding`` or ``pad_if_needed``
-        padding, ``transform_matrix`` maps the padded canvas, not the input, to the crop
+        together; a skipped batch is returned unchanged and unpadded. With ``padding`` or ``pad_if_needed``,
+        ``transform_matrix`` maps the padded canvas, not the input, to the crop
         (`#4801 <https://github.com/kornia/kornia/issues/4801>`_).
 
         Explicit ``padding`` is applied before sampling, in ``(left, top, right, bottom)`` order after its scalar

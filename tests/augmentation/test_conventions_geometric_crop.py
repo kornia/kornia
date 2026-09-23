@@ -239,18 +239,10 @@ class TestGeometricCropConventions(BaseTester):
                 [0.0, 0.0, 0.0, 0.0],
             ],
         }
-        if dtype == torch.float16 and mode == "resample":
-            # float16 rounding of the same warp: this body on CPU in float16. The matrix is pinned above.
-            expected_rows["resample"] = [
-                [0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0260009765625, 0.15625, 0.051605224609375],
-                [0.0, 0.281005859375, 0.4375, 0.1239013671875],
-                [0.0, 0.59375, 0.75, 0.2015380859375],
-                [0.0, 0.5205078125, 0.62451171875, 0.1651611328125],
-                [0.0, 0.0, 0.0, 0.0],
-            ]
         expected = image.new_tensor(expected_rows[mode]).reshape(1, 1, 6, 4)
-        self.assert_close(output, expected)
+        # float16 resampling also rounds its grid, so this is a bound; the matrix is pinned exactly above.
+        tolerance = {"rtol": 0.0, "atol": 3e-3} if dtype == torch.float16 and mode == "resample" else {}
+        self.assert_close(output, expected, **tolerance)
         self.assert_close(output[0, 0, 0], image.new_tensor([0, 0, 0, 0]))
         assert output.shape == (1, 1, 6, 4)
 

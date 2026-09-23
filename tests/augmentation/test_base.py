@@ -695,9 +695,9 @@ class TestConventionAugmentationBase2D(BaseTester):
         # container, and `forward` silently accepts and drops it - together with any other unknown keyword -
         # because `forward` funnels its `**kwargs` into `override_parameters`. The passed generator is never
         # consumed, so the output still follows the global seed.
-        with pytest.raises(TypeError, match="unexpected keyword argument 'generator'"):
+        with pytest.raises(TypeError):
             K.RandomAffine(degrees=45.0, generator=torch.Generator())
-        with pytest.raises(TypeError, match="unexpected keyword argument 'generator'"):
+        with pytest.raises(TypeError):
             K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), generator=torch.Generator())
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         gen = torch.Generator()

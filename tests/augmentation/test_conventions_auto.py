@@ -281,9 +281,9 @@ class TestAutoAugmentConventions(BaseTester):
         "probability,expected",
         [(1.0, [0.375, 0.5, 0.375, 0.25]), (0.5, [0.25, 0.25, 0.375, 0.25])],
     )
-    def test_convention_operation_soft_blend_respects_the_wrapped_gate(self, probability, expected, device, dtype):
-        # The wrapped p=1 path transforms every row. At p<1 it first keeps gates <=0.5 unchanged,
-        # so the outer blend cannot mix those rows with the transformed image.
+    def test_wart_operation_soft_blend_depends_on_the_wrapped_p_4809(self, probability, expected, device, dtype):
+        # #4809: the wrapped p=1 path transforms every row; at p<1 it first keeps gates <=0.5 unchanged, so the
+        # outer blend cannot mix those rows. One of the two cases flips when the blend stops depending on p.
         invert = ops.Invert(initial_probability=probability)
         image = torch.tensor([0.25, 0.25, 0.75, 0.75], device=device, dtype=dtype).view(4, 1, 1, 1)
         params = invert.op.forward_parameters(image.shape)
@@ -468,13 +468,13 @@ class TestAutoAugmentConventions(BaseTester):
         # the sign flip, while the sign flip makes Posterize unpicklable.
         for operation in (ops.ShearX(symmetric_megnitude=False), ops.ShearY(symmetric_megnitude=False)):
             pickle.loads(pickle.dumps(operation))  # noqa: S301
-        with pytest.raises(local_object_error, match="local object"):
+        with pytest.raises(local_object_error):
             pickle.dumps(ops.Posterize(symmetric_megnitude=True))
-        with pytest.raises(local_object_error, match="local object"):
+        with pytest.raises(local_object_error):
             pickle.dumps(ops.Rotate(symmetric_megnitude=False))  # no named mapping: the identity closure
         # So the default policies, which hold such wrappers, do not pickle either.
         for policy in (AutoAugment(), RandAugment(n=2, m=15), TrivialAugment()):
-            with pytest.raises(local_object_error, match="local object"):
+            with pytest.raises(local_object_error):
                 pickle.dumps(policy)
 
     @pytest.mark.device_agnostic

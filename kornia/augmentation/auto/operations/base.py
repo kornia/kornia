@@ -47,7 +47,8 @@ class OperationBase(nn.Module):
           in it; ``forward_parameters`` substitutes it into the wrapped augmentation's draw.
         - ``forward`` linearly blends the wrapped output with the input using ``batch_prob``. Unless the wrapped
           ``p`` and ``p_batch`` are both ``1``, the wrapped augmentation first keeps rows whose gate is at most
-          ``0.5`` unchanged, so a supplied fractional gate at or below ``0.5`` leaves its row untouched.
+          ``0.5`` unchanged, so the same supplied fractional gates replay differently depending on ``p``
+          (`#4809 <https://github.com/kornia/kornia/issues/4809>`_).
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and

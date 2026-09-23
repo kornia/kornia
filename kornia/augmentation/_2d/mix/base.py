@@ -60,8 +60,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
           does not implement raises ``NotImplementedError`` (or a class-specific error) before anything is
           sampled; the two transplantation classes, and any mix child of
           :class:`~kornia.augmentation.container.AugmentationSequential`, raise it after the parameters are drawn.
-          The concrete class blocks state
-          the supported non-image keys.
+          The concrete class blocks state the supported non-image keys.
         - ``batch_prob`` gates the result: a selected image is mixed and an unselected image keeps its input
           values, except where a concrete class changes the output size (see
           :class:`~kornia.augmentation.RandomMosaic`); the transplantation classes read ``acceptor_indices``
