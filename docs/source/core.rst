@@ -33,3 +33,30 @@ callable that lets the download half reject a truncated cache entry.
 .. autofunction:: load_safetensors
 
 .. autofunction:: check_safetensors
+
+Exceptions
+----------
+
+.. currentmodule:: kornia.core.exceptions
+
+The errors raised by kornia's input checks, such as a tensor with the wrong
+shape. All of them derive from :exc:`BaseError`, which derives from
+:exc:`Exception`, so ``except BaseError`` catches any of them.
+
+.. autoexception:: BaseError
+    :show-inheritance:
+
+.. autoexception:: ShapeError
+    :show-inheritance:
+
+.. autoexception:: TypeCheckError
+    :show-inheritance:
+
+.. autoexception:: ValueCheckError
+    :show-inheritance:
+
+.. autoexception:: DeviceError
+    :show-inheritance:
+
+.. autoexception:: ImageError
+    :show-inheritance:
