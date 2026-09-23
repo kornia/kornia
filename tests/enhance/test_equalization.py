@@ -220,8 +220,7 @@ class TestEqualization(BaseTester):
     def img(self, device, dtype):
         height, width = 20, 20
         # TODO: test with a more realistic pattern
-        img = torch.arange(width, device=device).div(float(width - 1))[None].expand(height, width)[None][None]
-        return img
+        return torch.arange(width, device=device).div(float(width - 1))[None].expand(height, width)[None][None]
 
     def test_he(self, img):
         # should be similar to enhance.equalize but slower. Similar because the lut is computed in a different way.

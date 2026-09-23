@@ -502,8 +502,7 @@ class _ExportResolver:
             return None
         if all_values:
             names = self._literal_all(all_values[-1])
-            result = None if names is None else set(names)
-            return result
+            return None if names is None else set(names)
         return self._bound_exports(tree, module, is_package)
 
     def _import_bindings(self, node: ast.Import | ast.ImportFrom, module: str, is_package: bool) -> set[str] | None:

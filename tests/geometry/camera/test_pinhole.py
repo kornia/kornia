@@ -62,15 +62,13 @@ class TestCam2Pixel(BaseTester):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
         temp[1, 1], temp[1, 2] = fy, cy
-        intrinsics = temp.expand(batch_size, -1, -1)
-        return intrinsics
+        return temp.expand(batch_size, -1, -1)
 
     def _create_intrinsics_inv(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = 1 / fx, -cx / fx
         temp[1, 1], temp[1, 2] = 1 / fy, -cy / fy
-        intrinsics_inv = temp.expand(batch_size, -1, -1)
-        return intrinsics_inv
+        return temp.expand(batch_size, -1, -1)
 
     def _get_samples(self, shape, low, high, device, dtype):
         """Return a tensor having the given shape and whose values are in the range [low, high)"""
@@ -214,15 +212,13 @@ class TestPixel2Cam(BaseTester):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
         temp[1, 1], temp[1, 2] = fy, cy
-        intrinsics = temp.expand(batch_size, -1, -1)
-        return intrinsics
+        return temp.expand(batch_size, -1, -1)
 
     def _create_intrinsics_inv(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = 1 / fx, -cx / fx
         temp[1, 1], temp[1, 2] = 1 / fy, -cy / fy
-        intrinsics_inv = temp.expand(batch_size, -1, -1)
-        return intrinsics_inv
+        return temp.expand(batch_size, -1, -1)
 
     def _get_samples(self, shape, low, high, device, dtype):
         """Return a tensor having the given shape and whose values are in the range [low, high)"""

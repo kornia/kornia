@@ -150,14 +150,13 @@ class TestKMeans(BaseTester):
         x = torch.vstack(
             [x, torch.randn((500, 2), dtype=dtype, device=device) + torch.tensor((15, -12), dtype=dtype, device=device)]
         )
-        x = torch.vstack(
+        return torch.vstack(
             [
                 x,
                 13 * torch.randn((500, 2), dtype=dtype, device=device)
                 + torch.tensor((35, 15), dtype=dtype, device=device),
             ]
         )
-        return x
 
     def test_module(self, device, dtype):
         x = TestKMeans._create_data(device, dtype)

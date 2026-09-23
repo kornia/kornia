@@ -85,9 +85,7 @@ class SigLip2VisionEmbeddings(nn.Module):
         embeddings = embeddings.flatten(2).transpose(1, 2)  # (batch_size, num_patches, hidden_size)
 
         # add position embeddings to the embeddings
-        embeddings = embeddings + self.position_embedding.unsqueeze(0)
-
-        return embeddings
+        return embeddings + self.position_embedding.unsqueeze(0)
 
 
 class SigLip2VisionMLP(nn.Module):
@@ -108,8 +106,7 @@ class SigLip2VisionMLP(nn.Module):
         hidden_states = self.fc1(hidden_states)
         hidden_states = self.activation(hidden_states)
         hidden_states = self.fc2(hidden_states)
-        hidden_states = self.dropout(hidden_states)
-        return hidden_states
+        return self.dropout(hidden_states)
 
 
 class SigLip2VisionLayer(nn.Module):
@@ -152,9 +149,7 @@ class SigLip2VisionLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.layer_norm2(hidden_states)
         hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-
-        return hidden_states
+        return residual + hidden_states
 
 
 class SigLip2MultiheadAttentionPoolingHead(nn.Module):

@@ -196,46 +196,42 @@ class EfficientViTBackbone(nn.Module):
 
 def efficientvit_backbone_b0(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     """Create EfficientViT B0."""
-    backbone = EfficientViTBackbone(
+    return EfficientViTBackbone(
         width_list=[8, 16, 32, 64, 128],
         depth_list=[1, 2, 2, 2, 2],
         dim=16,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_b1(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     """Create EfficientViT B1."""
-    backbone = EfficientViTBackbone(
+    return EfficientViTBackbone(
         width_list=[16, 32, 64, 128, 256],
         depth_list=[1, 2, 3, 3, 4],
         dim=16,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_b2(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     """Create EfficientViT B2."""
-    backbone = EfficientViTBackbone(
+    return EfficientViTBackbone(
         width_list=[24, 48, 96, 192, 384],
         depth_list=[1, 3, 4, 4, 6],
         dim=32,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     """Create EfficientViT B3."""
-    backbone = EfficientViTBackbone(
+    return EfficientViTBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 4, 6, 6, 9],
         dim=32,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    return backbone
 
 
 class EfficientViTLargeBackbone(nn.Module):
@@ -411,39 +407,35 @@ class EfficientViTLargeBackbone(nn.Module):
 
 def efficientvit_backbone_l0(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     """Create EfficientViT L0."""
-    backbone = EfficientViTLargeBackbone(
+    return EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 1, 1, 4, 4],
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_l1(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     """Create EfficientViT L."""
-    backbone = EfficientViTLargeBackbone(
+    return EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 1, 1, 6, 6],
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_l2(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     """Create EfficientViT L2."""
-    backbone = EfficientViTLargeBackbone(
+    return EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 2, 2, 8, 8],
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackbone),
     )
-    return backbone
 
 
 def efficientvit_backbone_l3(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     """Create EfficientViT L3."""
-    backbone = EfficientViTLargeBackbone(
+    return EfficientViTLargeBackbone(
         width_list=[64, 128, 256, 512, 1024],
         depth_list=[1, 2, 2, 8, 8],
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackbone),
     )
-    return backbone
