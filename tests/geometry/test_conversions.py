@@ -5058,6 +5058,68 @@ class TestCamtoworldRtToPoseRt(BaseTester):
             round_trip_t, torch.tensor([[[2.25], [2.5], [12.0]]], device=device, dtype=dtype), atol=0.0, rtol=0.0
         )
 
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_accepts_rotation_unchanged(self, fn, device, dtype):
+        # kornia#3961: with check_rotation=True a genuine rotation passes, and the result is
+        # bitwise the unchecked one -- the flag only validates, it never changes the output.
+        _skip_if_dtype_unavailable(device, dtype)
+        rotation, translation = _asymmetric_pose(device, dtype)
+        expected_R, expected_t = fn(rotation, translation)
+        out_R, out_t = fn(rotation, translation, check_rotation=True)
+        self.assert_close(out_R, expected_R, atol=0.0, rtol=0.0)
+        self.assert_close(out_t, expected_t, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_accepts_rounding_error(self, fn, device, dtype):
+        # Rotations carrying only their dtype's rounding must pass. Over 10,000 random rotations the
+        # worst max|R @ R^T - I| measured 8 eps (float32), 9 eps (float64) and 0.8 eps
+        # (float16/bfloat16, built in float32 and cast), against a tolerance of 100 eps.
+        _skip_if_dtype_unavailable(device, dtype)
+        build_dtype = dtype if dtype in (torch.float32, torch.float64) else torch.float32
+        generator = torch.Generator().manual_seed(0)
+        axis_angle = torch.randn(64, 3, generator=generator, dtype=build_dtype) * 3
+        rotation = axis_angle_to_rotation_matrix(axis_angle.to(device)).to(dtype)
+        translation = torch.zeros(64, 3, 1, device=device, dtype=dtype)
+        fn(rotation, translation, check_rotation=True)  # must not raise
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_rejects_non_orthogonal(self, fn, device, dtype):
+        # The issue's matrix (det = 2), exact in every dtype.
+        _skip_if_dtype_unavailable(device, dtype)
+        rotation = torch.tensor([[[1.0, 0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 2.0]]], device=device, dtype=dtype)
+        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="not a rotation matrix"):
+            fn(rotation, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_rejects_reflection(self, fn, device, dtype):
+        # A mirror is orthogonal (R @ R^T = I) but det = -1, so only the determinant test catches it.
+        _skip_if_dtype_unavailable(device, dtype)
+        rotation = torch.tensor([[[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        translation = torch.zeros(1, 3, 1, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="reflection"):
+            fn(rotation, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_rejects_one_bad_matrix_in_batch(self, fn, device, dtype):
+        # One bad matrix among good ones is enough to raise.
+        _skip_if_dtype_unavailable(device, dtype)
+        good, _ = _asymmetric_pose(device, dtype)
+        bad = torch.tensor([[[1.0, 0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 2.0]]], device=device, dtype=dtype)
+        rotation = torch.cat([good, bad, good])
+        translation = torch.zeros(3, 3, 1, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="not a rotation matrix"):
+            fn(rotation, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    def test_check_rotation_integer_input(self, fn, device):
+        # Integer R is accepted by these functions; the check converts it to float32 instead of crashing
+        # (torch.finfo and det have no integer support). 2 * I is exact there and is not a rotation.
+        rotation = 2 * torch.eye(3, device=device, dtype=torch.int64)[None]
+        translation = torch.zeros(1, 3, 1, device=device, dtype=torch.int64)
+        with pytest.raises(ValueError, match="not a rotation matrix"):
+            fn(rotation, translation, check_rotation=True)
+
 
 class TestCARKitToColmap(BaseTester):
     def test_everything(self, device, dtype):
