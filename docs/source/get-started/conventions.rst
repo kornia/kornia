@@ -468,17 +468,9 @@ Serializing an augmentation
 Morphology
 ----------
 
-- :func:`kornia.morphology.dilation` **reflects** the structuring element (the Minkowski convention, as in
-  ``scipy.ndimage``); :func:`kornia.morphology.erosion` does not. For an asymmetric kernel scikit-image returns
-  kornia's dilation by the *flipped* kernel, and OpenCV's ``anchor=(a_x, a_y)`` returns that dilation at
-  ``origin=[k_h - 1 - a_y, k_w - 1 - a_x]``, which at its default anchor is the default origin for an odd size and
-  one cell earlier for an even one.
-- ``origin`` is the ``[row, col]`` index of the structuring-element cell placed on the output pixel, not an offset
-  from the centre, and OpenCV's ``anchor`` is the same index in ``(x, y)`` order for erosion (for dilation see the
-  flip above). The default is ``[k_h // 2, k_w // 2]`` for even sizes too.
-- ``border_type``'s ``reflect`` does not mean what the same word means in scipy and scikit-image (``constant``
-  does): torch's ``reflect`` is their ``mirror``, while their own ``reflect`` -- also their default -- repeats the
-  edge sample and has no kornia spelling. See :func:`kornia.morphology.dilation` for the full convention block.
+:func:`kornia.morphology.dilation` reflects the kernel and :func:`kornia.morphology.erosion` does not; ``origin``
+is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``K`` is a kernel of shape
+:math:`(k_h, k_w)`, and each call row assumes the matching border from the border rows:
 
 .. list-table::
    :header-rows: 1
@@ -493,26 +485,63 @@ Morphology
      - yes
      - no
      - no
+   * - kornia call equal to their dilation by ``K``
+     - (reference)
+     - ``dilation(x, K)``
+     - ``dilation(x, K.flip((0, 1)))``
+     - ``dilation(x, K.flip((0, 1)), origin=[k_h - 1 - a_y, k_w - 1 - a_x])`` for ``anchor=(a_x, a_y)``; at the
+       default anchor the flip alone is enough only for an odd-sized ``K``
    * - ``dilation`` by ``ones(2, 2)`` of a hot pixel at ``(2, 3)``
      - rows 1-2, cols 2-3
      - rows 1-2, cols 2-3
      - rows 1-2, cols 2-3
      - rows 2-3, cols 3-4
+   * - kornia call equal to their erosion by ``K``
+     - (reference)
+     - ``erosion(x, K)``
+     - ``erosion(x, K, origin=[(k_h - 1) // 2, (k_w - 1) // 2])``, which differs from the default only for an
+       even size
+     - ``erosion(x, K, origin=[a_y, a_x])``; the default anchor is the default origin
+   * - kornia call equal to their opening / closing by ``K``
+     - (reference)
+     - differs at the border: no ignore mode
+     - ``opening(x, K, origin=[(k_h - 1) // 2, (k_w - 1) // 2])`` / ``closing(x, K.flip((0, 1)))``, and likewise
+       ``white_tophat`` / ``black_tophat`` for ``top_hat`` / ``bottom_hat``
+     - ``MORPH_OPEN`` / ``MORPH_CLOSE`` agree only for a ``K`` symmetric about its anchor
    * - origin/anchor semantics
-     - ``[row, col]`` index
+     - ``[row, col]`` index, default ``[k_h // 2, k_w // 2]`` for even sizes too
      - offset from ``k // 2``
      - not exposed
      - ``(x, y)`` index
    * - default border
      - ``geodesic`` (ignore outside)
-     - ``reflect`` (scipy's own rule, **not** torch's ``reflect``)
-     - ``reflect`` (same rule as scipy's)
+     - ``reflect``, which repeats the edge sample (**not** torch's ``reflect``)
+     - ``reflect``, the same rule as scipy's
      - ignore outside
-   * - name of torch's ``reflect``
+   * - kornia's ``geodesic``
+     - ``geodesic``
+     - ``mode="constant"`` with ``cval=-np.inf`` (dilation) or ``np.inf`` (erosion)
+     - ``mode="ignore"``
+     - default border
+   * - torch's ``reflect``
      - ``reflect``
      - ``mirror``
      - ``mirror``
      - ``BORDER_REFLECT_101``
+   * - torch's ``replicate``
+     - ``replicate``
+     - ``nearest``
+     - ``nearest``
+     - ``BORDER_REPLICATE``
+   * - torch's ``circular``
+     - ``circular``
+     - ``wrap``
+     - ``wrap``
+     - rejected (``BORDER_WRAP``)
+
+The equivalences hold on every window that holds an in-image kernel cell while :math:`|x|` stays well below
+``max_val``: an empty ``geodesic`` window returns an infinity in scipy and scikit-image and a finite value built
+from ``max_val`` in kornia (`#4734 <https://github.com/kornia/kornia/issues/4734>`_).
 
 Pitfall checklist
 -----------------
