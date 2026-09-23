@@ -29,9 +29,11 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     return kernel.view(h * w, 1, h, w)
 
 
-@torch.jit.ignore
-def _has_forward_grad(tensor: torch.Tensor) -> bool:
-    return torch.autograd.forward_ad.unpack_dual(tensor).tangent is not None
+@torch.jit.unused
+def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
+    if torch.jit.is_tracing() or torch._C._are_functorch_transforms_active():
+        return False
+    return all(torch.autograd.forward_ad.unpack_dual(t).tangent is None for t in (padded, offsets))
 
 
 def _shift_reduce(
@@ -247,13 +249,17 @@ def dilation(
         ).max(dim=1)
         output = output.view(B, C, H, W)
     elif engine == "shift":
+        offsets = neighborhood.flip((0, 1))
+        inplace = False
+        if not torch.jit.is_scripting():
+            inplace = not recording_grad and _can_reduce_in_place(output, offsets)
         output = _shift_reduce(
             output,
-            neighborhood.flip((0, 1)),
+            offsets,
             tensor.shape[-2],
             tensor.shape[-1],
             True,
-            not recording_grad and not _has_forward_grad(output),
+            inplace,
         )
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
@@ -370,13 +376,17 @@ def erosion(
         ).min(dim=1)
         output = output.view(B, C, H, W)
     elif engine == "shift":
+        offsets = -neighborhood
+        inplace = False
+        if not torch.jit.is_scripting():
+            inplace = not recording_grad and _can_reduce_in_place(output, offsets)
         output = _shift_reduce(
             output,
-            -neighborhood,
+            offsets,
             tensor.shape[-2],
             tensor.shape[-1],
             False,
-            not recording_grad and not _has_forward_grad(output),
+            inplace,
         )
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
