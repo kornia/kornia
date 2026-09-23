@@ -354,6 +354,31 @@ class TestErode(BaseTester):
         assert actual.dtype == tensor.dtype
         assert torch.equal(actual, expected)
 
+    @pytest.mark.parametrize(
+        ("border_type", "row"),
+        [
+            ("reflect", [3.0, 2.0, 1.0, 2.0, 3.0]),
+            ("replicate", [1.0, 1.0, 1.0, 2.0, 3.0]),
+            ("circular", [4.0, 5.0, 1.0, 2.0, 3.0]),
+        ],
+    )
+    def test_border_value_ignored_for_non_constant_border(self, device, dtype, border_type, row):
+        # border_value only applies to border_type="constant"; the other modes ignore it
+        # instead of forwarding it to F.pad, which rejects a value for them (#4748).
+        if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        # The single-cell kernel at the default origin [0, 2] makes erosion read x(p - 2), so the two
+        # leftmost outputs are pure padding. Were border_value used as a fill they would be -7; were the
+        # mode dropped they would be 0. Integral values are exact in every dtype.
+        ramp = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0]], device=device, dtype=dtype)[None, None]
+        kernel = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        expected = torch.tensor([row], device=device, dtype=dtype)[None, None]
+
+        assert torch.equal(erosion(ramp, kernel, border_type=border_type, border_value=-7.0), expected)
+        assert torch.equal(erosion(ramp, kernel, border_type=border_type), expected)
+
     def test_shift_engine_mixed_dtype_non_flat(self, device):
         tensor = torch.zeros(1, 1, 2, 2, device=device, dtype=torch.float16)
         kernel = torch.ones(2, 2, device=device, dtype=torch.float32)

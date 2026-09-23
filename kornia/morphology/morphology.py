@@ -217,7 +217,10 @@ def dilation(
     if border_type == "geodesic":
         border_value = -max_val
         border_type = "constant"
-    output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
+    if border_type == "constant":
+        output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
+    else:
+        output = F.pad(tensor, pad_e, mode=border_type)
 
     # computation
     if structuring_element is None:
@@ -331,7 +334,10 @@ def erosion(
     if border_type == "geodesic":
         border_value = max_val
         border_type = "constant"
-    output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
+    if border_type == "constant":
+        output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
+    else:
+        output = F.pad(tensor, pad_e, mode=border_type)
 
     # computation
     if structuring_element is None:
