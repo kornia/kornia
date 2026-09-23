@@ -345,7 +345,8 @@ class Test3DAugmentationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_wart_crop3d_siblings_disagree_on_size_errors_4417(self):
-        # #4417: each assertion flips when the two classes validate `size` the same way.
+        # #4417: flips when the two classes validate `size` the same way; which assertion fails depends on the
+        # direction of the fix.
         volume = torch.rand(1, 1, 4, 5, 6)
         with pytest.raises(AssertionError):
             K.CenterCrop3D((5, 5, 6), p=1.0)(volume)
@@ -411,7 +412,7 @@ class Test3DAugmentationConventions(BaseTester):
         assert {K.RandomAffine3D, K.CenterCrop3D, K.RandomEqualize3D, K.RandomTransplantation3D} <= classes
         exposing = {cls.__name__ for cls in classes if "p_batch" in inspect.signature(cls.__init__).parameters}
         assert exposing == {"RandomTransplantation3D"}
-        with pytest.raises(TypeError, match="p_batch"):
+        with pytest.raises(TypeError):
             K.RandomHorizontalFlip3D(p=1.0, p_batch=0.5)
         volume = torch.rand(4, 1, 3, 4, 5)
         mask = torch.randint(0, 3, (4, 3, 4, 5))

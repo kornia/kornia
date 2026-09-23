@@ -64,8 +64,8 @@ class AugmentationBase2D(_AugmentationBase):
     If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
     might be a better fit.
 
-    This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit;
-    they point here instead of restating it. Mix and 3D augmentation bases have their own public contracts;
+    This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit.
+    Mix and 3D augmentation bases have their own public contracts;
     do not infer this class's probability, RNG, replay, or serialization behavior from their common internals.
 
     Args:
@@ -106,8 +106,7 @@ class AugmentationBase2D(_AugmentationBase):
           (`#4429 <https://github.com/kornia/kornia/issues/4429>`_).
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
           displayed (top-left origin, y pointing down), as :func:`~kornia.geometry.transform.rotate` documents;
-          the ``*Affine*`` classes turn clockwise (`#4408 <https://github.com/kornia/kornia/issues/4408>`_); see
-          :doc:`/get-started/conventions` for the direction of each rotation entry point.
+          the ``*Affine*`` classes turn clockwise (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - ``torch.jit.script`` is not supported; ``torch.compile(fullgraph=True)`` works for some augmentations
           and flags only.
 

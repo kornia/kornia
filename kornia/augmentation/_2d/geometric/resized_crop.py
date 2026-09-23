@@ -74,7 +74,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
 
         Both cropping modes use the configured interpolation and ``align_corners``, so slice mode raises for
         ``resample="nearest"`` unless ``align_corners=None``
-        (`#4802 <https://github.com/kornia/kornia/issues/4802>`_). Only resample mode supports :meth:`inverse`,
+        (`#4802 <https://github.com/kornia/kornia/issues/4802>`_). At ``align_corners=False`` the two modes give
+        different images, and slice mode no longer follows ``transform_matrix``
+        (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). Only resample mode supports :meth:`inverse`,
         which resamples onto the original canvas and cannot recover discarded information.
 
     Note:

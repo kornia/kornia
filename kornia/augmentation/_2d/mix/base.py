@@ -56,13 +56,16 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
           restores the rank of an unbatched input. :class:`~kornia.augmentation.RandomTransplantation` and
           :class:`~kornia.augmentation.RandomTransplantation3D` override ``forward`` and take batched inputs only.
         - A mix operation is not geometric: ``transform_matrix`` and ``inverse()`` raise ``RuntimeError``.
-        - ``data_keys`` chooses which positional inputs are dispatched. A key the concrete class does not
-          implement raises ``NotImplementedError`` (or a class-specific error) before anything is sampled; the
-          two transplantation classes raise it after their parameters are drawn. The concrete class blocks state
+        - ``data_keys`` chooses which positional inputs are dispatched. Called directly, a key the concrete class
+          does not implement raises ``NotImplementedError`` (or a class-specific error) before anything is
+          sampled; the two transplantation classes, and any mix child of
+          :class:`~kornia.augmentation.container.AugmentationSequential`, raise it after the parameters are drawn.
+          The concrete class blocks state
           the supported non-image keys.
         - ``batch_prob`` gates the result: a selected image is mixed and an unselected image keeps its input
           values, except where a concrete class changes the output size (see
-          :class:`~kornia.augmentation.RandomMosaic`). The box handlers use the same gate. The class-label
+          :class:`~kornia.augmentation.RandomMosaic`); the transplantation classes read ``acceptor_indices``
+          instead. The box handlers use the same gate. The class-label
           handlers of :class:`~kornia.augmentation.RandomMixUpV2` and :class:`~kornia.augmentation.RandomCutMixV2`
           ignore ``batch_prob``; their sampled gate is batch-wide, but a ``params`` whose ``batch_prob`` selects
           only some rows labels the unselected, unchanged rows as mixed

@@ -96,7 +96,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     handler-dependent: some warps honor it, but resize mask paths replace it.
                     With :class:`~kornia.augmentation.RandomResizedCrop`,
                     boolean ``align_corners`` overrides raise ``ValueError`` in the default ``cropping_mode='slice'``
-                    mask path; ``cropping_mode='resample'`` accepts them. ``None`` works in both modes.
+                    mask path (`#4802 <https://github.com/kornia/kornia/issues/4802>`_); ``cropping_mode='resample'``
+                    accepts them. ``None`` works in both modes.
                     :class:`~kornia.augmentation.RandomElasticTransform` has its own mask path and honours
                     both entries, but requires a ``kornia.constants.Resample`` member rather than a
                     string.
@@ -114,15 +115,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``;
           ``N = 0`` is accepted. 3D inputs are ``(D, H, W)`` or ``(B, C, D, H, W)``; rank 4 is rejected as
-          ambiguous. A ``(B, H, W)`` mask is returned as ``(B, 1, H, W)``. A wrong input rank raises
-          ``RuntimeError`` here rather than the ``ValueError`` of a bare augmentation
-          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
+          ambiguous. A ``(B, H, W)`` mask is returned as ``(B, 1, H, W)``, or as ``(B, H, W)`` under
+          ``keepdim=True``. A wrong input rank raises ``RuntimeError`` here rather than the ``ValueError`` of a
+          bare augmentation (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - boxes use the inclusive ``xyxy_plus`` convention of :class:`~kornia.geometry.boxes.Boxes`. Flips map
           ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
           does. Labels pass through geometric steps untouched.
-        - masks are resampled with nearest interpolation (padding can still add the fill value) in the image's
-          working dtype and come back in their own dtype; integer labels that the working dtype cannot represent
-          are rounded (`#4478 <https://github.com/kornia/kornia/issues/4478>`_).
+        - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
+          fill value) in the image's working dtype and come back in their own dtype; integer labels that the
+          working dtype cannot represent are rounded (`#4478 <https://github.com/kornia/kornia/issues/4478>`_).
         - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
           has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
           children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that

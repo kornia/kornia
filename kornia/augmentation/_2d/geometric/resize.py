@@ -49,8 +49,9 @@ class Resize(GeometricAugmentationBase2D):
         ``"horz"`` the width. The derived side is truncated toward zero; if it becomes zero, the resize raises
         ``AssertionError`` (for example, ``Resize(4, side="long")`` or ``LongestMaxSize(4)`` on a 1-by-10 image).
         This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
-        bicubic sampling. :meth:`inverse` resamples to the prior canvas and cannot recover values discarded by a
-        resize.
+        bicubic sampling, and at ``align_corners=False`` the image no longer follows ``transform_matrix``
+        (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). :meth:`inverse` resamples to the prior canvas
+        and cannot recover values discarded by a resize.
 
     """
 

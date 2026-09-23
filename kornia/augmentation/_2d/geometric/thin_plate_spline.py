@@ -38,6 +38,9 @@ class RandomThinPlateSpline(AugmentationBase2D):
         Sampling is bilinear, with no interpolation-mode argument. Zero scale is an identity warp up to
         interpolation roundoff for either ``align_corners``. There is no ``transform_matrix`` or ``inverse``;
         spatial labels in containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        Its defaults and the ``align_corners`` split across classes
+        (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
 
     Args:
         scale: the non-negative scale factor to apply to the destination points.

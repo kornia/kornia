@@ -36,7 +36,9 @@ class RandomElasticTransform(AugmentationBase2D):
         Noise has shape ``(B, 2, H, W)`` with channels ``(x, y)``; ``alpha`` scales displacement in
         normalized sampling coordinates, whereas ``kernel_size`` and ``sigma`` use ``(y, x)`` order.
         The displaced grid is clamped to ``[-1, 1]`` before sampling. Zero ``alpha`` is an identity warp up to
-        interpolation roundoff for either ``align_corners``.
+        interpolation roundoff for either ``align_corners``. Its defaults and the ``align_corners`` split across
+        classes (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
 
     Args:
         kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.

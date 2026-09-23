@@ -105,8 +105,7 @@ class TestAutoAugmentConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_trivialaugment_applies_the_symmetric_magnitude_mapping_4441(self):
-        # #4441: TrivialAugment used to sample the wrapped augmentation directly, which skipped the random sign,
-        # so a symmetric op such as rotate only ever drew non-negative magnitudes.
+        # #4441: TrivialAugment samples through the wrapper, so a symmetric op such as rotate draws both signs.
         torch.manual_seed(17)
         aug = TrivialAugment(policy=[[("rotate", -30.0, 30.0)]])
         degrees = aug.forward_parameters(torch.Size([64, 1, 8, 6]))[0].data[0].data["degrees"]
@@ -293,9 +292,8 @@ class TestAutoAugmentConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_policy_sequential_samples_through_the_operation_wrapper_4441(self):
-        # #4441: PolicySequential used to call the wrapped augmentation's forward_parameters, so it ignored the
-        # wrapper's magnitude and magnitude mapping. The gate still comes from the wrapped augmentation's p, and
-        # the wrapper's probability parameter is still not consulted on either path.
+        # #4441: PolicySequential samples through the wrapper's magnitude and magnitude mapping. The gate comes
+        # from the wrapped augmentation's p, and the wrapper's probability parameter is not consulted.
         operation = ops.Rotate(initial_magnitude=3.0, initial_probability=0.5)
         direct_operation = ops.Rotate(initial_magnitude=3.0, initial_probability=0.5)
         direct_policy = PolicySequential(direct_operation)
@@ -417,8 +415,7 @@ class TestAutoAugmentConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_policy_shear_entries_are_mapped_to_degrees_4441(self):
-        # #4441: TrivialAugment used to drop ShearX's 180 factor, so ("shear_x", -0.3, 0.3) sheared by at most
-        # 0.3 degrees, where RandAugment sheared by up to 54 degrees for the same entry.
+        # #4441: every policy applies ShearX's 180 factor, so ("shear_x", -0.3, 0.3) shears by up to 54 degrees.
         torch.manual_seed(17)
         trivial = (
             TrivialAugment(policy=[[("shear_x", -0.3, 0.3)]])
@@ -442,7 +439,7 @@ class TestAutoAugmentConventions(BaseTester):
                 )
                 assert bool((auto >= low - 1e-3).all()) and bool((auto <= high + 1e-3).all()), (name, magnitude_bin)
                 assert auto.min() < low + 1.0 and auto.max() > high - 1.0, (name, magnitude_bin)
-        # The same policy entry through RandAugment, which always applied the mapping.
+        # The same policy entry through RandAugment.
         mapped = (
             RandAugment(n=1, m=29, policy=[[("shear_x", -0.3, 0.3)]])
             .forward_parameters(torch.Size([8, 1, 8, 6]))[0]
@@ -501,7 +498,7 @@ class TestAutoAugmentConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_randaugment_formula_holds_for_every_default_entry(self):
-        # "The identity for every default entry except three": the whole default policy, not a sample of it.
+        # The magnitude mapping over the whole default policy, not a sample of it.
         import math
 
         from kornia.augmentation.auto.rand_augment.rand_augment import default_policy

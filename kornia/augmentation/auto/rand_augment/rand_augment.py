@@ -55,9 +55,9 @@ class RandAugment(PolicyAugmentBase):
     Convention:
         - selects ``n`` distinct one-operation candidate sub-policies uniformly without replacement, then
           applies them in the order drawn. ``n`` must be in ``[1, len(policy)]``.
-        - ``m`` must be strictly between ``0`` and ``30`` and sets every selected operation's magnitude to
-          ``low + (high - low) * m / 30`` over its magnitude range. A symmetric operation's range is ``(0, max)``
-          with a random sign per row: ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. A
+        - ``m`` must be strictly between ``0`` and ``30`` and sets the magnitude of every selected operation that
+          has one to ``low + (high - low) * m / 30`` over its magnitude range. A symmetric operation's range is
+          ``(0, max)`` with a random sign per row: ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. A
           ``translate_x`` / ``translate_y`` value is a fraction of the image width / height, applied in pixels.
           The operation's magnitude mapping is the identity for every default entry except ``shear_x`` /
           ``shear_y``, which multiply by ``180`` (``27`` degrees at ``m=15`` for the default range), and

@@ -90,7 +90,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           crop larger than the padded volume along any axis, even by one voxel, raises; a crop equal to it is
           valid. The exception types differ from :class:`CenterCrop3D`'s, and an ``int`` ``size`` is rejected
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
-          A valid gated-off call returns the input itself -- unpadded, at the input shape rather than ``size`` --
+          A valid gated-off call returns the input unchanged -- unpadded, at the input shape rather than ``size`` --
           with an identity ``transform_matrix``.
           Defaults are bilinear resampling and ``align_corners=True``.
 

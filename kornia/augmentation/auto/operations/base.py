@@ -42,8 +42,9 @@ class OperationBase(nn.Module):
         - ``probability`` is initialized from the wrapped augmentation's ``p`` (``p_batch`` for a batch operation),
           clamped to ``[1e-7, 1 - 1e-7]`` and kept in ``state_dict()`` for checkpoint compatibility, but it takes
           no part in sampling and receives no gradient: the gate is drawn from the wrapped augmentation's own
-          ``p`` and ``p_batch`` as a hard ``0`` or ``1``. ``magnitude`` is clamped to the wrapped generator's range
-          and is learnable; ``forward_parameters`` substitutes it into the wrapped augmentation's draw.
+          ``p`` and ``p_batch`` as a hard ``0`` or ``1``. ``magnitude``, where the operation has one, is clamped to
+          the wrapped generator's range and receives a gradient where the wrapped augmentation is differentiable
+          in it; ``forward_parameters`` substitutes it into the wrapped augmentation's draw.
         - ``forward`` linearly blends the wrapped output with the input using ``batch_prob``. Unless the wrapped
           ``p`` and ``p_batch`` are both ``1``, the wrapped augmentation first keeps rows whose gate is at most
           ``0.5`` unchanged, so a supplied fractional gate at or below ``0.5`` leaves its row untouched.

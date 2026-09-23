@@ -81,10 +81,11 @@ class RandomMixUpV2(MixAugmentationBaseV2):
           ``input * (1 - lambda) + paired_input * lambda``. Labels must be one-dimensional and are returned as
           floating values in the image dtype, except that a ``float16`` or ``bfloat16`` image yields ``float32``
           labels so integer class ids up to ``2 ** 24`` stay exact.
-        - ``p`` is a batch-wide gate applied once: ``_params["batch_prob"]`` is all ones or all zeros, and every row
-          of a selected batch draws its lambda from ``lambda_val``. At ``p=0`` the image is unchanged and the class
-          output holds the original label twice with a zero lambda. ``same_on_batch=True`` shares the lambda draw
-          but not the pairing, which may pair a sample with itself.
+        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`
+          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_): ``_params["batch_prob"]`` is all ones or all zeros,
+          and every row of a selected batch draws its lambda from ``lambda_val``. At ``p=0`` the image is unchanged
+          and the class output holds the original label twice with a zero lambda. ``same_on_batch=True`` shares
+          the lambda draw but not the pairing, which may pair a sample with itself.
 
     Note:
         This implementation would randomly mixup images in a batch. Ideally, the larger batch size would be preferred.

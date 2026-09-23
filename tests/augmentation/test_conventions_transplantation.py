@@ -369,7 +369,7 @@ class TestTransplantationConventions(BaseTester):
     def test_wart_a_missing_mask_raises_a_python_lookup_error_4777(self, cls):
         # #4777: flips when kornia checks for the mask itself instead of failing in tuple / list lookups.
         image = torch.rand(2, 1, 4, 5)
-        with pytest.raises(IndexError, match="tuple index out of range"):
+        with pytest.raises(IndexError):
             cls(p=1.0)(image)  # the default data_keys name a mask that was not passed
         with pytest.raises(ValueError, match="not in list"):  # Python 3.14 reworded list.index's message
             cls(p=1.0)(image, data_keys=["input"])

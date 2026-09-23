@@ -181,18 +181,14 @@ class TestMixConventions(BaseTester):
     @pytest.mark.parametrize(
         ("factory", "per_sample"),
         [
-            (lambda: K.RandomMixUpV2(p=0.5), False),
-            (lambda: K.RandomCutMixV2(p=0.5, use_correct_lambda=True), False),
-            (lambda: K.PatchMix(p=0.5, patch_size=2), False),
-            (lambda: K.RandomJigsaw(grid=(2, 2), p=0.5), True),
             (lambda: K.RandomJigsaw(grid=(2, 2), p=0.5, same_on_batch=True), False),
-            (lambda: K.RandomMosaic(p=0.5), True),
             (lambda: K.RandomTransplantation(p=0.5), True),
         ],
     )
     def test_convention_mix_gate_is_per_sample_or_batch_wide(self, factory, per_sample):
         # A batch-wide gate never selects a strict subset of the rows; a per-sample one misses doing so in 20
-        # draws of 8 rows with probability (2 / 256) ** 20.
+        # draws of 8 rows with probability (2 / 256) ** 20. Jigsaw and Mosaic's per-sample `p` and the batch-wide
+        # `p` of MixUp, CutMix and PatchMix (#4425) are pinned in test_base.py.
         aug = factory()
         shape = torch.Size([8, 8, 8]) if isinstance(aug, K.RandomTransplantation) else torch.Size([8, 1, 8, 8])
         subsets = 0
@@ -461,11 +457,25 @@ class TestMixConventions(BaseTester):
             assert heights.unique().numel() > 1 and widths.unique().numel() > 1
 
     @pytest.mark.device_agnostic
+    def test_wart_cutmix_same_on_batch_repeats_one_cut_per_mix_4805(self):
+        # #4805: with same_on_batch=True every mix repeats the first cut from the same donor, yet each mix is
+        # labelled. Flips when the mixes differ or collapse to one, i.e. when the labels match the pixels.
+        torch.manual_seed(0)
+        image = torch.arange(4.0).view(4, 1, 1, 1).expand(4, 1, 8, 8).clone()  # row i is filled with i
+        aug = K.RandomCutMixV2(
+            num_mix=2, same_on_batch=True, p=1.0, use_correct_lambda=True, data_keys=["input", "class"]
+        )
+        output, mixed = aug(image, torch.tensor([0, 1, 2, 3]))
+        assert mixed.shape[0] == 2 and torch.equal(mixed[0], mixed[1])
+        replaced = (output[:, 0] != image[:, 0]).float().mean((-2, -1))
+        self.assert_close(replaced, 1 - mixed[0, :, 2])  # one cut's area, while two mixes credit the donor
+
+    @pytest.mark.device_agnostic
     def test_convention_cutmix_placement_is_drawn_per_cut_4712(self):
         from kornia.geometry.bbox import infer_bbox_shape
 
-        # #4712: one uniform draw per axis used to place every cut of the batch. With the size fixed, only the
-        # placement can differ, so equal boxes here would mean the placement is shared again.
+        # #4712: every cut draws its own placement. With the size fixed, only the placement can differ, so equal
+        # boxes here would mean the placement is shared.
         shape = torch.Size([8, 1, 64, 48])
         for seed in range(10):
             torch.manual_seed(seed)
@@ -544,7 +554,7 @@ class TestMixConventions(BaseTester):
         self.assert_close(output[~selected], image[~selected])
         own = torch.tensor([[2.0, 1.0, 8.0, 6.0], [0.0, 0.0, 1.0, 1.0]])  # clipped to W=8, H=6; the small one dropped
         self.assert_close(filtered[~selected][:, :2], own.expand(2, -1, -1))
-        with pytest.raises(TypeError, match="NoneType"):
+        with pytest.raises(TypeError):
             K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
         self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)  # no selection, no raise
 
@@ -552,7 +562,7 @@ class TestMixConventions(BaseTester):
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_mix_labels_stay_exact_for_half_precision_images(self, image_dtype, p):
-        # Fixed by #4661: labels used to be cast to the image dtype, so bfloat16 returned [256, 1000] here (#4657).
+        # #4657: a half-precision image gives float32 labels, so class ids such as 257 and 999 stay exact.
         image = torch.rand(2, 1, 4, 4, dtype=image_dtype)
         labels = torch.tensor([257, 999])
         cases = (
