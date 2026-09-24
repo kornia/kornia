@@ -306,8 +306,10 @@ def depth_from_plane_equation(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`), normalized here with ``camera_matrix``.
         - the result is the camera-frame ``z`` of each pixel, :math:`(B, N)`: a list of depths, not a map.
         - a ray-plane dot product inside :math:`(-eps, eps)` is replaced by :math:`\pm` ``eps`` with its sign
-          (``+eps`` for an exact zero), so a grazing ray returns a large signed depth rather than ``inf``. In
-          float16 a positive ``eps`` is floored at the smallest subnormal, so the default ``1e-8`` still guards.
+          (``+eps`` for an exact zero), so a grazing ray returns the large signed depth ``d / eps`` rather than
+          ``inf``. In float16 a positive ``eps`` is floored at the smallest subnormal, ``2**-24``, because the
+          default ``1e-8`` rounds to zero there; ``d / 2**-24`` is still ``inf`` in float16 once ``|d|`` exceeds
+          about ``3.9e-3``, so pass a larger ``eps`` for a finite depth (``eps=1e-4`` keeps ``|d| <= 6.5`` finite).
 
     Args:
         plane_normals (torch.Tensor): Plane normal vectors of shape (B, 3).
