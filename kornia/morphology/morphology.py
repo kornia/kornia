@@ -292,7 +292,7 @@ def dilation(
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output = output + neighborhood.flip((0, 1))
-        output = output.masked_fill(
+        output.masked_fill_(
             kernel.flip((0, 1)).view(1, 1, 1, 1, se_h, se_w) == 0,
             reduction_min,
         )
@@ -474,7 +474,7 @@ def erosion(
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output = output - neighborhood
-        output = output.masked_fill(
+        output.masked_fill_(
             kernel.view(1, 1, 1, 1, se_h, se_w) == 0,
             reduction_max,
         )
