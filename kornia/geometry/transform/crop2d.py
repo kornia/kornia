@@ -340,7 +340,12 @@ def _crop_by_boxes_to_size(
     solved = dst_trans_src.isfinite().all(dim=-1).all(dim=-1)
     size_one = ((src_box[:, 2] - src_box[:, 0]) == 0).any(dim=-1) | ((dst_box[:, 2] - dst_box[:, 0]) == 0).any(dim=-1)
     fallback = (~solved & size_one)[:, None, None]
-    dst_trans_src = torch.where(fallback, _crop_scale_translation(src_box, dst_box), dst_trans_src)
+    # ``torch.where`` also differentiates the branch it discards, so a box that keeps its solved matrix builds the
+    # extent matrix from a unit source square: its own vertices 0 and 2 can share a coordinate (a square turned by
+    # 45 degrees), and dividing by that zero extent would make the gradient with respect to the box NaN.
+    unit = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=src_box.device, dtype=src_box.dtype)
+    extent_matrix = _crop_scale_translation(torch.where(fallback, src_box, unit), dst_box)
+    dst_trans_src = torch.where(fallback, extent_matrix, dst_trans_src)
 
     return crop_by_transform_mat(
         input_tensor, dst_trans_src, out_size, mode=mode, padding_mode=padding_mode, align_corners=align_corners
