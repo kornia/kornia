@@ -246,10 +246,9 @@ class TestSolvePnpDlt(BaseTester):
         with pytest.raises(AssertionError, match="last singular value"):
             kornia.geometry.solve_pnp_dlt(planar, kornia.geometry.project_points(planar, K), K)
 
-    def test_wart_zero_weight_point_still_enters_the_degeneracy_check_4799(self, device, dtype):
+    def test_zero_weight_points_do_not_pass_the_degeneracy_check(self, device, dtype):
         # kornia#4799: the same coplanar set plus two off-plane points recovers [I | 0]; with those two points at
-        # weight 0 it still passes the degeneracy check, which ignores the weights, and the rank-deficient system
-        # returns a wrong pose. A fix that checks the weighted points raises here instead.
+        # weight 0 only the coplanar points are left, so the degeneracy check must reject it.
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         world_points = self._convention_world_points(device, dtype)
@@ -264,8 +263,29 @@ class TestSolvePnpDlt(BaseTester):
         pose = kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
         assert pose[0, :, 3].abs().max() < 1e-2
         weights[0, -2:] = 0.0
-        pose = kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
-        assert pose[0, :, 3].abs().max() > 1.0
+        with pytest.raises(AssertionError, match="last singular value"):
+            kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
+
+    def test_zero_weight_point_is_the_same_as_removing_it(self, device, dtype):
+        # kornia#4799: a zero weight also kept the point in the normalization, so on noisy data the pose
+        # differed from the solve without that point.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        torch.manual_seed(0)
+        K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        points = torch.rand(1, 10, 3, device=device, dtype=dtype) * 4 - 2
+        points[..., 2] += 10.0
+        img_points = kornia.geometry.project_points(points, K)
+        img_points = img_points + torch.randn_like(img_points)
+        far_point = torch.tensor([[[30.0, -20.0, 60.0]]], device=device, dtype=dtype)
+        far_img = torch.tensor([[[0.0, 0.0]]], device=device, dtype=dtype)
+        weights = torch.ones(1, 11, device=device, dtype=dtype)
+        weights[0, -1] = 0.0
+        with_zero = kornia.geometry.solve_pnp_dlt(
+            torch.cat([points, far_point], 1), torch.cat([img_points, far_img], 1), K, weights=weights
+        )
+        without = kornia.geometry.solve_pnp_dlt(points, img_points, K)
+        self.assert_close(with_zero, without, rtol=1e-4, atol=1e-4)
 
 
 class TestNormalization(BaseTester):
