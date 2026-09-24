@@ -225,9 +225,8 @@ jobs:
     needs: [pre-tests]
     uses: ./.github/workflows/typecheck.yml
 
-  tutorials:
-    needs: [pre-tests]
-    uses: ./.github/workflows/tutorials.yml
+  # Tutorials run post-merge in scheduled_test_cpu.yml only. The job is continue-on-error and
+  # `collector` does not wait for it, so at PR time it cost ~12 runner-minutes without gating.
 
   collector:
     needs: [changes, pre-tests, tests, tests-mps, half-precision, dynamo, typecheck]
