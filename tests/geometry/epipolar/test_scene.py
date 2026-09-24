@@ -33,11 +33,9 @@ _SCENE_SHAPES = {
 
 
 class TestConventionScene(BaseTester):
-    def test_convention_random_intrinsics_and_generate_scene_use_global_generator(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("generate_scene takes no device argument and draws on the CPU")
-        # random_intrinsics: fx, fy, cx, cy are four consecutive draws of U(low, high) from the global generator,
-        # in the dtype and on the device of the bounds.
+    def test_convention_random_intrinsics_global_generator(self, device, dtype):
+        # fx, fy, cx, cy are four consecutive draws of U(low, high) from the global generator, in the dtype and on
+        # the device of the bounds.
         low = torch.tensor(10.0, device=device, dtype=dtype)
         high = torch.tensor(20.0, device=device, dtype=dtype)
         torch.manual_seed(0)
@@ -47,12 +45,16 @@ class TestConventionScene(BaseTester):
         K_again = epi.random_intrinsics(low, high)
         torch.manual_seed(0)
         draws = torch.distributions.Uniform(low, high).sample((4,))
-        assert K.shape == (1, 3, 3) and K.dtype == dtype
+        assert K.shape == (1, 3, 3) and K.dtype == dtype and K.device == low.device
         assert torch.equal(K, K_again)
         assert not torch.equal(K, K_next)
         self.assert_close(K[0, [0, 1, 0, 1], [0, 1, 2, 2]], draws)
         self.assert_close(K[0, 2], torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype))
-        # generate_scene: the same global generator, CPU tensors in the default dtype.
+
+    def test_convention_generate_scene_global_generator(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("generate_scene takes no device argument and draws on the CPU")
+        # The same global generator as random_intrinsics, CPU tensors in the default dtype.
         default_dtype = torch.get_default_dtype()
         try:
             torch.set_default_dtype(dtype)

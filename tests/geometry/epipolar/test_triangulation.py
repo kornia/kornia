@@ -360,6 +360,31 @@ class TestConventionTriangulation(BaseTester):
         # svd and eigh agree to roundoff.
         self.assert_close(results["svd"], results["eigh"], rtol=0.0, atol=atol)
 
+    def test_convention_triangulate_points_unchecked_cheirality_and_baseline(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        P1, P2, K2, R, t, X = (two_view[k] for k in ("P1", "P2", "K2", "R", "t", "X"))
+
+        def project(P: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
+            return _dehom(torch.cat([Y, torch.ones_like(Y[..., :1])], -1) @ P.transpose(-2, -1))
+
+        P2_zero = epi.projection_from_KRt(K2, R, torch.zeros_like(t))  # second camera at the first one's centre
+        for solver in SOLVERS:
+            if solver == "cofactor" and dtype == torch.float16:
+                continue  # the cofactor solver returns NaN for any pixel-scale float16 input (#4863)
+            # A point behind both cameras is returned, not rejected: its depth is negative in both. The fixture
+            # points, in front, are the control.
+            front = epi.triangulate_points(P1, P2, two_view["x1"], two_view["x2"], solver=solver)
+            assert (front[..., 2] > 0).all()
+            assert (epi.depth_from_point(R, t, front) > 0).all()
+            behind = epi.triangulate_points(P1, P2, project(P1, -X), project(P2, -X), solver=solver)
+            assert (behind[..., 2] < 0).all()
+            assert (epi.depth_from_point(R, t, behind) < 0).all()
+            # Zero baseline raises nothing: the output is finite and on the line of sight through X.
+            out = epi.triangulate_points(P1, P2_zero, two_view["x1"], project(P2_zero, X), solver=solver)
+            assert torch.isfinite(out).all()
+            out64, X64 = out.cpu().double(), X.cpu().double()  # float64 on the CPU: MPS has no float64
+            assert (torch.linalg.cross(out64, X64, dim=-1).norm(dim=-1) / X64.norm(dim=-1)).max() <= 1e-2
+
     def test_wart_triangulate_points_infinity_finite_4865(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         # #4865: a correspondence at infinity (the images of a direction (x, y, z, 0)) comes back as a finite point

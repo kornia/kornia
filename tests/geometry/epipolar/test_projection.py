@@ -276,9 +276,16 @@ class TestConventionProjection(BaseTester):
         assert Pb.shape == (2, 3, 4)
         self.assert_close(Pb[:1], torch.cat([K1, torch.zeros_like(t)], -1))
         self.assert_close(Pb[1:], P)
+        # K, R and t must have the same number of dimensions.
+        with pytest.raises(AssertionError):
+            epi.projection_from_KRt(K2[0], R, t)
 
     def test_convention_krt_from_projection_returns_extrinsic_t(self, device, dtype):
         two_view = two_view_scene(device, dtype)
+        # P must have exactly one batch dimension.
+        for P_bad in (two_view["P2"][0], two_view["P2"][None]):
+            with pytest.raises(Exception):
+                epi.KRt_from_projection(P_bad)
         _skip_half(dtype, _NO_HALF_QR)
         K_true, R_true, t_true = two_view["K2"], two_view["R"], two_view["t"]
         K, R, t = epi.KRt_from_projection(two_view["P2"])
@@ -324,6 +331,10 @@ class TestConventionProjection(BaseTester):
         self.assert_close(_unit(F_pair) * torch.sign((F_pair * F).sum()), _unit(F))
         self.assert_close(_unit(F_reversed) * torch.sign((F_reversed * Ft).sum()), _unit(Ft))
         assert (_unit(F_reversed) * torch.sign((F_reversed * F).sum()) - _unit(F)).abs().max() > 0.1
+        # F_mat must have exactly one batch dimension.
+        for F_bad in (F[0], F[None]):
+            with pytest.raises(Exception):
+                epi.projections_from_fundamental(F_bad)
 
     def test_convention_depth_from_point_is_camera_z(self, device, dtype):
         two_view = two_view_scene(device, dtype)
@@ -336,6 +347,10 @@ class TestConventionProjection(BaseTester):
         # by 2 * t_z = 0.04.
         assert (depth - ((X - t.transpose(-2, -1)) @ R)[..., 2]).abs().max() > 0.25
         assert (epi.depth_from_point(R, -t, X) - depth).abs().min() > 0.02
+        # The sign is not checked: the fixture points are in front of the camera, and their negatives, behind it,
+        # get a negative depth instead of an error.
+        assert (depth > 0).all()
+        assert (epi.depth_from_point(R, t, -X) < 0).all()
 
     def test_convention_scale_intrinsics_matches_pinhole_scale(self, device, dtype):
         two_view = two_view_scene(device, dtype)
@@ -392,9 +407,11 @@ class TestConventionProjection(BaseTester):
         self.assert_close(t, -t_true)
         # Same issue: eps is added to K's raw diagonal before its sign is taken, so 1e-7 * P (a positive scale)
         # keeps a negative K[2, 2] and returns a reflection.
+        # The matching (last) row of R is negated; the other two are R_true's.
         K_small, R_small, _ = epi.KRt_from_projection(1e-7 * P)
         assert K_small[0, 2, 2] < 0
-        assert _det3(R_small)[0] < -0.9
+        self.assert_close(R_small[:, :2], R_true[:, :2])
+        self.assert_close(R_small[:, 2], -R_true[:, 2])
 
     def test_wart_scale_intrinsics_principal_point_rule_4263(self, device, dtype):
         # #4263: the same rule as PinholeCamera.scale, pinned there by
