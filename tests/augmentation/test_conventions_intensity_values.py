@@ -573,27 +573,29 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(cls(0.0, 0.0, 0.0, 0.0, p=1.0)(image), image)
 
-    # Issue #4785, ColorJitter: the brightness guard tests the factor against 0, not the multiplier's neutral 1,
-    # so the factor 1 drawn by the default ``brightness=0.0`` still runs the clamping step.  Run first, it
-    # clamps an all-negative input to zero; a contrast or saturation factor above 1 applied before it lifts
-    # part of the image first.  A fix that skips a factor of 1 flips the brightness-first leg; removing the guard
-    # altogether leaves it green, because the clamp is then #4430's.  A fixed order without index 0 skips the
-    # step and its clamp.
+    # Issue #4785, ColorJitter: the brightness guard tests the factor against the multiplier's neutral 1, so the
+    # factor 1 drawn by the default ``brightness=0.0`` skips the step and its clamp.  Whether the brightness index
+    # comes before or after a contrast or saturation step, the output is that step's alone, and an all-negative
+    # input is no longer clamped to zero before the step can lift part of it.  A fixed order without index 0
+    # skips the step as well.
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); neg = torch.rand(1, 3, 8, 8) - 1.0
     #   print(K.ColorJitter(p=1.0, order=order, contrast=(1.9, 1.9))(neg).aminmax())
     @pytest.mark.parametrize(("step", "kwargs"), [(1, {"contrast": (1.9, 1.9)}), (2, {"saturation": (1.9, 1.9)})])
-    def test_wart_color_jitter_default_brightness_step_clamps_4785(self, device, dtype, step, kwargs):
+    def test_convention_color_jitter_default_brightness_step_is_skipped_4785(self, device, dtype, step, kwargs):
         torch.manual_seed(_FIXTURE_SEED)
         negative = (torch.rand(1, 3, 8, 8) - 1.0).to(device=device, dtype=dtype)
+        step_only = K.ColorJitter(p=1.0, order=(step,), **kwargs)(negative)
+        assert float(step_only.min()) >= 0.0
+        assert float(step_only.max()) > 0.25
         brightness_first = K.ColorJitter(p=1.0, order=(0, step), **kwargs)(negative)
-        assert float(brightness_first.abs().max()) == 0.0
+        self.assert_close(brightness_first, step_only, atol=0, rtol=0)
         step_first = K.ColorJitter(p=1.0, order=(step, 0), **kwargs)(negative)
-        assert float(step_first.min()) >= 0.0
-        assert float(step_first.max()) > 0.25
-        # Leaving index 0 out of a fixed order skips the brightness step and its clamp.
+        self.assert_close(step_first, step_only, atol=0, rtol=0)
+        # With every factor neutral nothing clamps, whether or not a fixed order includes index 0.
         above = torch.full((1, 3, 2, 2), 2.0, device=device, dtype=dtype)
         self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0, order=(1, 2, 3))(above), above)
+        self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0)(above), above)
 
     # A fixed constructor `order` ignores a forward `order=` tensor; without one, a forward `order=` replaces
     # ColorJiggle's drawn order, so leaving the hue step out lets a one-channel image through.  ColorJitter's
@@ -623,13 +625,15 @@ class TestIntensityColourConventions(BaseTester):
         with pytest.raises(BaseError, match="Not a color or gray tensor"):
             saturation(four_channel)
 
-    # Issue #4785: ColorJitter's brightness step multiplies (identity 1) but is guarded as if 0 were
-    # neutral, so a batch whose factors are all 0 comes back unchanged while the same sample in a mixed
-    # batch comes back black.  The fix makes the all-zero batch black and flips the first assertion.
-    def test_wart_color_jitter_zero_brightness_factor_is_skipped_4785(self, device, dtype):
+    # Issue #4785: ColorJitter's brightness step multiplies (identity 1), so a factor of 0 gives a black image
+    # whatever the other samples drew: a batch whose factors are all 0 comes back black, like the same sample in
+    # a mixed batch, and a fixed order that includes the step does the same.
+    def test_convention_color_jitter_zero_brightness_factor_is_black_4785(self, device, dtype):
         image = torch.full((2, 3, 2, 2), 0.5, device=device, dtype=dtype)
         aug = K.ColorJitter(brightness=(0.0, 0.0), p=1.0)
-        assert torch.equal(aug(image), image)
+        assert float(aug(image).abs().max()) == 0.0
+        fixed = K.ColorJitter(brightness=(0.0, 0.0), p=1.0, order=(0,))
+        assert float(fixed(image).abs().max()) == 0.0
         params = aug.forward_parameters(image.shape)
         params["brightness_factor"] = torch.tensor([0.0, 1.0])
         mixed = aug(image, params=params)

@@ -50,8 +50,7 @@ def _adjust_saturation(input: torch.Tensor, factor: torch.Tensor) -> torch.Tenso
     return _contiguous_output(adjust_saturation_with_gray_subtraction(input, factor))
 
 
-# The brightness step tests its factor against 0 instead of the neutral 1 (#4785).
-_NEUTRAL = (0.0, 1.0, 1.0, 0.0)
+_NEUTRAL = (1.0, 1.0, 1.0, 0.0)
 _BRANCHES: _Steps = (_adjust_brightness, _adjust_contrast, _adjust_saturation, _adjust_hue)
 
 
@@ -93,17 +92,10 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
         - see :class:`ColorJiggle` for how the two classes relate. This class takes the brightness factor as
           drawn, a multiplier whose identity is ``1``, and a scalar ``brightness`` above ``1`` draws from
           ``[0, 1 + brightness]``, as torchvision does.
-        - a step is skipped when every factor in the batch equals its guard value -- ``1`` for contrast and
-          saturation, ``0`` for hue and, as the #4785 warning below states, for brightness -- so a skipped step
-          accepts any channel count. Otherwise the step runs on the whole batch, and the brightness, contrast and
-          (three-channel) saturation steps clamp the whole batch into ``[0, 1]``. A fixed ``order`` without
-          index ``0`` skips the brightness step.
-
-    .. warning::
-        The brightness step is skipped for a factor of ``0`` instead of the neutral ``1``: a batch whose factors
-        are all ``0`` comes back unchanged instead of black, and ``ColorJitter(0, 0, 0, 0)`` clamps an
-        out-of-range input. Tracked in
-        `#4785 <https://github.com/kornia/kornia/issues/4785>`_.
+        - a step is skipped when every factor in the batch equals its neutral value -- ``1`` for brightness,
+          contrast and saturation, ``0`` for hue -- so a skipped step accepts any channel count. Otherwise the
+          step runs on the whole batch, and the brightness, contrast and (three-channel) saturation steps clamp
+          the whole batch into ``[0, 1]``. A fixed ``order`` without index ``0`` skips the brightness step.
 
     .. warning::
         Because the brightness, contrast and saturation steps clamp, an all-negative input can come back as an
