@@ -173,6 +173,13 @@ class TestCubicSolver(BaseTester):
 
         roots[:, 0].sum().backward()
         assert bool(torch.isfinite(x.grad).all()), x.grad
+        if dtype in (torch.float32, torch.float64):
+            # Implicit-function derivative of a simple root r of p: dr/dc_k = -r^(3 - k) / p'(r).
+            # Q == 0 is an exact-equality branch, but the root still depends on Q (on c for x^3 + 1).
+            a, b, c, _ = coeffs
+            dp = 3 * a * root**2 + 2 * b * root + c
+            expected_grad = torch.tensor([[-(root ** (3 - k)) / dp for k in range(4)]], device=device, dtype=dtype)
+            self.assert_close(x.grad, expected_grad)
 
 
 class TestMultiplyDegOnePoly(BaseTester):
@@ -395,6 +402,13 @@ class TestQuarticSolver(BaseTester):
             (
                 torch.tensor([[1.0, 0.0, 0.0, 0.0, -1.0]]),
                 torch.tensor([[-1.0, 1.0, 0.0, 0.0]]),
+            ),
+            # Case 8: Resolvent cubic with Q == 0 and R < 0 (#4832)
+            # x^4 - 3x^2 - 0.75 = 0 -> Real: +/- sqrt((3 + sqrt(12)) / 2). Others 0.
+            # Its resolvent y^3 + 3y^2 + 3y + 9 has Q == 0 and R = -4 < 0, which used to make every root nan.
+            (
+                torch.tensor([[1.0, 0.0, -3.0, 0.0, -0.75]]),
+                torch.tensor([[-1.7977905, 1.7977905, 0.0, 0.0]]),
             ),
         ],
     )
