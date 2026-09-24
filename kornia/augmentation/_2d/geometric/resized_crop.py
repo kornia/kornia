@@ -73,9 +73,8 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         short on the longer side also fits (8x6 gives 7x6 in about 18% of draws, as in torchvision). Unlike
         torchvision, which centres the fallback crop, it is placed at a random position like any other crop.
 
-        Both cropping modes use the configured interpolation and ``align_corners``, so slice mode raises for
-        ``resample="nearest"`` unless ``align_corners=None``
-        (`#4802 <https://github.com/kornia/kornia/issues/4802>`_). At ``align_corners=False`` the two modes give
+        Both cropping modes use the configured interpolation and ``align_corners``. Slice mode ignores
+        ``align_corners`` for ``resample="nearest"``. At ``align_corners=False`` the two modes give
         different images, and slice mode does not follow ``transform_matrix``
         (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). Only resample mode supports :meth:`inverse`,
         which resamples onto the original canvas and cannot recover discarded information.
@@ -166,16 +165,17 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            mode = flags["resample"].name.lower()
+            # ``interpolate`` rejects ``align_corners`` for nearest resampling.
+            align_corners = None if mode == "nearest" else flags["align_corners"]
             if is_compiling():
-                return _compiled_slice_resize(
-                    input, params["src"], flags["size"], flags["resample"].name.lower(), flags["align_corners"]
-                )
+                return _compiled_slice_resize(input, params["src"], flags["size"], mode, align_corners)
             return crop_by_indices(
                 input,
                 params["src"],
                 flags["size"],
-                interpolation=flags["resample"].name.lower(),
-                align_corners=flags["align_corners"],
+                interpolation=mode,
+                align_corners=align_corners,
             )
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
