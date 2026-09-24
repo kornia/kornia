@@ -228,7 +228,7 @@ class TestKRtFromProjection(BaseTester):
         assert self.gradcheck(epi.KRt_from_projection, (P_mat,), raise_exception=True, fast_mode=True)
 
 
-_NO_HALF_QR = "KRt_from_projection calls torch.linalg.qr, which has no float16/bfloat16 kernel"
+_NO_HALF_QR = "KRt_from_projection does not upcast half input, and torch.linalg.qr has no float16/bfloat16 kernel"
 
 
 def _skip_half(dtype: torch.dtype, reason: str) -> None:
@@ -337,15 +337,11 @@ class TestConventionProjection(BaseTester):
         K_before = K.clone()
         scale = torch.tensor([0.5, 3.0], device=device, dtype=dtype)
         out = epi.scale_intrinsics(K, scale)
-        # A (B,) scale factor scales batch element b by scale[b]: fx, fy, cx and cy, not K[2, 2].
-        expected = torch.tensor(
-            [[[400.0, 0.0, 160.0], [0.0, 380.0, 100.0], [0.0, 0.0, 1.0]],
-             [[2100.0, 0.0, 900.0], [0.0, 2220.0, 720.0], [0.0, 0.0, 1.0]]],
-            device=device,
-            dtype=dtype,
-        )  # fmt: skip
-        self.assert_close(out, expected)
-        # It is the rule of PinholeCamera.scale, bit for bit.
+        # A (B,) scale factor scales batch element b by scale[b]; the focal lengths show the pairing.
+        expected_f = torch.tensor([[400.0, 380.0], [2100.0, 2220.0]], device=device, dtype=dtype)
+        self.assert_close(out[:, [0, 1], [0, 1]], expected_f)
+        # It is the rule of PinholeCamera.scale, bit for bit, principal point included (its value is the #4263 wart
+        # pinned below).
         bottom = torch.tensor([[[0.0, 0.0, 0.0, 1.0]]], device=device, dtype=dtype).expand(2, 1, 4)
         K44 = torch.cat([torch.cat([K, torch.zeros_like(K[..., :1])], -1), bottom], -2)
         E44 = torch.eye(4, device=device, dtype=dtype)[None].expand(2, 4, 4)
@@ -360,11 +356,17 @@ class TestConventionProjection(BaseTester):
         K = epi.intrinsics_like(500.0, image)
         assert K.shape == (2, 3, 3)
         assert K.dtype == dtype and K.device == image.device
-        # fx = fy = focal and the principal point is (W / 2, H / 2); the transposed image is the control.
-        expected = torch.tensor([[500.0, 0.0, 3.0], [0.0, 500.0, 2.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
-        self.assert_close(K, expected.expand(2, 3, 3))
+        # fx = fy = focal, no skew, K[2] = [0, 0, 1].
+        self.assert_close(K[:, [0, 1], [0, 1]], torch.full((2, 2), 500.0, device=device, dtype=dtype))
+        zeros = torch.zeros(2, device=device, dtype=dtype)
+        self.assert_close(K[:, 0, 1], zeros)
+        self.assert_close(K[:, 1, 0], zeros)
+        self.assert_close(K[:, 2], torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype).expand(2, 3))
+        # cx follows the width and cy the height: cx - cy = (W - H) / 2 whichever pixel-centre rule #4263 settles
+        # on; the transposed image is the control.
+        self.assert_close(K[:, 0, 2] - K[:, 1, 2], torch.full_like(zeros, 1.0))
         K_t = epi.intrinsics_like(500.0, image.transpose(-2, -1))
-        self.assert_close(K_t[:, :2, 2], torch.tensor([[2.0, 3.0]], device=device, dtype=dtype).expand(2, 2))
+        self.assert_close(K_t[:, 0, 2] - K_t[:, 1, 2], torch.full_like(zeros, -1.0))
         # An integer image raises instead of returning an integer K.
         with pytest.raises(Exception):
             epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=torch.uint8))
@@ -398,3 +400,11 @@ class TestConventionProjection(BaseTester):
         self.assert_close(out[:, 1, 2], torch.tensor([1.5], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(out[:, 0, 0], torch.tensor([50.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(out[:, 0, 1], torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_wart_intrinsics_like_principal_point_half_pixel_4263(self, device, dtype):
+        # #4263 (comment 5820150381 adds this construction site): the principal point is (W / 2, H / 2), (3.0, 2.0)
+        # for H = 4, W = 6, the half-pixel centre, while kornia's integer pixel centres put it at
+        # ((W - 1) / 2, (H - 1) / 2) = (2.5, 1.5).
+        K = epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=dtype))
+        self.assert_close(K[:, 0, 2], torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(K[:, 1, 2], torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)

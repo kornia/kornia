@@ -347,7 +347,7 @@ class TestConventionTriangulation(BaseTester):
             assert out.dtype == dtype
             self.assert_close(out, X, rtol=0.0, atol=atol)
             # Relabelling: swapping the two views as a whole recovers the same points; swapping only the cameras
-            # or only the points misplaces every point, by more than 2.5 on this fixture.
+            # or only the points misplaces every point, by more than 1.0.
             self.assert_close(epi.triangulate_points(P2, P1, x2, x1, solver=solver), X, rtol=0.0, atol=atol)
             for wrong in (
                 epi.triangulate_points(P2, P1, x1, x2, solver=solver),
@@ -361,7 +361,10 @@ class TestConventionTriangulation(BaseTester):
     def test_wart_triangulate_points_infinity_finite_4865(self, two_view, device, dtype):
         # #4865: a correspondence at infinity (the images of a direction (x, y, z, 0)) comes back as a finite point
         # along that direction, with nothing to tell it from a real point: its distance is set by roundoff in the
-        # homogeneous w. Once fixed (non-finite output or a validity flag), these assertions fail.
+        # homogeneous w. The fix target is a point at infinity flagged (non-finite output, or a validity flag on the
+        # default call) in every dtype, i.e. |w| judged against the dtype's roundoff; a fixed threshold flips only the
+        # float32/float64 legs. A fix through an opt-in argument leaves the default call unchanged and cannot flip
+        # this pin: that fix PR inverts it through the new argument.
         P1, P2, d = two_view["P1"], two_view["P2"], two_view["X"]  # the fixture points read as directions
         x1 = _dehom(d @ P1[..., :3].transpose(-2, -1))
         x2 = _dehom(d @ P2[..., :3].transpose(-2, -1))

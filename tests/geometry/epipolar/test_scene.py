@@ -35,7 +35,7 @@ _SCENE_SHAPES = {
 class TestConventionScene(BaseTester):
     def test_convention_random_intrinsics_and_generate_scene_use_global_generator(self, device, dtype):
         if device.type != "cpu":
-            pytest.skip("random_intrinsics and generate_scene draw from torch's global CPU generator")
+            pytest.skip("generate_scene takes no device argument and draws on the CPU")
         # random_intrinsics: fx, fy, cx, cy are four consecutive draws of U(low, high) from the global generator,
         # in the dtype and on the device of the bounds.
         low = torch.tensor(10.0, device=device, dtype=dtype)
