@@ -25,6 +25,20 @@ from testing.base import BaseTester
 from testing.geometry.create import generate_two_view_random_scene
 
 
+def test_generate_two_view_random_scene_is_deterministic():
+    torch.manual_seed(123)
+    expected_next = torch.rand(3)
+
+    torch.manual_seed(123)
+    scene1 = generate_two_view_random_scene()
+    actual_next = torch.rand(3)
+
+    for key in scene1:
+        assert torch.equal(scene1[key], generate_two_view_random_scene()[key]), f"Scene mismatch for {key}"
+
+    assert torch.equal(actual_next, expected_next)
+
+
 class TestFindEssential(BaseTester):
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 5, 2, device=device, dtype=dtype)
