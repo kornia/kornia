@@ -72,9 +72,10 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
     The computation uses the **4-D cross-product** (cofactor expansion):
     each component of :math:`\mathbf{v}` is a :math:`3 \times 3` determinant of
     the submatrix obtained by dropping the corresponding column of :math:`A`.
-    This is equivalent to computing the last right singular vector of :math:`A`
-    via SVD but replaces the SVD with 48 scalar multiplications and 20
-    additions — no LAPACK or cuSOLVER call is made.
+    This gives the last right singular vector of :math:`A` up to scale and sign,
+    but replaces the SVD with 48 scalar multiplications and 20
+    additions — no LAPACK or cuSOLVER call is made. The sign follows the
+    cofactor formula below (``[I | 0]`` gives ``[0, 0, 0, -1]``).
 
     .. math::
 
@@ -106,7 +107,7 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
     Example:
         >>> A = torch.tensor([[[1., 0., 0., 0.],
         ...                    [0., 1., 0., 0.],
-        ...                    [0., 0., 1., 0.]]])   # null vector is [0,0,0,1]
+        ...                    [0., 0., 1., 0.]]])   # null vector is [0,0,0,-1]
         >>> v = null_vector_3x4(A)                   # shape (1, 4)
         >>> (A @ v.unsqueeze(-1)).squeeze(-1)         # should be near zero
         tensor([[0., 0., 0.]])

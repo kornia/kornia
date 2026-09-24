@@ -42,14 +42,35 @@ __all__ = ["RANSAC"]
 class RANSAC(nn.Module):
     """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
+    Convention:
+        - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
+          ``model_type``, so a homography maps ``kp1`` to ``kp2``. ``forward`` returns a ``(3, 3)`` model and an
+          ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no sample reaches consensus.
+        - For the four point models, ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for
+          ``"essential"``): a correspondence is an inlier when its one-way transfer error for ``"homography"``,
+          or its Sampson distance for the fundamental and essential models, is at most ``inl_th``.
+          :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV.
+        - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
+          draws from the global generator.
+        - Known defects: for ``"homography_from_linesegments"`` the error is not a distance, so the threshold
+          depends on the segment length (`#4867 <https://github.com/kornia/kornia/issues/4867>`_), and the
+          endpoint pairing of :func:`~kornia.geometry.homography.find_homography_lines_dlt` applies
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); ``score_type="msac"`` uses its score as an
+          inlier count, so with outliers present it can return no model where ``"ransac"`` finds one
+          (`#4868 <https://github.com/kornia/kornia/issues/4868>`_); ``prosac_sampling`` has no effect
+          (`#4869 <https://github.com/kornia/kornia/issues/4869>`_); the mask is ``(N, 1)`` when no model is found
+          (`#4871 <https://github.com/kornia/kornia/issues/4871>`_); and too few correspondences for
+          ``"fundamental_7pt"`` and ``"essential"`` are not rejected by the input check and fail inside sampling
+          (`#4872 <https://github.com/kornia/kornia/issues/4872>`_).
+
     Args:
-        model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+        model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
             "homography_from_linesegments".
-        inliers_threshold: threshold for the correspondence to be an inlier.
+        inl_th: inlier threshold, in the units given above.
         batch_size: number of generated samples at once.
-        max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
+        max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn.
         confidence: desired confidence of the result, used for the early stopping.
-        max_local_iterations: number of local optimization (polishing) iterations.
+        max_lo_iters: number of local optimization (polishing) iterations.
 
     """
 
@@ -70,13 +91,14 @@ class RANSAC(nn.Module):
         Args:
             model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
                 "homography_from_linesegments".
-            inl_th: threshold for the correspondence to be an inlier. Internally is squared.
+            inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
             batch_size: number of generated samples at once.
-            max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
+            max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn.
             confidence: desired confidence of the result, used for the early stopping.
             max_lo_iters: number of local optimization (polishing) iterations.
             score_type: scoring method to use: "ransac" or "msac".
-            prosac_sampling: whether to use PROSAC sampling instead of random sampling.
+            prosac_sampling: meant to select PROSAC sampling; it has no effect
+                (`#4869 <https://github.com/kornia/kornia/issues/4869>`_).
             seed: optional random seed for reproducible results. If None, uses global random state.
 
         """
@@ -148,7 +170,7 @@ class RANSAC(nn.Module):
             sample_size: number of samples to draw from the population.
             pop_size: size of the population to sample from.
             batch_size: number of sample sets to generate.
-            iteration: current iteration number (used for PROSAC sampling).
+            iteration: current iteration number, added to ``seed`` when one is set.
             device: device to place the samples on.
 
         Returns:
@@ -230,6 +252,7 @@ class RANSAC(nn.Module):
                 - Best model
                 - Inlier mask for the best model
                 - Score of the best model
+                - Number of inliers of the best model
 
         """
         if len(kp1.shape) == 2:
@@ -325,7 +348,11 @@ class RANSAC(nn.Module):
             weights: optional correspondence weights (not used currently).
 
         Raises:
-            ValueError: if input shapes are invalid or insufficient correspondences.
+            ValueError: for ``"homography"``, ``"fundamental"`` and ``"homography_from_linesegments"``, if ``kp1``
+                and ``kp2`` differ in length or hold fewer correspondences than the minimal sample.
+                ``"fundamental_7pt"`` and ``"essential"`` inputs are not checked
+                (`#4872 <https://github.com/kornia/kornia/issues/4872>`_).
+            ShapeError: for the same model types, if the keypoint shape is wrong.
 
         """
         if self.model_type in ["homography", "fundamental"]:
@@ -352,13 +379,15 @@ class RANSAC(nn.Module):
         r"""Call main forward method to execute the RANSAC algorithm.
 
         Args:
-            kp1: source image keypoints :math:`(N, 2)`.
-            kp2: distance image keypoints :math:`(N, 2)`.
+            kp1: source image keypoints :math:`(N, 2)`, or segments :math:`(N, 2, 2)` for
+                ``"homography_from_linesegments"``.
+            kp2: destination image keypoints, with the shape of ``kp1``.
             weights: optional correspondences weights. Not used now.
 
         Returns:
-            - Estimated model, shape of :math:`(1, 3, 3)`.
-            - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
+            - Estimated model, shape of :math:`(3, 3)`; all zeros when no model is found.
+            - The inlier mask, shape of :math:`(N,)`, where N is number of input correspondences; the class
+              docstring lists its shape when no model is found.
 
         """
         self.validate_inputs(kp1, kp2, weights)
