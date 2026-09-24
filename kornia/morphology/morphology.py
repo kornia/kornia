@@ -189,6 +189,9 @@ def dilation(
         - ``border_type="geodesic"`` ignores the pixels outside the image; the other modes carry torch's pad
           names. :doc:`Conventions & Pitfalls </get-started/conventions>` maps both, and the kernel
           conventions, onto scipy, scikit-image and OpenCV.
+        - Under ``geodesic`` a window with no kernel cell inside the image is empty and returns the reduction
+          identity, ``-inf`` here and ``+inf`` in :func:`erosion`, as scipy and scikit-image do; so does every
+          window of a kernel with no non-zero cell. The composite operations inherit these infinities.
         - Known defects: a non-float image is not rejected
           (`#4735 <https://github.com/kornia/kornia/issues/4735>`_); and
           ``engine="convolution"`` returns the image dtype where ``unfold`` and ``shift`` return the dtype
@@ -214,10 +217,11 @@ def dilation(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``constant``; under ``geodesic`` the pixels outside the image are excluded instead, and under
             ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
-            floating-point inputs, where the appropriate infinite reduction identity is used instead.
+        max_val: No effect on a floating-point image, whose excluded kernel cells and ``geodesic`` padding take
+            the reduction identity :math:`\mp\infty`; kept for backward compatibility. A non-float image,
+            which is not supported (`#4735 <https://github.com/kornia/kornia/issues/4735>`_), still uses it.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -259,8 +263,8 @@ def dilation(
 
     # computation
     if structuring_element is None:
-        # ``kernel`` is only a membership mask: a bool or integer kernel cannot hold ``-max_val``, so a
-        # floating-point image lends it its dtype. A float kernel keeps its own, which may widen the result.
+        # ``kernel`` is only a membership mask, so a bool or integer kernel does not set the compute dtype: a
+        # floating-point image lends it its own. A float kernel keeps its dtype, which may widen the result.
         nb_dtype = tensor.dtype if tensor.is_floating_point() and not kernel.is_floating_point() else kernel.dtype
         neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
     else:
@@ -396,10 +400,11 @@ def erosion(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``constant``; under ``geodesic`` the pixels outside the image are excluded instead, and under
             ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
-            floating-point inputs, where the appropriate infinite reduction identity is used instead.
+        max_val: No effect on a floating-point image, whose excluded kernel cells and ``geodesic`` padding take
+            the reduction identity :math:`\mp\infty`; kept for backward compatibility. A non-float image,
+            which is not supported (`#4735 <https://github.com/kornia/kornia/issues/4735>`_), still uses it.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -441,8 +446,8 @@ def erosion(
 
     # computation
     if structuring_element is None:
-        # ``kernel`` is only a membership mask: a bool or integer kernel cannot hold ``-max_val``, so a
-        # floating-point image lends it its dtype. A float kernel keeps its own, which may widen the result.
+        # ``kernel`` is only a membership mask, so a bool or integer kernel does not set the compute dtype: a
+        # floating-point image lends it its own. A float kernel keeps its dtype, which may widen the result.
         nb_dtype = tensor.dtype if tensor.is_floating_point() and not kernel.is_floating_point() else kernel.dtype
         neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
     else:
@@ -579,10 +584,11 @@ def opening(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``constant``; under ``geodesic`` the pixels outside the image are excluded instead, and under
             ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
-            floating-point inputs, where the appropriate infinite reduction identity is used instead.
+        max_val: No effect on a floating-point image, whose excluded kernel cells and ``geodesic`` padding take
+            the reduction identity :math:`\mp\infty`; kept for backward compatibility. A non-float image,
+            which is not supported (`#4735 <https://github.com/kornia/kornia/issues/4735>`_), still uses it.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -684,10 +690,11 @@ def closing(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``constant``; under ``geodesic`` the pixels outside the image are excluded instead, and under
             ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
-            floating-point inputs, where the appropriate infinite reduction identity is used instead.
+        max_val: No effect on a floating-point image, whose excluded kernel cells and ``geodesic`` padding take
+            the reduction identity :math:`\mp\infty`; kept for backward compatibility. A non-float image,
+            which is not supported (`#4735 <https://github.com/kornia/kornia/issues/4735>`_), still uses it.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -787,10 +794,11 @@ def gradient(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``constant``; under ``geodesic`` the pixels outside the image are excluded instead, and under
             ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
-            floating-point inputs, where the appropriate infinite reduction identity is used instead.
+        max_val: No effect on a floating-point image, whose excluded kernel cells and ``geodesic`` padding take
+            the reduction identity :math:`\mp\infty`; kept for backward compatibility. A non-float image,
+            which is not supported (`#4735 <https://github.com/kornia/kornia/issues/4735>`_), still uses it.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -879,10 +887,11 @@ def top_hat(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``constant``; under ``geodesic`` the pixels outside the image are excluded instead, and under
             ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
-            floating-point inputs, where the appropriate infinite reduction identity is used instead.
+        max_val: No effect on a floating-point image, whose excluded kernel cells and ``geodesic`` padding take
+            the reduction identity :math:`\mp\infty`; kept for backward compatibility. A non-float image,
+            which is not supported (`#4735 <https://github.com/kornia/kornia/issues/4735>`_), still uses it.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -974,10 +983,11 @@ def bottom_hat(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``constant``; under ``geodesic`` the pixels outside the image are excluded instead, and under
             ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
-            floating-point inputs, where the appropriate infinite reduction identity is used instead.
+        max_val: No effect on a floating-point image, whose excluded kernel cells and ``geodesic`` padding take
+            the reduction identity :math:`\mp\infty`; kept for backward compatibility. A non-float image,
+            which is not supported (`#4735 <https://github.com/kornia/kornia/issues/4735>`_), still uses it.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
