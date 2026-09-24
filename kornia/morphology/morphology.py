@@ -48,6 +48,34 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     return kernel.view(h * w, 1, h, w)
 
 
+def _dtype_min(dtype: torch.dtype) -> int:
+    if dtype == torch.uint8 or dtype == torch.bool:
+        return 0
+    if dtype == torch.int8:
+        return -128
+    if dtype == torch.int16:
+        return -32768
+    if dtype == torch.int32:
+        return -2147483648
+    if dtype == torch.int64:
+        return -9223372036854775807 - 1
+    return 0
+
+
+def _dtype_max(dtype: torch.dtype) -> int:
+    if dtype == torch.uint8 or dtype == torch.bool:
+        return 1 if dtype == torch.bool else 255
+    if dtype == torch.int8:
+        return 127
+    if dtype == torch.int16:
+        return 32767
+    if dtype == torch.int32:
+        return 2147483647
+    if dtype == torch.int64:
+        return 9223372036854775807
+    return 0
+
+
 @torch.jit.unused
 def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
     if torch.jit.is_tracing() or torch._C._are_functorch_transforms_active():
@@ -281,14 +309,22 @@ def dilation(
     pad_e: List[int] = [se_w - origin[1] - 1, origin[1], se_h - origin[0] - 1, origin[0]]
     is_geodesic = border_type == "geodesic"
     if border_type == "geodesic":
-        border_value = -float("inf") if tensor.is_floating_point() else -max_val
-        output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=border_value)
+        if tensor.is_floating_point():
+            output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=-float("inf"))
+        else:
+            output = F.pad(tensor, pad_e, mode="constant", value=0.0)
+            valid = F.pad(torch.ones_like(tensor), pad_e, mode="constant", value=0.0)
+            output = torch.where(
+                valid != 0,
+                output,
+                torch.full_like(output, _dtype_min(tensor.dtype)),
+            )
     elif border_type == "constant":
         output = F.pad(tensor, pad_e, mode=border_type, value=border_value)
     else:
         output = F.pad(tensor, pad_e, mode=border_type)
 
-    reduction_min: float = -float("inf") if tensor.is_floating_point() else -max_val
+    reduction_min: float = -float("inf") if tensor.is_floating_point() else float(_dtype_min(output.dtype))
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output = output + neighborhood.flip((0, 1))
@@ -463,14 +499,22 @@ def erosion(
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     is_geodesic = border_type == "geodesic"
     if border_type == "geodesic":
-        border_value = float("inf") if tensor.is_floating_point() else max_val
-        output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=border_value)
+        if tensor.is_floating_point():
+            output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=float("inf"))
+        else:
+            output = F.pad(tensor, pad_e, mode="constant", value=0.0)
+            valid = F.pad(torch.ones_like(tensor), pad_e, mode="constant", value=0.0)
+            output = torch.where(
+                valid != 0,
+                output,
+                torch.full_like(output, _dtype_max(tensor.dtype)),
+            )
     elif border_type == "constant":
         output = F.pad(tensor, pad_e, mode=border_type, value=border_value)
     else:
         output = F.pad(tensor, pad_e, mode=border_type)
 
-    reduction_max: float = float("inf") if tensor.is_floating_point() else max_val
+    reduction_max: float = float("inf") if tensor.is_floating_point() else float(_dtype_max(output.dtype))
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output = output - neighborhood

@@ -168,6 +168,17 @@ class TestErode(BaseTester):
         assert actual.dtype == torch.int64
         assert actual.flatten().tolist() == [3, 0, 0, 0, 0]
 
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_integer_image_geodesic_border_uses_dtype_max_4734(self, device, engine):
+        # Non-floating images still use dtype extrema for geodesic padding until #4735 rejects them.
+        tensor = torch.tensor([[[[1, 2], [3, 4]]]], dtype=torch.uint8, device=device)
+        kernel = torch.ones(3, 3, dtype=torch.float32, device=device)
+
+        actual = erosion(tensor, kernel, border_type="geodesic", engine=engine)
+
+        expected = torch.full_like(actual, 1)
+        assert torch.equal(actual, expected)
+
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
     def test_accepted_border_types(self, device, dtype, border_type):
         # Every documented border_type must pass the validation (#4736).
