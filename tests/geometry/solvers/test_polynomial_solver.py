@@ -24,6 +24,17 @@ import kornia.geometry.solvers as solver
 from testing.base import BaseTester
 
 
+def _monic_from_roots(roots: torch.Tensor) -> torch.Tensor:
+    """Expand prod (x - r_i) row by row into monic coefficients, highest power first, in float64."""
+    roots = roots.to(torch.float64)
+    coeffs = torch.ones(roots.shape[0], 1, dtype=torch.float64)
+    for i in range(roots.shape[1]):
+        r = roots[:, i : i + 1]
+        coeffs = torch.cat([coeffs, torch.zeros(roots.shape[0], 1, dtype=torch.float64)], dim=1)
+        coeffs[:, 1:] = coeffs[:, 1:] - r * coeffs[:, :-1]
+    return coeffs
+
+
 class TestQuadraticSolver(BaseTester):
     def test_smoke(self, device, dtype):
         coeffs = torch.rand(1, 3, device=device, dtype=dtype)
@@ -741,6 +752,218 @@ class TestQuarticSolver(BaseTester):
         # zero-radicand gradient convention was fixed in #4339 and is covered above.
         assert bool(torch.isfinite(mixed.grad[0]).all()), mixed.grad
         self.assert_close(mixed.grad[0], alone.grad[0])
+
+    def test_no_spurious_real_roots_for_near_square_quartic_4474(self, device, dtype):
+        # (x^2 + 2x + 5)(x^2 + 2x + 5.01) has no real roots, but its resolvent cubic has a
+        # near-double root that float32 solve_cubic loses. Ferrari then fell back to R = 0,
+        # both quadratics collapsed to x^2 + (A/2)x + y/2, and its roots came back as the
+        # quartic's while leaving a residual of 25 (#4474).
+        coeffs = torch.tensor([[1.0, 4.0, 14.01, 20.02, 25.05]], device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+
+        # Every returned value must satisfy the quartic it was given. Zeros are the
+        # placeholder for "no real root" and are skipped, which is the correct answer here.
+        for root in roots[0]:
+            if root == 0.0:
+                continue
+            residual = (((root + 4.0) * root + 14.01) * root + 20.02) * root + 25.05
+            assert bool(torch.abs(residual) < 1e-2), f"{root} is not a root, residual {residual}"
+
+    def test_near_square_family_returns_no_real_roots_4474(self, device, dtype):
+        # The same failure across the family rather than one literal, so a future change that
+        # reintroduces it on neighbouring coefficients is caught too. Each row is
+        # (x^2 + a x + b)(x^2 + a x + b + eps) with a discriminant that admits no real root.
+        rows, a = [], 2.0
+        for b in (5.0, 6.5, 8.0):
+            for eps in (1e-3, 1e-2, 1e-1):
+                c1 = b + eps
+                # expand (x^2 + a x + b)(x^2 + a x + c1)
+                rows.append([1.0, 2 * a, b + c1 + a * a, a * (b + c1), b * c1])
+        coeffs = torch.tensor(rows, device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+
+        assert bool((roots == 0.0).all()), f"expected the no-real-root placeholder, got {roots}"
+
+    def test_a_genuine_root_ferrari_left_off_is_polished_not_dropped_4474(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Root accuracy assertions are limited to float32 and float64.")
+        # Four distinct real roots, nothing pathological. float32 Ferrari returns -0.02384 for the
+        # root at -0.023854, a scaled residual of 1.1e-4, and a fixed 1e-4 cutoff replaced it with
+        # the no-root placeholder (review of #4669). Polishing brings it onto the root instead.
+        coeffs = torch.tensor(
+            [[1.0, -0.3775281906, -71.65801239, -11.11165237, -0.2242867798]], device=device, dtype=dtype
+        )
+        expected = torch.tensor([[-8.19822634, -0.13136028, -0.02385378, 8.7309686]], device=device, dtype=dtype)
+        roots = torch.sort(solver.solve_quartic(coeffs), dim=-1).values
+        self.assert_close(roots, expected, rtol=1e-4, atol=1e-6)
+
+    def test_separated_real_roots_are_never_dropped_4474(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Root accuracy assertions are limited to float32 and float64.")
+        # 2000 quartics with four real roots in [-10, 10] at least 0.5 apart: every root must come
+        # back within the dtype's reach of its true value, and none as the zero placeholder.
+        gen = torch.Generator().manual_seed(4474)
+        gaps = torch.rand(2000, 3, generator=gen, dtype=torch.float64) * 4 + 0.5
+        first = torch.rand(2000, 1, generator=gen, dtype=torch.float64) * (20 - gaps.sum(1, keepdim=True)) - 10
+        true_roots = torch.cat([first, first + gaps.cumsum(1)], dim=1)
+        coeffs = _monic_from_roots(true_roots)
+        roots = torch.sort(solver.solve_quartic(coeffs.to(device=device, dtype=dtype)), dim=-1).values
+
+        assert bool((roots != 0).all()), f"{int((roots == 0).sum())} roots replaced by the placeholder"
+        self.assert_close(roots, true_roots.to(device=device, dtype=dtype), rtol=1e-3, atol=1e-3)
+
+    def test_polish_does_not_repeat_a_simple_root_4474(self, device, dtype):
+        # Two real roots and a complex pair. The quadratic that should hold the pair collapses to a
+        # double candidate near the small real root, and polishing alone carried both copies onto
+        # it: 0.0816 came back three times. A simple root is reported once.
+        coeffs = torch.tensor([[1.0, 0.34461, -0.46098, 2.76681, -0.22301]], device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+        nonzero = roots[roots != 0]
+        assert nonzero.numel() == 2, f"expected the two real roots and two placeholders, got {roots}"
+        expected = torch.tensor([-1.666164, 0.081621], device=device, dtype=dtype)
+        self.assert_close(torch.sort(nonzero).values, expected, rtol=1e-3, atol=1e-4)
+
+    def test_close_distinct_simple_roots_are_both_kept_4474(self, device, dtype):
+        # Roots 0.01, 0.0109, 10, 20 (review of #4669): a fixed coincidence window took the two small
+        # roots for one and replaced 0.01 with the placeholder. The window is now each candidate's
+        # own error bound, which two distinct roots do not share however close they are.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Root accuracy assertions are limited to float32 and float64.")
+        coeffs = torch.tensor([[1.0, -30.0209, 200.627109, -4.18327, 0.0218]], device=device, dtype=dtype)
+        roots = torch.sort(solver.solve_quartic(coeffs), dim=-1).values
+        expected = torch.tensor([[0.01, 0.0109, 10.0, 20.0]], device=device, dtype=dtype)
+        # float32 cannot separate the pair better than ~1%; float64 places both exactly.
+        tol = 2e-2 if dtype == torch.float32 else 1e-6
+        self.assert_close(roots, expected, rtol=tol, atol=0.0)
+
+    def test_double_root_is_still_reported_twice_4474(self, device, dtype):
+        # (x - 2)^2 (x + 1)(x + 3) and (x^2 - 1)^2: the repeat rule must leave a genuine double
+        # root alone, whether it comes from one quadratic or one copy from each.
+        coeffs = torch.tensor([[1.0, 0.0, -9.0, 4.0, 12.0], [1.0, 0.0, -2.0, 0.0, 1.0]], device=device, dtype=dtype)
+        roots = torch.sort(solver.solve_quartic(coeffs), dim=-1).values
+        expected = torch.tensor([[-3.0, -1.0, 2.0, 2.0], [-1.0, -1.0, 1.0, 1.0]], device=device, dtype=dtype)
+        self.assert_close(roots, expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize(
+        "coeffs, true_roots, dtypes",
+        [
+            # (x + 8.75)(x + 8.74)(x^2 - 2x + 17), and the same with roots -8.75 and -8.748. Polishing a
+            # complex-pair placeholder from zero stopped a tenth away from the close pair, inside the
+            # residual tolerance: -8.8777 twice, or -8.8840 four times.
+            ([1.0, 15.49, 58.495, 144.38, 1300.075], [-8.75, -8.74], (torch.float32, torch.float64)),
+            ([1.0, 15.498, 58.549, 144.376, 1301.265], [-8.75, -8.748], (torch.float32, torch.float64)),
+            # A recovered placeholder must have converged: accepting it at any simple root returns -1.10588
+            # for the near-double root at -1.1189.
+            (
+                [1.0, -2.4284734, -3.84090791, 6.128004724, 6.696065824],
+                [-1.11887, -1.11886, 2.02579, 2.64041],
+                (torch.float32, torch.float64),
+            ),
+            # ...relative to |x| itself: a bound of sqrt(eps) * max(1, |x|) is absolute below 1, and
+            # returns 0.0008457 for the root at 0.00112, 25% off.
+            (
+                [1.0, -6.807518769, -104.0549685, 0.2346873751, -0.0001323169874],
+                [-7.351354433, 0.001122449359, 0.001132718443, 14.15661803],
+                (torch.float32,),
+            ),
+        ],
+    )
+    def test_returned_values_are_roots_4474(self, coeffs, true_roots, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("This case pins behaviour in another dtype.")
+        roots = solver.solve_quartic(torch.tensor([coeffs], device=device, dtype=dtype))[0]
+        want = torch.tensor(true_roots, device=device, dtype=dtype)
+        # Relative to the root itself, with no floor at 1, so a value near zero is held to the same standard.
+        rtol = 1e-2 if dtype == torch.float32 else 1e-6
+        for value in roots[roots != 0]:
+            assert bool(((want - value).abs() <= rtol * want.abs()).any()), f"{value} is not a root: {roots.tolist()}"
+
+    @pytest.mark.parametrize(
+        "coeffs, expected, dtypes",
+        [
+            # Each case pins one rule of the polish/filter/dedupe step: changing that rule makes it fail.
+            # Placeholders are judged apart from Ferrari's candidates: without it -8.8777 is returned twice.
+            ([1.0, 15.49, 58.495, 144.38, 1300.075], [-8.75, -8.74], (torch.float32, torch.float64)),
+            # Placeholders are polished: without it the root at 0.003 is lost next to roots of 1e2 to 1e3.
+            (
+                [1.0, -1088.503, -128841.7345, 329286.535, -986.7],
+                [-110.0, 0.003, 2.5, 1196.0],
+                (torch.float32, torch.float64),
+            ),
+            # The error bound comes only from simple roots: counting the double root drops 1.68.
+            (
+                _monic_from_roots(torch.tensor([[2.3, 2.3, -4.19, 1.68]], dtype=torch.float64))[0].tolist(),
+                [-4.19, 1.68, 2.3, 2.3],
+                (torch.float64,),
+            ),
+            # Coincidence factor 4, not 1: at 1 a second -1.5 survives (roots -2, -1.5, 4 +- 0.5i).
+            ([1.0, -4.5, -8.75, 32.875, 48.75], [-2.0, -1.5], (torch.float32, torch.float64)),
+            # Simple-root threshold 1e-2, not 1e-1: at 1e-1 -4031 is returned twice (roots -4031, -4689,
+            # 231 +- 875i). The smaller case (roots -9, -5, 1 +- 3i) guards the same repeat at -9.
+            (
+                [1.0, 8258.0, 15691705.0, -1590869938.0, 15479948400000.0],
+                [-4689.0, -4031.0],
+                (torch.float32, torch.float64),
+            ),
+            ([1.0, 12.0, 27.0, 50.0, 450.0], [-9.0, -5.0], (torch.float32, torch.float64)),
+            # ...and not 1e-3: at 1e-3 the double root at -2 loses a copy (roots -5, -2, -2, 2.25).
+            ([1.0, 6.75, 3.75, -34.0, -45.0], [-5.0, -2.0, -2.0, 2.25], (torch.float32, torch.float64)),
+            # The ulp floor in the coincidence window: without it 4.75 comes back twice (roots 4.75, -5, 9 +- 3i).
+            ([1.0, -17.75, 61.75, 450.0, -2137.5], [-5.0, 4.75], (torch.float32, torch.float64)),
+            # The residual tolerance, pinned from both sides. At sqrt(eps) instead of sqrt(eps) / 4, this
+            # quartic with two complex pairs returns -7.2066 and -6.7561 twice each...
+            ([1.0, 27.91975997, 297.7351036, 1435.935501, 2645.836994], [], (torch.float32,)),
+            # ...and at sqrt(eps) / 16 both copies of the double root at 0.558935 are dropped.
+            (
+                [1.0, -7.636022673, 0.9114557167, 5.439310611, -2.089195035],
+                [-0.901329, 0.558935, 0.558935, 7.419483],
+                (torch.float32,),
+            ),
+            # A recovered placeholder's step bound, from below: at eps * |x| instead of sqrt(eps) * |x| the
+            # root at 0.0009864 next to roots of 1 to 946 is lost.
+            (
+                [1.0, -1333.67141, 366869.5534, -369281.897, 363.9159878],
+                [0.0009864, 1.009293, 386.1998282, 946.4613022],
+                (torch.float32,),
+            ),
+        ],
+    )
+    def test_root_set_4474(self, coeffs, expected, dtypes, device, dtype):
+        if dtype not in dtypes:
+            pytest.skip("This case pins behaviour in another dtype.")
+        roots = solver.solve_quartic(torch.tensor([coeffs], device=device, dtype=dtype))[0]
+        found = torch.sort(roots[roots != 0]).values
+        assert found.numel() == len(expected), f"expected {expected}, got {roots.tolist()}"
+        # A double root in float32 lands ~sqrt(eps) apart; everything else here is far tighter.
+        tol = 1e-2 if dtype == torch.float32 else 1e-6
+        want = torch.tensor(sorted(expected), device=device, dtype=dtype)
+        self.assert_close(found, want, rtol=tol, atol=tol)
+
+    def test_ferrari_candidate_is_kept_over_a_recovered_copy_4474(self, device, dtype):
+        # A placeholder recovered to 2.288697 and Ferrari's own 2.289372 are copies of the root at
+        # 2.289375. The recovered one had two steps from zero and is 3e-4 off; keeping it by slot order
+        # threw away the accurate one. Ferrari's candidate is kept.
+        if dtype != torch.float32:
+            pytest.skip("The recovered copy arises in float32.")
+        coeffs = torch.tensor([[1.0, -7.111530047, 11.09636462, 16.30030766, -37.6143968]], device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)[0]
+        near = roots[(roots - 2.289375).abs() <= 1e-2 * 2.289375]
+        assert near.numel() == 1, f"expected one copy of 2.289375, got {roots.tolist()}"
+        assert abs(float(near) - 2.289375) <= 1e-5 * 2.289375, f"kept the less accurate copy: {float(near)}"
+
+    def test_four_real_roots_survive_the_residual_filter_4474(self, device, dtype):
+        # The guard rejects non-roots; it must not reject roots. A well-separated
+        # four-real-root quartic and a biquadratic both keep every root.
+        quartics = [
+            [1.0, -10.0, 35.0, -50.0, 24.0],  # (x-1)(x-2)(x-3)(x-4)
+            [1.0, 0.0, -5.0, 0.0, 4.0],  # (x^2-1)(x^2-4)
+        ]
+        expected = [[1.0, 2.0, 3.0, 4.0], [-2.0, -1.0, 1.0, 2.0]]
+        roots = solver.solve_quartic(torch.tensor(quartics, device=device, dtype=dtype))
+
+        for row, want in zip(roots, expected):
+            got = torch.sort(row).values
+            self.assert_close(got, torch.tensor(want, device=device, dtype=dtype).sort().values, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("leading", [0.0, 1e-9, 5e-7])
     def test_cubic_fallback_for_near_zero_leading_coefficient(self, leading, device, dtype):
