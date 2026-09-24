@@ -851,19 +851,40 @@ class TestNoiseAndWeatherConventions(BaseTester):
         )
         assert smaller(image).shape == image.shape
 
-    # Issue #4810: a drop of size n >= 2 paints n pixels over n + 1 rows, skipping one.  A fix that paints a
-    # contiguous drop flips it.
+    # Issue #4810: each nonzero declared dimension is a pixel count, so lines have no skipped row or column.
     # Snippet used to generate expected:
     #   torch.manual_seed(0)
-    #   y = K.RandomRain(number_of_drops=(1, 1), drop_height=(h, h), drop_width=(0, 0), p=1.0)(torch.zeros(1, 1, 6, 10))
-    #   print(sorted({r for r, _ in (y[0, 0] != 0).nonzero().tolist()}))
-    @pytest.mark.parametrize(("height", "rows"), [(2, [0, 2]), (5, [0, 1, 2, 3, 5])])
-    def test_wart_random_rain_drop_skips_a_row_4810(self, device, dtype, height, rows):
-        image = torch.zeros(1, 1, 6, 10, device=device, dtype=dtype)
+    #   y = K.RandomRain(number_of_drops=(1, 1), drop_height=(h, h), drop_width=(w, w), p=1.0)(image)
+    #   print((y[0, 0] != 0).nonzero().tolist())
+    @pytest.mark.parametrize(
+        ("height", "width", "offsets"),
+        [
+            (2, 0, [[0, 0], [1, 0]]),
+            (5, 0, [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]]),
+            (1, 5, [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]]),
+            (3, 5, [[0, 0], [0, 1], [1, 2], [1, 3], [2, 4]]),
+            (5, 5, [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]),
+            (5, -3, [[0, 2], [1, 2], [2, 1], [3, 1], [4, 0]]),
+            (5, -5, [[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]]),
+        ],
+    )
+    def test_convention_random_rain_drop_is_contiguous_4810(self, device, dtype, height, width, offsets):
+        image = torch.zeros(1, 1, 8, 10, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(height, height), drop_width=(0, 0), p=1.0)(image)
+        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(height, height), drop_width=(width, width), p=1.0)(
+            image
+        )
         lit = (out[0, 0] != 0).nonzero()
-        assert (lit[:, 0] - lit[:, 0].min()).tolist() == rows
+        relative = lit - lit.min(dim=0).values
+        assert relative.tolist() == offsets
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_negative_width_reaches_left_edge_4810(self, monkeypatch):
+        real_rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *a, **kw: torch.zeros_like(real_rand(*a, **kw)))
+        aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(2, 2), drop_width=(-2, -2), p=1.0)
+        lit = (aug(torch.zeros(1, 1, 6, 10))[0, 0] != 0).nonzero().tolist()
+        assert sorted(lit) == [[0, 1], [1, 0]]
 
     # The three integer ranges are closed and uniform (#4567), including signed widths that straddle or
     # end at zero.  The 15% band is wide for the 16-bin height at 22000 draws; what it has to separate is
@@ -948,7 +969,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
             cols |= set(lit[:, 1].tolist())
         assert sorted(rows) == list(range(6)) and sorted(cols) == list(range(10))
 
-    # A single drop paints a bounding box of exactly ``(h, |w|)`` inside the image for every legal start
+    # A single drop paints a bounding box of exactly ``(h, max(|w|, 1))`` inside the image for every legal start
     # (#4604); a drop wrapped across opposite edges by a negative index would still satisfy the union pin.
     @pytest.mark.device_agnostic
     def test_convention_random_rain_single_drop_box_is_its_size_4604(self):
@@ -962,13 +983,13 @@ class TestNoiseAndWeatherConventions(BaseTester):
                         drop_width=(drop_width, drop_width),
                         p=1.0,
                     )
-                    expected = (drop_height, abs(drop_width)) if max(drop_height, abs(drop_width)) > 1 else (0, 0)
+                    expected = (drop_height, max(abs(drop_width), 1))
                     for seed in range(2):
                         torch.manual_seed(seed)
                         lit = (aug(image)[0, 0] != 0).nonzero()
                         rows, cols = lit[:, 0].tolist(), lit[:, 1].tolist()
                         case = (height, width, drop_height, drop_width, seed)
-                        assert (max(rows) - min(rows), max(cols) - min(cols)) == expected, case
+                        assert (max(rows) - min(rows) + 1, max(cols) - min(cols) + 1) == expected, case
                         assert min(rows) >= 0 and max(rows) < height, case
                         assert min(cols) >= 0 and max(cols) < width, case
 
@@ -997,7 +1018,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
         # The patch has to reach the generator's own draws, or the pin is vacuous.
         assert float(aug.forward_parameters((1, 1, 6, 10))["coordinates_factor"].min()) == 1.0
         lit = (aug(torch.zeros(1, 1, 6, 10))[0, 0] != 0).nonzero().tolist()
-        assert sorted(lit) == [[3, 9], [5, 7]]
+        assert sorted(lit) == [[4, 9], [5, 8]]
 
     # ``same_on_batch=True`` shares the drop count, the drop sizes and the coordinates; without it each
     # sample draws its own.
