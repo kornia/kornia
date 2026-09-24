@@ -396,13 +396,17 @@ class TestGeometricCropConventions(BaseTester):
             assert bool((first - resampled(image, params=sliced._params)).abs().max() > 0.1) == disagree
 
     @pytest.mark.device_agnostic
-    def test_wart_random_resized_crop_slice_mode_rejects_nearest_4802(self):
-        # #4802: flips when slice mode drops the default align_corners for nearest resampling.
+    def test_random_resized_crop_slice_mode_accepts_nearest_4802(self):
+        # #4802: slice mode drops the default align_corners for nearest resampling.
         image = torch.rand(1, 1, 8, 8)
-        for kwargs in ({"cropping_mode": "resample"}, {"align_corners": None}):
-            assert K.RandomResizedCrop((4, 4), resample="nearest", p=1.0, **kwargs)(image).shape == (1, 1, 4, 4)
-        with pytest.raises(ValueError):
-            K.RandomResizedCrop((4, 4), resample="nearest", p=1.0)(image)
+        for kwargs in ({"cropping_mode": "resample"}, {"align_corners": None}, {}, {"align_corners": False}):
+            aug = K.RandomResizedCrop((4, 4), resample="nearest", p=1.0, **kwargs)
+            assert aug(image).shape == (1, 1, 4, 4)
+        # Slice mode matches the result of passing align_corners=None explicitly.
+        params = aug.forward_parameters(image.shape)
+        default = K.RandomResizedCrop((4, 4), resample="nearest", p=1.0)(image, params=params)
+        explicit = K.RandomResizedCrop((4, 4), resample="nearest", align_corners=None, p=1.0)(image, params=params)
+        assert torch.equal(default, explicit)
 
     def test_convention_resize_side_policies_and_inverse(self, device, dtype):
         x = torch.arange(70, device=device, dtype=dtype).reshape(1, 1, 7, 10)

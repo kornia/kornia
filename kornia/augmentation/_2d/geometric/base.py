@@ -167,16 +167,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         # When align_corners=None is in flags (from extra_args), use the module's default
         # This ensures masks use the same align_corners value as inputs for consistency
-        # However, for 'slice' cropping_mode with 'nearest' mode, align_corners must be None
-        # because crop_by_indices -> resize -> interpolate doesn't accept align_corners with nearest
-        # For 'resample' cropping_mode, warp_affine/grid_sample accepts align_corners with nearest
+        # except in 'slice' cropping_mode, which keeps None. RandomResizedCrop drops align_corners for
+        # nearest itself; for bilinear/bicubic interpolate reads None as False, so the mask no longer
+        # lines up with an align_corners=True input (tracked in #4854)
         if "align_corners" in flags and flags["align_corners"] is None:
             align_corners_was_none = True
             original_align_corners = None
-            # Check if we're using 'slice' cropping_mode which uses interpolate
-            # interpolate doesn't accept align_corners with nearest mode
             if flags.get("cropping_mode") == "slice":
-                # Keep align_corners=None for slice mode with nearest (interpolate requirement)
                 pass
             else:
                 # Use the module's default align_corners value from self.flags
@@ -290,17 +287,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             align_corners_value = flags.get("align_corners")
             # When align_corners=None is in kwargs, use the module's default
             # This ensures masks use the same align_corners value as inputs for consistency
-            # However, for 'slice' cropping_mode with 'nearest' mode, align_corners must be None
-            # because crop_by_indices -> resize -> interpolate doesn't accept align_corners with nearest
-            # For 'resample' cropping_mode, warp_affine/grid_sample accepts align_corners with nearest
+            # except in 'slice' cropping_mode, which keeps None (as in apply_transform_mask, #4854)
             # We need to normalize it in kwargs too, because inverse_inputs will call
             # _process_kwargs_to_params_and_flags which merges kwargs into flags
             if kwargs["align_corners"] is None:
                 align_corners_was_none_in_kwargs = True
-                # Check if we're using 'slice' cropping_mode which uses interpolate
-                # interpolate doesn't accept align_corners with nearest mode
                 if flags.get("cropping_mode") == "slice":
-                    # Keep align_corners=None for slice mode with nearest (interpolate requirement)
                     # Don't modify flags or kwargs
                     pass
                 else:

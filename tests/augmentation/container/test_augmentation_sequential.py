@@ -980,10 +980,8 @@ class TestConventionAugmentationSequential(BaseTester):
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     @pytest.mark.parametrize("align_corners", [None, False, True])
-    def test_wart_resized_crop_mask_align_corners_depends_on_mode_4802(
-        self, cropping_mode, align_corners, device, dtype
-    ):
-        # #4802: the slice-mode raise flips when slice mode drops `align_corners` for nearest resampling.
+    def test_resized_crop_mask_accepts_any_align_corners_4802(self, cropping_mode, align_corners, device, dtype):
+        # #4802: slice mode drops `align_corners` for nearest resampling, so every override works in both modes.
         image = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4) / 16
         mask = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4).remainder(2)
         seq = K.AugmentationSequential(
@@ -991,13 +989,9 @@ class TestConventionAugmentationSequential(BaseTester):
             data_keys=["input", "mask"],
             extra_args={DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": align_corners}},
         )
-        if cropping_mode == "slice" and align_corners is not None:
-            with pytest.raises(ValueError):
-                seq(image, mask)
-        else:
-            out_image, out_mask = seq(image, mask)
-            assert out_image.shape == out_mask.shape == (1, 1, 2, 2)
-            assert set(out_mask.unique().tolist()).issubset({0.0, 1.0})
+        out_image, out_mask = seq(image, mask)
+        assert out_image.shape == out_mask.shape == (1, 1, 2, 2)
+        assert set(out_mask.unique().tolist()).issubset({0.0, 1.0})
 
     def test_convention_masks_keep_labels_and_add_padding_fill_through_a_rotation(self, device, dtype):
         # Convention pin: masks are resampled with nearest interpolation, so a {2, 3} mask still holds those
