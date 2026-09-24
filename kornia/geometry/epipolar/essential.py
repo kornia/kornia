@@ -274,10 +274,10 @@ def _null_to_Nister_solution_script(
     # An exactly singular A10 means the sample has no solution. torch.linalg.solve raises on such an
     # element rather than returning NaN, so the singular elements are found first with lu_factor_ex,
     # which reports a zero pivot through ``info`` instead of raising, and are solved against the
-    # identity so that nothing below can raise or overflow on them. Their candidates are set to NaN
-    # at the end, which run_5point maps to its identity fallback. Every other element keeps A10: the
-    # replacement is made in ``coeffs`` and sliced like A10, because torch.linalg.solve can round a
-    # contiguous copy differently from the strided slice.
+    # identity so that nothing below can raise or overflow on them in the forward pass. Their
+    # candidates are set to NaN at the end, which run_5point maps to its identity fallback. Every
+    # other element keeps A10: the replacement is made in ``coeffs`` and sliced like A10, because
+    # torch.linalg.solve can round a contiguous copy differently from the strided slice.
     _, _, info = torch.linalg.lu_factor_ex(A10)
     singular = info > 0  # (B,)
     A_solve = A10

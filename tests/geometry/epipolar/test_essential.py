@@ -108,7 +108,9 @@ class TestFindEssential(BaseTester):
         self.assert_close(E_zeros, eye.expand(B, 10, 3, 3), atol=0.0, rtol=0.0)
 
         # A singular element does not disturb the rest of its batch: next to one, a regular sample
-        # returns exactly what it returns alone, NaN candidates from complex roots included.
+        # returns exactly what it returns next to a regular sample, NaN candidates from complex roots
+        # included. The reference is a batch of the same size, because the batch size alone can change
+        # the last bits of a result (by 4.8e-15 at float64 on macOS arm64).
         x1 = torch.tensor(
             [[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]],
             device=device,
@@ -119,15 +121,16 @@ class TestFindEssential(BaseTester):
             device=device,
             dtype=dtype,
         )
-        alone = epi.essential.find_essential(x1[None], x2[None], torch.ones(1, 5, device=device, dtype=dtype))[0]
+        weights = torch.ones(2, 5, device=device, dtype=dtype)
+        regular = epi.essential.find_essential(torch.stack((x1, x1)), torch.stack((x2, x2)), weights)[1]
         mixed = epi.essential.find_essential(
             torch.stack((zeros[0, :5], x1)),
             torch.stack((zeros[0, :5], x2)),
-            torch.ones(2, 5, device=device, dtype=dtype),
+            weights,
         )
         self.assert_close(mixed[0], eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
-        assert torch.equal(torch.isnan(mixed[1]), torch.isnan(alone))
-        self.assert_close(torch.nan_to_num(mixed[1]), torch.nan_to_num(alone), atol=0.0, rtol=0.0)
+        assert torch.equal(torch.isnan(mixed[1]), torch.isnan(regular))
+        self.assert_close(torch.nan_to_num(mixed[1]), torch.nan_to_num(regular), atol=0.0, rtol=0.0)
 
         # Whether any other degenerate set is exactly singular depends on the platform's LAPACK. This
         # L-shaped set and a random draw with the same points in both images exercise that path where
@@ -137,6 +140,12 @@ class TestFindEssential(BaseTester):
         for points in (lshape.expand(B, 5, 2), draw):
             weights = torch.ones(points.shape[:2], device=device, dtype=dtype)
             assert epi.essential.find_essential(points, points, weights).shape == (B, 10, 3, 3)
+
+        # For a design matrix whose rows are unit vectors, the SVD returns a null space of unit vectors,
+        # which makes the elimination matrix exactly singular. For this one, solving against the identity
+        # leaves finite candidates that fail the essential-matrix constraints, so they must be dropped.
+        design = torch.eye(9, device=device, dtype=dtype)[[0, 1, 3, 5, 6]].expand(B, 5, 9)
+        assert torch.isnan(epi.essential.null_to_Nister_solution(design, B)).all()
 
 
 class TestEssentialFromFundamental(BaseTester):
