@@ -511,8 +511,9 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
     Convention:
         - Returns two rotations and a unit translation; the true pose is one of :math:`(R_1, \pm t)`,
-          :math:`(R_2, \pm t)`. Which rotation is the true one, like the sign of ``t``, is not fixed: it can
-          change when ``E_mat`` is negated or rescaled. Select by cheirality with
+          :math:`(R_2, \pm t)`. :math:`(R_1, -t)` and :math:`(R_2, t)` give :math:`[t]_\times R` with the sign
+          of ``E_mat``, :math:`(R_1, t)` and :math:`(R_2, -t)` the opposite sign. Which of the four is the true
+          pose is not fixed: it can change when ``E_mat`` is negated or rescaled. Select by cheirality with
           :func:`motion_from_essential_choose_solution`; :ref:`two-view geometry <two-view-conventions>`
           compares OpenCV's labels.
         - Known defects: a ``(3, 3)`` input returns rotations of shape ``(1, 3, 3)`` but ``t`` of shape
@@ -857,7 +858,9 @@ def find_essential(
           complex root a ``NaN`` slot.
         - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_); a sample
           with no real solution returns ten identity matrices instead of ``NaN``
-          (`#4883 <https://github.com/kornia/kornia/issues/4883>`_); input gradients are wrong for fewer than 9
+          (`#4883 <https://github.com/kornia/kornia/issues/4883>`_); in ``float32`` an exact five-point sample can
+          miss the true solution, which six or more correspondences recover
+          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); input gradients are wrong for fewer than 9
           correspondences (`#4855 <https://github.com/kornia/kornia/issues/4855>`_); backward raises on some
           degenerate samples, such as identical point sets (`#4831 <https://github.com/kornia/kornia/issues/4831>`_);
           on MPS the 5-point solve needs the CPU fallback (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).

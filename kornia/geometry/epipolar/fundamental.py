@@ -448,10 +448,10 @@ def get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, F
           ``Fm`` in the :math:`x_2^\top F x_1 = 0` order of :func:`find_fundamental`.
 
     Args:
-        pts1: correspondences from the left images with shape :math:`(B, N, (2|3))`. If they are not homogeneous,
-              converted automatically.
-        pts2: correspondences from the right images with shape :math:`(B, N, (2|3))`. If they are not homogeneous,
-              converted automatically.
+        pts1: points in the first image with shape :math:`(B, N, 2)` or :math:`(B, N, 3)`. If they are not
+              homogeneous, converted automatically.
+        pts2: points in the second image with shape :math:`(B, N, 2)` or :math:`(B, N, 3)`. If they are not
+              homogeneous, converted automatically.
         Fm: Fundamental matrices with shape :math:`(B, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
 
     Returns:
