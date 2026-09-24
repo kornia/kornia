@@ -1262,9 +1262,9 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert bool(K.RandomGaussianIllumination(p=1.0)(image).isfinite().all())
 
-    # Issue #4807: the classes with their own ``.compile()`` store a compiled callable and then no longer
-    # pickle or pass through torch.save, though they still deep-copy; the linear illumination classes, which
-    # use torch's ``Module.compile``, keep pickling.  A fix makes the first three pickle and flips it.
+    # Issue #4807: the classes with their own ``.compile()`` store compiled callables. Pickling stores the
+    # uncompiled ones and unpickling compiles them again, so like the linear illumination classes (torch's
+    # ``Module.compile``) they pickle, pass through torch.save and still run after the round trip.
     # "compile" in the name is load-bearing: conftest deselects it unless KORNIA_TEST_OPTIMIZER is set, which
     # keeps ``torch.compile``'s process-wide side effects (it disables Distribution argument validation) out
     # of the ordinary CPU legs.
@@ -1280,7 +1280,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         ],
     )
     @pytest.mark.device_agnostic
-    def test_wart_compiled_intensity_augmentation_does_not_pickle_4807(self, name, own_compile):
+    def test_compiled_intensity_augmentation_pickles(self, name, own_compile):
         if name == "RandomGaussianBlur":
             compiled = K.RandomGaussianBlur((3, 3), (1.0, 1.0), p=1.0)
         elif name == "ColorJitter":
@@ -1297,13 +1297,16 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         cloned = copy.deepcopy(compiled)
         assert isinstance(cloned, type(compiled))
         assert cloned(constant).shape == constant.shape
+        torch.save(compiled, io.BytesIO())
+        try:
+            restored = pickle.loads(pickle.dumps(compiled))  # noqa: S301
+        finally:
+            Distribution.set_default_validate_args(validate_args)
+        assert isinstance(restored, type(compiled))
+        assert restored(constant).shape == constant.shape
         if own_compile:
-            with pytest.raises(pickle.PicklingError):
-                pickle.dumps(compiled)
-            with pytest.raises(pickle.PicklingError):
-                torch.save(compiled, io.BytesIO())
-        else:
-            assert len(pickle.dumps(compiled)) > 0
+            # Compiled again on load, with the arguments of the original compile() call.
+            assert restored._compile_kwargs == compiled._compile_kwargs
 
     # The RandomPlasma* classes clamp into [0, 1] and record the fractal as ``_params["plasma"]``, so a
     # replay with ``params=`` reproduces the output bitwise.  The replay runs on a non-constant image,

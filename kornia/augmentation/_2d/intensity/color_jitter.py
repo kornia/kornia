@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation._2d.intensity.color_jiggle import (
     _adjust_hue,
     _apply_order_cond,
@@ -59,7 +59,7 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
     return _apply_order_cond(_BRANCHES, _NEUTRAL, order, input, factors)
 
 
-class ColorJitter(IntensityAugmentationBase2D):
+class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
 
     The four steps are torchvision's formulas -- brightness multiplies the image by the factor, contrast blends it
@@ -104,10 +104,6 @@ class ColorJitter(IntensityAugmentationBase2D):
         are all ``0`` comes back unchanged instead of black, and ``ColorJitter(0, 0, 0, 0)`` clamps an
         out-of-range input. Tracked in
         `#4785 <https://github.com/kornia/kornia/issues/4785>`_.
-
-    .. warning::
-        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
-        Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
 
     .. warning::
         Because the brightness, contrast and saturation steps clamp, an all-negative input can come back as an
@@ -213,6 +209,17 @@ class ColorJitter(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "ColorJitter":
+        self._record_compile(
+            ["_cond_fn", "_brightness_fn", "_contrast_fn", "_saturation_fn", "_hue_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
         # A fixed order on an RGB input runs every step through the torch.cond dispatcher, which is compiled
         # as one graph; the four helpers serve the random order and non-RGB inputs.
         if self._cond_fn is not None:

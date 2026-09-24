@@ -1,0 +1,2 @@
+`ColorJitter`, `RandomGaussianBlur` and `RandomGaussianIllumination` now pickle and pass through `torch.save`
+after their own `compile()`. Unpickling compiles the restored module again with the same arguments. (#4807)
