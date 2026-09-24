@@ -160,7 +160,12 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
     **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run -e default install`.
 
-    **CUDA:** The CUDA environment uses PyTorch with CUDA 12.1. Run `pixi run -e cuda install` to set it up.
+    **CUDA:** Run `pixi run -e cuda install` to install the CUDA 12.1 PyTorch build into the project `.venv`,
+    which is also used by `pixi run -e cuda test-cuda`. Pixi's `.pixi/envs/cuda` supplies the tools, not the
+    Python dependencies under test. Commands run with `-e cuda` disable automatic uv synchronization so
+    the CUDA build is preserved. Re-run the CUDA install task after changing dependencies or using a
+    default-environment command that synchronizes `.venv`. For focused CUDA tests, use
+    `pixi run -e cuda test-module tests/<path> --device=cuda`.
 
 5. **Develop and test:**
 
