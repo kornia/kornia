@@ -36,11 +36,11 @@ def oneway_transfer_error(
 
     Convention:
         - ``oneway_transfer_error(pts1, pts2, H)`` measures in image 2, between ``H`` applied to ``pts1`` and
-          ``pts2``; ``H`` is used up to scale.
+          ``pts2``.
         - ``squared=True``, the default here and in :func:`symmetric_transfer_error`, returns the squared
           distance; :func:`line_segment_transfer_error_one_way` defaults to ``squared=False``.
-        - Known defects: ``eps`` is added to the projective denominator and inside the square root, so an exact
-          match scores ``sqrt(eps)``, not 0, with ``squared=False``
+        - Known defects: ``eps`` is added to the projective denominator and inside the square root, so the error
+          depends on the scale of ``H``, and an exact match scores ``sqrt(eps)``, not 0, with ``squared=False``
           (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
 
     Args:
@@ -215,8 +215,7 @@ def find_homography_dlt(
           ``H[2, 2] = 1``; :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV.
         - ``weights`` scale each correspondence's equations: a weight of 0 removes the correspondence, and only
           relative weights matter.
-        - ``solver="lu"`` and ``"svd"`` give the same homography to roundoff on exact data; at least four
-          correspondences are required.
+        - ``solver="lu"`` and ``"svd"`` give the same homography to roundoff on exact data.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
@@ -485,8 +484,9 @@ def find_homography_lines_dlt_iterated(
 
     Convention:
         - As :func:`find_homography_dlt_iterated`, with :func:`find_homography_lines_dlt` as the solver and the
-          unsquared error of :func:`line_segment_transfer_error_one_way` as ``e``; the known defects of those
-          three functions apply (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
+          unsquared error of :func:`line_segment_transfer_error_one_way` as ``e``.
+        - Known defects: those of the three functions apply
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
           `#4867 <https://github.com/kornia/kornia/issues/4867>`_,
           `#4870 <https://github.com/kornia/kornia/issues/4870>`_).
 
