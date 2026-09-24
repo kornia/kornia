@@ -336,9 +336,11 @@ def _crop_by_boxes_to_size(
     dst_box = dst_box.to(input_tensor)
     dst_trans_src: torch.Tensor = get_perspective_transform(src_box, dst_box)
     # A box with a size-1 axis has collinear vertices and the solve returns NaN for it (#4747). Fall back to
-    # the matrix built from the box extents there; every box the solve handles keeps its matrix.
-    solved = dst_trans_src.isfinite().all(dim=-1, keepdim=True).all(dim=-2, keepdim=True)
-    dst_trans_src = torch.where(solved, dst_trans_src, _crop_scale_translation(src_box, dst_box))
+    # the matrix built from the box extents there; every other box keeps the solved matrix.
+    solved = dst_trans_src.isfinite().all(dim=-1).all(dim=-1)
+    size_one = ((src_box[:, 2] - src_box[:, 0]) == 0).any(dim=-1) | ((dst_box[:, 2] - dst_box[:, 0]) == 0).any(dim=-1)
+    fallback = (~solved & size_one)[:, None, None]
+    dst_trans_src = torch.where(fallback, _crop_scale_translation(src_box, dst_box), dst_trans_src)
 
     return crop_by_transform_mat(
         input_tensor, dst_trans_src, out_size, mode=mode, padding_mode=padding_mode, align_corners=align_corners
