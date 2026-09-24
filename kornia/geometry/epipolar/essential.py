@@ -269,13 +269,25 @@ def _null_to_Nister_solution_script(
     A10 = coeffs[:, :, :10]  # (B, 10, 10)
     b_poly = coeffs[:, :, 10:]  # (B, 10, 10)
 
-    # Prefer direct solve; if singular, add tiny damping (no batch compaction).
     eye10 = torch.eye(10, device=device, dtype=dtype).unsqueeze(0).expand(B, 10, 10)
 
-    # Try direct solve first
-    eliminated = torch.linalg.solve(A10, b_poly)  # (B,10,10)
+    # An exactly singular A10 means the sample has no solution. torch.linalg.solve raises on such an
+    # element rather than returning NaN, so the singular elements are found first with lu_factor_ex,
+    # which reports a zero pivot through ``info`` instead of raising, and are solved against the
+    # identity so that nothing below can raise or overflow on them in the forward pass. Their
+    # candidates are set to NaN at the end, which run_5point maps to its identity fallback. Every
+    # other element keeps A10: the replacement is made in ``coeffs`` and sliced like A10, because
+    # torch.linalg.solve can round a contiguous copy differently from the strided slice.
+    _, _, info = torch.linalg.lu_factor_ex(A10)
+    singular = info > 0  # (B,)
+    A_solve = A10
+    if singular.any():
+        A_solve = torch.where(singular.view(B, 1, 1), torch.cat((eye10, b_poly), dim=-1), coeffs)[:, :, :10]
 
-    # Detect NaN/Inf from singular solve and fix with damping solve
+    # Try direct solve first
+    eliminated = torch.linalg.solve(A_solve, b_poly)  # (B,10,10)
+
+    # Detect NaN/Inf from an ill-conditioned solve and fix with damping solve
     bad = torch.isnan(eliminated).flatten(-2).any(-1) | torch.isinf(eliminated).flatten(-2).any(-1)  # (B,)
     if bad.any():
         # Damped solve only for bad rows but WITHOUT compaction:
@@ -283,7 +295,8 @@ def _null_to_Nister_solution_script(
         # (use per-batch scalar to avoid huge allocations)
         diagA = torch.diagonal(A10, dim1=-2, dim2=-1).abs().mean(dim=-1)  # (B,)
         lam = (diagA * 1e-8 + 1e-8).to(dtype)  # (B,)
-        A_damped = A10 + eye10 * lam.view(B, 1, 1)
+        # built from A_solve, not A10, so a singular element in the same batch cannot raise here
+        A_damped = A_solve + eye10 * lam.view(B, 1, 1)
         eliminated_d = torch.linalg.solve(A_damped, b_poly)
         eliminated = torch.where(bad.view(B, 1, 1), eliminated_d, eliminated)
 
@@ -366,6 +379,9 @@ def _null_to_Nister_solution_script(
     # after Es is created (B,10,3,3)
     if bad2.any():
         Es[bad2] = torch.nan
+    # a singular elimination matrix has no candidates
+    if singular.any():
+        Es[singular] = torch.nan
     # mark complex roots as NaN (keeps shape, no compaction)
     if is_real.logical_not().any():
         Es[~is_real] = torch.nan
