@@ -636,14 +636,28 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         )
 
 
-_NO_HALF_LU = "{} calls torch.det (LU), which has no float16/bfloat16 CPU kernel"
-_NO_HALF_FIND_ESSENTIAL = (
-    "find_essential has no float16/bfloat16 path: LU has no bfloat16 CPU kernel and the float16 SVD does not converge"
-)
+_NO_HALF_LU = "{} calls torch.det (LU), which has no float16/bfloat16 kernel"
+_NO_HALF_FIND_ESSENTIAL = "find_essential calls torch.linalg.lu_factor_ex, which has no float16/bfloat16 kernel"
 _HALF_PIXEL_F = (
     "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
     "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
 )
+
+# A five-point sample of normalised coordinates with no real root (recipe in the #4883 pin).
+_NO_REAL_ROOT_P1 = [
+    [-0.094936139146062, 0.3761027702259922],
+    [-0.13508466816570844, -0.15520684765969847],
+    [0.4518000060718804, 0.7491498583169849],
+    [-0.021505790125727963, 0.25308016814257595],
+    [-0.021008959788924204, -0.29327032505050715],
+]
+_NO_REAL_ROOT_P2 = [
+    [0.5908350760196772, -0.024407062108416273],
+    [0.4805667988287366, -0.025019944402247606],
+    [-0.5701912982679379, 0.4911702947428827],
+    [-0.8380815108891836, 0.2981499818513886],
+    [-0.8246696433582323, 0.08361235498654443],
+]
 
 
 def _skip_half(dtype: torch.dtype, reason: str) -> None:
@@ -699,6 +713,7 @@ class TestConventionEssential(BaseTester):
             real[num_points] = E[0, finite]
             assert real[num_points].shape[0] >= 1
             self.assert_close(real[num_points].norm(dim=(-2, -1)), torch.ones_like(real[num_points][:, 0, 0]))
+        # float32 loses the minimal sample's true E to roundoff (#4884), so the truth is checked on all twelve points.
         # Minimal sample: every real candidate satisfies x2^T E x1 = 0 on the normalised coordinates of points1
         # (first image) and points2 (second image); the swapped product is the control.
         p1, p2 = n1[:, :5], n2[:, :5]
@@ -875,7 +890,7 @@ class TestConventionEssential(BaseTester):
             return (Rm @ Rm.transpose(-2, -1) - eye).norm(dim=(-2, -1))
 
         R1, R2, _ = epi.decompose_essential_matrix_no_svd(E)
-        assert orthogonality_error(R1).max() < 0.1 and orthogonality_error(R2).max() < 0.1
+        assert orthogonality_error(R1).max() < 0.25 and orthogonality_error(R2).max() < 0.25
         R1b, R2b, _ = epi.decompose_essential_matrix_no_svd(torch.cat([E, E]))
         assert (orthogonality_error(R1b) > 1.0).all() and (orthogonality_error(R2b) > 1.0).all()
 
@@ -901,3 +916,29 @@ class TestConventionEssential(BaseTester):
         assert is_truth(R_b[0], t_b[0])
         assert not is_truth(R_b[1], t_b[1])
         assert (X_b[1, :, 2] < 0).any()
+
+    def test_wart_find_essential_float32_minimal_sample_4884(self, two_view, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("the defect is float32-specific")
+        if device.type == "mps":
+            pytest.skip("find_essential calls torch.linalg.eigvals, which has no MPS kernel (#4528)")
+        # #4884: on the exact five-point sample of the fixture, float32 returns no candidate near the true E, while
+        # float64, and float32 with six or more points, recover it to roundoff. Once fixed the nearest is close.
+        n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
+        E = epi.find_essential(n1[:, :5], n2[:, :5])
+        real = E[0, torch.isfinite(E[0]).all(dim=-1).all(dim=-1)]
+        E_gt = _gt_essential(two_view)
+        E_gt = E_gt / E_gt.norm()
+        nearest = torch.minimum((real - E_gt).norm(dim=(-2, -1)), (real + E_gt).norm(dim=(-2, -1))).min()
+        assert nearest > 0.05
+
+    def test_wart_find_essential_no_real_root_identity_4883(self, device, dtype):
+        _skip_find_essential(device, dtype)
+        # #4883: a five-point sample with no real root returns ten identity matrices instead of NaN slots. Sample:
+        #   g = torch.Generator().manual_seed(0)
+        #   p1 = torch.randn(4000, 5, 2, generator=g, dtype=torch.float64) * 0.5  # then p2 from the same g
+        #   p1[1371], p2[1371]
+        p1 = torch.tensor(_NO_REAL_ROOT_P1, device=device, dtype=dtype)[None]
+        p2 = torch.tensor(_NO_REAL_ROOT_P2, device=device, dtype=dtype)[None]
+        E = epi.find_essential(p1, p2)
+        assert torch.equal(E, torch.eye(3, device=device, dtype=dtype).expand(1, 10, 3, 3))

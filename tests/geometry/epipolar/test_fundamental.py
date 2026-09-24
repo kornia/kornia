@@ -557,7 +557,7 @@ class TestGetClosestPointOnEpipolarLine(BaseTester):
         self.gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), requires_grad=(True, False, False))
 
 
-_NO_HALF_EIGH = "find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 CPU kernel"
+_NO_HALF_EIGH = "find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel"
 _HALF_PIXEL_F = (
     "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
     "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
