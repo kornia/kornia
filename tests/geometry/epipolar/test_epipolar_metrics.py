@@ -22,6 +22,7 @@ import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
 from testing.geometry.create import create_random_fundamental_matrix
+from testing.two_view import two_view_scene
 
 
 class TestSymmetricalEpipolarDistance(BaseTester):
@@ -246,7 +247,8 @@ def _cpu64(x: torch.Tensor) -> torch.Tensor:
 
 class TestConventionEpipolarMetrics(BaseTester):
     @pytest.mark.parametrize("metric", ["sampson", "symmetrical", "left_to_right", "right_to_left"])
-    def test_convention_metrics_argument_order_and_squared(self, metric, two_view, device, dtype):
+    def test_convention_metrics_argument_order_and_squared(self, metric, device, dtype):
+        two_view = two_view_scene(device, dtype)
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip(_HALF_PIXEL_F)
         x1 = two_view["x1"]
@@ -285,7 +287,8 @@ class TestConventionEpipolarMetrics(BaseTester):
             self.assert_close(fn(_hom(x1), _hom(x2), F), fn(x1, x2, F))
             assert ((fn(2.0 * _hom(x1), _hom(x2), F) - fn(x1, x2, F)).abs() / fn(x1, x2, F)).min() > 0.25
 
-    def test_wart_metrics_eps_scale_dependence_4881(self, two_view, device, dtype):
+    def test_wart_metrics_eps_scale_dependence_4881(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip(_HALF_PIXEL_F)
         x1 = two_view["x1"]

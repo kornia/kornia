@@ -15,16 +15,17 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from typing import Dict
 
-import pytest
 import torch
 
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.epipolar import projection_from_KRt
 
 
-def _two_view_fixture(device: torch.device, dtype: torch.dtype) -> Dict[str, torch.Tensor]:
+def two_view_scene(device: torch.device, dtype: torch.dtype) -> Dict[str, torch.Tensor]:
     """Asymmetric two-view scene built in ``dtype`` from literals.
 
     ``K1 != K2``, ``fx != fy``, ``cx != cy``, a rotation about a non-axis direction and a translation off every
@@ -66,9 +67,3 @@ def _two_view_fixture(device: torch.device, dtype: torch.dtype) -> Dict[str, tor
         return x[..., :2] / x[..., 2:]
 
     return {"K1": K1, "K2": K2, "R": R, "t": t, "X": X, "P1": P1, "P2": P2, "x1": proj(P1, X), "x2": proj(P2, X)}
-
-
-@pytest.fixture
-def two_view(device, dtype) -> Dict[str, torch.Tensor]:
-    """Asymmetric two-view fixture: K1 != K2, fx != fy, cx != cy, R and t off every axis."""
-    return _two_view_fixture(device, dtype)

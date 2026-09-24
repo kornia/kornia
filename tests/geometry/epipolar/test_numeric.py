@@ -22,6 +22,7 @@ import kornia
 import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
+from testing.two_view import two_view_scene
 
 
 class TestSkewSymmetric(BaseTester):
@@ -110,7 +111,8 @@ class TestVecLike:
 
 
 class TestConventionCrossProductMatrix(BaseTester):
-    def test_convention_cross_product_matrix_equals_vector_to_skew_symmetric_matrix(self, two_view, device, dtype):
+    def test_convention_cross_product_matrix_equals_vector_to_skew_symmetric_matrix(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         v = two_view["X"][0]  # (12, 3), no two entries equal
         M = epi.cross_product_matrix(v)
         # The same matrix as kornia.geometry.conversions.vector_to_skew_symmetric_matrix, to the bit.

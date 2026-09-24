@@ -23,6 +23,7 @@ import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
 from testing.geometry.create import generate_two_view_random_scene
+from testing.two_view import two_view_scene
 
 
 class TestFindEssential(BaseTester):
@@ -700,7 +701,8 @@ def _first_camera(device, dtype):
 
 
 class TestConventionEssential(BaseTester):
-    def test_convention_find_essential_returns_ten_candidates(self, two_view, device, dtype):
+    def test_convention_find_essential_returns_ten_candidates(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_find_essential(device, dtype)
         n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
         real = {}
@@ -727,7 +729,8 @@ class TestConventionEssential(BaseTester):
         best = real[12][dist.argmin()][None]
         assert _epipolar_residual(best, n1, n2).max() < 1e-3 * _epipolar_residual(best, n2, n1).max()
 
-    def test_convention_essential_from_Rt_is_tx_R_of_relative_motion(self, two_view, device, dtype):
+    def test_convention_essential_from_Rt_is_tx_R_of_relative_motion(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         R, t = two_view["R"], two_view["t"]
         Ra, ta = _first_camera(device, dtype)
         # E = [t]x R of relative_camera_motion(R1, t1, R2, t2), here with a non-identity first camera.
@@ -740,7 +743,8 @@ class TestConventionEssential(BaseTester):
         self.assert_close(E_swapped, E.transpose(-2, -1), low_tolerance=True)
         assert (E - E.transpose(-2, -1)).abs().max() > 0.5
 
-    def test_convention_essential_from_fundamental_K_sides(self, two_view, device, dtype):
+    def test_convention_essential_from_fundamental_K_sides(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _HALF_PIXEL_F)
         K1, K2 = two_view["K1"], two_view["K2"]
         E_gt = _gt_essential(two_view)
@@ -754,7 +758,8 @@ class TestConventionEssential(BaseTester):
         resid = _epipolar_residual(E / E.norm(), n1, n2).max()
         assert resid < 1e-3 * _epipolar_residual(E_swapped / E_swapped.norm(), n1, n2).max()
 
-    def test_convention_motion_from_essential_candidate_order(self, two_view, device, dtype):
+    def test_convention_motion_from_essential_candidate_order(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential"))
         R, t = two_view["R"], two_view["t"]
         t_unit = t / t.norm(dim=-2, keepdim=True)
@@ -797,7 +802,8 @@ class TestConventionEssential(BaseTester):
                 match = (Rs_k - Rs0[i]).abs().amax(dim=(-2, -1)) + (ts_k - ts0[i]).abs().amax(dim=(-2, -1))
                 assert match.min() < 1e-4
 
-    def test_convention_choose_solution_recovers_relative_motion(self, two_view, device, dtype):
+    def test_convention_choose_solution_recovers_relative_motion(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
         R, t, X = two_view["R"], two_view["t"], two_view["X"]
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
@@ -819,7 +825,8 @@ class TestConventionEssential(BaseTester):
         _, _, X_swapped_k = epi.motion_from_essential_choose_solution(E, K2, K1, x1, x2)
         assert (X_swapped_k - X / t_norm).abs().max() > 1.0
 
-    def test_convention_relative_camera_motion_world_to_camera(self, two_view, device, dtype):
+    def test_convention_relative_camera_motion_world_to_camera(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         R, t = two_view["R"], two_view["t"]
         Ra, ta = _first_camera(device, dtype)
         # World-to-camera extrinsics: camera 2 = (R Ra, R ta + t) sits at (R, t) from camera 1 = (Ra, ta), and the
@@ -833,7 +840,8 @@ class TestConventionEssential(BaseTester):
         self.assert_close(t_sw, -R.transpose(-2, -1) @ t, low_tolerance=True)
         assert (R_sw - R).abs().max() > 0.1 and (t_sw - t).abs().max() > 0.5
 
-    def test_wart_find_essential_ignores_weights_4876(self, two_view, device, dtype):
+    def test_wart_find_essential_ignores_weights_4876(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_find_essential(device, dtype)
         # #4876: weights is documented per correspondence but ignored: an outlier with weight 0, all-zero weights and
         # all-one weights give the same output (NaN slots compared as 0). Once weights are used these differ.
@@ -855,7 +863,8 @@ class TestConventionEssential(BaseTester):
 
         assert best(E_ones) > 1e3 * best(E_clean)
 
-    def test_wart_decompose_unbatched_t_shape_4878(self, two_view, device, dtype):
+    def test_wart_decompose_unbatched_t_shape_4878(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
         # #4878: an unbatched (3, 3) input gains a batch dim on the rotations but not on t.
         E = _gt_essential(two_view)[0]
@@ -866,7 +875,8 @@ class TestConventionEssential(BaseTester):
         assert Rs.shape == (1, 4, 3, 3)
         assert ts.shape == (4, 3, 1)
 
-    def test_wart_choose_solution_all_masked_returns_candidate0_4879(self, two_view, device, dtype):
+    def test_wart_choose_solution_all_masked_returns_candidate0_4879(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         R, t = two_view["R"], two_view["t"]
@@ -885,7 +895,8 @@ class TestConventionEssential(BaseTester):
         self.assert_close(R_one, R, rtol=1e-4, atol=1e-4)
         self.assert_close(t_one, t_unit, rtol=1e-4, atol=1e-4)
 
-    def test_wart_decompose_no_svd_batch_non_rotations_4880(self, two_view, device, dtype):
+    def test_wart_decompose_no_svd_batch_non_rotations_4880(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         # #4880: the rotation normaliser sums over the whole batch, so a batch of two copies of E returns non-rotations,
         # while the same E alone returns rotations.
         E = _gt_essential(two_view)
@@ -900,7 +911,8 @@ class TestConventionEssential(BaseTester):
         R1b, R2b, _ = epi.decompose_essential_matrix_no_svd(torch.cat([E, E]))
         assert (orthogonality_error(R1b) > 1.0).all() and (orthogonality_error(R2b) > 1.0).all()
 
-    def test_wart_choose_solution_batched_uses_element0_index_2198(self, two_view, device, dtype):
+    def test_wart_choose_solution_batched_uses_element0_index_2198(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         R, t = two_view["R"], two_view["t"]
@@ -923,7 +935,8 @@ class TestConventionEssential(BaseTester):
         assert not is_truth(R_b[1], t_b[1])
         assert (X_b[1, :, 2] < 0).any()
 
-    def test_wart_find_essential_float32_minimal_sample_4884(self, two_view, device, dtype):
+    def test_wart_find_essential_float32_minimal_sample_4884(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         if dtype != torch.float32:
             pytest.skip("the defect is float32-specific")
         if device.type == "mps":
@@ -938,7 +951,8 @@ class TestConventionEssential(BaseTester):
         nearest = torch.minimum((real - E_gt).norm(dim=(-2, -1)), (real + E_gt).norm(dim=(-2, -1))).min()
         assert nearest > 0.05
 
-    def test_wart_find_essential_backward_raises_on_degenerate_4831(self, two_view, device, dtype):
+    def test_wart_find_essential_backward_raises_on_degenerate_4831(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_find_essential(device, dtype)
         # #4831: the forward pass returns on a degenerate sample, but backward raises in the eigvals backward of the
         # companion matrix, even where the candidates are discarded. Once fixed, backward returns a finite gradient.

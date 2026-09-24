@@ -24,6 +24,7 @@ import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
+from testing.two_view import two_view_scene
 
 
 class TestNormalizePoints(BaseTester):
@@ -592,7 +593,8 @@ def _pixel_F(scene: Dict[str, torch.Tensor]) -> torch.Tensor:
 
 
 class TestConventionFundamental(BaseTester):
-    def test_convention_find_fundamental_acts_x2_F_x1(self, two_view, device, dtype):
+    def test_convention_find_fundamental_acts_x2_F_x1(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_EIGH)
         x1, x2 = two_view["x1"], two_view["x2"]
         F = epi.find_fundamental(x1, x2, torch.ones_like(x1[..., 0]))
@@ -604,7 +606,8 @@ class TestConventionFundamental(BaseTester):
         # The result is scaled so that F[2, 2] = 1.
         self.assert_close(F[..., 2, 2], torch.ones_like(F[..., 2, 2]))
 
-    def test_convention_find_fundamental_7point_candidates(self, two_view, device, dtype):
+    def test_convention_find_fundamental_7point_candidates(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_EIGH)
         # A 7-point sample whose cubic has three real roots, so all three candidates are genuine solutions.
         idx = [0, 1, 2, 3, 4, 5, 6]
@@ -626,7 +629,8 @@ class TestConventionFundamental(BaseTester):
         dist = (F[0, :, None] - Fs[0, None]).abs().amax(dim=(-2, -1))
         assert dist.amin(dim=1).max() < 1e-3
 
-    def test_convention_find_fundamental_weights_semantics(self, two_view, device, dtype):
+    def test_convention_find_fundamental_weights_semantics(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_EIGH)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
@@ -649,7 +653,8 @@ class TestConventionFundamental(BaseTester):
         F7 = epi.find_fundamental(x1_7, x2_7, method="7POINT")
         assert torch.equal(epi.find_fundamental(x1_7, x2_7, w7, method="7POINT"), F7)
 
-    def test_convention_fundamental_from_projections_direction_and_scale(self, two_view, device, dtype):
+    def test_convention_fundamental_from_projections_direction_and_scale(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         if dtype == torch.float16:
             pytest.skip("float16 overflows to inf on pixel-unit projection matrices (#4877)")
         _skip_half(dtype, _HALF_PIXEL_F)
@@ -673,7 +678,8 @@ class TestConventionFundamental(BaseTester):
         self.assert_close(F_n, -E)
         assert (F_n - E).abs().max() > 0.5
 
-    def test_convention_fundamental_from_essential_K_sides(self, two_view, device, dtype):
+    def test_convention_fundamental_from_essential_K_sides(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _HALF_PIXEL_F)
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         eye = torch.eye(3, device=device, dtype=dtype)[None]
@@ -685,7 +691,8 @@ class TestConventionFundamental(BaseTester):
         resid = _epipolar_residual(F / F.norm(), x1, x2)
         assert resid.max() < 1e-3 * _epipolar_residual(F_swapped / F_swapped.norm(), x1, x2).max()
 
-    def test_convention_epilines_of_image1_points_lie_in_image2(self, two_view, device, dtype):
+    def test_convention_epilines_of_image1_points_lie_in_image2(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _HALF_PIXEL_F)
         x1, x2 = two_view["x1"], two_view["x2"]
         F = _pixel_F(two_view)
@@ -700,7 +707,8 @@ class TestConventionFundamental(BaseTester):
         on1, off1 = (_hom(x1) * lines1).sum(-1).abs(), (_hom(x2) * lines1).sum(-1).abs()
         assert on1.max() < 1e-3 * off1.max()
 
-    def test_convention_normalize_points_hartley(self, two_view, device, dtype):
+    def test_convention_normalize_points_hartley(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         # Hartley normalisation: translate to zero mean and scale isotropically to mean distance sqrt(2); the
         # returned T maps the input onto the output. The fixture's spread differs in x and y.
         points = two_view["x1"]
@@ -713,7 +721,8 @@ class TestConventionFundamental(BaseTester):
         assert T[0, 0, 0] == T[0, 1, 1]
         assert T[0, 0, 1] == 0 and T[0, 1, 0] == 0
 
-    def test_convention_get_closest_point_on_epipolar_line_in_image2(self, two_view, device, dtype):
+    def test_convention_get_closest_point_on_epipolar_line_in_image2(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _HALF_PIXEL_F)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
@@ -727,7 +736,8 @@ class TestConventionFundamental(BaseTester):
         swapped = epi.get_closest_point_on_epipolar_line(x2, x1, F)
         assert (_hom(swapped) * lines).sum(-1).abs().max() > 1.0
 
-    def test_wart_run_7point_padded_roots_returned_4862(self, two_view, device, dtype):
+    def test_wart_run_7point_padded_roots_returned_4862(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_EIGH)
         # #4862: a 7-point sample whose cubic has one real root. The solver pads the two missing roots with 0.0 and the
         # validity mask never fires, so candidates 1 and 2 are the same rank-3 matrix instead of being zeroed.
@@ -749,7 +759,8 @@ class TestConventionFundamental(BaseTester):
             M[0, 2, 2] = 1e-6
             assert (epi.normalize_transformation(M)[0, 2, 2] - 1.0).abs() > 5e-3
 
-    def test_wart_find_fundamental_zero_weight_changes_result_4875(self, two_view, device, dtype):
+    def test_wart_find_fundamental_zero_weight_changes_result_4875(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_EIGH)
         # #4875: a correspondence with weight 0 leaves the linear system but still enters the Hartley
         # normalisation, so a far outlier with weight 0 moves the estimate. Once fixed, the two estimates agree.
@@ -765,7 +776,8 @@ class TestConventionFundamental(BaseTester):
         err_dropped = epi.sampson_epipolar_distance(x1, x2, F_dropped).mean()
         assert err_weighted > 2.0 * err_dropped
 
-    def test_wart_fundamental_from_projections_float16_overflow_4877(self, two_view, device, dtype):
+    def test_wart_fundamental_from_projections_float16_overflow_4877(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         if dtype != torch.float16:
             pytest.skip("the overflow is float16's: bfloat16, float32 and float64 hold pixel-unit 4x4 determinants")
         # #4877: the 4x4 determinants of pixel-unit projection matrices exceed float16's range, so F holds inf.
