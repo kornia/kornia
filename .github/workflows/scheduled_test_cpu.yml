@@ -5,8 +5,9 @@ name: Tests on CPU (scheduled)
 # were cancelled, about 43,000 runner-minutes, in an org limited to 20 concurrent jobs.
 on:
   schedule:
-    - cron: '0 0 * * *'
-    - cron: '0 12 * * *'
+    # Off the hour: GitHub may drop queued scheduled jobs at the start of an hour, when load peaks.
+    - cron: '23 0 * * *'
+    - cron: '23 12 * * *'
   workflow_dispatch:
   workflow_call:
 
@@ -43,9 +44,9 @@ jobs:
         run: echo "windows-2022 runner is available"
 
   check-skip:
-    # A scheduled run tests everything that reached main since the previous scheduled run that
-    # got as far as testing. It skips when main has not moved since then, or when every file
-    # changed since then is documentation.
+    # A scheduled run tests everything that reached main since the previous successful scheduled
+    # run. It skips when main has not moved since then, or when every file changed since then is
+    # documentation.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -71,15 +72,17 @@ jobs:
             exit 0
           fi
 
-          # A cancelled run tested nothing, so compare against the newest scheduled run that
-          # finished. A run that skipped its tests concludes as success; its commit is still a
-          # valid base, because everything before it was tested or was documentation.
+          # Compare against the newest successful scheduled run. A failed run may have tested
+          # nothing (a pre-tests failure skips every test job), and skipping on top of a real
+          # failure would turn the workflow green while main is still red; a cancelled run tested
+          # nothing either. A run that skipped its tests concludes as success; its commit is still
+          # a valid base, because everything before it was tested or was documentation.
           # Filtering the runs endpoint by status or branch returns an incomplete, unordered
           # page, so ask for a bounded created= window and sort here.
           SINCE=$(date -u -d '7 days ago' +%Y-%m-%d)
           PREV_SHA=$(gh api \
             "repos/${{ github.repository }}/actions/workflows/scheduled_test_cpu.yml/runs?event=schedule&created=>=${SINCE}&per_page=100" \
-            --jq '[.workflow_runs[] | select(.head_branch == "main" and (.conclusion == "success" or .conclusion == "failure"))]
+            --jq '[.workflow_runs[] | select(.head_branch == "main" and .conclusion == "success")]
                   | sort_by(.created_at) | last | .head_sha // empty') || PREV_SHA=""
 
           if [[ -z "$PREV_SHA" ]] || ! git cat-file -e "${PREV_SHA}^{commit}" 2>/dev/null; then
