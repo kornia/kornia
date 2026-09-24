@@ -84,42 +84,48 @@ jobs:
     needs: [pre-tests]
     strategy:
       fail-fast: false
+      # Each PR leg is here for failures the others do not catch; the full os x dtype x python x
+      # torch matrix runs after merge in scheduled_test_cpu.yml. Measured over the PR runs from
+      # 2026-09-03 to 2026-09-24, these six legs plus the half-precision, MPS and dynamo jobs
+      # caught every test failure that the previous 27-leg matrix caught, apart from one
+      # environment-specific `test_check_torch_env` failure.
+      #   - ubuntu 3.13 / torch 2.5.1 (float32, float64): the only place Python 3.13 meets the
+      #     oldest torch -- 2.5.1 has no 3.13 wheels on Windows or macOS -- and the leg that
+      #     caught the most failures nothing else caught.
+      #   - ubuntu 3.11 / torch 2.14.0 (float32, float64): the oldest Python on the newest torch,
+      #     so every Python and torch pin still gets a full-suite run in both dtypes on Linux.
+      #   - windows-latest float64: Windows-only failures (path handling, the eager RNG audit)
+      #     showed up on every Windows leg, and this one caught all of them.
+      #   - macos-latest float32: the one macOS-only failure showed up on all five macOS legs.
+      # torch 2.5.1 on Windows runs post-merge only, on windows-2022: its wheels crash with
+      # STATUS_ILLEGAL_INSTRUCTION (0xc000001d) in affine_grid on the windows-2025 image that
+      # windows-latest now resolves to.
       matrix:
-        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
-        pytorch-dtype: ["float32", "float64"]
-        # Python 3.12 is left to the post-merge matrix in scheduled_test_cpu.yml: from 2026-09-03
-        # to 2026-09-24 no 3.12 leg caught a test failure that a 3.11 or 3.13 leg missed.
-        python-version: ["3.11", "3.13"]
-        pytorch-version: ["2.5.1", "2.14.0"]
-        exclude:
-          # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
-          - os: windows-latest
-            python-version: "3.13"
-            pytorch-version: "2.5.1"
-          # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on macOS
-          - os: macos-latest
-            python-version: "3.13"
-            pytorch-version: "2.5.1"
-          # macOS only runs float32 tests, on one leg: every macOS-only failure in the same
-          # window failed on all macOS legs at once.
-          - os: macos-latest
-            pytorch-dtype: "float64"
-          - os: macos-latest
-            python-version: "3.11"
-          # One Windows float64 leg: no Windows float64 leg caught a failure the others missed.
-          - os: windows-latest
-            pytorch-dtype: "float64"
-            python-version: "3.11"
-          # torch 2.5.1 wheels crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) in
-          # affine_grid on the windows-2025 runner image (now rolling out as
-          # windows-latest); run those legs on windows-2022 via `include` below.
-          - os: windows-latest
-            pytorch-version: "2.5.1"
         include:
-          - os: windows-2022
+          - os: ubuntu-latest
+            pytorch-dtype: "float32"
+            python-version: "3.13"
+            pytorch-version: "2.5.1"
+          - os: ubuntu-latest
+            pytorch-dtype: "float64"
+            python-version: "3.13"
+            pytorch-version: "2.5.1"
+          - os: ubuntu-latest
             pytorch-dtype: "float32"
             python-version: "3.11"
-            pytorch-version: "2.5.1"
+            pytorch-version: "2.14.0"
+          - os: ubuntu-latest
+            pytorch-dtype: "float64"
+            python-version: "3.11"
+            pytorch-version: "2.14.0"
+          - os: windows-latest
+            pytorch-dtype: "float64"
+            python-version: "3.13"
+            pytorch-version: "2.14.0"
+          - os: macos-latest
+            pytorch-dtype: "float32"
+            python-version: "3.13"
+            pytorch-version: "2.14.0"
 
     uses: ./.github/workflows/tests.yml
     with:
