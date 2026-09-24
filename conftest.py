@@ -29,12 +29,6 @@ import numpy as np
 import pytest
 import torch
 
-try:
-    from pytest import CallInfo, TestReport  # public since pytest 7.x
-except ImportError:  # pragma: no cover
-    from _pytest.reports import TestReport  # type: ignore[no-redef]
-    from _pytest.runner import CallInfo  # type: ignore[no-redef]
-
 import kornia
 from kornia.core.download import load_state_dict_from_url
 
@@ -838,8 +832,8 @@ def pytest_runtest_protocol(item, nextitem):
         outcome = "failed"
         longrepr = _extract_failure_output(output)
 
-    def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> TestReport:
-        return TestReport(
+    def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> pytest.TestReport:
+        return pytest.TestReport(
             nodeid=item.nodeid,
             location=item.location,
             keywords=dict(item.keywords),
@@ -860,7 +854,7 @@ def pytest_runtest_protocol(item, nextitem):
     # Capture finalizer failures as teardown errors rather than aborting the runner.
     if item.session.shouldfail or item.session.shouldstop:
         nextitem = None
-    teardown = CallInfo.from_call(
+    teardown = pytest.CallInfo.from_call(
         lambda: item.session._setupstate.teardown_exact(nextitem),
         when="teardown",
         reraise=(KeyboardInterrupt, pytest.exit.Exception),
