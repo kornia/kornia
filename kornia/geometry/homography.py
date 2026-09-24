@@ -213,9 +213,11 @@ def find_homography_dlt(
     Convention:
         - ``H`` maps ``points1`` to ``points2``, ``points2 ~ H @ points1``, and is scaled so that
           ``H[2, 2] = 1``; :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV.
-        - ``weights`` scale each correspondence's equations: a weight of 0 removes the correspondence, and only
-          relative weights matter.
+        - ``weights`` scale each correspondence's equations: a weight of 0 removes the correspondence from the
+          equations, and only relative weights matter.
         - ``solver="lu"`` and ``"svd"`` give the same homography to roundoff on exact data.
+        - Known defects: a zero-weight correspondence still enters the point normalisation, so on noisy data it
+          moves the result (`#4890 <https://github.com/kornia/kornia/issues/4890>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.

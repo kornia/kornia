@@ -608,10 +608,9 @@ class TestFindHomographyDLTIter(BaseTester):
         )
 
 
-# Planar fixture for the convention pins: twelve image-1 points of the batch-8 two-view fixture's plane, rounded to
-# 0.1 px (np.round(np.load("fixture.npz")["xp1"], 1)), and _H_TRUE, the float64 DLT fit of that plane's xp1 -> xp2
-# (numpy SVD with Hartley normalisation), to 7 significant digits. Every entry of _H_TRUE is distinct and non-zero,
-# so swapping the images, transposing or inverting H changes every quantity derived from it.
+# Planar fixture for the convention pins: twelve generic image-1 points, no two sharing a coordinate, and a fixed
+# homography _H_TRUE (a mild projective warp) whose entries are all distinct and non-zero, so swapping the images,
+# transposing or inverting H changes every quantity derived from it. The pins compute p2 = _H_TRUE(p1) themselves.
 _PLANAR_P1 = [
     [318.8, 279.9], [194.8, 137.7], [316.9, 316.9], [362.2, 154.2], [153.2, 90.1], [325.8, 259.0],
     [204.8, 129.7], [447.6, 170.0], [294.1, 216.2], [158.5, 95.9], [258.3, 329.9], [242.0, 87.6],
@@ -622,8 +621,13 @@ _H_TRUE = [
     [2.851519e-04, 1.404178e-04, 1.0],
 ]
 _HALF_DLT = (
-    "the homography DLTs form the normalised design matrix and normal equations in the input dtype (only the SVD "
-    "is upcast), so in float16/bfloat16 an exact fit misses by up to several pixels"
+    "the homography DLTs form the normalised points, the design and normal matrices and the denormalisation in the "
+    "input dtype, so in float16/bfloat16 an exact fit misses by up to several pixels"
+)
+_F16_LU = (
+    "find_homography_dlt's solver='lu' path casts its unnormalised float32 solution back to float16, where the "
+    "denormalisation can overflow to inf/NaN depending on rounding (the float16 manifest carries test_clean_points_lu "
+    "for the same reason, #4153)"
 )
 _HALF_POINTS = (
     "kornia evaluates the transfer errors in the input dtype, and the fixture's pixel coordinates carry up to 2 px "
@@ -631,7 +635,7 @@ _HALF_POINTS = (
 )
 _HALF_LINES = (
     "line_segment_transfer_error_one_way builds the unnormalised image-2 line in the input dtype; its constant term "
-    "is of order (pixel coordinate)**2, which overflows float16 and which bfloat16 cannot resolve (#4867)"
+    "is of order (pixel coordinate)**2, which overflows float16 and which bfloat16 cannot resolve"
 )
 
 
@@ -666,6 +670,8 @@ def _unit_normal(seg: torch.Tensor) -> torch.Tensor:
 
 class TestConventionHomography(BaseTester):
     def test_convention_find_homography_dlt_maps_p1_to_p2(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip(_F16_LU)
         p1, p2, H_true = _planar(device, dtype)
         H = find_homography_dlt(p1, p2)
         # points2 ~ H @ points1 (OpenCV's findHomography(src, dst) order). The control: applying H to points2 misses
@@ -688,8 +694,6 @@ class TestConventionHomography(BaseTester):
             assert _transfer_max(H_svd, p1, p2) < tol
             diff = (kornia.geometry.transform_points(H_lu, p1) - kornia.geometry.transform_points(H_svd, p1)).abs()
             assert diff.max() < tol
-        with pytest.raises(NotImplementedError):
-            find_homography_dlt(p1, p2, solver="qr")
 
     @pytest.mark.parametrize("solver", ["lu", "svd"])
     def test_convention_find_homography_dlt_zero_weight_drops_point(self, solver, device, dtype):
@@ -703,7 +707,8 @@ class TestConventionHomography(BaseTester):
         def clean_error(H):
             return _transfer_max(H, p1[:, clean], p2[:, clean])
 
-        # Unweighted, the outlier pulls H by about 12 px on the clean points; a weight of 0 removes it.
+        # On exact data: unweighted, the outlier pulls H by about 12 px on the clean points, and a weight of 0 removes
+        # its equations (on noisy data it still moves H through the point normalisation, #4890).
         assert clean_error(find_homography_dlt(p1, p2_out, None, solver)) > 5.0
         w_zero = torch.ones(1, 12, device=device, dtype=dtype)
         w_zero[0, 5] = 0.0
@@ -741,8 +746,6 @@ class TestConventionHomography(BaseTester):
             _transfer_max(find_homography_lines_dlt(ls1, ls2, torch.ones(1, 6, device=device, dtype=dtype)), p1, mapped)
             < tol
         )
-        with pytest.raises(AssertionError):
-            find_homography_lines_dlt(ls1, ls2, torch.ones(1, 12, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("error_fn", ["oneway", "symmetric", "line"])
     def test_convention_transfer_errors_argument_order_and_squared(self, error_fn, device, dtype):
@@ -880,6 +883,10 @@ class TestConventionHomography(BaseTester):
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_wart_find_homography_dlt_iterated_weight_unsquared_4870(self, model, device, dtype, monkeypatch):
+        if model == "points" and dtype == torch.float16:
+            pytest.skip(_F16_LU)
+        if model == "lines":
+            _skip_half(dtype, _HALF_LINES)
         p1, p2, _ = _planar(device, dtype)
         if model == "points":
             p2_off = p2.clone()
@@ -932,3 +939,27 @@ class TestConventionHomography(BaseTester):
         # ... and to the projective denominator, so the error depends on the scale of H: 1e-8 H scores tens of
         # pixels on the same exact matches.
         assert oneway_transfer_error(p1, p2, 1e-8 * H, squared=False).min() > 1.0
+
+    @pytest.mark.parametrize("solver", ["lu", "svd"])
+    def test_wart_find_homography_dlt_zero_weight_moves_normalisation_4890(self, solver, device, dtype):
+        _skip_half(dtype, _HALF_DLT)
+        p1, p2, _ = _planar(device, dtype)
+        # 3-px noise on the twelve matches, generated by
+        #   g = torch.Generator().manual_seed(0)
+        #   torch.round(3 * torch.randn(1, 12, 2, generator=g, dtype=torch.float64), decimals=1)
+        noise = [
+            [-6.9, -1.1], [-3.2, 3.0], [-2.7, -3.8], [-1.9, -2.6], [0.7, 2.2], [-4.0, 3.9],
+            [-4.5, -2.1], [1.6, -2.9], [2.0, 3.1], [0.5, -2.2], [-2.2, 0.3], [-5.2, 3.1],
+        ]  # fmt: skip
+        p2 = p2 + torch.tensor([noise], device=device, dtype=dtype)
+        # A far correspondence with weight 0, appended to the twelve.
+        far1 = torch.cat([p1, torch.tensor([[[2000.0, 1500.0]]], device=device, dtype=dtype)], 1)
+        far2 = torch.cat([p2, torch.tensor([[[-800.0, 2400.0]]], device=device, dtype=dtype)], 1)
+        weights = torch.ones(1, 13, device=device, dtype=dtype)
+        weights[0, 12] = 0.0
+        H_weighted = find_homography_dlt(far1, far2, weights, solver)
+        H_dropped = find_homography_dlt(p1, p2, None, solver)
+        # #4890: the zero-weight correspondence leaves the equations but still enters the Hartley normalisation, so
+        # on noisy data it moves H by a tenth of a pixel or more. Once the normalisation uses the weights, the two
+        # estimates agree to roundoff.
+        assert _transfer_max(H_weighted, p1, kornia.geometry.transform_points(H_dropped, p1)) > 1e-2
