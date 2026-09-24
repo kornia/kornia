@@ -325,8 +325,9 @@ def _null_to_Nister_solution_script(
 
     # A companion matrix that is not finite has no usable roots, and torch.linalg.eigvals aborts on it,
     # which takes the whole batch down: a RuntimeError on some platforms, a crash inside MKL on others.
-    # It comes from an elimination system that is ill-conditioned without being exactly singular, whose
-    # solution is large enough for the determinant polynomial to overflow. Those elements get the
+    # It comes from an overflow: an elimination system that is ill-conditioned without being exactly
+    # singular has a solution large enough for the determinant polynomial to overflow, or a finite
+    # polynomial overflows when it is divided by its leading coefficient. Those elements get the
     # identity in place of C, and their candidates are set to NaN at the end, like a singular one.
     no_roots = ~torch.isfinite(C).flatten(-2).all(-1)  # (B,)
     if no_roots.any():
