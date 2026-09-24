@@ -52,8 +52,9 @@ class RANSAC(nn.Module):
           :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
           draws from the global generator.
-        - Known defects: for ``"homography_from_linesegments"`` the error is not a distance, so the threshold
-          depends on the segment length (`#4867 <https://github.com/kornia/kornia/issues/4867>`_), and the
+        - Known defects: for ``"homography_from_linesegments"`` the error is the perpendicular distance times the
+          image-2 segment length and is compared with ``inl_th**2``, so a segment offset by ``d`` pixels is an inlier
+          when ``d * length <= inl_th**2`` (`#4867 <https://github.com/kornia/kornia/issues/4867>`_), and the
           endpoint pairing of :func:`~kornia.geometry.homography.find_homography_lines_dlt` applies
           (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); ``score_type="msac"`` uses its score as an
           inlier count, so with outliers present it can return no model where ``"ransac"`` finds one
