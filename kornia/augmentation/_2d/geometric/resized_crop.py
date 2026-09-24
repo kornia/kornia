@@ -67,10 +67,11 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         Within a selected batch, the generator tries ten candidate crops per image, sampling area fractions from
         ``scale`` and width/height ratios from ``ratio`` (shared with ``same_on_batch=True``), and resizes the first
         that fits to the requested output size. As in torchvision's ``get_params``, a candidate may equal the input,
-        and when none fits the fallback size keeps an input whose width/height is within ``ratio`` whole, so
-        ``scale=(1.0, 1.0)`` keeps the whole image; otherwise it keeps the full width (input narrower than
-        ``min(ratio)``) or the full height (wider than ``max(ratio)``). Unlike torchvision, which centres the fallback
-        crop, it is placed at a random position like any other crop.
+        and when none fits the fallback keeps an input whose width/height is within ``ratio`` whole, or else its full
+        width (input narrower than ``min(ratio)``) or its full height (wider than ``max(ratio)``). So
+        ``scale=(1.0, 1.0)`` keeps an input within ``ratio`` whole, except that a candidate rounded a pixel or two
+        short on the longer side also fits (8x6 gives 7x6 in about 18% of draws, as in torchvision). Unlike
+        torchvision, which centres the fallback crop, it is placed at a random position like any other crop.
 
         Both cropping modes use the configured interpolation and ``align_corners``, so slice mode raises for
         ``resample="nearest"`` unless ``align_corners=None``
