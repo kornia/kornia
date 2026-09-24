@@ -65,23 +65,35 @@ def triangulate_points(
 ) -> torch.Tensor:
     r"""Reconstructs a bunch of points by triangulation.
 
-    Triangulates the 3d position of 2d correspondences between several images.
-    Reference: Internally it uses DLT formulation from Hartley/Zisserman 12.2 pag.312
+    Triangulates the 3d position of 2d correspondences between two images.
+    Reference: the ``"svd"`` and ``"eigh"`` solvers use the DLT formulation from Hartley/Zisserman 12.2 pag.312.
 
-    The input points are assumed to be in homogeneous coordinate system and being inliers
-    correspondences. The method does not perform any robust estimation.
+    The input points are assumed to be inlier correspondences. The method does not perform any robust
+    estimation.
+
+    Convention:
+        - ``P1`` pairs with ``points1`` and ``P2`` with ``points2``. Input and output points are Euclidean;
+          :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV. The leading
+          dimensions of ``P1`` and ``P2`` broadcast against those of the points.
+        - Nothing is checked: a point behind a camera is returned with negative depth, and with zero baseline
+          the depth is undefined and the output is an arbitrary point on the ray.
+        - ``"svd"`` and ``"eigh"`` agree to roundoff, compute float16 and bfloat16 input in float32, and return
+          the input dtype.
+        - Known defects: a correspondence at infinity comes back as a finite, unflagged point whose position is
+          set by roundoff (`#4865 <https://github.com/kornia/kornia/issues/4865>`_); ``solver="cofactor"``
+          returns NaN for pixel-scale float16 input (`#4863 <https://github.com/kornia/kornia/issues/4863>`_).
 
     Args:
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
         P2: The projection matrix for the second camera with shape :math:`(*, 3, 4)`.
-        points1: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
-        points2: The set of points seen from the second camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
+        points1: The set of points seen from the first camera, in the image coordinates of ``P1`` (pixels
+          for ``P1 = K [R | t]``), with shape :math:`(*, N, 2)`.
+        points2: The set of points seen from the second camera, in the image coordinates of ``P2`` (pixels
+          for ``P2 = K [R | t]``), with shape :math:`(*, N, 2)`.
         solver: Back-end used to find the null vector of the :math:`4 \times 4` DLT
           constraint matrix. One of:
 
-          * ``"svd"`` — most numerically stable. Promotes to fp64 and uses a full
+          * ``"svd"`` — most numerically stable. Uses a full
             SVD (via :func:`~kornia.core.utils._torch_svd_cast`). Suitable when
             maximum accuracy is required regardless of speed.
           * ``"eigh"`` *(default)* — forms :math:`X^\top X` and finds the eigenvector
@@ -102,6 +114,7 @@ def triangulate_points(
     Example:
         >>> P1 = torch.eye(3, 4)[None]   # 1x3x4
         >>> P2 = torch.eye(3, 4)[None]
+        >>> P2[..., 0, 3] = -1.0  # second camera shifted along x
         >>> pts1 = torch.rand(1, 5, 2)
         >>> pts2 = torch.rand(1, 5, 2)
         >>> pts3d = triangulate_points(P1, P2, pts1, pts2)
