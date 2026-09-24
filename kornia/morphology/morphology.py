@@ -300,31 +300,27 @@ def dilation(
         reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
         conv_neighborhood = neighborhood.masked_fill(kernel == 0, 0.0)
 
-        positive_inf = torch.isposinf(output)
-        negative_inf = torch.isneginf(output)
-        finite_output = torch.nan_to_num(output, nan=0.0, posinf=0.0, neginf=0.0)
-
+        # ``conv2d`` multiplies every window cell by the one-hot weight, and ``inf * 0`` or ``nan * 0`` would
+        # spread to the whole window. Convolve zeros in their place, then route a code for each non-finite
+        # value (1: +inf, 2: -inf, 3: nan) through the same one-hot weight, which reproduces it exactly.
+        special = torch.zeros_like(output)
+        if output.is_floating_point():
+            special = special.masked_fill(torch.isposinf(output), 1.0)
+            special = special.masked_fill(torch.isneginf(output), 2.0)
+            special = special.masked_fill(torch.isnan(output), 3.0)
+            output = output.masked_fill(special != 0, 0.0)
+            special = F.conv2d(special.view(B * C, 1, h_pad, w_pad), reshape_kernel, padding=0)
         output = F.conv2d(
-            finite_output.view(B * C, 1, h_pad, w_pad),
+            output.view(B * C, 1, h_pad, w_pad),
             reshape_kernel,
             padding=0,
             bias=conv_neighborhood.view(-1).flip(0).to(dtype=output.dtype),
         )
 
-        kernel_mask = (kernel != 0).to(dtype=output.dtype)
-        mask_kernel = _neight2channels_like_kernel(kernel_mask)
-        positive_inf = F.conv2d(
-            positive_inf.to(dtype=output.dtype).view(B * C, 1, h_pad, w_pad),
-            mask_kernel,
-            padding=0,
-        )
-        negative_inf = F.conv2d(
-            negative_inf.to(dtype=output.dtype).view(B * C, 1, h_pad, w_pad),
-            mask_kernel,
-            padding=0,
-        )
-        output = output.masked_fill(positive_inf != 0, float("inf"))
-        output = output.masked_fill(negative_inf != 0, -float("inf"))
+        if output.is_floating_point():
+            output = output.masked_fill(special == 1, float("inf"))
+            output = output.masked_fill(special == 2, -float("inf"))
+            output = output.masked_fill(special == 3, float("nan"))
 
         output = output.masked_fill(
             kernel.view(-1).flip(0).view(1, -1, 1, 1) == 0,
@@ -485,31 +481,27 @@ def erosion(
         reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
         conv_neighborhood = neighborhood.masked_fill(kernel == 0, 0.0)
 
-        positive_inf = torch.isposinf(output)
-        negative_inf = torch.isneginf(output)
-        finite_output = torch.nan_to_num(output, nan=0.0, posinf=0.0, neginf=0.0)
-
+        # ``conv2d`` multiplies every window cell by the one-hot weight, and ``inf * 0`` or ``nan * 0`` would
+        # spread to the whole window. Convolve zeros in their place, then route a code for each non-finite
+        # value (1: +inf, 2: -inf, 3: nan) through the same one-hot weight, which reproduces it exactly.
+        special = torch.zeros_like(output)
+        if output.is_floating_point():
+            special = special.masked_fill(torch.isposinf(output), 1.0)
+            special = special.masked_fill(torch.isneginf(output), 2.0)
+            special = special.masked_fill(torch.isnan(output), 3.0)
+            output = output.masked_fill(special != 0, 0.0)
+            special = F.conv2d(special.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0)
         output = F.conv2d(
-            finite_output.view(B * C, 1, Hpad, Wpad),
+            output.view(B * C, 1, Hpad, Wpad),
             reshape_kernel,
             padding=0,
             bias=-conv_neighborhood.view(-1).to(dtype=output.dtype),
         )
 
-        kernel_mask = (kernel != 0).to(dtype=output.dtype)
-        mask_kernel = _neight2channels_like_kernel(kernel_mask)
-        positive_inf = F.conv2d(
-            positive_inf.to(dtype=output.dtype).view(B * C, 1, Hpad, Wpad),
-            mask_kernel,
-            padding=0,
-        )
-        negative_inf = F.conv2d(
-            negative_inf.to(dtype=output.dtype).view(B * C, 1, Hpad, Wpad),
-            mask_kernel,
-            padding=0,
-        )
-        output = output.masked_fill(positive_inf != 0, float("inf"))
-        output = output.masked_fill(negative_inf != 0, -float("inf"))
+        if output.is_floating_point():
+            output = output.masked_fill(special == 1, float("inf"))
+            output = output.masked_fill(special == 2, -float("inf"))
+            output = output.masked_fill(special == 3, float("nan"))
 
         output = output.masked_fill(
             kernel.view(-1).view(1, -1, 1, 1) == 0,
