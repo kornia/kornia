@@ -402,6 +402,11 @@ def warp_frame_depth(
     KORNIA_CHECK_SHAPE(depth_dst, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(src_trans_dst, ["B", "4", "4"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
+    KORNIA_CHECK(
+        image_src.shape[-2:] == depth_dst.shape[-2:],
+        f"image_src and depth_dst must have the same height and width. "
+        f"Got {list(image_src.shape[-2:])} and {list(depth_dst.shape[-2:])}.",
+    )
 
     if (
         image_src.shape[0] == 0
