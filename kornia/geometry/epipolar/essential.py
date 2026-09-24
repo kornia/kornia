@@ -323,6 +323,15 @@ def _null_to_Nister_solution_script(
     cs_de = cs[:, -1].clamp_min(1e-8)
     C[:, -1, :] = -cs[:, :-1] / cs_de.unsqueeze(-1)
 
+    # A companion matrix that is not finite has no usable roots, and torch.linalg.eigvals aborts on it,
+    # which takes the whole batch down: a RuntimeError on some platforms, a crash inside MKL on others.
+    # It comes from an elimination system that is ill-conditioned without being exactly singular, whose
+    # solution is large enough for the determinant polynomial to overflow. Those elements get the
+    # identity in place of C, and their candidates are set to NaN at the end, like a singular one.
+    no_roots = ~torch.isfinite(C).flatten(-2).all(-1)  # (B,)
+    if no_roots.any():
+        C = torch.where(no_roots.view(B, 1, 1), eye10, C)
+
     roots_eig = torch.linalg.eigvals(C)  # (B,10), complex
     roots = torch.real(roots_eig)
     is_real = torch.abs(torch.imag(roots_eig)) < 1e-10
@@ -379,9 +388,11 @@ def _null_to_Nister_solution_script(
     # after Es is created (B,10,3,3)
     if bad2.any():
         Es[bad2] = torch.nan
-    # a singular elimination matrix has no candidates
+    # a singular elimination matrix has no candidates, and neither has a non-finite companion matrix
     if singular.any():
         Es[singular] = torch.nan
+    if no_roots.any():
+        Es[no_roots] = torch.nan
     # mark complex roots as NaN (keeps shape, no compaction)
     if is_real.logical_not().any():
         Es[~is_real] = torch.nan
