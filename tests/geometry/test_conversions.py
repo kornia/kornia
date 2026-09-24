@@ -2470,9 +2470,11 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         self.assert_close(multi_batched[1, 4], expected)
 
     def test_wart_reflection_is_returned_as_the_identity_4773(self, device, dtype):
-        # Wart pin for kornia#4773: an improper matrix (det = -1) is not rejected, and the
-        # reflection diag(-1, 1, 1) comes back as the zero vector -- "no rotation". Flips when the
-        # function raises or returns anything else for it.
+        # Wart pin for kornia#4773: with the default check_rotation=False an improper matrix
+        # (det = -1) is still not rejected, and the reflection diag(-1, 1, 1) comes back as the
+        # zero vector -- "no rotation". The call below deliberately omits the argument; passing
+        # check_rotation=True raises instead, which TestRotationMatrixToAxisAngleCheckRotation
+        # covers. Flips when the default raises or returns anything else for it.
         reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
 
         out = kornia.geometry.conversions.rotation_matrix_to_axis_angle(reflection)
