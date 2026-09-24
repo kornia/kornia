@@ -129,14 +129,19 @@ class TestFindEssential(BaseTester):
         tol, at_least = (1e-8, 60) if dtype == torch.float64 else (1e-3, 48)
         assert int((best < tol).sum()) >= at_least
 
-        # The roots of a polynomial do not depend on its sign, and IEEE division makes that exact, so
-        # negating every coefficient must leave the candidates unchanged bit for bit. This holds on every
-        # platform, whichever sign the SVD's null-space basis gives a sample.
+        # The roots of a polynomial do not depend on its sign or scale, and IEEE division makes that exact
+        # for a power-of-two scale, so negating every coefficient, or scaling them all by 2**-40, must leave
+        # the candidates unchanged bit for bit. This holds on every platform, whichever sign the SVD's
+        # null-space basis gives a sample. The scale takes every leading coefficient here below 1e-8, so it
+        # also pins that only an exactly zero one is replaced, not a small one.
         determinant = epi.essential._determinant_to_polynomial_jit
-        monkeypatch.setattr(epi.essential, "_determinant_to_polynomial_jit", lambda A, *args: -determinant(A, *args))
-        E_neg = epi.essential.find_essential(x1, x2, weights)
-        assert torch.equal(torch.isnan(E_neg), torch.isnan(E_est))
-        self.assert_close(torch.nan_to_num(E_neg), torch.nan_to_num(E_est), atol=0.0, rtol=0.0)
+        for factor in (-1.0, 2.0**-40):
+            monkeypatch.setattr(
+                epi.essential, "_determinant_to_polynomial_jit", lambda A, *args, f=factor: f * determinant(A, *args)
+            )
+            E_scaled = epi.essential.find_essential(x1, x2, weights)
+            assert torch.equal(torch.isnan(E_scaled), torch.isnan(E_est))
+            self.assert_close(torch.nan_to_num(E_scaled), torch.nan_to_num(E_est), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype):
