@@ -36,7 +36,8 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         color: the color of the pixel with :math`(C)` where :math`C` is the number of channels of the image.
 
     Return:
-        The image with points set to the color. An empty point set leaves the image unchanged.
+        The image with points set to the color. This operation modifies image inplace but also
+        returns the drawn tensor for convenience. An empty point set leaves the image unchanged.
 
     """
     KORNIA_CHECK(
@@ -93,7 +94,8 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         color: the color of the line with shape :math`(C)` where :math`C` is the number of channels of the image.
 
     Return:
-        the image with containing the line.
+        The image containing the line. This operation modifies image inplace but also returns
+        the drawn tensor for convenience.
 
     Examples:
         >>> image = torch.zeros(1, 8, 8)
