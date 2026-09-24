@@ -1182,6 +1182,21 @@ class TestDepthFromPlaneEquation(BaseTester):
         )
         assert torch.isfinite(depth).all(), f"grazing ray returned {depth.tolist()}"
 
+    def test_grazing_ray_default_eps_float16(self, device):
+        # kornia#4803: the default eps=1e-8 rounds to zero in float16, so the guard replaced a zero
+        # denominator with zero and returned inf. It is floored at float16's smallest subnormal instead.
+        dtype = torch.float16
+        camera_matrix = torch.tensor(
+            [[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )[None]
+        plane_normals = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        plane_offsets = torch.tensor([[1e-4]], device=device, dtype=dtype)
+        points_uv = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
+        depth = kornia.geometry.depth.depth_from_plane_equation(plane_normals, plane_offsets, points_uv, camera_matrix)
+        expected = plane_offsets / torch.full_like(plane_offsets, 5.960464477539063e-08)
+        assert torch.isfinite(depth).all(), f"grazing ray returned {depth.tolist()}"
+        self.assert_close(depth, expected)
+
     def test_small_denominators_keep_their_sign(self, device, dtype):
         """The guard already handled small non-zero denominators; keep that.
 
