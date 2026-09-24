@@ -207,8 +207,10 @@ class _NullSpaceBasis(torch.autograd.Function):
     the subspace :math:`S`, by
     :math:`dv_i = \sum_{j \notin S} v_j \, v_j^\top d(X^\top X) \, v_i / (\lambda_i - \lambda_j)`.
     That needs a gap between the fourth and fifth smallest singular values. Without one the subspace
-    itself is not unique, and the gradient is not finite, as for ``torch.linalg.svd``. The forward
-    pass is the same ``_torch_svd_cast`` call as before, so its result is unchanged.
+    itself is not unique, and a nonzero incoming gradient gives a gradient that is not finite, as for
+    ``torch.linalg.svd``; a zero incoming gradient, as from a sample whose candidates were discarded,
+    gives zero. The forward pass is the same ``_torch_svd_cast`` call as before, so its result is
+    unchanged.
     """
 
     @staticmethod
@@ -227,7 +229,10 @@ class _NullSpaceBasis(torch.autograd.Function):
         lam[:, : S_.shape[-1]] = S_ * S_
         V_out, V_in = V_[:, :, :-4], V_[:, :, -4:]
         gap = lam[:, -4:].unsqueeze(-2) - lam[:, :-4].unsqueeze(-1)  # (B, 5, 4): lambda_i - lambda_j
-        K = (V_out.transpose(-1, -2) @ g) / gap
+        num = V_out.transpose(-1, -2) @ g
+        # A zero incoming gradient contributes nothing, also where there is no gap: a sample whose
+        # candidates were discarded then gets a zero gradient instead of 0 / 0.
+        K = torch.where(num == 0, torch.zeros_like(num), num / gap)
         M = V_out @ K @ V_in.transpose(-1, -2)  # dL = <dG, M>
         return (X_ @ (M + M.transpose(-1, -2))).to(X.dtype)
 

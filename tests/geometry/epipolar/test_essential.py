@@ -158,6 +158,20 @@ class TestFindEssential(BaseTester):
 
         self.gradcheck(proxy, (points1, points2))
 
+    def test_null_space_gradient_of_a_discarded_sample(self, device):
+        # Points all at the origin give a rank-1 design matrix, so the null space the solver uses is not
+        # unique and its derivative has no gap to divide by. A sample like that has its candidates
+        # discarded, so no gradient reaches its basis, and it must contribute zero rather than 0 / 0.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        design = torch.zeros(1, 5, 9, device=device, dtype=torch.float64)
+        design[..., 8] = 1.0
+        design.requires_grad_()
+        basis = epi.essential._NullSpaceBasis.apply(design)
+        (basis * 0.0).sum().backward()
+        assert torch.isfinite(design.grad).all()
+        assert (design.grad == 0).all()
+
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype, monkeypatch):
         B, N = batch_size, num_points
