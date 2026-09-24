@@ -1810,6 +1810,38 @@ class TestColorJitter(BaseTester):
         with pytest.raises(ValueError, match="must not repeat an index"):
             ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 0, 1))
 
+    @pytest.mark.device_agnostic
+    def test_fixed_order_keeps_distribution_validation(self):
+        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
+        # torch.distributions argument validation process-wide. Restore the caller's setting.
+        script = (
+            "import torch\n"
+            "from torch.distributions import Distribution\n"
+            "from kornia.augmentation import ColorJitter\n"
+            "Distribution.set_default_validate_args(True)\n"
+            "ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(torch.rand(2, 3, 8, 8))\n"
+            "assert Distribution._validate_args, 'ColorJitter disabled Distribution validation'\n"
+        )
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
+        # torch.cond requires Dynamo support, so a fixed order must fall back to
+        # the Python dispatch when Dynamo is unavailable.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
+        fallback = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert torch.equal(fallback(image, params=params), expected)
+
     def test_dynamo_fixed_order(self, device, dtype, torch_optimizer):
         # A fixed `order` avoids iterating the random order tensor, so it is fullgraph-safe.
         # Replay the sampled params so the (random) eager and compiled runs are comparable.

@@ -25,7 +25,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.random_generator import RectangleEraseGenerator
-from kornia.core.exceptions import BaseError, ImageError, ShapeError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
@@ -1489,21 +1489,16 @@ class TestIntensityColourConventions(BaseTester):
                 with pytest.raises(ValueError, match="shape of"):
                     K.ColorJiggle(*factors, p=1.0)(image)
 
-    # Issue #4813: ColorJitter computes every step in the order, neutral or not, so the hue and saturation steps
-    # reject a channel count that the configuration never asks them to touch -- where ColorJiggle, above, and
-    # torchvision accept it.  A fix that skips neutral steps flips the non-RGB legs; the RGB leg is the control.
+    # Issue #4813: ColorJitter used to compute every step in the order, neutral or not, so the hue and
+    # saturation steps rejected channel counts that the configuration never asked them to touch.  Neutral
+    # steps are now skipped, matching ColorJiggle and torchvision for these configurations.
     @pytest.mark.parametrize("channels", [1, 3, 4])
-    def test_wart_color_jitter_computes_neutral_steps_4813(self, device, dtype, channels):
+    def test_wart_color_jitter_skips_neutral_steps_4813(self, device, dtype, channels):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, channels, 5, 5).to(device=device, dtype=dtype)
         for factors in ((0.0, 0.0, 0.0, 0.0), (0.2, 0.0, 0.0, 0.0), (0.0, 0.2, 0.0, 0.0)):
             torch.manual_seed(_FORWARD_SEED)
-            if channels == 3:
-                assert K.ColorJitter(*factors, p=1.0)(image).shape == image.shape
-            else:
-                # Which neutral step raises first depends on the drawn order.
-                with pytest.raises((ValueError, ImageError)):
-                    K.ColorJitter(*factors, p=1.0)(image)
+            assert K.ColorJitter(*factors, p=1.0)(image).shape == image.shape
 
     # The erasing box is clamped from below as well as above: scale=(0, 0) still erases one pixel and a 1x1
     # image is always erased in full.

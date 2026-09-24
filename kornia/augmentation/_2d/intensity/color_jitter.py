@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -29,6 +30,48 @@ from kornia.enhance import (
     adjust_hue,
     adjust_saturation_with_gray_subtraction,
 )
+
+
+def _contiguous_output(output: torch.Tensor) -> torch.Tensor:
+    return output.contiguous()
+
+
+def _identity(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    # torch.cond rejects an output that aliases an input, so a neutral factor returns a copy.
+    return input.contiguous().clone()
+
+
+def _adjust_brightness(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    return _contiguous_output(adjust_brightness_accumulative(input, factor))
+
+
+def _adjust_contrast(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    return _contiguous_output(adjust_contrast_with_mean_subtraction(input, factor))
+
+
+def _adjust_saturation(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    return _contiguous_output(adjust_saturation_with_gray_subtraction(input, factor))
+
+
+def _adjust_hue(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    return _contiguous_output(adjust_hue(input, factor * 2 * pi))
+
+
+def _apply_transform_cond(
+    index: int,
+    input: torch.Tensor,
+    brightness: torch.Tensor,
+    contrast: torch.Tensor,
+    saturation: torch.Tensor,
+    hue: torch.Tensor,
+) -> torch.Tensor:
+    if index == 0:
+        return torch.cond((brightness != 0).any(), _adjust_brightness, _identity, (input, brightness))
+    if index == 1:
+        return torch.cond((contrast != 1).any(), _adjust_contrast, _identity, (input, contrast))
+    if index == 2:
+        return torch.cond((saturation != 1).any(), _adjust_saturation, _identity, (input, saturation))
+    return torch.cond((hue != 0).any(), _adjust_hue, _identity, (input, hue))
 
 
 class ColorJitter(IntensityAugmentationBase2D):
@@ -155,6 +198,9 @@ class ColorJitter(IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
+        # torch.cond raises where Dynamo is unavailable, so a fixed order keeps the
+        # Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
+        self._cond_dispatch = order is not None and torch._dynamo.is_dynamo_supported()
 
         # native functions
         self._brightness_fn = adjust_brightness_accumulative
@@ -169,29 +215,49 @@ class ColorJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # torch.where (compute-then-select) rather than a Python `if ... .any() else img`:
-        # numerically identical (the op runs on the whole batch or not at all, exactly as the
-        # guard decided) but without a data-dependent branch, so it stays fullgraph-compilable.
+        # A fixed RGB order uses torch.cond while compiling so neutral steps remain lazy and the
+        # transform stays fullgraph-compilable. Eager execution keeps the Python guards so .compile()
+        # can replace the four adjustment helpers as before. Non-RGB inputs use Python dispatch because
+        # torch.cond traces both branches.
+        if self._cond_dispatch and input.shape[-3] == 3 and torch.compiler.is_compiling():
+            # Entering torch.cond initializes Dynamo, whose one-time setup calls
+            # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
+            validate_args = Distribution._validate_args
+            try:
+                jittered = input
+                for idx in self._fixed_order:
+                    jittered = _apply_transform_cond(
+                        idx,
+                        jittered,
+                        params["brightness_factor"],
+                        params["contrast_factor"],
+                        params["saturation_factor"],
+                        params["hue_factor"],
+                    )
+            finally:
+                if Distribution._validate_args != validate_args:
+                    Distribution.set_default_validate_args(validate_args)
+            return jittered
+
         transforms = [
-            lambda img: torch.where(
-                (params["brightness_factor"] != 0).any(), self._brightness_fn(img, params["brightness_factor"]), img
+            lambda img: (
+                self._brightness_fn(img, params["brightness_factor"])
+                if (params["brightness_factor"] != 0).any()
+                else img
             ),
-            lambda img: torch.where(
-                (params["contrast_factor"] != 1).any(), self._contrast_fn(img, params["contrast_factor"]), img
+            lambda img: (
+                self._contrast_fn(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
             ),
-            lambda img: torch.where(
-                (params["saturation_factor"] != 1).any(), self._saturation_fn(img, params["saturation_factor"]), img
+            lambda img: (
+                self._saturation_fn(img, params["saturation_factor"])
+                if (params["saturation_factor"] != 1).any()
+                else img
             ),
-            lambda img: torch.where(
-                (params["hue_factor"] != 0).any(), self._hue_fn(img, params["hue_factor"] * 2 * pi), img
-            ),
+            lambda img: self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
         ]
 
-        # A fixed order is a static Python sequence (fullgraph); otherwise iterate the random
-        # per-call `order` tensor (inherently data-dependent, not fullgraph-compilable).
-        order: Sequence[int] = self._fixed_order if self._fixed_order is not None else params["order"]
-
         jittered = input
+        order = self._fixed_order if self._fixed_order is not None else params["order"].tolist()
         for idx in order:
             jittered = transforms[idx](jittered)
 
