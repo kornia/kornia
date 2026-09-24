@@ -910,6 +910,22 @@ class TestQuarticSolver(BaseTester):
             ([1.0, 6.75, 3.75, -34.0, -45.0], [-5.0, -2.0, -2.0, 2.25], (torch.float32, torch.float64)),
             # The ulp floor in the coincidence window: without it 4.75 comes back twice (roots 4.75, -5, 9 +- 3i).
             ([1.0, -17.75, 61.75, 450.0, -2137.5], [-5.0, 4.75], (torch.float32, torch.float64)),
+            # The residual tolerance, pinned from both sides. At sqrt(eps) instead of sqrt(eps) / 4, this
+            # quartic with two complex pairs returns -7.2066 and -6.7561 twice each...
+            ([1.0, 27.91975997, 297.7351036, 1435.935501, 2645.836994], [], (torch.float32,)),
+            # ...and at sqrt(eps) / 16 both copies of the double root at 0.558935 are dropped.
+            (
+                [1.0, -7.636022673, 0.9114557167, 5.439310611, -2.089195035],
+                [-0.901329, 0.558935, 0.558935, 7.419483],
+                (torch.float32,),
+            ),
+            # A recovered placeholder's step bound, from below: at eps * |x| instead of sqrt(eps) * |x| the
+            # root at 0.0009864 next to roots of 1 to 946 is lost.
+            (
+                [1.0, -1333.67141, 366869.5534, -369281.897, 363.9159878],
+                [0.0009864, 1.009293, 386.1998282, 946.4613022],
+                (torch.float32,),
+            ),
         ],
     )
     def test_root_set_4474(self, coeffs, expected, dtypes, device, dtype):
