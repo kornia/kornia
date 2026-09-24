@@ -306,11 +306,10 @@ def depth_from_plane_equation(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`), normalized here with ``camera_matrix``.
         - the result is the camera-frame ``z`` of each pixel, :math:`(B, N)`: a list of depths, not a map.
         - a ray-plane dot product inside :math:`(-eps, eps)` is replaced by :math:`\pm` ``eps`` with its sign
-          (``+eps`` for an exact zero), so a grazing ray returns a large signed depth rather than ``inf``.
-
-    .. warning::
-        The default ``eps = 1e-8`` rounds to zero in float16, where a grazing ray therefore returns ``inf``:
-        `#4803 <https://github.com/kornia/kornia/issues/4803>`_.
+          (``+eps`` for an exact zero), so a grazing ray returns the large signed depth ``d / eps`` rather than
+          ``inf``. In float16 a positive ``eps`` is floored at the smallest subnormal, ``2**-24``, because the
+          default ``1e-8`` rounds to zero there; ``d / 2**-24`` is still ``inf`` in float16 once ``|d|`` exceeds
+          about ``3.9e-3``, so pass a larger ``eps`` for a finite depth (``eps=1e-4`` keeps ``|d| <= 6.5`` finite).
 
     Args:
         plane_normals (torch.Tensor): Plane normal vectors of shape (B, 3).
@@ -338,6 +337,10 @@ def depth_from_plane_equation(
 
     # Compute the denominator of the depth equation
     denom = torch.sum(rays * plane_normals_exp, dim=-1)  # (B, N)
+    # A positive eps below float16's smallest subnormal rounds to zero there, which would turn the guard into
+    # a division by zero, so floor it at that subnormal (as normalize_quaternion does).
+    if denom.dtype == torch.float16 and eps > 0.0:
+        eps = max(eps, 5.960464477539063e-08)
     denom_abs = torch.abs(denom)
     zero_mask = denom_abs < eps
     # The guard was `eps * sign(denom)`, and `sign` is zero at zero, so the

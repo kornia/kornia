@@ -1173,14 +1173,49 @@ class TestDepthFromPlaneEquation(BaseTester):
         plane_offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
         points_uv = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
 
-        # The default eps=1e-8 is below float16 resolution: it rounds to zero,
-        # so `denom_abs < eps` can never hold, and 2/1e-8 is outside float16's
-        # finite range anyway. Ask for an epsilon this dtype can represent.
+        # In float16 the default eps is floored at 2**-24, and 2 / 2**-24 is
+        # outside float16's finite range. Ask for an epsilon large enough that
+        # the guarded depth fits the dtype.
         eps = max(1e-8, float(torch.finfo(dtype).eps))
         depth = kornia.geometry.depth.depth_from_plane_equation(
             plane_normals, plane_offsets, points_uv, camera_matrix, eps=eps
         )
         assert torch.isfinite(depth).all(), f"grazing ray returned {depth.tolist()}"
+
+    def test_grazing_ray_default_eps_float16(self, device):
+        # kornia#4803: the default eps=1e-8 rounds to zero in float16, so the guard replaced a zero
+        # denominator with zero and returned inf. It is floored at float16's smallest subnormal instead.
+        dtype = torch.float16
+        camera_matrix = torch.tensor(
+            [[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )[None]
+        plane_normals = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        plane_offsets = torch.tensor([[1e-4]], device=device, dtype=dtype)
+        points_uv = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
+        depth = kornia.geometry.depth.depth_from_plane_equation(plane_normals, plane_offsets, points_uv, camera_matrix)
+        expected = plane_offsets / torch.full_like(plane_offsets, 5.960464477539063e-08)
+        assert torch.isfinite(depth).all(), f"grazing ray returned {depth.tolist()}"
+        self.assert_close(depth, expected)
+
+    def test_grazing_ray_float16_floor_limits(self, device):
+        # kornia#4803: the float16 floor applies to a positive eps only; eps = 0 keeps the unguarded division. A plane
+        # through the camera centre gives 0 / 2**-24 = 0 (it was 0 / 0 = nan), and an offset above 65504 * 2**-24
+        # still overflows float16.
+        dtype = torch.float16
+        camera_matrix = torch.tensor(
+            [[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )[None]
+        plane_normals = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        points_uv = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
+
+        def depth(offset: float, **kwargs: float) -> torch.Tensor:
+            offsets = torch.tensor([[offset]], device=device, dtype=dtype)
+            return depth_from_plane_equation(plane_normals, offsets, points_uv, camera_matrix, **kwargs)
+
+        assert depth(1e-4, eps=0.0).isposinf().all()
+        assert depth(1e-4, eps=-1e-3).isposinf().all()
+        self.assert_close(depth(0.0), torch.zeros(1, 1, device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        assert depth(1e-2).isposinf().all()
 
     def test_small_denominators_keep_their_sign(self, device, dtype):
         """The guard already handled small non-zero denominators; keep that.
@@ -1251,7 +1286,7 @@ class TestDepthFromPlaneEquation(BaseTester):
         # Snippet used to generate expected: depth_from_plane_equation([[0, 1, 2.384185791015625e-09]], [[2.0]],
         # [[[4.0, 3.0]]], K, eps=1e-8) and the negated normal
         if dtype == torch.float16:
-            pytest.skip("float16: eps = 1e-8 underflows to 0 and 2e8 is past the float16 range, so the depth is inf")
+            pytest.skip("float16: eps is floored at 2**-24 and 2 / 2**-24 is past the float16 range: the depth is inf")
         camera_matrix = _k_asymmetric(device, dtype)
         offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
         principal_point = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
