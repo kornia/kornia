@@ -176,9 +176,9 @@ class TestClosing(BaseTester):
 
     def test_closing_handles_empty_geodesic_windows_4734(self, device, dtype):
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
-        tensor = torch.rand(
-            1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64
-        ).to(device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(
+            device=device, dtype=dtype
+        )
 
         closed = closing(tensor, side_kernel)
 

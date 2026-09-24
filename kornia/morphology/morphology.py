@@ -48,7 +48,6 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     return kernel.view(h * w, 1, h, w)
 
 
-
 def _dtype_min(dtype: torch.dtype) -> int:
     if dtype in (torch.uint8, torch.bool):
         return 0
@@ -75,6 +74,7 @@ def _dtype_max(dtype: torch.dtype) -> int:
     if dtype == torch.int64:
         return 9223372036854775807
     return 0
+
 
 @torch.jit.unused
 def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
@@ -355,9 +355,7 @@ def dilation(
             bias=conv_neighborhood.view(-1).flip(0).to(dtype=output.dtype),
         )
 
-        output = output.masked_fill(
-            kernel.view(-1).flip(0).view(1, -1, 1, 1) == 0, -float("inf")
-        )
+        output = output.masked_fill(kernel.view(-1).flip(0).view(1, -1, 1, 1) == 0, -float("inf"))
 
         if is_geodesic:
             valid = torch.ones((1, 1, H, W), dtype=output.dtype, device=output.device)
@@ -532,9 +530,7 @@ def erosion(
             bias=-conv_neighborhood.view(-1).to(dtype=output.dtype),
         )
 
-        output = output.masked_fill(
-            kernel.view(-1).view(1, -1, 1, 1) == 0, float("inf")
-        )
+        output = output.masked_fill(kernel.view(-1).view(1, -1, 1, 1) == 0, float("inf"))
 
         if is_geodesic:
             valid = torch.ones((1, 1, H, W), dtype=output.dtype, device=output.device)

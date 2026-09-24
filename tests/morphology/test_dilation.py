@@ -736,9 +736,7 @@ class TestDilate(BaseTester):
         assert torch.equal(dilation(tensor, masked_kernel, structuring_element=loud), dilation(tensor, masked_kernel))
         assert torch.equal(erosion(tensor, masked_kernel, structuring_element=loud), erosion(tensor, masked_kernel))
 
-    def test_convention_engines_agree_independent_of_max_val(
-        self, device, dtype, cudnn_tf32_follows_option
-    ):
+    def test_convention_engines_agree_independent_of_max_val(self, device, dtype, cudnn_tf32_follows_option):
         # The convolution and unfold engines should agree independently of the finite `max_val`.
         # `cudnn_tf32_follows_option` keeps CUDA's float32 `conv2d` out of TF32 unless `--tf32` is passed.
         tensor = torch.rand(1, 1, 9, 11, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
