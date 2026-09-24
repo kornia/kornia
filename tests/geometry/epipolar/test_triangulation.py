@@ -325,3 +325,63 @@ class TestTriangulation(BaseTester):
         pts = torch.rand(1, 3, 2, device=device, dtype=dtype)
         out = epi.triangulate_points(P1, P2, pts, pts)
         assert out.shape == (1, 3, 3)
+
+
+def _dehom(x: torch.Tensor) -> torch.Tensor:
+    return x[..., :2] / x[..., 2:]
+
+
+# Error bound for svd/eigh on the exact two-view fixture: float16/bfloat16 build the DLT rows in the input dtype.
+_TRIANGULATION_ATOL = {torch.float16: 5e-2, torch.bfloat16: 0.5, torch.float32: 1e-3, torch.float64: 1e-9}
+
+
+class TestConventionTriangulation(BaseTester):
+    def test_convention_triangulate_points_argument_pairing(self, two_view, device, dtype):
+        P1, P2, x1, x2, X = two_view["P1"], two_view["P2"], two_view["x1"], two_view["x2"], two_view["X"]
+        atol = _TRIANGULATION_ATOL[dtype]
+        results = {}
+        for solver in ("svd", "eigh"):
+            # P1 pairs with points1 and P2 with points2; the output is Euclidean (B, N, 3) in the input dtype.
+            out = epi.triangulate_points(P1, P2, x1, x2, solver=solver)
+            assert out.shape == (1, 12, 3)
+            assert out.dtype == dtype
+            self.assert_close(out, X, rtol=0.0, atol=atol)
+            # Relabelling: swapping the two views as a whole recovers the same points; swapping only the cameras
+            # or only the points misplaces every point, by more than 2.5 on this fixture.
+            self.assert_close(epi.triangulate_points(P2, P1, x2, x1, solver=solver), X, rtol=0.0, atol=atol)
+            for wrong in (
+                epi.triangulate_points(P2, P1, x1, x2, solver=solver),
+                epi.triangulate_points(P1, P2, x2, x1, solver=solver),
+            ):
+                assert (wrong - X).norm(dim=-1).min() > 1.0
+            results[solver] = out
+        # svd and eigh agree to roundoff.
+        self.assert_close(results["svd"], results["eigh"], rtol=0.0, atol=atol)
+
+    def test_wart_triangulate_points_infinity_finite_4865(self, two_view, device, dtype):
+        # #4865: a correspondence at infinity (the images of a direction (x, y, z, 0)) comes back as a finite point
+        # along that direction, with nothing to tell it from a real point: its distance is set by roundoff in the
+        # homogeneous w. Once fixed (non-finite output or a validity flag), these assertions fail.
+        P1, P2, d = two_view["P1"], two_view["P2"], two_view["X"]  # the fixture points read as directions
+        x1 = _dehom(d @ P1[..., :3].transpose(-2, -1))
+        x2 = _dehom(d @ P2[..., :3].transpose(-2, -1))
+        for solver in SOLVERS:
+            if solver == "cofactor" and dtype == torch.float16:
+                continue  # the cofactor solver returns NaN for any pixel-scale float16 input (#4863)
+            out = epi.triangulate_points(P1, P2, x1, x2, solver=solver)
+            assert torch.isfinite(out).all()
+            out64, d64 = out.cpu().double(), d.cpu().double()  # float64 on the CPU: MPS has no float64
+            cos = (out64 * d64).sum(-1) / (out64.norm(dim=-1) * d64.norm(dim=-1))
+            assert cos.abs().min() > 0.98
+
+    def test_wart_triangulate_cofactor_float16_nan_4863(self, two_view, device, dtype):
+        if dtype != torch.float16:
+            pytest.skip("the overflow is float16's: bfloat16, float32 and float64 hold the unnormalised null vector")
+        # #4863: the cofactor null vector of pixel-scale rows is computed in float32 but cast back to float16 before
+        # it is normalised, overflows to inf, and every point comes back NaN. svd and eigh are finite on the same input.
+        P1, P2, x1, x2 = two_view["P1"], two_view["P2"], two_view["x1"], two_view["x2"]
+        out = epi.triangulate_points(P1, P2, x1, x2, solver="cofactor")
+        assert out.dtype == torch.float16
+        assert torch.isnan(out).all()
+        for solver in ("svd", "eigh"):
+            assert torch.isfinite(epi.triangulate_points(P1, P2, x1, x2, solver=solver)).all()
