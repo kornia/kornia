@@ -555,9 +555,7 @@ _HALF_LINES = (
 
 def _cpu_only(device: torch.device) -> None:
     if device.type != "cpu":
-        pytest.skip(
-            "the RANSAC convention pins are CPU-only: the batched minimal solvers abort the MPS process (#4204)"
-        )
+        pytest.skip("the RANSAC convention pins are verified on the CPU only")
 
 
 def _planar_matches(device, dtype):
@@ -627,7 +625,9 @@ class TestConventionRANSAC(BaseTester):
 
         monkeypatch.setattr(kornia.geometry.ransac, "sample_is_valid_for_homography", reject_all)
         model, mask = RANSAC("homography", inl_th=5.0, seed=0, max_iter=3, batch_size=64)(kp1, kp2)
-        assert samples and all(shape == (64, 4, 2) for shape in samples)
+        # Every sample is rejected, so nothing stops early: max_iter=3 batches of batch_size=64 minimal samples,
+        # the documented maximum.
+        assert len(samples) == 3 and all(shape == (64, 4, 2) for shape in samples)
         assert bool((model == 0).all()) and not bool(mask.any())
 
     @pytest.mark.parametrize("model_type", ["homography", "fundamental"])
@@ -646,12 +646,29 @@ class TestConventionRANSAC(BaseTester):
                 assert mask.dtype == torch.bool and mask.shape == (16,)
                 assert bool(mask[9]) is expected
                 assert int(mask.sum()) == 15 + int(expected)
+            # With the true H fixed, the moved match's one-way error is exactly 10 px (its symmetric error is
+            # about 15 px): an inlier at inl_th=11 and an outlier at inl_th=9. The minimal samples still pass
+            # sample_is_valid_for_homography, which rejects some lattice samples, so a seeded batch of 64 is drawn.
+            H = torch.tensor([_H_TRUE], device=device, dtype=dtype)
+            for inl_th, expected in ((9.0, False), (11.0, True)):
+                ransac = RANSAC("homography", inl_th=inl_th, batch_size=64, max_iter=1, max_lo_iters=0, seed=0)
+                _, mask = _fixed_model(ransac, H)(kp1, kp2_bad)
+                assert bool(mask[9]) is expected
+                assert int(mask.sum()) == 15 + int(expected)
             return
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel")
+        kp1, kp2 = _scene_matches(device, dtype)
+        if dtype == torch.float64:
+            # kp1 is the estimator's first image: the returned F explains every match in this order
+            # (x2^T F x1 = 0), and its transpose, the other image order, explains none. float64 only: in float32
+            # the fit on these exact matches already misses by a pixel or two.
+            F_est, mask_est = RANSAC("fundamental", inl_th=1.0, seed=0, max_iter=3, batch_size=64)(kp1, kp2)
+            assert bool(mask_est.all())
+            assert sampson_epipolar_distance(kp1[None], kp2[None], F_est[None], squared=False).max() < 1e-2
+            assert sampson_epipolar_distance(kp1[None], kp2[None], F_est.mT[None], squared=False).min() > 1.0
         # For the fundamental models inl_th is compared with the Sampson distance in pixels. The model is fixed to
         # the F of the twelve exact matches, so the threshold is observed without sampling.
-        kp1, kp2 = _scene_matches(device, dtype)
         F = find_fundamental(kp1[None], kp2[None])
         kp2_bad = kp2.clone()
         kp2_bad[6] += torch.tensor([4.0, -3.0], device=device, dtype=dtype)

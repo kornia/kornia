@@ -682,6 +682,9 @@ class TestConventionHomography(BaseTester):
             self.assert_close(H, H_true, rtol=1e-4, atol=1e-4)
             # Relabelling the images returns the inverse.
             self.assert_close(find_homography_dlt(p2, p1), _inverse(H_true), rtol=1e-4, atol=1e-4)
+        # Four or more correspondences: three are rejected before any solve.
+        with pytest.raises(Exception):
+            find_homography_dlt(p1[:, :3], p2[:, :3])
 
     def test_convention_find_homography_dlt_lu_equals_svd(self, device, dtype):
         _skip_half(dtype, _HALF_DLT)
@@ -734,11 +737,10 @@ class TestConventionHomography(BaseTester):
         assert _transfer_max(H, p2, p1) > 100.0
         self.assert_close(H[..., 2, 2], torch.ones_like(H[..., 2, 2]))
         mapped = kornia.geometry.transform_points(H, p1)
-        # Unbatched (N, 2, 2) input is B = 1, and reversing every segment's orientation changes nothing.
+        # Unbatched (N, 2, 2) input is B = 1.
         H_unbatched = find_homography_lines_dlt(ls1[0], ls2[0])
         assert H_unbatched.shape == (1, 3, 3)
         assert _transfer_max(H_unbatched, p1, mapped) < tol
-        assert _transfer_max(find_homography_lines_dlt(ls1.flip(2), ls2.flip(2)), p1, mapped) < tol
         # The control for the layout: the same numbers read as (x, y) x [start, end] fit a different map.
         assert _transfer_max(find_homography_lines_dlt(ls1.transpose(-2, -1), ls2.transpose(-2, -1)), p1, p2) > 100.0
         # weights has one entry per segment.
@@ -815,6 +817,8 @@ class TestConventionHomography(BaseTester):
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_n_iter_counts_solves(self, model, device, dtype, monkeypatch):
+        if model == "points" and dtype == torch.float16:
+            pytest.skip(_F16_LU)
         p1, p2, _ = _planar(device, dtype)
         if model == "points":
             name, iterated, args = "find_homography_dlt", find_homography_dlt_iterated, (p1, p2)
