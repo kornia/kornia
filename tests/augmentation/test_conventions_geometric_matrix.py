@@ -27,23 +27,15 @@ from testing.base import BaseTester
 
 
 class TestConventionGeometricMatrices(BaseTester):
-    @pytest.mark.device_agnostic
-    def test_convention_flips_use_inclusive_pixel_coordinates(self):
-        x = torch.zeros(1, 1, 5, 7)
-        x[..., 1, 2] = 1
-        horizontal = K.RandomHorizontalFlip(p=1.0)(x)
-        vertical = K.RandomVerticalFlip(p=1.0)(x)
-
-        assert horizontal[0, 0].argmax().item() == 1 * 7 + 4
-        assert vertical[0, 0].argmax().item() == 3 * 7 + 2
-
-    def test_convention_flips_expose_their_discrete_coordinate_matrices(self, device, dtype):
+    def test_convention_flips_use_inclusive_pixel_coordinates(self, device, dtype):
         x = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        x[..., 1, 2] = 1
         horizontal = K.RandomHorizontalFlip(p=1.0)
         vertical = K.RandomVerticalFlip(p=1.0)
-        horizontal(x)
-        vertical(x)
 
+        # x' = W - 1 - x and y' = H - 1 - y, in the image and in the matrix alike.
+        assert horizontal(x)[0, 0].argmax().item() == 1 * 7 + 4
+        assert vertical(x)[0, 0].argmax().item() == 3 * 7 + 2
         self.assert_close(
             horizontal.transform_matrix,
             torch.tensor([[[-1.0, 0.0, 6.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype),
@@ -142,9 +134,20 @@ class TestConventionGeometricMatrices(BaseTester):
             K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image), image, low_tolerance=True
         )
 
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_random_perspective_float64_identity_is_exact_4776(self, device, align_corners):
+        # #4776: warp_perspective builds its grid in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff, like RandomAffine's warp_affine on the same input.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        image = torch.arange(35, device=device, dtype=torch.float64).reshape(1, 1, 5, 7) / 35
+        output = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image)
+        assert output.dtype == torch.float64
+        assert (output - image).abs().max() < 1e-12
+
     @pytest.mark.parametrize("size", [(1, 7), (5, 1), (1, 1)])
     @pytest.mark.parametrize("align_corners", [False, True])
-    def test_wart_random_perspective_singleton_dimensions_4538(self, device, dtype, size, align_corners):
+    def test_wart_random_perspective_singleton_dimensions_4787(self, device, dtype, size, align_corners):
         height, width = size
         image = torch.arange(height * width, device=device, dtype=dtype).reshape(1, 1, height, width)
         augmentation = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)

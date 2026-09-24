@@ -21,8 +21,9 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.augmentation._3d.geometric.crop import _crop_translation3d
 from kornia.constants import Resample
-from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
+from kornia.geometry import crop_by_transform_mat3d
 
 
 class CenterCrop3D(GeometricAugmentationBase3D):
@@ -50,7 +51,9 @@ class CenterCrop3D(GeometricAugmentationBase3D):
 
         - ``size`` is ``(D, H, W)``. The crop is shared across the batch; its ``p`` is the call-wide gate, so a
           valid ``p=0`` request returns the un-cropped input and ``p=1`` returns the requested crop. Size validation
-          still runs when the call is skipped, so an oversized crop raises even at ``p=0``.
+          still runs when the call is skipped, so an oversized crop raises even at ``p=0``. The exception types
+          differ from :class:`RandomCrop3D`'s, and a two-element ``size`` fails with ``IndexError``
+          (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
         - defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:
@@ -110,7 +113,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
         return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(

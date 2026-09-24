@@ -31,11 +31,13 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Args:
         image: the input image on which to draw the points with shape :math`(C,H,W)` or :math`(H,W)`.
-        points: the [x, y] points to be drawn on the image.
+        points: the [x, y] points to be drawn on the image with shape :math`(N, 2)`, a single
+            point with shape :math`(2,)`, or an empty tensor with shape :math`(0, 2)`.
         color: the color of the pixel with :math`(C)` where :math`C` is the number of channels of the image.
 
     Return:
-        The image with points set to the color.
+        The image with points set to the color. This operation modifies image inplace but also
+        returns the drawn tensor for convenience. An empty point set leaves the image unchanged.
 
     """
     KORNIA_CHECK(
@@ -43,7 +45,15 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         "Color dim must match the channel dims of the provided image",
     )
     points = points.to(dtype=torch.int64, device=image.device)
-    x, y = zip(*points)
+    # A single [x, y] vector is a common call shape; zip(*points) iterated 0-d
+    # scalars and raised TypeError. An empty (0, 2) set used to fail unpacking;
+    # indexing with empty columns now leaves the image unchanged.
+    if points.ndim == 1:
+        KORNIA_CHECK(points.numel() == 2, "A 1D points tensor must have shape (2,) as [x, y]")
+        points = points.unsqueeze(0)
+    KORNIA_CHECK(points.ndim == 2 and points.shape[-1] == 2, "points must have shape (N, 2)")
+    x = points[:, 0]
+    y = points[:, 1]
     if len(color.shape) == 1:
         color = torch.unsqueeze(color, dim=1)
     color = color.to(dtype=image.dtype, device=image.device)
@@ -84,7 +94,8 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         color: the color of the line with shape :math`(C)` where :math`C` is the number of channels of the image.
 
     Return:
-        the image with containing the line.
+        The image containing the line. This operation modifies image inplace but also returns
+        the drawn tensor for convenience.
 
     Examples:
         >>> image = torch.zeros(1, 8, 8)

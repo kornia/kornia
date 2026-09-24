@@ -39,37 +39,22 @@ class OperationBase(nn.Module):
             Set to True for most non-shape-persistent operations (e.g. cropping).
 
     Convention:
-        - this wrapper owns a probability parameter and, when configured, one learnable magnitude. The
-          ``probability`` property clamps to the closed interval ``[1e-7, 1 - 1e-7]`` and ``magnitude`` clamps to
-          the wrapped generator's configured range. The probability parameter is initialized from the wrapped
-          augmentation's ``p`` (``p_batch`` for a batch operation) and kept in ``state_dict()`` for API and
-          checkpoint compatibility; it does not take part in sampling. The gate is drawn from the wrapped
-          augmentation's own float ``p`` and ``p_batch``, the sampled ``batch_prob`` is a hard ``0`` or ``1``, and
-          the probability parameter receives no gradient, while the magnitude does. ``forward_parameters`` draws
-          the wrapped augmentation's parameters and substitutes the supplied or learned magnitude. The wrapper
-          builds no probability sampler, on itself or on the wrapped augmentation, which keeps its own parameter
-          samplers; ``copy.deepcopy`` therefore works before and after a forward pass or a ``train()`` / ``eval()``
-          call.
-        - ``forward`` linearly blends the wrapped augmentation's output with the input using ``batch_prob``.
-          With supplied fractional gates, the wrapped augmentation first keeps rows whose gate is at most ``0.5``
-          unchanged, unless both its ``p`` and ``p_batch`` equal ``1``. Only that unconditional configuration
-          blends every row with the fully transformed image; otherwise rows at or below the threshold stay
-          unchanged even after the outer blend.
-        - a symmetric magnitude first applies the configured magnitude mapping, then chooses an independent sign
-          for every row. Sign selection preserves the mapped magnitude, but the mapping can first quantize it to
-          zero. For example, ``Posterize`` maps ``0.5`` to zero with ``magnitude_range=(0, 8)``.
-        - :class:`~kornia.augmentation.auto.PolicySequential` is a lower-level container. Its own sampler calls
-          ``operation.op.forward_parameters`` directly, bypassing this wrapper's magnitude mapping. This is a
-          distinct direct-use behavior, tracked in `#4441
-          <https://github.com/kornia/kornia/issues/4441>`_.
-        - The concrete operation classes in ``kornia.augmentation.auto.operations.ops`` only configure this
-          wrapper around public 2D augmentations; their input, dtype, RNG, and replay contracts are those of
-          their wrapped augmentation and :doc:`/get-started/conventions`. Serialization is the exception: this
-          wrapper stores its magnitude mapping as a local closure unless the concrete class supplies its own
-          named mapping and ``symmetric_megnitude`` is false, and a local closure does not pickle even though
-          all the wrapped augmentations do. With default arguments only ``Posterize`` pickles;
-          ``ShearX`` and ``ShearY`` also do with ``symmetric_megnitude=False``
-          (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+        - ``probability`` is initialized from the wrapped augmentation's ``p`` (``p_batch`` for a batch operation),
+          clamped to ``[1e-7, 1 - 1e-7]`` and kept in ``state_dict()`` for checkpoint compatibility, but it takes
+          no part in sampling and receives no gradient: the gate is drawn from the wrapped augmentation's own
+          ``p`` and ``p_batch`` as a hard ``0`` or ``1``. ``magnitude``, where the operation has one, is clamped to
+          the wrapped generator's range and receives a gradient where the wrapped augmentation is differentiable
+          in it; ``forward_parameters`` substitutes it into the wrapped augmentation's draw.
+        - ``forward`` linearly blends the wrapped output with the input using ``batch_prob``. Unless the wrapped
+          ``p`` and ``p_batch`` are both ``1``, the wrapped augmentation first keeps rows whose gate is at most
+          ``0.5`` unchanged, so the same supplied fractional gates replay differently depending on ``p``
+          (`#4809 <https://github.com/kornia/kornia/issues/4809>`_).
+        - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
+          that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
+        - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
+          inherit their input, dtype, RNG and replay contracts. A wrapper pickles only with a named magnitude
+          mapping and ``symmetric_megnitude=False`` (with default arguments, only ``Posterize``); otherwise its
+          local closure blocks pickling (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
 
     """
 

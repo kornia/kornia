@@ -97,9 +97,7 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 
     joint_kernel_values = torch.matmul(kernel_values1.transpose(1, 2), kernel_values2)
     normalization = torch.sum(joint_kernel_values, dim=(1, 2)).view(-1, 1, 1) + epsilon
-    pdf = joint_kernel_values / normalization
-
-    return pdf
+    return joint_kernel_values / normalization
 
 
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
@@ -158,9 +156,7 @@ def histogram2d(
     _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
     _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
-    pdf = joint_pdf(kernel_values1, kernel_values2)
-
-    return pdf
+    return joint_pdf(kernel_values1, kernel_values2)
 
 
 def _restore_float_dtype(hist: torch.Tensor, image: torch.Tensor, auto_centers: bool) -> torch.Tensor:

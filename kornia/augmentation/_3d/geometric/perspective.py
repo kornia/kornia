@@ -48,10 +48,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
         - ``distortion_scale=0`` generates identical source and destination corners, and the warp reproduces
-          its input under either ``align_corners`` setting up to float32 grid precision: the sampling grid is
-          built by :func:`kornia.geometry.grid.create_meshgrid3d` in float32, so a ``float64`` volume is
-          reproduced only to that precision -- about ``1e-7`` for a small volume in ``[0, 1]``, growing with
-          its size -- while the affine and rotation paths are exact to ``float64`` roundoff.
+          its input under either ``align_corners`` setting up to floating-point roundoff.
         - the default interpolation is bilinear and the default ``align_corners`` is ``False``.
 
     Examples:

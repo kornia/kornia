@@ -32,17 +32,15 @@ class RandomThinPlateSpline(AugmentationBase2D):
     .. image:: _static/img/RandomThinPlateSpline.png
 
     Convention:
-        See the shared contract on :class:`~kornia.augmentation.AugmentationBase2D`.
         Five control points use normalized ``(x, y)`` coordinates: ``(-1, -1)``, ``(-1, 1)``,
         ``(1, -1)``, ``(1, 1)``, and ``(0, 0)``. Each destination coordinate receives uniform
         noise between ``-scale`` and ``scale``; zero scale leaves these points unchanged.
-        Sampling is bilinear with zero padding and ``align_corners=False`` by default; no
-        interpolation-mode argument is exposed. Output spatial size is unchanged, and there is
-        no ``transform_matrix`` or ``inverse`` interface. Spatial labels in containers have
-        additional limitations; see `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
-
-        With zero scale, the image warp is identity up to numerical precision for either ``align_corners``
-        setting with float16, float32, float64, and bfloat16 inputs.
+        Sampling is bilinear, with no interpolation-mode argument. Zero scale is an identity warp up to
+        interpolation roundoff for either ``align_corners``. There is no ``transform_matrix`` or ``inverse``;
+        spatial labels in containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        Its defaults and the ``align_corners`` split across classes
+        (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
 
     Args:
         scale: the non-negative scale factor to apply to the destination points.

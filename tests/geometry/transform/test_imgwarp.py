@@ -666,6 +666,18 @@ class TestWarpPerspective(BaseTester):
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (h_out, w_out))
         assert img_a.shape == (batch_size, channels, h_out, w_out)
 
+    @pytest.mark.parametrize("size", [8, 64])
+    def test_identity_float64_precision(self, device, size):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # the sampling grid is built in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff like warp_affine, not to float32 grid precision
+        img = torch.rand(1, 1, size, size, device=device, dtype=torch.float64)
+        homo = torch.eye(3, device=device, dtype=torch.float64)[None]
+        out = kornia.geometry.warp_perspective(img, homo, (size, size), align_corners=True)
+        assert out.dtype == torch.float64
+        self.assert_close(out, img, rtol=0.0, atol=1e-12)
+
     def test_exception(self, device, dtype):
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         homo = torch.eye(3, device=device, dtype=dtype)[None]
@@ -740,6 +752,23 @@ class TestWarpPerspective(BaseTester):
         Hn = kornia.geometry.conversions.normalize_homography(H, (4, 6), (3, 5))
         hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 5), align_corners=True)
         self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
+
+    def test_wart_homography_warp_pixel_path_ignores_mode_and_align_corners_4772(self, device, dtype):
+        # With normalized_homography=False, homography_warp calls warp_perspective with mode="bilinear"
+        # and align_corners=True whatever it was given (#4772). Reflection padding makes align_corners
+        # visible; a 1.5-pixel shift makes nearest differ from bilinear. Flips once both are forwarded.
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        H = torch.tensor([[[1.0, 0.0, 1.5], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        warp = kornia.geometry.transform.warp_perspective
+        hw = kornia.geometry.transform.homography_warp(
+            img, H, (4, 4), padding_mode="reflection", align_corners=False, normalized_homography=False
+        )
+        self.assert_close(hw, warp(img, H, (4, 4), padding_mode="reflection", align_corners=True))
+        assert not torch.allclose(hw, warp(img, H, (4, 4), padding_mode="reflection", align_corners=False), atol=0.1)
+
+        hn = kornia.geometry.transform.homography_warp(img, H, (4, 4), mode="nearest", normalized_homography=False)
+        self.assert_close(hn, warp(img, H, (4, 4), mode="bilinear"))
+        assert not torch.allclose(hn, warp(img, H, (4, 4), mode="nearest"), atol=0.1)
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_convention_identity_agrees_with_warp_affine(self, align_corners, device, dtype):
@@ -932,6 +961,15 @@ class TestRemap(BaseTester):
         actual = kornia.geometry.remap(image, pixel_grid[..., 0], pixel_grid[..., 1])
 
         self.assert_close(actual, image, atol=0.0, rtol=0.0)
+
+    def test_wart_remap_identity_pixel_map_resamples_at_default_4504(self, device, dtype):
+        # remap normalizes pixel maps with the align_corners=True mapping whatever flag it passes to
+        # grid_sample, so at the default (None, i.e. False) an identity map does not reproduce the
+        # input (#4504). Flips once the normalization follows align_corners.
+        image = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        grid = kornia.geometry.create_meshgrid(4, 4, normalized_coordinates=False, device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.remap(image, grid[..., 0], grid[..., 1], align_corners=True), image)
+        assert not torch.allclose(kornia.geometry.remap(image, grid[..., 0], grid[..., 1]), image, atol=1.0)
 
     @pytest.mark.parametrize("source_empty", [False, True])
     def test_empty_maps_return_autograd_connected_output(self, source_empty, device, dtype):

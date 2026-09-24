@@ -17,15 +17,26 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.augmentation.utils.helpers import _pad_with_fill
 from kornia.constants import Resample
-from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
+from kornia.geometry import crop_by_transform_mat3d
+
+
+def _crop_translation3d(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    """Return the matrix of a crop, which only moves the first ``src`` vertex onto the first ``dst`` vertex.
+
+    Solving the perspective system from the eight vertices instead fails for a crop with a size-1 axis, whose
+    vertices are coplanar (#4705).
+    """
+    transform = torch.eye(4, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
+    transform[:, :3, 3] = dst[:, 0] - src[:, 0]
+    return transform
 
 
 class RandomCrop3D(GeometricAugmentationBase3D):
@@ -46,9 +57,11 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         pad_if_needed: It will F.pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
-        fill: Pixel fill value for constant fill. Default is 0.
-            This value is only used when the padding_mode is constant.
-        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
+        fill: Voxel fill value for constant fill. Default is 0. A sequence gives one value per channel,
+            so it must be as long as the input's channel dimension. This value is only used when the
+            padding_mode is constant, and a sequence requires it.
+        padding_mode: Type of padding, passed to F.pad. Should be: constant, reflect, replicate or circular.
+            Default is constant.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
@@ -68,17 +81,17 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         - ``size`` and the output shape are ordered ``(D, H, W)``. A scalar ``padding`` expands to every side;
           three values expand as ``(left/right, top/bottom, front/back)``, and six are passed to
           :func:`torch.nn.functional.pad` as ``(left, right, top, bottom, front, back)`` before the crop is drawn.
-        - ``transform_matrix`` maps the padded volume to the crop, not the original input to the crop. Add the
-          left, top, and front padding to an original ``(x, y, z)`` point before applying this matrix. For example,
-          padding a ``3 x 3 x 3`` input by ``1`` and cropping the full ``5 x 5 x 5`` volume records an identity
-          matrix even though the original voxel ``(1, 1, 1)`` moves to ``(2, 2, 2)``.
-        - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped,
-          but it is off by one: a crop exactly one voxel larger than the padded volume along an axis is accepted
-          and the output gains a slab that is zero up to resampling roundoff, while two or more raise
-          ``ValueError``
-          (`#4688 <https://github.com/kornia/kornia/issues/4688>`_). :class:`CenterCrop3D` rejects the
-          one-voxel case. A valid gated-off call returns the input itself -- unpadded, at the input shape rather
-          than ``size`` -- with an identity ``transform_matrix``.
+        - ``transform_matrix`` maps the padded volume to the crop, not the original input to the crop
+          (`#4801 <https://github.com/kornia/kornia/issues/4801>`_). Add the left, top, and front padding to an
+          original ``(x, y, z)`` point before applying this matrix: padding a ``3 x 3 x 3`` input by ``1`` and
+          cropping the full ``5 x 5 x 5`` volume records an identity matrix although voxel ``(1, 1, 1)`` moves to
+          ``(2, 2, 2)``.
+        - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped: a
+          crop larger than the padded volume along any axis, even by one voxel, raises; a crop equal to it is
+          valid. The exception types differ from :class:`CenterCrop3D`'s, and an ``int`` ``size`` is rejected
+          (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
+          A valid gated-off call returns the input unchanged -- unpadded, at the input shape rather than ``size`` --
+          with an identity ``transform_matrix``.
           Defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:
@@ -106,7 +119,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         size: Tuple[int, int, int],
         padding: Optional[Union[int, Tuple[int, int, int], Tuple[int, int, int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False,
-        fill: int = 0,
+        fill: Union[float, Sequence[float]] = 0,
         padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
@@ -161,14 +174,14 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         flags = self.flags if flags is None else flags
         # Keep fixed and automatic padding separate to preserve non-constant boundary values.
         for padding in self._compute_padding(tuple(input.shape), flags):
-            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            input = _pad_with_fill(input, padding, flags["fill"], flags["padding_mode"])
 
         return input
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
         return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(

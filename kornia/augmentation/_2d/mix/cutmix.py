@@ -78,17 +78,14 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           ``2 ** 24`` stay exact.
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
-        - ``p`` is a batch-wide gate and is applied once: one draw per call selects the whole batch with probability
-          ``p``, so ``_params["batch_prob"]`` is all ones or all zeros. Every row and mix of a selected batch receives
-          a cut and none is dropped again. With ``same_on_batch=False`` each row and mix draws its own cut size, but
-          the placement comes from one uniform draw per axis that all of them share
-          (`#4712 <https://github.com/kornia/kornia/issues/4712>`_); ``same_on_batch=True`` shares the size as well,
-          so all rows and mixes receive one geometry. A cut can still leave the image unchanged through self-pairing
-          or a zero-sized cut.
-          At ``p=0`` the image is unchanged and each class row contains the original
-          label twice with lambda zero. The current ``cut_size`` interpretation and its rejection of a minimum of
-          ``1`` are described in its argument above; this is the repaired behavior from
-          `#4439 <https://github.com/kornia/kornia/issues/4439>`_.
+        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`
+          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_): ``_params["batch_prob"]`` is all ones or all zeros,
+          and every row and mix of a selected batch receives a cut, though self-pairing or a zero-sized cut can
+          leave a row unchanged. With ``same_on_batch=False`` each row and mix draws its own cut size and placement;
+          ``same_on_batch=True`` shares one geometry, and with ``num_mix > 1`` one pairing too, so every mix
+          repeats the first cut while the labels credit the donor once per mix
+          (`#4805 <https://github.com/kornia/kornia/issues/4805>`_). At ``p=0`` the image is unchanged and each
+          class row contains the original label twice with lambda zero.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
@@ -100,13 +97,13 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         >>> label = torch.tensor([0, 1])
         >>> cutmix = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
         >>> cutmix(input, label)
-        [tensor([[[[0.8879, 0.4510, 1.0000],
+        [tensor([[[[1.0000, 1.0000, 1.0000],
                   [0.1498, 0.4015, 1.0000],
-                  [1.0000, 1.0000, 1.0000]]],
+                  [0.4594, 0.1756, 1.0000]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[1.0000, 1.0000, 0.7995],
-                  [1.0000, 1.0000, 0.0542],
+                [[[0.8879, 1.0000, 1.0000],
+                  [0.1498, 1.0000, 1.0000],
                   [0.4594, 0.1756, 0.9492]]]]), tensor([[[0.0000, 1.0000, 0.5556],
                  [1.0000, 0.0000, 0.5556]]])]
 

@@ -52,6 +52,8 @@ class VideoSequential(ImageSequential):
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If None, the whole list of args will be processed as a sequence.
+        if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, as in
+            :class:`~kornia.augmentation.container.ImageSequential`: ``'raise'`` or ``'skip'``.
 
     Convention:
         - the input is 5-dimensional and the layout is named by ``data_format``, which accepts ``"BTCHW"``
@@ -137,6 +139,7 @@ class VideoSequential(ImageSequential):
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
+        if_unsupported_ops: str = "raise",
     ) -> None:
         super().__init__(
             *args,
@@ -144,6 +147,7 @@ class VideoSequential(ImageSequential):
             keepdim=None,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
+            if_unsupported_ops=if_unsupported_ops,
         )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()

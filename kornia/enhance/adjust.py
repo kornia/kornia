@@ -71,6 +71,25 @@ def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
     torch._assert_async(cond, msg)
 
 
+def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
+    """Right-pad ``factor`` with singleton dimensions so it broadcasts against ``image``.
+
+    A ``factor`` with more dimensions than ``image`` can never reach the image rank by appending
+    dimensions, so padding it would loop forever. Reject it here instead of hanging. The padding
+    only lines the ranks up: shapes that still do not broadcast are reported by the op itself.
+    """
+    if factor.dim() > image.dim():
+        raise ValueError(
+            f"Factor has more dimensions than the image and cannot be broadcast: got factor shape "
+            f"{tuple(factor.shape)} for image shape {tuple(image.shape)}."
+        )
+
+    while factor.dim() != image.dim():
+        factor = factor[..., None]
+
+    return factor
+
+
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
@@ -85,9 +104,7 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # unpack the hsv values
     h, s, v = torch.chunk(image, chunks=3, dim=-3)
@@ -143,9 +160,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     x_other: torch.Tensor = rgb_to_grayscale(image)
 
@@ -187,16 +202,41 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
         torch.Size([2, 3, 3, 3])
 
     """
-    # convert the rgb image to hsv
-    x_hsv: torch.Tensor = rgb_to_hsv(image)
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # perform the conversion
-    x_adjusted: torch.Tensor = adjust_saturation_raw(x_hsv, factor)
+    # Reordering the HSV arithmetic has visibly different rounding in half precision (up to
+    # ~7e-3 in float16 and ~6e-2 in bfloat16 over the unit cube). Keep the established path there;
+    # the direct formula below agrees to float32 precision and targets the common augmentation dtype.
+    if not image.is_floating_point() or image.dtype in (torch.float16, torch.bfloat16):
+        return hsv_to_rgb(adjust_saturation_raw(rgb_to_hsv(image), factor))
 
-    # convert back to rgb
-    out: torch.Tensor = hsv_to_rgb(x_adjusted)
+    if isinstance(factor, float):
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
+    else:
+        factor = factor.to(image.device, image.dtype)
 
-    return out
+    factor = _make_factor_broadcastable(factor, image)
+    if factor.shape[-3] != 1:
+        raise ValueError(f"Factor must hold one value per image, not per channel. Got shape {factor.shape}")
+
+    # Scaling saturation in HSV keeps value (the maximum RGB channel) and hue fixed, so it is
+    # equivalent to scaling each channel's distance from the minimum RGB channel. Expressing that
+    # relation directly avoids materialising an HSV image and the expensive HSV-to-RGB sextant
+    # selection. Keep rgb_to_hsv's guarded divisors so gradients stay finite at black and
+    # grayscale pixels.
+    max_rgb = image.amax(dim=-3, keepdim=True)
+    min_rgb = image.amin(dim=-3, keepdim=True)
+    delta = max_rgb - min_rgb
+    value_divisor = torch.where(max_rgb == 0, torch.ones_like(max_rgb), max_rgb + 1e-8)
+    saturation = delta / value_divisor
+    saturation = torch.clamp(saturation * factor, min=0, max=1)
+
+    adjusted_delta = max_rgb * saturation
+    delta_divisor = torch.where(delta == 0, torch.ones_like(delta), delta)
+    return (image - min_rgb) * (adjusted_delta / delta_divisor) + (max_rgb - adjusted_delta)
 
 
 def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
@@ -215,9 +255,7 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
     factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # unpack the hsv values
     h, s, v = torch.chunk(image, chunks=3, dim=-3)
@@ -341,11 +379,8 @@ def adjust_gamma(
         "Gain must be non-negative. Clamp it first: max(gain, 0.0) for floats, gain.clamp_min(0.0) for tensors.",
     )
 
-    for _ in range(len(input.shape) - len(gamma.shape)):
-        gamma = torch.unsqueeze(gamma, dim=-1)
-
-    for _ in range(len(input.shape) - len(gain.shape)):
-        gain = torch.unsqueeze(gain, dim=-1)
+    gamma = _make_factor_broadcastable(gamma, input)
+    gain = _make_factor_broadcastable(gain, input)
 
     # Apply the gamma correction
     x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
@@ -412,9 +447,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     _assert_async_value_check(
         (factor >= 0).all(),
@@ -471,23 +504,19 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
     if image.shape[-3] == 3:
         img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
     else:
-        img_mean = image.mean()
+        img_mean = image.mean((-3, -2, -1), True)
 
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
 
-    img_adjust = img_adjust.clamp(min=0.0, max=1.0)
-
-    return img_adjust
+    return img_adjust.clamp(min=0.0, max=1.0)
 
 
 def adjust_brightness(
@@ -546,9 +575,7 @@ def adjust_brightness(
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # shift pixel values
     img_adjust: torch.Tensor = image + factor
@@ -601,9 +628,7 @@ def adjust_brightness_accumulative(
     elif isinstance(factor, torch.Tensor):
         factor = factor.to(image.device, image.dtype)
 
-    # make factor broadcastable
-    while len(factor.shape) != len(image.shape):
-        factor = factor[..., None]
+    factor = _make_factor_broadcastable(factor, image)
 
     # shift pixel values
     img_adjust: torch.Tensor = image * factor
@@ -1227,7 +1252,7 @@ class AdjustSaturation(nn.Module):
 class AdjustSaturationWithGraySubtraction(nn.Module):
     r"""Adjust color saturation of an image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    It blends the image with its grayscale, ``factor * image + (1 - factor) * gray``, as torchvision and PIL do.
     The input image is expected to be in the range of [0, 1].
 
     The input image is expected to be an RGB or gray image in the range of [0, 1].
@@ -1288,7 +1313,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
 class AdjustHue(nn.Module):
     r"""Adjust hue of an image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    ``factor`` is in radians: it matches torchvision's ``adjust_hue`` with ``hue_factor = factor / (2 * pi)``.
     The input image is expected to be in the range of [0, 1].
 
     The input image is expected to be an RGB image in the range of [0, 1].
@@ -1442,7 +1467,8 @@ class AdjustContrast(nn.Module):
 class AdjustContrastWithMeanSubtraction(nn.Module):
     r"""Adjust Contrast of an image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    For an RGB image it blends the image with its grayscale mean, ``factor * image + (1 - factor) * mean``, as
+    torchvision and PIL do.
     The input image is expected to be in the range of [0, 1].
 
     Args:
@@ -1620,7 +1646,7 @@ class AdjustLog(nn.Module):
 class AdjustBrightnessAccumulative(nn.Module):
     r"""Adjust Brightness of an image accumulatively.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    It multiplies the image by ``factor``, as torchvision's and PIL's brightness does.
     The input image is expected to be in the range of [0, 1].
 
     Args:

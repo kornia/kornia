@@ -19,6 +19,7 @@ import copy
 import io
 import os
 import pickle
+import subprocess
 import sys
 from typing import Any, Dict, Optional, Tuple, Type
 from unittest.mock import patch
@@ -1333,6 +1334,91 @@ class TestColorJiggle(BaseTester):
         res = f(input)
         self.assert_close(res[0], res[1])
 
+    def test_fixed_order(self, device, dtype):
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        params["order"] = torch.tensor([3, 2, 1, 0], device=device, dtype=torch.long)
+        self.assert_close(op(image, params=params), expected)
+        # The fixed order dispatches through torch.cond, the sampled order through Python branches.
+        params["order"] = torch.tensor([0, 1, 2, 3], device=device, dtype=torch.long)
+        sampled = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0)
+        assert torch.equal(sampled(image, params=params), expected)
+        with pytest.raises(ValueError, match=r"entries must be in 0\.\.3"):
+            ColorJiggle(order=(0, 1, 9))
+        with pytest.raises(ValueError, match="must not repeat an index"):
+            ColorJiggle(order=(0, 0, 1))
+
+    @pytest.mark.device_agnostic
+    def test_fixed_order_keeps_distribution_validation(self):
+        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
+        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
+        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        script = (
+            "import torch\n"
+            "from torch.distributions import Distribution\n"
+            "from kornia.augmentation import ColorJiggle\n"
+            "Distribution.set_default_validate_args(True)\n"
+            "ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(torch.rand(2, 3, 8, 8))\n"
+            "assert Distribution._validate_args, 'ColorJiggle disabled Distribution validation'\n"
+        )
+        # Trusted, fixed command (the current interpreter running a literal script); no external input.
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
+        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
+        # 3.13), so a fixed order must fall back to the Python dispatch there.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
+        fallback = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert torch.equal(fallback(image, params=params), expected)
+
+    def test_dynamo_fixed_order(self, device, dtype):
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)
+        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        compiled = torch.compile(op, fullgraph=True)
+        expected = op(image, params=params)
+        actual = compiled(image, params=params)
+        self.assert_close(actual, expected)
+        expected_grad = torch.autograd.grad(expected.sum(), image, retain_graph=True)[0]
+        actual_grad = torch.autograd.grad(actual.sum(), image, retain_graph=True)[0]
+        self.assert_close(actual_grad, expected_grad)
+
+        # The full forward samples factors in graph while using the fixed application order.
+        fresh = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert torch.compile(fresh, fullgraph=True)(image).shape == image.shape
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("layout", ["channels_last", "transposed"])
+    def test_dynamo_fixed_order_noncontiguous(self, layout):
+        image = torch.rand(2, 3, 8, 10)
+        if layout == "channels_last":
+            image = image.to(memory_format=torch.channels_last)
+        else:
+            image = image.transpose(-1, -2)
+        image.requires_grad_()
+
+        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        actual = torch.compile(op, fullgraph=True)(image, params=params)
+        self.assert_close(actual, expected)
+        expected_grad = torch.autograd.grad(expected.sum(), image, retain_graph=True)[0]
+        actual_grad = torch.autograd.grad(actual.sum(), image)[0]
+        self.assert_close(actual_grad, expected_grad)
+
     def _get_expected_brightness(self, device, dtype):
         return torch.tensor(
             [
@@ -1719,8 +1805,10 @@ class TestColorJitter(BaseTester):
         img = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         out = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(img)
         assert out.shape == img.shape
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"entries must be in 0\.\.3"):
             ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 1, 9))
+        with pytest.raises(ValueError, match="must not repeat an index"):
+            ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 0, 1))
 
     def test_dynamo_fixed_order(self, device, dtype, torch_optimizer):
         # A fixed `order` avoids iterating the random order tensor, so it is fullgraph-safe.
@@ -1734,6 +1822,80 @@ class TestColorJitter(BaseTester):
         torch._dynamo.reset()
         fresh = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
         assert torch.compile(fresh, fullgraph=True)(img).shape == img.shape
+
+    @pytest.mark.device_agnostic
+    def test_fixed_order_keeps_distribution_validation(self):
+        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
+        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
+        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        script = (
+            "import torch\n"
+            "from torch.distributions import Distribution\n"
+            "from kornia.augmentation import ColorJitter\n"
+            "Distribution.set_default_validate_args(True)\n"
+            "ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(torch.rand(2, 3, 8, 8))\n"
+            "assert Distribution._validate_args, 'ColorJitter disabled Distribution validation'\n"
+        )
+        # Trusted, fixed command (the current interpreter running a literal script); no external input.
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
+        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
+        # 3.13), so a fixed order must fall back to the Python dispatch there.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
+        fallback = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert torch.equal(fallback(image, params=params), expected)
+
+    @pytest.mark.parametrize(
+        ("step", "factors"),
+        [
+            (0, [0.0, 0.0]),
+            (0, [1.0, 1.0]),
+            (0, [0.0, 1.2]),
+            (1, [1.0, 1.0]),
+            (1, [1.0, 1.2]),
+            (2, [1.0, 1.0]),
+            (2, [1.0, 0.8]),
+            (3, [0.0, 0.0]),
+            (3, [0.0, 0.05]),
+        ],
+        ids=[
+            "brightness-0",
+            "brightness-1",
+            "brightness-mixed",
+            "contrast-1",
+            "contrast-mixed",
+            "saturation-1",
+            "saturation-mixed",
+            "hue-0",
+            "hue-mixed",
+        ],
+    )
+    def test_fixed_order_guards_match_sampled_order(self, device, dtype, step, factors):
+        # A fixed order on an RGB input dispatches through torch.cond, a sampled order through Python guards
+        # (#4813). Both must skip the same factors, and run a step on the whole batch when any factor in it is
+        # not neutral: a skipped step returns the out-of-range pixels as they are, a step that runs clamps them,
+        # and a hue step that runs zeroes the pixel whose largest channel is 0.
+        pixels = torch.tensor([[-0.5, -0.5], [0.25, -0.2], [1.75, 0.0]], device=device, dtype=dtype)
+        image = pixels.reshape(1, 3, 1, 2).repeat(2, 1, 1, 1)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(step,))
+        params = op.forward_parameters(image.shape)
+        key = ("brightness_factor", "contrast_factor", "saturation_factor", "hue_factor")[step]
+        params[key] = torch.tensor(factors, device=params[key].device, dtype=params[key].dtype)
+        params["order"] = torch.tensor([step], device=params["order"].device, dtype=params["order"].dtype)
+        sampled = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0)
+        assert torch.equal(op(image, params=params), sampled(image, params=params))
 
     def test_color_jitter(self, device, dtype):
         if dtype == torch.float16:
@@ -1912,6 +2074,15 @@ class TestColorJitter(BaseTester):
         expected = self._get_expected_contrast(device, dtype)
 
         self.assert_close(f(input), expected, low_tolerance=True)
+
+    def test_non_rgb_contrast_is_batch_independent(self, device, dtype):
+        image = torch.tensor([[[[0.8, 0.9], [0.7, 0.6]]], [[[0.0, 0.1], [0.2, 0.1]]]], device=device, dtype=dtype)
+        jitter = ColorJitter(contrast=(0.5, 0.5), p=1.0, order=(1,))
+
+        batched = jitter(image)
+        separate = torch.cat([jitter(sample.unsqueeze(0)) for sample in image])
+
+        self.assert_close(batched, separate)
 
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
@@ -2131,6 +2302,7 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
+    @pytest.mark.parametrize("fixed", [True, False], ids=["fixed-order", "sampled-order"])
     @pytest.mark.parametrize(
         "jitter_kwargs,order",
         [
@@ -2141,7 +2313,9 @@ class TestColorJitter(BaseTester):
         ],
         ids=["brightness", "contrast", "saturation", "hue"],
     )
-    def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order):
+    def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order, fixed):
+        # .compile() must replace what apply_transform executes (#4038): the torch.cond dispatcher for a fixed
+        # order on an RGB input, the four step helpers for a sampled order.
         compiled_graphs = []
 
         def backend(graph_module, _example_inputs):
@@ -2153,8 +2327,9 @@ class TestColorJitter(BaseTester):
             device=device,
             dtype=dtype,
         )
-        f = ColorJitter(**jitter_kwargs, p=1.0, order=order)
+        f = ColorJitter(**jitter_kwargs, p=1.0, order=order if fixed else None)
         params = f.forward_parameters(input.shape)
+        params["order"] = torch.tensor(order, device=params["order"].device, dtype=params["order"].dtype)
         expected = f(input, params=params)
         assert not torch.equal(expected, input)
 
@@ -3390,6 +3565,24 @@ class TestRandomRotation(BaseTester):
 
 
 class TestRandomCrop(BaseTester):
+    def test_fill_accepts_one_value_per_channel(self, device, dtype):
+        image = torch.zeros(1, 3, 2, 2, device=device, dtype=dtype)
+        fill = (0.25, 0.5, 0.75)
+        padded = RandomCrop((4, 4), padding=1, fill=fill, p=1.0).precrop_padding(image)
+        assert padded.shape == (1, 3, 4, 4)
+        expected = image.new_tensor(fill).view(1, 3, 1, 1)
+        self.assert_close(padded[:, :, 0, 0], expected[:, :, 0, 0])
+        self.assert_close(padded[:, :, -1, -1], expected[:, :, 0, 0])
+        self.assert_close(padded[:, :, 1:3, 1:3], image)
+        scalar = RandomCrop((4, 4), padding=1, fill=7.0, p=1.0).precrop_padding(image)
+        self.assert_close(scalar[:, :, 0, 0], torch.full((1, 3), 7.0, device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    def test_fill_sequence_is_validated(self):
+        image = torch.zeros(1, 3, 2, 2)
+        with pytest.raises(ValueError, match="one value per channel"):
+            RandomCrop((4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(image)
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -3869,9 +4062,9 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.5000, 2.0000],
-                        [4.0000, 4.5000, 5.0000],
-                        [7.0000, 7.5000, 8.0000],
+                        [3.0000, 4.0000, 5.0000],
+                        [4.5000, 5.5000, 6.5000],
+                        [6.0000, 7.0000, 8.0000],
                     ]
                 ]
             ],
@@ -3879,13 +4072,14 @@ class TestRandomResizedCrop(BaseTester):
             dtype=dtype,
         )
         rrc = RandomResizedCrop(size=(3, 3), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         self.assert_close(out, expected)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
-            [[[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]]],
+            [[[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]],
             device=device,
             dtype=dtype,
         )
@@ -3907,10 +4101,10 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.3333, 1.6667, 2.0000],
-                        [3.0000, 3.3333, 3.6667, 4.0000],
-                        [5.0000, 5.3333, 5.6667, 6.0000],
-                        [7.0000, 7.3333, 7.6667, 8.0000],
+                        [3.0000, 3.6667, 4.3333, 5.0000],
+                        [4.0000, 4.6667, 5.3333, 6.0000],
+                        [5.0000, 5.6667, 6.3333, 7.0000],
+                        [6.0000, 6.6667, 7.3333, 8.0000],
                     ]
                 ]
             ],
@@ -3919,14 +4113,15 @@ class TestRandomResizedCrop(BaseTester):
         )
 
         rrc = RandomResizedCrop(size=(4, 4), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         assert out.shape == torch.Size([1, 1, 4, 4])
         self.assert_close(out, exp, low_tolerance=True)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
-            [[[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]]],
+            [[[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]],
             device=device,
             dtype=dtype,
         )
@@ -3948,16 +4143,16 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.5000, 2.0000],
-                        [4.0000, 4.5000, 5.0000],
-                        [7.0000, 7.5000, 8.0000],
+                        [3.0000, 4.0000, 5.0000],
+                        [4.5000, 5.5000, 6.5000],
+                        [6.0000, 7.0000, 8.0000],
                     ]
                 ],
                 [
                     [
-                        [0.0000, 0.5000, 1.0000],
-                        [3.0000, 3.5000, 4.0000],
-                        [6.0000, 6.5000, 7.0000],
+                        [0.0000, 1.0000, 2.0000],
+                        [1.5000, 2.5000, 3.5000],
+                        [3.0000, 4.0000, 5.0000],
                     ]
                 ],
             ],
@@ -3965,15 +4160,16 @@ class TestRandomResizedCrop(BaseTester):
             dtype=dtype,
         )
         rrc = RandomResizedCrop(size=(3, 3), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (2, 2) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         self.assert_close(out, expected)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
             [
-                [[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]],
-                [[[0.0, 1.0, 0.0], [3.0, 4.0, 0.0], [6.0, 7.0, 0.0]]],
+                [[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]],
+                [[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [0.0, 0.0, 0.0]]],
             ],
             device=device,
             dtype=dtype,

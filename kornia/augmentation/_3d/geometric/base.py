@@ -34,11 +34,14 @@ class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
 
     Convention:
         - subclasses record a source-to-destination ``(B, 4, 4)`` voxel-coordinate matrix. Coordinates are
-          ordered ``(x, y, z)``, while volume tensor axes are ``(D, H, W)``. For :class:`RandomCrop3D`, the source
+          ordered ``(x, y, z)``, while volume tensor axes are ``(D, H, W)``. For :class:`RandomCrop3D`
+          (`#4801 <https://github.com/kornia/kornia/issues/4801>`_), the source
           frame is the padded volume: the matrix omits the translation introduced by pre-crop padding.
           Resampling follows the matrix in that source frame under either ``align_corners`` setting.
           Matrices use the input dtype, so integer voxel translations are rounded when that dtype cannot represent
-          them exactly (for example, float16 stores the width translation for ``W=2050`` as ``2048``).
-        - the matrix is useful for forward bookkeeping only: this base provides no 3D inverse implementation.
+          them exactly.
+        - a zero-parameter :class:`RandomAffine3D` or :class:`RandomRotation3D` warp reproduces its input up to
+          roundoff in ``float32`` and ``float64``. In half precision the sampling grid is itself rounded, so the
+          error grows with the volume size.
 
     """

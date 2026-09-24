@@ -36,7 +36,8 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
+            If Tuple[int, int] or a two-element list, it will randomly generate one odd value from the closed
+            range for the whole batch.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
@@ -62,35 +63,29 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - ``direction`` re-weights the kernel along that line before it is rotated: ``0`` spreads the weight evenly, and
           ``-1`` and ``+1`` pile it at opposite ends. The rotation then resamples the kernel with ``resample``:
           ``"nearest"`` can drop or duplicate taps, so the line's length and end weights change with ``angle``, and
-          ``"bilinear"`` or ``"bicubic"`` also spread weight off the line. The ends belong to the rotated line, so which
-          side of the image they fall on turns with ``angle`` and is not read off the image axes.
+          ``"bilinear"`` or ``"bicubic"`` also spread weight off the line.
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
-        - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]``
-          with shape ``(B,)``. All samples use that size, even with ``same_on_batch=False``; angle and
-          direction are sampled per image unless ``same_on_batch=True``. Previously saved parameters
-          with differing kernel sizes still select one entry via ``_params["idx"]`` for the whole batch.
-          The draw truncates a float, so the range's upper bound is practically never reached -- only when
-          the ``float32`` draw rounds onto it, about once in ``2**24`` -- and ``kernel_size=(3, 5)`` is a
-          constant ``3`` while ``(3, 7)`` draws only ``3`` and ``5``. An even bound is separately rounded
-          **up** out of the requested range, so ``(4, 4)`` draws ``5``. Tracked in
-          `#4599 <https://github.com/kornia/kornia/issues/4599>`_.
-        - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
-          border pixel is blended with ``0`` and pulled toward it: below the input's own minimum for a
-          positive image, and above its maximum for a negative one. With
-          ``border_type="reflect"`` the result stays between the input's extremes, up to rounding, at
-          ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative weights,
-          and the result can overshoot both extremes.
-        - an image smaller than the kernel is accepted, down to ``1 x 1``, at ``border_type="constant"``
-          and ``"replicate"``. ``"reflect"`` raises once a spatial axis is no longer than half the kernel
-          size along it, as the two padding blurs do, and ``"circular"`` raises a padding error of its own once the
-          kernel radius exceeds a spatial axis. Both are raw torch errors of the kind
-          `#4559 <https://github.com/kornia/kornia/issues/4559>`_ tracks, although that issue is scoped to the
-          three classes that raise at their *defaults* and names this one as accepting the same images --
-          which it does, at the default ``border_type="constant"``.
+        - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]`` with
+          shape ``(B,)``, so every sample uses that size even with ``same_on_batch=False``; angle and direction
+          are drawn per sample unless ``same_on_batch=True``. A tuple range draws each odd size inside it with
+          equal probability, bounds included, so ``(3, 20)`` draws ``3, 5, ..., 19``. A range that holds no odd
+          size is rounded up out of the requested range, so ``(4, 4)`` draws ``5``; a reversed one such as
+          ``(20, 3)`` raises at construction, and a drawn size below ``3`` raises on the forward pass.
+        - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a border
+          pixel is pulled toward ``0``. With ``border_type="reflect"`` the result stays between the input's
+          extremes, up to rounding, at ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives
+          the kernel negative weights, and the result can overshoot both extremes.
+        - an image smaller than the kernel is accepted, down to ``1 x 1``, at the default
+          ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` needs each spatial axis longer than
+          the kernel radius along it, and ``"circular"`` at least that long.
+
+    .. warning::
+        Under ``"reflect"`` and ``"circular"`` an image too small for the drawn kernel raises a raw torch padding
+        error, where :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise a ``ValueError`` naming the
+        class and the shape. Tracked in `#4784 <https://github.com/kornia/kornia/issues/4784>`_.
 
     Note:
-        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
         Please set ``resample`` to ``'bilinear'`` if more meaningful gradients wanted.
@@ -119,7 +114,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Union[int, Tuple[int, int]],
+        kernel_size: Union[int, Tuple[int, int], List[int]],
         angle: Union[torch.Tensor, float, Tuple[float, float]],
         direction: Union[torch.Tensor, float, Tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,

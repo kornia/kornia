@@ -145,9 +145,7 @@ class ZCAWhitening(nn.Module):
         if not self.fitted:
             raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
 
-        x_whiten = linear_transform(x, self.transform_matrix, self.mean_vector, self.dim)
-
-        return x_whiten
+        return linear_transform(x, self.transform_matrix, self.mean_vector, self.dim)
 
     def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
         r"""Apply the inverse transform to the whitened data.
@@ -170,9 +168,7 @@ class ZCAWhitening(nn.Module):
 
         mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)
 
-        y = linear_transform(x, self.transform_inv, mean_inv)
-
-        return y
+        return linear_transform(x, self.transform_inv, mean_inv)
 
 
 def zca_mean(
@@ -315,9 +311,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 
     transform, mean, _ = zca_mean(inp, dim, unbiased, eps, False)
 
-    inp_whiten = linear_transform(inp, transform, mean, dim)
-
-    return inp_whiten
+    return linear_transform(inp, transform, mean, dim)
 
 
 def linear_transform(
@@ -393,6 +387,4 @@ def linear_transform(
 
     inp_transformed = inp_transformed.reshape(inp_permute.size())
 
-    inp_transformed = inp_transformed.permute(inv_order)
-
-    return inp_transformed
+    return inp_transformed.permute(inv_order)

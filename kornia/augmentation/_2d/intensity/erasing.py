@@ -35,9 +35,7 @@ class RandomErasing(IntensityAugmentationBase2D):
     for each of the images in the batch.
 
     The rectangle *targets* an area equal to the original image area multiplied by a value sampled from
-    ``scale``, with an aspect ratio sampled from ``ratio``. The Convention block below records how far the
-    realised box can be from that target: the side lengths are rounded and clamped into ``[1, H] x [1, W]``,
-    and a ``ratio`` straddling ``1`` is not drawn uniformly.
+    ``scale``, with an aspect ratio sampled from ``ratio``.
 
     Args:
         scale: range of proportion of erased area against input image.
@@ -55,18 +53,13 @@ class RandomErasing(IntensityAugmentationBase2D):
     Convention:
         - ``scale`` is the fraction of the image *area* the rectangle targets and ``ratio`` is its height over
           its width, so a ratio above ``1`` targets a tall box and below ``1`` a wide one. The box is rounded
-          to whole pixels and then clamped to ``[1, H] x [1, W]`` -- a floor as well as a ceiling, so it is
-          never empty and never larger than the image -- and the erased area and shape can miss the target in
-          either direction: ``scale=(0.25, 0.25)`` with ``ratio=(3.0, 3.0)`` on a ``10 x 20`` image erases
-          ``10 x 4 = 40`` pixels of the 50 asked for, while ``scale=(0.0, 0.0)`` still erases one pixel and a
-          ``1 x 1`` image is always erased in full.
-        - when ``ratio`` straddles ``1`` the draw is not uniform over the interval: the generator builds one
-          sampler for ``[ratio[0], 1]`` and one for ``[1, ratio[1]]`` and picks between them with a fair coin,
-          so a ratio above and below ``1`` are equally likely whatever the two sub-intervals' widths. At the
-          default ``ratio=(0.3, 3.3)`` half the draws are above ``1``, where a uniform draw would give about
-          ``77%``. The realised box follows the drawn ratio only while the ``[1, H] x [1, W]`` clamp above
-          does not bite: on a square image half the boxes come back taller than wide, but on a ``4 x 256``
-          one none of them do. A ``ratio`` that does not straddle ``1`` takes the single-sampler branch.
+          to whole pixels and then clamped to ``[1, H] x [1, W]``, so it is never empty and never larger than the
+          image, and the erased area can miss the target in either direction: ``scale=(0.25, 0.25)`` with
+          ``ratio=(3.0, 3.0)`` on a ``10 x 20`` image erases ``10 x 4 = 40`` pixels of the 50 asked for, while
+          ``scale=(0.0, 0.0)`` still erases one pixel.
+        - when ``ratio`` straddles ``1`` the draw is not uniform over the interval: a fair coin picks between
+          ``[ratio[0], 1]`` and ``[1, ratio[1]]``, so at the default ``ratio=(0.3, 3.3)`` half the draws are above
+          ``1``.
         - the erased region is the half-open rectangle ``[ys, ys + h) x [xs, xs + w)`` in pixels, recorded as
           ``_params["ys"]``, ``["xs"]``, ``["heights"]`` and ``["widths"]``.
         - the erased pixels carry the literal ``value``, which has to lie in ``[0, 1]`` -- the parameter
@@ -76,8 +69,7 @@ class RandomErasing(IntensityAugmentationBase2D):
           in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
 
     Note:
-        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:

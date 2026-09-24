@@ -1,0 +1,1 @@
+`ColorJiggle` and `adjust_saturation` now avoid a redundant RGB-to-HSV round trip in float32 and float64, improving eager and compiled performance. At tied RGB extrema, the direct formula uses PyTorch's symmetric max/min subgradient instead of the arbitrary first-channel subgradient from the HSV branch.

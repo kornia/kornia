@@ -288,9 +288,7 @@ class EntropyBasedLossBase(torch.nn.Module):
         vals_1 = self.kernel_function(diff_1)
         vals_2 = self.kernel_function(diff_2)
 
-        joint_histogram = torch.einsum("...in,...jn->...ij", vals_1, vals_2)
-
-        return joint_histogram
+        return torch.einsum("...in,...jn->...ij", vals_1, vals_2)
 
     def entropies(
         self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None

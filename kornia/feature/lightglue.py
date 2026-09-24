@@ -51,8 +51,7 @@ def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
             kpts = kpts.to(torch.float32)
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
-    kpts = (kpts - shift[:, None]) / scale[:, None, None]
-    return kpts
+    return (kpts - shift[:, None]) / scale[:, None, None]
 
 
 def pad_to_length(x: torch.Tensor, length: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -871,7 +870,7 @@ class LightGlue(nn.Module):
             prune0 = torch.ones_like(mscores0) * self.conf.n_layers
             prune1 = torch.ones_like(mscores1) * self.conf.n_layers
 
-        pred = {
+        return {
             "log_assignment": scores,
             "matches0": m0,
             "matches1": m1,
@@ -883,8 +882,6 @@ class LightGlue(nn.Module):
             "prune0": prune0,
             "prune1": prune1,
         }
-
-        return pred
 
     def confidence_threshold(self, layer_index: int) -> float:
         """Scaled confidence threshold."""

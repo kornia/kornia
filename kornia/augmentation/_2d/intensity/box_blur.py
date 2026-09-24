@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType
 from kornia.filters import box_blur
 
@@ -46,27 +47,19 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
-          :func:`kornia.filters.box_blur`. An even entry is accepted and centres the window half a pixel toward
-          the top-left rather than raising -- a ``(2, 2)`` window on an impulse spreads it over the impulse's
-          own row and column and the one before each -- where :class:`RandomGaussianBlur` and
-          :class:`RandomMedianBlur` raise on the forward pass.
-        - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
-          rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
-          a constant image survives either up to the rounding of the kernel weights. ``border_type`` defaults
-          to ``"reflect"``, as the function does, and ``normalized=True`` matches
-          :func:`kornia.filters.box_blur`'s ``separable=True`` default.
-        - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
-          average of input values and stays between the input's own extremes, up to the rounding of the kernel
-          weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
-          the input's minimum for a positive image, and above its maximum for a negative one.
+        - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.box_blur`. An even
+          entry is accepted and shifts the image half a pixel toward the top-left -- for an even extent ``k``, output
+          ``i`` averages inputs ``i - k // 2 + 1`` to ``i + k // 2`` -- where :class:`RandomGaussianBlur` raises.
+        - the output is not clamped. At the default ``border_type="reflect"`` every output value is a mean of
+          input values and stays between the input's extremes, up to the rounding of the kernel weights;
+          ``border_type="constant"`` pads with zeros, which
+          pulls a border pixel toward ``0``.
 
-    .. warning::
-        At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel's extent
-        along that axis raises a raw torch ``RuntimeError`` about the padding rather than a kornia error naming the
-        class or the shape. ``"constant"`` and ``"replicate"`` run on the same image; ``"circular"`` raises a padding
-        error of its own, also raw, once the kernel radius exceeds that axis. Tracked in `#4559
-        <https://github.com/kornia/kornia/issues/4559>`_.
+    .. note::
+        The padding sets a minimum image size: at ``border_type="reflect"`` each spatial axis must be longer than
+        ``k // 2`` for a kernel extent ``k`` along it, and at ``"circular"`` at least that long; a smaller image
+        raises a ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and
+        ``"replicate"`` run down to a single pixel.
 
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
@@ -104,10 +97,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return box_blur(
-            input,
-            flags["kernel_size"],
-            # a per-call `border_type` override reaches `flags` unnormalized, so normalize here too
-            border_type=BorderType.get(flags["border_type"]).name.lower(),
-            separable=flags["normalized"],
-        )
+        # a per-call `border_type` override reaches `flags` unnormalized, so normalize here too
+        border_type = BorderType.get(flags["border_type"]).name.lower()
+        _check_filter_min_size("RandomBoxBlur", input, flags["kernel_size"], border_type=border_type)
+        return box_blur(input, flags["kernel_size"], border_type=border_type, separable=flags["normalized"])

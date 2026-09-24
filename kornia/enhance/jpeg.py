@@ -217,8 +217,7 @@ def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
     tmp = input @ basis
     output = (tmp.transpose(-1, -2) @ basis).transpose(-1, -2)
 
-    output = output * 0.25 + 128.0
-    return output
+    return output * 0.25 + 128.0
 
 
 def _jpeg_quality_to_scale(
@@ -281,8 +280,7 @@ def _quantize(
     )
     output: torch.Tensor = input / quantization_table
     # Perform rounding
-    output = _differentiable_polynomial_rounding(output)
-    return output
+    return _differentiable_polynomial_rounding(output)
 
 
 def _dequantize(
@@ -649,8 +647,7 @@ def jpeg_codec_differentiable(
     # Clip coded image
     image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
-    image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
-    return image_rgb_jpeg
+    return image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
 
 
 def _get_dct8_basis_scale(

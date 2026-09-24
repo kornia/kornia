@@ -29,7 +29,8 @@ from kornia.enhance.adjust import adjust_hue
 class RandomHue(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the hue of a torch.Tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The shift is in turns of the hue circle, the unit of torchvision's ``adjust_hue`` ``hue_factor``, so a
+    torchvision hue range carries over unchanged.
 
     .. image:: _static/img/RandomHue.png
 
@@ -53,9 +54,9 @@ class RandomHue(IntensityAugmentationBase2D):
         - the drawn shift is in turns of the hue circle, and the class multiplies it by ``2 * pi`` before
           calling :func:`kornia.enhance.adjust_hue`, which takes radians. Passing the same number
           straight to that primitive shifts the hue by a different amount.
-        - the result is not clamped, so a pixel outside ``[0, 1]`` keeps a channel outside it, up to the
-          rounding of the HSV round trip. The exception is a pixel whose largest channel is exactly ``0``,
-          which comes back as zeros in every dtype.
+        - the result is not clamped: a hue rotation keeps each pixel's largest and smallest channel, so a pixel
+          outside ``[0, 1]`` keeps a channel outside it. A pixel whose largest channel is exactly ``0`` comes back
+          as zeros.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_hue`

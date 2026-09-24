@@ -182,31 +182,15 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(patch_src[..., -1, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
 
     def test_convention_align_corners_default_false(self, device, dtype):
-        # HomographyWarper's bare default align_corners=False (every HomographyWarper construction in
-        # this file passes align_corners=True explicitly; this exercises the bare default). An identity
-        # homography must reproduce the input under either convention: the internal sampling grid is
-        # built to match align_corners, so the two agree rather than differing by half a pixel (#3904).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
-        # Snippet used to generate the pre-#3945 literal (the call under test, verbatim):
-        #   height, width = 4, 5
-        #   patch_src = torch.arange(float(height * width)).view(1, 1, height, width)
-        #   warper = kornia.geometry.transform.HomographyWarper(height, width)  # no align_corners passed
-        #   expected = warper(patch_src, torch.eye(3)[None])
-        # Pre-#3945 literal, i.e. what an *identity* warp returned under the bare default:
-        #   [[[[0.0000, 0.3750, 1.0000, 1.6250, 1.0000],
-        #      [2.0833, 4.9167, 6.1667, 7.4167, 4.0833],
-        #      [5.4167, 11.5833, 12.8333, 14.0833, 7.4167],
-        #      [3.7500, 7.8750, 8.5000, 9.1250, 4.7500]]]]
-        # The corrected expectation is the input itself, so it needs no literal.
+        # At HomographyWarper's bare default align_corners=False, an identity homography reproduces
+        # the input: the sampling grid is built under the same convention it samples with (#3904).
         height, width = 4, 5
         patch_src = torch.arange(float(height * width), device=device, dtype=dtype).view(1, 1, height, width)
         dst_homo_src = eye_like(3, patch_src)
         warper = kornia.geometry.transform.HomographyWarper(height, width)
         patch_dst = warper(patch_src, dst_homo_src)
         self.assert_close(patch_dst, patch_src, atol=1e-3, rtol=1e-3)
-        # the literal above cannot distinguish False from None (grid_sample treats them alike), so
-        # the documented defaults are additionally pinned on the signatures of both APIs
+        # the identity holds under either setting, so the default itself is pinned on the signatures
         import inspect
 
         assert (

@@ -602,8 +602,7 @@ class ResBlock(nn.Module):
         out = self.bn2(self.conv2(out))
         if self.downsample is not None:
             identity = self.downsample(x)
-        out = self.gate(out + identity)
-        return out
+        return self.gate(out + identity)
 
 
 # ---------------------------------------------------------------------------

@@ -314,8 +314,7 @@ class LineSegmentDetectionModule:
         sorted_values = torch.sort(heatmap_values, descending=True)[0]
         top10_len = math.ceil(sorted_values.shape[0] * ratio)
         max20 = torch.mean(sorted_values[:top10_len])
-        heatmap = torch.clamp(heatmap / max20, min=0.0, max=1.0)
-        return heatmap
+        return torch.clamp(heatmap / max20, min=0.0, max=1.0)
 
     def refine_heatmap_local(
         self,
@@ -350,9 +349,7 @@ class LineSegmentDetectionModule:
                 # Aggregate it to the final heatmap
                 heatmap_output[h_start:h_end, w_start:w_end] += subheatmap
                 count_map[h_start:h_end, w_start:w_end] += 1
-        heatmap_output = torch.clamp(heatmap_output / count_map, max=1.0, min=0.0)
-
-        return heatmap_output
+        return torch.clamp(heatmap_output / count_map, max=1.0, min=0.0)
 
     def candidate_suppression(self, junctions: torch.Tensor, candidate_map: torch.Tensor) -> torch.Tensor:
         """Suppress overlapping long lines in the candidate segments."""
@@ -506,14 +503,12 @@ class LineSegmentDetectionModule:
         cand_w_ceil = torch.ceil(cand_w).to(torch.long)
 
         # Perform the bilinear sampling
-        cand_samples_feat = (
+        return (
             heatmap[cand_h_floor, cand_w_floor] * (cand_h_ceil - cand_h) * (cand_w_ceil - cand_w)
             + heatmap[cand_h_floor, cand_w_ceil] * (cand_h_ceil - cand_h) * (cand_w - cand_w_floor)
             + heatmap[cand_h_ceil, cand_w_floor] * (cand_h - cand_h_floor) * (cand_w_ceil - cand_w)
             + heatmap[cand_h_ceil, cand_w_ceil] * (cand_h - cand_h_floor) * (cand_w - cand_w_floor)
         )
-
-        return cand_samples_feat
 
     def detect_local_max(
         self,
@@ -575,8 +570,7 @@ class LineSegmentDetectionModule:
 def line_map_to_segments(junctions: torch.Tensor, line_map: torch.Tensor) -> torch.Tensor:
     """Convert a junction connectivity map to a Nx2x2 torch.Tensor of segments."""
     junc_loc1, junc_loc2 = torch.where(torch.triu(line_map))
-    segments = torch.stack([junctions[junc_loc1], junctions[junc_loc2]], 1)
-    return segments
+    return torch.stack([junctions[junc_loc1], junctions[junc_loc2]], 1)
 
 
 def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01, top_k: int = 0) -> torch.Tensor:

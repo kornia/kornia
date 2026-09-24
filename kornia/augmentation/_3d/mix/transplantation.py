@@ -30,16 +30,8 @@ class RandomTransplantation3D(RandomTransplantation, AugmentationBase3D):  # typ
     See the Convention block on :class:`~kornia.augmentation.RandomTransplantation`.
 
     Convention:
-        - this subclass changes no behaviour. It exists so that
-          :class:`~kornia.augmentation.container.AugmentationSequential` dispatches it as a 3D augmentation;
-          called directly, it is byte-identical to the 2D class at every rank, volumes included.
-        - inside a container, use this class for ``(B, C, D, H, W)`` volumes and
-          :class:`~kornia.augmentation.RandomTransplantation` for ``(B, C, H, W)`` images. Only one of the two
-          mistakes is reported: the container refuses a 5D batch before the 2D class runs, while this class
-          returns a 4D batch unchanged, because the container builds a one-element gate from a rank it padded
-          (`#4692 <https://github.com/kornia/kornia/issues/4692>`_).
-        - it derives from both :class:`~kornia.augmentation.MixAugmentationBaseV2` and
-          :class:`~kornia.augmentation.AugmentationBase3D`, so it is the one 3D augmentation that carries a
-          mix ``inverse`` -- which raises ``RuntimeError`` -- and the one mix augmentation a container accepts
-          on five-dimensional volumes.
+        - called directly it behaves exactly like the 2D class; it exists so that
+          :class:`~kornia.augmentation.container.AugmentationSequential` dispatches it as a 3D augmentation. Inside a
+          container use it for ``(B, C, D, H, W)`` volumes and :class:`~kornia.augmentation.RandomTransplantation`
+          for ``(B, C, H, W)`` images; the container rejects 4D input for this class and 5D input for the 2D one.
     """

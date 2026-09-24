@@ -55,8 +55,7 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
 
 
 def _get_default_fginn_params() -> Dict[str, Any]:
-    config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
-    return config
+    return {"th": 0.85, "mutual": False, "spatial_th": 10.0}
 
 
 def _get_lazy_distance_matrix(

@@ -41,13 +41,10 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
           replay the same operations through ``forward(input, params=...)``.
         - its transformation matrix is the ordered product of its geometric wrapped operations. Intensity
           operations do not contribute to that matrix.
-        - direct ``forward_parameters`` delegates to each wrapped augmentation rather than to
-          :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`.
-          It consequently samples the wrapped operation's native
-          magnitude instead of the ``OperationBase`` magnitude mapping; the gate comes from the wrapped
-          augmentation's ``p`` on both paths. The magnitude bypass is tracked
-          in `#4441 <https://github.com/kornia/kornia/issues/4441>`_. Policy augmentations use their own
-          samplers where needed.
+        - ``forward_parameters`` samples each child through
+          :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`, so the operation's
+          magnitude, magnitude mapping and symmetric sign apply; the gate comes from the wrapped augmentation's
+          ``p``.
 
     Args:
         operations: the operations to perform, passed as positional arguments rather than as one list.
@@ -170,7 +167,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
             module = cast(OperationBase, module)
-            mod_param = module.op.forward_parameters(batch_shape)
+            mod_param = module.forward_parameters(batch_shape)
             param = ParamItem(name, mod_param)
             params.append(param)
         return params
