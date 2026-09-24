@@ -246,3 +246,26 @@ class TestNullVector3x4(BaseTester):
         A = torch.rand(1, 3, 4, device=device, dtype=dtype)
         v = s.null_vector_3x4(A)
         assert v.shape == (1, 4)
+
+
+class TestConventionNullVector3x4(BaseTester):
+    def test_convention_null_vector_3x4_cofactor_sign(self, device, dtype):
+        def null(rows):
+            return solvers.null_vector_3x4(torch.tensor(rows, device=device, dtype=dtype))
+
+        def expect(values):
+            return torch.tensor(values, device=device, dtype=dtype)
+
+        identity = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]
+        # v_j = (-1)^j det(A without column j): [I | 0] gives [0, 0, 0, -1], not the unit vector +e4, and the vector
+        # is not normalised (2 [I | 0] gives -8 e4).
+        self.assert_close(null(identity), expect([0.0, 0.0, 0.0, -1.0]))
+        self.assert_close(null([[2.0 * x for x in row] for row in identity]), expect([0.0, 0.0, 0.0, -8.0]))
+        # A generic integer matrix: the cofactors are exact in every dtype. |v| = sqrt(2896), where an SVD's null
+        # vector has unit norm and an arbitrary sign.
+        A = [[2.0, -1.0, 0.0, 3.0], [1.0, 3.0, -2.0, 0.0], [0.0, 1.0, 4.0, -1.0]]
+        self.assert_close(null(A), expect([40.0, -16.0, -4.0, -32.0]))
+        # Swapping two rows flips the sign; a rank-2 matrix gives the zero vector.
+        self.assert_close(null([A[1], A[0], A[2]]), expect([-40.0, 16.0, 4.0, 32.0]))
+        rank2 = [A[0], A[1], [a + 2.0 * b for a, b in zip(A[0], A[1])]]
+        self.assert_close(null(rank2), expect([0.0, 0.0, 0.0, 0.0]))
