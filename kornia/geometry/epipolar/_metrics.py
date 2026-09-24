@@ -288,6 +288,8 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     Convention:
         - Argument order as :func:`sampson_epipolar_distance`; returns the unsquared pixel distance of each
           ``pts2`` to the epipolar line of its ``pts1`` in the second image.
+        - Known defects: ``point_line_distance`` adds ``eps`` to the line norm, so the value depends slightly on
+          the scale of ``Fm`` (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
 
     Args:
        pts1: points in the first image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
@@ -321,6 +323,8 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     Convention:
         - Argument order as :func:`sampson_epipolar_distance`; returns the unsquared pixel distance of each
           ``pts1`` to the epipolar line of its ``pts2`` in the first image.
+        - Known defects: ``point_line_distance`` adds ``eps`` to the line norm, so the value depends slightly on
+          the scale of ``Fm`` (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
 
     Args:
        pts1: points in the first image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.

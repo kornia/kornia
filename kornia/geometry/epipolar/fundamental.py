@@ -87,8 +87,9 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     Convention:
         - Divides ``M`` by its last entry ``M[..., -1, -1]``, which gives :func:`find_fundamental` its
           ``F[2, 2] = 1`` scaling. A matrix whose last entry is within ``eps`` of zero is returned unchanged.
-        - Known defects: the divisor is ``M[..., -1, -1] + eps``, so the last entry is one only to
-          ``eps / |M[..., -1, -1]|`` (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
+        - Known defects: the divisor is ``M[..., -1, -1] + eps``, so the last entry is not exactly one, and it is
+          far from one when ``|M[..., -1, -1]|`` is close to ``eps``
+          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         M: The transformation to be normalized of any shape with a minimum size of 2x2.
@@ -160,7 +161,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
 
     The 7-point algorithm computes the fundamental matrix from exactly 7 point correspondences.
     Unlike the 8-point algorithm, this method returns 3 candidate fundamental matrices, one per root of the
-    rank-2 constraint, which is formulated as a cubic equation.
+    cubic that formulates the rank-2 constraint, padded to three.
 
     Reference: Hartley/Zisserman 11.1.2 pag.281
 

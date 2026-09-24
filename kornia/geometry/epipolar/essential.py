@@ -511,8 +511,8 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
     Convention:
         - Returns two rotations and a unit translation; the true pose is one of :math:`(R_1, \pm t)`,
-          :math:`(R_2, \pm t)`. Which rotation is the true one, like the sign of ``t``, is not fixed: it changes
-          with the sign, scale and dtype of ``E_mat``. Select by cheirality with
+          :math:`(R_2, \pm t)`. Which rotation is the true one, like the sign of ``t``, is not fixed: it can
+          change when ``E_mat`` is negated or rescaled. Select by cheirality with
           :func:`motion_from_essential_choose_solution`; :ref:`two-view geometry <two-view-conventions>`
           compares OpenCV's labels.
         - Known defects: a ``(3, 3)`` input returns rotations of shape ``(1, 3, 3)`` but ``t`` of shape
@@ -851,14 +851,16 @@ def find_essential(
 
     Convention:
         - ``points1`` (first image) and ``points2`` (second image) are normalised camera coordinates
-          :math:`K^{-1} [u, v, 1]^\top`, not pixels; each returned ``E`` satisfies :math:`x_2^\top E x_1 = 0`
+          :math:`K^{-1} [u, v, 1]^\top`, not pixels; each real candidate satisfies :math:`x_2^\top E x_1 = 0`
           in them. :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
-        - All ten slots are always returned: each real solution has unit Frobenius norm, and the slots of
-          complex roots are ``NaN``.
-        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_); input
-          gradients are wrong for fewer than 9 correspondences
-          (`#4855 <https://github.com/kornia/kornia/issues/4855>`_); it does not run on MPS
-          (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).
+        - All ten slots are always returned: each real root gives a candidate of unit Frobenius norm, and each
+          complex root a ``NaN`` slot.
+        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_); a sample
+          with no real solution returns ten identity matrices instead of ``NaN``
+          (`#4883 <https://github.com/kornia/kornia/issues/4883>`_); input gradients are wrong for fewer than 9
+          correspondences (`#4855 <https://github.com/kornia/kornia/issues/4855>`_); backward raises on some
+          degenerate samples, such as identical point sets (`#4831 <https://github.com/kornia/kornia/issues/4831>`_);
+          on MPS the 5-point solve needs the CPU fallback (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).
 
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
@@ -867,7 +869,8 @@ def find_essential(
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
-         To choose the best one out of 10, try to check the one with the lowest Sampson distance.
+         To choose the best one out of 10, try to check the one with the lowest Sampson distance, ignoring the
+         ``NaN`` slots.
 
     """
     return run_5point(points1, points2, weights).to(points1.dtype)
