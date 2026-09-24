@@ -71,7 +71,7 @@ class TestFindEssential(BaseTester):
             mean_error = distance.mean(-1).min()
             self.assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
-    def test_synthetic_sampson(self, device, dtype):
+    def test_synthetic_sampson(self, device, dtype, monkeypatch):
         calibrated_x1 = torch.tensor(
             [[[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]]],
             device=device,
@@ -93,6 +93,50 @@ class TestFindEssential(BaseTester):
             atol=1e-4,
             rtol=1e-4,
         )
+
+        # Noise-free minimal samples of random scenes: the pose is recovered for nearly all of them. About
+        # half have a negative leading coefficient in the degree-10 polynomial, which a floor on that
+        # coefficient such as clamp_min turns into the wrong roots (#4847).
+        g = torch.Generator().manual_seed(0)
+        n = 64
+        points = torch.rand(n, 5, 3, generator=g, dtype=torch.float64) * torch.tensor(
+            [2.0, 2.0, 4.0], dtype=torch.float64
+        )
+        points = points + torch.tensor([-1.0, -1.0, 3.0], dtype=torch.float64)
+        axis_angle = (torch.rand(n, 3, generator=g, dtype=torch.float64) - 0.5) * 0.4
+        trans = torch.nn.functional.normalize(torch.rand(n, 3, generator=g, dtype=torch.float64) - 0.5, dim=-1)
+        points, axis_angle, trans = (v.to(device=device, dtype=dtype) for v in (points, axis_angle, trans))
+        R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(axis_angle)
+        points2 = points @ R.transpose(-1, -2) + trans[:, None]
+        x1, x2 = points[..., :2] / points[..., 2:], points2[..., :2] / points2[..., 2:]
+        E_gt = epi.essential_from_Rt(
+            torch.eye(3, device=device, dtype=dtype).expand(n, 3, 3),
+            torch.zeros(n, 3, 1, device=device, dtype=dtype),
+            R,
+            trans[..., None],
+        )
+        weights = torch.ones(n, 5, device=device, dtype=dtype)
+        E_est = epi.essential.find_essential(x1, x2, weights)
+
+        def unit(M):
+            return M / M.flatten(-2).norm(dim=-1)[..., None, None]
+
+        err = torch.minimum(
+            (unit(E_est) - unit(E_gt)[:, None]).flatten(-2).norm(dim=-1),
+            (unit(E_est) + unit(E_gt)[:, None]).flatten(-2).norm(dim=-1),
+        )
+        best = torch.nan_to_num(err, nan=1.0).min(dim=-1).values
+        tol, at_least = (1e-8, 60) if dtype == torch.float64 else (1e-3, 48)
+        assert int((best < tol).sum()) >= at_least
+
+        # The roots of a polynomial do not depend on its sign, and IEEE division makes that exact, so
+        # negating every coefficient must leave the candidates unchanged bit for bit. This holds on every
+        # platform, whichever sign the SVD's null-space basis gives a sample.
+        determinant = epi.essential._determinant_to_polynomial_jit
+        monkeypatch.setattr(epi.essential, "_determinant_to_polynomial_jit", lambda A, *args: -determinant(A, *args))
+        E_neg = epi.essential.find_essential(x1, x2, weights)
+        assert torch.equal(torch.isnan(E_neg), torch.isnan(E_est))
+        self.assert_close(torch.nan_to_num(E_neg), torch.nan_to_num(E_est), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype):

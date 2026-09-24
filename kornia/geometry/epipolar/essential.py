@@ -320,7 +320,9 @@ def _null_to_Nister_solution_script(
     C = torch.zeros(B, 10, 10, device=device, dtype=dtype)
     C[:, 0:9, 1:10] = torch.eye(9, device=device, dtype=dtype)
 
-    cs_de = cs[:, -1].clamp_min(1e-8)
+    # Guard only an exactly zero leading coefficient. The roots do not depend on the polynomial's sign,
+    # and a floor such as clamp_min would turn a negative coefficient positive and change them.
+    cs_de = torch.where(cs[:, -1] == 0, torch.full_like(cs[:, -1], 1e-8), cs[:, -1])
     C[:, -1, :] = -cs[:, :-1] / cs_de.unsqueeze(-1)
 
     roots_eig = torch.linalg.eigvals(C)  # (B,10), complex
