@@ -617,14 +617,61 @@ class TestConventionFundamental(BaseTester):
             sv = torch.linalg.svdvals(Fk.cpu().double())
             assert sv[..., 2] < 1e-8 * sv[..., 0]  # rank 2
         self.assert_close(F[..., 2, 2], torch.ones_like(F[..., 2, 2]))
-        # The candidate order carries no meaning: exactly one candidate fits all twelve points, and which index it
-        # has changes with the dtype on this sample, so it is selected by residual, never by position.
+        # The candidate order carries no meaning: exactly one candidate fits all twelve points, so it is selected by
+        # residual, never by position.
         fits = [bool(_epipolar_residual(F[:, k], two_view["x1"], two_view["x2"]).max() < 1e-2) for k in range(3)]
         assert sum(fits) == 1
         # Relabelling the images returns the transposed candidates, as a set.
         Fs = epi.find_fundamental(x2, x1, method="7POINT").transpose(-2, -1)
         dist = (F[0, :, None] - Fs[0, None]).abs().amax(dim=(-2, -1))
         assert dist.amin(dim=1).max() < 1e-3
+
+    def test_convention_find_fundamental_weights_semantics(self, two_view, device, dtype):
+        _skip_half(dtype, _NO_HALF_EIGH)
+        x1 = two_view["x1"]
+        x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
+        w = torch.tensor([[0.5, 1.0, 2.0, 1.5, 0.75, 1.25, 3.0, 0.25, 1.0, 2.5, 0.6, 1.8]], device=device, dtype=dtype)
+        F_w = epi.find_fundamental(x1, x2, w)
+        # Only the ratios of the weights matter: scaling them all by 7 gives the same F.
+        self.assert_close(epi.find_fundamental(x1, x2, 7.0 * w), F_w, rtol=1e-4, atol=1e-4)
+        # Control: other ratios (all ones) give a different F on these inexact matches.
+        assert (epi.find_fundamental(x1, x2, torch.ones_like(w)) - F_w).abs().max() > 1e-3
+        # A negative weight counts as zero, to the bit; both differ from the original weight.
+        w_zero, w_neg = w.clone(), w.clone()
+        w_zero[0, 3], w_neg[0, 3] = 0.0, -5.0
+        F_zero = epi.find_fundamental(x1, x2, w_zero)
+        assert torch.equal(epi.find_fundamental(x1, x2, w_neg), F_zero)
+        assert (F_zero - F_w).abs().max() > 1e-3
+        # method="7POINT" ignores the weights: a zero and a negative weight, which would drop a constraint from a
+        # weighted minimal system, leave the three candidates unchanged to the bit.
+        x1_7, x2_7 = x1[:, :7], two_view["x2"][:, :7]
+        w7 = torch.tensor([[1.0, 0.0, -2.0, 5.0, 0.1, 3.0, 1.0]], device=device, dtype=dtype)
+        F7 = epi.find_fundamental(x1_7, x2_7, method="7POINT")
+        assert torch.equal(epi.find_fundamental(x1_7, x2_7, w7, method="7POINT"), F7)
+
+    def test_convention_fundamental_from_projections_direction_and_scale(self, two_view, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip("float16 overflows to inf on pixel-unit projection matrices (#4877)")
+        _skip_half(dtype, _HALF_PIXEL_F)
+        x1, x2 = two_view["x1"], two_view["x2"]
+        F = epi.fundamental_from_projections(two_view["P1"], two_view["P2"])
+        # x2^T F x1 = 0 for (P1, P2): points1 from the first camera, the order of find_fundamental.
+        F_unit = F / F.norm()
+        assert _epipolar_residual(F_unit, x1, x2).max() < 1e-3 * _epipolar_residual(F_unit, x2, x1).max()
+        # Control: swapping the cameras gives the transposed relation, which fails on (x1, x2).
+        F_sw = epi.fundamental_from_projections(two_view["P2"], two_view["P1"])
+        F_sw_unit = F_sw / F_sw.norm()
+        assert _epipolar_residual(F_sw_unit, x1, x2).max() > 1e3 * _epipolar_residual(F_unit, x1, x2).max()
+        # Not normalised: neither F[2, 2] = 1 nor unit Frobenius norm.
+        assert (F[..., 2, 2] - 1.0).abs().max() > 1.0 and (F.norm() - 1.0).abs() > 1.0
+        # For P1 = [I | 0], P2 = [R | t] it is the negative of essential_from_Rt for the same motion, at its scale.
+        R, t = two_view["R"], two_view["t"]
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        zero = torch.zeros_like(t)
+        F_n = epi.fundamental_from_projections(torch.cat([eye, zero], -1), torch.cat([R, t], -1))
+        E = epi.essential_from_Rt(eye, zero, R, t)
+        self.assert_close(F_n, -E)
+        assert (F_n - E).abs().max() > 0.5
 
     def test_convention_fundamental_from_essential_K_sides(self, two_view, device, dtype):
         _skip_half(dtype, _HALF_PIXEL_F)

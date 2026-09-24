@@ -759,6 +759,10 @@ class TestConventionEssential(BaseTester):
         R, t = two_view["R"], two_view["t"]
         t_unit = t / t.norm(dim=-2, keepdim=True)
         E = _gt_essential(two_view)
+        # project_to_essential keeps the input's scale: it is not normalised to unit Frobenius norm.
+        E_unit = E / E.norm(dim=(-2, -1), keepdim=True)
+        projected_norm = epi.project_to_essential(5.0 * E_unit).norm(dim=(-2, -1))
+        self.assert_close(projected_norm, torch.full_like(projected_norm, 5.0))
         candidate_sets = []
         for E_in in (E, -E, 3.0 * E):
             Rs, ts = epi.motion_from_essential(E_in)
@@ -776,6 +780,8 @@ class TestConventionEssential(BaseTester):
             self.assert_close(ts.norm(dim=(-2, -1)), torch.ones(1, 4, device=device, dtype=dtype))
             # Candidates 1 and 2 rebuild E_in itself as [t]x R (up to a positive scale), candidates 0 and 3 its
             # negative. Which of them is the true pose follows the sign and scale of E_in, so no index is fixed.
+            # With det U = +1, [u3]x U W V^T = -U diag(1, 1, 0) V^T, so this pairing does not depend on the SVD's
+            # sign choices.
             unit = E_in * (2.0**0.5) / E_in.norm()
             for i, sign in enumerate((-1.0, 1.0, 1.0, -1.0)):
                 self.assert_close(epi.cross_product_matrix(ts[:, i, :, 0]) @ Rs[:, i], sign * unit)
@@ -931,6 +937,28 @@ class TestConventionEssential(BaseTester):
         E_gt = E_gt / E_gt.norm()
         nearest = torch.minimum((real - E_gt).norm(dim=(-2, -1)), (real + E_gt).norm(dim=(-2, -1))).min()
         assert nearest > 0.05
+
+    def test_wart_find_essential_backward_raises_on_degenerate_4831(self, two_view, device, dtype):
+        _skip_find_essential(device, dtype)
+        # #4831: the forward pass returns on a degenerate sample, but backward raises in the eigvals backward of the
+        # companion matrix, even where the candidates are discarded. Once fixed, backward returns a finite gradient.
+        zeros = torch.zeros(1, 5, 2, device=device, dtype=dtype, requires_grad=True)
+        E = epi.find_essential(zeros, zeros, torch.ones(1, 5, device=device, dtype=dtype))
+        assert E.shape == (1, 10, 3, 3)
+        with pytest.raises(RuntimeError):
+            E.nan_to_num().sum().backward()
+        if dtype == torch.float64:
+            # The issue's repro: identical point sets drawn with seed 19.
+            g = torch.Generator().manual_seed(19)
+            p = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device).requires_grad_()
+            E = epi.find_essential(p, p, torch.ones(1, 5, device=device, dtype=dtype))
+            with pytest.raises(RuntimeError):
+                E.nan_to_num().sum().backward()
+        # Control: a non-degenerate five-point sample runs backward to a finite gradient.
+        n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
+        p1 = n1[:, :5].clone().requires_grad_()
+        epi.find_essential(p1, n2[:, :5]).nan_to_num().sum().backward()
+        assert torch.isfinite(p1.grad).all()
 
     def test_wart_find_essential_no_real_root_identity_4883(self, device, dtype):
         _skip_find_essential(device, dtype)

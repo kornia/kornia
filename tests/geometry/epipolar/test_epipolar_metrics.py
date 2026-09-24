@@ -231,7 +231,7 @@ def _hom(p: torch.Tensor) -> torch.Tensor:
     return torch.cat([p, torch.ones_like(p[..., :1])], -1)
 
 
-def _pixel_F(scene) -> torch.Tensor:
+def _pixel_F_unit_norm(scene) -> torch.Tensor:
     """Ground-truth F of the two-view fixture in closed form, scaled to unit Frobenius norm."""
     eye = torch.eye(3, device=scene["R"].device, dtype=scene["R"].dtype)[None]
     E = epi.essential_from_Rt(eye, torch.zeros_like(scene["t"]), scene["R"], scene["t"])
@@ -251,7 +251,7 @@ class TestConventionEpipolarMetrics(BaseTester):
             pytest.skip(_HALF_PIXEL_F)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
-        F = _pixel_F(two_view)
+        F = _pixel_F_unit_norm(two_view)
         # Reference in float64 from the point-to-epiline geometry, in pixels: pts1 are first-image points, pts2
         # second-image points, and Fm follows x2^T F x1 = 0.
         F64, p1, p2 = _cpu64(F), _cpu64(x1), _cpu64(x2)
@@ -279,13 +279,18 @@ class TestConventionEpipolarMetrics(BaseTester):
             # squared=True is the default; squared=False returns the root, in pixels. The one-way distances are
             # unsquared and have no squared argument.
             self.assert_close(_cpu64(fn(x1, x2, F, squared=False)), expected.sqrt(), rtol=1e-3, atol=0.0)
+        if metric == "sampson":
+            # A 3-vector point is used as given: w = 1 matches the 2-vector input, w = 2 is not dehomogenised and
+            # changes every value.
+            self.assert_close(fn(_hom(x1), _hom(x2), F), fn(x1, x2, F))
+            assert ((fn(2.0 * _hom(x1), _hom(x2), F) - fn(x1, x2, F)).abs() / fn(x1, x2, F)).min() > 0.25
 
     def test_wart_metrics_eps_scale_dependence_4881(self, two_view, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip(_HALF_PIXEL_F)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
-        F = _pixel_F(two_view)
+        F = _pixel_F_unit_norm(two_view)
         # #4881: eps is added inside the denominators, so the distance depends on the scale of F: the same F at
         # ||F|| = 1e-3 scores much lower than at ||F|| = 1. Once fixed the two agree.
         for fn in (epi.sampson_epipolar_distance, epi.symmetrical_epipolar_distance):
@@ -294,3 +299,8 @@ class TestConventionEpipolarMetrics(BaseTester):
             # squared=False returns sqrt(d^2 + eps), so an exact match scores about sqrt(eps) = 1e-4, not 0.
             exact = fn(x1, two_view["x2"], F, squared=False)
             assert (exact > 0.9e-4).all()
+        # The one-way distances go through point_line_distance, which adds eps to the line norm: at ||F|| = 1e-6 the
+        # value moves by a few percent.
+        for fn in (epi.left_to_right_epipolar_distance, epi.right_to_left_epipolar_distance):
+            unit, tiny = fn(x1, x2, F), fn(x1, x2, 1e-6 * F)
+            assert ((unit - tiny).abs() / unit).min() > 1e-2
