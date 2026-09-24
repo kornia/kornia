@@ -49,7 +49,7 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
 
 
 def _dtype_min(dtype: torch.dtype) -> int:
-    if dtype == torch.uint8 or dtype == torch.bool:
+    if dtype in (torch.uint8, torch.bool):
         return 0
     if dtype == torch.int8:
         return -128
@@ -63,7 +63,7 @@ def _dtype_min(dtype: torch.dtype) -> int:
 
 
 def _dtype_max(dtype: torch.dtype) -> int:
-    if dtype == torch.uint8 or dtype == torch.bool:
+    if dtype in (torch.uint8, torch.bool):
         return 1 if dtype == torch.bool else 255
     if dtype == torch.int8:
         return 127
