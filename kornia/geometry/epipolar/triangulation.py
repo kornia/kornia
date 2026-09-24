@@ -78,7 +78,7 @@ def triangulate_points(
         - Cheirality and baseline are not checked: a point behind a camera is returned with negative depth, and with
           zero baseline the depth is undefined and the output is an arbitrary point on the line of sight, possibly
           behind the camera.
-        - ``"svd"`` and ``"eigh"`` agree to roundoff, compute float16 and bfloat16 input in float32, and return
+        - ``"svd"`` and ``"eigh"`` agree to roundoff, solve float16 and bfloat16 input in float32, and return
           the input dtype.
         - Known defects: a correspondence at infinity comes back as a finite, unflagged point whose position is
           set by roundoff (`#4865 <https://github.com/kornia/kornia/issues/4865>`_); ``solver="cofactor"``
@@ -94,8 +94,7 @@ def triangulate_points(
         solver: Back-end used to find the null vector of the :math:`4 \times 4` DLT
           constraint matrix. One of:
 
-          * ``"svd"`` — most numerically stable. Uses a full
-            SVD (via :func:`~kornia.core.utils._torch_svd_cast`). Suitable when
+          * ``"svd"`` — most numerically stable. Uses a full SVD. Suitable when
             maximum accuracy is required regardless of speed.
           * ``"eigh"`` *(default)* — forms :math:`X^\top X` and finds the eigenvector
             for its smallest eigenvalue via :func:`torch.linalg.eigh`. Algebraically

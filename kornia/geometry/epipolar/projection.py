@@ -67,9 +67,8 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
     r"""Generate a random camera matrix based on a given uniform distribution.
 
     Convention:
-        - ``fx``, ``fy``, ``cx`` and ``cy`` are four draws from :math:`U(low, high)` on torch's global generator
-          (see :doc:`Conventions & Pitfalls </get-started/conventions>`); dtype and device follow ``low``
-          and ``high``.
+        - ``fx``, ``fy``, ``cx`` and ``cy`` are four draws from :math:`U(low, high)` on torch's global generator;
+          dtype and device follow ``low`` and ``high``.
 
     Args:
         low: lower range (inclusive).

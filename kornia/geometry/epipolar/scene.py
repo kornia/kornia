@@ -33,7 +33,7 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
 
     Convention:
         - Every point has positive depth in every view; depth and focal length are not bounded away from zero.
-        - Draws from torch's global generator (see :doc:`Conventions & Pitfalls </get-started/conventions>`).
+        - Draws from torch's global generator.
 
     Args:
         num_views: the number of views :math:`V`.
