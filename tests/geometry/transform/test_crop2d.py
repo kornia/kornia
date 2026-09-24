@@ -383,6 +383,32 @@ class TestCropByBoxes(BaseTester):
         patches = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
         self.assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize("size", [(1, 3), (3, 1), (1, 1)])
+    def test_convention_size_one_axis_4747(self, size, device, dtype):
+        # A size-1 axis makes the box vertices collinear, and solving the perspective system from them returned
+        # a matrix of NaNs. crop_and_resize takes the same path.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        h, w = size
+        src = torch.tensor([[[1.0, 1.0], [w, 1.0], [w, h], [1.0, h]]], device=device, dtype=dtype)
+        dst = torch.tensor([[[0.0, 0.0], [w - 1, 0.0], [w - 1, h - 1], [0.0, h - 1]]], device=device, dtype=dtype)
+        expected = inp[..., 1 : 1 + h, 1 : 1 + w]
+
+        self.assert_close(kornia.geometry.transform.crop_by_boxes(inp, src, dst), expected)
+        self.assert_close(kornia.geometry.transform.crop_and_resize(inp, src, size), expected)
+
+    def test_crop_and_resize_scales_the_other_axis_of_a_size_one_box_4747(self, device, dtype):
+        # The size-1 row keeps its place and the 3-pixel width is stretched to 5, as for a 2-row box.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        row = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
+        two_rows = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        expected = kornia.geometry.transform.crop_and_resize(inp, two_rows, (2, 5))[..., :1, :]
+
+        self.assert_close(kornia.geometry.transform.crop_and_resize(inp, row, (1, 5)), expected, atol=1e-4, rtol=1e-4)
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         inp = torch.randn((1, 1, 3, 3), device=device, dtype=dtype)
