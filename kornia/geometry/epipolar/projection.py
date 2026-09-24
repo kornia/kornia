@@ -93,8 +93,9 @@ def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, tor
 
     Convention:
         - Applies the rule of :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale` and returns a new tensor.
-        - Known defects: the principal-point rule it shares with
-          :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale`, and the unscaled skew ``K[0, 1]``
+        - Known defects: the principal-point rule of
+          :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale`, and the skew ``K[0, 1]``, which is left
+          unscaled although resizing by ``scale_factor`` scales it
           (`#4263 <https://github.com/kornia/kornia/issues/4263>`_).
 
     Args:
@@ -163,7 +164,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
         - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
         - Known defects: a ``P`` whose left :math:`3 \times 3` block has negative determinant, such as ``-P``,
           returns a reflection (``det R = -1``) and ``-t``; and ``eps`` is added to the diagonal before its sign
-          is taken, so an entry in ``(-eps, 0)`` stays negative and ``R`` is again a reflection
+          is taken, so an entry in ``(-eps, 0)`` stays negative and the matching row of ``R`` is negated
           (`#4864 <https://github.com/kornia/kornia/issues/4864>`_).
 
     Args:

@@ -75,8 +75,9 @@ def triangulate_points(
         - ``P1`` pairs with ``points1`` and ``P2`` with ``points2``. Input and output points are Euclidean;
           :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV. The leading
           dimensions of ``P1`` and ``P2`` broadcast against those of the points.
-        - Nothing is checked: a point behind a camera is returned with negative depth, and with zero baseline
-          the depth is undefined and the output is an arbitrary point on the ray.
+        - Cheirality and baseline are not checked: a point behind a camera is returned with negative depth, and with
+          zero baseline the depth is undefined and the output is an arbitrary point on the line of sight, possibly
+          behind the camera.
         - ``"svd"`` and ``"eigh"`` agree to roundoff, compute float16 and bfloat16 input in float32, and return
           the input dtype.
         - Known defects: a correspondence at infinity comes back as a finite, unflagged point whose position is
