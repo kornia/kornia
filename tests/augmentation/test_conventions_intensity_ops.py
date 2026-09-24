@@ -1308,6 +1308,51 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
             # Compiled again on load, with the arguments of the original compile() call.
             assert restored._compile_kwargs == compiled._compile_kwargs
 
+    # Issue #4807: unpickling passes each uncompiled callable to ``torch.compile`` again, with the arguments of
+    # the last ``compile()`` call; a second ``compile()`` keeps the first, uncompiled callables for pickling, and a
+    # fixed ColorJitter order also compiles (and so must restore) the torch.cond dispatcher.
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "name", ["RandomGaussianIllumination", "RandomGaussianBlur", "ColorJitter", "ColorJitterFixedOrder"]
+    )
+    @pytest.mark.device_agnostic
+    def test_unpickled_own_compile_recompiles_with_same_arguments(self, name, monkeypatch):
+        if name == "RandomGaussianBlur":
+            module = K.RandomGaussianBlur((3, 3), (0.5, 1.5), p=1.0)
+        elif name == "ColorJitter":
+            module = K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)
+        elif name == "ColorJitterFixedOrder":
+            module = K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, order=(3, 2, 1, 0))
+        else:
+            module = K.RandomGaussianIllumination(p=1.0)
+        eager_fns = {key: fn for key, fn in vars(module).items() if key.endswith("_fn") and fn is not None}
+        expected = {"fullgraph": True, "dynamic": True, "backend": "eager", "mode": None, "options": None}
+        expected["disable"] = False
+        calls = []
+        torch_compile = torch.compile
+
+        def spy(fn, **kwargs):
+            calls.append((fn, kwargs))
+            return torch_compile(fn, **kwargs)
+
+        validate_args = Distribution._validate_args
+        try:
+            module.compile(backend="eager")
+            module.compile(fullgraph=True, dynamic=True, backend="eager")
+            payload = pickle.dumps(module)
+            monkeypatch.setattr(torch, "compile", spy)
+            restored = pickle.loads(payload)  # noqa: S301
+        finally:
+            Distribution.set_default_validate_args(validate_args)
+        assert len(calls) == len(eager_fns)
+        assert {fn for fn, _ in calls} == set(eager_fns.values())
+        assert all(kwargs == expected for _, kwargs in calls)
+        image = torch.linspace(0.0, 1.0, 2 * 3 * 7 * 9).reshape(2, 3, 7, 9)
+        torch.manual_seed(_FORWARD_SEED)
+        expected_out = module(image)
+        torch.manual_seed(_FORWARD_SEED)
+        self.assert_close(restored(image), expected_out, rtol=0.0, atol=0.0)
+
     # The RandomPlasma* classes clamp into [0, 1] and record the fractal as ``_params["plasma"]``, so a
     # replay with ``params=`` reproduces the output bitwise.  The replay runs on a non-constant image,
     # because a constant 0.5 is a fixed point of the plasma contrast transform.
