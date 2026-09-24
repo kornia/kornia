@@ -150,8 +150,8 @@ def test_normalized_meshgrid_trace_matches_eager_at_unrepresentable_sizes(is_3d,
     representable in all four dtypes, so none of them can catch this.
 
     The sizes here are the ones whose predecessor is *not* exactly representable in bfloat16
-    (all five) or float16 (2050 and 3000). Half precision and CPU float32/float64 must agree exactly;
-    CUDA float32/float64 allow only the absolute difference reported in #4195, scaled by dtype.
+    (all five) or float16 (2050 and 3000). CPU eager supplies the correctly rounded reference;
+    exact comparison at every dtype preserves the half-precision regression check.
     """
 
     class MeshGrid(torch.nn.Module):
@@ -172,10 +172,9 @@ def test_normalized_meshgrid_trace_matches_eager_at_unrepresentable_sizes(is_3d,
     shape = (1, 1, 2, size, 4) if is_3d else (1, 1, size, 4)
     image = torch.zeros(*shape, device=device, dtype=dtype)
     traced = torch.jit.trace(MeshGrid(), image)
-    # CUDA's scalar and tensor divisor paths can differ by eps: one ULP at 1.0, not at each
-    # output coordinate (the subtraction can bring it near zero). Keep the half-precision pin exact.
-    inexact_division = device.type == "cuda" and dtype in (torch.float32, torch.float64)
-    assert_close(traced(image), MeshGrid()(image), atol=torch.finfo(dtype).eps if inexact_division else 0.0, rtol=0.0)
+    # CUDA eager's Python-scalar division multiplies by a host-computed reciprocal, which can
+    # round differently from the traced tensor division (#4195).
+    assert_close(traced(image).cpu(), MeshGrid()(image.cpu()), atol=0.0, rtol=0.0)
 
 
 @pytest.mark.parametrize("normalized_coordinates", [False, True], ids=["pixel", "normalized"])
