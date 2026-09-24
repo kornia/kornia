@@ -4564,8 +4564,8 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         with pytest.raises(ValueError, match="amount must be a tuple or a float"):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
 
-    @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
-    @pytest.mark.parametrize("channel_shape", [1, 1, 3, 3])
+    @pytest.mark.parametrize("batch_shape", [1, 3, 5])
+    @pytest.mark.parametrize("channel_shape", [1, 3])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
         input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
         transform = RandomSaltAndPepperNoise(p=1.0)

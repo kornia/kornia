@@ -121,7 +121,7 @@ def test_get_gaussian_kernel1d_float(window_size, sigma, device, dtype):
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]], [[1.5], [5.0]]])
+@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]]])
 def test_get_gaussian_kernel1d_tensor(window_size, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
@@ -198,7 +198,7 @@ def test_get_discrete_gaussian_erf_kernel1d_float(window_size, sigma, device, dt
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]], [[1.5], [5.0]]])
+@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]]])
 def test_get_discrete_gaussian_erf_kernel1d_tensor(window_size, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
@@ -221,7 +221,7 @@ def test_get_gaussian_discrete_kernel1d_float(window_size, sigma, device, dtype)
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]], [[1.5], [5.0]]])
+@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]]])
 def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
