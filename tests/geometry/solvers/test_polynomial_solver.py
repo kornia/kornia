@@ -742,33 +742,27 @@ class TestQuarticSolver(BaseTester):
         assert bool(torch.isfinite(mixed.grad[0]).all()), mixed.grad
         self.assert_close(mixed.grad[0], alone.grad[0])
 
-    def test_cubic_fallback_for_zero_leading_coefficient(self, device, dtype):
-        # A zero leading coefficient makes this a cubic:
-        # x^3 - 6x^2 + 11x - 6 = (x - 1)(x - 2)(x - 3).
-        coeffs = torch.tensor(
-            [[0.0, 1.0, -6.0, 11.0, -6.0]],
-            device=device,
-            dtype=dtype,
-        )
+    @pytest.mark.parametrize("leading", [0.0, 1e-9, 5e-7])
+    def test_cubic_fallback_for_near_zero_leading_coefficient(self, leading, device, dtype):
+        # (x - 1)(x - 2)(x - 3) behind a leading coefficient below the 1e-6 cubic-fallback tolerance
+        # that float32 and the half-precision inputs solved in float32 share (#4498). float16 rounded
+        # float64's 1e-12 to 0 and returned nan, and bfloat16 lost all three roots at 1e-9.
+        if leading != 0.0 and dtype == torch.float64:
+            pytest.skip("float64 keeps its 1e-12 tolerance and solves these rows as quartics")
+        coeffs = torch.tensor([[leading, 1.0, -6.0, 11.0, -6.0]], device=device, dtype=dtype)
 
         roots = solver.solve_quartic(coeffs)
 
         expected = torch.cat(
-            [
-                solver.solve_cubic(coeffs[:, 1:]),
-                torch.zeros((1, 1), device=device, dtype=dtype),
-            ],
-            dim=-1,
+            [solver.solve_cubic(coeffs[:, 1:]), torch.zeros((1, 1), device=device, dtype=dtype)], dim=-1
         )
+        self.assert_close(roots, expected, rtol=0.0, atol=0.0)
 
-        assert bool(torch.isfinite(roots).all()), roots
+    def test_leading_coefficient_above_fallback_tolerance_is_solved_as_quartic(self, device, dtype):
+        # Just above the 1e-6 tolerance the row keeps its fourth root, near -1 / a - 6 = -500006
+        # (beyond float16's range, so -inf there), instead of the cubic fallback's 0.
+        coeffs = torch.tensor([[2e-6, 1.0, -6.0, 11.0, -6.0]], device=device, dtype=dtype)
 
-        roots_sorted, _ = torch.sort(roots, dim=-1)
-        expected_sorted, _ = torch.sort(expected, dim=-1)
+        roots = solver.solve_quartic(coeffs)
 
-        self.assert_close(
-            roots_sorted,
-            expected_sorted,
-            rtol=0.0,
-            atol=0.0,
-        )
+        assert roots.min().item() < -1e5, roots

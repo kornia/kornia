@@ -270,18 +270,16 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(coeffs, ["B", "5"])
 
     # Coefficients
-
     a = coeffs[:, 0]
 
     solutions = torch.zeros((len(coeffs), 4), device=coeffs.device, dtype=coeffs.dtype)
 
-    # Numerical tolerances
-    zero_tol = 1e-6 if coeffs.dtype == torch.float32 else 1e-12
+    # Numerical tolerances. Half-precision quartics are solved in float32 below, so they share
+    # float32's cubic-fallback tolerance; float64's 1e-12 would also round to 0 in float16.
+    zero_tol = 1e-6 if coeffs.dtype in (torch.float32, torch.float16, torch.bfloat16) else 1e-12
 
-    # Cubic fallback for a approx 0.
-    # Half-precision zero_tol underflows to zero, so make the decision in float32.
-    a_for_fallback = a.float() if coeffs.dtype in (torch.float16, torch.bfloat16) else a
-    mask_a_zero = torch.abs(a_for_fallback) < zero_tol
+    # Cubic fallback for a approx 0
+    mask_a_zero = torch.abs(a) < zero_tol
     mask_quartic = ~mask_a_zero
 
     if torch.any(mask_a_zero):
