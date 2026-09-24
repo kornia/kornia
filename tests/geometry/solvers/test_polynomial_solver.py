@@ -163,6 +163,35 @@ class TestCubicSolver(BaseTester):
         mixed = torch.tensor([three, one], device=device, dtype=dtype)
         self.assert_close(solver.solve_cubic(mixed)[0], solver.solve_cubic(alone)[0])
 
+    @pytest.mark.parametrize(
+        "coeffs, root",
+        [
+            ([1.0, 0.0, 0.0, 1.0], -1.0),  # x^3 + 1: Q == 0, R < 0
+            ([1.0, 0.0, 0.0, 8.0], -2.0),  # x^3 + 8
+            ([1.0, -7.5, 18.75, -15.5], 2.0),  # (x - 2)(x^2 - 5.5x + 7.75): Q == 0, R < 0 after the shift
+            ([1.0, 0.0, 0.0, -1.0], 1.0),  # x^3 - 1: Q == 0, R > 0
+        ],
+    )
+    def test_q_zero_real_cube_root_4832(self, coeffs, root, device, dtype):
+        # #4832: the Q == 0 branch took torch.pow(2R, 1/3), which is nan for R < 0.
+        x = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_cubic(x)
+        expected = torch.tensor([[root, 0.0, 0.0]], device=device, dtype=dtype)
+        # In half precision R itself carries the rounding of its cancelling terms (bfloat16 gives
+        # R = -0.074 instead of -0.0625 for the shifted case), and the cube root amplifies it.
+        tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype)
+        self.assert_close(roots.detach(), expected, rtol=tol, atol=tol)
+
+        roots[:, 0].sum().backward()
+        assert bool(torch.isfinite(x.grad).all()), x.grad
+        if dtype in (torch.float32, torch.float64):
+            # Implicit-function derivative of a simple root r of p: dr/dc_k = -r^(3 - k) / p'(r).
+            # Q == 0 is an exact-equality branch, but the root still depends on Q (on c for x^3 + 1).
+            a, b, c, _ = coeffs
+            dp = 3 * a * root**2 + 2 * b * root + c
+            expected_grad = torch.tensor([[-(root ** (3 - k)) / dp for k in range(4)]], device=device, dtype=dtype)
+            self.assert_close(x.grad, expected_grad)
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):
@@ -384,6 +413,13 @@ class TestQuarticSolver(BaseTester):
             (
                 torch.tensor([[1.0, 0.0, 0.0, 0.0, -1.0]]),
                 torch.tensor([[-1.0, 1.0, 0.0, 0.0]]),
+            ),
+            # Case 8: Resolvent cubic with Q == 0 and R < 0 (#4832)
+            # x^4 - 3x^2 - 0.75 = 0 -> Real: +/- sqrt((3 + sqrt(12)) / 2). Others 0.
+            # Its resolvent y^3 + 3y^2 + 3y + 9 has Q == 0 and R = -4 < 0, which used to make every root nan.
+            (
+                torch.tensor([[1.0, 0.0, -3.0, 0.0, -0.75]]),
+                torch.tensor([[-1.7977905, 1.7977905, 0.0, 0.0]]),
             ),
         ],
     )

@@ -167,7 +167,12 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_Q_zero_solutions = (a_Q_zero == 0) & (a_R_zero != 0)
 
     if torch.any(mask_Q_zero):
-        x0_Q_zero = torch.pow(2 * R[mask_Q_zero], 1 / 3) - b_a_3[mask_Q_zero]
+        # torch.pow of a negative base to 1/3 is nan: take the cube root of |2R| and restore the sign.
+        R_Q_zero = R[mask_Q_zero]
+        A_Q_zero = torch.sign(R_Q_zero) * torch.pow(2 * R_Q_zero.abs(), 1 / 3)
+        # The root is A - Q / A, as in the D > 0 branch. The Q / A term is 0 in the forward pass,
+        # but it keeps the root's dependence on Q in the gradient (d root / dQ = -1 / A).
+        x0_Q_zero = A_Q_zero - Q[mask_Q_zero] / A_Q_zero - b_a_3[mask_Q_zero]
         solutions[mask_Q_zero_solutions, 0] = x0_Q_zero
 
     mask_QR_zero = (Q == 0) & (R == 0)
