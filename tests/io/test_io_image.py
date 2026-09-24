@@ -18,7 +18,6 @@
 
 from pathlib import Path
 
-
 import kornia_rs
 import numpy as np
 import pytest
