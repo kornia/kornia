@@ -59,3 +59,18 @@ class TestComposites(BaseTester):
         monkeypatch.setattr(morphology_module, "_resolve_engine", record)
         op(tensor, l_kernel, engine="unfold")
         assert seen == ["unfold", "unfold"]
+
+    @pytest.mark.parametrize("name", ["opening", "closing", "top_hat", "bottom_hat"])
+    def test_convention_composite_convolution_handles_infinite_intermediates_4734(self, device, dtype, name):
+        if not dtype.is_floating_point:
+            pytest.skip("Infinity regression requires a floating-point dtype.")
+
+        op = COMPOSITES[name][0]
+        kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.tensor([[[[0.2, 0.5, 0.9, 0.4]]]], device=device, dtype=dtype)
+
+        convolved = op(tensor, kernel, engine="convolution")
+        unfolded = op(tensor, kernel, engine="unfold")
+
+        assert not torch.isnan(convolved).any()
+        self.assert_close(convolved, unfolded)

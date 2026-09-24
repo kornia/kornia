@@ -48,34 +48,6 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     return kernel.view(h * w, 1, h, w)
 
 
-def _dtype_min(dtype: torch.dtype) -> int:
-    if dtype in (torch.uint8, torch.bool):
-        return 0
-    if dtype == torch.int8:
-        return -128
-    if dtype == torch.int16:
-        return -32768
-    if dtype == torch.int32:
-        return -2147483648
-    if dtype == torch.int64:
-        return -9223372036854775807 - 1
-    return 0
-
-
-def _dtype_max(dtype: torch.dtype) -> int:
-    if dtype in (torch.uint8, torch.bool):
-        return 1 if dtype == torch.bool else 255
-    if dtype == torch.int8:
-        return 127
-    if dtype == torch.int16:
-        return 32767
-    if dtype == torch.int32:
-        return 2147483647
-    if dtype == torch.int64:
-        return 9223372036854775807
-    return 0
-
-
 @torch.jit.unused
 def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
     if torch.jit.is_tracing() or torch._C._are_functorch_transforms_active():
@@ -91,6 +63,7 @@ def _shift_reduce(
     width: int,
     dilate: bool,
     inplace: bool,
+    reduction_value: float,
 ) -> torch.Tensor:
     """Running max (``dilate``) or min over the ``k_h * k_w`` shifted views of ``padded`` plus their offsets.
 
@@ -105,10 +78,6 @@ def _shift_reduce(
     against 1627 MiB in that same cell). :func:`_resolve_engine` accounts for both regimes.
     """
     kh, kw = offsets.shape
-    if padded.is_floating_point():
-        reduction_value: float = -float("inf") if dilate else float("inf")
-    else:
-        reduction_value = float(_dtype_min(padded.dtype) if dilate else _dtype_max(padded.dtype))
     # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
     # down to a scalar would instead apply wrapped-scalar rules and silently keep ``padded.dtype``.
     output = padded[..., 0:height, 0:width] + offsets[0:1, 0:1]
@@ -126,11 +95,7 @@ def _shift_reduce(
             if i == 0 and j == 0:
                 continue
             shifted = padded[..., i : i + height, j : j + width] + offsets[i : i + 1, j : j + 1]
-            shifted = torch.where(
-                kernel[i, j] != 0,
-                shifted,
-                torch.full_like(shifted, reduction_value),
-            )
+            shifted.masked_fill_(kernel[i, j] == 0, reduction_value)
             if inplace:
                 torch.maximum(output, shifted, out=output) if dilate else torch.minimum(output, shifted, out=output)
             else:
@@ -249,10 +214,10 @@ def dilation(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Finite stand-in for the infinite elements of the kernel. Keep it well above the range of the
-            image plus ``structuring_element`` and finite in the image's dtype (at most 65504 for ``float16``).
+            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``reflect``, ``replicate`` and ``circular`` it is ignored.
+        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
+            floating-point inputs, where the appropriate infinite reduction identity is used instead.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -292,27 +257,6 @@ def dilation(
     if origin is None:
         origin = [se_h // 2, se_w // 2]
 
-    # pad
-    # The kernel is reflected below (Minkowski dilation), so the window is anchored at the reflected origin.
-    pad_e: List[int] = [se_w - origin[1] - 1, origin[1], se_h - origin[0] - 1, origin[0]]
-    is_geodesic = border_type == "geodesic"
-    if border_type == "geodesic":
-        if tensor.is_floating_point():
-            border_value = 0.0 if engine == "convolution" else -float("inf")
-            output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=border_value)
-        else:
-            output = F.pad(tensor, pad_e, mode="constant", value=0.0)
-            valid = F.pad(torch.ones_like(tensor), pad_e, mode="constant", value=0.0)
-            output = torch.where(
-                valid != 0,
-                output,
-                torch.full_like(output, _dtype_min(tensor.dtype)),
-            )
-    elif border_type == "constant":
-        output = F.pad(tensor, pad_e, mode=border_type, value=border_value)
-    else:
-        output = F.pad(tensor, pad_e, mode=border_type)
-
     # computation
     if structuring_element is None:
         # ``kernel`` is only a membership mask: a bool or integer kernel cannot hold ``-max_val``, so a
@@ -321,7 +265,6 @@ def dilation(
         neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
     else:
         neighborhood = structuring_element.clone()
-        neighborhood[kernel == 0] = 0
 
     # The max-plus terms compute in the promoted dtype, which the dtype rule of ``auto`` has to see: a
     # float16 image with a float32 kernel computes, and differentiates, in float32.
@@ -329,10 +272,19 @@ def dilation(
     recording_grad = _records_grad(tensor, structuring_element)
     engine = _resolve_engine(engine, tensor, recording_grad, compute_dtype)
 
-    if output.is_floating_point():
-        reduction_min: float = -float("inf")
+    # pad
+    # The kernel is reflected below (Minkowski dilation), so the window is anchored at the reflected origin.
+    pad_e: List[int] = [se_w - origin[1] - 1, origin[1], se_h - origin[0] - 1, origin[0]]
+    is_geodesic = border_type == "geodesic"
+    if border_type == "geodesic":
+        border_value = -float("inf") if tensor.is_floating_point() else -max_val
+        output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=border_value)
+    elif border_type == "constant":
+        output = F.pad(tensor, pad_e, mode=border_type, value=border_value)
     else:
-        reduction_min = float(_dtype_min(output.dtype))
+        output = F.pad(tensor, pad_e, mode=border_type)
+
+    reduction_min: float = -float("inf") if tensor.is_floating_point() else -max_val
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output = output + neighborhood.flip((0, 1))
@@ -348,20 +300,42 @@ def dilation(
         reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
         conv_neighborhood = neighborhood.masked_fill(kernel == 0, 0.0)
 
+        positive_inf = torch.isposinf(output)
+        negative_inf = torch.isneginf(output)
+        finite_output = torch.nan_to_num(output, nan=0.0, posinf=0.0, neginf=0.0)
+
         output = F.conv2d(
-            output.view(B * C, 1, h_pad, w_pad),
+            finite_output.view(B * C, 1, h_pad, w_pad),
             reshape_kernel,
             padding=0,
             bias=conv_neighborhood.view(-1).flip(0).to(dtype=output.dtype),
         )
 
-        output = output.masked_fill(kernel.view(-1).flip(0).view(1, -1, 1, 1) == 0, -float("inf"))
+        kernel_mask = (kernel != 0).to(dtype=output.dtype)
+        mask_kernel = _neight2channels_like_kernel(kernel_mask)
+        positive_inf = F.conv2d(
+            positive_inf.to(dtype=output.dtype).view(B * C, 1, h_pad, w_pad),
+            mask_kernel,
+            padding=0,
+        )
+        negative_inf = F.conv2d(
+            negative_inf.to(dtype=output.dtype).view(B * C, 1, h_pad, w_pad),
+            mask_kernel,
+            padding=0,
+        )
+        output = output.masked_fill(positive_inf != 0, float("inf"))
+        output = output.masked_fill(negative_inf != 0, -float("inf"))
+
+        output = output.masked_fill(
+            kernel.view(-1).flip(0).view(1, -1, 1, 1) == 0,
+            reduction_min,
+        )
 
         if is_geodesic:
             valid = torch.ones((1, 1, H, W), dtype=output.dtype, device=output.device)
             valid = F.pad(valid, pad_e, mode="constant", value=0.0)
             valid = F.conv2d(valid, reshape_kernel, padding=0)
-            output = output.masked_fill(valid == 0, -float("inf"))
+            output = output.masked_fill(valid == 0, reduction_min)
 
         output = output.max(dim=1).values
         output = output.view(B, C, H, W)
@@ -378,6 +352,7 @@ def dilation(
             tensor.shape[-1],
             True,
             inplace,
+            reduction_min,
         )
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
@@ -425,10 +400,10 @@ def erosion(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Finite stand-in for the infinite elements of the kernel. Keep it well above the range of the
-            image plus ``structuring_element`` and finite in the image's dtype (at most 65504 for ``float16``).
+            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``reflect``, ``replicate`` and ``circular`` it is ignored.
+        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
+            floating-point inputs, where the appropriate infinite reduction identity is used instead.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -468,26 +443,6 @@ def erosion(
     if origin is None:
         origin = [se_h // 2, se_w // 2]
 
-    # pad
-    pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
-    is_geodesic = border_type == "geodesic"
-    if border_type == "geodesic":
-        if tensor.is_floating_point():
-            border_value = 0.0 if engine == "convolution" else float("inf")
-            output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=border_value)
-        else:
-            output = F.pad(tensor, pad_e, mode="constant", value=0.0)
-            valid = F.pad(torch.ones_like(tensor), pad_e, mode="constant", value=0.0)
-            output = torch.where(
-                valid != 0,
-                output,
-                torch.full_like(output, _dtype_max(tensor.dtype)),
-            )
-    elif border_type == "constant":
-        output = F.pad(tensor, pad_e, mode=border_type, value=border_value)
-    else:
-        output = F.pad(tensor, pad_e, mode=border_type)
-
     # computation
     if structuring_element is None:
         # ``kernel`` is only a membership mask: a bool or integer kernel cannot hold ``-max_val``, so a
@@ -496,7 +451,6 @@ def erosion(
         neighborhood = torch.zeros_like(kernel, dtype=nb_dtype)
     else:
         neighborhood = structuring_element.clone()
-        neighborhood[kernel == 0] = 0
 
     # The max-plus terms compute in the promoted dtype, which the dtype rule of ``auto`` has to see: a
     # float16 image with a float32 kernel computes, and differentiates, in float32.
@@ -504,10 +458,18 @@ def erosion(
     recording_grad = _records_grad(tensor, structuring_element)
     engine = _resolve_engine(engine, tensor, recording_grad, compute_dtype)
 
-    if output.is_floating_point():
-        reduction_max: float = float("inf")
+    # pad
+    pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    is_geodesic = border_type == "geodesic"
+    if border_type == "geodesic":
+        border_value = float("inf") if tensor.is_floating_point() else max_val
+        output: torch.Tensor = F.pad(tensor, pad_e, mode="constant", value=border_value)
+    elif border_type == "constant":
+        output = F.pad(tensor, pad_e, mode=border_type, value=border_value)
     else:
-        reduction_max = float(_dtype_max(output.dtype))
+        output = F.pad(tensor, pad_e, mode=border_type)
+
+    reduction_max: float = float("inf") if tensor.is_floating_point() else max_val
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output = output - neighborhood
@@ -523,20 +485,42 @@ def erosion(
         reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
         conv_neighborhood = neighborhood.masked_fill(kernel == 0, 0.0)
 
+        positive_inf = torch.isposinf(output)
+        negative_inf = torch.isneginf(output)
+        finite_output = torch.nan_to_num(output, nan=0.0, posinf=0.0, neginf=0.0)
+
         output = F.conv2d(
-            output.view(B * C, 1, Hpad, Wpad),
+            finite_output.view(B * C, 1, Hpad, Wpad),
             reshape_kernel,
             padding=0,
             bias=-conv_neighborhood.view(-1).to(dtype=output.dtype),
         )
 
-        output = output.masked_fill(kernel.view(-1).view(1, -1, 1, 1) == 0, float("inf"))
+        kernel_mask = (kernel != 0).to(dtype=output.dtype)
+        mask_kernel = _neight2channels_like_kernel(kernel_mask)
+        positive_inf = F.conv2d(
+            positive_inf.to(dtype=output.dtype).view(B * C, 1, Hpad, Wpad),
+            mask_kernel,
+            padding=0,
+        )
+        negative_inf = F.conv2d(
+            negative_inf.to(dtype=output.dtype).view(B * C, 1, Hpad, Wpad),
+            mask_kernel,
+            padding=0,
+        )
+        output = output.masked_fill(positive_inf != 0, float("inf"))
+        output = output.masked_fill(negative_inf != 0, -float("inf"))
+
+        output = output.masked_fill(
+            kernel.view(-1).view(1, -1, 1, 1) == 0,
+            reduction_max,
+        )
 
         if is_geodesic:
             valid = torch.ones((1, 1, H, W), dtype=output.dtype, device=output.device)
             valid = F.pad(valid, pad_e, mode="constant", value=0.0)
             valid = F.conv2d(valid, reshape_kernel, padding=0)
-            output = output.masked_fill(valid == 0, float("inf"))
+            output = output.masked_fill(valid == 0, reduction_max)
 
         output = output.min(dim=1).values
         output = output.view(B, C, H, W)
@@ -553,6 +537,7 @@ def erosion(
             tensor.shape[-1],
             False,
             inplace,
+            reduction_max,
         )
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'auto', 'convolution', 'shift' or 'unfold'")
@@ -602,10 +587,10 @@ def opening(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Finite stand-in for the infinite elements of the kernel. Keep it well above the range of the
-            image plus ``structuring_element`` and finite in the image's dtype (at most 65504 for ``float16``).
+            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``reflect``, ``replicate`` and ``circular`` it is ignored.
+        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
+            floating-point inputs, where the appropriate infinite reduction identity is used instead.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -707,10 +692,10 @@ def closing(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Finite stand-in for the infinite elements of the kernel. Keep it well above the range of the
-            image plus ``structuring_element`` and finite in the image's dtype (at most 65504 for ``float16``).
+            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``reflect``, ``replicate`` and ``circular`` it is ignored.
+        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
+            floating-point inputs, where the appropriate infinite reduction identity is used instead.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -810,10 +795,10 @@ def gradient(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Finite stand-in for the infinite elements of the kernel. Keep it well above the range of the
-            image plus ``structuring_element`` and finite in the image's dtype (at most 65504 for ``float16``).
+            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``reflect``, ``replicate`` and ``circular`` it is ignored.
+        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
+            floating-point inputs, where the appropriate infinite reduction identity is used instead.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -902,10 +887,10 @@ def top_hat(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Finite stand-in for the infinite elements of the kernel. Keep it well above the range of the
-            image plus ``structuring_element`` and finite in the image's dtype (at most 65504 for ``float16``).
+            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``reflect``, ``replicate`` and ``circular`` it is ignored.
+        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
+            floating-point inputs, where the appropriate infinite reduction identity is used instead.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
@@ -997,10 +982,10 @@ def bottom_hat(
             image size (``reflect``) or at most match it (``circular``), and raise an error
             otherwise. Any other value raises a ``ValueError``.
         border_value: Value to fill past edges of input. It is used only when ``border_type`` is
-            ``constant``: under ``geodesic`` it is silently overwritten with :math:`\mp` ``max_val``, and
-            under ``reflect``, ``replicate`` and ``circular`` it is ignored.
-        max_val: Finite stand-in for the infinite elements of the kernel. Keep it well above the range of the
-            image plus ``structuring_element`` and finite in the image's dtype (at most 65504 for ``float16``).
+            ``constant``; under ``geodesic``, the appropriate reduction identity is used instead, and under
+            ``reflect``, ``replicate`` and ``circular`` it is ignored.
+        max_val: Legacy finite sentinel retained for compatibility with integer inputs. It is ignored for
+            floating-point inputs, where the appropriate infinite reduction identity is used instead.
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either

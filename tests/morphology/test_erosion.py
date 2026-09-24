@@ -505,7 +505,7 @@ class TestErode(BaseTester):
         original = morphology_module._shift_reduce
 
         def wrapped(*args, **kwargs):
-            calls.append(args[-1])
+            calls.append(args[-2])
             return original(*args, **kwargs)
 
         monkeypatch.setattr(morphology_module, "_shift_reduce", wrapped)
@@ -568,7 +568,7 @@ class TestErode(BaseTester):
         # everywhere, while no window is empty. The kernel changes under a 180-degree flip, so a reflection
         # mismatch between the two would break the pair, and it holds its default origin cell [1, 1], so no
         # window is empty. Empty windows use the reduction identity; see
-        # test_dilation_ignores_finite_max_val_sentinel_4734.
+        # test_convention_dilation_ignores_finite_max_val_sentinel_4734.
         x = torch.tensor(
             [[3.0, 0.0, 5.0, 1.0, 2.0, 7.0], [0.0, 4.0, 1.0, 6.0, 0.0, 2.0], [2.0, 1.0, 0.0, 3.0, 5.0, 1.0]],
             device=device,

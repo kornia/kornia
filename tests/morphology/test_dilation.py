@@ -519,7 +519,7 @@ class TestDilate(BaseTester):
         original = morphology_module._shift_reduce
 
         def wrapped(*args, **kwargs):
-            calls.append(args[-1])
+            calls.append(args[-2])
             return original(*args, **kwargs)
 
         monkeypatch.setattr(morphology_module, "_shift_reduce", wrapped)
@@ -745,9 +745,9 @@ class TestDilate(BaseTester):
         for max_val in (1.0, 1e2, 1e4):
             unfolded = dilation(tensor, kernel, max_val=max_val, engine="unfold")
             convolved = dilation(tensor, kernel, max_val=max_val, engine="convolution")
-            torch.testing.assert_close(convolved, unfolded)
+            self.assert_close(convolved, unfolded)
 
-    def test_dilation_ignores_finite_max_val_sentinel_4734(self, device):
+    def test_convention_dilation_ignores_finite_max_val_sentinel_4734(self, device):
         # Geodesic padding and masked kernel cells must be excluded rather than represented by a finite
         # sentinel. This keeps the result independent of the image range and avoids the convolution precision
         # loss caused by passing a finite sentinel through `conv2d`. float32 only: the literals
