@@ -101,9 +101,9 @@ def solve_pnp_dlt(
         - ``weights`` scales the two rows each point contributes to the homogeneous linear system, and the
           normalization and the degeneracy check use the same weighting. A uniform ``weights`` leaves the answer
           unchanged up to rounding, and a zero weight is the same as removing the point.
-        - fewer than 6 points, or a ``world_points``, ``img_points`` or ``intrinsics`` in a dtype other than
-          float32/float64, raise :class:`~kornia.core.exceptions.BaseError` naming the argument; a degenerate
-          ``world_points`` raises :class:`AssertionError` from the check above.
+        - fewer than 6 points or 6 nonzero ``weights``, or a ``world_points``, ``img_points`` or ``intrinsics``
+          in a dtype other than float32/float64, raise :class:`~kornia.core.exceptions.BaseError` naming the
+          argument; a degenerate ``world_points`` raises :class:`AssertionError` from the check above.
 
     Args:
         world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
@@ -192,11 +192,19 @@ def solve_pnp_dlt(
     if weights is not None:
         if weights.shape != (B, N):
             raise AssertionError(f"Weights should have shape (B, N). Got {weights.shape}.")
-        point_weights = weights**2
+        num_used = (weights != 0).sum(dim=1, keepdim=True)
+        KORNIA_CHECK(
+            bool((num_used >= 6).all()),
+            "weights must hold at least 6 nonzero entries in every batch element, as world_points must hold 6 points.",
+        )
+        # Only the weights relative to the largest one matter below; dividing by it first keeps the squares
+        # from overflowing or underflowing.
+        rel_weights = weights / weights.abs().amax(dim=1, keepdim=True)
+        point_weights = rel_weights**2
         # Rescale so that the squared weights sum to the number of nonzero-weight points: uniform weights
         # leave the check unchanged, and zero weights check the same as the remaining points alone.
-        num_used = (weights != 0).sum(dim=1, keepdim=True).to(weights.dtype)
-        check_scale = (weights * torch.sqrt(num_used / point_weights.sum(dim=1, keepdim=True)))[..., None]
+        num_used = num_used.to(point_weights.dtype)
+        check_scale = (rel_weights * torch.sqrt(num_used / point_weights.sum(dim=1, keepdim=True)))[..., None]
 
     # Getting normalized world points.
     world_points_norm, world_transform_norm = _mean_isotropic_scale_normalize(world_points, weights=point_weights)
