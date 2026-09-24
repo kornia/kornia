@@ -238,12 +238,14 @@ def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
     Relative to the magnitude of the polynomial's terms at the candidate, which is what a Horner
     evaluation cannot resolve below a few ``eps``. The candidates are Newton-polished before the
     test, so a genuine root arrives near that floor and a value that is not a root of the quartic
-    at all cannot. Measured on 100k-row sweeps per family: after polishing, genuine float32 roots
-    leave at most 5.8e-6 and float64 roots from an ill-conditioned cluster 3.7e-11, while the values
-    Ferrari's collapsed factorisation produces in #4474 never fall below 1.5e-3 in either dtype.
-    ``sqrt(eps) / 4`` is 8.6e-5 in float32 and 3.7e-9 in float64, at least 15x from both. That margin
-    is for Ferrari's own candidates. A value polished from a complex-pair placeholder can stop inside
-    the tolerance next to two close roots, so ``solve_quartic`` also requires those to have converged.
+    at all cannot. ``sqrt(eps) / 4`` is 8.6e-5 in float32 and 3.7e-9 in float64. Measured on
+    100k-row sweeps per family, genuine simple float32 roots leave at most 5.8e-6 after polishing and
+    float64 roots from an ill-conditioned cluster 3.7e-11. In float32 the margin is narrower at both
+    ends: the values Ferrari's collapsed factorisation produces in #4474 go down to about 5e-4, 6x the
+    tolerance, and a root next to a near-double root or inside a tight cluster, which Newton only
+    approaches linearly, can sit at the tolerance itself. Those margins are for Ferrari's own
+    candidates. A value polished from a complex-pair placeholder can stop inside the tolerance next to
+    two close roots, so ``solve_quartic`` also requires those to have converged.
     """
     return math.sqrt(torch.finfo(dtype).eps) / 4
 
