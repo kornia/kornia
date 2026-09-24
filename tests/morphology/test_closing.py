@@ -174,15 +174,19 @@ class TestClosing(BaseTester):
             assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(closing(tensor, side_kernel, border_type="circular"), tensor)
 
-    def test_closing_handles_empty_geodesic_windows_4734(self, device, dtype):
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_closing_empty_geodesic_window_is_infinite_4734(self, device, dtype, engine):
+        # Under `geodesic` the dilation window of `[[1, 0, 0]]` is empty in the first column, which becomes
+        # `+inf`; every other column round-trips exactly, so closing is extensive and idempotent on data of
+        # either sign. Before #4734 the finite `max_val` sentinel made both miss by up to one ULP of `max_val`.
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
         tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(
             device=device, dtype=dtype
         )
 
-        closed = closing(tensor, side_kernel)
-
-        expected = torch.cat((torch.full_like(tensor[..., :1], float("inf")), tensor[..., 1:]), dim=-1)
-        assert torch.equal(closed, expected)
-        assert (closed >= tensor).all()
-        assert torch.equal(closing(closed, side_kernel), closed)
+        for data in (tensor, -tensor):
+            closed = closing(data, side_kernel, engine=engine)
+            expected = torch.cat((torch.full_like(data[..., :1], float("inf")), data[..., 1:]), dim=-1)
+            assert torch.equal(closed, expected)
+            assert (closed >= data).all()
+            assert torch.equal(closing(closed, side_kernel, engine=engine), closed)

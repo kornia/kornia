@@ -179,14 +179,22 @@ class TestOpening(BaseTester):
             assert torch.equal(opening(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(opening(tensor, side_kernel, border_type="circular"), tensor)
 
-    def test_opening_handles_empty_geodesic_windows_4734(self, device, dtype):
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_opening_empty_geodesic_window_is_infinite_4734(self, device, dtype, engine):
+        # Under `geodesic` the dilation window of `[[1, 0, 0]]` is empty in the last column, which becomes
+        # `-inf`; every other column round-trips exactly, so opening is anti-extensive and idempotent on data
+        # of either sign, and `[0.5, 0.7]` opens to `[0.5, -inf]` as in scikit-image's `mode="ignore"`. Before
+        # #4734 the finite `max_val` sentinel made both miss by up to one ULP of `max_val`.
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
         tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(
             device=device, dtype=dtype
         )
 
-        opened = opening(tensor, side_kernel)
-
-        expected = torch.cat((tensor[..., :-1], torch.full_like(tensor[..., :1], -float("inf"))), dim=-1)
-        assert torch.equal(opened, expected)
-        assert torch.equal(opening(opened, side_kernel), opened)
+        for data in (tensor, -tensor):
+            opened = opening(data, side_kernel, engine=engine)
+            expected = torch.cat((data[..., :-1], torch.full_like(data[..., :1], -float("inf"))), dim=-1)
+            assert torch.equal(opened, expected)
+            assert (opened <= data).all()
+            assert torch.equal(opening(opened, side_kernel, engine=engine), opened)
+        pair = torch.tensor([[0.5, 0.7]], device=device, dtype=dtype)[None, None]
+        assert opening(pair, side_kernel, engine=engine).flatten().tolist() == [0.5, float("-inf")]

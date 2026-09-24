@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import functools
+
 import pytest
 import torch
 
@@ -747,27 +749,30 @@ class TestDilate(BaseTester):
             convolved = dilation(tensor, kernel, max_val=max_val, engine="convolution")
             self.assert_close(convolved, unfolded)
 
-    def test_convention_dilation_ignores_finite_max_val_sentinel_4734(self, device):
-        # Geodesic padding and masked kernel cells must be excluded rather than represented by a finite
-        # sentinel. This keeps the result independent of the image range and avoids the convolution precision
-        # loss caused by passing a finite sentinel through `conv2d`. float32 only: the literals
-        # below are about the float32 default `max_val=1e4` (40000 is not representable in bfloat16).
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_dilation_ignores_finite_max_val_sentinel_4734(self, device, engine):
+        # Geodesic padding and masked kernel cells are excluded rather than represented by a finite
+        # sentinel: an empty window returns the reduction identity (`-inf` for dilation, `+inf` for erosion),
+        # as scipy (`cval=-inf`/`inf`) and scikit-image (`mode="ignore"`) do, and the result no longer depends on
+        # `max_val` or on the image range. float32 only: 5e4 and 15000 are not exact in half precision.
         dtype = torch.float32
+        dilate = functools.partial(dilation, engine=engine)
+        erode = functools.partial(erosion, engine=engine)
         single = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
 
         # The window is empty at this origin, so dilation/erosion return their reduction identities.
-        assert dilation(single, side_kernel, origin=[0, 2]).item() == float("-inf")
-        assert erosion(single, side_kernel, origin=[0, 2]).item() == float("inf")
+        assert dilate(single, side_kernel, origin=[0, 2]).item() == float("-inf")
+        assert erode(single, side_kernel, origin=[0, 2]).item() == float("inf")
 
         big = torch.tensor([[0.0, 5e4, 0.0]], device=device, dtype=dtype)[None, None]
         gapped_kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)
-        assert dilation(big, gapped_kernel).flatten().tolist() == [50000.0, 0.0, 50000.0]
+        assert dilate(big, gapped_kernel).flatten().tolist() == [50000.0, 0.0, 50000.0]
         # The result is independent of the finite `max_val` because excluded cells are masked out.
-        assert dilation(big, gapped_kernel, max_val=1e6).flatten().tolist() == [50000.0, 0.0, 50000.0]
+        assert dilate(big, gapped_kernel, max_val=1e6).flatten().tolist() == [50000.0, 0.0, 50000.0]
 
         negative = torch.tensor([[-5e4, -6e4]], device=device, dtype=dtype)[None, None]
-        assert dilation(negative, torch.ones(1, 3, device=device, dtype=dtype)).flatten().tolist() == [
+        assert dilate(negative, torch.ones(1, 3, device=device, dtype=dtype)).flatten().tolist() == [
             -50000.0,
             -50000.0,
         ]
@@ -775,17 +780,17 @@ class TestDilate(BaseTester):
         # A masked-out in-image cell must be excluded just like an out-of-image cell.
         corner_kernel = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
         minus_two = torch.full((1, 1, 1, 1), -2.0, device=device, dtype=dtype)
-        assert erosion(minus_two, corner_kernel, origin=[0, 0]).item() == float("inf")
+        assert erode(minus_two, corner_kernel, origin=[0, 0]).item() == float("inf")
         five = torch.full((1, 1, 1, 1), 5.0, device=device, dtype=dtype)
-        assert dilation(five, corner_kernel, origin=[0, 0]).item() == float("-inf")
+        assert dilate(five, corner_kernel, origin=[0, 0]).item() == float("-inf")
         # The same masking applies when a structuring element is given.
         flat_corner = torch.zeros_like(corner_kernel)
-        assert erosion(minus_two, corner_kernel, structuring_element=flat_corner, origin=[0, 0]).item() == float("inf")
-        assert dilation(five, corner_kernel, structuring_element=flat_corner, origin=[0, 0]).item() == float("-inf")
+        assert erode(minus_two, corner_kernel, structuring_element=flat_corner, origin=[0, 0]).item() == float("inf")
+        assert dilate(five, corner_kernel, structuring_element=flat_corner, origin=[0, 0]).item() == float("-inf")
 
         # Empty windows now use the reduction identities rather than a finite `max_val` sentinel.
-        dilated = dilation(minus_two, corner_kernel, origin=[0, 0], max_val=1.0)
-        eroded = erosion(minus_two, corner_kernel, origin=[0, 0], max_val=1.0)
+        dilated = dilate(minus_two, corner_kernel, origin=[0, 0], max_val=1.0)
+        eroded = erode(minus_two, corner_kernel, origin=[0, 0], max_val=1.0)
         assert dilated.item() == float("-inf")
         assert eroded.item() == float("inf")
 
@@ -793,26 +798,45 @@ class TestDilate(BaseTester):
         # A non-flat structuring element can therefore still make an outside position contribute through its
         # actual structuring-element value, while an all-zero kernel has an empty window.
         ramp = torch.tensor([[3.0, 4.0, 5.0]], device=device, dtype=dtype)[None, None]
-        assert dilation(ramp, corner_kernel, origin=[0, 0]).flatten().tolist() == [float("-inf"), 3.0, 4.0]
-        constant_ramp = dilation(ramp, corner_kernel, origin=[0, 0], border_type="constant")
+        assert dilate(ramp, corner_kernel, origin=[0, 0]).flatten().tolist() == [float("-inf"), 3.0, 4.0]
+        constant_ramp = dilate(ramp, corner_kernel, origin=[0, 0], border_type="constant")
         assert constant_ramp.flatten().tolist() == [0.0, 3.0, 4.0]
-        valued_ramp = dilation(ramp, corner_kernel, origin=[0, 0], border_type="constant", border_value=7.0)
+        valued_ramp = dilate(ramp, corner_kernel, origin=[0, 0], border_type="constant", border_value=7.0)
         assert valued_ramp.flatten().tolist() == [7.0, 3.0, 4.0]
         tall_se = torch.tensor([[0.0, 0.0, 15000.0]], device=device, dtype=dtype)
-        leaked = dilation(
+        leaked = dilate(
             torch.zeros(1, 1, 1, 4, device=device, dtype=dtype),
             torch.ones(1, 3, device=device, dtype=dtype),
             structuring_element=tall_se,
         )
         assert leaked.flatten().tolist() == [0.0, 15000.0, 15000.0, 15000.0]
-        assert erosion(five, torch.zeros(1, 1, device=device, dtype=dtype)).item() == float("inf")
+        assert erode(five, torch.zeros(1, 1, device=device, dtype=dtype)).item() == float("inf")
 
         # `max_val` no longer affects geodesic padding or masked-out cells.
         half_image = torch.rand(1, 1, 4, 4, generator=torch.Generator().manual_seed(0)).to(device, torch.float16)
         half_cross = torch.tensor(
             [[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=torch.float16
         )
-        assert torch.equal(dilation(half_image, half_cross, max_val=65504.0), dilation(half_image, half_cross))
+        assert torch.equal(dilate(half_image, half_cross, max_val=65504.0), dilate(half_image, half_cross))
+
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_non_finite_inputs_agree_across_engines_4734(self, device, dtype, engine):
+        # A NaN or an infinity inside the window reaches the output; one in a cell the kernel excludes does
+        # not. `convolution` multiplies every window cell by a one-hot weight, so it has to keep `inf * 0` and
+        # `nan * 0` out of the excluded cells without dropping the values of the included ones.
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.tensor([[[[0.25, nan, 0.75, inf, 0.5, -inf, 0.75]]]], device=device, dtype=dtype)
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        cases = [
+            (dilation, torch.ones(1, 3, device=device, dtype=dtype), [nan, nan, nan, inf, inf, 0.75, 0.75]),
+            (erosion, torch.ones(1, 3, device=device, dtype=dtype), [nan, nan, nan, 0.5, -inf, -inf, -inf]),
+            (dilation, side_kernel, [nan, 0.75, inf, 0.5, -inf, 0.75, -inf]),
+            (erosion, side_kernel, [inf, 0.25, nan, 0.75, inf, 0.5, -inf]),
+        ]
+        for op, kernel, expected in cases:
+            actual = op(tensor, kernel, engine=engine).flatten()
+            expected_tensor = torch.tensor(expected, device=device, dtype=actual.dtype)
+            torch.testing.assert_close(actual, expected_tensor, rtol=0.0, atol=0.0, equal_nan=True)
 
     @pytest.mark.xfail(strict=True, reason="a non-float image is not rejected (#4735)")
     def test_wart_non_float_image_is_not_rejected_4735(self, device):
@@ -827,8 +851,8 @@ class TestDilate(BaseTester):
                     op(image, float_kernel, border_type="constant")
 
     def test_convention_mask_kernel_with_structuring_element(self, device, dtype):
-        # With a floating structuring element the sentinel is stored there, the kernel is only the
-        # `kernel == 0` mask, and a `uint8` or `bool` kernel returns what the floating kernel does.
+        # With a floating structuring element the kernel is only the `kernel == 0` mask, so a `uint8` or
+        # `bool` kernel returns what the floating kernel does.
         frame = torch.rand(1, 1, 4, 5, generator=torch.Generator().manual_seed(0)).to(device, dtype)
         flat_se = torch.zeros(1, 3, device=device, dtype=dtype)
         float_kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)
