@@ -22,7 +22,13 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation._2d.intensity.color_jiggle import _adjust_hue, _contiguous_output, _identity
+from kornia.augmentation._2d.intensity.color_jiggle import (
+    _adjust_hue,
+    _apply_order_cond,
+    _contiguous_output,
+    _dispatch_color_steps,
+    _Steps,
+)
 from kornia.constants import pi
 from kornia.enhance import (
     adjust_brightness_accumulative,
@@ -44,21 +50,13 @@ def _adjust_saturation(input: torch.Tensor, factor: torch.Tensor) -> torch.Tenso
     return _contiguous_output(adjust_saturation_with_gray_subtraction(input, factor))
 
 
-def _apply_transform_cond(
-    index: int,
-    input: torch.Tensor,
-    brightness: torch.Tensor,
-    contrast: torch.Tensor,
-    saturation: torch.Tensor,
-    hue: torch.Tensor,
-) -> torch.Tensor:
-    if index == 0:
-        return torch.cond((brightness != 0).any(), _adjust_brightness, _identity, (input, brightness))
-    if index == 1:
-        return torch.cond((contrast != 1).any(), _adjust_contrast, _identity, (input, contrast))
-    if index == 2:
-        return torch.cond((saturation != 1).any(), _adjust_saturation, _identity, (input, saturation))
-    return torch.cond((hue != 0).any(), _adjust_hue, _identity, (input, hue))
+# The brightness step tests its factor against 0 instead of the neutral 1 (#4785).
+_NEUTRAL = (0.0, 1.0, 1.0, 0.0)
+_BRANCHES: _Steps = (_adjust_brightness, _adjust_contrast, _adjust_saturation, _adjust_hue)
+
+
+def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torch.Tensor, ...]) -> torch.Tensor:
+    return _apply_order_cond(_BRANCHES, _NEUTRAL, order, input, factors)
 
 
 class ColorJitter(IntensityAugmentationBase2D):
@@ -84,9 +82,9 @@ class ColorJitter(IntensityAugmentationBase2D):
                  to the batch form (False).
         order: a fixed application order, as indices into (brightness, contrast, saturation, hue); a subset
           applies only those, and a repeated index raises ``ValueError``. ``None`` (the default) draws a random
-          order on every call. A fixed order makes the transform ``torch.compile`` fullgraph-safe. The parameter
-          generator still draws an ``order`` entry into ``_params``, and with a fixed order that entry is ignored,
-          including on replay.
+          order on every call. A fixed order makes the transform ``torch.compile`` fullgraph-safe for RGB inputs.
+          The parameter generator still draws an ``order`` entry into ``_params``, and with a fixed order that
+          entry is ignored, including on replay.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
@@ -180,6 +178,9 @@ class ColorJitter(IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
+        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
+        # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
+        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
 
         # native functions
         self._brightness_fn = adjust_brightness_accumulative
@@ -194,46 +195,13 @@ class ColorJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # A fixed RGB order uses torch.cond while compiling so neutral steps remain lazy and the
-        # transform stays fullgraph-compilable. Eager execution keeps the Python guards so .compile()
-        # can replace the four adjustment helpers as before. Non-RGB inputs use Python dispatch because
-        # torch.cond traces both branches. Both paths must test the same guard values.
-        if self._fixed_order is not None and input.shape[-3] == 3 and torch.compiler.is_compiling():
-            jittered = input
-            for idx in self._fixed_order:
-                jittered = _apply_transform_cond(
-                    idx,
-                    jittered,
-                    params["brightness_factor"],
-                    params["contrast_factor"],
-                    params["saturation_factor"],
-                    params["hue_factor"],
-                )
-            return jittered
+        # The same dispatch as ColorJiggle: a fixed order on an RGB input runs torch.cond in eager and compiled
+        # mode, every other call the Python guards, which accept any channel count for a skipped step.
+        steps: _Steps = (self._brightness_fn, self._contrast_fn, self._saturation_fn, self._adjust_hue_turns)
+        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps)
 
-        transforms = [
-            lambda img: (
-                self._brightness_fn(img, params["brightness_factor"])
-                if (params["brightness_factor"] != 0).any()
-                else img
-            ),
-            lambda img: (
-                self._contrast_fn(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
-            ),
-            lambda img: (
-                self._saturation_fn(img, params["saturation_factor"])
-                if (params["saturation_factor"] != 1).any()
-                else img
-            ),
-            lambda img: self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
-        ]
-
-        jittered = input
-        order = self._fixed_order if self._fixed_order is not None else params["order"].tolist()
-        for idx in order:
-            jittered = transforms[idx](jittered)
-
-        return jittered
+    def _adjust_hue_turns(self, input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+        return self._hue_fn(input, factor * 2 * pi)
 
     def compile(
         self,
@@ -245,6 +213,18 @@ class ColorJitter(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "ColorJitter":
+        # A fixed order on an RGB input runs every step through the torch.cond dispatcher, which is compiled
+        # as one graph; the four helpers serve the random order and non-RGB inputs.
+        if self._cond_fn is not None:
+            self._cond_fn = torch.compile(
+                self._cond_fn,
+                fullgraph=fullgraph,
+                dynamic=dynamic,
+                backend=backend,
+                mode=mode,
+                options=options,
+                disable=disable,
+            )
         self._brightness_fn = torch.compile(
             self._brightness_fn,
             fullgraph=fullgraph,

@@ -16,7 +16,7 @@
 #
 
 from collections.abc import Sequence
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Distribution
@@ -54,21 +54,74 @@ def _adjust_hue(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
     return _contiguous_output(adjust_hue(input, factor * 2 * pi))
 
 
-def _apply_transform_cond(
-    index: int,
+_StepFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+_Steps = Tuple[_StepFn, _StepFn, _StepFn, _StepFn]
+_FACTOR_KEYS = ("brightness_factor", "contrast_factor", "saturation_factor", "hue_factor")
+
+
+def _apply_order_cond(
+    branches: _Steps,
+    neutral: Tuple[float, float, float, float],
+    order: Tuple[int, ...],
     input: torch.Tensor,
-    brightness: torch.Tensor,
-    contrast: torch.Tensor,
-    saturation: torch.Tensor,
-    hue: torch.Tensor,
+    factors: Tuple[torch.Tensor, ...],
 ) -> torch.Tensor:
-    if index == 0:
-        return torch.cond((brightness - 1 != 0).any(), _adjust_brightness, _identity, (input, brightness))
-    if index == 1:
-        return torch.cond((contrast != 1).any(), _adjust_contrast, _identity, (input, contrast))
-    if index == 2:
-        return torch.cond((saturation != 1).any(), _adjust_saturation, _identity, (input, saturation))
-    return torch.cond((hue != 0).any(), _adjust_hue, _identity, (input, hue))
+    # torch.cond runs only the selected branch, so a neutral step is skipped without a data-dependent Python
+    # branch and the loop stays fullgraph-compilable. It traces both branches, so it needs an RGB input.
+    for idx in order:
+        factor = factors[idx]
+        input = torch.cond((factor != neutral[idx]).any(), branches[idx], _identity, (input, factor))
+    return input
+
+
+def _dispatch_color_steps(
+    input: torch.Tensor,
+    params: Dict[str, torch.Tensor],
+    fixed_order: Optional[Tuple[int, ...]],
+    cond_fn: Optional[Callable[[Tuple[int, ...], torch.Tensor, Tuple[torch.Tensor, ...]], torch.Tensor]],
+    neutral: Tuple[float, float, float, float],
+    steps: _Steps,
+) -> torch.Tensor:
+    """Apply the four colour steps in order, skipping a step whose factors all equal its ``neutral`` value.
+
+    Shared by :class:`ColorJiggle` and :class:`ColorJitter`. A fixed order on an RGB input goes through ``cond_fn``
+    (a :func:`_apply_order_cond` over the same ``neutral`` values) in eager and compiled mode alike; every other
+    call uses Python ``.any()`` guards, which accept any channel count for the skipped steps. ``cond_fn`` is
+    ``None`` for a random order and where Dynamo, which ``torch.cond`` requires, is unavailable.
+    """
+    factors = tuple(params[key] for key in _FACTOR_KEYS)
+    if fixed_order is not None and cond_fn is not None and input.shape[-3] == 3:
+        # An eager torch.cond enters Dynamo, whose one-time setup calls
+        # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
+        validate_args = Distribution._validate_args
+        try:
+            return cond_fn(fixed_order, input, factors)
+        finally:
+            if Distribution._validate_args != validate_args:
+                Distribution.set_default_validate_args(validate_args)
+
+    order = fixed_order if fixed_order is not None else params["order"].tolist()
+    for idx in order:
+        if (factors[idx] != neutral[idx]).any():
+            input = steps[idx](input, factors[idx])
+    return input
+
+
+def _brightness_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    return adjust_brightness(input, factor - 1)
+
+
+def _hue_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    return adjust_hue(input, factor * 2 * pi)
+
+
+_NEUTRAL = (1.0, 1.0, 1.0, 0.0)
+_STEPS: _Steps = (_brightness_step, adjust_contrast, adjust_saturation, _hue_step)
+_BRANCHES: _Steps = (_adjust_brightness, _adjust_contrast, _adjust_saturation, _adjust_hue)
+
+
+def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torch.Tensor, ...]) -> torch.Tensor:
+    return _apply_order_cond(_BRANCHES, _NEUTRAL, order, input, factors)
 
 
 class ColorJiggle(IntensityAugmentationBase2D):
@@ -177,7 +230,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         self._fixed_order: Optional[Tuple[int, ...]] = order
         # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
         # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
-        self._cond_dispatch = order is not None and torch._dynamo.is_dynamo_supported()
+        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
 
     def apply_transform(
         self,
@@ -189,46 +242,5 @@ class ColorJiggle(IntensityAugmentationBase2D):
         # A fixed order runs the same torch.cond dispatcher in eager and compiled mode. Every torch.cond
         # branch is traced, including branches that are not selected at runtime, so the dispatcher is
         # restricted to RGB inputs: tracing the hue/saturation branches would otherwise reject the neutral
-        # one- and four-channel configurations accepted by the Python dispatch below.
-        if self._cond_dispatch and input.shape[-3] == 3:
-            # An eager torch.cond enters Dynamo, whose one-time setup calls
-            # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
-            validate_args = Distribution._validate_args
-            try:
-                jittered = input
-                for idx in self._fixed_order:
-                    jittered = _apply_transform_cond(
-                        idx,
-                        jittered,
-                        params["brightness_factor"],
-                        params["contrast_factor"],
-                        params["saturation_factor"],
-                        params["hue_factor"],
-                    )
-            finally:
-                if Distribution._validate_args != validate_args:
-                    Distribution.set_default_validate_args(validate_args)
-            return jittered
-
-        transforms = [
-            lambda img: (
-                adjust_brightness(img, params["brightness_factor"] - 1)
-                if (params["brightness_factor"] - 1 != 0).any()
-                else img
-            ),
-            lambda img: (
-                adjust_contrast(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
-            ),
-            lambda img: (
-                adjust_saturation(img, params["saturation_factor"]) if (params["saturation_factor"] != 1).any() else img
-            ),
-            lambda img: adjust_hue(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
-        ]
-
-        jittered = input
-        order = self._fixed_order if self._fixed_order is not None else params["order"].tolist()
-        for idx in order:
-            t = transforms[idx]
-            jittered = t(jittered)
-
-        return jittered
+        # one- and four-channel configurations accepted by the Python dispatch.
+        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)

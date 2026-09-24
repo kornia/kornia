@@ -1823,23 +1823,79 @@ class TestColorJitter(BaseTester):
         fresh = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
         assert torch.compile(fresh, fullgraph=True)(img).shape == img.shape
 
+    @pytest.mark.device_agnostic
+    def test_fixed_order_keeps_distribution_validation(self):
+        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
+        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
+        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        script = (
+            "import torch\n"
+            "from torch.distributions import Distribution\n"
+            "from kornia.augmentation import ColorJitter\n"
+            "Distribution.set_default_validate_args(True)\n"
+            "ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(torch.rand(2, 3, 8, 8))\n"
+            "assert Distribution._validate_args, 'ColorJitter disabled Distribution validation'\n"
+        )
+        # Trusted, fixed command (the current interpreter running a literal script); no external input.
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
+        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
+        # 3.13), so a fixed order must fall back to the Python dispatch there.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
+        fallback = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert torch.equal(fallback(image, params=params), expected)
+
     @pytest.mark.parametrize(
         ("step", "factors"),
-        [(0, [0.0, 0.0]), (0, [1.0, 1.0]), (1, [1.0, 1.0]), (2, [1.0, 1.0]), (3, [0.0, 0.0])],
-        ids=["brightness-0", "brightness-1", "contrast-1", "saturation-1", "hue-0"],
+        [
+            (0, [0.0, 0.0]),
+            (0, [1.0, 1.0]),
+            (0, [0.0, 1.2]),
+            (1, [1.0, 1.0]),
+            (1, [1.0, 1.2]),
+            (2, [1.0, 1.0]),
+            (2, [1.0, 0.8]),
+            (3, [0.0, 0.0]),
+            (3, [0.0, 0.05]),
+        ],
+        ids=[
+            "brightness-0",
+            "brightness-1",
+            "brightness-mixed",
+            "contrast-1",
+            "contrast-mixed",
+            "saturation-1",
+            "saturation-mixed",
+            "hue-0",
+            "hue-mixed",
+        ],
     )
-    def test_dynamo_fixed_order_guards_match_eager(self, device, dtype, torch_optimizer, step, factors):
-        # A compiled fixed order dispatches through torch.cond, eager through Python guards (#4813). Both must
-        # skip the same factors: a skipped step returns the out-of-range pixels as they are, a step that runs
-        # clamps them, and a hue step that runs zeroes the pixel whose largest channel is 0.
+    def test_fixed_order_guards_match_sampled_order(self, device, dtype, step, factors):
+        # A fixed order on an RGB input dispatches through torch.cond, a sampled order through Python guards
+        # (#4813). Both must skip the same factors, and run a step on the whole batch when any factor in it is
+        # not neutral: a skipped step returns the out-of-range pixels as they are, a step that runs clamps them,
+        # and a hue step that runs zeroes the pixel whose largest channel is 0.
         pixels = torch.tensor([[-0.5, -0.5], [0.25, -0.2], [1.75, 0.0]], device=device, dtype=dtype)
         image = pixels.reshape(1, 3, 1, 2).repeat(2, 1, 1, 1)
         op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(step,))
         params = op.forward_parameters(image.shape)
         key = ("brightness_factor", "contrast_factor", "saturation_factor", "hue_factor")[step]
         params[key] = torch.tensor(factors, device=params[key].device, dtype=params[key].dtype)
-        expected = op(image, params=params)
-        self.assert_close(torch_optimizer(op, fullgraph=True)(image, params=params), expected)
+        params["order"] = torch.tensor([step], device=params["order"].device, dtype=params["order"].dtype)
+        sampled = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0)
+        assert torch.equal(op(image, params=params), sampled(image, params=params))
 
     def test_color_jitter(self, device, dtype):
         if dtype == torch.float16:
@@ -2246,6 +2302,7 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
+    @pytest.mark.parametrize("fixed", [True, False], ids=["fixed-order", "sampled-order"])
     @pytest.mark.parametrize(
         "jitter_kwargs,order",
         [
@@ -2256,7 +2313,9 @@ class TestColorJitter(BaseTester):
         ],
         ids=["brightness", "contrast", "saturation", "hue"],
     )
-    def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order):
+    def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order, fixed):
+        # .compile() must replace what apply_transform executes (#4038): the torch.cond dispatcher for a fixed
+        # order on an RGB input, the four step helpers for a sampled order.
         compiled_graphs = []
 
         def backend(graph_module, _example_inputs):
@@ -2268,8 +2327,9 @@ class TestColorJitter(BaseTester):
             device=device,
             dtype=dtype,
         )
-        f = ColorJitter(**jitter_kwargs, p=1.0, order=order)
+        f = ColorJitter(**jitter_kwargs, p=1.0, order=order if fixed else None)
         params = f.forward_parameters(input.shape)
+        params["order"] = torch.tensor(order, device=params["order"].device, dtype=params["order"].dtype)
         expected = f(input, params=params)
         assert not torch.equal(expected, input)
 
