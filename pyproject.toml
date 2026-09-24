@@ -42,7 +42,7 @@ dev = [
   "kornia[onnx]",
   "pillow",
   "pre-commit",
-  "pytest",
+  "pytest>=7",
   "pytest-timeout",
   "setuptools",  # torch.compile / triton on py3.11 + torch 2.5.1, which does not declare it there
 ]
