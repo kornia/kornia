@@ -159,7 +159,7 @@ class TestFindEssential(BaseTester):
         self.gradcheck(proxy, (points1, points2))
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
-    def test_degenerate_case(self, batch_size, num_points, device, dtype):
+    def test_degenerate_case(self, batch_size, num_points, device, dtype, monkeypatch):
         B, N = batch_size, num_points
         eye = torch.eye(3, device=device, dtype=dtype)
 
@@ -196,12 +196,18 @@ class TestFindEssential(BaseTester):
         assert torch.equal(torch.isnan(mixed[1]), torch.isnan(regular))
         self.assert_close(torch.nan_to_num(mixed[1]), torch.nan_to_num(regular), atol=0.0, rtol=0.0)
 
-        # Whether any other degenerate set is exactly singular depends on the platform's LAPACK. This
-        # L-shaped set and a random draw with the same points in both images exercise that path where
-        # it occurs, and must return the documented shape either way.
+        # Whether any other degenerate set is exactly singular, or ill-conditioned enough to make the
+        # companion matrix non-finite, depends on the platform's LAPACK. These sets and a random draw
+        # with the same points in both images exercise those paths where they occur, and must return the
+        # documented shape either way. The last two give a non-finite companion matrix at float32 on
+        # Linux x86 and on macOS arm64 respectively.
         lshape = torch.tensor([[1.0, 0.0], [0.5, 0.0], [0.0, 1.0], [0.0, 0.0], [0.0, 0.5]], device=device, dtype=dtype)
         draw = torch.rand(B, N, 2, generator=torch.Generator().manual_seed(79)).to(device=device, dtype=dtype)
-        for points in (lshape.expand(B, 5, 2), draw):
+        on_axis = torch.tensor([[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [1.0, 0.0]], device=device, dtype=dtype)
+        repeated = torch.tensor(
+            [[2.0, 0.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 1.0]], device=device, dtype=dtype
+        )
+        for points in (lshape.expand(B, 5, 2), draw, on_axis.expand(B, 5, 2), repeated.expand(B, 5, 2)):
             weights = torch.ones(points.shape[:2], device=device, dtype=dtype)
             assert epi.essential.find_essential(points, points, weights).shape == (B, 10, 3, 3)
 
@@ -210,6 +216,23 @@ class TestFindEssential(BaseTester):
         # leaves finite candidates that fail the essential-matrix constraints, so they must be dropped.
         design = torch.eye(9, device=device, dtype=dtype)[[0, 1, 3, 5, 6]].expand(B, 5, 9)
         assert torch.isnan(epi.essential.null_to_Nister_solution(design, B)).all()
+
+        # A companion matrix that is not finite has no roots, and torch.linalg.eigvals aborts on one, which
+        # used to take the whole batch down. Which inputs produce it is platform-dependent, so make the
+        # determinant polynomial of one element non-finite instead: that element takes the identity
+        # fallback, and the other returns exactly what it returns in the unpatched batch above.
+        determinant = epi.essential._determinant_to_polynomial_jit
+
+        def overflowed(A, *args):
+            cs = determinant(A, *args).clone()
+            cs[0] = float("nan")
+            return cs
+
+        monkeypatch.setattr(epi.essential, "_determinant_to_polynomial_jit", overflowed)
+        patched = epi.essential.find_essential(torch.stack((x1, x1)), torch.stack((x2, x2)), weights)
+        self.assert_close(patched[0], eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
+        assert torch.equal(torch.isnan(patched[1]), torch.isnan(regular))
+        self.assert_close(torch.nan_to_num(patched[1]), torch.nan_to_num(regular), atol=0.0, rtol=0.0)
 
 
 class TestEssentialFromFundamental(BaseTester):

@@ -4564,8 +4564,8 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         with pytest.raises(ValueError, match="amount must be a tuple or a float"):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
 
-    @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
-    @pytest.mark.parametrize("channel_shape", [1, 1, 3, 3])
+    @pytest.mark.parametrize("batch_shape", [1, 3, 5])
+    @pytest.mark.parametrize("channel_shape", [1, 3])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
         input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
         transform = RandomSaltAndPepperNoise(p=1.0)
@@ -6107,9 +6107,10 @@ class TestRandomRain(BaseTester):
             n = int(params["number_of_drops_factor"][i])
             h, w = int(params["drop_height_factor"][i]), int(params["drop_width_factor"][i])
             size = max(h, abs(w))
-            x = torch.linspace(0, h, steps=size, dtype=torch.long).to(device)
-            y = torch.linspace(0, w, steps=size, dtype=torch.long).to(device)
-            last_dy, last_dx = (h, w) if size > 1 else (0, 0)
+            last_dy = h - 1
+            last_dx = w - 1 if w > 0 else w + 1 if w < 0 else 0
+            x = torch.linspace(0, last_dy, steps=size, dtype=torch.long).to(device)
+            y = torch.linspace(0, last_dx, steps=size, dtype=torch.long).to(device)
             rows, cols = image.shape[2] - last_dy, image.shape[3] - abs(last_dx)
             coords = params["coordinates_factor"][i][:n]
             r0 = (coords[:, 0] * rows).long().clamp(max=rows - 1).to(device)

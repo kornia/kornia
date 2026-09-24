@@ -137,6 +137,23 @@ def _crop_translation(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
     return transform
 
 
+def _crop_scale_translation(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    """Return the matrix of an axis-aligned crop, which maps ``src`` vertices 0 and 2 onto ``dst`` vertices 0 and 2.
+
+    An axis where both boxes have zero extent (a size-1 crop) is a plain translation. An axis where only one
+    of them does has no invertible matrix and gives a non-finite one.
+    """
+    src_extent = src[:, 2] - src[:, 0]
+    dst_extent = dst[:, 2] - dst[:, 0]
+    both_zero = (src_extent == 0) & (dst_extent == 0)
+    scale = torch.where(both_zero, torch.ones_like(src_extent), dst_extent / src_extent)
+    transform = torch.eye(3, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
+    transform[:, 0, 0] = scale[:, 0]
+    transform[:, 1, 1] = scale[:, 1]
+    transform[:, :2, 2] = dst[:, 0] - scale * src[:, 0]
+    return transform
+
+
 def center_crop(
     input_tensor: torch.Tensor,
     size: Tuple[int, int],
@@ -315,7 +332,20 @@ def _crop_by_boxes_to_size(
 
     # compute transformation between points and warp
     # Note: torch.Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(input_tensor), dst_box.to(input_tensor))
+    src_box = src_box.to(input_tensor)
+    dst_box = dst_box.to(input_tensor)
+    dst_trans_src: torch.Tensor = get_perspective_transform(src_box, dst_box)
+    # A box with a size-1 axis has collinear vertices and the solve returns NaN for it (#4747). Fall back to
+    # the matrix built from the box extents there; every other box keeps the solved matrix.
+    solved = dst_trans_src.isfinite().all(dim=-1).all(dim=-1)
+    size_one = ((src_box[:, 2] - src_box[:, 0]) == 0).any(dim=-1) | ((dst_box[:, 2] - dst_box[:, 0]) == 0).any(dim=-1)
+    fallback = (~solved & size_one)[:, None, None]
+    # ``torch.where`` also differentiates the branch it discards, so a box that keeps its solved matrix builds the
+    # extent matrix from a unit source square: its own vertices 0 and 2 can share a coordinate (a square turned by
+    # 45 degrees), and dividing by that zero extent would make the gradient with respect to the box NaN.
+    unit = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=src_box.device, dtype=src_box.dtype)
+    extent_matrix = _crop_scale_translation(torch.where(fallback, src_box, unit), dst_box)
+    dst_trans_src = torch.where(fallback, extent_matrix, dst_trans_src)
 
     return crop_by_transform_mat(
         input_tensor, dst_trans_src, out_size, mode=mode, padding_mode=padding_mode, align_corners=align_corners

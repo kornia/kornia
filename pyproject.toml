@@ -42,7 +42,7 @@ dev = [
   "kornia[onnx]",
   "pillow",
   "pre-commit",
-  "pytest",
+  "pytest>=7",
   "pytest-timeout",
   "setuptools",  # torch.compile / triton on py3.11 + torch 2.5.1, which does not declare it there
 ]
@@ -212,6 +212,9 @@ select = [
   "NPY",  # NumPy-specific rules
   "PIE",  # flake8-pie
   "PL",  # Pylint
+  "PT013",  # flake8-pytest-style: pytest imports
+  "PT014",  # flake8-pytest-style: duplicate parametrized cases
+  "PT017",  # flake8-pytest-style: assertions in exception handlers
   "PYI",  # flake8-pyi
   "RET",  # flake8-return
   "RSE",  # flake8-raise

@@ -265,18 +265,14 @@ def test_skip_probe_re_raises_everything_it_cannot_identify(monkeypatch):
         raise RuntimeError("kornia-side regression")
 
     def assert_the_injected_failure_propagates(case: str) -> None:
-        # NOT pytest.raises: a skip is a BaseException that pytest.raises(RuntimeError) lets
-        # through, so the regression this pin exists to catch would turn the pin itself yellow
-        # instead of red -- the same going-quiet the helper's own over-eager skip causes, one level
-        # up.
+        # Requiring RuntimeError still lets pytest.skip escape, so catch that skip separately
+        # and fail the pin. No error, a different error, or the wrong RuntimeError also fails.
         try:
-            _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)
+            with pytest.raises(RuntimeError) as excinfo:
+                _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)
         except pytest.skip.Exception as skipped:
             raise AssertionError(f"{case}: an unrelated failure was skipped over: {skipped}") from skipped
-        except RuntimeError as err:
-            assert "kornia-side regression" in str(err), f"{case}: wrong error re-raised: {err}"
-        else:
-            raise AssertionError(f"{case}: the injected failure did not propagate at all")
+        assert "kornia-side regression" in str(excinfo.value), f"{case}: wrong error re-raised: {excinfo.value}"
 
     # Cleared again: case A memoized (cpu, float32) as healthy, and C/D have to reach the body.
     _healthy_closed_form_inverse_routes.clear()
@@ -4215,10 +4211,15 @@ class TestNormalizeHomography(BaseTester):
         identity = torch.eye(3, device=device, dtype=torch.int64)[None]
         op = getattr(kornia.geometry.conversions, op_name)
 
+        # Both a torch error and an all-NaN result are valid backend outcomes. Keep
+        # both branches, but check a caught error after the except block for PT017.
+        error: Exception | None = None
         try:
             out = op(identity, (4, 5), (8, 9))
         except Exception as err:
-            assert not _raised_by_a_kornia_guard(err), (
+            error = err
+        if error is not None:
+            assert not _raised_by_a_kornia_guard(error), (
                 f"kornia#3959: {op_name} now rejects integer input in a guard of its own -- update the warning"
             )
         else:
@@ -4682,11 +4683,16 @@ class TestRt2Extrinsics(BaseTester):
             (camtoworld_to_worldtocam_Rt, (rotation, translation)),
             (worldtocam_to_camtoworld_Rt, (rotation, translation)),
         ]
+        # Preserve both backend outcomes: an int64 result or a torch error is valid,
+        # while a new Kornia guard must still fail the pin after the except block.
         for op, args in accepting:
+            error: Exception | None = None
             try:
                 out = op(*args)
             except Exception as err:
-                assert not _raised_by_a_kornia_guard(err), (
+                error = err
+            if error is not None:
+                assert not _raised_by_a_kornia_guard(error), (
                     f"kornia#3959: {op.__name__} now rejects int64 input in a guard of its own -- update the warning"
                 )
             else:

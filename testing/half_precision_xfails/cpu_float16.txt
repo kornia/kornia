@@ -193,8 +193,6 @@ call	builtins.AssertionError	tests/filters/test_gaussian.py::test_get_gaussian_d
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_get_gaussian_discrete_kernel1d_tensor[cpu-float16-sigma0-5]
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_get_gaussian_discrete_kernel1d_tensor[cpu-float16-sigma1-11]
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_get_gaussian_discrete_kernel1d_tensor[cpu-float16-sigma1-5]
-call	builtins.AssertionError	tests/filters/test_gaussian.py::test_get_gaussian_discrete_kernel1d_tensor[cpu-float16-sigma2-11]
-call	builtins.AssertionError	tests/filters/test_gaussian.py::test_get_gaussian_discrete_kernel1d_tensor[cpu-float16-sigma2-5]
 call	builtins.AssertionError	tests/filters/test_otsu_thresholding.py::TestOtsuThreshold::test_gradual_threshold[cpu-float16]
 call	builtins.AssertionError	tests/filters/test_otsu_thresholding.py::test_mask[cpu-float16]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-float16-20]

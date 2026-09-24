@@ -95,10 +95,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     that uses the base mask path the ``resample`` entry is honoured in both directions, and a
                     dict without one resamples masks with nearest neighbour. ``align_corners`` is
                     handler-dependent: some warps honor it, but resize mask paths replace it.
-                    With :class:`~kornia.augmentation.RandomResizedCrop`,
-                    boolean ``align_corners`` overrides raise ``ValueError`` in the default ``cropping_mode='slice'``
-                    mask path (`#4802 <https://github.com/kornia/kornia/issues/4802>`_); ``cropping_mode='resample'``
-                    accepts them. ``None`` works in both modes.
+                    :class:`~kornia.augmentation.RandomResizedCrop` in the default ``cropping_mode='slice'``
+                    ignores it for nearest resampling.
                     :class:`~kornia.augmentation.RandomElasticTransform` has its own mask path and honours
                     both entries. Unlike the constructors, the override is not normalized: a string ``resample``
                     raises ``AttributeError`` wherever the mask is resampled, so pass a

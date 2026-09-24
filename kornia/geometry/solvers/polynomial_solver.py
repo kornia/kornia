@@ -167,7 +167,12 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_Q_zero_solutions = (a_Q_zero == 0) & (a_R_zero != 0)
 
     if torch.any(mask_Q_zero):
-        x0_Q_zero = torch.pow(2 * R[mask_Q_zero], 1 / 3) - b_a_3[mask_Q_zero]
+        # torch.pow of a negative base to 1/3 is nan: take the cube root of |2R| and restore the sign.
+        R_Q_zero = R[mask_Q_zero]
+        A_Q_zero = torch.sign(R_Q_zero) * torch.pow(2 * R_Q_zero.abs(), 1 / 3)
+        # The root is A - Q / A, as in the D > 0 branch. The Q / A term is 0 in the forward pass,
+        # but it keeps the root's dependence on Q in the gradient (d root / dQ = -1 / A).
+        x0_Q_zero = A_Q_zero - Q[mask_Q_zero] / A_Q_zero - b_a_3[mask_Q_zero]
         solutions[mask_Q_zero_solutions, 0] = x0_Q_zero
 
     mask_QR_zero = (Q == 0) & (R == 0)
@@ -228,6 +233,40 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         solutions[mask_D_positive_solution, 0] = x0_D_positive
 
     return solutions
+
+
+def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
+    """Largest scaled Horner residual a polished quartic candidate may leave and still count as a root.
+
+    Relative to the magnitude of the polynomial's terms at the candidate, which is what a Horner
+    evaluation cannot resolve below a few ``eps``. The candidates are Newton-polished before the
+    test, so a genuine root arrives near that floor and a value that is not a root of the quartic
+    at all cannot. ``sqrt(eps) / 4`` is 8.6e-5 in float32 and 3.7e-9 in float64. Measured on
+    100k-row sweeps per family, genuine simple float32 roots leave at most 5.8e-6 after polishing and
+    float64 roots from an ill-conditioned cluster 3.7e-11. In float32 the margin is narrower at both
+    ends: the values Ferrari's collapsed factorisation produces in #4474 go down to about 5e-4, 6x the
+    tolerance, and a root next to a near-double root or inside a tight cluster, which Newton only
+    approaches linearly, can sit at the tolerance itself. Those margins are for Ferrari's own
+    candidates. A value polished from a complex-pair placeholder can stop inside the tolerance next to
+    two close roots, so ``solve_quartic`` also requires those to have converged.
+    """
+    return math.sqrt(torch.finfo(dtype).eps) / 4
+
+
+# Two accepted quartic candidates are the same root when they sit within each other's error bound:
+# the Newton step |p / p'| of a polished candidate at a simple root is a first-order estimate of its
+# distance to the nearest root, so a spurious repeat that stopped short of the root still reaches it,
+# while two distinct roots, however close, do not (a float64 quartic with roots 0.01 and 0.0109
+# keeps both). A candidate at a multiple root contributes nothing to the bound: p' vanishes there and
+# its Newton step is not an error estimate. The factor covers the first-order truncation and the
+# ulp floor, and was measured against 4, 16 and 64: 4 loses no root that 16 or 64 keep.
+_QUARTIC_COINCIDENCE_FACTOR = 4.0
+
+# A polished candidate whose derivative, relative to the size of the derivative's terms, exceeds this
+# sits at a simple root. Measured over 100k-row families: polished genuine double roots stay below
+# 1.1e-3 at the 99th percentile in float32 and below 1e-7 in float64, while a spurious repeat of a
+# simple root sits above 1e-2 at the 1st percentile in float32 and above 2e-2 in float64.
+_QUARTIC_SIMPLE_ROOT_DERIVATIVE = 1e-2
 
 
 def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
@@ -430,6 +469,107 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     roots1 = solve_quadratic(torch.stack([q1_a, q1_b, q1_c], dim=1))
     roots2 = solve_quadratic(torch.stack([q2_a, q2_b, q2_c], dim=1))
+
+    # Ferrari reports the roots of the factorization it built, not of the quartic it was
+    # given, and in float32 those can differ completely. When solve_cubic loses a near-double
+    # resolvent root -- which is exactly what a near-perfect-square quartic produces -- the
+    # best remaining candidate leaves R^2 < 0, R falls back to 0, E's radicand goes negative
+    # too, and both quadratics collapse to x^2 + (A/2)x + y/2. Its roots are then returned as
+    # the quartic's while leaving a residual of 25 and 64 on the two cases in #4474.
+    #
+    # So polish, then verify. Ferrari's arithmetic also loses digits to cancellation on ordinary
+    # quartics: a genuine, well-conditioned root can arrive thousands of ulps off (1.4e-5 on a root
+    # of 0.024 in float32, a scaled residual of 1.1e-4) and no fixed residual cutoff separates such
+    # a root from the collapsed-factorisation values above. Two Newton steps, each kept only when it
+    # lowers |p|, pull a genuine root to the evaluation floor; a value that is not a root of this
+    # quartic cannot be pulled there, and a step near a multiple root that would overshoot is not
+    # taken, so the polish never makes a candidate worse. The zeros solve_quadratic returns for a
+    # complex pair are polished too: when rounding sends a real pair's discriminant negative, the
+    # pair comes back as placeholders and Newton from zero recovers the root nearest zero (one real
+    # root of 1e-3 next to roots of 1 to 1e3, say). They are judged apart from Ferrari's own
+    # candidates below, because from zero Newton can also stop anywhere |p| is merely small.
+    root_candidates = torch.cat([roots1, roots2], dim=-1)
+    is_candidate = root_candidates != 0
+    A_e, B_e, C_e, D_e = (t.unsqueeze(-1) for t in (A, B, C, D))
+
+    def quartic(x: torch.Tensor) -> torch.Tensor:
+        return (((x + A_e) * x + B_e) * x + C_e) * x + D_e
+
+    def quartic_derivative(x: torch.Tensor) -> torch.Tensor:
+        return ((4.0 * x + 3.0 * A_e) * x + 2.0 * B_e) * x + C_e
+
+    root_residual = quartic(root_candidates)
+    for _ in range(2):
+        derivative = quartic_derivative(root_candidates)
+        can_step = derivative != 0
+        safe_derivative = torch.where(can_step, derivative, torch.ones_like(derivative))
+        stepped = torch.where(can_step, root_candidates - root_residual / safe_derivative, root_candidates)
+        stepped_residual = quartic(stepped)
+        improved = torch.abs(stepped_residual) < torch.abs(root_residual)
+        root_candidates = torch.where(improved, stepped, root_candidates)
+        root_residual = torch.where(improved, stepped_residual, root_residual)
+
+    # The derivative at each polished candidate, relative to the size of the derivative's terms,
+    # tells a simple root (p' clear of zero) from a multiple one; at a simple root |p / p'| is a
+    # first-order estimate of the distance to the root.
+    abs_root = torch.abs(root_candidates)
+    abs_derivative = torch.abs(quartic_derivative(root_candidates))
+    derivative_scale = torch.maximum(
+        torch.ones_like(root_candidates),
+        4.0 * abs_root**3 + 3.0 * torch.abs(A_e) * abs_root**2 + 2.0 * torch.abs(B_e) * abs_root + torch.abs(C_e),
+    )
+    is_simple = abs_derivative / derivative_scale > _QUARTIC_SIMPLE_ROOT_DERIVATIVE
+    eps = torch.finfo(root_candidates.dtype).eps
+    root_error = torch.where(
+        is_simple,
+        torch.abs(root_residual) / torch.maximum(abs_derivative, eps * derivative_scale),
+        torch.zeros_like(root_candidates),
+    )
+
+    # Then drop the candidates that are not roots of the normalized quartic, using the zero
+    # placeholder this function already returns for a quartic with no real roots. The tolerance is
+    # relative to the size of the terms at the candidate: a cluster of close real roots is
+    # ill-conditioned in float32 and lands a long way from the true values while still satisfying
+    # the polynomial, and those stay.
+    root_residual_scale = torch.maximum(
+        torch.ones_like(root_candidates),
+        abs_root**4
+        + torch.abs(A_e) * abs_root**3
+        + torch.abs(B_e) * abs_root**2
+        + torch.abs(C_e) * abs_root
+        + torch.abs(D_e),
+    )
+    is_root = torch.abs(root_residual) / root_residual_scale <= _quartic_root_residual_tol(root_candidates.dtype)
+    # A polished placeholder is kept only where Newton converged, at a simple root: its remaining step
+    # |p / p'| must be within sqrt(eps) of |x| itself, the reach of a root the dtype can resolve. The
+    # bound is relative with no floor at 1, so a root near zero is held to the same standard; with a
+    # floor it becomes absolute there and admits a value 25% off a root at 1e-3. Two steps from zero
+    # can also stop inside the residual tolerance a tenth away from two close real roots, where |p|
+    # stays small over a wide interval; p' is small there too, and the step still to go is far larger.
+    recovered = is_simple & (root_error <= math.sqrt(eps) * abs_root)
+    is_root = is_root & (is_candidate | recovered)
+    root_candidates = torch.where(is_root, root_candidates, torch.zeros_like(root_candidates))
+
+    # Polishing can also carry a non-root onto a root the other quadratic already reports: when the
+    # quadratic that should have held the complex pair collapses to a double candidate near a real
+    # root, both copies converge onto it and a simple root comes back two or three times. A simple
+    # root cannot repeat, so a candidate that coincides with an earlier accepted one is dropped
+    # unless the root is multiple, which the derivative decides: at a multiple root p' vanishes
+    # with p, at a simple one it does not. Two genuine roots that merely lie close have a small
+    # derivative between them for the same reason and are both kept.
+    ulp_floor = eps * torch.maximum(abs_root.unsqueeze(-1), abs_root.unsqueeze(-2))
+    coincidence = _QUARTIC_COINCIDENCE_FACTOR * (root_error.unsqueeze(-1) + root_error.unsqueeze(-2) + ulp_floor)
+    coincide = torch.abs(root_candidates.unsqueeze(-1) - root_candidates.unsqueeze(-2)) <= coincidence
+    # Of two copies, the one kept is Ferrari's own candidate over a root recovered from a placeholder,
+    # which had only two steps from zero to get there while the other started at the root; between
+    # two of the same kind, the earlier one.
+    slot = torch.arange(4, device=root_candidates.device).expand_as(root_candidates)
+    rank = slot + 4 * (~is_candidate).to(slot.dtype)
+    outranked_by = rank.unsqueeze(-2) < rank.unsqueeze(-1)
+    accepted = root_candidates != 0
+    is_repeat = (coincide & outranked_by & accepted.unsqueeze(-1) & accepted.unsqueeze(-2)).any(dim=-1)
+    root_candidates = torch.where(is_repeat & is_simple, torch.zeros_like(root_candidates), root_candidates)
+    roots1, roots2 = root_candidates[:, :2], root_candidates[:, 2:]
 
     solutions[mask_quartic, 0:2] = roots1.to(dtype=solutions.dtype)
     solutions[mask_quartic, 2:4] = roots2.to(dtype=solutions.dtype)
