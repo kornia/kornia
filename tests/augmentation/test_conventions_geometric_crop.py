@@ -299,13 +299,45 @@ class TestGeometricCropConventions(BaseTester):
         self.assert_close(nearest(x, params=params), x)
 
     @pytest.mark.device_agnostic
-    def test_wart_random_resized_crop_fallback_leaves_scale_and_ratio_4814(self):
-        # #4814: no candidate may equal the input and the fallback compares H / W with min(ratio), so scale=(1, 1)
-        # crops a portrait or square image; torchvision's get_params keeps 8 x 6 and 8 x 8. Flips on either fix.
+    @pytest.mark.parametrize(
+        "shape,crops",
+        [
+            ((8, 8), {(8, 8)}),
+            ((8, 6), {(8, 6), (7, 6)}),
+            ((6, 8), {(6, 8), (6, 7)}),
+            ((7, 8), {(7, 8), (7, 7)}),
+        ],
+        ids=["square", "portrait", "landscape_at_max_ratio", "landscape"],
+    )
+    def test_convention_random_resized_crop_full_scale_keeps_the_whole_image_4814(self, shape, crops):
+        # #4814: a candidate used to have to be strictly smaller than the input, and the fallback compared
+        # H / W with min(ratio), so scale=(1, 1) cropped square, portrait and most landscape inputs
+        # (8 x 6 -> 4 x 6, 7 x 8 -> 6 x 8). As in torchvision's get_params, a candidate may equal the input, and
+        # one that rounds a pixel short on the longer side (7 x 6 for 8 x 6, in 18% of draws) also fits.
         torch.manual_seed(0)
-        for shape, crop in (((8, 6), (4, 6)), ((8, 8), (6, 8))):
-            src = K.RandomResizedCrop((4, 4), scale=(1.0, 1.0), p=1.0).forward_parameters((1, 1, *shape))["src"]
-            assert ((src[0, 2, 1] - src[0, 1, 1]).item() + 1, (src[0, 1, 0] - src[0, 0, 0]).item() + 1) == crop
+        src = K.RandomResizedCrop((4, 4), scale=(1.0, 1.0), p=1.0).forward_parameters((256, 1, *shape))["src"]
+        heights = (src[:, 2, 1] - src[:, 1, 1] + 1).long().tolist()
+        widths = (src[:, 1, 0] - src[:, 0, 0] + 1).long().tolist()
+        assert set(zip(heights, widths)) == crops
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "shape,ratio,crop",
+        [
+            ((224, 224), (1.5, 2.0), (149, 224)),
+            ((100, 60), (3.0 / 4.0, 4.0 / 3.0), (80, 60)),
+            ((60, 100), (0.5, 0.75), (60, 45)),
+            ((60, 100), torch.tensor([0.5, 0.75]), (60, 45)),
+        ],
+        ids=["narrower_than_min_ratio", "portrait_narrower_than_min_ratio", "wider_than_max_ratio", "tensor_ratio"],
+    )
+    def test_convention_random_resized_crop_fallback_follows_torchvision_4814(self, shape, ratio, crop):
+        # #4814: when no candidate fits, the crop size matches torchvision's get_params. ``ratio`` is width / height:
+        # an input narrower than min(ratio) keeps its width, one wider than max(ratio) keeps its height.
+        torch.manual_seed(0)
+        aug = K.RandomResizedCrop((4, 4), scale=(1.0, 1.0), ratio=ratio, p=1.0)
+        src = aug.forward_parameters((1, 1, *shape))["src"]
+        assert ((src[0, 2, 1] - src[0, 1, 1]).item() + 1, (src[0, 1, 0] - src[0, 0, 0]).item() + 1) == crop
 
     @pytest.mark.device_agnostic
     def test_wart_crop_siblings_disagree_on_integer_size_4417(self):
