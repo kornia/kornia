@@ -15,9 +15,9 @@
 # limitations under the License.
 #
 
-import io
+
 from pathlib import Path
-from urllib.request import urlopen
+
 
 import kornia_rs
 import numpy as np
@@ -35,26 +35,12 @@ def create_random_img8_torch(height: int, width: int, channels: int, device=None
     return (torch.rand(channels, height, width, device=device) * 255).to(torch.uint8)
 
 
-def _download_image(url: str, filename: str = "") -> Path:
-    # TODO: move this to testing
-
-    filename = url.rsplit("/", maxsplit=1)[-1] if len(filename) == 0 else filename
-    # Download
-    # url is a fixed https:// literal defined by each fixture above.
-    with urlopen(url, timeout=60) as resp:  # noqa: S310
-        bytesio = io.BytesIO(resp.read())
-    # Save file
-    with open(filename, "wb") as outfile:
-        outfile.write(bytesio.getbuffer())
-
-    return Path(filename)
-
-
 @pytest.fixture(scope="session")
 def png_image(tmp_path_factory):
-    url = "https://github.com/kornia/data/raw/main/simba.png"
     filename = tmp_path_factory.mktemp("data") / "image.png"
-    return _download_image(url, str(filename))
+    img_th = create_random_img8_torch(256, 256, 3)
+    write_image(str(filename), img_th)
+    return filename
 
 
 @pytest.fixture(scope="session")
@@ -68,9 +54,10 @@ def rgba_png_image(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def jpg_image(tmp_path_factory):
-    url = "https://github.com/kornia/data/raw/main/crowd.jpg"
     filename = tmp_path_factory.mktemp("data") / "image.jpg"
-    return _download_image(url, str(filename))
+    img_th = create_random_img8_torch(256, 256, 3)
+    write_image(str(filename), img_th)
+    return filename
 
 
 @pytest.fixture(scope="session")
