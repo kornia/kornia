@@ -21,14 +21,14 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType
 from kornia.filters import gaussian_blur2d
 from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 
 
-class RandomGaussianBlur(IntensityAugmentationBase2D):
+class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
 
     The standard deviation is sampled for each instance.
@@ -68,10 +68,6 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         the kernel's radius along it, and at ``"circular"`` at least that long; a smaller image raises a
         ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` run
         down to a single pixel.
-
-    .. warning::
-        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
-        Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
 
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.
@@ -156,6 +152,17 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "RandomGaussianBlur":
+        self._record_compile(
+            ["_gaussian_blur2d_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
         self._gaussian_blur2d_fn = torch.compile(
             self._gaussian_blur2d_fn,
             fullgraph=fullgraph,
