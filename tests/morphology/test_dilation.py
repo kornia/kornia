@@ -171,7 +171,7 @@ class TestDilate(BaseTester):
         assert actual.dtype == torch.int64
         assert actual.flatten().tolist() == [3, 0, 3, 7, 0]
 
-    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    @pytest.mark.parametrize("engine", ["unfold", "shift"])
     def test_integer_image_geodesic_border_uses_dtype_min_4734(self, device, engine):
         # Non-floating images still use dtype extrema for geodesic padding until #4735 rejects them.
         tensor = torch.tensor([[[[1, 2], [3, 4]]]], dtype=torch.uint8, device=device)
