@@ -19,10 +19,10 @@ from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.color_jiggle import _adjust_hue, _contiguous_output, _identity
 from kornia.constants import pi
 from kornia.enhance import (
     adjust_brightness_accumulative,
@@ -30,15 +30,6 @@ from kornia.enhance import (
     adjust_hue,
     adjust_saturation_with_gray_subtraction,
 )
-
-
-def _contiguous_output(output: torch.Tensor) -> torch.Tensor:
-    return output.contiguous()
-
-
-def _identity(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    # torch.cond rejects an output that aliases an input, so a neutral factor returns a copy.
-    return input.contiguous().clone()
 
 
 def _adjust_brightness(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
@@ -51,10 +42,6 @@ def _adjust_contrast(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
 
 def _adjust_saturation(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
     return _contiguous_output(adjust_saturation_with_gray_subtraction(input, factor))
-
-
-def _adjust_hue(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    return _contiguous_output(adjust_hue(input, factor * 2 * pi))
 
 
 def _apply_transform_cond(
@@ -108,16 +95,11 @@ class ColorJitter(IntensityAugmentationBase2D):
         - see :class:`ColorJiggle` for how the two classes relate. This class takes the brightness factor as
           drawn, a multiplier whose identity is ``1``, and a scalar ``brightness`` above ``1`` draws from
           ``[0, 1 + brightness]``, as torchvision does.
-        - a step's result is discarded only when every factor in the batch equals its guard value -- ``1`` for
-          contrast and saturation, ``0`` for hue and, as the #4785 warning below states, for brightness;
-          otherwise the brightness, contrast and (three-channel) saturation steps clamp the whole batch into
-          ``[0, 1]``. A fixed ``order`` without index ``0`` skips the brightness step.
-
-    .. warning::
-        Every step in the order is computed even when its factors are neutral, so the hue step rejects any
-        channel count but three and the saturation step any but one or three whatever the factors:
-        ``ColorJitter(brightness=0.2)`` raises on a grayscale image. An eager call also pays for the neutral
-        steps' colour-space round trips. Tracked in `#4813 <https://github.com/kornia/kornia/issues/4813>`_.
+        - a step is skipped when every factor in the batch equals its guard value -- ``1`` for contrast and
+          saturation, ``0`` for hue and, as the #4785 warning below states, for brightness -- so a skipped step
+          accepts any channel count. Otherwise the step runs on the whole batch, and the brightness, contrast and
+          (three-channel) saturation steps clamp the whole batch into ``[0, 1]``. A fixed ``order`` without
+          index ``0`` skips the brightness step.
 
     .. warning::
         The brightness step is skipped for a factor of ``0`` instead of the neutral ``1``: a batch whose factors
@@ -198,9 +180,6 @@ class ColorJitter(IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # torch.cond raises where Dynamo is unavailable, so a fixed order keeps the
-        # Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
-        self._cond_dispatch = order is not None and torch._dynamo.is_dynamo_supported()
 
         # native functions
         self._brightness_fn = adjust_brightness_accumulative
@@ -218,25 +197,18 @@ class ColorJitter(IntensityAugmentationBase2D):
         # A fixed RGB order uses torch.cond while compiling so neutral steps remain lazy and the
         # transform stays fullgraph-compilable. Eager execution keeps the Python guards so .compile()
         # can replace the four adjustment helpers as before. Non-RGB inputs use Python dispatch because
-        # torch.cond traces both branches.
-        if self._cond_dispatch and input.shape[-3] == 3 and torch.compiler.is_compiling():
-            # Entering torch.cond initializes Dynamo, whose one-time setup calls
-            # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
-            validate_args = Distribution._validate_args
-            try:
-                jittered = input
-                for idx in self._fixed_order:
-                    jittered = _apply_transform_cond(
-                        idx,
-                        jittered,
-                        params["brightness_factor"],
-                        params["contrast_factor"],
-                        params["saturation_factor"],
-                        params["hue_factor"],
-                    )
-            finally:
-                if Distribution._validate_args != validate_args:
-                    Distribution.set_default_validate_args(validate_args)
+        # torch.cond traces both branches. Both paths must test the same guard values.
+        if self._fixed_order is not None and input.shape[-3] == 3 and torch.compiler.is_compiling():
+            jittered = input
+            for idx in self._fixed_order:
+                jittered = _apply_transform_cond(
+                    idx,
+                    jittered,
+                    params["brightness_factor"],
+                    params["contrast_factor"],
+                    params["saturation_factor"],
+                    params["hue_factor"],
+                )
             return jittered
 
         transforms = [

@@ -1810,38 +1810,6 @@ class TestColorJitter(BaseTester):
         with pytest.raises(ValueError, match="must not repeat an index"):
             ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 0, 1))
 
-    @pytest.mark.device_agnostic
-    def test_fixed_order_keeps_distribution_validation(self):
-        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
-        # torch.distributions argument validation process-wide. Restore the caller's setting.
-        script = (
-            "import torch\n"
-            "from torch.distributions import Distribution\n"
-            "from kornia.augmentation import ColorJitter\n"
-            "Distribution.set_default_validate_args(True)\n"
-            "ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(torch.rand(2, 3, 8, 8))\n"
-            "assert Distribution._validate_args, 'ColorJitter disabled Distribution validation'\n"
-        )
-        result = subprocess.run(  # noqa: S603
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=300,
-        )
-        assert result.returncode == 0, result.stderr
-
-    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
-        # torch.cond requires Dynamo support, so a fixed order must fall back to
-        # the Python dispatch when Dynamo is unavailable.
-        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
-        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
-        params = op.forward_parameters(image.shape)
-        expected = op(image, params=params)
-        monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
-        fallback = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
-        assert torch.equal(fallback(image, params=params), expected)
-
     def test_dynamo_fixed_order(self, device, dtype, torch_optimizer):
         # A fixed `order` avoids iterating the random order tensor, so it is fullgraph-safe.
         # Replay the sampled params so the (random) eager and compiled runs are comparable.
@@ -1854,6 +1822,24 @@ class TestColorJitter(BaseTester):
         torch._dynamo.reset()
         fresh = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
         assert torch.compile(fresh, fullgraph=True)(img).shape == img.shape
+
+    @pytest.mark.parametrize(
+        ("step", "factors"),
+        [(0, [0.0, 0.0]), (0, [1.0, 1.0]), (1, [1.0, 1.0]), (2, [1.0, 1.0]), (3, [0.0, 0.0])],
+        ids=["brightness-0", "brightness-1", "contrast-1", "saturation-1", "hue-0"],
+    )
+    def test_dynamo_fixed_order_guards_match_eager(self, device, dtype, torch_optimizer, step, factors):
+        # A compiled fixed order dispatches through torch.cond, eager through Python guards (#4813). Both must
+        # skip the same factors: a skipped step returns the out-of-range pixels as they are, a step that runs
+        # clamps them, and a hue step that runs zeroes the pixel whose largest channel is 0.
+        pixels = torch.tensor([[-0.5, -0.5], [0.25, -0.2], [1.75, 0.0]], device=device, dtype=dtype)
+        image = pixels.reshape(1, 3, 1, 2).repeat(2, 1, 1, 1)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(step,))
+        params = op.forward_parameters(image.shape)
+        key = ("brightness_factor", "contrast_factor", "saturation_factor", "hue_factor")[step]
+        params[key] = torch.tensor(factors, device=params[key].device, dtype=params[key].dtype)
+        expected = op(image, params=params)
+        self.assert_close(torch_optimizer(op, fullgraph=True)(image, params=params), expected)
 
     def test_color_jitter(self, device, dtype):
         if dtype == torch.float16:
