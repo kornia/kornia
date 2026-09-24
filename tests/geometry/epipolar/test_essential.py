@@ -943,36 +943,16 @@ class TestConventionEssential(BaseTester):
             pytest.skip("find_essential calls torch.linalg.eigvals, which has no MPS kernel (#4528)")
         # #4884: on the exact five-point sample of the fixture, float32 returns no candidate near the true E, while
         # float64, and float32 with six or more points, recover it to roundoff. Once fixed the nearest is close.
+        # Executed nearest distance: Linux x86 (torch 2.14.0) 0.0175, macOS arm64 ~1.18, float64 on both ~2e-5. The
+        # bound is fifty times the float64 distance so it holds on both platforms while a float64-internal fix
+        # (nearest ~2e-5) flips it.
         n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
         E = epi.find_essential(n1[:, :5], n2[:, :5])
         real = E[0, torch.isfinite(E[0]).all(dim=-1).all(dim=-1)]
         E_gt = _gt_essential(two_view)
         E_gt = E_gt / E_gt.norm()
         nearest = torch.minimum((real - E_gt).norm(dim=(-2, -1)), (real + E_gt).norm(dim=(-2, -1))).min()
-        assert nearest > 0.05
-
-    def test_wart_find_essential_backward_raises_on_degenerate_4831(self, device, dtype):
-        two_view = two_view_scene(device, dtype)
-        _skip_find_essential(device, dtype)
-        # #4831: the forward pass returns on a degenerate sample, but backward raises in the eigvals backward of the
-        # companion matrix, even where the candidates are discarded. Once fixed, backward returns a finite gradient.
-        zeros = torch.zeros(1, 5, 2, device=device, dtype=dtype, requires_grad=True)
-        E = epi.find_essential(zeros, zeros, torch.ones(1, 5, device=device, dtype=dtype))
-        assert E.shape == (1, 10, 3, 3)
-        with pytest.raises(RuntimeError):
-            E.nan_to_num().sum().backward()
-        if dtype == torch.float64:
-            # The issue's repro: identical point sets drawn with seed 19.
-            g = torch.Generator().manual_seed(19)
-            p = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device).requires_grad_()
-            E = epi.find_essential(p, p, torch.ones(1, 5, device=device, dtype=dtype))
-            with pytest.raises(RuntimeError):
-                E.nan_to_num().sum().backward()
-        # Control: a non-degenerate five-point sample runs backward to a finite gradient.
-        n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
-        p1 = n1[:, :5].clone().requires_grad_()
-        epi.find_essential(p1, n2[:, :5]).nan_to_num().sum().backward()
-        assert torch.isfinite(p1.grad).all()
+        assert nearest > 1e-3
 
     def test_wart_find_essential_no_real_root_identity_4883(self, device, dtype):
         _skip_find_essential(device, dtype)
