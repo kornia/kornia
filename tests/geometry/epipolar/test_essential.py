@@ -143,6 +143,21 @@ class TestFindEssential(BaseTester):
             assert torch.equal(torch.isnan(E_scaled), torch.isnan(E_est))
             self.assert_close(torch.nan_to_num(E_scaled), torch.nan_to_num(E_est), atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize("num_points", [5, 6, 8])
+    def test_gradcheck(self, num_points, device):
+        # For fewer than 9 points some or all of the four null-space vectors lie past min(N, 9), where
+        # torch.linalg.svd gives no gradient, so the gradient to the correspondences was dropped: exactly
+        # zero for 5 points (#4855). Candidates from complex roots are NaN and are zeroed here; they stay
+        # complex under the small perturbations the check makes.
+        g = torch.Generator().manual_seed(1)
+        points1 = torch.rand(1, num_points, 2, generator=g, dtype=torch.float64).to(device)
+        points2 = torch.rand(1, num_points, 2, generator=g, dtype=torch.float64).to(device)
+
+        def proxy(points1, points2):
+            return epi.essential.find_essential(points1, points2).nan_to_num()
+
+        self.gradcheck(proxy, (points1, points2))
+
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points

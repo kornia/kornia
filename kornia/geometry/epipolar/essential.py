@@ -17,7 +17,7 @@
 
 """Module containing functionalities for the Essential matrix."""
 
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import torch
 
@@ -193,6 +193,45 @@ def _fun_select(mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tens
     return mat[:, ratio * j + i]
 
 
+class _NullSpaceBasis(torch.autograd.Function):
+    r"""The four right singular vectors of ``X`` with the smallest singular values, differentiably.
+
+    ``torch.linalg.svd`` leaves the right singular vectors past ``min(N, 9)`` without a gradient, and
+    for fewer than 9 points some or all of the four the 5-point solver uses are exactly those, so the
+    backward pass silently dropped their gradient (all of it for ``N = 5``). This is used for
+    ``N < 9`` only.
+
+    The candidates depend only on the subspace the four vectors span, not on the basis chosen within
+    it, so the backward differentiates the subspace. With
+    :math:`X^\top X = \sum_j \lambda_j v_j v_j^\top`, each basis vector :math:`v_i` moves only out of
+    the subspace :math:`S`, by
+    :math:`dv_i = \sum_{j \notin S} v_j \, v_j^\top d(X^\top X) \, v_i / (\lambda_i - \lambda_j)`.
+    That needs a gap between the fourth and fifth smallest singular values. Without one the subspace
+    itself is not unique, and the gradient is not finite, as for ``torch.linalg.svd``. The forward
+    pass is the same ``_torch_svd_cast`` call as before, so its result is unchanged.
+    """
+
+    @staticmethod
+    def forward(ctx: Any, X: torch.Tensor) -> torch.Tensor:
+        _, S, V = _torch_svd_cast(X)  # V: (B, 9, 9)
+        ctx.save_for_backward(X, S, V)
+        return V[:, :, -4:].contiguous()  # (B, 9, 4)
+
+    @staticmethod
+    def backward(ctx: Any, grad_basis: torch.Tensor) -> torch.Tensor:
+        X, S, V = ctx.saved_tensors
+        work = torch.float64 if X.dtype == torch.float32 and X.device.type != "mps" else X.dtype
+        X_, S_, V_, g = X.to(work), S.to(work), V.to(work), grad_basis.to(work)
+        # eigenvalues of X^T X in the order of V's columns; the columns past min(N, 9) have eigenvalue 0
+        lam = torch.zeros(V_.shape[:-1], device=V_.device, dtype=work)
+        lam[:, : S_.shape[-1]] = S_ * S_
+        V_out, V_in = V_[:, :, :-4], V_[:, :, -4:]
+        gap = lam[:, -4:].unsqueeze(-2) - lam[:, :-4].unsqueeze(-1)  # (B, 5, 4): lambda_i - lambda_j
+        K = (V_out.transpose(-1, -2) @ g) / gap
+        M = V_out @ K @ V_in.transpose(-1, -2)  # dL = <dG, M>
+        return (X_ @ (M + M.transpose(-1, -2))).to(X.dtype)
+
+
 def _null_to_Nister_solution_script(
     X: torch.Tensor,
     batch_size: int,
@@ -210,9 +249,14 @@ def _null_to_Nister_solution_script(
 ) -> torch.Tensor:
     original_dtype = X.dtype
 
-    _, _, V = _torch_svd_cast(X)  # V: (B, 9, 9)
-    null_ = V[:, :, -4:].contiguous()  # (B, 9, 4)
-    nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
+    if X.shape[-2] < 9:
+        null_ = _NullSpaceBasis.apply(X)  # (B, 9, 4)
+        nullSpace = null_.transpose(-1, -2)  # (B, 4, 9)
+    else:
+        # every right singular vector has a gradient in torch.linalg.svd itself
+        _, _, V = _torch_svd_cast(X)  # V: (B, 9, 9)
+        null_ = V[:, :, -4:].contiguous()  # (B, 9, 4)
+        nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
 
     B = batch_size
     device = X.device
