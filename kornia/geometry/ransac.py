@@ -357,15 +357,15 @@ class RANSAC(nn.Module):
             weights: optional correspondences weights. Not used now.
 
         Returns:
-            - Estimated model, shape of :math:`(1, 3, 3)`.
-            - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
+            - Estimated model, shape of :math:`(3, 3)`.
+            - The inlier/outlier mask, shape of :math:`(N,)`, where N is number of input correspondences.
 
         """
         self.validate_inputs(kp1, kp2, weights)
         best_score_total: float = float(self.minimal_sample_size)
         num_tc: int = len(kp1)
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
-        inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
+        inliers_best_total: torch.Tensor = torch.zeros(num_tc, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
             idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i, kp1.device)
