@@ -173,8 +173,7 @@ class PromptEncoder(nn.Module):
                 label_idx = min(label, 1)  # 0 or 1 for background/foreground
                 label_embeddings[b, i] = self.point_embeddings[label_idx].weight[0]
 
-        output = pe + label_embeddings
-        return output
+        return pe + label_embeddings
 
     def forward(
         self,

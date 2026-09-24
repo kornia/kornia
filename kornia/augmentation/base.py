@@ -59,10 +59,6 @@ class _BasicAugmentationBase(nn.Module):
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
-    ``set_rng_device_and_dtype`` updates RNG-related state, but sampler migration and returned parameter
-    placement are not uniform across generators. See :doc:`/get-started/conventions` and the limitations
-    tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
-
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
     put all static parameters inside ``self.flags``. You may take the advantage of ``PlainUniformGenerator`` to
@@ -428,8 +424,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         # `_transform_output_shape` only reshapes (preserves dtype), so no second autocast cast is
         # needed after it — the cast above already restored `input.dtype`.
-        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
-        return output
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
     def transform_masks(
         self,
@@ -457,8 +452,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
-        output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
-        return output
+        return _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
 
     def transform_boxes(
         self,
@@ -548,9 +542,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         output_transformed = self.apply_transform_class(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_class(input, params, flags, transform=transform)
 
-        output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
-
-        return output
+        return self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
     def apply_non_transform_mask(
         self,
@@ -641,6 +633,4 @@ class _AugmentationBase(_BasicAugmentationBase):
         if flags is None:
             flags = self.flags
 
-        output = self.transform_inputs(in_tensor, params, flags)
-
-        return output
+        return self.transform_inputs(in_tensor, params, flags)

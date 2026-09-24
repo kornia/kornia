@@ -39,8 +39,7 @@ def create_rectified_fundamental_matrix(
     F_rect = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype).view(
         1, 3, 3
     )
-    F_repeat = F_rect.expand(batch_size, 3, 3)
-    return F_repeat
+    return F_rect.expand(batch_size, 3, 3)
 
 
 def create_random_fundamental_matrix(

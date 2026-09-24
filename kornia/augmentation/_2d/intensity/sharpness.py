@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.enhance import sharpness
 
 
@@ -51,19 +52,17 @@ class RandomSharpness(IntensityAugmentationBase2D):
         - the factor blends between the fully blurred image at ``0`` and the input at ``1``, and values
           above ``1`` sharpen. The one-pixel border is copied from the input at every factor, so it is never
           blurred or sharpened, although the final clamp into ``[0, 1]`` applies to it as to the rest.
-        - a scalar argument is the upper bound of ``[0, x]`` -- the centred ``[-x, x]`` with its lower end
-          floored at the non-negative bound -- so the default ``sharpness=0.5`` never reaches the identity
-          and therefore never sharpens -- it blurs by a random amount.
-        - the result is kept inside ``[0, 1]``.
+        - a scalar argument is the upper bound of ``[0, x]``, so the default ``sharpness=0.5`` never reaches the
+          identity and only blurs.
 
     .. warning::
         An input whose values are all negative comes back as an all-zero image. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
-    .. warning::
-        An image with a side smaller than the ``3 x 3`` smoothing kernel raises a raw torch
-        ``RuntimeError`` about the padded input size rather than a kornia error naming the class.
-        Tracked in `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
+    .. note::
+        The smoothing kernel is a fixed ``3 x 3`` convolved with no padding, so both spatial sides
+        must be at least ``3`` pixels; a smaller image raises a ``ValueError`` naming the class and
+        the input shape.
 
     .. note::
         This function internally uses :func:`kornia.enhance.sharpness`.
@@ -104,5 +103,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # the smoothing kernel is a fixed 3 x 3 convolved without padding of its own
+        _check_filter_min_size("RandomSharpness", input, 3, border_type="valid")
         factor = params["sharpness"]
         return sharpness(input, factor)

@@ -166,11 +166,14 @@ Test Results
 ------------
 
 Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed); skipped tests and tests marked ``xfail`` in
-the source are excluded. The CPU rows come from the nightly ``main`` CI jobs at commit ``ca5021eb``
+the source are excluded. The CPU rows come from the scheduled ``main`` CI jobs at commit ``ca5021eb``
 (2026-09-14; Linux x86_64, Python 3.11, PyTorch 2.9.1). In the half-precision jobs, *Failed* is the manifest's entry
 count: CI reports those tests as strict xfails and turns red if any of them passes or fails differently. The CUDA
-rows are still from ``6131e98`` (2026-03-21), have not been re-measured since, and predate the CPU half-precision
-fixes merged since then.
+rows are a local run at commit ``f8449854`` (2026-09-23; RTX 4090, Python 3.11, PyTorch 2.14.0+cu130), not CI. Every
+CUDA failure is re-run on its own (with ``--isolate-half-precision`` for the half dtypes) and counted by that result.
+Eight of the CUDA float32 failures are cuDNN TF32 accuracy misses in convolutions
+(`#4778 <https://github.com/kornia/kornia/issues/4778>`_); the other 14 are tests that assume CPU behavior
+(`#4779 <https://github.com/kornia/kornia/issues/4779>`_).
 
 Reproduce a CPU half-precision row in that environment (the manifest header pins the OS, architecture, Python and
 PyTorch versions) with:
@@ -208,20 +211,20 @@ counts can drift slightly from the manifests.
      - 3774
      - **95.1%**
    * - CUDA float32 *(baseline)*
-     - 7634
-     - 3
-     - 3280
-     - **99.9%**
+     - 12193
+     - 22
+     - 3957
+     - **99.8%**
    * - CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
-     - 6727
-     - 643
-     - 3556
-     - **91.3%**
+     - 11738
+     - 451
+     - 3983
+     - **96.3%**
    * - CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
-     - 6695
-     - 713
-     - 3518
-     - **90.4%**
+     - 11736
+     - 500
+     - 3936
+     - **95.9%**
 
 .. note::
 

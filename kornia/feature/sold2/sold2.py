@@ -296,8 +296,7 @@ class WunschLineMatcher(nn.Module):
         nw_scores = self.needleman_wunsch(top_scores)
         nw_scores = nw_scores.reshape(n_lines1, top2k)
         matches = torch.remainder(torch.argmax(nw_scores, dim=1), top2k // 2)
-        matches = topk_lines[torch.arange(n_lines1), matches]
-        return matches
+        return topk_lines[torch.arange(n_lines1), matches]
 
     def needleman_wunsch(self, scores: torch.Tensor) -> torch.Tensor:
         """Batched implementation of the Needleman-Wunsch algorithm.
@@ -352,8 +351,7 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> tor
     n_points = len(keypoints)
     xy = keypoints[:, [1, 0]]
     grid_points = torch.stack((xy[:, 0] * 2.0 / img_size[1] - 1.0, xy[:, 1] * 2.0 / img_size[0] - 1.0), dim=-1)
-    grid_points = grid_points.view(-1, n_points, 1, 2)
-    return grid_points
+    return grid_points.view(-1, n_points, 1, 2)
 
 
 def batched_linspace(start: torch.Tensor, end: torch.Tensor, step: int, dim: int) -> torch.Tensor:
@@ -362,5 +360,4 @@ def batched_linspace(start: torch.Tensor, end: torch.Tensor, step: int, dim: int
     broadcast_size = [1] * len(intervals.shape)
     broadcast_size[dim] = step
     samples = torch.arange(step, dtype=torch.float, device=start.device).reshape(broadcast_size)
-    samples = start.unsqueeze(dim) + samples * intervals
-    return samples
+    return start.unsqueeze(dim) + samples * intervals

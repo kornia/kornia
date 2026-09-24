@@ -1,0 +1,1 @@
+`dilation`, `erosion`, `opening`, `closing`, `gradient`, `top_hat` and `bottom_hat` now ignore `border_value` under `border_type` `reflect`, `replicate` and `circular`, as documented, instead of raising `RuntimeError: Padding mode "reflect" doesn't take in value argument` for any value other than `0.0`.

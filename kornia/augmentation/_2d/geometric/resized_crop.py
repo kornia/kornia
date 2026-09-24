@@ -61,26 +61,24 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Convention:
-        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
-        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
-        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
-        ``size`` is an ``(height, width)`` tuple. A bare integer
-        is rejected, unlike :class:`CenterCrop`; the sibling split is tracked in
-        `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Here ``p`` selects or skips the whole batch together.
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        ``size`` is an ``(height, width)`` tuple; a bare integer raises, unlike :class:`CenterCrop`
+        (`#4417 <https://github.com/kornia/kornia/issues/4417>`_). ``p`` selects or skips the whole batch together.
         Within a selected batch, the generator tries ten candidate crops per image, sampling area fractions from
-        ``scale`` and width/height ratios from ``ratio`` (shared with ``same_on_batch=True``). Rounded candidate
-        dimensions must be positive and strictly smaller than the input on both axes. If no candidate fits,
-        a fallback chooses dimensions by comparing input height/width with ``min(ratio)``, then clamps them to
-        the input size. This fallback can violate both requested ranges: on an 8x6 input, ``scale=(1.0, 1.0)``
-        with the default ratio produces a 4x6 crop, with half the input area and width/height ratio 1.5.
-        The selected crop is resized to the requested output size.
+        ``scale`` and width/height ratios from ``ratio`` (shared with ``same_on_batch=True``), and resizes the first
+        that fits to the requested output size. As in torchvision's ``get_params``, a candidate may equal the input,
+        and when none fits the fallback keeps an input whose width/height is within ``ratio`` whole, or else its full
+        width (input narrower than ``min(ratio)``) or its full height (wider than ``max(ratio)``). So
+        ``scale=(1.0, 1.0)`` keeps an input within ``ratio`` whole, except that a candidate rounded a pixel or two
+        short on the longer side also fits (8x6 gives 7x6 in about 18% of draws, as in torchvision). Unlike
+        torchvision, which centres the fallback crop, it is placed at a random position like any other crop.
 
-        Slice mode calls index cropping with the configured interpolation and ``align_corners``; resample mode
-        calls ``crop_by_transform_mat`` with zero padding. Both default to bilinear sampling and
-        ``align_corners=True``. Under ``torch.compile``, slice mode uses tensor indexing and
-        interpolation so newly sampled crop coordinates do not trigger recompilation.
-        Only resample mode supports :meth:`inverse`; its inverse
-        resamples onto the original canvas and cannot recover information discarded by cropping or interpolation.
+        Both cropping modes use the configured interpolation and ``align_corners``, so slice mode raises for
+        ``resample="nearest"`` unless ``align_corners=None``
+        (`#4802 <https://github.com/kornia/kornia/issues/4802>`_). At ``align_corners=False`` the two modes give
+        different images, and slice mode does not follow ``transform_matrix``
+        (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). Only resample mode supports :meth:`inverse`,
+        which resamples onto the original canvas and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
@@ -95,13 +93,13 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1., cropping_mode="resample")
         >>> out = aug(inputs)
         >>> out
-        tensor([[[[1.0000, 1.5000, 2.0000],
-                  [4.0000, 4.5000, 5.0000],
-                  [7.0000, 7.5000, 8.0000]]]])
+        tensor([[[[3.0000, 4.0000, 5.0000],
+                  [4.5000, 5.5000, 6.5000],
+                  [6.0000, 7.0000, 8.0000]]]])
         >>> aug.inverse(out, padding_mode="border")
-        tensor([[[[1., 1., 2.],
-                  [4., 4., 5.],
-                  [7., 7., 8.]]]])
+        tensor([[[[3., 4., 5.],
+                  [3., 4., 5.],
+                  [6., 7., 8.]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
@@ -145,8 +143,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
             transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
-            transform = transform.expand(input.shape[0], -1, -1)
-            return transform
+            return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(

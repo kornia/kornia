@@ -30,17 +30,21 @@ __all__ = ["MosaicGenerator"]
 
 
 class MosaicGenerator(RandomGeneratorBase):
-    r"""Generate mixup indexes and lambdas for a batch of inputs.
+    r"""Generate the tile order and crop boxes of a mosaic for a batch of inputs.
+
+    See the Convention block on :class:`~kornia.augmentation.RandomMosaic`.
 
     Args:
-        output_size: the output torch.Tensor width and height after mosaicing.
+        output_size: the output ``(height, width)`` after mosaicing.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
-        start_ratio_range: top-left (x, y) position for cropping the mosaic images.
+        start_ratio_range: the ``(low, high)`` range from which both top-left crop ratios ``(x / W, y / H)``
+            are drawn.
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - mosaic_ids (torch.Tensor): a shape of (B, N) torch.tensor, where n is the number of mosaic images.
+            - permutation (torch.Tensor): per-sample tile order with a shape of (B, N), where N is the number
+              of mosaic images.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
             - batch_shapes (torch.Tensor): image shapes in the batch with a shape of (B, 3).
@@ -64,11 +68,10 @@ class MosaicGenerator(RandomGeneratorBase):
         self.start_ratio_range = start_ratio_range
 
     def __repr__(self) -> str:
-        repr = (
+        return (
             f"output_size={self.output_size}, mosaic_grid={self.mosaic_grid}, "
             f"start_ratio_range={self.start_ratio_range}"
         )
-        return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.start_ratio_range_sampler = Uniform(
@@ -80,7 +83,7 @@ class MosaicGenerator(RandomGeneratorBase):
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         input_sizes = (batch_shape[-2], batch_shape[-1])
-        # output_size = input_sizes if self.output_size is None else self.output_size
+        output_size = input_sizes if self.output_size is None else self.output_size
 
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.mosaic_grid])
@@ -102,11 +105,18 @@ class MosaicGenerator(RandomGeneratorBase):
         crop_src = bbox_generator(
             start_corner_x,
             start_corner_y,
-            start_corner_x.clone().fill_(input_sizes[1]),
-            start_corner_y.clone().fill_(input_sizes[0]),
+            start_corner_x.clone().fill_(output_size[1]),
+            start_corner_y.clone().fill_(output_size[0]),
         )
         crop_dst = _constant_tensor(
-            [[[0, 0], [input_sizes[1] - 1, 0], [input_sizes[1] - 1, input_sizes[0] - 1], [0, input_sizes[0] - 1]]],
+            [
+                [
+                    [0, 0],
+                    [output_size[1] - 1, 0],
+                    [output_size[1] - 1, output_size[0] - 1],
+                    [0, output_size[0] - 1],
+                ]
+            ],
             device=_device,
             dtype=_dtype,
         ).repeat(batch_size, 1, 1)

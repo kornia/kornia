@@ -60,7 +60,7 @@ def ssim3d(
       \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y+c_1)(2\sigma_{xy}+c_2)}
       {(\mu_x^2+\mu_y^2+c_1)(\sigma_x^2+\sigma_y^2+c_2)}
 
-    torch.where:
+    where:
       - :math:`c_1=(k_1 L)^2` and :math:`c_2=(k_2 L)^2` are two variables to
         stabilize the division with weak denominator.
       - :math:`L` is the dynamic range of the pixel-values (typically this is
@@ -152,7 +152,7 @@ class SSIM3D(nn.Module):
       \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y+c_1)(2\sigma_{xy}+c_2)}
       {(\mu_x^2+\mu_y^2+c_1)(\sigma_x^2+\sigma_y^2+c_2)}
 
-    torch.where:
+    where:
       - :math:`c_1=(k_1 L)^2` and :math:`c_2=(k_2 L)^2` are two variables to
         stabilize the division with weak denominator.
       - :math:`L` is the dynamic range of the pixel-values (typically this is

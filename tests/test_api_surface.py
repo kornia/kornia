@@ -34,6 +34,7 @@ import contextlib
 import importlib
 import json
 import pkgutil
+import types
 import warnings
 from pathlib import Path
 
@@ -86,6 +87,53 @@ def test_no_public_name_removed(module_name):
         "release as a deprecated shim before removal. If this removal is deliberate and the "
         "deprecation window has passed, update tests/api_surface.json in this PR (run "
         "tests.test_api_surface.regenerate()) and list the removal in the release notes."
+    )
+
+
+def _foreign_names(module_name: str) -> set:
+    """Public names of ``module_name`` bound to an import rather than to its own API.
+
+    That is another package's module, a ``typing`` object, or an object defined in a kornia
+    module outside ``module_name``'s own subtree. A module without ``__all__`` exposes whatever
+    its star-imported submodules happen to import, so ``import sys`` in one of them makes
+    ``kornia.geometry.sys`` public, and ``from kornia.core.utils import is_compiling`` makes
+    ``kornia.geometry.is_compiling`` public (#4709).
+    """
+    mod = importlib.import_module(module_name)
+    found = set()
+    for name in _current_surface(module_name):
+        obj = getattr(mod, name, None)
+        if isinstance(obj, types.ModuleType):
+            if obj.__name__ != "kornia" and not obj.__name__.startswith("kornia."):
+                found.add(name)
+        else:
+            owner = getattr(obj, "__module__", None)
+            if owner == "typing":
+                found.add(name)
+            elif (
+                isinstance(owner, str)
+                and owner.startswith("kornia.")
+                and owner != module_name
+                and not owner.startswith(module_name + ".")
+            ):
+                found.add(name)
+    return found
+
+
+@pytest.mark.parametrize("module_name", sorted(json.loads(INVENTORY.read_text())))
+def test_no_foreign_name_leaks_into_the_surface(module_name):
+    """An import inside a submodule must not become public API by accident.
+
+    Additions do not fail ``test_no_public_name_removed``, and ``regenerate()`` would
+    record a leaked ``sys`` as a guarded public name. Names already in the inventory are
+    exempt: removing one is a deliberate API change, not something this test should force.
+    """
+    recorded = set(json.loads(INVENTORY.read_text())[module_name])
+    leaked = sorted(_foreign_names(module_name) - recorded)
+    assert not leaked, (
+        f"{module_name} exposes {leaked}, which are imports rather than kornia API. Give the "
+        "submodule that imports them an __all__ (or import them under a private name). Record a "
+        "name in tests/api_surface.json only for a deliberate cross-package re-export."
     )
 
 

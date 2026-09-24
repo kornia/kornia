@@ -23,6 +23,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -56,6 +57,39 @@ class TestRandomCropAnnotations(BaseTester):
         )
         params[0].data["src"] = src[: shape[0]].to(params[0].data["src"])
         return params
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_per_channel_image_fill_defaults_masks_to_background(self, cropping_mode, device, dtype):
+        image = torch.zeros(1, 3, 2, 2, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 2, 2, device=device, dtype=dtype)
+        fill = (0.25, 0.5, 0.75)
+
+        def apply(mask_input, mask_fill=None):
+            extra_args = None if mask_fill is None else {DataKey.MASK: {"fill": mask_fill}}
+            seq = K.AugmentationSequential(
+                K.RandomCrop((4, 4), padding=1, fill=fill, p=1.0, cropping_mode=cropping_mode),
+                data_keys=["input", "mask"],
+                extra_args=extra_args,
+            )
+            return seq(image, mask_input)
+
+        padded_image, padded_mask = apply(mask)
+        expected_image = image.new_tensor(fill).view(1, 3, 1, 1).expand(1, 3, 4, 4).clone()
+        expected_image[:, :, 1:3, 1:3] = image
+        expected_mask = mask.new_zeros(1, 1, 4, 4)
+        expected_mask[:, :, 1:3, 1:3] = mask
+        self.assert_close(padded_image, expected_image)
+        self.assert_close(padded_mask, expected_mask)
+
+        _, overridden_mask = apply(mask, 9.0)
+        expected_override = mask.new_full((1, 1, 4, 4), 9.0)
+        expected_override[:, :, 1:3, 1:3] = mask
+        self.assert_close(overridden_mask, expected_override)
+
+        _, padded_mask_list = apply([mask])
+        self.assert_close(padded_mask_list[0], expected_mask)
+        _, overridden_mask_list = apply([mask], 9.0)
+        self.assert_close(overridden_mask_list[0], expected_override)
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     @pytest.mark.parametrize("p,batch_size", [(0.0, 1), (0.5, 2)])

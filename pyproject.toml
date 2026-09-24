@@ -213,14 +213,7 @@ select = [
   "PIE",  # flake8-pie
   "PL",  # Pylint
   "PYI",  # flake8-pyi
-  "RET501",  # unnecessary-return-none
-  "RET502",  # implicit-return-value
-  "RET503",  # implicit-return
-  # "RET504",  # unnecessary-assign
-  "RET505",  # superfluous-else-return
-  "RET506",  # superfluous-else-raise
-  "RET507",  # superfluous-else-continue
-  "RET508",  # superfluous-else-break
+  "RET",  # flake8-return
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
@@ -253,7 +246,6 @@ select = [
   # "PT",   # flake8-pytest-style
   # "PTH",  # flake8-use-pathlib
   # "Q",    # flake8-quotes
-  # "RET",  # flake8-return
   # "SIM",  # flake8-simplify
   # "SLF",  # flake8-self
   # "T20",  # flake8-print

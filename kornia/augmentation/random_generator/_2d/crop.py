@@ -224,8 +224,7 @@ class ResizedCropGenerator(CropGenerator):
         self.output_size = output_size
 
     def __repr__(self) -> str:
-        repr = f"scale={self.scale}, resize_to={self.ratio}, output_size={self.output_size}"
-        return repr
+        return f"scale={self.scale}, resize_to={self.ratio}, output_size={self.output_size}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
@@ -265,8 +264,8 @@ class ResizedCropGenerator(CropGenerator):
 
         w = torch.sqrt(area * aspect_ratio).round().floor()
         h = torch.sqrt(area / aspect_ratio).round().floor()
-        # Element-wise w, h condition
-        cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
+        # Element-wise w, h condition. A candidate may equal the input size, as in torchvision's get_params.
+        cond = ((0 < w) * (w <= size[1]) * (0 < h) * (h <= size[0])).int()
 
         # torch.argmax is not reproducible across devices: https://github.com/pytorch/pytorch/issues/17738
         # Here, we will select the first occurrence of the duplicated elements.
@@ -276,19 +275,22 @@ class ResizedCropGenerator(CropGenerator):
         h_out = h[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
         w_out = w[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
 
-        # Center-crop fallback for samples where no candidate crop fit (``cond_bool`` False). The
+        # Fallback crop size for samples where no candidate crop fit (``cond_bool`` False). The
         # fallback size is a compile-time constant (from ``size`` and ``self.ratio``), so compute it
         # unconditionally and select branchlessly with ``torch.where`` — dropping the
         # ``if not cond_bool.all()`` device sync keeps the generator torch.compile fullgraph. When
         # every candidate fit, ``where`` returns ``h_out``/``w_out`` unchanged (byte-identical).
-        in_ratio = float(size[0]) / float(size[1])
+        # As in torchvision's get_params: ``ratio`` is width / height, so an input narrower than min(ratio) keeps
+        # its full width, one wider than max(ratio) keeps its full height, and one in range is kept whole.
+        in_ratio = float(size[1]) / float(size[0])
         _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
+        _max = float(self.ratio.max()) if isinstance(self.ratio, torch.Tensor) else max(self.ratio)
         if in_ratio < _min:
-            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
-            w_ct = torch.round(h_ct / _min)
-        elif in_ratio > _min:
             w_ct = torch.full((), size[1], device=_device, dtype=_dtype)
-            h_ct = torch.round(w_ct * _min)
+            h_ct = torch.round(w_ct / _min)
+        elif in_ratio > _max:
+            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
+            w_ct = torch.round(h_ct * _max)
         else:  # whole image
             h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
             w_ct = torch.full((), size[1], device=_device, dtype=_dtype)

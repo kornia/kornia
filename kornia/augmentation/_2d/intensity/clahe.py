@@ -31,16 +31,14 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     .. image:: _static/img/equalize_clahe.png
 
-    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`. This class raises
-    instead of transforming an out-of-range input, and its error is a raw one.
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         clip_limit: the ``(low, high)`` range the per-sample contrast-limiting threshold is drawn from.
             A value is drawn for each image, or once and shared across the batch when ``same_on_batch=True``.
             Unlike :func:`kornia.enhance.equalize_clahe`'s scalar argument of the same name this must be a
-            two-element tuple -- a scalar raises ``ValueError: `center` and `bounds` cannot be None for
-            single number`` at construction -- and ``(0.0, 0.0)`` is what disables clipping. The bound is
-            unvalidated below zero: ``(-1.0, -1.0)`` is accepted and behaves exactly like ``(0.0, 0.0)``.
+            two-element tuple -- a scalar raises a ``ValueError`` at construction -- and ``(0.0, 0.0)`` disables
+            clipping. A negative bound is not rejected and behaves like ``0.0``.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
         slow_and_differentiable: selects the implementation. At the default ``False`` the fast path breaks the
             autograd graph -- the output has ``requires_grad=False`` and no ``grad_fn``, which no other 2D
@@ -51,39 +49,19 @@ class RandomClahe(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming
-          :func:`kornia.enhance.equalize_clahe` and that range, the way :class:`RandomEqualize` raises for
-          :func:`kornia.enhance.equalize`. As for :class:`RandomEqualize`, the rejection is not exactly at
-          the boundary: the check guards the 256-entry lookup indexed with ``(input * 255).long()``, so a
-          value less than one 8-bit code outside ``[0, 1]``, at either end, is still admitted, up to the
-          rounding of ``input * 255`` in the input's dtype. The check runs on the CPU and on CUDA. **It is
-          skipped on MPS by design** -- materializing the condition there would drain the queued stream on
-          every call -- so an MPS image keeps the pre-existing behaviour: torch ``2.14`` raises the raw
-          ``gather`` error (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1``
-          leaves the gather unchecked and returns an in-range image as if the input had been valid.
-
-    Convention:
-        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. Both eager and
-          compiled execution batch the per-image limits as tensors, so newly sampled limits reuse the same
-          graph without converting draws to Python scalars. Batched differentiable histogram arithmetic
-          can differ from separate per-image calls by floating-point rounding.
-          On MPS, clip limits stored on the device are copied to CPU for float64 threshold arithmetic,
-          then thresholds are copied back; this preserves scalar rounding but adds transfer overhead.
+        - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming :func:`kornia.enhance.equalize_clahe` and
+          that range, as :class:`RandomEqualize` does. The check guards a 256-entry lookup indexed with
+          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]`` is still admitted, up
+          to the rounding of ``input * 255`` in the input's dtype.
+        - ``grid_size`` tiles the two axes independently, and a grid that does not divide the image pads it, so
+          ``grid_size=(3, 3)`` works on a ``10 x 10`` image. A grid larger than the image raises a ``ValueError``.
 
     .. warning::
-        ``grid_size`` is unvalidated past its positivity check. Its two
-        entries tile the two axes independently, and a grid that does not tile the image is padded instead, so
-        ``grid_size=(3, 3)`` works on a ``10 x 10`` image. Because :func:`kornia.enhance.equalize_clahe` rounds
-        the tile up to an even size along each axis, an exactly dividing grid can still pad: ``(4, 5)`` pads 4
-        rows and no columns of a ``20 x 20`` image. An image too small for the grid raises a raw
-        ``RuntimeError`` from the padding; at the default ``grid_size=(8, 8)`` the smallest admissible square
-        image is ``9 x 9``, and ``8 x 8`` raises. A grid larger than the image gets the named ``ValueError``
-        instead.
+        An image as large as the grid, such as ``8 x 8`` at the default ``grid_size=(8, 8)``, raises a raw padding
+        error instead of the ``ValueError``. Tracked in `#4783 <https://github.com/kornia/kornia/issues/4783>`_.
 
     .. note::
-        This function internally uses :func:`kornia.enhance.equalize_clahe`, which expects the input in
-        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values its 256-bin lookup
-        cannot index.
+        This function internally uses :func:`kornia.enhance.equalize_clahe`.
 
     Examples:
         >>> img = torch.rand(1, 10, 20)

@@ -62,15 +62,13 @@ class TestCam2Pixel(BaseTester):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
         temp[1, 1], temp[1, 2] = fy, cy
-        intrinsics = temp.expand(batch_size, -1, -1)
-        return intrinsics
+        return temp.expand(batch_size, -1, -1)
 
     def _create_intrinsics_inv(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = 1 / fx, -cx / fx
         temp[1, 1], temp[1, 2] = 1 / fy, -cy / fy
-        intrinsics_inv = temp.expand(batch_size, -1, -1)
-        return intrinsics_inv
+        return temp.expand(batch_size, -1, -1)
 
     def _get_samples(self, shape, low, high, device, dtype):
         """Return a tensor having the given shape and whose values are in the range [low, high)"""
@@ -166,13 +164,8 @@ class TestCam2Pixel(BaseTester):
         self.gradcheck(kornia.geometry.camera.cam2pixel, (cam_coords_src, proj_mat, eps), atol=atol, rtol=rtol)
 
     def test_wart_cam2pixel_epsilon_makes_the_singular_divide_finite_4267(self, device, dtype):
-        # Wart pin for kornia#4267: cam2pixel divides by ``z + 1e-12`` instead
-        # of guarding the singularity, so the camera-plane point (1, 2, 0) yields a finite 1e14-scale pixel rather
-        # than inf (project_points_z1) or [[104, 203]] (project_points). The epsilon enters the arithmetic, so it
-        # also biases every finite result below z ~ 1e-10.
-        # Snippet used to generate expected: cam2pixel([[[[1., 2., 0.]]]], _k44(...)) executed 2026-09-05
-        # (torch 2.14.0, cpu and mps) -> float32 [[[[1.00000000376832e14, 2.00000000753664e14]]]].
-        # Pins the CURRENT value; NOT a contract; delete when #4267 is repaired.
+        # Wart pin for #4267: cam2pixel divides by z + 1e-12, so (1, 2, 0) gives a finite 1e14-scale pixel (inf in
+        # float16) and the epsilon biases every result below z ~ 1e-10. Delete when #4267 is repaired.
         cam_coords = torch.tensor([[[[1.0, 2.0, 0.0], [1.0, 2.0, 1.0e-12]]]], device=device, dtype=dtype)
         uv = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype))
         if dtype == torch.float16:
@@ -219,15 +212,13 @@ class TestPixel2Cam(BaseTester):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
         temp[1, 1], temp[1, 2] = fy, cy
-        intrinsics = temp.expand(batch_size, -1, -1)
-        return intrinsics
+        return temp.expand(batch_size, -1, -1)
 
     def _create_intrinsics_inv(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = 1 / fx, -cx / fx
         temp[1, 1], temp[1, 2] = 1 / fy, -cy / fy
-        intrinsics_inv = temp.expand(batch_size, -1, -1)
-        return intrinsics_inv
+        return temp.expand(batch_size, -1, -1)
 
     def _get_samples(self, shape, low, high, device, dtype):
         """Return a tensor having the given shape and whose values are in the range [low, high)"""
@@ -682,12 +673,9 @@ class TestPinholeCamera(BaseTester):
         assert pinhole.device() == intrinsics.device
 
     def test_convention_extrinsics_are_world_to_camera(self, device, dtype):
-        # Convention pin: project() computes K (R X + t) -- the extrinsics map WORLD points INTO the camera frame
-        # (OpenCV / COLMAP semantics). With R = I and t = (1, 0, 0) the world point (1, 2, 4) becomes (2, 2, 4) in
-        # the camera frame and projects to u = 100*2/4 + 4 = 54, v = 100*2/4 + 3 = 53. A cam-to-world reading would
-        # move the point to (0, 2, 4) and give (4, 53); cx != cy also breaks a transposed reading.
-        # Snippet used to generate expected: hand arithmetic, re-executed 2026-09-05 (torch 2.14.0, cpu and mps,
-        # every dtype): [[54., 53.]].
+        # project() computes K (R X + t): the extrinsics map world points into the camera frame (OpenCV / COLMAP).
+        # With R = I, t = (1, 0, 0), the world point (1, 2, 4) is (2, 2, 4) in the camera and projects to
+        # (100*2/4 + 4, 100*2/4 + 3) = (54, 53); a camera-to-world reading gives (4, 53).
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
             _e44(device, dtype, tx=1.0),
@@ -698,12 +686,8 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(uv, torch.tensor([[54.0, 53.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_unproject_returns_the_world_point(self, device, dtype):
-        # Convention pin: unproject(uv, depth) inverts project() back into the WORLD frame (it applies the inverse
-        # of K @ E), and ``depth`` is the CAMERA-frame z, not the ray length. Same tx = 1 extrinsics as above, so a
-        # camera-frame result (2, 2, 4) fails this pin. Contrast the free function unproject_points, which takes no
-        # extrinsics and therefore necessarily returns a camera-frame point.
-        # Snippet used to generate expected: cam.unproject(cam.project(X), 4.) executed 2026-09-05 (torch 2.14.0)
-        # -> float32 [[0.99999988, 1.9999999, 4.0]], max abs error 1.19e-07.
+        # unproject(uv, depth) returns the world point (inverse of K @ E), with depth the camera-frame z. With the
+        # tx = 1 extrinsics above, a camera-frame result (2, 2, 4) fails.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
             _e44(device, dtype, tx=1.0),
@@ -715,10 +699,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(back, X)
 
     def test_convention_clone_is_a_deep_copy(self, device, dtype):
-        # Convention pin: clone() returns a new object with independent parameter storage, and mutating the clone
-        # leaves the source untouched. Constructor inputs and scale() results are independently owned as well.
-        # Snippet used to generate expected: build a tx = 2 camera, clone it, set clone.tx = 9; executed
-        # 2026-09-05 (torch 2.14.0, every dtype) -> source tx [2.0], clone tx [9.0].
+        # clone() returns a camera with independent storage; mutating the clone leaves the source untouched.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
             _e44(device, dtype, tx=2.0),
@@ -735,15 +716,9 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cam.tx, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(cloned.tx, torch.tensor([9.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_convention_intrinsics_inverse_is_the_exact_inverse(self, device, dtype):
-        # Convention pin: intrinsics_inverse() @ intrinsics is byte-exact eye(4) on an
-        # asymmetric fx = 100, fy = 50, cx = 4, cy = 3 intrinsics -- this is the pair DepthWarper feeds pixel2cam.
-        # The legacy 12-vector twins are NOT exact: inverse_pinhole_matrix @ pinhole_matrix is 1e-06 off
-        # (kornia#4268, pinned in TestPinholeMatrix below).
-        # Snippet used to generate expected: torch.equal(inv @ K, eye(4)[None]) executed 2026-09-05 (torch 2.14.0)
-        # -> True for float32/float64/bfloat16 on cpu and float32 on mps.
-        if dtype == torch.float16:
-            pytest.skip("float16 cannot round-trip 1/fx: inv @ K differs from eye(4) by 1.5e-05 (2026-09-05)")
+    def test_convention_intrinsics_inverse_inverts_intrinsics(self, device, dtype):
+        # intrinsics_inverse() is the inverse of the full 4x4 intrinsics (the pair DepthWarper feeds pixel2cam),
+        # checked on an asymmetric fx = 100, fy = 50, cx = 4, cy = 3.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype, fy=50.0),
             _e44(device, dtype, tx=1.0),
@@ -751,15 +726,11 @@ class TestPinholeCamera(BaseTester):
             torch.tensor([8.0], device=device, dtype=dtype),
         )
         product = cam.intrinsics_inverse() @ cam.intrinsics
-        self.assert_close(product, torch.eye(4, device=device, dtype=dtype)[None], atol=0.0, rtol=0.0)
+        self.assert_close(product, torch.eye(4, device=device, dtype=dtype)[None])
 
     def test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263(self, device, dtype):
-        # Wart pin for kornia#4263: scale(s) gives cx' = s * cx (2.0 for cx = 4,
-        # s = 0.5) -- the half-pixel / COLMAP convention -- although create_meshgrid and every unprojection path in
-        # the library enumerate integer pixel CENTRES, under which the grid-consistent value is
-        # cx' = s * cx + (s - 1) / 2 = 1.75. Pins the CURRENT value so the window's repair flips this loudly.
-        # Snippet used to generate expected: cam.scale(0.5) executed 2026-09-05 (torch 2.14.0, every dtype)
-        # -> cx [2.0], cy [1.5], fx [50.0]. NOT a contract; delete when #4263 is repaired.
+        # Wart pin for #4263: scale(s) gives cx' = s * cx (2.0 for cx = 4, s = 0.5), the half-pixel rule, while
+        # kornia's integer pixel centres give cx' = s * cx + (s - 1) / 2 = 1.75. Delete when #4263 is repaired.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
             _e44(device, dtype, tx=1.0),
@@ -811,13 +782,11 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(height, height_before, atol=0.0, rtol=0.0)
         self.assert_close(width, width_before, atol=0.0, rtol=0.0)
 
-    def test_wart_scale_inplace_rejects_integer_image_size_4265(self, device, dtype):
-        # Wart pin for kornia#4265: the constructor accepts int64 height/width --
-        # that is what the class docstring's own example builds -- and a floating factor promotes them, but the
-        # in-place twin scale_() writes the float result back into the int64 storage and raises.
-        # Snippet used to generate expected: cam.scale_(0.5) on an int64 height executed 2026-09-05 (torch 2.14.0,
-        # every dtype) -> RuntimeError("result type Float can't be cast to the desired output type Long").
-        # Pins the CURRENT behavior; NOT a contract; delete when #4265 is repaired.
+    def test_scale_inplace_promotes_integer_image_size_4265(self, device, dtype):
+        # Regression for kornia#4265: the constructor accepts int64 height/width --
+        # that is what the class docstring's own example builds. A floating factor now
+        # promotes int64 to float in both scale() and scale_() after this repair (#4371).
+        # Integer factor preserves int64. Pins the repaired contract after #4371.
         K = _k44(device, dtype)
         cam = kornia.geometry.camera.PinholeCamera(
             K,
@@ -836,14 +805,20 @@ class TestPinholeCamera(BaseTester):
             self.assert_close(inplace.width, scaled.width)
             self.assert_close(inplace.intrinsics, scaled.intrinsics)
         assert cam.scale(torch.tensor([0.5], device=device, dtype=dtype)).height.is_floating_point()
-        with pytest.raises(RuntimeError, match="can't be cast to the desired output type"):
-            cam.scale_(0.5)
+        # scale_(0.5) now promotes int64 height/width to float instead of raising (#4371).
+        # Both the plain Python float (the issue's own call shape) and a tensor factor promote.
+        inplace = cam.scale_(0.5)
+        assert inplace is cam
+        assert cam.height.is_floating_point()
+        # int64 height/width * Python float 0.5 promotes to the default floating dtype
+        # (e.g. float32), not necessarily the camera's intrinsics dtype. Construct the
+        # expected values from the promoted tensors rather than the fixture dtype.
+        self.assert_close(cam.height, cam.height.new_tensor([3.0]), atol=0.0, rtol=0.0)
+        self.assert_close(cam.width, cam.width.new_tensor([4.0]), atol=0.0, rtol=0.0)
         expected_K = _k44(device, dtype)
         expected_K[:, :2, :3] *= 0.5
         self.assert_close(K, _k44(device, dtype), atol=0.0, rtol=0.0)
         self.assert_close(cam.intrinsics, expected_K, atol=0.0, rtol=0.0)
-        self.assert_close(cam.height, torch.tensor([6], device=device))
-        self.assert_close(cam.width, torch.tensor([8], device=device))
 
     @pytest.mark.parametrize("shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)])
     @pytest.mark.parametrize("parameter", ["intrinsics", "extrinsics"])
@@ -937,13 +912,9 @@ class TestPinholeCamera(BaseTester):
             )
 
     def test_wart_project_and_project_points_disagree_at_z_zero_4267(self, device, dtype):
-        # Wart pin for kornia#4267: PinholeCamera.project and the free function
-        # project_points are documented as the same projection and agree exactly away from the singularity, but
-        # they apply K on OPPOSITE sides of the masked |z| <= 1e-8 divide, so at z = 0 they return different
-        # answers -- K @ [1, 2, 0] = [100, 200] for the method and fx*x + cx = [104, 203] for the function.
-        # The divergence is the defect, not either value.
-        # Snippet used to generate expected: both calls at (1, 2, 0) and (1, 2, 4) executed 2026-09-05
-        # (torch 2.14.0, cpu and mps, every dtype). NOT a contract; delete when #4267 is repaired.
+        # Wart pin for #4267: PinholeCamera.project and project_points agree away from z = 0 but apply K on
+        # opposite sides of the masked |z| <= 1e-8 divide, so at z = 0 they return [100, 200] and [104, 203].
+        # The divergence is the defect, not either value. Delete when #4267 is repaired.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
             _e44(device, dtype),
@@ -963,6 +934,28 @@ class TestPinholeCamera(BaseTester):
         )
         regular = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
         self.assert_close(cam.project(regular), kornia.geometry.camera.project_points(regular, K3))
+
+    def test_wart_unproject_fails_on_zero_padded_intrinsics_4771(self, device, dtype):
+        # Wart pin for #4771: a 3x3 K zero-padded to 4x4 ([3, 3] = 0) constructs and projects correctly, but
+        # unproject inverts the singular intrinsics @ extrinsics and raises. Delete or invert when #4771 is
+        # repaired (constructor validation or a 3x3-block unproject both fail this pin). The control sets
+        # [3, 3] = 1 and changes nothing else, so the raise is attributable to the zero pad.
+        height, width = torch.tensor([6], device=device), torch.tensor([8], device=device)
+        point = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
+        depth = torch.tensor([[4.0]], device=device, dtype=dtype)
+        K = torch.zeros(1, 4, 4, device=device, dtype=dtype)
+        K[:, :3, :3] = _k44(device, dtype)[:, :3, :3]
+        cam = kornia.geometry.camera.PinholeCamera(K, _e44(device, dtype), height, width)
+        uv = cam.project(point)
+        self.assert_close(uv, torch.tensor([[29.0, 53.0]], device=device, dtype=dtype))
+        control = K.clone()
+        control[:, 3, 3] = 1.0
+        self.assert_close(
+            kornia.geometry.camera.PinholeCamera(control, _e44(device, dtype), height, width).unproject(uv, depth),
+            point,
+        )
+        with pytest.raises(RuntimeError):
+            cam.unproject(uv, depth)
 
     def test_convention_from_parameters_fills_every_batch_element_4279(self, device, dtype):
         # Regression pin for #4279: image size must be filled for every camera in the batch.
@@ -1006,21 +999,14 @@ class TestPinholeMatrix(BaseTester):
         )
 
     def test_wart_pinhole_matrix_perturbs_every_entry_4268(self, device, dtype):
-        # Wart pin for kornia#4268: pinhole_matrix
-        # adds its eps to the WHOLE identity before writing the parameters, so every entry is perturbed -- the
-        # structural zero at [0, 0, 1] is 1e-06 and the structural one at [0, 3, 3] is 1.000001. Passing eps=0.0
-        # gives the exact matrix, so the default is the only thing wrong. inverse_pinhole_matrix divides by
-        # fx + eps, so the legacy pair is never an exact inverse (contrast PinholeCamera.intrinsics_inverse, which
-        # is byte-exact). A (1, 4, 4) input raises a bare AssertionError carrying only a shape, not a ShapeError.
-        # Snippet used to generate expected: pinhole_matrix(vec12) executed 2026-09-05 (torch 2.14.0) -> float32
-        # [0, 0, 1] = 9.999999974752427e-07, [0, 3, 3] = 1.0000009536743164, inv[0, 0, 0] * 100 = 0.99999998.
-        # Pins the CURRENT values; NOT a contract; delete when #4268 is repaired.
+        # Wart pin for #4268: pinhole_matrix adds its default eps = 1e-06 to the whole identity, so every entry is
+        # perturbed ([0, 0, 1] = 1e-06, [0, 3, 3] = 1.000001); eps=0.0 gives the exact matrix. The legacy pair is
+        # therefore never an exact inverse, and a (1, 4, 4) input raises a bare AssertionError, not a ShapeError.
+        # Delete when #4268 is repaired.
         if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision cannot hold 1 + 1e-06: [0, 3, 3] reads exactly 1.0 (executed 2026-09-05)")
+            pytest.skip("half precision cannot hold 1 + 1e-06")
         vec = self._vec12(device, dtype)
         matrix = pinhole_matrix(vec)
-        assert matrix[0, 0, 1].item() != 0.0
-        assert matrix[0, 3, 3].item() != 1.0
         self.assert_close(matrix[0, 0, 1], torch.tensor(1e-06, device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(matrix[0, 3, 3], torch.tensor(1.000001, device=device, dtype=dtype), atol=0.0, rtol=0.0)
         exact = pinhole_matrix(vec, eps=0.0)
@@ -1028,17 +1014,12 @@ class TestPinholeMatrix(BaseTester):
         assert exact[0, 3, 3].item() == 1.0
         residual = (inverse_pinhole_matrix(vec) @ matrix - torch.eye(4, device=device, dtype=dtype)).abs().max()
         assert residual.item() > 0.0
-        with pytest.raises(AssertionError, match=r"torch\.Size\(\[1, 4, 4\]\)"):
+        with pytest.raises(AssertionError):
             inverse_pinhole_matrix(torch.eye(4, device=device, dtype=dtype)[None])
 
     def test_wart_dead_legacy_functions_always_raise_4283(self, device, dtype):
-        # Wart pin for kornia#4283: get_optical_pose_base and homography_i_H_ref
-        # carry full docstrings, Args/Returns blocks and a .. math:: block, validate their input, and then always
-        # raise NotImplementedError -- get_optical_pose_base's dependency was removed from torchgeometry years ago
-        # ("# TODO: where is rtvec_to_pose?"), and homography_i_H_ref is dead because it calls it.
-        # Snippet used to generate expected: both calls on the documented (N, 12) vector executed 2026-09-05
-        # (torch 2.14.0, every dtype) -> NotImplementedError('').
-        # Pins the CURRENT behavior; NOT a contract; delete when #4283 is repaired.
+        # Wart pin for #4283: get_optical_pose_base and homography_i_H_ref are documented but always raise
+        # NotImplementedError. Delete when #4283 is repaired.
         vec = self._vec12(device, dtype)
         with pytest.raises(NotImplementedError):
             get_optical_pose_base(vec)

@@ -254,6 +254,23 @@ class TestSpatialGradient(BaseTester):
         edges = spatial_gradient(inp, "diff", normalized=True)
         self.assert_close(edges, expected)
 
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_second_order_quadratics(self, mode, device, dtype):
+        coords = torch.arange(7, device=device, dtype=dtype)
+        y, x = torch.meshgrid(coords, coords, indexing="ij")
+        # one image per quadratic surface: x^2, x*y, y^2
+        inp = torch.stack([x * x, x * y, y * y])[:, None]
+        # the unnormalized (dxx, dxy, dyy) response of each surface is constant away from the border
+        if mode == "sobel":
+            expected = torch.tensor(
+                [[128.0, 0.0, 0.0], [0.0, 64.0, 0.0], [0.0, 0.0, 128.0]], device=device, dtype=dtype
+            )
+        else:
+            expected = torch.tensor([[2.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 2.0]], device=device, dtype=dtype)
+
+        actual = spatial_gradient(inp, mode, order=2, normalized=False)[:, 0, :, 2:-2, 2:-2]
+        self.assert_close(actual, expected[..., None, None].expand_as(actual))
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
@@ -263,6 +280,27 @@ class TestSpatialGradient(BaseTester):
         assert inp.is_contiguous() is False
         assert actual.is_contiguous()
         assert actual.shape == (3, 3, 2, 5, 5)
+
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_second_order_normalized_quadratics(self, mode, device, dtype):
+        # With normalized=True every second order channel estimates the derivative itself, so on a quadratic
+        # surface the channels are the exact second derivatives and dxx * dyy - dxy**2 is the exact determinant
+        # of the Hessian. Before, dxy had a scale of its own.
+        coords = torch.arange(9, device=device, dtype=dtype)
+        y, x = torch.meshgrid(coords, coords, indexing="ij")
+        surfaces = torch.stack([x * x, x * y, y * y, x * x + y * y, (x + y) ** 2 / 2])[:, None]
+        out = spatial_gradient(surfaces, mode, order=2, normalized=True)[..., 3:-3, 3:-3]
+
+        expected = torch.tensor(
+            [[2.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 2.0], [2.0, 0.0, 2.0], [1.0, 1.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(out, expected[:, None, :, None, None].expand_as(out))
+
+        det = out[:, :, 0] * out[:, :, 2] - out[:, :, 1] ** 2
+        expected_det = torch.tensor([0.0, -1.0, 0.0, 4.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(det, expected_det[:, None, None, None].expand_as(det))
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 3, 4
@@ -433,6 +471,16 @@ class TestSpatialGradient3d(BaseTester):
 
         edges = spatial_gradient3d(inp)
         self.assert_close(edges, expected)
+
+    def test_second_order_quadratics(self, device, dtype):
+        coords = torch.arange(5, device=device, dtype=dtype)
+        z, y, x = torch.meshgrid(coords, coords, coords, indexing="ij")
+        # one volume per quadratic surface, in the order of the output channels (dxx, dyy, dzz, dxy, dyz, dxz)
+        inp = torch.stack([x * x, y * y, z * z, x * y, y * z, x * z])[:, None]
+        expected = torch.diag(torch.tensor([2.0, 2.0, 2.0, 1.0, 1.0, 1.0], device=device, dtype=dtype))
+
+        actual = spatial_gradient3d(inp, "diff", order=2)[:, 0, :, 1:-1, 1:-1, 1:-1]
+        self.assert_close(actual, expected[..., None, None, None].expand_as(actual))
 
     def test_gradcheck(self, device):
         img = torch.rand(1, 1, 1, 3, 4, device=device, dtype=torch.float64)

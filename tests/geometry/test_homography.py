@@ -213,6 +213,9 @@ class TestFindHomographyDLT(BaseTester):
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
 
+    # A NaN in a minimal sample used to make torch.linalg.qr spin forever on CUDA (#4770). The
+    # thread method aborts the session instead of letting a stuck kernel stall the whole run.
+    @pytest.mark.timeout(120, method="thread")
     def test_nocrash(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -220,7 +223,10 @@ class TestFindHomographyDLT(BaseTester):
         points1[0, 0, 0] = float("nan")
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
+        # Reading the values synchronizes the device, so a hang surfaces in this test (#4770).
+        assert H.isnan().all().item()
 
+    @pytest.mark.timeout(120, method="thread")
     def test_nocrash_lu(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -228,6 +234,19 @@ class TestFindHomographyDLT(BaseTester):
         points1[0, 0, 0] = float("nan")
         H = find_homography_dlt(points1, points2, weights, "lu")
         assert H.shape == (1, 3, 3)
+        assert H.isnan().all().item()
+
+    @pytest.mark.timeout(120, method="thread")
+    def test_nonfinite_sample_leaves_batch_intact(self, device, dtype):
+        points1 = torch.rand(3, 4, 2, device=device, dtype=dtype)
+        points2 = torch.rand(3, 4, 2, device=device, dtype=dtype)
+        weights = torch.ones(3, 4, device=device, dtype=dtype)
+        expected = find_homography_dlt(points1[:1], points2[:1], weights[:1])
+        points1[1, 0, 0] = float("nan")
+        weights[2, 1] = float("inf")
+        H = find_homography_dlt(points1, points2, weights)
+        assert H[1:].isnan().all().item()
+        self.assert_close(H[:1], expected)
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):

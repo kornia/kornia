@@ -46,8 +46,7 @@ def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
     x = kgrid[0, :, :, 0]
     y = kgrid[0, :, :, 1]
     rho, phi = cart2pol(x, y)
-    grid_dict = {"x": x, "y": y, "rho": rho, "phi": phi}
-    return grid_dict
+    return {"x": x, "y": y, "rho": rho, "phi": phi}
 
 
 def get_kron_order(d1: int, d2: int) -> torch.Tensor:
@@ -106,8 +105,7 @@ class MKDGradients(nn.Module):
         grads_xy = -self.grad(x)
         gx = grads_xy[:, :, 0, :, :]
         gy = grads_xy[:, :, 1, :, :]
-        y = torch.cat(cart2pol(gx, gy, self.eps), dim=1)
-        return y
+        return torch.cat(cart2pol(gx, gy, self.eps), dim=1)
 
     def __repr__(self) -> str:
         return self.__class__.__name__
@@ -186,8 +184,7 @@ class VonMisesKernel(nn.Module):
         emb1 = torch.cos(frange)
         emb2 = torch.sin(frange)
         embedding = torch.cat([emb0, emb1, emb2], dim=1)
-        embedding = self.weights * embedding
-        return embedding
+        return self.weights * embedding
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, n={self.n}, d={self.d}, coeffs={self.coeffs})"
@@ -231,8 +228,7 @@ class EmbedGradients(nn.Module):
 
     def emb_mags(self, mags: torch.Tensor) -> torch.Tensor:
         """Embed square roots of magnitudes with eps for numerical reasons."""
-        mags = torch.sqrt(mags + self.eps)
-        return mags
+        return torch.sqrt(mags + self.eps)
 
     def forward(self, grads: torch.Tensor) -> torch.Tensor:
         """Embed gradient magnitude and orientation into kernel descriptor channels.
@@ -253,8 +249,7 @@ class EmbedGradients(nn.Module):
         oris = grads[:, 1:, :, :]
         if self.relative:
             oris = oris - self.phi.to(oris)
-        y = self.kernel(oris) * self.emb_mags(mags)
-        return y
+        return self.kernel(oris) * self.emb_mags(mags)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, relative={self.relative})"
@@ -287,8 +282,7 @@ def spatial_kernel_embedding(kernel_type: str, grids: Dict[str, torch.Tensor]) -
 
     # Final precomputed position embedding.
     kron_order = get_kron_order(vm_a.d, vm_b.d)
-    spatial_kernel = emb_a.index_select(0, kron_order[:, 0]) * emb_b.index_select(0, kron_order[:, 1])
-    return spatial_kernel
+    return emb_a.index_select(0, kron_order[:, 0]) * emb_b.index_select(0, kron_order[:, 1])
 
 
 class ExplicitSpacialEncoding(nn.Module):
@@ -362,8 +356,7 @@ class ExplicitSpacialEncoding(nn.Module):
     def get_gmask(self, sigma: float) -> torch.Tensor:
         """Compute Gaussian mask."""
         norm_rho = self.grid["rho"] / self.grid["rho"].max()
-        gmask = torch.exp(-1 * norm_rho**2 / sigma**2)
-        return gmask
+        return torch.exp(-1 * norm_rho**2 / sigma**2)
 
     def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Initialize helper variables to calculate kronecker."""
@@ -688,8 +681,7 @@ class MKDDescriptor(nn.Module):
 def load_whitening_model(kernel_type: str, training_set: str) -> Dict[str, Any]:
     """Load whitening model."""
     whitening_models = load_state_dict_from_url(urls[kernel_type], map_location=torch.device("cpu"))
-    whitening_model = whitening_models[training_set]
-    return whitening_model
+    return whitening_models[training_set]
 
 
 class SimpleKD(nn.Module):

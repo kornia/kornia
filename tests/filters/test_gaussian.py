@@ -69,6 +69,47 @@ def test_gaussian(window_size, sigma, mean, expected, device, dtype):
     assert_close(result, expected, atol=1e-4, rtol=1e-4)
 
 
+@pytest.mark.parametrize(
+    "window_size, sigma, mean, expected",
+    [
+        # Every sample used to underflow to 0 here, and the normalization divided 0 / 0 (#4589).
+        (4, 0.02, None, [0.0, 0.5, 0.5, 0.0]),
+        (8, 1e-4, None, [0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0]),
+        (5, 0.05, 0.0, [1.0, 0.0, 0.0, 0.0, 0.0]),
+        (4, 1.0, 40.0, [0.0, 0.0, 0.0, 1.0]),
+        # At sigma == 0 the kernel is the unit-impulse limit instead of nan.
+        (5, 0.0, None, [0.0, 0.0, 1.0, 0.0, 0.0]),
+        (4, 0.0, None, [0.0, 0.5, 0.5, 0.0]),
+        (1, 0.0, None, [1.0]),
+    ],
+)
+def test_gaussian_does_not_underflow_to_nan_4589(window_size, sigma, mean, expected, device, dtype):
+    result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
+    assert_close(result, torch.tensor([expected], device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize("window_size", [4, 5])
+def test_gaussian_sigma_gradient_is_finite_at_zero_4589(window_size, device, dtype):
+    # The impulse limit is reachable with a tensor sigma, so it has to be differentiable too.
+    # Dividing by sigma ** 2 first and repairing the result afterwards left the 0 / 0 on the
+    # graph, and the sigma gradient came back nan even though the forward value was finite.
+    sigma = torch.zeros(1, 1, device=device, dtype=dtype, requires_grad=True)
+
+    out = gaussian(window_size, sigma)
+    (out * torch.arange(window_size, device=device, dtype=dtype)).sum().backward()
+
+    assert torch.isfinite(out).all()
+    assert torch.isfinite(sigma.grad).all()
+    # The continuous limit is flat at sigma == 0: the impulse does not move as sigma grows.
+    assert_close(sigma.grad, torch.zeros_like(sigma.grad))
+
+
+def test_gaussian_empty_window_stays_empty_4589(device, dtype):
+    # kornia's convention for a degenerate shape is empty in, empty out. Subtracting the nearest
+    # sample means reducing over the window, which has no identity when the window is empty.
+    assert gaussian(0, 1.0, device=device, dtype=dtype).shape == (1, 0)
+
+
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_kernel1d_float(window_size, sigma, device, dtype):

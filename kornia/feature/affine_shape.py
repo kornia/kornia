@@ -219,12 +219,17 @@ class LAFAffineShapeEstimator(nn.Module):
         )
         ellipse_shape: torch.Tensor = self.affine_shape_detector(patches)
         ellipse_det = ellipse_shape[..., 0] * ellipse_shape[..., 2] - ellipse_shape[..., 1].square()
+        # ellipse_to_laf takes the square root of a - (b / sqrt(c))^2, formed as below. For a nearly singular
+        # shape that can round to zero or below although the determinant above stays positive; its nan would be
+        # masked in the forward pass but not in the backward pass through the torch.where below.
+        ellipse_schur = ellipse_shape[..., 0] - (ellipse_shape[..., 1] / ellipse_shape[..., 2].sqrt()).square()
         bad_shape = (
             ~ellipse_shape.isfinite().all(dim=-1)
             | ~ellipse_det.isfinite()
             | (ellipse_shape[..., 0] <= 0)
             | (ellipse_shape[..., 2] <= 0)
             | (ellipse_det <= 0)
+            | ~(ellipse_schur > 0)
         )
         circular_shape = ellipse_shape.new_tensor([1.0, 0.0, 1.0])
         safe_ellipse_shape = torch.where(bad_shape[..., None], circular_shape, ellipse_shape)
