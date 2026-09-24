@@ -85,10 +85,10 @@ jobs:
     strategy:
       fail-fast: false
       # Each PR leg is here for failures the others do not catch; the full os x dtype x python x
-      # torch matrix runs after merge in scheduled_test_cpu.yml. Measured over the PR runs from
-      # 2026-09-03 to 2026-09-24, these six legs plus the half-precision, MPS and dynamo jobs
-      # caught every test failure that the previous 27-leg matrix caught, apart from one
-      # environment-specific `test_check_torch_env` failure.
+      # torch matrix runs on main twice a day in scheduled_test_cpu.yml. Measured over the PR
+      # runs from 2026-09-03 to 2026-09-24, these six legs plus the half-precision, MPS and
+      # dynamo jobs caught every test failure that the previous 27-leg matrix caught, apart from
+      # one environment-specific `test_check_torch_env` failure.
       #   - ubuntu 3.13 / torch 2.5.1 (float32, float64): the only place Python 3.13 meets the
       #     oldest torch -- 2.5.1 has no 3.13 wheels on Windows or macOS -- and the leg that
       #     caught the most failures nothing else caught.
@@ -97,9 +97,9 @@ jobs:
       #   - windows-latest float64: Windows-only failures (path handling, the eager RNG audit)
       #     showed up on every Windows leg, and this one caught all of them.
       #   - macos-latest float32: the one macOS-only failure showed up on all five macOS legs.
-      # torch 2.5.1 on Windows runs post-merge only, on windows-2022: its wheels crash with
-      # STATUS_ILLEGAL_INSTRUCTION (0xc000001d) in affine_grid on the windows-2025 image that
-      # windows-latest now resolves to.
+      # torch 2.5.1 on Windows runs only in the scheduled matrix, on windows-2022: its wheels
+      # crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) in affine_grid on the windows-2025
+      # image that windows-latest now resolves to.
       matrix:
         include:
           - os: ubuntu-latest
@@ -165,7 +165,7 @@ jobs:
   # The directory list has to name every tree whose compile tests should gate a PR: one it
   # omits is still collected, but with the `torch_optimizer` fixture deselected, so its
   # `test_dynamo` cases pass as identity no-ops and a compile regression there reaches
-  # `main` before the post-merge `coverage.yml` dynamo job is the first to compile it.
+  # `main` before the scheduled `coverage.yml` dynamo job is the first to compile it.
   dynamo:
     needs: [pre-tests]
     uses: ./.github/workflows/tests.yml
@@ -225,7 +225,7 @@ jobs:
     needs: [pre-tests]
     uses: ./.github/workflows/typecheck.yml
 
-  # Tutorials run post-merge in scheduled_test_cpu.yml only. The job is continue-on-error and
+  # Tutorials run only in scheduled_test_cpu.yml. The job is continue-on-error and
   # `collector` does not wait for it, so at PR time it cost ~12 runner-minutes without gating.
 
   collector:

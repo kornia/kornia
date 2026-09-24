@@ -128,7 +128,7 @@ covers CUDA or MPS half precision.
 | CUDA float16 | 11738 | 451 | 3983 | **96.3%** | `f8449854`, 2026-09-23 |
 | CUDA bfloat16 | 11736 | 500 | 3936 | **95.9%** | `f8449854`, 2026-09-23 |
 
-Pass% = passed ÷ (passed + failed). The CPU rows are the nightly `main` CI jobs (Linux x86_64, Python 3.11,
+Pass% = passed ÷ (passed + failed). The CPU rows are the scheduled `main` CI jobs (Linux x86_64, Python 3.11,
 PyTorch 2.9.1, no `--runslow`). In the half jobs, *Failed* is the manifest's entry count: CI reports those tests as
 strict xfails, and it fails if any of them passes or fails differently. Tests marked `xfail` in the source are
 excluded from every row. Reproduce a CPU half row in that environment with
