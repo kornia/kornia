@@ -131,7 +131,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
           list can become desynchronized from the image when the gate differs across samples. A list longer
           than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
-          Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
+          ``.inverse()`` takes the list the forward pass returned and inverts it element by element with the
+          same per-entry gate. A flip round-trips each entry, subject to the working-dtype rounding above; other
+          warps lose the pixels they move out of the frame and, when they resample, restore the rest only
+          approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - supported geometric data-key handlers share the recorded transform, subject to the mask limitations
           above. Custom rigid subclasses are not dispatched solely because they supply a matrix
           (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid warp child has no matrix, so

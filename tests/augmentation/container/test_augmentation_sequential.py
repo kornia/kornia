@@ -900,6 +900,66 @@ class TestConventionAugmentationSequential(BaseTester):
             assert torch.equal(out_entry, entry.flip(-1))
         assert seq.mask_dtype == mask_dtypes[0]  # the attribute records the first element of the last list mask
 
+    def test_list_mask_inverse_undoes_the_forward_pass_4716(self, device, dtype):
+        # kornia#4716: forward accepted a list mask and returned one, but inverse raised
+        # "'list' object has no attribute 'dtype'". It now inverts element by element, and each
+        # entry comes back in its own dtype, as in the forward pass (#4478).
+        image = torch.arange(48, device=device, dtype=dtype).reshape(2, 1, 4, 6)
+        labels = torch.arange(24, device=device).reshape(1, 1, 4, 6).expand(2, 1, -1, -1) % 5
+        masks = [labels.clone(), (labels > 2)]
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        out_image, out_masks = seq(image, masks)
+        restored_image, restored = seq.inverse(out_image, out_masks)
+        self.assert_close(restored_image, image)
+        assert isinstance(restored, list) and len(restored) == 2
+        assert [m.dtype for m in restored] == [torch.int64, torch.bool]
+        for entry, original in zip(restored, masks):
+            assert torch.equal(entry, original)
+
+    def test_list_mask_inverse_uses_each_entrys_forward_gate_4716(self, device, dtype):
+        # The forward pass gives list entry i the gate of sample i (the #4477 wart). The inverse has to
+        # reuse that same gate, or a mixed-probability batch would come back half re-flipped.
+        image = torch.arange(24, device=device, dtype=dtype).reshape(2, 1, 3, 4)
+        masks = [image.clone(), image.expand(-1, 2, -1, -1).clone()]
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), data_keys=["input", "mask"])
+        params = [
+            ParamItem(
+                "RandomHorizontalFlip_0",
+                {"batch_prob": torch.tensor([1.0, 0.0]), "forward_input_shape": torch.tensor(image.shape)},
+            )
+        ]
+        out_image, out_masks = seq(image, masks, params=params)
+        _, restored = seq.inverse(out_image, out_masks, params=params)
+        self.assert_close(restored[0], masks[0])
+        self.assert_close(restored[1], masks[1])
+
+    def test_list_mask_inverse_through_a_nested_sequential_4716(self, device, dtype):
+        image = torch.arange(24, device=device, dtype=dtype).reshape(1, 1, 4, 6)
+        masks = [image.clone(), image.clone() * 2]
+        seq = K.AugmentationSequential(
+            K.ImageSequential(K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0)),
+            data_keys=["input", "mask"],
+        )
+        out_image, out_masks = seq(image, masks)
+        self.assert_close(out_masks[0], image.flip(-1).flip(-2))
+        _, restored = seq.inverse(out_image, out_masks)
+        for entry, original in zip(restored, masks):
+            self.assert_close(entry, original)
+
+    def test_list_mask_inverse_applies_the_inverse_matrix_4716(self, device, dtype):
+        # A flip is its own inverse, so a flip round trip cannot tell the inverse matrix from the forward one.
+        # A quarter turn can: applying the forward matrix again gives a half turn instead of the identity.
+        image = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        labels = torch.arange(64, device=device).reshape(1, 1, 8, 8).expand(2, 1, -1, -1) % 7
+        masks = [labels.clone(), labels > 3]
+        seq = K.AugmentationSequential(K.RandomRotation(degrees=(90.0, 90.0), p=1.0), data_keys=["input", "mask"])
+        out_image, out_masks = seq(image, masks)
+        assert not torch.equal(out_masks[0], labels)
+        _, restored = seq.inverse(out_image, out_masks)
+        assert [m.dtype for m in restored] == [torch.int64, torch.bool]
+        for entry, original in zip(restored, masks):
+            assert torch.equal(entry, original)
+
     @pytest.mark.parametrize("key", ["bbox_xyxy", "bbox_xywh"])
     @pytest.mark.parametrize("suffix", ["", "_2", "-a"])
     def test_dictionary_coordinate_box_keys_4483(self, key, suffix, device, dtype):
