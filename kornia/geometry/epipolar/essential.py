@@ -321,7 +321,8 @@ def _null_to_Nister_solution_script(
     C[:, 0:9, 1:10] = torch.eye(9, device=device, dtype=dtype)
 
     # Guard only an exactly zero leading coefficient. The roots do not depend on the polynomial's sign,
-    # and a floor such as clamp_min would turn a negative coefficient positive and change them.
+    # and a floor such as clamp_min would turn a negative coefficient positive and change them. An
+    # element with a zero one is discarded below; the floor only keeps its companion matrix finite.
     cs_de = torch.where(cs[:, -1] == 0, torch.full_like(cs[:, -1], 1e-8), cs[:, -1])
     C[:, -1, :] = -cs[:, :-1] / cs_de.unsqueeze(-1)
 
@@ -329,9 +330,12 @@ def _null_to_Nister_solution_script(
     # which takes the whole batch down: a RuntimeError on some platforms, a crash inside MKL on others.
     # It comes from an overflow: an elimination system that is ill-conditioned without being exactly
     # singular has a solution large enough for the determinant polynomial to overflow, or a finite
-    # polynomial overflows when it is divided by its leading coefficient. Those elements get the
-    # identity in place of C, and their candidates are set to NaN at the end, like a singular one.
-    no_roots = ~torch.isfinite(C).flatten(-2).all(-1)  # (B,)
+    # polynomial overflows when it is divided by its leading coefficient. Nor has a polynomial whose
+    # leading coefficient is exactly zero: its degree is below 10, the floor above scales its companion
+    # row by 1e8, and the eigenvalues are not its roots. Its eigenvector matrix can then be singular,
+    # which makes the eigvals backward raise. Those elements get the identity in place of C, and their
+    # candidates are set to NaN at the end, like a singular one.
+    no_roots = ~torch.isfinite(C).flatten(-2).all(-1) | (cs[:, -1] == 0)  # (B,)
     if no_roots.any():
         C = torch.where(no_roots.view(B, 1, 1), eye10, C)
 
