@@ -405,6 +405,10 @@ class TestConventionProjection(BaseTester):
         self.assert_close(_det3(R), -torch.ones(1, device=device, dtype=dtype))
         self.assert_close(R, -R_true)
         self.assert_close(t, -t_true)
+        if device.type != "cpu":
+            # The sub-eps case depends on the QR backend's sign for an entry of magnitude ~eps (MPS returns +2e-8
+            # where CPU LAPACK returns a negative entry), so it is asserted on the CPU only.
+            return
         # Same issue: eps is added to K's raw diagonal before its sign is taken, so 1e-7 * P (a positive scale)
         # keeps a negative K[2, 2] and returns a reflection.
         # The matching (last) row of R is negated; the other two are R_true's.
