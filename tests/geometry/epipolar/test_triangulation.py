@@ -25,6 +25,7 @@ import kornia
 import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
+from testing.two_view import two_view_scene
 
 SOLVERS = ["svd", "eigh", "cofactor"]
 
@@ -336,7 +337,8 @@ _TRIANGULATION_ATOL = {torch.float16: 5e-2, torch.bfloat16: 0.5, torch.float32: 
 
 
 class TestConventionTriangulation(BaseTester):
-    def test_convention_triangulate_points_argument_pairing(self, two_view, device, dtype):
+    def test_convention_triangulate_points_argument_pairing(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         P1, P2, x1, x2, X = two_view["P1"], two_view["P2"], two_view["x1"], two_view["x2"], two_view["X"]
         atol = _TRIANGULATION_ATOL[dtype]
         results = {}
@@ -358,7 +360,8 @@ class TestConventionTriangulation(BaseTester):
         # svd and eigh agree to roundoff.
         self.assert_close(results["svd"], results["eigh"], rtol=0.0, atol=atol)
 
-    def test_wart_triangulate_points_infinity_finite_4865(self, two_view, device, dtype):
+    def test_wart_triangulate_points_infinity_finite_4865(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         # #4865: a correspondence at infinity (the images of a direction (x, y, z, 0)) comes back as a finite point
         # along that direction, with nothing to tell it from a real point: its distance is set by roundoff in the
         # homogeneous w. The fix target is a point at infinity flagged (non-finite output, or a validity flag on the
@@ -377,7 +380,8 @@ class TestConventionTriangulation(BaseTester):
             cos = (out64 * d64).sum(-1) / (out64.norm(dim=-1) * d64.norm(dim=-1))
             assert cos.abs().min() > 0.98
 
-    def test_wart_triangulate_cofactor_float16_nan_4863(self, two_view, device, dtype):
+    def test_wart_triangulate_cofactor_float16_nan_4863(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         if dtype != torch.float16:
             pytest.skip("the overflow is float16's: bfloat16, float32 and float64 hold the unnormalised null vector")
         # #4863: the cofactor null vector of pixel-scale rows is computed in float32 but cast back to float16 before

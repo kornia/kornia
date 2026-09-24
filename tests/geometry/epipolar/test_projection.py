@@ -23,6 +23,7 @@ import kornia.geometry.epipolar as epi
 from kornia.geometry.camera import PinholeCamera
 
 from testing.base import BaseTester
+from testing.two_view import two_view_scene
 
 
 class TestIntrinsicsLike:
@@ -256,7 +257,8 @@ def _unit(M: torch.Tensor) -> torch.Tensor:
 
 
 class TestConventionProjection(BaseTester):
-    def test_convention_projection_from_KRt_is_K_R_t(self, two_view, device, dtype):
+    def test_convention_projection_from_KRt_is_K_R_t(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         K1, K2, R, t, X = two_view["K1"], two_view["K2"], two_view["R"], two_view["t"], two_view["X"]
         P = epi.projection_from_KRt(K2, R, t)
         assert P.shape == (1, 3, 4)
@@ -275,7 +277,8 @@ class TestConventionProjection(BaseTester):
         self.assert_close(Pb[:1], torch.cat([K1, torch.zeros_like(t)], -1))
         self.assert_close(Pb[1:], P)
 
-    def test_convention_krt_from_projection_returns_extrinsic_t(self, two_view, device, dtype):
+    def test_convention_krt_from_projection_returns_extrinsic_t(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_QR)
         K_true, R_true, t_true = two_view["K2"], two_view["R"], two_view["t"]
         K, R, t = epi.KRt_from_projection(two_view["P2"])
@@ -299,7 +302,8 @@ class TestConventionProjection(BaseTester):
         self.assert_close(R2x, R_true)
         self.assert_close(t2x, t_true)
 
-    def test_convention_projections_from_fundamental_layout(self, two_view, device, dtype):
+    def test_convention_projections_from_fundamental_layout(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         # F is the essential matrix of the fixture, the fundamental matrix of normalised image coordinates, so
         # its entries stay inside the half-precision range; it satisfies x2^T F x1 = 0 like find_fundamental's F.
         eye = torch.eye(3, device=device, dtype=dtype)[None]
@@ -321,7 +325,8 @@ class TestConventionProjection(BaseTester):
         self.assert_close(_unit(F_reversed) * torch.sign((F_reversed * Ft).sum()), _unit(Ft))
         assert (_unit(F_reversed) * torch.sign((F_reversed * F).sum()) - _unit(F)).abs().max() > 0.1
 
-    def test_convention_depth_from_point_is_camera_z(self, two_view, device, dtype):
+    def test_convention_depth_from_point_is_camera_z(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         R, t, X = two_view["R"], two_view["t"], two_view["X"]
         depth = epi.depth_from_point(R, t, X)
         # The z coordinate of R X + t, one value per point.
@@ -332,7 +337,8 @@ class TestConventionProjection(BaseTester):
         assert (depth - ((X - t.transpose(-2, -1)) @ R)[..., 2]).abs().max() > 0.25
         assert (epi.depth_from_point(R, -t, X) - depth).abs().min() > 0.02
 
-    def test_convention_scale_intrinsics_matches_pinhole_scale(self, two_view, device, dtype):
+    def test_convention_scale_intrinsics_matches_pinhole_scale(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         K = torch.cat([two_view["K1"], two_view["K2"]])
         K_before = K.clone()
         scale = torch.tensor([0.5, 3.0], device=device, dtype=dtype)
@@ -371,7 +377,8 @@ class TestConventionProjection(BaseTester):
         with pytest.raises(Exception):
             epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=torch.uint8))
 
-    def test_wart_krt_from_projection_negative_P_reflection_4864(self, two_view, device, dtype):
+    def test_wart_krt_from_projection_negative_P_reflection_4864(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_QR)
         # #4864: -P is the same camera as P, but the result keeps K's diagonal positive and returns the reflection
         # -R (det -1) with -t. Once fixed, R is a proper rotation and the sign moves into K.
