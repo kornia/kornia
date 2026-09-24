@@ -108,6 +108,16 @@ class TestDrawPoint(BaseTester):
         assert out is img
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize("points", [[[1, 3], [2, 4]], [1, 3]])
+    @pytest.mark.parametrize("shape", [(3, 8, 8), (8, 8)])
+    def test_draw_point2d_draws_in_place_and_returns_the_input(self, points, shape, dtype, device):
+        """The Return section documents in-place drawing into, and returning, the input tensor."""
+        img = torch.zeros(shape, dtype=dtype, device=device)
+        color = torch.ones(shape[0] if len(shape) == 3 else 1, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor(points, device=device), color)
+        assert out is img
+        assert img.count_nonzero() > 0
+
     @pytest.mark.parametrize(
         "shape, match",
         [
@@ -375,6 +385,14 @@ class TestDrawLine(BaseTester):
         out = draw_line(img, empty, empty, torch.tensor([1.0]))
         assert out.shape == (1, 8, 8)
         assert out.count_nonzero() == 0
+
+    @pytest.mark.parametrize("p1, p2", [([1, 4], [6, 4]), ([[1, 1], [0, 7]], [[6, 6], [7, 0]])])
+    def test_draw_line_draws_in_place_and_returns_the_input(self, p1, p2, dtype, device):
+        """The Return section documents in-place drawing into, and returning, the input tensor."""
+        img = torch.zeros(2, 8, 8, dtype=dtype, device=device)
+        out = draw_line(img, torch.tensor(p1), torch.tensor(p2), torch.ones(2, dtype=dtype, device=device))
+        assert out is img
+        assert img.count_nonzero() > 0
 
     def test_draw_line_rejects_points_of_different_shapes(self, dtype, device):
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
