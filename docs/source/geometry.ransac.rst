@@ -29,12 +29,11 @@ Their local optimization still weights segments by the length-scaled residual of
 :func:`~kornia.geometry.homography.line_segment_transfer_error_one_way`, which
 down-weights long segments (`#4867 <https://github.com/kornia/kornia/issues/4867>`_).
 
-A model is accepted once at least the minimal sample size of correspondences
-support it (four for homographies, five for essential and seven or eight for
-fundamental matrices), as in OpenCV. A model fitted to a sample of outliers
-supports its own sample, so on input without a consensus the estimator returns
-such a model rather than the all-zero failure matrix: check the support of the
-returned mask.
+A model is accepted only with more inliers than its minimal sample (four
+correspondences for homographies, five for essential and seven or eight for
+fundamental matrices): a model fitted to a sample always fits that sample, so
+only further inliers show a consensus. Without one, the estimator returns the
+all-zero matrix and an empty mask.
 
 ``prosac_sampling=True`` enables the per-sample growth schedule of
 `Chum and Matas (CVPR 2005) <https://cmp.felk.cvut.cz/~matas/papers/chum-prosac-cvpr05.pdf>`_.

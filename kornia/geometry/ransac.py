@@ -67,10 +67,33 @@ def _squared_line_distance(ls1: torch.Tensor, ls2: torch.Tensor, models: torch.T
 class RANSAC(nn.Module):
     """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
+    Convention:
+        - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
+          ``model_type``, so a homography maps ``kp1`` to ``kp2``. ``forward`` returns a ``(3, 3)`` model and an
+          ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no candidate has more inliers than
+          its minimal sample (four correspondences for homographies, five for ``"essential"``, seven or eight
+          for the fundamental models).
+        - ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for ``"essential"``): a
+          correspondence is an inlier when its one-way transfer error for ``"homography"``, its Sampson distance
+          for ``"fundamental"``, ``"fundamental_7pt"`` and ``"essential"``, or the mean distance of its transferred
+          endpoints from the image-2 segment's line for ``"homography_from_linesegments"`` is at most ``inl_th``.
+          :ref:`two-view-conventions` compares this with OpenCV.
+        - ``score_type="msac"`` ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the squared errors
+          ``e``; acceptance and early stopping count inliers for either score.
+        - ``prosac_sampling=True`` expects correspondences sorted best-first and always runs the whole
+          ``batch_size * max_iter`` budget.
+        - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
+          draws from the global generator.
+        - Known defects: for ``"homography_from_linesegments"``, local optimization weights segments by the
+          length-scaled residual of :func:`~kornia.geometry.homography.line_segment_transfer_error_one_way`, which
+          down-weights long segments (`#4867 <https://github.com/kornia/kornia/issues/4867>`_), and the endpoint
+          pairing of :func:`~kornia.geometry.homography.find_homography_lines_dlt` applies
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_).
+
     Args:
         model_type: "homography", "fundamental", "fundamental_7pt", "essential", or
             "homography_from_linesegments".
-        inl_th: positive inlier threshold in coordinate units (squared internally).
+        inl_th: positive inlier threshold, in the units given above.
         batch_size: number of generated samples at once.
         max_iter: maximum batches to generate, giving a budget of ``batch_size * max_iter`` minimal samples.
             The seven- and five-point solvers can return multiple models per sample.
@@ -103,9 +126,9 @@ class RANSAC(nn.Module):
         Args:
             model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
                 "homography_from_linesegments".
-            inl_th: threshold for the correspondence to be an inlier. Internally is squared.
+            inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
             batch_size: number of generated samples at once.
-            max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
+            max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn.
             confidence: desired confidence of the result, used for the early stopping. 1 runs the full budget.
             max_lo_iters: number of local optimization (polishing) iterations.
             score_type: scoring method to use: "ransac" or "msac".
@@ -264,6 +287,14 @@ class RANSAC(nn.Module):
             rand.scatter_(1, newest, torch.where(force_newest[:, None], 2.0, rand.gather(1, newest)))
         return rand.topk(k=sample_size, dim=1, sorted=False).indices
 
+    def _is_supported(self, num_inliers: float) -> bool:
+        """Whether a model has support beyond the minimal sample it may have been fitted to.
+
+        A minimal-sample model always fits its own sample, so only further inliers are evidence of a
+        consensus; without them, input with no consensus returns the all-zero failure matrix.
+        """
+        return num_inliers > self.minimal_sample_size
+
     def _prosac_schedule(self, sample_size: int, pop_size: int, device: torch.device) -> torch.Tensor:
         """Return the cumulative PROSAC draw counts on ``device``, converting them once per configuration."""
         key = (sample_size, pop_size, self.batch_size * self.max_iter, device)
@@ -365,10 +396,11 @@ class RANSAC(nn.Module):
             )
             # A high-quality but under-supported model must not hide a viable candidate
             # elsewhere in the same batch. An all-invalid batch is rejected by forward.
-            score = score.masked_fill(score_ransac < self.minimal_sample_size, -1)
+            # The same support rule as _is_supported.
+            score = score.masked_fill(score_ransac <= self.minimal_sample_size, -1)
         elif self.score_type == "ransac":
             # The score is the support, so argmax already prefers any sufficiently supported
-            # candidate; forward rejects a best support below the minimal sample size.
+            # candidate; forward rejects an insufficient best support.
             score = score_ransac
         else:
             raise ValueError(f"Unsupported score type: {self.score_type}")
@@ -505,7 +537,7 @@ class RANSAC(nn.Module):
             # A full-inlier least-squares refit that keeps the score is still more precise than
             # the minimal-sample model; RANSAC scoring ties whenever support does not grow.
             tied_refit = score_lo == model_score and not use_subset
-            if (improved or tied_refit) and (num_inliers_lo >= self.minimal_sample_size):
+            if (improved or tied_refit) and self._is_supported(num_inliers_lo):
                 model = model_lo_best
                 inliers = inliers_lo.clone()
                 model_score = score_lo
@@ -524,7 +556,9 @@ class RANSAC(nn.Module):
             weights: optional correspondence weights (not used currently).
 
         Raises:
-            ValueError: if input shapes are invalid or insufficient correspondences.
+            ValueError: if ``kp1`` and ``kp2`` differ in length or hold fewer correspondences than the minimal
+                sample.
+            ShapeError: if the keypoint shape is wrong.
 
         """
         if self.model_type != "homography_from_linesegments":
@@ -558,10 +592,8 @@ class RANSAC(nn.Module):
             weights: optional correspondences weights. Not used now.
 
         Returns:
-            - Estimated model, shape of :math:`(3, 3)`, or zeros if no valid model is found. As in OpenCV, a
-              model needs the support of at least ``minimal_sample_size`` correspondences. A model fitted to
-              an all-outlier sample already supports its own sample, so a nonzero model does not by itself
-              show that a consensus exists; check the mask's support.
+            - Estimated model, shape of :math:`(3, 3)`, or zeros if no valid model is found. A model needs
+              more inliers than its minimal sample, since a model fitted to a sample fits that sample.
             - Boolean inlier mask, shape of :math:`(N,)`, in the supplied correspondence order.
 
         """
@@ -593,7 +625,7 @@ class RANSAC(nn.Module):
             # Score the models and select the best one
             model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th**2)
             # Store far-the-best model and (optionally) do a local optimization
-            if (model_score > best_score_total) and num_inliers >= self.minimal_sample_size:
+            if (model_score > best_score_total) and self._is_supported(num_inliers):
                 model, inliers, model_score, num_inliers, from_minimal_solver = self._local_optimization(
                     kp1, kp2, model, inliers, model_score, num_inliers, i
                 )
@@ -620,8 +652,8 @@ class RANSAC(nn.Module):
         if self.model_type == "essential" and best_needs_projection:
             best_model_total = project_to_essential(best_model_total[None])[0]
             _, inliers_best_total, _, support = self.verify(kp1, kp2, best_model_total[None], self.inl_th**2)
-            # Projection moves the residuals; a model that loses its minimal support is no model.
-            if support < self.minimal_sample_size:
+            # Projection moves the residuals; a model that loses its support is no model.
+            if not self._is_supported(support):
                 best_model_total = torch.zeros_like(best_model_total)
                 inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total

@@ -198,32 +198,22 @@ class TestRANSACFundamental(BaseTester):
 
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
-    def test_real_clean_returns_model(self, device, dtype, data):
-        # The all-zero failure matrix has zero Sampson error for every match, so the xfail precision
-        # tests below cannot tell it from a good fit. Before MSAC's repair RANSAC returned it here.
-        torch.random.manual_seed(0)
-        data_dev = dict_to(data, device, dtype)
-        ransac = RANSAC("fundamental", inl_th=0.5, max_iter=20, max_lo_iters=10)
-        fundamental_matrix, mask = ransac(data_dev["pts0"], data_dev["pts1"])
-        assert fundamental_matrix.abs().amax() > 0
-        assert mask.sum() >= 8
-
-    @pytest.mark.slow
-    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
-    @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_8pt(self, device, dtype, data):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel")
         torch.random.manual_seed(0)
         # generate input data
         data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
-        # compute transform from source to target
-        ransac = RANSAC("fundamental", inl_th=0.5, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
-        fundamental_matrix, _ = ransac(pts_src, pts_dst)
+        # The ground-truth F leaves up to 0.58px on these 10 points. At 0.5px the best eight-point fit has
+        # only its own sample as inliers, which is no consensus, so RANSAC returns the zero failure matrix;
+        # at 1px all ten are inliers, and over 100 seeds the refit's largest error is at most 1px.
+        ransac = RANSAC("fundamental", inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
+        fundamental_matrix, mask = ransac(pts_src, pts_dst)
         # A zero matrix is the failure result and has zero Sampson error for every point.
         assert fundamental_matrix.abs().amax() > 0
-        # The ground-truth F leaves up to 0.58px on these 10 points. The best-supported eight-point
-        # fit has eight inliers at 0.5px and extrapolates to about 1px on the other two.
+        assert mask.all()
         gross_errors = (
             sampson_epipolar_distance(pts_src[None], pts_dst[None], fundamental_matrix[None], squared=False) > 2.0
         )
@@ -751,27 +741,26 @@ class TestConventionRANSAC(BaseTester):
         model_d, mask_d = run(None)
         assert torch.equal(model_c, model_d) and torch.equal(mask_c, mask_d)
 
-    def test_wart_ransac_linesegment_threshold_units_4867(self, device, dtype):
+    def test_convention_ransac_linesegment_threshold_units_4867(self, device, dtype):
         _cpu_only(device)
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip(_HALF_LINES)
         H = torch.tensor([_H_TRUE], device=device, dtype=dtype)
-        # One segment moved 3 px off its line in image 2, scored by the true H. #4867: the line error is the
-        # distance times the image-2 segment length and forward compares it with inl_th**2, so at inl_th=17 the
-        # 3-px offset is an inlier on a 66-px segment and an outlier on a 129-px one. Once the error is a pixel
-        # distance, both are inliers.
-        inlier = []
+        # One segment moved 3 px off its line in image 2, scored by the true H. The inlier test uses the mean
+        # endpoint-to-line distance in pixels, whatever the segment's length: the 3-px offset is an inlier at
+        # inl_th=4 and an outlier at inl_th=2 on a 66-px and on a 129-px segment alike. #4867 compared the distance
+        # times the segment length with inl_th**2, which rejected both at inl_th=4.
         for stretch in (1.0, 2.0):
             ls1, ls2 = _planar_segments(device, dtype, stretch)
             d = ls2[0, 1] - ls2[0, 0]
             ls2[0] += 3.0 * torch.stack([-d[1], d[0]]) / d.norm()
-            ransac = RANSAC("homography_from_linesegments", inl_th=17.0, batch_size=1, max_iter=1, max_lo_iters=0)
-            _, mask = _fixed_model(ransac, H)(ls1, ls2)
-            assert bool(mask[1:].all())
-            inlier.append(bool(mask[0]))
-        assert inlier == [True, False]
+            for inl_th, expected in ((4.0, True), (2.0, False)):
+                ransac = RANSAC("homography_from_linesegments", inl_th=inl_th, batch_size=1, max_iter=1, max_lo_iters=0)
+                _, mask = _fixed_model(ransac, H)(ls1, ls2)
+                assert bool(mask[1:].all())
+                assert bool(mask[0]) is expected
 
-    def test_wart_ransac_msac_no_model_with_outliers_4868(self, device, dtype):
+    def test_convention_ransac_msac_finds_model_with_outliers_4868(self, device, dtype):
         _cpu_only(device)
         kp1, kp2 = _planar_matches(device, dtype)
         kp1 = torch.cat([kp1, torch.tensor(_UNRELATED_1, device=device, dtype=dtype)])
@@ -781,40 +770,38 @@ class TestConventionRANSAC(BaseTester):
             kp1, kp2
         )
         assert bool(mask[:16].all()) and not bool(mask[16:].any())
-        # #4868: the MSAC score N - sum(min(err, inl_th**2)) is compared with the minimal sample size, a count, so
-        # with sixteen outliers at inl_th=5 no model beats it and nothing is returned. Once fixed, msac finds it too.
+        # MSAC ranks candidates by their truncated residuals and accepts them by inlier count, so it finds the same
+        # sixteen. #4868 compared the MSAC score N - sum(min(err, inl_th**2)) with the minimal sample size, a count,
+        # and returned no model here.
         model, mask = RANSAC("homography", inl_th=5.0, score_type="msac", seed=0, max_iter=5, batch_size=256)(kp1, kp2)
-        assert bool((model == 0).all()) and not bool(mask.any())
+        assert bool(model.abs().amax() > 0)
+        assert bool(mask[:16].all()) and not bool(mask[16:].any())
 
-    def test_wart_ransac_prosac_sampling_ignored_4869(self, device, dtype):
+    def test_convention_ransac_prosac_sampling_4869(self, device, dtype):
         _cpu_only(device)
-        kp1, kp2 = _planar_matches(device, dtype)
-        kp1 = torch.cat([kp1, torch.tensor(_UNRELATED_1, device=device, dtype=dtype)])
-        kp2 = torch.cat([kp2, torch.tensor(_UNRELATED_2, device=device, dtype=dtype)])
-        # #4869: prosac_sampling is stored and never read, so the sampler and the result are identical either way.
-        # A PROSAC sampler draws its first samples from the top-ranked correspondences and changes both.
+        # PROSAC draws its first sample from the four top-ranked correspondences and then grows the prefix it samples
+        # from, one newest correspondence per sample, so its first samples differ from uniform ones. #4869 stored
+        # prosac_sampling and never read it.
         prosac = RANSAC("homography", inl_th=2.0, seed=3, prosac_sampling=True, max_iter=3, batch_size=16)
         uniform = RANSAC("homography", inl_th=2.0, seed=3, prosac_sampling=False, max_iter=3, batch_size=16)
-        assert torch.equal(prosac.sample(4, 32, 6, 0), uniform.sample(4, 32, 6, 0))
-        model_p, mask_p = prosac(kp1, kp2)
-        model_u, mask_u = uniform(kp1, kp2)
-        assert torch.equal(model_p, model_u) and torch.equal(mask_p, mask_u)
+        samples = prosac.sample(4, 32, 6, 0)
+        assert samples[0].sort().values.tolist() == [0, 1, 2, 3]
+        assert samples.amax(dim=1).tolist() == [3, 4, 5, 6, 7, 8]
+        assert not torch.equal(samples, uniform.sample(4, 32, 6, 0))
 
     @pytest.mark.parametrize(
         "model_type, n, validated_type, validated_n",
         [("fundamental_7pt", 6, "fundamental", 7), ("essential", 4, "homography", 3)],
     )
-    def test_wart_ransac_no_size_validation_7pt_essential_4872(
-        self, model_type, n, validated_type, validated_n, device, dtype
-    ):
+    def test_convention_ransac_size_validation_4872(self, model_type, n, validated_type, validated_n, device, dtype):
         _cpu_only(device)
         kp1, kp2 = _planar_matches(device, dtype)
         # Too few correspondences for the validated model types raise kornia's ValueError before sampling.
         with pytest.raises(ValueError):
             RANSAC(validated_type, max_iter=1, batch_size=4, seed=0)(kp1[:validated_n], kp2[:validated_n])
-        # #4872: fundamental_7pt and essential are not validated, and fail inside the sampler with a RuntimeError.
-        # Once they are validated this raises ValueError instead.
-        with pytest.raises(RuntimeError):
+        # fundamental_7pt and essential are validated the same way. #4872 skipped them, and they failed inside the
+        # sampler with a RuntimeError.
+        with pytest.raises(ValueError):
             RANSAC(model_type, max_iter=1, batch_size=4, seed=0)(kp1[:n], kp2[:n])
 
 
@@ -834,9 +821,9 @@ class TestRANSACScoringAndStopping(BaseTester):
         assert mask.shape == (100,)
         assert mask.sum() == 40
 
-    @pytest.mark.parametrize("model_type,n", [("homography", 4), ("fundamental_7pt", 7), ("essential", 5)])
+    @pytest.mark.parametrize("model_type,n", [("homography", 5), ("essential", 6), ("essential", 7)])
     def test_keep_minimal_consensus_without_polishing(self, device, dtype, model_type, n):
-        # Candidate acceptance must not require the non-minimal solver's point count.
+        # Acceptance needs one inlier beyond the minimal sample, not the eight-point polisher's point count.
         points = torch.rand(n, 2, device=device, dtype=dtype)
         matrix = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
         if model_type == "homography":
@@ -922,10 +909,10 @@ class TestRANSACScoringAndStopping(BaseTester):
 
     @pytest.mark.parametrize("score_type", ["ransac", "msac"])
     def test_under_supported_best_is_rejected(self, device, dtype, score_type):
-        # Three agreeing points are fewer than a homography's four-point minimal sample.
+        # Four agreeing points are no more than a homography's minimal sample, which any sample fits.
         points = torch.rand(10, 2, device=device, dtype=dtype)
         target = points + 100
-        target[:3] = points[:3]
+        target[:4] = points[:4]
         identity = torch.eye(3, device=device, dtype=dtype)[None]
         ransac = RANSAC("homography", batch_size=1, max_iter=2, max_lo_iters=0, score_type=score_type)
         ransac.remove_bad_samples = lambda a, b: (a, b)
@@ -1150,13 +1137,14 @@ class TestRANSACMSACSelection(BaseTester):
         candidates = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
         candidates[1, 0, 2] = 1
         errors = torch.full((2, 10), 100.0, device=device, dtype=dtype)
-        errors[0, :3] = 0.0
-        errors[1, :4] = 2.0
+        # Candidate 0 fits only a minimal sample's worth of points, exactly; candidate 1 has one more inlier.
+        errors[0, :4] = 0.0
+        errors[1, :5] = 2.0
         ransac = RANSAC("homography", score_type="msac")
         ransac.error_fn = lambda a, b, m: errors
         model, _, _, count = ransac.verify(points, points, candidates, 4.0)
         self.assert_close(model, candidates[1])
-        assert count == 4
+        assert count == 5
 
     def test_msac_score_accumulates_in_float32(self, device):
         # 999 is not a bfloat16 value: summing the per-point scores in bfloat16 rounds it to 1000.
