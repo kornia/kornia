@@ -33,6 +33,9 @@ kernel alone would not repair the estimator.
   56), while OpenCV's MAGSAC++ prefers 0.15--0.25 px on SIFT and 0.5 px on XFeat. The
   fixed-threshold tables use 2 px throughout, which is too loose for kornia on SIFT:
   CUDA MSAC at 8192 sets scores 0.371 at 0.75 px and 0.309 at 2 px.
+- **Before and after, each at its best threshold.** On CPU this branch is at or above
+  `main` almost everywhere; on CUDA it is close to `main`, 0.5--1 ms slower per call.
+  At the default 2 px, `main`'s MSAC scores at most 0.063 on SIFT and 0.000 on XFeat.
 - **Against OpenCV (accuracy vs. time, each method at its best threshold).** On SIFT,
   kornia reaches the highest mAA (0.393 with PROSAC in 54 ms on CUDA; 0.388 with
   `lo_sample_size=32` in 18 ms on CPU), ahead of `USAC_ACCURATE` (0.377 in 7 ms) and
@@ -295,6 +298,62 @@ Three `USAC_MAGSAC` runs at 0.15 px raised an OpenCV assertion (`sample_size <=
 points_size_`); they count as failed estimates. `USAC_MAGSAC` still picks 0.15 px, the
 smallest value in the grid, at two SIFT budgets, so it might gain slightly below it.
 
+### Before and after, at each revision's best threshold
+
+![kornia before and after this PR: pose mAA against mean time per pair](ransac_before_after.png)
+
+The same construction for kornia on `main` (`7ddf731b`) and on this branch, both measured
+in one process per pair (the sweep's `--base-source`), for MSAC and RANSAC scoring with
+the default full-inlier LO. Points average three seeds and use the 0.5--2 px thresholds,
+where every optimum lies. Curve points: [`ransac_before_after.json`](ransac_before_after.json).
+
+Picking each revision's best threshold is generous to `main`: its MSAC fails only above
+about 1 px. At 1.5 px it scores 0.010--0.053 on XFeat against 0.154--0.218 here, and at
+2 px 0.000 on XFeat and at most 0.063 on SIFT, against 0.15--0.32 here. At the default
+`inl_th=2` the before/after gap is the one in the fixed-threshold tables, not this one.
+
+- **CPU:** this branch is at or above `main` almost everywhere. The exception is RANSAC
+  scoring on XFeat between about 5 and 10 ms (0.168 against 0.177 within 10 ms); beyond
+  that it leads (0.216 against 0.193 within 30 ms). The largest gain is MSAC on XFeat
+  (0.187 against 0.158 within 10 ms). MSAC on SIFT reaches 0.363 in 36 ms where `main`
+  needs 75 ms for 0.355.
+- **CUDA:** close to `main`. This branch's curves sit 0.5--1 ms to the right, which is
+  the cost of the nonfinite and under-support guards in `verify`. `main`'s MSAC keeps
+  sampling after its stopping bound is met, and on XFeat reaches 0.235 in 25 ms, where
+  this branch stops at 0.220.
+- **Seed noise:** over 10 seeds, one configuration's mAA on the 105 XFeat pairs has a
+  standard deviation of 0.015--0.022. The single-seed OpenCV comparison above therefore
+  carries about +-0.02 per point, and a single-seed before/after comparison on CPU (where
+  the two revisions draw different samples) was misleading; hence the three seeds.
+
+Best mAA reachable within a mean time per pair:
+
+#### SIFT
+
+| Method | Device | mAA within 3 ms | 10 ms | 30 ms | best (ms, threshold) |
+|---|---|---:|---:|---:|---|
+| MSAC, this PR | CUDA | – | – | 0.369 | 0.369 (17.4 ms, 0.75 px) |
+| MSAC, main | CUDA | – | 0.319 | 0.368 | 0.368 (25.0 ms, 1 px) |
+| MSAC, this PR | CPU | – | 0.339 | 0.354 | 0.363 (36.4 ms, 0.75 px) |
+| RANSAC score, this PR | CPU | 0.297 | 0.328 | 0.356 | 0.357 (46.6 ms, 0.5 px) |
+| RANSAC score, main | CPU | 0.271 | 0.325 | 0.344 | 0.357 (71.1 ms, 0.5 px) |
+| MSAC, main | CPU | – | 0.327 | 0.346 | 0.355 (75.4 ms, 1 px) |
+| RANSAC score, main | CUDA | – | 0.322 | 0.347 | 0.347 (23.8 ms, 0.5 px) |
+| RANSAC score, this PR | CUDA | – | 0.317 | 0.346 | 0.346 (22.3 ms, 0.5 px) |
+
+#### XFeat
+
+| Method | Device | mAA within 3 ms | 10 ms | 30 ms | best (ms, threshold) |
+|---|---|---:|---:|---:|---|
+| MSAC, main | CUDA | – | 0.184 | 0.235 | 0.235 (25.5 ms, 1 px) |
+| RANSAC score, this PR | CUDA | – | 0.197 | 0.223 | 0.223 (24.3 ms, 1 px) |
+| RANSAC score, main | CPU | 0.146 | 0.177 | 0.193 | 0.220 (62.1 ms, 1.5 px) |
+| RANSAC score, main | CUDA | – | 0.197 | 0.220 | 0.220 (26.5 ms, 1 px) |
+| MSAC, this PR | CUDA | – | – | 0.220 | 0.220 (14.1 ms, 2 px) |
+| MSAC, this PR | CPU | – | 0.187 | 0.216 | 0.218 (35.4 ms, 1.5 px) |
+| RANSAC score, this PR | CPU | 0.152 | 0.168 | 0.216 | 0.218 (32.2 ms, 1.5 px) |
+| MSAC, main | CPU | 0.131 | 0.158 | 0.168 | 0.215 (122.7 ms, 1 px) |
+
 ## Follow-ups
 
 - **CUDA per-call cost.** A batch-size-one `find_fundamental` on CUDA takes 1.3 ms (about
@@ -378,4 +437,22 @@ python benchmarks/geometry/ransac.py evaluate --npz /tmp/ransac-curve.npz \
   --threshold-out benchmarks/geometry/ransac_threshold_maa.png
 ```
 
-The sweep takes about 30 minutes on CPU and 15 on CUDA here.
+The sweep takes about 30 minutes on CPU and 15 on CUDA here. The before/after curve:
+
+```bash
+git show 7ddf731b:kornia/geometry/ransac.py > /tmp/base_ransac.py
+for seed in 0 1 2; do
+  .venv/bin/python benchmarks/geometry/ransac.py sweep --npz /tmp/ransac-curve.npz \
+    --device cpu --batch 256 --kornia msac,ransac --opencv "" \
+    --thresholds 0.5,0.75,1,1.5,2 --seed $seed --base-source /tmp/base_ransac.py \
+    --json /tmp/ab-cpu-s$seed.json   # and --device cuda --batch 2048
+done
+python benchmarks/geometry/ransac.py evaluate --npz /tmp/ransac-curve.npz \
+  --predictions /tmp/ab-cpu-s0.json /tmp/ab-cpu-s1.json /tmp/ab-cpu-s2.json \
+  --json /tmp/ab-cpu-evaluated.json   # and CUDA
+.venv/bin/python benchmarks/geometry/ransac.py plot \
+  --evaluated /tmp/ab-cpu-evaluated.json /tmp/ab-cuda-evaluated.json \
+  --out benchmarks/geometry/ransac_before_after.png --dpi 100 \
+  --points-json benchmarks/geometry/ransac_before_after.json \
+  --title "kornia RANSAC before and after this PR: pose accuracy vs. time (3 seeds)"
+```

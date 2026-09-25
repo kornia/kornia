@@ -1,0 +1,714 @@
+{
+  "sift|cpu": {
+    "kornia msac": [
+      {
+        "budget": 256,
+        "maa": 0.30539682539682544,
+        "mean_time_ms": 3.126516853906593,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 512,
+        "maa": 0.3203174603174603,
+        "mean_time_ms": 4.571137980943488,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 1024,
+        "maa": 0.33269841269841266,
+        "mean_time_ms": 6.132933717405346,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.3387301587301587,
+        "mean_time_ms": 9.175896999959294,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.3523809523809524,
+        "mean_time_ms": 19.107090774548215,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 8192,
+        "maa": 0.3542857142857143,
+        "mean_time_ms": 20.39446028902603,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 16384,
+        "maa": 0.3628571428571428,
+        "mean_time_ms": 36.36166847936693,
+        "threshold_px": 0.75
+      }
+    ],
+    "kornia ransac": [
+      {
+        "budget": 256,
+        "maa": 0.2971428571428571,
+        "mean_time_ms": 2.875923850822599,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 512,
+        "maa": 0.3123809523809523,
+        "mean_time_ms": 4.224741520744237,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 1024,
+        "maa": 0.32825396825396824,
+        "mean_time_ms": 5.818887511024571,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.3336507936507937,
+        "mean_time_ms": 11.199638910993743,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 4096,
+        "maa": 0.3533333333333334,
+        "mean_time_ms": 18.1968086190907,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 8192,
+        "maa": 0.3558730158730159,
+        "mean_time_ms": 21.944010904888504,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 16384,
+        "maa": 0.3574603174603174,
+        "mean_time_ms": 46.55288539688627,
+        "threshold_px": 0.5
+      }
+    ],
+    "kornia-base msac": [
+      {
+        "budget": 256,
+        "maa": 0.26603174603174595,
+        "mean_time_ms": 3.105261866637323,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 512,
+        "maa": 0.3095238095238095,
+        "mean_time_ms": 4.836676949240167,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.326984126984127,
+        "mean_time_ms": 7.813691787299513,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.3406349206349207,
+        "mean_time_ms": 13.360396641326675,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.3457142857142857,
+        "mean_time_ms": 23.254038282475594,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 8192,
+        "maa": 0.3428571428571428,
+        "mean_time_ms": 41.76424747946305,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 16384,
+        "maa": 0.35460317460317453,
+        "mean_time_ms": 75.43189432699509,
+        "threshold_px": 1.0
+      }
+    ],
+    "kornia-base ransac": [
+      {
+        "budget": 256,
+        "maa": 0.2711111111111111,
+        "mean_time_ms": 2.897165692064889,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 512,
+        "maa": 0.30444444444444446,
+        "mean_time_ms": 4.123565631778634,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.3253968253968254,
+        "mean_time_ms": 6.893151203240406,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 2048,
+        "maa": 0.3352380952380952,
+        "mean_time_ms": 11.518494215869438,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 4096,
+        "maa": 0.3438095238095238,
+        "mean_time_ms": 19.327220793615744,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 8192,
+        "maa": 0.34031746031746024,
+        "mean_time_ms": 40.804662038112475,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 16384,
+        "maa": 0.35650793650793644,
+        "mean_time_ms": 71.06756119373173,
+        "threshold_px": 0.5
+      }
+    ]
+  },
+  "sift|cuda": {
+    "kornia msac": [
+      {
+        "budget": 256,
+        "maa": 0.2822222222222222,
+        "mean_time_ms": 10.360453666576104,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 512,
+        "maa": 0.2952380952380952,
+        "mean_time_ms": 10.040152968166883,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.31936507936507935,
+        "mean_time_ms": 10.231296241112258,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.33619047619047615,
+        "mean_time_ms": 11.794520454044225,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.35269841269841273,
+        "mean_time_ms": 14.398338006290105,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 8192,
+        "maa": 0.3685714285714286,
+        "mean_time_ms": 17.36733870159711,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 16384,
+        "maa": 0.3685714285714286,
+        "mean_time_ms": 21.85613020638624,
+        "threshold_px": 0.75
+      }
+    ],
+    "kornia ransac": [
+      {
+        "budget": 256,
+        "maa": 0.2653968253968254,
+        "mean_time_ms": 8.573311466661545,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 512,
+        "maa": 0.2892063492063492,
+        "mean_time_ms": 8.244158974591143,
+        "threshold_px": 0.75
+      },
+      {
+        "budget": 1024,
+        "maa": 0.31142857142857144,
+        "mean_time_ms": 8.760881952323308,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 2048,
+        "maa": 0.31650793650793646,
+        "mean_time_ms": 9.881111669834816,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 4096,
+        "maa": 0.3295238095238095,
+        "mean_time_ms": 12.447657723861907,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 8192,
+        "maa": 0.3387301587301587,
+        "mean_time_ms": 16.54064595229953,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 16384,
+        "maa": 0.3457142857142857,
+        "mean_time_ms": 22.270966952361512,
+        "threshold_px": 0.5
+      }
+    ],
+    "kornia-base msac": [
+      {
+        "budget": 256,
+        "maa": 0.2844444444444444,
+        "mean_time_ms": 8.758353355577649,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 512,
+        "maa": 0.2968253968253967,
+        "mean_time_ms": 9.006652755511274,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.319047619047619,
+        "mean_time_ms": 9.312889269818292,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.3349206349206349,
+        "mean_time_ms": 10.659211365008748,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.34984126984126984,
+        "mean_time_ms": 13.243935057072944,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 8192,
+        "maa": 0.3555555555555556,
+        "mean_time_ms": 17.39167682228851,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 16384,
+        "maa": 0.36793650793650795,
+        "mean_time_ms": 24.981193707941518,
+        "threshold_px": 1.0
+      }
+    ],
+    "kornia-base ransac": [
+      {
+        "budget": 256,
+        "maa": 0.2758730158730159,
+        "mean_time_ms": 7.7766721015140075,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 512,
+        "maa": 0.28285714285714286,
+        "mean_time_ms": 7.038692419201465,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.31111111111111117,
+        "mean_time_ms": 7.9407771428137375,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 2048,
+        "maa": 0.32158730158730153,
+        "mean_time_ms": 9.186425482524404,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 4096,
+        "maa": 0.3349206349206349,
+        "mean_time_ms": 11.514640114281006,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 8192,
+        "maa": 0.34507936507936504,
+        "mean_time_ms": 16.42827038416553,
+        "threshold_px": 0.5
+      },
+      {
+        "budget": 16384,
+        "maa": 0.3469841269841269,
+        "mean_time_ms": 23.82438174604936,
+        "threshold_px": 0.5
+      }
+    ]
+  },
+  "xfeat|cpu": {
+    "kornia msac": [
+      {
+        "budget": 256,
+        "maa": 0.15428571428571428,
+        "mean_time_ms": 3.009272895273863,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 512,
+        "maa": 0.1714285714285714,
+        "mean_time_ms": 4.738946993598975,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 1024,
+        "maa": 0.18698412698412697,
+        "mean_time_ms": 7.192677393750128,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 2048,
+        "maa": 0.20063492063492067,
+        "mean_time_ms": 10.865336361819082,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 4096,
+        "maa": 0.2107936507936508,
+        "mean_time_ms": 16.491896536466637,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 8192,
+        "maa": 0.21619047619047618,
+        "mean_time_ms": 24.00811124757133,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 16384,
+        "maa": 0.21841269841269842,
+        "mean_time_ms": 35.3736888444964,
+        "threshold_px": 1.5
+      }
+    ],
+    "kornia ransac": [
+      {
+        "budget": 256,
+        "maa": 0.15238095238095237,
+        "mean_time_ms": 2.7243913142719687,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 512,
+        "maa": 0.1619047619047619,
+        "mean_time_ms": 4.390632653967404,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 1024,
+        "maa": 0.16793650793650794,
+        "mean_time_ms": 6.7048337808205,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 2048,
+        "maa": 0.18984126984126984,
+        "mean_time_ms": 10.14356286974535,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 4096,
+        "maa": 0.2088888888888889,
+        "mean_time_ms": 14.69355957132292,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 8192,
+        "maa": 0.21619047619047618,
+        "mean_time_ms": 21.966566710917895,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 16384,
+        "maa": 0.21841269841269842,
+        "mean_time_ms": 32.19585308254445,
+        "threshold_px": 1.5
+      }
+    ],
+    "kornia-base msac": [
+      {
+        "budget": 256,
+        "maa": 0.13142857142857142,
+        "mean_time_ms": 2.914378383964446,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 512,
+        "maa": 0.13936507936507936,
+        "mean_time_ms": 5.112361190636182,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.15777777777777777,
+        "mean_time_ms": 9.380195688965383,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.1679365079365079,
+        "mean_time_ms": 17.6350023525239,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.16476190476190475,
+        "mean_time_ms": 33.7304327143116,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 8192,
+        "maa": 0.1780952380952381,
+        "mean_time_ms": 64.73466058731512,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 16384,
+        "maa": 0.2146031746031746,
+        "mean_time_ms": 122.71315273015168,
+        "threshold_px": 1.0
+      }
+    ],
+    "kornia-base ransac": [
+      {
+        "budget": 256,
+        "maa": 0.14634920634920637,
+        "mean_time_ms": 2.6958588507402474,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 512,
+        "maa": 0.15904761904761902,
+        "mean_time_ms": 4.344073815913622,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 1024,
+        "maa": 0.17714285714285713,
+        "mean_time_ms": 7.2768767300629635,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 2048,
+        "maa": 0.1857142857142857,
+        "mean_time_ms": 12.466839539705514,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 4096,
+        "maa": 0.19269841269841267,
+        "mean_time_ms": 21.708251679332793,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 8192,
+        "maa": 0.2034920634920635,
+        "mean_time_ms": 37.54827539030683,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 16384,
+        "maa": 0.22031746031746038,
+        "mean_time_ms": 62.0946316063921,
+        "threshold_px": 1.5
+      }
+    ]
+  },
+  "xfeat|cuda": {
+    "kornia msac": [
+      {
+        "budget": 256,
+        "maa": 0.16507936507936508,
+        "mean_time_ms": 10.22732379373453,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 512,
+        "maa": 0.17904761904761904,
+        "mean_time_ms": 10.362007520523058,
+        "threshold_px": 2.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.2076190476190476,
+        "mean_time_ms": 10.86988283179438,
+        "threshold_px": 2.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.21015873015873018,
+        "mean_time_ms": 11.968902638245565,
+        "threshold_px": 2.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.22,
+        "mean_time_ms": 14.055100650858506,
+        "threshold_px": 2.0
+      },
+      {
+        "budget": 8192,
+        "maa": 0.22,
+        "mean_time_ms": 16.364587853950937,
+        "threshold_px": 2.0
+      },
+      {
+        "budget": 16384,
+        "maa": 0.22,
+        "mean_time_ms": 19.30598318404153,
+        "threshold_px": 2.0
+      }
+    ],
+    "kornia ransac": [
+      {
+        "budget": 256,
+        "maa": 0.15746031746031747,
+        "mean_time_ms": 7.811812406414122,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 512,
+        "maa": 0.17206349206349209,
+        "mean_time_ms": 7.897369187395227,
+        "threshold_px": 2.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.18793650793650793,
+        "mean_time_ms": 8.118427126891985,
+        "threshold_px": 2.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.19746031746031745,
+        "mean_time_ms": 9.398884926971126,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.2114285714285714,
+        "mean_time_ms": 13.145180069939611,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 8192,
+        "maa": 0.22222222222222224,
+        "mean_time_ms": 17.792131622177077,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 16384,
+        "maa": 0.22253968253968257,
+        "mean_time_ms": 24.311350190478223,
+        "threshold_px": 1.0
+      }
+    ],
+    "kornia-base msac": [
+      {
+        "budget": 256,
+        "maa": 0.13396825396825396,
+        "mean_time_ms": 9.217494911094295,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 512,
+        "maa": 0.14793650793650792,
+        "mean_time_ms": 9.380886196814817,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.18412698412698414,
+        "mean_time_ms": 9.683053339569366,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.19650793650793646,
+        "mean_time_ms": 11.123118838059739,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.2174603174603175,
+        "mean_time_ms": 16.134203082505596,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 8192,
+        "maa": 0.23492063492063492,
+        "mean_time_ms": 25.466152476217268,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 16384,
+        "maa": 0.2333333333333333,
+        "mean_time_ms": 42.28586483487951,
+        "threshold_px": 1.0
+      }
+    ],
+    "kornia-base ransac": [
+      {
+        "budget": 256,
+        "maa": 0.15269841269841272,
+        "mean_time_ms": 6.67358399349189,
+        "threshold_px": 1.5
+      },
+      {
+        "budget": 512,
+        "maa": 0.16444444444444445,
+        "mean_time_ms": 6.755662485709994,
+        "threshold_px": 2.0
+      },
+      {
+        "budget": 1024,
+        "maa": 0.18412698412698414,
+        "mean_time_ms": 7.600249860329241,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 2048,
+        "maa": 0.19714285714285718,
+        "mean_time_ms": 8.714734968325791,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 4096,
+        "maa": 0.206031746031746,
+        "mean_time_ms": 12.116056104793051,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 8192,
+        "maa": 0.21746031746031744,
+        "mean_time_ms": 17.81117569520979,
+        "threshold_px": 1.0
+      },
+      {
+        "budget": 16384,
+        "maa": 0.22031746031746033,
+        "mean_time_ms": 26.458548796769705,
+        "threshold_px": 1.0
+      }
+    ]
+  }
+}

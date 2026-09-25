@@ -717,9 +717,19 @@ def evaluate(args: argparse.Namespace) -> None:
         from imc2021 import metrics
     except ImportError as exc:
         raise SystemExit(f"Evaluation requires imc2021-simple and its optional dependencies: {exc}") from exc
-    document = json.loads(args.predictions.read_text())
-    if document["metadata"]["dataset_sha256"] != digest(args.npz):
+    # Several prediction files (e.g. one sweep per seed) pool into one evaluation: each seed is its
+    # own scene/seed cell, so the mAA averages over seeds as well as scenes.
+    documents = [json.loads(path.read_text()) for path in args.predictions]
+    dataset = digest(args.npz)
+    if any(doc["metadata"]["dataset_sha256"] != dataset for doc in documents):
         raise SystemExit("NPZ content differs from the measured dataset")
+    document = documents[0]
+    document["results"] = [row for doc in documents for row in doc["results"]]
+    if args.thresholds is not None:
+        keep = {float(x) for x in args.thresholds.split(",")}
+        document["results"] = [r for r in document["results"] if r.get("threshold_px") in (None, *keep)]
+    if len(documents) > 1:
+        document["metadata"]["pooled_predictions"] = [doc["metadata"] for doc in documents[1:]]
     groups: dict[tuple[Any, ...], dict[tuple[str, int], list[float]]] = defaultdict(lambda: defaultdict(list))
     times: dict[tuple[Any, ...], list[float]] = defaultdict(list)
     with np.load(args.npz, allow_pickle=False) as data:
@@ -858,7 +868,8 @@ def main() -> None:
     ab.add_argument("--json", type=Path, required=True)
     ab.set_defaults(contribute=None)
     score = commands.add_parser("evaluate")
-    score.add_argument("--predictions", type=Path, required=True)
+    score.add_argument("--predictions", type=Path, nargs="+", required=True, help="pooled, e.g. one file per seed")
+    score.add_argument("--thresholds", help="keep only sweep rows at these inlier thresholds")
     score.add_argument("--json", type=Path, required=True)
     for command in (prep, measure, sw, ab, score):
         command.add_argument("--npz", type=Path, required=True)
