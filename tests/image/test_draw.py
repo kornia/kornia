@@ -420,6 +420,12 @@ class TestDrawLine(BaseTester):
             expected = draw_line(expected, a, b, color)
         self.assert_close(batched, expected, rtol=0.0, atol=0.0)
 
+    def test_draw_line_accepts_0d_scalar_color(self, dtype, device):
+        # torch.tensor(255) is a natural grayscale color; color.size(0) used to IndexError.
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        out = draw_line(img, torch.tensor([1, 4]), torch.tensor([6, 4]), torch.tensor(255, dtype=dtype, device=device))
+        assert out[0, 4, 1:7].tolist() == [255.0] * 6
+
 
 class TestDrawRectangle(BaseTester):
     @pytest.mark.parametrize("batch", (4, 17))

@@ -91,7 +91,8 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         image: the input image to where to draw the lines with shape :math`(C,H,W)`.
         p1: the start point [x y] of the line with shape (2, ) or (B, 2).
         p2: the end point [x y] of the line, with the same shape as ``p1``.
-        color: the color of the line with shape :math`(C)` where :math`C` is the number of channels of the image.
+        color: the color of the line with shape :math`(C)` where :math`C` is the number of channels
+            of the image. A 0-d scalar is accepted when the image has a single channel.
 
     Return:
         The image containing the line. This operation modifies image inplace but also returns
@@ -132,6 +133,11 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
     if len(image.size()) != 3:
         raise ValueError("image must have 3 dimensions (C,H,W).")
+
+    # A 0-d scalar (e.g. torch.tensor(255) for grayscale) is a common call shape;
+    # color.size(0) used to IndexError. Treat it as a length-1 channel vector.
+    if color.ndim == 0:
+        color = color.unsqueeze(0)
 
     if color.size(0) != image.size(0):
         raise ValueError("color must have the same number of channels as the image.")
