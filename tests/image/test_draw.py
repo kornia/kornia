@@ -678,3 +678,28 @@ class TestFillConvexPolygon(BaseTester):
             draw_convex_polygon(im, torch.zeros(2, 0, 2, device=device, dtype=dtype), color)
         with pytest.raises(BaseError, match="xy"):
             draw_convex_polygon(im, torch.zeros(1, 0, 3, device=device, dtype=dtype), color)
+
+    def test_single_vertex_fills_its_pixel(self, device, dtype):
+        """A one-vertex polygon draws that point, like a zero-length two-vertex polygon."""
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        vertex = torch.tensor([[[4.0, 4.0]]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), vertex, color)
+        expected = draw_convex_polygon(im.clone(), vertex.expand(1, 2, 2), color)
+        self.assert_close(out, expected)
+        self.assert_close(out[..., 4, 4], color)
+
+    def test_empty_polygon_in_a_list_leaves_its_image_unchanged(self, device, dtype):
+        """An empty polygon has no vertex to pad with; the rest of the batch is still drawn."""
+        im = torch.rand(2, 3, 12, 16, device=device, dtype=dtype)
+        square = torch.tensor([[4, 4], [12, 4], [12, 8], [4, 8]], device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5], [0.5, 0.5, 0.75]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), [torch.zeros(0, 2, device=device, dtype=dtype), square], color)
+        self.assert_close(out[:1], im[:1])
+        self.assert_close(out[1:], draw_convex_polygon(im[1:].clone(), square[None], color[1:]))
+
+    def test_empty_list_with_empty_batch(self, device, dtype):
+        im = torch.rand(0, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.zeros(0, 3, device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), [], color)
+        assert out.shape == im.shape

@@ -431,6 +431,7 @@ call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::te
 call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_batch_variable_size[cpu-float16]
 call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_circle[cpu-float16]
 call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_ellipse[cpu-float16]
+call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_single_vertex_fills_its_pixel[cpu-float16]
 call	builtins.AssertionError	tests/integration/test_conversions.py::TestAngleOfRotations::test_axis_angle[cpu-float16--45.0-x]
 call	builtins.AssertionError	tests/integration/test_conversions.py::TestAngleOfRotations::test_axis_angle[cpu-float16--45.0-y]
 call	builtins.AssertionError	tests/integration/test_conversions.py::TestAngleOfRotations::test_axis_angle[cpu-float16--45.0-z]
