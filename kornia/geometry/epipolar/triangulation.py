@@ -76,13 +76,16 @@ def triangulate_points(
           :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV. The leading
           dimensions of ``P1`` and ``P2`` broadcast against those of the points.
         - Cheirality and baseline are not checked: a point behind a camera is returned with negative depth, and with
-          zero baseline the depth is undefined and the output is an arbitrary point on the line of sight, possibly
-          behind the camera.
+          zero baseline the depth is undefined and ``"svd"`` and ``"eigh"`` return an arbitrary point on the line of
+          sight, possibly behind the camera.
         - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS, and
           return the input dtype; ``solver`` below compares their accuracy.
-        - Known defects: a correspondence at infinity comes back as a finite, unflagged point whose position is
-          set by roundoff (`#4865 <https://github.com/kornia/kornia/issues/4865>`_); ``solver="cofactor"``
-          returns NaN for pixel-scale float16 input (`#4863 <https://github.com/kornia/kornia/issues/4863>`_).
+        - Known defects: a correspondence at infinity comes back unflagged, as a finite point at a distance set by
+          roundoff or as ``inf`` in float16 (`#4865 <https://github.com/kornia/kornia/issues/4865>`_);
+          ``solver="cofactor"`` returns NaN for pixel-scale float16 input
+          (`#4863 <https://github.com/kornia/kornia/issues/4863>`_) and a point unrelated to the input when a
+          :math:`3 \times 4` sub-system is rank-deficient, as with zero baseline or a pure ``x`` translation with
+          ``R = I`` and one ``K`` (`#4900 <https://github.com/kornia/kornia/issues/4900>`_).
 
     Args:
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
@@ -107,7 +110,8 @@ def triangulate_points(
             using :func:`~kornia.geometry.solvers.null_vector_3x4` (closed-form
             cofactor expansion, no LAPACK call). The two solutions are averaged after
             normalisation. This matches the full DLT solution when the constraint
-            system is exactly consistent, but is only an approximation in the noisy
+            system is exactly consistent and both sub-systems have full rank (see the
+            known defects above), but is only an approximation in the noisy
             inconsistent case. Fastest option for all batch sizes.
 
     Returns:

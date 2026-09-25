@@ -286,7 +286,11 @@ class TestConventionProjection(BaseTester):
         for P_bad in (two_view["P2"][0], two_view["P2"][None]):
             with pytest.raises(Exception):
                 epi.KRt_from_projection(P_bad)
-        _skip_half(dtype, _NO_HALF_QR)
+        if dtype in (torch.float16, torch.bfloat16):
+            # float16 and bfloat16 raise: the input is not upcast (projections_from_fundamental upcasts).
+            with pytest.raises(Exception):
+                epi.KRt_from_projection(two_view["P2"])
+            return
         K_true, R_true, t_true = two_view["K2"], two_view["R"], two_view["t"]
         K, R, t = epi.KRt_from_projection(two_view["P2"])
         assert K.shape == (1, 3, 3) and R.shape == (1, 3, 3) and t.shape == (1, 3, 1)
@@ -412,11 +416,13 @@ class TestConventionProjection(BaseTester):
             return
         # Same issue: eps is added to K's raw diagonal before its sign is taken, so 1e-7 * P (a positive scale)
         # keeps a negative K[2, 2] and returns a reflection.
-        # The matching (last) row of R is negated; the other two are R_true's.
-        K_small, R_small, _ = epi.KRt_from_projection(1e-7 * P)
+        # The matching (last) row of R and entry of t are negated; the other two are R_true's and t_true's.
+        K_small, R_small, t_small = epi.KRt_from_projection(1e-7 * P)
         assert K_small[0, 2, 2] < 0
         self.assert_close(R_small[:, :2], R_true[:, :2])
         self.assert_close(R_small[:, 2], -R_true[:, 2])
+        self.assert_close(t_small[:, :2], t_true[:, :2])
+        self.assert_close(t_small[:, 2], -t_true[:, 2])
 
     def test_wart_scale_intrinsics_principal_point_rule_4263(self, device, dtype):
         # #4263: the same rule as PinholeCamera.scale, pinned there by
@@ -431,7 +437,7 @@ class TestConventionProjection(BaseTester):
         self.assert_close(out[:, 0, 1], torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_wart_intrinsics_like_principal_point_half_pixel_4263(self, device, dtype):
-        # #4263 (comment 5820150381 adds this construction site): the principal point is (W / 2, H / 2), (3.0, 2.0)
+        # #4263: the principal point is (W / 2, H / 2), (3.0, 2.0)
         # for H = 4, W = 6, the half-pixel centre, while kornia's integer pixel centres put it at
         # ((W - 1) / 2, (H - 1) / 2) = (2.5, 1.5).
         K = epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=dtype))

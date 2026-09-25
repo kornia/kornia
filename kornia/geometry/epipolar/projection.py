@@ -34,7 +34,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - ``fx = fy = focal`` and the principal point is ``(W / 2, H / 2)`` of the :math:`(B, C, H, W)` input;
-          dtype and device follow the input.
+          dtype and device follow the input. ``focal`` must be positive and the input 4-D.
         - The input must be floating point, like kornia's images: an integer input raises by design rather than
           returning an integer ``K``.
         - Known defects: ``(W / 2, H / 2)`` is the half-pixel centre, not the integer-pixel centre
@@ -69,8 +69,9 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
     r"""Generate a random camera matrix based on a given uniform distribution.
 
     Convention:
-        - ``fx``, ``fy``, ``cx`` and ``cy`` are four draws from :math:`U(low, high)` on torch's global generator;
-          dtype and device follow ``low`` and ``high``.
+        - ``fx``, ``fy``, ``cx`` and ``cy`` are four draws from :math:`U(low, high)` on torch's global generator.
+          The bounds are scalars; dtype and device follow tensor bounds, and Python floats give the default dtype
+          and device.
 
     Args:
         low: lower range (inclusive).
@@ -125,7 +126,8 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
     Convention:
         - ``R`` and ``t`` take world points into the camera frame, ``X_cam = R @ X + t``, and ``K`` takes the
           camera frame to pixels. ``t`` is the extrinsic translation; the camera centre is ``-R.T @ t``.
-        - ``K``, ``R`` and ``t`` must have the same number of dimensions. The inverse is
+        - ``K``, ``R`` and ``t`` must have the same number of dimensions, and ``R`` and ``t`` the same batch shape;
+          ``K`` broadcasts against them. The inverse is
           :func:`KRt_from_projection`, and :func:`depth_from_point` gives the depth of a point in this camera.
 
     Args:
@@ -160,12 +162,13 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
         - Inverse of :func:`projection_from_KRt`: returns ``K`` (upper triangular, positive diagonal), ``R``
           and the translation ``t``, not the camera centre; :ref:`Two-view geometry <two-view-conventions>` maps
           this onto OpenCV.
-        - ``K`` is not normalised to ``K[2, 2] = 1``: it carries the scale of ``P``, so ``2 * P`` doubles ``K``;
-          divide by ``K[..., 2:, 2:]`` to normalise.
+        - ``K`` is not normalised to ``K[2, 2] = 1``: it carries the magnitude of the scale of ``P``, so ``2 * P``
+          doubles ``K``; divide by ``K[..., 2:, 2:]`` to normalise.
         - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
-        - Known defects: a ``P`` whose left :math:`3 \times 3` block has negative determinant, such as ``-P``,
-          returns a reflection (``det R = -1``) and ``-t``; and ``eps`` is added to the diagonal before its sign
-          is taken, so an entry in ``(-eps, 0)`` stays negative and the matching row of ``R`` is negated
+        - Known defects: a ``P`` whose left :math:`3 \times 3` block has negative determinant returns a
+          reflection (``det R = -1``), the sign moved into one row of ``R`` and the matching entry of ``t``, so
+          ``-P`` gives ``-R`` and ``-t``; and ``eps`` is added to the diagonal before its sign is taken, so an
+          entry in ``(-eps, 0)`` stays negative and the matching row of ``R`` and entry of ``t`` are negated
           (`#4864 <https://github.com/kornia/kornia/issues/4864>`_).
 
     Args:
@@ -206,7 +209,8 @@ def depth_from_point(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch
 
     Convention:
         - Returns the ``z`` coordinate of ``R @ X + t``, the depth in the camera of :func:`projection_from_KRt`
-          with the same ``R`` and ``t``. The sign is not checked.
+          with the same ``R`` and ``t``. The sign is not checked. An ``X`` of shape ``(B, 3)`` with a batched
+          ``R`` is read as ``B`` points seen by every camera and gives ``(B, B)``, not one point per camera.
 
     Args:
        R: The rotation matrix with shape :math:`(*, 3, 3)`.
@@ -240,7 +244,7 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
         - Returns the canonical pair for ``F`` in the ``x2^T F x1 = 0`` convention of
           :func:`~kornia.geometry.epipolar.find_fundamental`, stacked on the last dimension:
           ``[..., 0] = [I | 0]`` for the first image and ``[..., 1] = [[e2]_x F | e2]``, with ``e2`` the
-          epipole in the second image (``e2^T F = 0``).
+          left null vector of ``F``, the epipole in the second image (``e2^T F = 0``).
         - ``F_mat`` must have exactly one batch dimension.
 
     Args:

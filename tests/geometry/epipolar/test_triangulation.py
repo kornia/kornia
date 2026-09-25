@@ -334,6 +334,9 @@ def _dehom(x: torch.Tensor) -> torch.Tensor:
 
 # Error bound for svd/eigh on the exact two-view fixture: float16/bfloat16 build the DLT rows in the input dtype.
 _TRIANGULATION_ATOL = {torch.float16: 5e-2, torch.bfloat16: 0.5, torch.float32: 1e-3, torch.float64: 1e-9}
+# Bound on the distance from the line of sight, relative to |X|, at zero baseline (the rows carry the input dtype's
+# roundoff; a point off the line, such as the #4900 cofactor output, is at 9 or more in float32 and float64).
+_OFF_RAY_TOL = {torch.float16: 2e-2, torch.bfloat16: 0.3, torch.float32: 1e-2, torch.float64: 1e-2}
 
 
 class TestConventionTriangulation(BaseTester):
@@ -367,10 +370,9 @@ class TestConventionTriangulation(BaseTester):
         def project(P: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
             return _dehom(torch.cat([Y, torch.ones_like(Y[..., :1])], -1) @ P.transpose(-2, -1))
 
-        P2_zero = epi.projection_from_KRt(K2, R, torch.zeros_like(t))  # second camera at the first one's centre
         for solver in SOLVERS:
             if solver == "cofactor" and dtype == torch.float16:
-                continue  # the cofactor solver returns NaN for any pixel-scale float16 input (#4863)
+                continue  # the cofactor solver returns NaN for pixel-scale float16 input (#4863)
             # A point behind both cameras is returned, not rejected: its depth is negative in both. The fixture
             # points, in front, are the control.
             front = epi.triangulate_points(P1, P2, two_view["x1"], two_view["x2"], solver=solver)
@@ -379,31 +381,37 @@ class TestConventionTriangulation(BaseTester):
             behind = epi.triangulate_points(P1, P2, project(P1, -X), project(P2, -X), solver=solver)
             assert (behind[..., 2] < 0).all()
             assert (epi.depth_from_point(R, t, behind) < 0).all()
-            # Zero baseline raises nothing: the output is finite and on the line of sight through X.
-            out = epi.triangulate_points(P1, P2_zero, two_view["x1"], project(P2_zero, X), solver=solver)
+        # Zero baseline raises nothing: svd and eigh return a finite point on the line of sight. Both cameras sit at
+        # C, away from the world origin, so that a solver collapsing to the origin cannot pass; the line of sight
+        # through X + C is the ray from C in the direction X. (cofactor is the #4900 wart pinned below.)
+        C = torch.tensor([[[1.0], [2.0], [-3.0]]], device=device, dtype=dtype)
+        P1_C = epi.projection_from_KRt(two_view["K1"], torch.eye(3, device=device, dtype=dtype)[None], -C)
+        P2_C = epi.projection_from_KRt(K2, R, -R @ C)
+        X_C = X + C.transpose(-2, -1)
+        for solver in ("svd", "eigh"):
+            out = epi.triangulate_points(P1_C, P2_C, project(P1_C, X_C), project(P2_C, X_C), solver=solver)
             assert torch.isfinite(out).all()
-            out64, X64 = out.cpu().double(), X.cpu().double()  # float64 on the CPU: MPS has no float64
-            assert (torch.linalg.cross(out64, X64, dim=-1).norm(dim=-1) / X64.norm(dim=-1)).max() <= 1e-2
+            # float64 on the CPU: MPS has no float64
+            v, X64 = (out - C.transpose(-2, -1)).cpu().double(), X.cpu().double()
+            assert (torch.linalg.cross(v, X64, dim=-1).norm(dim=-1) / X64.norm(dim=-1)).max() <= _OFF_RAY_TOL[dtype]
+            assert (v.norm(dim=-1) / X64.norm(dim=-1)).min() > 1e-3  # not the centre itself
 
     def test_wart_triangulate_points_infinity_finite_4865(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         # #4865: a correspondence at infinity (the images of a direction (x, y, z, 0)) comes back as a finite point
         # along that direction, with nothing to tell it from a real point: its distance is set by roundoff in the
-        # homogeneous w. The fix target is a point at infinity flagged (non-finite output, or a validity flag on the
-        # default call) in every dtype, i.e. |w| judged against the dtype's roundoff; a fixed threshold flips only the
-        # float32/float64 legs. A fix through an opt-in argument leaves the default call unchanged and cannot flip
-        # this pin: that fix PR inverts it through the new argument.
+        # homogeneous w (on this fixture it is finite in every dtype).
         P1, P2, d = two_view["P1"], two_view["P2"], two_view["X"]  # the fixture points read as directions
         x1 = _dehom(d @ P1[..., :3].transpose(-2, -1))
         x2 = _dehom(d @ P2[..., :3].transpose(-2, -1))
         for solver in SOLVERS:
             if solver == "cofactor" and dtype == torch.float16:
-                continue  # the cofactor solver returns NaN for any pixel-scale float16 input (#4863)
+                continue  # the cofactor solver returns NaN for pixel-scale float16 input (#4863)
             out = epi.triangulate_points(P1, P2, x1, x2, solver=solver)
             assert torch.isfinite(out).all()
             out64, d64 = out.cpu().double(), d.cpu().double()  # float64 on the CPU: MPS has no float64
             cos = (out64 * d64).sum(-1) / (out64.norm(dim=-1) * d64.norm(dim=-1))
-            assert cos.abs().min() > 0.98
+            assert cos.abs().min() > 0.999  # swapping the cameras or the points gives 0.975
 
     def test_wart_triangulate_cofactor_float16_nan_4863(self, device, dtype):
         two_view = two_view_scene(device, dtype)
@@ -417,3 +425,39 @@ class TestConventionTriangulation(BaseTester):
         assert torch.isnan(out).all()
         for solver in ("svd", "eigh"):
             assert torch.isfinite(epi.triangulate_points(P1, P2, x1, x2, solver=solver)).all()
+
+    def test_wart_triangulate_cofactor_rank_deficient_4900(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("float16 is #4863; in bfloat16 the rows' roundoff leaves the sub-systems full rank")
+        # #4900: when a 3x4 sub-system of the DLT matrix is rank-deficient, the cofactor null vector is roundoff
+        # normalised to unit length, and the point is unrelated to the input. svd is the control on the same input.
+        K1, K2, R, X = two_view["K1"], two_view["K2"], two_view["R"], two_view["X"]
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+
+        def project(P: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
+            return _dehom(torch.cat([Y, torch.ones_like(Y[..., :1])], -1) @ P.transpose(-2, -1))
+
+        # Zero baseline: both cameras at C. The answer is any point on the ray from C in the direction X.
+        C = torch.tensor([[[1.0], [2.0], [-3.0]]], device=device, dtype=dtype)
+        P1, P2 = epi.projection_from_KRt(K1, eye, -C), epi.projection_from_KRt(K2, R, -R @ C)
+        x1, x2 = project(P1, X + C.transpose(-2, -1)), project(P2, X + C.transpose(-2, -1))
+        X64 = X.cpu().double()  # float64 on the CPU: MPS has no float64
+        off_ray = {}
+        for solver in ("svd", "cofactor"):
+            v = (epi.triangulate_points(P1, P2, x1, x2, solver=solver) - C.transpose(-2, -1)).cpu().double()
+            off_ray[solver] = (torch.linalg.cross(v, X64, dim=-1).norm(dim=-1) / X64.norm(dim=-1)).max()
+        assert off_ray["svd"] <= 1e-2
+        assert off_ray["cofactor"] > 1.0
+        # A noise-free pure x translation with R = I and one K: y1 == y2 exactly, so DLT rows 1 and 3 coincide.
+        P1, P2 = (
+            epi.projection_from_KRt(K1, eye, torch.zeros_like(C)),
+            epi.projection_from_KRt(K1, eye, -0.5 * eye[:, :, :1]),
+        )
+        x1, x2 = project(P1, X), project(P2, X)
+        assert torch.equal(x1[..., 1], x2[..., 1])
+        err = {
+            s: (epi.triangulate_points(P1, P2, x1, x2, solver=s) - X).norm(dim=-1).max() for s in ("svd", "cofactor")
+        }
+        assert err["svd"] <= _TRIANGULATION_ATOL[dtype]
+        assert err["cofactor"] > 1.0
