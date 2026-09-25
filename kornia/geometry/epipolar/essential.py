@@ -213,20 +213,26 @@ class _NullSpaceBasis(torch.autograd.Function):
     unchanged.
     """
 
+    # forward and setup_context are separate, so torch.func transforms (grad, vjp, jacrev) accept it
     @staticmethod
-    def forward(ctx: Any, X: torch.Tensor) -> torch.Tensor:
+    def forward(X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         _, S, V = _torch_svd_cast(X)  # V: (B, 9, 9)
-        ctx.save_for_backward(X, S, V)
-        return V[:, :, -4:].contiguous()  # (B, 9, 4)
+        return V[:, :, -4:].contiguous(), S, V  # (B, 9, 4); S and V are returned only to be saved
 
     @staticmethod
-    def backward(ctx: Any, grad_basis: torch.Tensor) -> torch.Tensor:
+    def setup_context(ctx: Any, inputs: Tuple[torch.Tensor], output: Tuple[torch.Tensor, ...]) -> None:
+        (X,) = inputs
+        _, S, V = output
+        ctx.mark_non_differentiable(S, V)
+        ctx.save_for_backward(X, S, V)
+
+    @staticmethod
+    def backward(ctx: Any, grad_basis: torch.Tensor, _grad_S: Any, _grad_V: Any) -> torch.Tensor:
         X, S, V = ctx.saved_tensors
         work = torch.float64 if X.dtype == torch.float32 and X.device.type != "mps" else X.dtype
         X_, S_, V_, g = X.to(work), S.to(work), V.to(work), grad_basis.to(work)
         # eigenvalues of X^T X in the order of V's columns; the columns past min(N, 9) have eigenvalue 0
-        lam = torch.zeros(V_.shape[:-1], device=V_.device, dtype=work)
-        lam[:, : S_.shape[-1]] = S_ * S_
+        lam = torch.cat((S_ * S_, S_.new_zeros(S_.shape[0], V_.shape[-1] - S_.shape[-1])), dim=-1)
         V_out, V_in = V_[:, :, :-4], V_[:, :, -4:]
         gap = lam[:, -4:].unsqueeze(-2) - lam[:, :-4].unsqueeze(-1)  # (B, 5, 4): lambda_i - lambda_j
         num = V_out.transpose(-1, -2) @ g
@@ -255,7 +261,7 @@ def _null_to_Nister_solution_script(
     original_dtype = X.dtype
 
     if X.shape[-2] < 9:
-        null_ = _NullSpaceBasis.apply(X)  # (B, 9, 4)
+        null_ = _NullSpaceBasis.apply(X)[0]  # (B, 9, 4)
         nullSpace = null_.transpose(-1, -2)  # (B, 4, 9)
     else:
         # every right singular vector has a gradient in torch.linalg.svd itself
@@ -910,9 +916,8 @@ def find_essential(
           with no real solution returns ten identity matrices instead of ``NaN``
           (`#4883 <https://github.com/kornia/kornia/issues/4883>`_); in ``float32`` an exact five-point sample can
           miss the true solution, which six or more correspondences recover
-          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); input gradients are wrong for fewer than 9
-          correspondences (`#4855 <https://github.com/kornia/kornia/issues/4855>`_); backward raises on some
-          degenerate samples, such as identical point sets (`#4831 <https://github.com/kornia/kornia/issues/4831>`_);
+          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); backward raises on some degenerate samples, such
+          as identical point sets (`#4831 <https://github.com/kornia/kornia/issues/4831>`_);
           on MPS the 5-point solve needs the CPU fallback (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).
 
     Args:

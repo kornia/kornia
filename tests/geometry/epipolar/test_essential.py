@@ -168,10 +168,27 @@ class TestFindEssential(BaseTester):
         design = torch.zeros(1, 5, 9, device=device, dtype=torch.float64)
         design[..., 8] = 1.0
         design.requires_grad_()
-        basis = epi.essential._NullSpaceBasis.apply(design)
+        basis = epi.essential._NullSpaceBasis.apply(design)[0]
         (basis * 0.0).sum().backward()
         assert torch.isfinite(design.grad).all()
         assert (design.grad == 0).all()
+
+    def test_torch_func_grad(self, device):
+        # torch.func transforms accept an autograd.Function only if it defines setup_context. With 5
+        # points every null-space vector goes through it, so torch.func.grad must agree with autograd.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        g = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device)
+        points2 = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device)
+
+        def loss(points1):
+            return (epi.essential.find_essential(points1, points2).nan_to_num() ** 3).sum()
+
+        leaf = points1.clone().requires_grad_()
+        (expected,) = torch.autograd.grad(loss(leaf), leaf)
+        assert expected.abs().max() > 0
+        self.assert_close(torch.func.grad(loss)(points1), expected)
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype, monkeypatch):
