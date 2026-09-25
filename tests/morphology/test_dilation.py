@@ -171,16 +171,18 @@ class TestDilate(BaseTester):
         assert actual.dtype == torch.int64
         assert actual.flatten().tolist() == [3, 0, 3, 7, 0]
 
-    @pytest.mark.parametrize("engine", ["unfold", "shift"])
-    def test_integer_image_geodesic_border_uses_dtype_min_4734(self, device, engine):
-        # Non-floating images still use dtype extrema for geodesic padding until #4735 rejects them.
-        tensor = torch.tensor([[[[1, 2], [3, 4]]]], dtype=torch.uint8, device=device)
-        kernel = torch.ones(3, 3, dtype=torch.float32, device=device)
-
-        actual = dilation(tensor, kernel, border_type="geodesic", engine=engine)
-
-        expected = torch.full_like(actual, 4)
-        assert torch.equal(actual, expected)
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_integer_image_keeps_max_val_arithmetic(self, device, engine):
+        # A non-float image keeps the finite `max_val` pad and exclusion until #4735 rejects it. A pad at the
+        # dtype minimum would wrap once a negative integer structuring element is added to it.
+        if engine == "convolution" and device.type == "mps":
+            pytest.skip("MPS has no integer convolution")
+        tensor = torch.tensor([[[[-5, -1, -6, -7]]]], dtype=torch.int32, device=device)
+        kernel = torch.tensor([[1, 0, 1]], dtype=torch.int32, device=device)
+        structuring_element = torch.full((1, 3), -1, dtype=torch.int32, device=device)
+        actual = dilation(tensor, kernel, structuring_element=structuring_element, engine=engine)
+        assert actual.dtype == torch.int32
+        assert actual.flatten().tolist() == [-2, -6, -2, -7]
 
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
     def test_accepted_border_types(self, device, dtype, border_type):
