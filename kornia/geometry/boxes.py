@@ -629,9 +629,7 @@ class Boxes:
         return area.view(self._data.shape[:2]) if self._data.ndim == 4 else area
 
     @classmethod
-    def from_tensor(
-        cls, boxes: torch.Tensor | list, mode: str = "xyxy", validate_boxes: bool = True
-    ) -> Boxes:
+    def from_tensor(cls, boxes: torch.Tensor | list, mode: str = "xyxy", validate_boxes: bool = True) -> Boxes:
         r"""Create :class:`Boxes` from boxes stored in another format.
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
@@ -687,9 +685,7 @@ class Boxes:
         else:
             # Nested numeric lists shaped like (N, 4) / (B, N, 4) used to AttributeError
             # on list.ndim when each row was treated as a Tensor.
-            quadrilaterals = _boxes_to_quadrilaterals(
-                torch.as_tensor(boxes), mode=mode, validate_boxes=validate_boxes
-            )
+            quadrilaterals = _boxes_to_quadrilaterals(torch.as_tensor(boxes), mode=mode, validate_boxes=validate_boxes)
 
         return cls(quadrilaterals, False, mode)
 
