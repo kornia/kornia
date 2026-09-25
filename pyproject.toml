@@ -216,6 +216,7 @@ select = [
   "PT013",  # flake8-pytest-style: pytest imports
   "PT014",  # flake8-pytest-style: duplicate parametrized cases
   "PT017",  # flake8-pytest-style: assertions in exception handlers
+  "PT022",  # flake8-pytest-style: useless yield fixtures
   "PYI",  # flake8-pyi
   "RET",  # flake8-return
   "RSE",  # flake8-raise

@@ -46,7 +46,7 @@ def _restore_global_rng(restore_torch_rng):
     # reseeds the CUDA and MPS generators, so the root fixture (#4446) snapshots and restores all of
     # them; ``fork_rng(devices=[])`` would restore the CPU generator only and shift the draw of an
     # unseeded later test on an accelerator leg.
-    yield
+    return
 
 
 # One constructor per 2D intensity class for the value-range pins below.  RandomDissolving (its
