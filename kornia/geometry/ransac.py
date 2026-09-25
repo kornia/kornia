@@ -22,7 +22,7 @@ from __future__ import annotations
 import math
 import sys
 from functools import lru_cache, partial
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -147,6 +147,8 @@ class RANSAC(nn.Module):
         self.prosac_sampling = prosac_sampling
         self.seed = seed
         self.lo_sample_size = lo_sample_size
+        # The PROSAC growth schedule as a device tensor, reused across the batches of a call.
+        self._prosac_ends: Optional[Tuple[Tuple[int, int, int, torch.device], torch.Tensor]] = None
 
         self.error_fn: Callable[..., torch.Tensor]
         self.minimal_solver: Callable[..., torch.Tensor]
@@ -161,6 +163,9 @@ class RANSAC(nn.Module):
         elif model_type == "homography_from_linesegments":
             self.error_fn = _squared_line_distance
             self.minimal_solver = find_homography_lines_dlt
+            # Known defect: this IRLS polisher weights segments by the length-scaled residual of
+            # line_segment_transfer_error_one_way, not by the distance used for scoring, so local
+            # optimization down-weights long segments (https://github.com/kornia/kornia/issues/4867).
             self.polisher_solver = find_homography_lines_dlt_iterated
             self.minimal_sample_size = 4
             self.polisher_sample_size = 4
@@ -188,7 +193,12 @@ class RANSAC(nn.Module):
             raise ValueError(f"lo_sample_size must be at least {self.polisher_sample_size}")
 
     def sample(
-        self, sample_size: int, pop_size: int, batch_size: int, iteration: int, device: Optional[torch.device] = None
+        self,
+        sample_size: int,
+        pop_size: int,
+        batch_size: int,
+        iteration: int,
+        device: Optional[Union[torch.device, str]] = None,
     ) -> torch.Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
@@ -205,8 +215,7 @@ class RANSAC(nn.Module):
             Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
 
         """
-        if device is None:
-            device = torch.device("cpu")
+        device = torch.device("cpu") if device is None else torch.device(device)
         if not 0 < sample_size <= pop_size:
             raise ValueError("sample_size must be positive and no larger than pop_size")
         generator = None
@@ -224,7 +233,7 @@ class RANSAC(nn.Module):
         population = torch.full((batch_size,), pop_size, device=device, dtype=torch.long)
         force_newest = torch.zeros(batch_size, device=device, dtype=torch.bool)
         if self.prosac_sampling:
-            ends = torch.tensor(_prosac_growth(sample_size, pop_size, self.batch_size * self.max_iter), device=device)
+            ends = self._prosac_schedule(sample_size, pop_size, device)
             draws = torch.arange(batch_size, device=device) + iteration * batch_size + 1
             population = (torch.searchsorted(ends, draws) + sample_size).clamp(max=pop_size)
             force_newest = draws <= ends[-1]
@@ -254,6 +263,13 @@ class RANSAC(nn.Module):
             newest = population[:, None] - 1
             rand.scatter_(1, newest, torch.where(force_newest[:, None], 2.0, rand.gather(1, newest)))
         return rand.topk(k=sample_size, dim=1, sorted=False).indices
+
+    def _prosac_schedule(self, sample_size: int, pop_size: int, device: torch.device) -> torch.Tensor:
+        """Return the cumulative PROSAC draw counts on ``device``, converting them once per configuration."""
+        key = (sample_size, pop_size, self.batch_size * self.max_iter, device)
+        if self._prosac_ends is None or self._prosac_ends[0] != key:
+            self._prosac_ends = (key, torch.tensor(_prosac_growth(*key[:3]), device=device))
+        return self._prosac_ends[1]
 
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> int:
@@ -334,21 +350,28 @@ class RANSAC(nn.Module):
             # The point metrics broadcast over models. Expanding points first makes
             # homogeneous conversion allocate B copies of identical coordinates.
             errors = self.error_fn(kp1, kp2, models)
-        # Non-finite residuals must not poison the reduction or win argmax.
-        errors = torch.where(torch.isfinite(errors), errors, errors.new_full((), float("inf")))
+        # Non-finite residuals must not poison the reduction or win argmax. One kernel: this runs for
+        # every batch and every LO step, where accelerator launches dominate the cost.
+        inf = float("inf")
+        errors = errors.nan_to_num(nan=inf, posinf=inf, neginf=inf)
         inl_mask = errors <= inl_th
         score_ransac = inl_mask.sum(dim=1)
         if self.score_type == "msac":
             # Equivalent to minimizing the truncated squared loss (MSAC), normalized
-            # to [0, N]. This is a quality score, NOT an inlier count.
-            score = (1.0 - errors.clamp(min=0.0, max=inl_th) / inl_th).sum(dim=1)
+            # to [0, N]. This is a quality score, NOT an inlier count. Accumulate in at
+            # least float32: a half-precision total rounds to steps of 2-4 in the hundreds.
+            score = (1.0 - errors.clamp(min=0.0, max=inl_th) / inl_th).sum(
+                dim=1, dtype=torch.promote_types(errors.dtype, torch.float32)
+            )
+            # A high-quality but under-supported model must not hide a viable candidate
+            # elsewhere in the same batch. An all-invalid batch is rejected by forward.
+            score = score.masked_fill(score_ransac < self.minimal_sample_size, -1)
         elif self.score_type == "ransac":
+            # The score is the support, so argmax already prefers any sufficiently supported
+            # candidate; forward rejects a best support below the minimal sample size.
             score = score_ransac
         else:
             raise ValueError(f"Unsupported score type: {self.score_type}")
-        # A high-quality but under-supported model must not hide a viable candidate
-        # elsewhere in the same batch. An all-invalid batch is rejected by forward.
-        score = score.masked_fill(score_ransac < self.minimal_sample_size, -1)
         best_model_idx = score.argmax()
         best_model_score = score[best_model_idx].item()
         num_inliers = score_ransac[best_model_idx].item()
@@ -412,11 +435,85 @@ class RANSAC(nn.Module):
         # Project it back onto the essential manifold so that downstream decompose_essential_matrix /
         # motion_from_essential do not silently fail.
         # See https://github.com/kornia/kornia/issues/3874
-        if self.model_type == "essential":
-            model = self.remove_bad_models(model)
-            if len(model) > 0:
-                model = project_to_essential(model)
-        return model
+        return self._project_refits(model)
+
+    def _project_refits(self, models: torch.Tensor) -> torch.Tensor:
+        """Project essential refits onto the manifold, dropping invalid ones before the projection's SVD."""
+        if self.model_type != "essential":
+            return models
+        models = self.remove_bad_models(models)
+        return project_to_essential(models) if len(models) > 0 else models
+
+    def _subset_refits(
+        self, kp1: torch.Tensor, kp2: torch.Tensor, inliers: torch.Tensor, lo_sample_size: int, iteration: int
+    ) -> torch.Tensor:
+        """Fit ``max_lo_iters`` random ``lo_sample_size``-subsets of the inliers in one solver batch.
+
+        Randomized non-minimal refits let LO escape a bad consensus. Bounded subsets follow Lebeda et al.,
+        BMVC 2012 (LO+), but this is not the full LO+ algorithm with threshold scheduling.
+        """
+        generator = None
+        if self.seed is not None:
+            generator = torch.Generator(device=kp1.device)
+            generator.manual_seed(self.seed + self.max_iter + iteration)
+        indices = inliers.nonzero().flatten()
+        # Independent refits share the current consensus and run in one
+        # solver batch, rather than max_lo_iters tiny accelerator calls.
+        subset = torch.rand(self.max_lo_iters, len(indices), device=kp1.device, generator=generator)
+        selected = indices[subset.topk(lo_sample_size, dim=1).indices]
+        models = self.polisher_solver(kp1[selected], kp2[selected], torch.ones_like(selected, dtype=kp1.dtype))
+        return self._project_refits(models)
+
+    def _local_optimization(
+        self,
+        kp1: torch.Tensor,
+        kp2: torch.Tensor,
+        model: torch.Tensor,
+        inliers: torch.Tensor,
+        model_score: float,
+        num_inliers: float,
+        iteration: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor, float, float, bool]:
+        """Refit a newly accepted model from its inliers.
+
+        Returns:
+            The refined model, its inlier mask, score and support, and whether the model is still the
+            minimal solver's (no refit replaced it).
+
+        """
+        from_minimal_solver = True
+        lo_sample_size = self.lo_sample_size
+        bounded_lo = lo_sample_size is not None and num_inliers > lo_sample_size and self.max_lo_iters > 0
+        for lo_iteration in range(2 if bounded_lo else self.max_lo_iters):
+            if num_inliers < self.polisher_sample_size:
+                break
+            use_subset = bounded_lo and lo_iteration == 0
+            if use_subset and lo_sample_size is not None:
+                model_lo = self._subset_refits(kp1, kp2, inliers, lo_sample_size, iteration)
+            else:
+                model_lo = self.polish_model(kp1, kp2, inliers)
+            if model_lo is not None and len(model_lo) > 0:
+                model_lo = self.remove_bad_models(model_lo)
+            if model_lo is None or len(model_lo) == 0:
+                # A failed subset batch still leaves the full refit. A failed full refit would
+                # only repeat itself, since the inliers it was fitted to have not changed.
+                if use_subset:
+                    continue
+                break
+            model_lo_best, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th**2)
+            improved = score_lo > model_score
+            # A full-inlier least-squares refit that keeps the score is still more precise than
+            # the minimal-sample model; RANSAC scoring ties whenever support does not grow.
+            tied_refit = score_lo == model_score and not use_subset
+            if (improved or tied_refit) and (num_inliers_lo >= self.minimal_sample_size):
+                model = model_lo_best
+                inliers = inliers_lo.clone()
+                model_score = score_lo
+                num_inliers = num_inliers_lo
+                from_minimal_solver = False
+            if not improved and not use_subset:
+                break
+        return model, inliers, model_score, num_inliers, from_minimal_solver
 
     def validate_inputs(self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> None:
         """Validate input tensors for shape and size requirements.
@@ -461,7 +558,10 @@ class RANSAC(nn.Module):
             weights: optional correspondences weights. Not used now.
 
         Returns:
-            - Estimated model, shape of :math:`(3, 3)` (zeros if no valid model is found).
+            - Estimated model, shape of :math:`(3, 3)`, or zeros if no valid model is found. As in OpenCV, a
+              model needs the support of at least ``minimal_sample_size`` correspondences. A model fitted to
+              an all-outlier sample already supports its own sample, so a nonzero model does not by itself
+              show that a consensus exists; check the mask's support.
             - Boolean inlier mask, shape of :math:`(N,)`, in the supplied correspondence order.
 
         """
@@ -471,6 +571,8 @@ class RANSAC(nn.Module):
         num_tc: int = len(kp1)
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
         inliers_best_total: torch.Tensor = torch.zeros(num_tc, device=kp1.device, dtype=torch.bool)
+        # Only a minimal-solver model needs projecting onto the essential manifold; LO refits already are.
+        best_needs_projection = False
         for i in range(self.max_iter):
             if i * self.batch_size >= max_samples:
                 break
@@ -492,72 +594,34 @@ class RANSAC(nn.Module):
             model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th**2)
             # Store far-the-best model and (optionally) do a local optimization
             if (model_score > best_score_total) and num_inliers >= self.minimal_sample_size:
-                # Local optimization
-                bounded_lo = (
-                    self.lo_sample_size is not None and num_inliers > self.lo_sample_size and self.max_lo_iters > 0
+                model, inliers, model_score, num_inliers, from_minimal_solver = self._local_optimization(
+                    kp1, kp2, model, inliers, model_score, num_inliers, i
                 )
-                for lo_iteration in range(2 if bounded_lo else self.max_lo_iters):
-                    if num_inliers < self.polisher_sample_size:
-                        break
-                    use_subset = bounded_lo and lo_iteration == 0
-                    if use_subset and self.lo_sample_size is not None:
-                        # Randomized non-minimal refits let LO escape a bad consensus.
-                        # Bounded subsets follow Lebeda et al., BMVC 2012 (LO+), but
-                        # this is not the full LO+ algorithm with threshold scheduling.
-                        generator = None
-                        if self.seed is not None:
-                            generator = torch.Generator(device=kp1.device)
-                            generator.manual_seed(self.seed + self.max_iter + i)
-                        # Independent refits share the current consensus and run in one
-                        # solver batch, rather than max_lo_iters tiny accelerator calls.
-                        subset = torch.rand(self.max_lo_iters, int(num_inliers), device=kp1.device, generator=generator)
-                        selected = inliers.nonzero().flatten()[subset.topk(self.lo_sample_size, dim=1).indices]
-                        model_lo = self.polisher_solver(
-                            kp1[selected], kp2[selected], torch.ones_like(selected, dtype=kp1.dtype)
-                        )
-                        if self.model_type == "essential":
-                            model_lo = self.remove_bad_models(model_lo)
-                            if len(model_lo) > 0:
-                                model_lo = project_to_essential(model_lo)
-                    else:
-                        model_lo = self.polish_model(kp1, kp2, inliers)
-                    if (model_lo is None) or (len(model_lo) == 0):
-                        continue
-                    model_lo = self.remove_bad_models(model_lo)
-                    if len(model_lo) == 0:
-                        continue
-                    model_lo_best, inliers_lo, score_lo, num_inliers_lo = self.verify(
-                        kp1, kp2, model_lo, self.inl_th**2
-                    )
-                    improved = score_lo > model_score
-                    # A full-inlier least-squares refit that keeps the score is still more precise than
-                    # the minimal-sample model; RANSAC scoring ties whenever support does not grow.
-                    tied_refit = score_lo == model_score and not use_subset
-                    if (improved or tied_refit) and (num_inliers_lo >= self.minimal_sample_size):
-                        model = model_lo_best
-                        inliers = inliers_lo.clone()
-                        model_score = score_lo
-                        num_inliers = num_inliers_lo
-                    if not improved and not use_subset:
-                        break
                 # Now storing the best model
                 best_model_total = model.clone()
                 inliers_best_total = inliers.clone()
                 best_score_total = model_score
+                best_needs_projection = from_minimal_solver
 
                 # Should we already stop?
                 # The score may be MSAC; confidence depends on support, and counts
                 # sampled sets, not the number of roots returned by a minimal solver.
+                # The bound follows the incumbent's own support, as in OpenCV's USAC: under
+                # MSAC a better-scoring model can have less support than the one it replaced.
                 if not self.prosac_sampling:
                     max_samples = min(
-                        max_samples,
+                        self.max_iter * self.batch_size,
                         self.max_samples_by_conf(int(num_inliers), num_tc, self.minimal_sample_size, self.confidence),
                     )
         # The best model may come from the 5-point minimal solver (find_essential), which is not
         # guaranteed to return a matrix on the essential manifold. Project the returned model once
         # instead of projecting every candidate inside the loop, so that model selection is unaffected.
         # See https://github.com/kornia/kornia/issues/3874
-        if self.model_type == "essential" and math.isfinite(best_score_total):
+        if self.model_type == "essential" and best_needs_projection:
             best_model_total = project_to_essential(best_model_total[None])[0]
-            _, inliers_best_total, _, _ = self.verify(kp1, kp2, best_model_total[None], self.inl_th**2)
+            _, inliers_best_total, _, support = self.verify(kp1, kp2, best_model_total[None], self.inl_th**2)
+            # Projection moves the residuals; a model that loses its minimal support is no model.
+            if support < self.minimal_sample_size:
+                best_model_total = torch.zeros_like(best_model_total)
+                inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total

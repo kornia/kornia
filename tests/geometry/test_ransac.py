@@ -197,6 +197,18 @@ class TestRANSACFundamental(BaseTester):
         assert Fm.shape == (3, 3)
 
     @pytest.mark.slow
+    @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
+    def test_real_clean_returns_model(self, device, dtype, data):
+        # The all-zero failure matrix has zero Sampson error for every match, so the xfail precision
+        # tests below cannot tell it from a good fit. Before MSAC's repair RANSAC returned it here.
+        torch.random.manual_seed(0)
+        data_dev = dict_to(data, device, dtype)
+        ransac = RANSAC("fundamental", inl_th=0.5, max_iter=20, max_lo_iters=10)
+        fundamental_matrix, mask = ransac(data_dev["pts0"], data_dev["pts1"])
+        assert fundamental_matrix.abs().amax() > 0
+        assert mask.sum() >= 8
+
+    @pytest.mark.slow
     @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_8pt(self, device, dtype, data):
@@ -908,6 +920,57 @@ class TestRANSACScoringAndStopping(BaseTester):
         assert mask.shape == (10,)
         assert not mask.any()
 
+    @pytest.mark.parametrize("score_type", ["ransac", "msac"])
+    def test_under_supported_best_is_rejected(self, device, dtype, score_type):
+        # Three agreeing points are fewer than a homography's four-point minimal sample.
+        points = torch.rand(10, 2, device=device, dtype=dtype)
+        target = points + 100
+        target[:3] = points[:3]
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        ransac = RANSAC("homography", batch_size=1, max_iter=2, max_lo_iters=0, score_type=score_type)
+        ransac.remove_bad_samples = lambda a, b: (a, b)
+        ransac.minimal_solver = lambda a, b, w: identity
+        model, mask = ransac(points, target)
+        assert not model.any()
+        assert not mask.any()
+
+    def test_stopping_bound_follows_incumbent_support(self, device, dtype):
+        # Under MSAC a better-scoring model can have less support than the one it replaces. The
+        # stopping bound must then follow the new incumbent, not the larger support it displaced.
+        points = torch.rand(100, 2, device=device, dtype=dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        ransac = RANSAC("fundamental", batch_size=1, max_iter=50, max_lo_iters=0, score_type="msac")
+        sampled = []
+        ransac.minimal_solver = lambda a, b, w: sampled.append(1) or matrix
+        results = {1: (1.0, 95), 2: (2.0, 60)}
+
+        def verify(a, b, models, threshold):
+            score, count = results.get(len(sampled), (0.0, 50))
+            return matrix[0], torch.arange(100, device=device) < count, score, float(count)
+
+        ransac.verify = verify
+        ransac(points, points)
+        assert RANSAC.max_samples_by_conf(95, 100, 8, 0.99) < 50 < RANSAC.max_samples_by_conf(60, 100, 8, 0.99)
+        assert len(sampled) == 50
+
+    @pytest.mark.parametrize("lo_sample_size,expected_calls", [(None, 1), (8, 2)])
+    def test_invalid_refit_is_not_repeated(self, device, dtype, lo_sample_size, expected_calls):
+        # A failed full-inlier refit would fail identically on the unchanged inliers. A failed subset
+        # batch still leaves the full refit to try.
+        points = torch.rand(20, 2, device=device, dtype=dtype)
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        ransac = RANSAC("homography", batch_size=1, max_iter=1, max_lo_iters=5, lo_sample_size=lo_sample_size, seed=0)
+        ransac.remove_bad_samples = lambda a, b: (a, b)
+        ransac.minimal_solver = lambda a, b, w: identity
+        calls = []
+        ransac.polisher_solver = lambda a, b, w: (
+            calls.append(1) or torch.full_like(identity, float("nan")).expand(len(a), 3, 3)
+        )
+        model, mask = ransac(points, points)
+        self.assert_close(model, identity[0])
+        assert mask.all()
+        assert len(calls) == expected_calls
+
     @pytest.mark.parametrize("lo_sample_size", [None, 8])
     def test_full_inlier_refit_wins_ties(self, device, dtype, lo_sample_size):
         # RANSAC scoring ties whenever the refit keeps the same support; the least-squares refit
@@ -943,6 +1006,12 @@ class TestRANSACSampling(BaseTester):
         other = RANSAC(batch_size=32, max_iter=2, prosac_sampling=True, seed=7)
         larger = torch.cat([other.sample(4, 10, 32, i, device) for i in range(2)])
         assert torch.equal(larger.amax(1), expected)
+
+    def test_sample_accepts_device_string(self, device):
+        ransac = RANSAC(seed=0)
+        by_name = ransac.sample(4, 10, 3, 0, str(device))
+        assert by_name.device.type == device.type
+        assert torch.equal(by_name, ransac.sample(4, 10, 3, 0, device))
 
     def test_prosac_eventually_uniform(self, device):
         ransac = RANSAC(batch_size=128, max_iter=1, prosac_sampling=True, seed=3)
@@ -1041,21 +1110,38 @@ class TestRANSACValidation(BaseTester):
         with pytest.raises(ValueError):
             RANSAC(model).validate_inputs(points, points[:8])
 
-    def test_essential_mask_matches_projected_output(self, device, dtype):
+    @staticmethod
+    def _projection_case(device, dtype, extra_exact_points):
+        # Every correspondence fits this rank-two F exactly. Its projection onto the essential manifold
+        # fits only the points with y = 0 and moves the others to a squared Sampson error of 0.5.
         points1 = torch.tensor(
-            [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0], [2.0, 1.0], [2.0, 0.0], [3.0, 1.0], [3.0, 0.0]],
+            [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0], [2.0, 1.0], [2.0, 0.0], [3.0, 1.0], [3.0, 0.0]]
+            + [[4.0 + i, 0.0] for i in range(extra_exact_points)],
             device=device,
             dtype=dtype,
         )
         points2 = points1.clone()
         points2[:, 1] *= 2
-        # All data fit this rank-two F exactly, but projection onto E changes the residuals.
         candidate = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 2.0, 0.0]], device=device, dtype=dtype)[None]
         ransac = RANSAC("essential", inl_th=0.01, batch_size=1, max_iter=1, max_lo_iters=0)
         ransac.minimal_solver = lambda a, b, w: candidate
+        return ransac, points1, points2
+
+    def test_essential_mask_matches_projected_output(self, device, dtype):
+        ransac, points1, points2 = self._projection_case(device, dtype, extra_exact_points=2)
         model, mask = ransac(points1, points2)
         expected = sampson_epipolar_distance(points1[None], points2[None], model[None])[0] <= 0.01**2
+        assert model.abs().amax() > 0
         assert torch.equal(mask, expected)
+        assert torch.equal(mask, points1[:, 1] == 0)
+
+    def test_essential_projection_below_minimal_support_fails(self, device, dtype):
+        # Four of the eight points survive the projection, fewer than the five-point minimal sample.
+        ransac, points1, points2 = self._projection_case(device, dtype, extra_exact_points=0)
+        model, mask = ransac(points1, points2)
+        assert not model.any()
+        assert mask.shape == (8,)
+        assert not mask.any()
 
 
 class TestRANSACMSACSelection(BaseTester):
@@ -1071,6 +1157,16 @@ class TestRANSACMSACSelection(BaseTester):
         model, _, _, count = ransac.verify(points, points, candidates, 4.0)
         self.assert_close(model, candidates[1])
         assert count == 4
+
+    def test_msac_score_accumulates_in_float32(self, device):
+        # 999 is not a bfloat16 value: summing the per-point scores in bfloat16 rounds it to 1000.
+        points = torch.zeros(999, 2, device=device, dtype=torch.bfloat16)
+        model = torch.eye(3, device=device, dtype=torch.bfloat16)[None]
+        ransac = RANSAC("homography", score_type="msac")
+        ransac.error_fn = lambda a, b, m: torch.zeros(1, 999, device=device, dtype=torch.bfloat16)
+        _, _, score, count = ransac.verify(points, points, model, 4.0)
+        assert score == 999.0
+        assert count == 999
 
     @pytest.mark.parametrize("threshold", [0.0, -1.0, float("nan"), float("inf")])
     def test_invalid_verify_threshold(self, device, dtype, threshold):

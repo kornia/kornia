@@ -25,6 +25,16 @@ Fundamental and essential models use Sampson residuals. Essential estimation
 expects camera-normalized coordinates, so its threshold is not in pixels.
 Line-segment homographies use the squared mean distance from the transferred
 endpoints to the target segment's line; zero-length target segments are outliers.
+Their local optimization still weights segments by the length-scaled residual of
+:func:`~kornia.geometry.homography.line_segment_transfer_error_one_way`, which
+down-weights long segments (`#4867 <https://github.com/kornia/kornia/issues/4867>`_).
+
+A model is accepted once at least the minimal sample size of correspondences
+support it (four for homographies, five for essential and seven or eight for
+fundamental matrices), as in OpenCV. A model fitted to a sample of outliers
+supports its own sample, so on input without a consensus the estimator returns
+such a model rather than the all-zero failure matrix: check the support of the
+returned mask.
 
 ``prosac_sampling=True`` enables the per-sample growth schedule of
 `Chum and Matas (CVPR 2005) <https://cmp.felk.cvut.cz/~matas/papers/chum-prosac-cvpr05.pdf>`_.
