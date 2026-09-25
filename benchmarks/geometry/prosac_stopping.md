@@ -1,5 +1,9 @@
 # PROSAC prefix stopping after #4902
 
+**Follow-up:** [RoMa and ALIKED + LightGlue](prosac_learned.md) expose premature
+stopping and substantial accuracy loss. The change measured here is experimental
+and should not be merged as a validated PROSAC improvement.
+
 Merged #4902 (`dfac11ab`) implements progressive sampling but always spends its
 entire budget. Uniform RANSAC can stop early, so equal maximum budgets do not
 mean equal work. This change adds prefix confidence stopping, leaving sampling,
