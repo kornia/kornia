@@ -83,10 +83,10 @@ def triangulate_points(
         - Known defects: a correspondence at infinity comes back unflagged, as a finite point at a distance set by
           roundoff or as ``inf`` in float16 (`#4865 <https://github.com/kornia/kornia/issues/4865>`_);
           ``solver="cofactor"`` returns NaN for pixel-scale float16 input
-          (`#4863 <https://github.com/kornia/kornia/issues/4863>`_) and a point unrelated to the input when a
+          (`#4863 <https://github.com/kornia/kornia/issues/4863>`_) and can return a point unrelated to the input when a
           :math:`3 \times 4` sub-system is rank-deficient or nearly so: with zero baseline, and for a point whose
-          row in the first image or column in the second passes through or near the epipole, which is every point
-          of a rectified stereo pair, with or without noise (`#4900 <https://github.com/kornia/kornia/issues/4900>`_).
+          row in the first image or column in the second passes through or near the epipole. Rectified stereo pairs
+          are susceptible with or without noise (`#4900 <https://github.com/kornia/kornia/issues/4900>`_).
 
     Args:
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
