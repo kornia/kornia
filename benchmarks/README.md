@@ -35,7 +35,7 @@ Deeper, single-topic scripts:
 | Directory | Contents |
 | --- | --- |
 | [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
-| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. [`ransac.py`](geometry/ransac.py): batched RANSAC runtime and IMC pose accuracy on cached correspondences; [audit and results](geometry/ransac.md). |
+| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. [`ransac.py`](geometry/ransac.py): batched RANSAC runtime and IMC pose accuracy on cached correspondences. |
 | [`morphology/`](morphology/) | [`flagship.py`](morphology/flagship.py): representative morphology ops vs torchmorph, albumentations, scikit-image and OpenCV. [`engines.py`](morphology/engines.py): dilation engine comparison across explicit public engines. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL/scikit-image. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions (`*_test.py`). |

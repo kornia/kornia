@@ -51,6 +51,10 @@ selected without replacement by a pinned NumPy RNG. Cached score (preferred)
 and ratio both rank lower values first, following imc2021-simple. --timing-pairs
 limits repeated timing per scene/feature while preserving all quality evaluations. This is a diagnostic subset, not
 an official full IMC leaderboard result. Missing caches are reported and skipped.
+
+``sweep`` deliberately departs from the benchmark contract's "never time a single call": like the IMC
+time-mAA protocol, it times one synchronized call per pair and configuration and averages over pairs, so a
+curve point reflects the per-pair latency a caller sees. Use ``run`` or ``compare`` (``time_us``) for A/B timing.
 """
 
 from __future__ import annotations
@@ -76,7 +80,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(1, str(ROOT / "benchmarks"))
 
-from common import finish_run, save_json, setup_run, start_run, time_us  # noqa: E402
+from common import finish_run, optional_import, save_json, setup_run, start_run, time_us  # noqa: E402
 
 from kornia.geometry import RANSAC  # noqa: E402
 
@@ -85,6 +89,11 @@ def digest(path: Path) -> str:
     """Identify exact input bytes without publishing a machine-local path."""
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def measured_ransac_source() -> Path:
+    """The ``ransac.py`` actually imported, which an editable install may resolve outside this checkout."""
+    return Path(sys.modules[RANSAC.__module__].__file__ or "")
 
 
 def prepare(args: argparse.Namespace) -> None:
@@ -172,7 +181,7 @@ def run(args: argparse.Namespace) -> None:
         min_run_time=args.min_run_time,
         timing_pairs_per_scene_feature=args.timing_pairs,
         actual_work="sampled_sets counts minimal sets in untimed prediction, excluding solver roots",
-        ransac_source_sha256=digest(ROOT / "kornia" / "geometry" / "ransac.py"),
+        ransac_source_sha256=digest(measured_ransac_source()),
         timing_includes="RANSAC.forward only; fixed estimator seed per repeated call",
     )
     configs = list(
@@ -310,7 +319,7 @@ def compare(args: argparse.Namespace) -> None:
     )
     meta.update(
         dataset_sha256=digest(args.npz),
-        ransac_source_sha256=digest(ROOT / "kornia" / "geometry" / "ransac.py"),
+        ransac_source_sha256=digest(measured_ransac_source()),
         base_ransac_source_sha256=digest(args.base_source) if args.base_source is not None else None,
         sample_budget=args.sample_budget,
         confidence=args.confidence,
@@ -388,6 +397,9 @@ SWEEP_KORNIA = {
     "ransac": {"score_type": "ransac"},
 }
 SWEEP_OPENCV = {"usac_magsac": "USAC_MAGSAC", "usac_accurate": "USAC_ACCURATE", "ransac": "FM_RANSAC"}
+# The revision before PROSAC and bounded LO has no lo_sample_size and ignores prosac_sampling, so
+# --base-source runs only the configurations it implements.
+SWEEP_BASE_KORNIA = ("msac", "ransac")
 
 
 def sweep(args: argparse.Namespace) -> None:
@@ -395,7 +407,8 @@ def sweep(args: argparse.Namespace) -> None:
 
     Every configuration runs once per pair, all configurations of one pair back to back, so slow
     drift affects every method alike. Each call is timed on its own with device synchronization,
-    as in the IMC time-mAA protocol; the curve averages the times over pairs. Kornia's budget is
+    as in the IMC time-mAA protocol; the curve averages the times over pairs (see the module
+    docstring for why this is not ``time_us``). Kornia's budget is
     ``batch_size * max_iter`` minimal sets (a budget below ``--batch`` runs as one batch of that
     size); OpenCV's is ``maxIters``. Predictions are stored with bit-packed inlier masks and scored
     by ``evaluate``.
@@ -403,13 +416,19 @@ def sweep(args: argparse.Namespace) -> None:
     kornia_methods = [m for m in args.kornia.split(",") if m]
     opencv_methods = [m for m in args.opencv.split(",") if m]
     device, _, _ = setup_run(args, opencv=bool(opencv_methods))
-    estimators: list[tuple[str, Any]] = [("kornia", RANSAC)]
+    estimators: list[tuple[str, Any, list[str]]] = [("kornia", RANSAC, kornia_methods)]
     if args.base_source is not None:
         # Another revision's RANSAC next to this one, interleaved per pair in the same process.
-        estimators.append(("kornia-base", load_ransac_module(args.base_source).RANSAC))
+        base_methods = [m for m in kornia_methods if m in SWEEP_BASE_KORNIA]
+        if skipped := [m for m in kornia_methods if m not in base_methods]:
+            print(f"# NOTE: kornia-base skips {','.join(skipped)}: not implemented by the base revision")
+        estimators.append(("kornia-base", load_ransac_module(args.base_source).RANSAC, base_methods))
     cv2 = None
     if opencv_methods:
-        import cv2
+        cv2, reason = optional_import("cv2")
+        if cv2 is None:
+            print(f"# NOTE: skipping OpenCV methods ({reason})")
+            opencv_methods = []
     sync = torch.cuda.synchronize if device.type == "cuda" else (lambda: None)
     thresholds = [float(x) for x in args.thresholds.split(",")]
     meta = start_run(
@@ -421,7 +440,7 @@ def sweep(args: argparse.Namespace) -> None:
     )
     meta.update(
         dataset_sha256=digest(args.npz),
-        ransac_source_sha256=digest(ROOT / "kornia" / "geometry" / "ransac.py"),
+        ransac_source_sha256=digest(measured_ransac_source()),
         base_ransac_source_sha256=digest(args.base_source) if args.base_source is not None else None,
         thresholds_px=thresholds,
         confidence=args.confidence,
@@ -438,23 +457,23 @@ def sweep(args: argparse.Namespace) -> None:
             kp2 = torch.as_tensor(b[order], device=device, dtype=torch.float32)
             points1, points2 = a[order].astype(np.float64), b[order].astype(np.float64)
             calls: list[tuple[dict[str, Any], Any]] = []
-            for (prefix, ransac_class), name, budget, threshold in itertools.product(
-                estimators, kornia_methods, [int(x) for x in args.budgets.split(",")], thresholds
-            ):
-                batch = min(args.batch, budget)
-                estimator = ransac_class(
-                    model_type="fundamental",
-                    inl_th=threshold,
-                    batch_size=batch,
-                    max_iter=budget // batch,
-                    confidence=args.confidence,
-                    max_lo_iters=args.lo_iters,
-                    seed=args.seed,
-                    **SWEEP_KORNIA[name],
-                )
-                config = {"method": f"{prefix} {name}", "device": device.type, "batch": batch}
-                config.update(sample_budget=budget, threshold_px=threshold)
-                calls.append((config, partial(estimator, kp1, kp2)))
+            budgets = [int(x) for x in args.budgets.split(",")]
+            for prefix, ransac_class, methods in estimators:
+                for name, budget, threshold in itertools.product(methods, budgets, thresholds):
+                    batch = min(args.batch, budget)
+                    estimator = ransac_class(
+                        model_type="fundamental",
+                        inl_th=threshold,
+                        batch_size=batch,
+                        max_iter=budget // batch,
+                        confidence=args.confidence,
+                        max_lo_iters=args.lo_iters,
+                        seed=args.seed,
+                        **SWEEP_KORNIA[name],
+                    )
+                    config = {"method": f"{prefix} {name}", "device": device.type, "batch": batch}
+                    config.update(sample_budget=budget, threshold_px=threshold)
+                    calls.append((config, partial(estimator, kp1, kp2)))
             for name, iters, threshold in itertools.product(
                 opencv_methods, [int(x) for x in args.opencv_iters.split(",")], thresholds
             ):
