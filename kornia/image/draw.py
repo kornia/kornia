@@ -347,6 +347,10 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     b_i, c_i, h_i, w_i, device = *images.shape, images.device
     if isinstance(polygons, List):
         polygons = _batch_polygons(polygons)
+    # Empty polygons used to IndexError on polygon[..., -1, :] when closing the
+    # loop; there is nothing to fill, so leave the image unchanged.
+    if polygons.shape[1] == 0:
+        return images
     b_p, _, xy, device_p, dtype_p = *polygons.shape, polygons.device, polygons.dtype
     if len(colors.shape) == 1:
         colors = colors.expand(b_i, c_i)
