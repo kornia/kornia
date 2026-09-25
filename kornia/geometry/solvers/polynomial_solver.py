@@ -32,6 +32,17 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
 
     .. math:: coeffs[0]x^2 + coeffs[1]x + coeffs[2] = 0
 
+    Convention:
+        - The coefficients of :func:`solve_quadratic`, :func:`solve_cubic` and :func:`solve_quartic` are batched
+          ``(B, k + 1)`` for degree ``k``, highest degree first; :ref:`two-view-conventions` compares this with
+          ``numpy.roots``.
+        - Only real roots are returned, and a repeated root is repeated. A missing real root is reported as
+          ``0.0``, which is indistinguishable from a root at 0, so count real roots from the discriminant when
+          it matters.
+        - For ``coeffs = [a, b, c]`` and ``D = b**2 - 4 * a * c``, ``solve_quadratic`` returns
+          ``[(-b + sqrt(D)) / (2 * a), (-b - sqrt(D)) / (2 * a)]``, so the order flips with the sign of ``a``.
+        - Known defects: ``a = 0`` returns non-finite values (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
+
     Args:
         coeffs : The coefficients of quadratic equation :`(B, 3)`
 
@@ -41,11 +52,6 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     Example:
         >>> coeffs = torch.tensor([[1., 4., 4.]])
         >>> roots = solve_quadratic(coeffs)
-
-    .. note::
-       In cases where a quadratic polynomial has only one real root, the output will be in the format
-       [real_root, 0]. And for the torch.complex roots should be represented as 0. This is done to maintain
-       a consistent output shape for all cases.
 
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "3"])
@@ -89,6 +95,13 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
 
     .. math:: coeffs[0]x^3 + coeffs[1]x^2 + coeffs[2]x + coeffs[3] = 0
 
+    Convention:
+        - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
+          and a single real root is in slot 0.
+        - Known defects: with a zero leading coefficient, a linear equation gets the root ``1.0`` and
+          ``bx^2 + d`` returns zeros
+          (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
+
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
 
@@ -100,9 +113,6 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         >>> roots = solve_cubic(coeffs)
 
     .. note::
-       In cases where a cubic polynomial has only one or two real roots, the output for the non-real
-       roots should be represented as 0. Thus, the output for a single real root should be in the
-       format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
        ``float16`` and ``bfloat16`` cubics are solved in ``float32`` and the roots are cast back to
        the input dtype.
 
@@ -286,6 +296,15 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     .. math:: coeffs[0]x^4 + coeffs[1]x^3 + coeffs[2]x^2 + coeffs[3]x + coeffs[4] = 0
 
+    Convention:
+        - Coefficient layout and zero padding as :func:`solve_quadratic`; the roots are unordered.
+        - Known defects: the solver is not scale-invariant, so a quartic whose roots are all small can lose real
+          roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_);
+          a leading coefficient below ``1e-6`` in magnitude (``1e-12`` in float64) counts as zero whatever the
+          other coefficients are, so a small multiple of a quartic is solved as a cubic and loses its roots
+          (`#4905 <https://github.com/kornia/kornia/issues/4905>`_); and a row with a zero leading coefficient is
+          passed to :func:`solve_cubic`, with its defects (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
+
     Args:
         coeffs : The coefficients quartic equation : `(B, 5)`
 
@@ -297,9 +316,6 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         >>> roots = solve_quartic(coeffs)
 
     .. note::
-       In cases where a quartic polynomial has fewer than four real roots, the remaining entries
-       in the output are set to 0. Similarly, any non-real (complex) roots are represented as 0.
-       This is done to maintain a consistent output shape for all cases.
        For ``float16`` and ``bfloat16`` quartics, Ferrari intermediates are evaluated in ``float32``
        and the returned roots are cast back to the input dtype.
 
@@ -2165,11 +2181,16 @@ def determinant_to_polynomial(
 ) -> torch.Tensor:
     r"""Represent the determinant by the 10th polynomial, used for 5PC solver [@nister2004efficient].
 
+    Convention:
+        - Each row of ``A`` holds two cubics (columns 0 to 3 and 4 to 7) and a quartic (columns 8 to 12) in
+          ``z``, highest degree first. The returned coefficients are lowest degree first (``cs[i]`` multiplies
+          ``z**i``), the reverse of the :func:`solve_quadratic` layout.
+
     Args:
-        A: torch.Tensor :math:`(*, 3, 13)`.
+        A: torch.Tensor :math:`(B, 3, 13)`.
 
     Returns:
-        a degree 10 poly, representing determinant (Eqn. 14 in the paper).
+        a degree 10 poly of shape :math:`(B, 11)`, representing determinant (Eqn. 14 in the paper).
 
     """
     B, device, dtype = A.shape[0], A.device, A.dtype
