@@ -543,9 +543,22 @@ class TestWarpFrameDepth(BaseTester):
         image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
         assert image_dst.shape == (1, 2, height, width)
 
+    @pytest.mark.parametrize("batch_size", [0, 1])
+    @pytest.mark.parametrize("depth_hw", [(3, 4), (3, 8), (6, 4)])
+    def test_exception_image_depth_size_mismatch(self, batch_size, depth_hw, device, dtype):
+        # kornia#4800: a depth map of another size used to resample the whole image onto its own grid. A mismatch
+        # in the height alone or the width alone is rejected too.
+        image_src = torch.rand(batch_size, 1, 6, 8, device=device, dtype=dtype)
+        depth_dst = torch.ones(batch_size, 1, *depth_hw, device=device, dtype=dtype)
+        src_trans_dst = torch.eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(batch_size, 1, 1)
+
+        with pytest.raises(BaseError, match="same height and width"):
+            warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
+
     def test_empty_batch_4281(self, device, dtype):
         # Regression for kornia#4281: output geometry comes from the destination depth map.
-        image_src = torch.zeros(0, 3, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        image_src = torch.zeros(0, 3, 4, 5, device=device, dtype=dtype, requires_grad=True)
         depth_dst = torch.zeros(0, 1, 4, 5, device=device, dtype=dtype)
         src_trans_dst = torch.zeros(0, 4, 4, device=device, dtype=dtype)
         camera_matrix = torch.zeros(0, 3, 3, device=device, dtype=dtype)
