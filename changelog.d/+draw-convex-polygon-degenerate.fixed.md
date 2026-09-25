@@ -1,1 +1,0 @@
-`draw_convex_polygon` now draws a one-vertex polygon as that point, leaves the image of an empty polygon in a list unchanged, and accepts an empty list with a zero-batch image, instead of raising PyTorch errors.
