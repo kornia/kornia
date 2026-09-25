@@ -272,12 +272,11 @@ class RANSAC(nn.Module):
         """
         if conf <= 0.0:
             return 1
-        if num_tc < sample_size or n_inl < sample_size:
+        # conf >= 1 disables early stopping, even when every correspondence is an inlier.
+        if conf >= 1.0 or num_tc < sample_size or n_inl < sample_size:
             return sys.maxsize
         if n_inl >= num_tc:
             return 1
-        if conf >= 1.0:
-            return sys.maxsize
         # Proper RANSAC formula for sampling without replacement
         # P(all samples are inliers) = (n_inl/num_tc) * ((n_inl-1)/(num_tc-1)) * ...
         # ... * ((n_inl-sample_size+1)/(num_tc-sample_size+1))

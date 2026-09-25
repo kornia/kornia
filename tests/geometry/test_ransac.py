@@ -885,12 +885,13 @@ class TestRANSACScoringAndStopping(BaseTester):
         expected = math.ceil(math.log1p(-0.99) / math.log1p(-1 / math.comb(10, 4)))
         assert RANSAC.max_samples_by_conf(4, 10, 4, 0.99) == expected
 
-    @pytest.mark.parametrize("confidence,batches", [(0.99, 1), (1.0, 3)])
-    def test_unit_confidence_runs_full_budget(self, device, dtype, confidence, batches):
-        # 19 of 20 inliers: 0.99 confidence needs three minimal samples, i.e. one batch.
+    @pytest.mark.parametrize("confidence,outliers,batches", [(0.99, 1, 1), (1.0, 1, 3), (0.99, 0, 1), (1.0, 0, 3)])
+    def test_unit_confidence_runs_full_budget(self, device, dtype, confidence, outliers, batches):
+        # 19 of 20 inliers: 0.99 confidence needs three minimal samples, i.e. one batch. With every
+        # point an inlier the bound is one sample, but confidence=1 must still run the whole budget.
         points = torch.rand(20, 2, device=device, dtype=dtype)
         target = points.clone()
-        target[0] += 100
+        target[:outliers] += 100
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
         ransac = RANSAC("homography", batch_size=8, max_iter=3, max_lo_iters=0, confidence=confidence)
         calls = []

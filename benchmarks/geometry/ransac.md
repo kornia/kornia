@@ -98,6 +98,10 @@ References: [Torr and Zisserman, MLESAC/MSAC (2000)](https://robots.ox.ac.uk/~vg
 Base: Kornia `0.9.0rc1`, commit `7ddf731b` (RANSAC source SHA-256 `404f18bc...`).
 Changed: this branch (RANSAC source `1fcfd172...`). `kornia/geometry/ransac.py` is the
 only library file that differs. Exact source hashes are recorded in each result JSON.
+The final source (`196717b2...`, used for the before/after sweep) differs from `1fcfd172`
+only in checking `confidence >= 1` before the all-inlier shortcut of
+`max_samples_by_conf`. Runs at confidence 0.999 never reach that branch, and the
+`confidence=1` runs would need a pair whose correspondences are all inliers.
 Python 3.11.14, PyTorch 2.14.0+cu130, OpenCV 4.11.0, Intel i7-14700K under WSL2
 (four PyTorch and OpenCV threads), NVIDIA RTX 4090. Float32,
 eight-point fundamental estimation, 2-pixel Sampson threshold, confidence 0.999,

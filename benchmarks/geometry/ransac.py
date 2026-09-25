@@ -296,12 +296,7 @@ def compare(args: argparse.Namespace) -> None:
     device, _, sync = setup_run(args, opencv=False)
     variants: dict[str, tuple[Any, dict[str, Any]]] = {"new": (RANSAC, {})}
     if args.base_source is not None:
-        spec = importlib.util.spec_from_file_location("kornia.geometry._ransac_compare_base", args.base_source)
-        if spec is None or spec.loader is None:
-            raise SystemExit(f"Cannot load {args.base_source}")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        variants = {"base": (module.RANSAC, {}), **variants}
+        variants = {"base": (load_ransac_module(args.base_source).RANSAC, {}), **variants}
     variants["new-lo0"] = (RANSAC, {"max_lo_iters": 0})
     for cap in [int(x) for x in args.lo_sample_sizes.split(",") if x]:
         variants[f"new-lo{cap}-subsets"] = (RANSAC, {"lo_sample_size": cap})
@@ -372,6 +367,20 @@ def compare(args: argparse.Namespace) -> None:
     finish_run(args, "geometry-ransac-compare", meta, rows)
 
 
+def load_ransac_module(path: Path) -> Any:
+    """Load another revision's ``kornia/geometry/ransac.py`` next to this checkout's module.
+
+    It imports this checkout's kornia internals, so it is only valid when that file is the sole
+    library difference between the revisions (``git show <rev>:kornia/geometry/ransac.py``).
+    """
+    spec = importlib.util.spec_from_file_location("kornia.geometry._ransac_other_revision", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"Cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 SWEEP_KORNIA = {
     "msac": {"score_type": "msac"},
     "msac-lo32": {"score_type": "msac", "lo_sample_size": 32},
@@ -394,6 +403,10 @@ def sweep(args: argparse.Namespace) -> None:
     kornia_methods = [m for m in args.kornia.split(",") if m]
     opencv_methods = [m for m in args.opencv.split(",") if m]
     device, _, _ = setup_run(args, opencv=bool(opencv_methods))
+    estimators: list[tuple[str, Any]] = [("kornia", RANSAC)]
+    if args.base_source is not None:
+        # Another revision's RANSAC next to this one, interleaved per pair in the same process.
+        estimators.append(("kornia-base", load_ransac_module(args.base_source).RANSAC))
     cv2 = None
     if opencv_methods:
         import cv2
@@ -409,6 +422,7 @@ def sweep(args: argparse.Namespace) -> None:
     meta.update(
         dataset_sha256=digest(args.npz),
         ransac_source_sha256=digest(ROOT / "kornia" / "geometry" / "ransac.py"),
+        base_ransac_source_sha256=digest(args.base_source) if args.base_source is not None else None,
         thresholds_px=thresholds,
         confidence=args.confidence,
         seed=args.seed,
@@ -424,11 +438,11 @@ def sweep(args: argparse.Namespace) -> None:
             kp2 = torch.as_tensor(b[order], device=device, dtype=torch.float32)
             points1, points2 = a[order].astype(np.float64), b[order].astype(np.float64)
             calls: list[tuple[dict[str, Any], Any]] = []
-            for name, budget, threshold in itertools.product(
-                kornia_methods, [int(x) for x in args.budgets.split(",")], thresholds
+            for (prefix, ransac_class), name, budget, threshold in itertools.product(
+                estimators, kornia_methods, [int(x) for x in args.budgets.split(",")], thresholds
             ):
                 batch = min(args.batch, budget)
-                estimator = RANSAC(
+                estimator = ransac_class(
                     model_type="fundamental",
                     inl_th=threshold,
                     batch_size=batch,
@@ -438,7 +452,7 @@ def sweep(args: argparse.Namespace) -> None:
                     seed=args.seed,
                     **SWEEP_KORNIA[name],
                 )
-                config = {"method": f"kornia {name}", "device": device.type, "batch": batch}
+                config = {"method": f"{prefix} {name}", "device": device.type, "batch": batch}
                 config.update(sample_budget=budget, threshold_px=threshold)
                 calls.append((config, partial(estimator, kp1, kp2)))
             for name, iters, threshold in itertools.product(
@@ -498,19 +512,22 @@ def sweep(args: argparse.Namespace) -> None:
     finish_run(args, "geometry-ransac-sweep", meta, rows)
 
 
-# Categorical slots in fixed order (validated for adjacent-pair CVD separation); kornia lines are
-# solid, OpenCV lines dashed, so identity never rests on color alone.
-PLOT_SERIES = {
-    "kornia msac": ("#2a78d6", "-", "o"),
-    "kornia msac-lo32": ("#eb6834", "-", "o"),
-    "kornia msac-prosac": ("#1baf7a", "-", "o"),
-    "kornia ransac": ("#eda100", "-", "o"),
-    "opencv usac_magsac": ("#e87ba4", "--", "s"),
-    "opencv usac_accurate": ("#008300", "--", "s"),
-    "opencv ransac": ("#4a3aa7", "--", "s"),
+# Line style separates the families: kornia solid in color (one validated categorical hue per
+# configuration, checked all-pairs), another kornia revision dashed with hollow markers in the same
+# hue, OpenCV in neutral greys with its own dash patterns. Markers differ within each family too,
+# so identity never rests on color alone.
+PLOT_SERIES = {  # method: (label, group, color, linestyle, marker, filled)
+    "kornia msac": ("MSAC", "kornia", "#2a78d6", "-", "o", True),
+    "kornia ransac": ("RANSAC score", "kornia", "#eb6834", "-", "s", True),
+    "kornia msac-lo32": ("MSAC + subset LO (32)", "kornia", "#1baf7a", "-", "D", True),
+    "kornia msac-prosac": ("MSAC + PROSAC", "kornia", "#4a3aa7", "-", "^", True),
+    "kornia-base msac": ("MSAC", "kornia-base", "#2a78d6", "--", "o", False),
+    "kornia-base ransac": ("RANSAC score", "kornia-base", "#eb6834", "--", "s", False),
+    "opencv usac_magsac": ("USAC_MAGSAC (MAGSAC++)", "opencv", "#1f1f1e", ":", "s", True),
+    "opencv usac_accurate": ("USAC_ACCURATE", "opencv", "#5f5e5a", "-.", "D", True),
+    "opencv ransac": ("FM_RANSAC", "opencv", "#8f8e89", "--", "v", True),
 }
-
-
+PLOT_GROUPS = {"kornia": "kornia, this PR", "kornia-base": "kornia, main before this PR", "opencv": "OpenCV (CPU)"}
 PAGE, INK, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 
 
@@ -527,55 +544,74 @@ def style_axis(axis: Any) -> None:
     axis.tick_params(colors=MUTED, labelsize=8)
 
 
+def draw_series(axis: Any, method: str, xs: list[float], ys: list[float], handles: dict[str, dict[str, Any]]) -> None:
+    """Draw one method's line in its family style and remember the handle for the grouped legend."""
+    label, group, color, linestyle, marker, filled = PLOT_SERIES[method]
+    (line,) = axis.plot(
+        xs,
+        ys,
+        color=color,
+        linestyle=linestyle,
+        linewidth=2 if group != "opencv" else 1.6,
+        marker=marker,
+        markersize=5.5,
+        markerfacecolor=color if filled else PAGE,
+        markeredgecolor=color if not filled else PAGE,
+        markeredgewidth=1.4 if not filled else 0.8,
+        label=label,
+    )
+    handles.setdefault(group, {}).setdefault(label, line)
+
+
+def grouped_legend(figure: Any, handles: dict[str, dict[str, Any]], y: float) -> None:
+    """One titled legend per family, side by side below the panels."""
+    groups = [g for g in PLOT_GROUPS if g in handles]
+    for index, group in enumerate(groups):
+        legend = figure.legend(
+            list(handles[group].values()),
+            list(handles[group]),
+            title=PLOT_GROUPS[group],
+            loc="upper center",
+            bbox_to_anchor=((index + 0.5) / len(groups), y),
+            fontsize=8.5,
+            title_fontsize=9,
+            frameon=False,
+            labelcolor=INK,
+            handlelength=3.2,
+        )
+        legend.get_title().set_color(INK)
+
+
 def plot_thresholds(plt: Any, configs: dict[tuple[Any, ...], dict[str, Any]], features: list[str], args: Any) -> None:
     """Pose mAA against the inlier threshold on the CPU sweep, every method at its largest budget."""
-    figure, axes = plt.subplots(1, len(features), figsize=(6.4 * len(features), 4.8), squeeze=False, facecolor=PAGE)
+    figure, axes = plt.subplots(1, len(features), figsize=(6.4 * len(features), 5.4), squeeze=False, facecolor=PAGE)
     thresholds = sorted({key[4] for key in configs})
+    handles: dict[str, dict[str, Any]] = {}
     for axis, feature in zip(axes[0], features):
-        for method, (color, style, marker) in PLOT_SERIES.items():
+        for method in PLOT_SERIES:
             budgets = [key[3] for key in configs if key[:3] == (feature, method, "cpu")]
             if not budgets:
                 continue
             largest = (feature, method, "cpu", max(budgets))
             points = sorted((key[4], value["maa"]) for key, value in configs.items() if key[:4] == largest)
-            axis.plot(
-                [threshold for threshold, _ in points],
-                [maa for _, maa in points],
-                color=color,
-                linestyle=style,
-                marker=marker,
-                markersize=5,
-                linewidth=2,
-                markeredgecolor=PAGE,
-                label=f"{method} ({max(budgets)})",
-            )
+            draw_series(axis, method, [t for t, _ in points], [m for _, m in points], handles)
         style_axis(axis)
         axis.set_xticks(thresholds, [f"{t:g}" for t in thresholds])
         axis.minorticks_off()
         axis.set_title({"sift": "SIFT", "xfeat": "XFeat"}.get(feature, feature), color=INK)
         axis.set_xlabel("inlier threshold (px, log scale)", color=MUTED, fontsize=9)
         axis.set_ylabel("pose mAA (1-10°)", color=MUTED, fontsize=9)
-    handles, labels = axes[0][0].get_legend_handles_labels()
-    figure.legend(
-        handles,
-        labels,
-        loc="lower center",
-        ncol=4,
-        fontsize=8,
-        frameon=False,
-        labelcolor=MUTED,
-        bbox_to_anchor=(0.5, 0.04),
-    )
-    figure.suptitle("Fundamental matrix: pose accuracy vs. inlier threshold (CPU, largest budget)", color=INK)
+    figure.suptitle(args.title or "Pose accuracy vs. inlier threshold (CPU, largest budget)", color=INK)
+    grouped_legend(figure, handles, 0.2)
     figure.text(
         0.5,
         0.005,
-        "Kornia at 16384 minimal sample sets, OpenCV at maxIters 25600 (legend: budget).",
+        "Each method at its largest budget: kornia 16384 minimal sample sets, OpenCV maxIters 25600.",
         ha="center",
         fontsize=8,
         color=MUTED,
     )
-    figure.tight_layout(rect=(0, 0.17, 1, 1))
+    figure.tight_layout(rect=(0, 0.2, 1, 1))
     figure.savefig(args.threshold_out, dpi=args.dpi, facecolor=PAGE)
     print(f"# figure written to {args.threshold_out}")
 
@@ -610,51 +646,48 @@ def plot(args: argparse.Namespace) -> None:
             }
         )
     features = sorted({feature for feature, _ in curves})
-    devices = [d for d in ("cpu", "cuda") if any(device == d for _, device in curves)]
-    ink, muted, page = INK, MUTED, PAGE
+    devices = [
+        d
+        for d in ("cpu", "cuda")
+        if any(
+            device == d and any(not m.startswith("opencv") for m in methods) for (_, device), methods in curves.items()
+        )
+    ]
     figure, axes = plt.subplots(
-        len(devices), len(features), figsize=(6.4 * len(features), 4.6 * len(devices)), squeeze=False, facecolor=page
+        len(devices),
+        len(features),
+        figsize=(6.4 * len(features), 4.6 * len(devices) + 1.4),
+        squeeze=False,
+        facecolor=PAGE,
     )
+    handles: dict[str, dict[str, Any]] = {}
     for row, device in enumerate(devices):
         for column, feature in enumerate(features):
             axis = axes[row][column]
             lines = dict(curves[feature, device])
             if device != "cpu":  # OpenCV runs on the CPU; repeat it as the reference in every row
                 lines.update({m: p for m, p in curves.get((feature, "cpu"), {}).items() if m.startswith("opencv")})
-            for method, (color, style, marker) in PLOT_SERIES.items():
-                if method not in lines:
-                    continue
-                points = sorted(lines[method], key=lambda p: p["mean_time_ms"])
-                label = method if method.startswith("opencv") else f"{method} ({device.upper()})"
-                axis.plot(
-                    [p["mean_time_ms"] for p in points],
-                    [p["maa"] for p in points],
-                    color=color,
-                    linestyle=style,
-                    marker=marker,
-                    markersize=5,
-                    linewidth=2,
-                    markeredgecolor=page,
-                    label=label,
-                )
+            for method in PLOT_SERIES:
+                if method in lines:
+                    points = sorted(lines[method], key=lambda p: p["mean_time_ms"])
+                    draw_series(axis, method, [p["mean_time_ms"] for p in points], [p["maa"] for p in points], handles)
             style_axis(axis)
             name = {"sift": "SIFT", "xfeat": "XFeat"}.get(feature, feature)
-            axis.set_title(f"{name}, kornia on {device.upper()}", color=ink)
-            axis.set_xlabel("mean time per pair (ms, log scale)", color=muted, fontsize=9)
-            axis.set_ylabel("pose mAA (1-10°)", color=muted, fontsize=9)
-            axis.legend(loc="lower right", fontsize=7.5, frameon=False, labelcolor=muted)
-    figure.suptitle("Fundamental matrix: pose accuracy vs. time", color=ink, fontsize=12.5)
-    figure.text(
-        0.5,
-        0.005,
-        "Each point is one budget (kornia: minimal sample sets; OpenCV: maxIters) at its best inlier threshold "
-        "from the sweep. Mean over pairs of single synchronized calls.",
-        ha="center",
-        fontsize=8,
-        color=muted,
+            axis.set_title(f"{name}, kornia on {device.upper()}", color=INK)
+            axis.set_xlabel("mean time per pair (ms, log scale)", color=MUTED, fontsize=9)
+            axis.set_ylabel("pose mAA (1-10°)", color=MUTED, fontsize=9)
+    figure.suptitle(args.title or "Fundamental matrix: pose accuracy vs. time", color=INK, fontsize=12.5)
+    legend_space = 1.4 / (4.6 * len(devices) + 1.4)
+    grouped_legend(figure, handles, legend_space)
+    note = (
+        "Each point is one budget at its best inlier threshold from the sweep; "
+        "mean over pairs of single synchronized calls."
     )
-    figure.tight_layout(rect=(0, 0.03, 1, 1))
-    figure.savefig(args.out, dpi=args.dpi, facecolor=page)
+    if "opencv" in handles:
+        note += " OpenCV (maxIters budget) runs on the CPU and is repeated in the CUDA row."
+    figure.text(0.5, 0.004, note, ha="center", fontsize=8, color=MUTED)
+    figure.tight_layout(rect=(0, legend_space, 1, 1))
+    figure.savefig(args.out, dpi=args.dpi, facecolor=PAGE)
     print(f"# figure written to {args.out}")
     if args.points_json is not None:
         points_out = {f"{f}|{d}": dict(methods) for (f, d), methods in curves.items()}
@@ -693,9 +726,10 @@ def evaluate(args: argparse.Namespace) -> None:
         for row in document["results"]:
             key = row["pair"]
             errors = dict.fromkeys(("R_err", "t_err", "max_err"), float("inf"))
-            if "matrix" in row and np.isfinite(row["matrix"]).all():
+            # An all-zero matrix is RANSAC's failure result, whichever command wrote it.
+            if "matrix" in row and np.isfinite(row["matrix"]).all() and np.abs(row["matrix"]).max() > 0:
                 if "inliers_packed" in row:
-                    packed = np.frombuffer(base64.b64decode(row.pop("inliers_packed")), dtype=np.uint8)
+                    packed = np.frombuffer(base64.b64decode(row["inliers_packed"]), dtype=np.uint8)
                     inliers = np.flatnonzero(np.unpackbits(packed)[: row["correspondences"]])
                 else:
                     inliers = np.array(row["inlier_indices"], dtype=int)
@@ -783,6 +817,7 @@ def main() -> None:
     sw.add_argument("--threads", type=int, default=4)
     sw.add_argument("--kornia", default=",".join(SWEEP_KORNIA), help=f"subset of {','.join(SWEEP_KORNIA)}")
     sw.add_argument("--opencv", default=",".join(SWEEP_OPENCV), help=f"subset of {','.join(SWEEP_OPENCV)}")
+    sw.add_argument("--base-source", type=Path, help="also sweep another revision's ransac.py as 'kornia-base'")
     sw.add_argument("--budgets", default="256,512,1024,2048,4096,8192,16384", help="kornia minimal-sample budgets")
     sw.add_argument("--batch", type=int, default=256, help="kornia batch size (smaller budgets use one batch)")
     sw.add_argument("--opencv-iters", default="10,25,100,400,1600,6400,25600")
@@ -801,6 +836,7 @@ def main() -> None:
     pl.add_argument("--dpi", type=int, default=150)
     pl.add_argument("--points-json", type=Path)
     pl.add_argument("--threshold-out", type=Path, help="also draw mAA against the inlier threshold")
+    pl.add_argument("--title", help="figure title")
     ab = commands.add_parser("compare")
     ab.add_argument("--device", default="cpu")
     ab.add_argument("--dtype", choices=("float32",), default="float32")
