@@ -376,7 +376,8 @@ def _null_to_Nister_solution_script(
     C[:, 0:9, 1:10] = torch.eye(9, device=device, dtype=dtype)
 
     # Guard only an exactly zero leading coefficient. The roots do not depend on the polynomial's sign,
-    # and a floor such as clamp_min would turn a negative coefficient positive and change them.
+    # and a floor such as clamp_min would turn a negative coefficient positive and change them. An
+    # element with a zero one is discarded below; the floor only keeps its companion matrix finite.
     cs_de = torch.where(cs[:, -1] == 0, torch.full_like(cs[:, -1], 1e-8), cs[:, -1])
     C[:, -1, :] = -cs[:, :-1] / cs_de.unsqueeze(-1)
 
@@ -384,9 +385,12 @@ def _null_to_Nister_solution_script(
     # which takes the whole batch down: a RuntimeError on some platforms, a crash inside MKL on others.
     # It comes from an overflow: an elimination system that is ill-conditioned without being exactly
     # singular has a solution large enough for the determinant polynomial to overflow, or a finite
-    # polynomial overflows when it is divided by its leading coefficient. Those elements get the
-    # identity in place of C, and their candidates are set to NaN at the end, like a singular one.
-    no_roots = ~torch.isfinite(C).flatten(-2).all(-1)  # (B,)
+    # polynomial overflows when it is divided by its leading coefficient. Nor has a polynomial whose
+    # leading coefficient is exactly zero: its degree is below 10, the floor above scales its companion
+    # row by 1e8, and the eigenvalues are not its roots. Its eigenvector matrix can then be singular,
+    # which makes the eigvals backward raise. Those elements get the identity in place of C, and their
+    # candidates are set to NaN at the end, like a singular one.
+    no_roots = ~torch.isfinite(C).flatten(-2).all(-1) | (cs[:, -1] == 0)  # (B,)
     if no_roots.any():
         C = torch.where(no_roots.view(B, 1, 1), eye10, C)
 
@@ -916,8 +920,8 @@ def find_essential(
           with no real solution returns ten identity matrices instead of ``NaN``
           (`#4883 <https://github.com/kornia/kornia/issues/4883>`_); in ``float32`` an exact five-point sample can
           miss the true solution, which six or more correspondences recover
-          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); backward raises on some degenerate samples, such
-          as identical point sets (`#4831 <https://github.com/kornia/kornia/issues/4831>`_);
+          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); backward can raise on a degenerate sample whose
+          polynomial has a multiple root at zero (`#4903 <https://github.com/kornia/kornia/issues/4903>`_);
           on MPS the 5-point solve needs the CPU fallback (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).
 
     Args:

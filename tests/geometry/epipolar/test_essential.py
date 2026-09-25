@@ -222,6 +222,15 @@ class TestFindEssential(BaseTester):
         E_zeros = epi.essential.find_essential(zeros, zeros, torch.ones(B, N, device=device, dtype=dtype))
         self.assert_close(E_zeros, eye.expand(B, 10, 3, 3), atol=0.0, rtol=0.0)
 
+        # Its degree-10 polynomial also has an exactly zero leading coefficient. The companion matrix
+        # built from it had a repeated eigenvalue and a singular eigenvector matrix, so the backward
+        # raised in torch.linalg.eigvals (#4831). It now completes, and since the sample's candidates are
+        # discarded its gradient is exactly zero, also through the SVD of its rank-1 design matrix (#4855).
+        origin = torch.zeros(B, N, 2, device=device, dtype=dtype, requires_grad=True)
+        weights_bn = torch.ones(B, N, device=device, dtype=dtype)
+        epi.essential.find_essential(origin, origin, weights_bn).nan_to_num().sum().backward()
+        assert (origin.grad == 0).all()
+
         # A singular element does not disturb the rest of its batch: next to one, a regular sample
         # returns exactly what it returns next to a regular sample, NaN candidates from complex roots
         # included. The reference is a batch of the same size, because the batch size alone can change
@@ -284,6 +293,35 @@ class TestFindEssential(BaseTester):
         self.assert_close(patched[0], eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
         assert torch.equal(torch.isnan(patched[1]), torch.isnan(regular))
         self.assert_close(torch.nan_to_num(patched[1]), torch.nan_to_num(regular), atol=0.0, rtol=0.0)
+
+        # A zero leading coefficient means the polynomial has no usable companion matrix either (#4831).
+        # Which inputs give one exactly is platform-dependent, so zero it for one element: that element
+        # takes the identity fallback, the other returns exactly what it returns unpatched, and the
+        # backward through both completes with a finite gradient.
+        def degree_deficient(A, *args):
+            cs = determinant(A, *args).clone()
+            cs[0, -1] = 0.0
+            return cs
+
+        monkeypatch.setattr(epi.essential, "_determinant_to_polynomial_jit", degree_deficient)
+        points1 = torch.stack((x1, x1)).requires_grad_()
+        patched = epi.essential.find_essential(points1, torch.stack((x2, x2)), weights)
+        self.assert_close(patched[0].detach(), eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
+        assert torch.equal(torch.isnan(patched[1]), torch.isnan(regular))
+        self.assert_close(torch.nan_to_num(patched[1].detach()), torch.nan_to_num(regular), atol=0.0, rtol=0.0)
+        patched.nan_to_num().sum().backward()
+        assert torch.isfinite(points1.grad).all()
+
+        # Check the backward through a zeroed element once more with 9 points, where the null space comes
+        # from torch.linalg.svd itself instead of the N < 9 path.
+        g9 = torch.Generator().manual_seed(1)
+        points9 = torch.rand(2, 9, 2, generator=g9, dtype=torch.float64).to(device=device, dtype=dtype)
+        points9.requires_grad_()
+        other9 = torch.rand(2, 9, 2, generator=g9, dtype=torch.float64).to(device=device, dtype=dtype)
+        E9 = epi.essential.find_essential(points9, other9, torch.ones(2, 9, device=device, dtype=dtype))
+        self.assert_close(E9[0].detach(), eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
+        E9.nan_to_num().sum().backward()
+        assert torch.isfinite(points9.grad).all()
 
 
 class TestEssentialFromFundamental(BaseTester):
