@@ -47,6 +47,25 @@ class TestRANSACHomography(BaseTester):
         H, _ = ransac(points1, points2)
         assert H.shape == (3, 3)
 
+    @pytest.mark.parametrize("model_found", [False, True])
+    def test_forward_output_shapes_are_stable(self, device, dtype, model_found):
+        generator = torch.Generator().manual_seed(123)
+        # A 10 px extent keeps bfloat16 rounding of the transformed points below inl_th; at 100 px it drops inliers.
+        points1 = 10.0 * torch.rand(16, 2, generator=generator).to(device=device, dtype=dtype)
+        unrelated_points = 10.0 * torch.rand(16, 2, generator=generator).to(device=device, dtype=dtype)
+        homography = torch.tensor([[1.0, 0.1, 2.0], [0.05, 1.0, -1.0], [0.001, 0.002, 1.0]], device=device, dtype=dtype)
+        points2 = transform_points(homography[None], points1[None])[0] if model_found else unrelated_points
+        ransac = RANSAC("homography", inl_th=0.5, batch_size=4, max_iter=1, max_lo_iters=0, seed=0)
+
+        model, inliers = ransac(points1, points2)
+
+        assert model.shape == (3, 3)
+        assert inliers.shape == (16,)
+        assert inliers.dtype == torch.bool
+        assert inliers.device == points1.device
+        selected_points = points1[inliers]
+        assert selected_points.shape == ((16 if model_found else 0), 2)
+
     @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     def test_dirty_points(self, device, dtype):
         # generate input data
@@ -614,7 +633,7 @@ class TestConventionRANSAC(BaseTester):
         unrelated_2 = torch.tensor(_UNRELATED_2[:12], device=device, dtype=dtype)
         model, mask = RANSAC("homography", inl_th=0.5, seed=0, max_iter=3, batch_size=64)(unrelated_1, unrelated_2)
         assert bool((model == 0).all())
-        assert mask.dtype == torch.bool and not bool(mask.any())
+        assert mask.shape == (12,) and mask.dtype == torch.bool and not bool(mask.any())
         # "homography" screens its minimal samples with sample_is_valid_for_homography: when every sample is
         # rejected, no model is estimated from the exact matches either.
         samples = []
@@ -756,15 +775,6 @@ class TestConventionRANSAC(BaseTester):
         model_p, mask_p = prosac(kp1, kp2)
         model_u, mask_u = uniform(kp1, kp2)
         assert torch.equal(model_p, model_u) and torch.equal(mask_p, mask_u)
-
-    def test_wart_ransac_failure_mask_shape_4871(self, device, dtype):
-        _cpu_only(device)
-        unrelated_1 = torch.tensor(_UNRELATED_1[:12], device=device, dtype=dtype)
-        unrelated_2 = torch.tensor(_UNRELATED_2[:12], device=device, dtype=dtype)
-        model, mask = RANSAC("homography", inl_th=0.5, seed=0, max_iter=3, batch_size=64)(unrelated_1, unrelated_2)
-        assert bool((model == 0).all())
-        # #4871: when no model is found the mask is (N, 1), where a found model gives (N,).
-        assert mask.shape == (12, 1)
 
     @pytest.mark.parametrize(
         "model_type, n, validated_type, validated_n",

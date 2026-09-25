@@ -44,7 +44,7 @@ from testing.base import (
 @pytest.fixture(autouse=True)
 def _restore_global_rng(restore_torch_rng):
     # The pins below seed the global RNG; the root fixture (#4446) restores every generator afterwards.
-    yield
+    return
 
 
 # The seed drawn immediately before each construct-and-forward.

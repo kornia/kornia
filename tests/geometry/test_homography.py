@@ -964,6 +964,6 @@ class TestConventionHomography(BaseTester):
         H_weighted = find_homography_dlt(far1, far2, weights, solver)
         H_dropped = find_homography_dlt(p1, p2, None, solver)
         # #4890: the zero-weight correspondence leaves the equations but still enters the Hartley normalisation, so
-        # on noisy data it moves H by a tenth of a pixel or more. Once the normalisation uses the weights, the two
-        # estimates agree to roundoff.
+        # on noisy data it moves H (by 0.08 px with solver="lu" and 0.25 px with "svd" here). Once the normalisation
+        # uses the weights, the two estimates agree to roundoff.
         assert _transfer_max(H_weighted, p1, kornia.geometry.transform_points(H_dropped, p1)) > 1e-2

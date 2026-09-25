@@ -23,6 +23,21 @@ import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
 from testing.geometry.create import generate_two_view_random_scene
+from testing.two_view import two_view_scene
+
+
+def test_generate_two_view_random_scene_is_deterministic():
+    torch.manual_seed(123)
+    expected_next = torch.rand(3)
+
+    torch.manual_seed(123)
+    scene1 = generate_two_view_random_scene()
+    actual_next = torch.rand(3)
+
+    for key in scene1:
+        assert torch.equal(scene1[key], generate_two_view_random_scene()[key]), f"Scene mismatch for {key}"
+
+    assert torch.equal(actual_next, expected_next)
 
 
 class TestFindEssential(BaseTester):
@@ -142,6 +157,57 @@ class TestFindEssential(BaseTester):
             E_scaled = epi.essential.find_essential(x1, x2, weights)
             assert torch.equal(torch.isnan(E_scaled), torch.isnan(E_est))
             self.assert_close(torch.nan_to_num(E_scaled), torch.nan_to_num(E_est), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("num_points", [5, 6, 8])
+    def test_gradcheck(self, num_points, device):
+        # For fewer than 9 points some or all of the four null-space vectors lie past min(N, 9), where
+        # torch.linalg.svd gives no gradient, so the gradient to the correspondences was dropped: exactly
+        # zero for 5 points (#4855). Candidates from complex roots are NaN and are zeroed here; they stay
+        # complex under the small perturbations the check makes.
+        g = torch.Generator().manual_seed(1)
+        points1 = torch.rand(1, num_points, 2, generator=g, dtype=torch.float64).to(device)
+        points2 = torch.rand(1, num_points, 2, generator=g, dtype=torch.float64).to(device)
+
+        def proxy(points1, points2):
+            return epi.essential.find_essential(points1, points2).nan_to_num()
+
+        self.gradcheck(proxy, (points1, points2))
+
+    def test_null_space_gradient_of_a_discarded_sample(self, device):
+        # Points all at the origin give a rank-1 design matrix, so the null space the solver uses is not
+        # unique and its derivative has no gap to divide by. A sample like that has its candidates
+        # discarded, so no gradient reaches its basis, and it must contribute zero rather than 0 / 0.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        design = torch.zeros(1, 5, 9, device=device, dtype=torch.float64)
+        design[..., 8] = 1.0
+        design.requires_grad_()
+        basis = epi.essential._NullSpaceBasis.apply(design)[0]
+        (basis * 0.0).sum().backward()
+        assert torch.isfinite(design.grad).all()
+        assert (design.grad == 0).all()
+        # A nonzero incoming gradient has no finite derivative there, as for torch.linalg.svd. It must not
+        # come out as a silent zero, which is what the dropped gradient of #4855 looked like.
+        design.grad = None
+        epi.essential._NullSpaceBasis.apply(design)[0].sum().backward()
+        assert not torch.isfinite(design.grad).all()
+
+    def test_torch_func_grad(self, device):
+        # torch.func transforms accept an autograd.Function only if it defines setup_context. With 5
+        # points every null-space vector goes through it, so torch.func.grad must agree with autograd.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        g = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device)
+        points2 = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device)
+
+        def loss(points1):
+            return (epi.essential.find_essential(points1, points2).nan_to_num() ** 3).sum()
+
+        leaf = points1.clone().requires_grad_()
+        (expected,) = torch.autograd.grad(loss(leaf), leaf)
+        assert expected.abs().max() > 0
+        self.assert_close(torch.func.grad(loss)(points1), expected)
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype, monkeypatch):
@@ -634,3 +700,313 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
             (E_mat, K1, K2, x1, x2),
             requires_grad=(True, False, False, False, False),
         )
+
+
+_NO_HALF_LU = "{} calls torch.det (LU), which has no float16/bfloat16 kernel"
+_NO_HALF_FIND_ESSENTIAL = "find_essential calls torch.linalg.lu_factor_ex, which has no float16/bfloat16 kernel"
+_HALF_PIXEL_F = (
+    "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
+    "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
+)
+
+# A five-point sample of normalised coordinates with no real root (recipe in the #4883 pin).
+_NO_REAL_ROOT_P1 = [
+    [-0.094936139146062, 0.3761027702259922],
+    [-0.13508466816570844, -0.15520684765969847],
+    [0.4518000060718804, 0.7491498583169849],
+    [-0.021505790125727963, 0.25308016814257595],
+    [-0.021008959788924204, -0.29327032505050715],
+]
+_NO_REAL_ROOT_P2 = [
+    [0.5908350760196772, -0.024407062108416273],
+    [0.4805667988287366, -0.025019944402247606],
+    [-0.5701912982679379, 0.4911702947428827],
+    [-0.8380815108891836, 0.2981499818513886],
+    [-0.8246696433582323, 0.08361235498654443],
+]
+
+
+def _skip_half(dtype: torch.dtype, reason: str) -> None:
+    if dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(reason)
+
+
+def _skip_find_essential(device: torch.device, dtype: torch.dtype) -> None:
+    _skip_half(dtype, _NO_HALF_FIND_ESSENTIAL)
+    if device.type == "mps":
+        pytest.skip("find_essential calls torch.linalg.eigvals, which has no MPS kernel (#4528)")
+
+
+def _hom(p: torch.Tensor) -> torch.Tensor:
+    return torch.cat([p, torch.ones_like(p[..., :1])], -1)
+
+
+def _epipolar_residual(F: torch.Tensor, pts1: torch.Tensor, pts2: torch.Tensor) -> torch.Tensor:
+    """|pts2^T F pts1| per correspondence."""
+    return (_hom(pts2) * (_hom(pts1) @ F.transpose(-2, -1))).sum(-1).abs()
+
+
+def _normalized(K: torch.Tensor, pts: torch.Tensor) -> torch.Tensor:
+    """Normalised camera coordinates K^-1 [u, v, 1]^T, dehomogenised."""
+    return (_hom(pts) @ torch.linalg.inv(K).transpose(-2, -1))[..., :2]
+
+
+def _gt_essential(scene):
+    eye = torch.eye(3, device=scene["R"].device, dtype=scene["R"].dtype)[None]
+    return epi.essential_from_Rt(eye, torch.zeros_like(scene["t"]), scene["R"], scene["t"])
+
+
+def _first_camera(device, dtype):
+    """A non-identity first camera, as world-to-camera extrinsics (R, t)."""
+    Ra = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+        torch.tensor([[-0.3, 0.15, 0.2]], device=device, dtype=dtype)
+    )
+    ta = torch.tensor([[[0.2], [-0.4], [1.1]]], device=device, dtype=dtype)
+    return Ra, ta
+
+
+class TestConventionEssential(BaseTester):
+    def test_convention_find_essential_returns_ten_candidates(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_find_essential(device, dtype)
+        n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
+        real = {}
+        for num_points in (5, 12):
+            E = epi.find_essential(n1[:, :num_points], n2[:, :num_points])
+            # Always ten slots; each is either a real solution of unit Frobenius norm or all-NaN (complex root).
+            assert E.shape == (1, 10, 3, 3)
+            finite = torch.isfinite(E).all(dim=-1).all(dim=-1)[0]
+            assert (finite | torch.isnan(E).all(dim=-1).all(dim=-1)[0]).all()
+            real[num_points] = E[0, finite]
+            assert real[num_points].shape[0] >= 1
+            self.assert_close(real[num_points].norm(dim=(-2, -1)), torch.ones_like(real[num_points][:, 0, 0]))
+        # True-E recovery is checked on all twelve points because the minimal sample can miss it (#4884).
+        # Minimal sample: every real candidate satisfies x2^T E x1 = 0 on the normalised coordinates of points1
+        # (first image) and points2 (second image); the swapped product is the control.
+        p1, p2 = n1[:, :5], n2[:, :5]
+        for cand in real[5]:
+            assert _epipolar_residual(cand[None], p1, p2).max() < 1e-3 * _epipolar_residual(cand[None], p2, p1).max()
+        # All twelve points: one candidate is the true E up to sign, on the same side.
+        E_gt = _gt_essential(two_view)
+        E_gt = E_gt / E_gt.norm()
+        dist = torch.minimum((real[12] - E_gt).abs().amax(dim=(-2, -1)), (real[12] + E_gt).abs().amax(dim=(-2, -1)))
+        assert dist.min() < 1e-4
+        best = real[12][dist.argmin()][None]
+        assert _epipolar_residual(best, n1, n2).max() < 1e-3 * _epipolar_residual(best, n2, n1).max()
+
+    def test_convention_essential_from_Rt_is_tx_R_of_relative_motion(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        R, t = two_view["R"], two_view["t"]
+        Ra, ta = _first_camera(device, dtype)
+        # E = [t]x R of relative_camera_motion(R1, t1, R2, t2), here with a non-identity first camera.
+        E = epi.essential_from_Rt(Ra, ta, R @ Ra, R @ ta + t)
+        self.assert_close(E, epi.cross_product_matrix(t[..., 0]) @ R, low_tolerance=True)
+        # Not normalised: ||E||_F = sqrt(2) ||t||.
+        self.assert_close(E.norm(dim=(-2, -1)), (2.0**0.5) * t.norm(dim=(-2, -1)), low_tolerance=True)
+        # Swapping the cameras gives E^T, which is far from E on this fixture.
+        E_swapped = epi.essential_from_Rt(R @ Ra, R @ ta + t, Ra, ta)
+        self.assert_close(E_swapped, E.transpose(-2, -1), low_tolerance=True)
+        assert (E - E.transpose(-2, -1)).abs().max() > 0.5
+
+    def test_convention_essential_from_fundamental_K_sides(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _HALF_PIXEL_F)
+        K1, K2 = two_view["K1"], two_view["K2"]
+        E_gt = _gt_essential(two_view)
+        F = epi.fundamental_from_essential(E_gt, K1, K2)
+        F = F / F[..., 2:, 2:]  # the scale an estimator returns
+        # E = K2^T F K1: K1 is the camera of points1.
+        E = epi.essential_from_fundamental(F, K1, K2)
+        self.assert_close(E, K2.transpose(-2, -1) @ F @ K1)
+        n1, n2 = _normalized(K1, two_view["x1"]), _normalized(K2, two_view["x2"])
+        E_swapped = epi.essential_from_fundamental(F, K2, K1)
+        resid = _epipolar_residual(E / E.norm(), n1, n2).max()
+        assert resid < 1e-3 * _epipolar_residual(E_swapped / E_swapped.norm(), n1, n2).max()
+
+    def test_convention_motion_from_essential_candidate_order(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential"))
+        R, t = two_view["R"], two_view["t"]
+        t_unit = t / t.norm(dim=-2, keepdim=True)
+        E = _gt_essential(two_view)
+        # project_to_essential keeps the input's scale: it is not normalised to unit Frobenius norm.
+        E_unit = E / E.norm(dim=(-2, -1), keepdim=True)
+        projected_norm = epi.project_to_essential(5.0 * E_unit).norm(dim=(-2, -1))
+        self.assert_close(projected_norm, torch.full_like(projected_norm, 5.0))
+        candidate_sets = []
+        for E_in in (E, -E, 3.0 * E):
+            Rs, ts = epi.motion_from_essential(E_in)
+            R1, R2, t_dec = epi.decompose_essential_matrix(E_in)
+            assert Rs.shape == (1, 4, 3, 3) and ts.shape == (1, 4, 3, 1)
+            # Order [(R1, t), (R1, -t), (R2, t), (R2, -t)] of decompose_essential_matrix, with a unit t.
+            self.assert_close(Rs[:, 0], R1)
+            self.assert_close(Rs[:, 1], R1)
+            self.assert_close(Rs[:, 2], R2)
+            self.assert_close(Rs[:, 3], R2)
+            self.assert_close(ts[:, 0], t_dec)
+            self.assert_close(ts[:, 1], -t_dec)
+            self.assert_close(ts[:, 2], t_dec)
+            self.assert_close(ts[:, 3], -t_dec)
+            self.assert_close(ts.norm(dim=(-2, -1)), torch.ones(1, 4, device=device, dtype=dtype))
+            # Candidates 1 and 2 rebuild E_in itself as [t]x R (up to a positive scale), candidates 0 and 3 its
+            # negative. Which of them is the true pose follows the sign and scale of E_in, so no index is fixed.
+            # With det U = +1, [u3]x U W V^T = -U diag(1, 1, 0) V^T, so this pairing does not depend on the SVD's
+            # sign choices.
+            unit = E_in * (2.0**0.5) / E_in.norm()
+            for i, sign in enumerate((-1.0, 1.0, 1.0, -1.0)):
+                self.assert_close(epi.cross_product_matrix(ts[:, i, :, 0]) @ Rs[:, i], sign * unit)
+            hits = [
+                bool((Rs[:, i] - R).abs().max() < 1e-4 and (ts[:, i] - t_unit).abs().max() < 1e-4) for i in range(4)
+            ]
+            assert sum(hits) == 1
+            candidate_sets.append((Rs[0], ts[0]))
+        # E, -E and 3E give the same candidate set.
+        Rs0, ts0 = candidate_sets[0]
+        for Rs_k, ts_k in candidate_sets[1:]:
+            for i in range(4):
+                match = (Rs_k - Rs0[i]).abs().amax(dim=(-2, -1)) + (ts_k - ts0[i]).abs().amax(dim=(-2, -1))
+                assert match.min() < 1e-4
+
+    def test_convention_choose_solution_recovers_relative_motion(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
+        R, t, X = two_view["R"], two_view["t"], two_view["X"]
+        K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
+        t_norm = t.norm(dim=-2, keepdim=True)
+        E = _gt_essential(two_view)
+        # Pixel coordinates in, K1 and K2 applied inside: the pose of camera 2 relative to camera 1 with a unit t,
+        # and the points triangulated in the first camera's frame at that scale, all at positive depth.
+        for E_in in (E, -E):
+            R_out, t_out, X_out = epi.motion_from_essential_choose_solution(E_in, K1, K2, x1, x2)
+            self.assert_close(R_out, R, rtol=1e-4, atol=1e-4)
+            self.assert_close(t_out, t / t_norm, rtol=1e-4, atol=1e-4)
+            self.assert_close(X_out, X / t_norm, rtol=1e-4, atol=1e-3)
+            assert (X_out[..., 2] > 0).all()
+        # Swapping the images (E^T, K2, K1, x2, x1) returns the inverse motion.
+        R_sw, t_sw, _ = epi.motion_from_essential_choose_solution(E.transpose(-2, -1), K2, K1, x2, x1)
+        self.assert_close(R_sw, R.transpose(-2, -1), rtol=1e-4, atol=1e-4)
+        self.assert_close(t_sw, -R.transpose(-2, -1) @ t / t_norm, rtol=1e-4, atol=1e-4)
+        # Control: with K1 and K2 swapped the triangulated points are wrong.
+        _, _, X_swapped_k = epi.motion_from_essential_choose_solution(E, K2, K1, x1, x2)
+        assert (X_swapped_k - X / t_norm).abs().max() > 1.0
+
+    def test_convention_relative_camera_motion_world_to_camera(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        R, t = two_view["R"], two_view["t"]
+        Ra, ta = _first_camera(device, dtype)
+        # World-to-camera extrinsics: camera 2 = (R Ra, R ta + t) sits at (R, t) from camera 1 = (Ra, ta), and the
+        # result is (R2 R1^T, t2 - R2 R1^T t1).
+        R_rel, t_rel = epi.relative_camera_motion(Ra, ta, R @ Ra, R @ ta + t)
+        self.assert_close(R_rel, R, low_tolerance=True)
+        self.assert_close(t_rel, t, low_tolerance=True)
+        # Swapping the cameras gives the inverse motion, far from (R, t) on this fixture.
+        R_sw, t_sw = epi.relative_camera_motion(R @ Ra, R @ ta + t, Ra, ta)
+        self.assert_close(R_sw, R.transpose(-2, -1), low_tolerance=True)
+        self.assert_close(t_sw, -R.transpose(-2, -1) @ t, low_tolerance=True)
+        assert (R_sw - R).abs().max() > 0.1 and (t_sw - t).abs().max() > 0.5
+
+    def test_wart_find_essential_ignores_weights_4876(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_find_essential(device, dtype)
+        # #4876: weights is documented per correspondence but ignored: an outlier with weight 0, all-zero weights and
+        # all-one weights give the same output (NaN slots compared as 0). Once weights are used these differ.
+        n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
+        p1 = torch.cat([n1, torch.tensor([[[0.4, -0.3]]], device=device, dtype=dtype)], 1)
+        p2 = torch.cat([n2, torch.tensor([[[-0.35, 0.25]]], device=device, dtype=dtype)], 1)
+        ones = torch.ones(1, 13, device=device, dtype=dtype)
+        outlier_off = ones.clone()
+        outlier_off[0, 12] = 0.0
+        E_ones = epi.find_essential(p1, p2, ones)
+        assert torch.equal(epi.find_essential(p1, p2, outlier_off).nan_to_num(0.0), E_ones.nan_to_num(0.0))
+        assert torch.equal(epi.find_essential(p1, p2, torch.zeros_like(ones)).nan_to_num(0.0), E_ones.nan_to_num(0.0))
+        # Control: the outlier does move the estimate, so a working weight would change the result.
+        E_clean = epi.find_essential(n1, n2)
+
+        def best(E):
+            real = E[0, torch.isfinite(E[0]).all(dim=-1).all(dim=-1)]
+            return min(_epipolar_residual(e[None], n1, n2).max() for e in real)
+
+        assert best(E_ones) > 1e3 * best(E_clean)
+
+    def test_wart_decompose_unbatched_t_shape_4878(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
+        # #4878: an unbatched (3, 3) input gains a batch dim on the rotations but not on t.
+        E = _gt_essential(two_view)[0]
+        R1, R2, t = epi.decompose_essential_matrix(E)
+        assert R1.shape == (1, 3, 3) and R2.shape == (1, 3, 3)
+        assert t.shape == (3, 1)
+        Rs, ts = epi.motion_from_essential(E)
+        assert Rs.shape == (1, 4, 3, 3)
+        assert ts.shape == (4, 3, 1)
+
+    def test_wart_choose_solution_all_masked_returns_candidate0_4879(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
+        K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
+        R, t = two_view["R"], two_view["t"]
+        E = _gt_essential(two_view)
+        Rs, ts = epi.motion_from_essential(E)
+        t_unit = t / t.norm(dim=-2, keepdim=True)
+        # On this E candidate 0 is not the true pose, so returning it is visibly wrong.
+        assert (Rs[:, 0] - R).abs().max() > 0.1 or (ts[:, 0] - t_unit).abs().max() > 0.1
+        # #4879: with every point masked out no candidate passes the depth test, and candidate 0 comes back unflagged.
+        mask = torch.zeros(1, 12, dtype=torch.bool, device=device)
+        R_out, t_out, _ = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2, mask=mask)
+        assert torch.equal(R_out, Rs[:, 0]) and torch.equal(t_out, ts[:, 0])
+        # Control: one unmasked point is enough to select the true pose.
+        mask[0, 5] = True
+        R_one, t_one, _ = epi.motion_from_essential_choose_solution(E, K1, K2, x1, x2, mask=mask)
+        self.assert_close(R_one, R, rtol=1e-4, atol=1e-4)
+        self.assert_close(t_one, t_unit, rtol=1e-4, atol=1e-4)
+
+    def test_wart_decompose_no_svd_batch_non_rotations_4880(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        # #4880: the rotation normaliser sums over the whole batch, so a batch of two copies of E returns non-rotations,
+        # while the same E alone returns rotations.
+        E = _gt_essential(two_view)
+        eye = torch.eye(3, device=device, dtype=torch.float32)
+
+        def orthogonality_error(Rm):
+            Rm = Rm.float()
+            return (Rm @ Rm.transpose(-2, -1) - eye).norm(dim=(-2, -1))
+
+        R1, R2, _ = epi.decompose_essential_matrix_no_svd(E)
+        assert orthogonality_error(R1).max() < 0.25 and orthogonality_error(R2).max() < 0.25
+        R1b, R2b, _ = epi.decompose_essential_matrix_no_svd(torch.cat([E, E]))
+        assert (orthogonality_error(R1b) > 1.0).all() and (orthogonality_error(R2b) > 1.0).all()
+
+    def test_wart_choose_solution_batched_uses_element0_index_2198(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
+        K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
+        R, t = two_view["R"], two_view["t"]
+        t_unit = t / t.norm(dim=-2, keepdim=True)
+        E = _gt_essential(two_view)
+
+        def is_truth(R_out, t_out):
+            return bool((R_out - R[0]).abs().max() < 1e-4 and (t_out - t_unit[0]).abs().max() < 1e-4)
+
+        # E and -E have their true pose at different candidate indices; each alone is recovered.
+        for E_in in (E, -E):
+            R_out, t_out, _ = epi.motion_from_essential_choose_solution(E_in, K1, K2, x1, x2)
+            assert is_truth(R_out[0], t_out[0])
+        # #2198: in the batch [E, -E] with the same correspondences, element 1 gets element 0's index: a wrong pose
+        # with points behind a camera.
+        R_b, t_b, X_b = epi.motion_from_essential_choose_solution(
+            torch.cat([E, -E]), K1.expand(2, 3, 3), K2.expand(2, 3, 3), x1.expand(2, 12, 2), x2.expand(2, 12, 2)
+        )
+        assert is_truth(R_b[0], t_b[0])
+        assert not is_truth(R_b[1], t_b[1])
+        assert (X_b[1, :, 2] < 0).any()
+
+    def test_wart_find_essential_no_real_root_identity_4883(self, device, dtype):
+        _skip_find_essential(device, dtype)
+        # #4883: a five-point sample with no real root returns ten identity matrices instead of NaN slots. Sample:
+        #   g = torch.Generator().manual_seed(0)
+        #   p1 = torch.randn(4000, 5, 2, generator=g, dtype=torch.float64) * 0.5  # then p2 from the same g
+        #   p1[1371], p2[1371]
+        p1 = torch.tensor(_NO_REAL_ROOT_P1, device=device, dtype=dtype)[None]
+        p2 = torch.tensor(_NO_REAL_ROOT_P2, device=device, dtype=dtype)[None]
+        E = epi.find_essential(p1, p2)
+        assert torch.equal(E, torch.eye(3, device=device, dtype=dtype).expand(1, 10, 3, 3))

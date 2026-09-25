@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.constants import DataKey, Resample
 
 from testing.base import BaseTester, supports_2d_border_padding, supports_bilinear_2d_grid_sample
 
@@ -407,6 +408,30 @@ class TestGeometricCropConventions(BaseTester):
         default = K.RandomResizedCrop((4, 4), resample="nearest", p=1.0)(image, params=params)
         explicit = K.RandomResizedCrop((4, 4), resample="nearest", align_corners=None, p=1.0)(image, params=params)
         assert torch.equal(default, explicit)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("resample", ["nearest", "bilinear", "bicubic"])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_convention_random_resized_crop_mask_override_none_follows_module_4854(
+        self, cropping_mode, resample, align_corners, nested
+    ):
+        # #4854: a mask override with align_corners=None means the module's align_corners in both cropping modes.
+        # Slice mode used to leave it None, which interpolate reads as False, so with the default
+        # align_corners=True a bilinear or bicubic mask no longer lined up with the image.
+        image = torch.rand(2, 1, 16, 16)
+        aug = K.RandomResizedCrop(
+            (11, 11), resample=resample, align_corners=align_corners, cropping_mode=cropping_mode, p=1.0
+        )
+        inner = K.AugmentationSequential(aug, data_keys=["input", "mask"]) if nested else aug
+        seq = K.AugmentationSequential(
+            inner,
+            data_keys=["input", "mask"],
+            extra_args={DataKey.MASK: {"resample": Resample.get(resample), "align_corners": None}},
+        )
+        output, mask = seq(image, image.clone())
+        self.assert_close(mask, output)
 
     def test_convention_resize_side_policies_and_inverse(self, device, dtype):
         x = torch.arange(70, device=device, dtype=dtype).reshape(1, 1, 7, 10)

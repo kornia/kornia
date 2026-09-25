@@ -48,8 +48,8 @@ class RANSAC(nn.Module):
           ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no sample reaches consensus.
         - For the four point models, ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for
           ``"essential"``): a correspondence is an inlier when its one-way transfer error for ``"homography"``,
-          or its Sampson distance for the fundamental and essential models, is at most ``inl_th``.
-          :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV.
+          or its Sampson distance for ``"fundamental"``, ``"fundamental_7pt"`` and ``"essential"``, is at most
+          ``inl_th``. :ref:`two-view-conventions` compares this with OpenCV.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
           draws from the global generator.
         - Known defects: for ``"homography_from_linesegments"`` the error is the perpendicular distance times the
@@ -59,8 +59,7 @@ class RANSAC(nn.Module):
           (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); ``score_type="msac"`` uses its score as an
           inlier count, so with outliers present it can return no model where ``"ransac"`` finds one
           (`#4868 <https://github.com/kornia/kornia/issues/4868>`_); ``prosac_sampling`` has no effect
-          (`#4869 <https://github.com/kornia/kornia/issues/4869>`_); the mask is ``(N, 1)`` when no model is found
-          (`#4871 <https://github.com/kornia/kornia/issues/4871>`_); and too few correspondences for
+          (`#4869 <https://github.com/kornia/kornia/issues/4869>`_); and too few correspondences for
           ``"fundamental_7pt"`` and ``"essential"`` are not rejected by the input check and fail inside sampling
           (`#4872 <https://github.com/kornia/kornia/issues/4872>`_).
 
@@ -387,15 +386,14 @@ class RANSAC(nn.Module):
 
         Returns:
             - Estimated model, shape of :math:`(3, 3)`; all zeros when no model is found.
-            - The inlier mask, shape of :math:`(N,)`, where N is number of input correspondences; the class
-              docstring lists its shape when no model is found.
+            - The inlier mask, shape of :math:`(N,)`, where N is number of input correspondences.
 
         """
         self.validate_inputs(kp1, kp2, weights)
         best_score_total: float = float(self.minimal_sample_size)
         num_tc: int = len(kp1)
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
-        inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
+        inliers_best_total: torch.Tensor = torch.zeros(num_tc, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
             idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i, kp1.device)

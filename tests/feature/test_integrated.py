@@ -104,7 +104,7 @@ class TestGetLAFDescriptorsEmptyPath(BaseTester):
             torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
         )
         non_empty = kornia.feature.get_laf_descriptors(img, laf, desc, 32)
-        with pytest.warns(UserWarning):
+        with pytest.warns(UserWarning, match=r"LAF contains no keypoints"):
             empty = kornia.feature.get_laf_descriptors(
                 img, torch.zeros(1, 0, 2, 3, device=device, dtype=dtype), desc, 32
             )
@@ -141,7 +141,7 @@ class TestGetLAFDescriptorsEmptyPath(BaseTester):
             torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
         )
         non_empty = kornia.feature.get_laf_descriptors(img, laf, desc, 32)
-        with pytest.warns(UserWarning):
+        with pytest.warns(UserWarning, match=r"LAF contains no keypoints"):
             empty = kornia.feature.get_laf_descriptors(
                 img, torch.zeros(1, 0, 2, 3, device=device, dtype=dtype), desc, 32
             )

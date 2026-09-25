@@ -34,8 +34,8 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - The coefficients of :func:`solve_quadratic`, :func:`solve_cubic` and :func:`solve_quartic` are batched
-          ``(B, k + 1)`` for degree ``k``, highest degree first;
-          :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with ``numpy.roots``.
+          ``(B, k + 1)`` for degree ``k``, highest degree first; :ref:`two-view-conventions` compares this with
+          ``numpy.roots``.
         - Only real roots are returned, and a repeated root is repeated. A missing real root is reported as
           ``0.0``, which is indistinguishable from a root at 0, so count real roots from the discriminant when
           it matters.
@@ -98,9 +98,8 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     Convention:
         - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
           and a single real root is in slot 0.
-        - Known defects: float16 input returns NaN for some cubics, such as ``x^3 - 0.003x``
-          (`#4856 <https://github.com/kornia/kornia/issues/4856>`_); and with a zero leading coefficient, a
-          linear equation gets the root ``1.0`` and ``bx^2 + d`` returns zeros
+        - Known defects: with a zero leading coefficient, a linear equation gets the root ``1.0`` and
+          ``bx^2 + d`` returns zeros
           (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
 
     Args:
@@ -114,6 +113,10 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         >>> roots = solve_cubic(coeffs)
 
     .. note::
+       ``float16`` and ``bfloat16`` cubics are solved in ``float32`` and the roots are cast back to
+       the input dtype.
+
+    .. note::
        At the acos boundary reached by a repeated (or near-repeated) real root, backward suppresses
        the derivative of the acos argument to keep gradients finite. Repeated-root derivatives are
        undefined; this is a surrogate convention, not a mathematical Jacobian. :func:`solve_quartic`
@@ -121,6 +124,13 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
+
+    # In float16, Q^3 underflows to 0 for |Q| below about 4e-3. With R == 0 that makes D == 0, so
+    # the D <= 0 branch divides 0 by sqrt(0) when Q < 0 and takes sqrt(-Q) of a positive Q when
+    # Q > 0: every root comes back NaN. Solve half-precision cubics in float32 and return the roots
+    # in the input dtype, as solve_quartic does for its Ferrari path.
+    if coeffs.dtype in (torch.float16, torch.bfloat16):
+        return solve_cubic(coeffs.float()).to(coeffs.dtype)
 
     _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
 
@@ -343,7 +353,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Normalized coefficients: x^4 + A*x^3 + B*x^2 + C*x + D = 0
     # The Ferrari intermediates overflow or quantize too coarsely in half dtypes even when the
     # final roots are representable. Keep the public half-precision contract while evaluating the
-    # quartic-only path in float32; the cubic fallback above remains in the input dtype.
+    # quartic-only path in float32; the cubic fallback above does the same inside solve_cubic.
     quartic_coeffs = coeffs[mask_quartic]
     if coeffs.dtype in (torch.float16, torch.bfloat16):
         quartic_coeffs = quartic_coeffs.float()

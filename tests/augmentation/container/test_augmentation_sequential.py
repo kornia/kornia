@@ -1289,19 +1289,25 @@ class TestConventionAugmentationSequential(BaseTester):
         assert shape(True, False) == (3, 6, 8)
 
     @pytest.mark.parametrize("factory", [lambda: K.RandomAffine(30.0, p=1.0), lambda: K.RandomElasticTransform(p=1.0)])
-    def test_wart_extra_args_mask_resample_must_be_a_resample_member_4815(self, factory, device, dtype):
-        # #4815: flips when the container normalizes a string override as the constructors do, or rejects it with
-        # a kornia error.
+    def test_extra_args_mask_resample_accepts_a_string_or_int_4815(self, factory, device, dtype):
+        # #4815: the container normalizes a `resample` override as the constructors do.
         image = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
-        for resample, raises in ((Resample.NEAREST, False), ("nearest", True)):
+        masks = []
+        for resample in (Resample.NEAREST, "nearest", "NEAREST", 0):
             seq = K.AugmentationSequential(
                 factory(), data_keys=["input", "mask"], extra_args={DataKey.MASK: {"resample": resample}}
             )
-            if raises:
-                with pytest.raises(AttributeError):
-                    seq(image, image.clone())
-            else:
-                assert seq(image, image.clone())[1].shape == image.shape
+            assert seq.extra_args[DataKey.MASK]["resample"] is Resample.NEAREST
+            torch.manual_seed(0)
+            masks.append(seq(image, image.clone())[1])
+        for mask in masks[1:]:
+            assert torch.equal(mask, masks[0])
+
+    def test_extra_args_rejects_an_unknown_resample_4815(self):
+        with pytest.raises(KeyError):
+            K.AugmentationSequential(
+                K.RandomAffine(30.0, p=1.0), data_keys=["input", "mask"], extra_args={DataKey.MASK: {"resample": "foo"}}
+            )
 
     def test_extra_args_mask_override_reaches_the_sampler_4419(self, device, dtype):
         # #4419: both halves of `extra_args[DataKey.MASK]` reach the sampler; `RandomElasticTransform`, which has

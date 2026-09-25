@@ -33,6 +33,11 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
         self.domain = domain
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # The draw is truncated to an index into the Planckian table, so keep it in
+        # float32: half-precision torch.rand on MPS can return exactly 1.0, which
+        # would give an index one past the end (#4553).
+        if dtype in (torch.float16, torch.bfloat16):
+            dtype = torch.float32
         idx_range = _range_bound(self.domain, "idx_range", device=device, dtype=dtype)
 
         _joint_range_check(idx_range, "idx_range", (0, self.domain[1]))

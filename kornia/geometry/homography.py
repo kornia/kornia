@@ -212,10 +212,11 @@ def find_homography_dlt(
 
     Convention:
         - ``H`` maps ``points1`` to ``points2``, ``points2 ~ H @ points1``, and is scaled so that
-          ``H[2, 2] = 1``; :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV.
+          ``H[2, 2] = 1``; :ref:`two-view-conventions` compares this with OpenCV.
         - ``weights`` scale each correspondence's equations: a weight of 0 removes the correspondence from the
           equations, and only relative weights matter.
-        - ``solver="lu"`` and ``"svd"`` give the same homography to roundoff on exact data.
+        - ``solver="lu"`` and ``"svd"`` give the same homography on exact data, to roundoff scaled by the
+          conditioning of the system; on noisy data they solve different least-squares problems and differ.
         - Known defects: a zero-weight correspondence still enters the point normalisation, so on noisy data it
           moves the result (`#4890 <https://github.com/kornia/kornia/issues/4890>`_).
 
@@ -412,7 +413,9 @@ def find_homography_lines_dlt(
           flattened ``(B, 2N, 2)`` endpoint list, not from the segment's own start and end, so the estimate is
           correct when the endpoints are themselves point correspondences but not when an endpoint is slid along
           its line, and a zero weight does not remove its segment
-          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_).
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); the endpoints of a zero-weight segment also
+          enter the point normalisation, as in :func:`find_homography_dlt`
+          (`#4890 <https://github.com/kornia/kornia/issues/4890>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or

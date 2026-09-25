@@ -102,7 +102,7 @@ TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 DEVICE_DTYPE_BLACKLIST: set[tuple[str, ...]] = set()
 
 
-@pytest.fixture()
+@pytest.fixture
 def device(device_name) -> torch.device:
     """Return device for testing, skipping if device is unavailable."""
     if device_name not in TEST_DEVICES:
@@ -110,7 +110,7 @@ def device(device_name) -> torch.device:
     return TEST_DEVICES[device_name]
 
 
-@pytest.fixture()
+@pytest.fixture
 def restore_torch_rng():
     """Keep explicitly opted-in tests from shifting later CPU/CUDA/MPS random draws (#4446)."""
     cpu_state = torch.random.get_rng_state()
@@ -127,13 +127,13 @@ def restore_torch_rng():
             torch.mps.set_rng_state(mps_state)
 
 
-@pytest.fixture()
+@pytest.fixture
 def dtype(dtype_name) -> torch.dtype:
     """Return dtype for testing."""
     return TEST_DTYPES[dtype_name]
 
 
-@pytest.fixture()
+@pytest.fixture
 def torch_optimizer(optimizer_backend):
     """Return torch optimizer based on backend selection.
 
@@ -153,7 +153,7 @@ def torch_optimizer(optimizer_backend):
     return partial(torch.compile, backend=optimizer_backend)
 
 
-@pytest.fixture()
+@pytest.fixture
 def cudnn_tf32_follows_option(request):
     """Compute convolutions in real float32 on CUDA, so a float32 tolerance means float32.
 
@@ -883,7 +883,7 @@ def _isolated_test_rng(seed: int):
         torch.random.set_rng_state(torch_state)
 
 
-@pytest.fixture()
+@pytest.fixture
 def test_rng_seed(request) -> int:
     """Return the stable seed for this pytest node without changing global RNG state."""
     return seed_test_rng(request.node.nodeid)

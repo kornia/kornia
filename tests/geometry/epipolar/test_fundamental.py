@@ -24,6 +24,7 @@ import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
+from testing.two_view import two_view_scene
 
 
 class TestNormalizePoints(BaseTester):
@@ -275,7 +276,7 @@ class TestFindFundamental(BaseTester):
                 error = epi.sampson_epipolar_distance(x1, x2, F)
                 self.assert_close(error, torch.zeros((F.shape[0], 7), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.xfail()
+    @pytest.mark.xfail
     def test_epipolar_constraint_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
         x1 = scene["x1"][:, :7, :]
@@ -555,3 +556,240 @@ class TestGetClosestPointOnEpipolarLine(BaseTester):
         pts2 = torch.rand(2, 4, 2, device=device, dtype=torch.float64)
         Fm = create_random_fundamental_matrix(1, dtype=torch.float64, device=device)
         self.gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), requires_grad=(True, False, False))
+
+
+_NO_HALF_EIGH = "find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel"
+_HALF_PIXEL_F = (
+    "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
+    "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
+)
+# Fixed pixel offsets added to x2 where a pin needs inexact matches.
+_NOISE = [
+    [1.5, -2.0], [-2.5, 1.0], [0.5, 3.0], [-1.0, -1.5], [2.0, 0.5], [-3.0, 2.5],
+    [1.0, -0.5], [-0.5, -3.0], [2.5, 1.5], [-2.0, -2.5], [3.0, -1.0], [-1.5, 2.0],
+]  # fmt: skip
+
+
+def _skip_half(dtype: torch.dtype, reason: str) -> None:
+    if dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(reason)
+
+
+def _hom(p: torch.Tensor) -> torch.Tensor:
+    return torch.cat([p, torch.ones_like(p[..., :1])], -1)
+
+
+def _epipolar_residual(F: torch.Tensor, pts1: torch.Tensor, pts2: torch.Tensor) -> torch.Tensor:
+    """|pts2^T F pts1| per correspondence."""
+    return (_hom(pts2) * (_hom(pts1) @ F.transpose(-2, -1))).sum(-1).abs()
+
+
+def _pixel_F(scene: Dict[str, torch.Tensor]) -> torch.Tensor:
+    """Ground-truth F of the two-view fixture in closed form, scaled so that F[2, 2] = 1."""
+    eye = torch.eye(3, device=scene["R"].device, dtype=scene["R"].dtype)[None]
+    E = epi.essential_from_Rt(eye, torch.zeros_like(scene["t"]), scene["R"], scene["t"])
+    F = epi.fundamental_from_essential(E, scene["K1"], scene["K2"])
+    return F / F[..., 2:, 2:]
+
+
+class TestConventionFundamental(BaseTester):
+    def test_convention_find_fundamental_acts_x2_F_x1(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_EIGH)
+        x1, x2 = two_view["x1"], two_view["x2"]
+        F = epi.find_fundamental(x1, x2, torch.ones_like(x1[..., 0]))
+        # x2^T F x1 = 0 for points1 from the first image and points2 from the second (OpenCV's findFundamentalMat
+        # order). The swapped product is the control: on this fixture it is of order 1.
+        assert _epipolar_residual(F, x1, x2).max() < 1e-3 * _epipolar_residual(F, x2, x1).max()
+        # Relabelling the images returns the transpose.
+        self.assert_close(epi.find_fundamental(x2, x1), F.transpose(-2, -1), rtol=1e-4, atol=1e-4)
+        # The result is scaled so that F[2, 2] = 1.
+        self.assert_close(F[..., 2, 2], torch.ones_like(F[..., 2, 2]))
+
+    def test_convention_find_fundamental_7point_candidates(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_EIGH)
+        # A 7-point sample whose cubic has three real roots, so all three candidates are genuine solutions.
+        idx = [0, 1, 2, 3, 4, 5, 6]
+        x1, x2 = two_view["x1"][:, idx], two_view["x2"][:, idx]
+        F = epi.find_fundamental(x1, x2, method="7POINT")
+        assert F.shape == (1, 3, 3, 3)
+        for k in range(3):
+            Fk = F[:, k]
+            assert _epipolar_residual(Fk, x1, x2).max() < 1e-3 * _epipolar_residual(Fk, x2, x1).max()
+            sv = torch.linalg.svdvals(Fk.cpu().double())
+            assert sv[..., 2] < 1e-8 * sv[..., 0]  # rank 2
+        self.assert_close(F[..., 2, 2], torch.ones_like(F[..., 2, 2]))
+        # The candidate order carries no meaning: exactly one candidate fits all twelve points, so it is selected by
+        # residual, never by position.
+        fits = [bool(_epipolar_residual(F[:, k], two_view["x1"], two_view["x2"]).max() < 1e-2) for k in range(3)]
+        assert sum(fits) == 1
+        # Relabelling the images returns the transposed candidates, as a set.
+        Fs = epi.find_fundamental(x2, x1, method="7POINT").transpose(-2, -1)
+        dist = (F[0, :, None] - Fs[0, None]).abs().amax(dim=(-2, -1))
+        assert dist.amin(dim=1).max() < 1e-3
+
+    def test_convention_find_fundamental_weights_semantics(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_EIGH)
+        x1 = two_view["x1"]
+        x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
+        w = torch.tensor([[0.5, 1.0, 2.0, 1.5, 0.75, 1.25, 3.0, 0.25, 1.0, 2.5, 0.6, 1.8]], device=device, dtype=dtype)
+        F_w = epi.find_fundamental(x1, x2, w)
+        # Only the ratios of the weights matter: scaling them all by 7 gives the same F.
+        self.assert_close(epi.find_fundamental(x1, x2, 7.0 * w), F_w, rtol=1e-4, atol=1e-4)
+        # Control: other ratios (all ones) give a different F on these inexact matches.
+        assert (epi.find_fundamental(x1, x2, torch.ones_like(w)) - F_w).abs().max() > 1e-3
+        # A negative weight counts as zero, to the bit; both differ from the original weight.
+        w_zero, w_neg = w.clone(), w.clone()
+        w_zero[0, 3], w_neg[0, 3] = 0.0, -5.0
+        F_zero = epi.find_fundamental(x1, x2, w_zero)
+        assert torch.equal(epi.find_fundamental(x1, x2, w_neg), F_zero)
+        assert (F_zero - F_w).abs().max() > 1e-3
+        # method="7POINT" ignores the weights: a zero and a negative weight, which would drop a constraint from a
+        # weighted minimal system, leave the three candidates unchanged to the bit.
+        x1_7, x2_7 = x1[:, :7], two_view["x2"][:, :7]
+        w7 = torch.tensor([[1.0, 0.0, -2.0, 5.0, 0.1, 3.0, 1.0]], device=device, dtype=dtype)
+        F7 = epi.find_fundamental(x1_7, x2_7, method="7POINT")
+        assert torch.equal(epi.find_fundamental(x1_7, x2_7, w7, method="7POINT"), F7)
+
+    def test_convention_fundamental_from_projections_direction_and_scale(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        if dtype == torch.float16:
+            pytest.skip("float16 overflows to inf on pixel-unit projection matrices (#4877)")
+        _skip_half(dtype, _HALF_PIXEL_F)
+        x1, x2 = two_view["x1"], two_view["x2"]
+        F = epi.fundamental_from_projections(two_view["P1"], two_view["P2"])
+        # x2^T F x1 = 0 for (P1, P2): points1 from the first camera, the order of find_fundamental.
+        F_unit = F / F.norm()
+        assert _epipolar_residual(F_unit, x1, x2).max() < 1e-3 * _epipolar_residual(F_unit, x2, x1).max()
+        # Control: swapping the cameras gives the transposed relation, which fails on (x1, x2).
+        F_sw = epi.fundamental_from_projections(two_view["P2"], two_view["P1"])
+        F_sw_unit = F_sw / F_sw.norm()
+        assert _epipolar_residual(F_sw_unit, x1, x2).max() > 1e3 * _epipolar_residual(F_unit, x1, x2).max()
+        # Not normalised: neither F[2, 2] = 1 nor unit Frobenius norm.
+        assert (F[..., 2, 2] - 1.0).abs().max() > 1.0 and (F.norm() - 1.0).abs() > 1.0
+        # For P1 = [I | 0], P2 = [R | t] it is the negative of essential_from_Rt for the same motion, at its scale.
+        R, t = two_view["R"], two_view["t"]
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        zero = torch.zeros_like(t)
+        F_n = epi.fundamental_from_projections(torch.cat([eye, zero], -1), torch.cat([R, t], -1))
+        E = epi.essential_from_Rt(eye, zero, R, t)
+        self.assert_close(F_n, -E)
+        assert (F_n - E).abs().max() > 0.5
+
+    def test_convention_fundamental_from_essential_K_sides(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _HALF_PIXEL_F)
+        K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        E = epi.essential_from_Rt(eye, torch.zeros_like(two_view["t"]), two_view["R"], two_view["t"])
+        F = epi.fundamental_from_essential(E, K1, K2)
+        # F = K2^-T E K1^-1: K1 is the camera of points1, so x2^T F x1 = 0 in pixels.
+        self.assert_close(K2.transpose(-2, -1) @ F @ K1, E)
+        F_swapped = epi.fundamental_from_essential(E, K2, K1)
+        resid = _epipolar_residual(F / F.norm(), x1, x2)
+        assert resid.max() < 1e-3 * _epipolar_residual(F_swapped / F_swapped.norm(), x1, x2).max()
+
+    def test_convention_epilines_of_image1_points_lie_in_image2(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _HALF_PIXEL_F)
+        x1, x2 = two_view["x1"], two_view["x2"]
+        F = _pixel_F(two_view)
+        # Lines F x1 of first-image points live in the second image, scaled to a^2 + b^2 = 1.
+        lines = epi.compute_correspond_epilines(x1, F)
+        self.assert_close(lines[..., :2].norm(dim=-1), torch.ones_like(lines[..., 0]))
+        on, off = (_hom(x2) * lines).sum(-1).abs(), (_hom(x1) * lines).sum(-1).abs()
+        assert on.max() < 1e-3 * off.max()
+        # For second-image points pass F transposed: the lines live in the first image.
+        lines1 = epi.compute_correspond_epilines(x2, F.transpose(-2, -1))
+        self.assert_close(lines1[..., :2].norm(dim=-1), torch.ones_like(lines1[..., 0]))
+        on1, off1 = (_hom(x1) * lines1).sum(-1).abs(), (_hom(x2) * lines1).sum(-1).abs()
+        assert on1.max() < 1e-3 * off1.max()
+
+    def test_convention_normalize_points_hartley(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        # Hartley normalisation: translate to zero mean and scale isotropically to mean distance sqrt(2); the
+        # returned T maps the input onto the output. The fixture's spread differs in x and y.
+        points = two_view["x1"]
+        points_norm, T = epi.normalize_points(points)
+        mean_atol = {torch.bfloat16: 3e-2, torch.float16: 3e-3}.get(dtype, 1e-5)
+        self.assert_close(points_norm.mean(dim=1), torch.zeros_like(points_norm[:, 0]), rtol=0.0, atol=mean_atol)
+        mean_dist = points_norm.norm(dim=-1).mean(dim=-1)
+        self.assert_close(mean_dist, torch.full_like(mean_dist, 2.0**0.5))
+        self.assert_close((_hom(points) @ T.transpose(-2, -1))[..., :2], points_norm, low_tolerance=True)
+        assert T[0, 0, 0] == T[0, 1, 1]
+        assert T[0, 0, 1] == 0 and T[0, 1, 0] == 0
+
+    def test_convention_normalize_transformation_keeps_zero_last_entry(self, device, dtype):
+        # The F[2, 2] = 1 scaling skips a last entry within eps of zero, such as the F of an exactly rectified pair
+        # (x2^T F x1 = v1 - v2): the matrix comes back unchanged instead of divided by eps.
+        M = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
+        assert torch.equal(epi.normalize_transformation(M), M)
+        # Control: a last entry above eps is divided out.
+        M[0, 2, 2] = 0.5
+        self.assert_close(epi.normalize_transformation(M), M / 0.5)
+
+    def test_convention_get_closest_point_on_epipolar_line_in_image2(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _HALF_PIXEL_F)
+        x1 = two_view["x1"]
+        x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
+        F = _pixel_F(two_view)
+        # The result lies in the second image, on the epiline F x1, at the foot of the perpendicular from x2.
+        closest = epi.get_closest_point_on_epipolar_line(x1, x2, F)
+        lines = epi.compute_correspond_epilines(x1, F)
+        assert (_hom(closest) * lines).sum(-1).abs().max() < 1e-3
+        self.assert_close((closest - x2).norm(dim=-1), epi.left_to_right_epipolar_distance(x1, x2, F))
+        # Control: with the arguments swapped the point is off that line by pixels.
+        swapped = epi.get_closest_point_on_epipolar_line(x2, x1, F)
+        assert (_hom(swapped) * lines).sum(-1).abs().max() > 1.0
+
+    def test_wart_run_7point_padded_roots_returned_4862(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_EIGH)
+        # #4862: a 7-point sample whose cubic has one real root. The solver pads the two missing roots with 0.0 and the
+        # validity mask never fires, so candidates 1 and 2 are the same rank-3 matrix instead of being zeroed.
+        # Any fix (zeros, NaN, or fewer candidates) makes these assertions fail.
+        idx = [0, 1, 2, 3, 4, 6, 10]
+        F = epi.find_fundamental(two_view["x1"][:, idx], two_view["x2"][:, idx], method="7POINT")
+        assert F.shape == (1, 3, 3, 3)
+        assert torch.equal(F[:, 1], F[:, 2])
+        sv = torch.linalg.svdvals(F[0].cpu().double())
+        assert sv[0, 2] < 1e-8 * sv[0, 0]  # candidate 0 is a genuine rank-2 solution
+        assert (sv[1:, 2] > 1e-7 * sv[1:, 0]).all()  # the padded candidates are rank 3
+
+    def test_wart_normalize_transformation_eps_divisor_4874(self, device, dtype):
+        # #4874: the divisor is M[2, 2] + eps, so the last entry is 1 only to eps / |M[2, 2]|.
+        M = torch.tensor([[[2.0, 0.5, 3.0], [-1.0, 4.0, 0.25], [0.75, -2.0, 0.1]]], device=device, dtype=dtype)
+        out = epi.normalize_transformation(M, eps=1e-3)
+        assert (out[0, 2, 2] - 1.0).abs() > 5e-3
+        if dtype != torch.float16:  # float16 rounds 1e-6 + 1e-8 back to 1e-6
+            M[0, 2, 2] = 1e-6
+            assert (epi.normalize_transformation(M)[0, 2, 2] - 1.0).abs() > 5e-3
+
+    def test_wart_find_fundamental_zero_weight_changes_result_4875(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        _skip_half(dtype, _NO_HALF_EIGH)
+        # #4875: a correspondence with weight 0 leaves the linear system but still enters the Hartley
+        # normalisation, so a far outlier with weight 0 moves the estimate. Once fixed, the two estimates agree.
+        x1 = two_view["x1"]
+        x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
+        outlier1 = torch.tensor([[[2000.0, -1500.0]]], device=device, dtype=dtype)
+        outlier2 = torch.tensor([[[-1800.0, 2500.0]]], device=device, dtype=dtype)
+        weights = torch.ones(1, 13, device=device, dtype=dtype)
+        weights[0, 12] = 0.0
+        F_weighted = epi.find_fundamental(torch.cat([x1, outlier1], 1), torch.cat([x2, outlier2], 1), weights)
+        F_dropped = epi.find_fundamental(x1, x2)
+        err_weighted = epi.sampson_epipolar_distance(x1, x2, F_weighted).mean()
+        err_dropped = epi.sampson_epipolar_distance(x1, x2, F_dropped).mean()
+        assert err_weighted > 2.0 * err_dropped
+
+    def test_wart_fundamental_from_projections_float16_overflow_4877(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        if dtype != torch.float16:
+            pytest.skip("the overflow is float16's: bfloat16, float32 and float64 hold pixel-unit 4x4 determinants")
+        # #4877: the 4x4 determinants of pixel-unit projection matrices exceed float16's range, so F holds inf.
+        F = epi.fundamental_from_projections(two_view["P1"], two_view["P2"])
+        assert F.dtype == torch.float16
+        assert torch.isinf(F).any()

@@ -17,7 +17,7 @@
 
 """Module containing functionalities for the Essential matrix."""
 
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import torch
 
@@ -50,8 +50,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     and the solver implemented referred to [@barath2020magsac++][@wei2023generalized][@wang2023vggsfm].
 
     Args:
-        points1: A set of carlibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
+        points1: A set of calibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
         weights: Not used, kept for compatibility.
 
     Returns:
@@ -193,6 +193,56 @@ def _fun_select(mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tens
     return mat[:, ratio * j + i]
 
 
+class _NullSpaceBasis(torch.autograd.Function):
+    r"""The four right singular vectors of ``X`` with the smallest singular values, differentiably.
+
+    ``torch.linalg.svd`` leaves the right singular vectors past ``min(N, 9)`` without a gradient, and
+    for fewer than 9 points some or all of the four the 5-point solver uses are exactly those, so the
+    backward pass silently dropped their gradient (all of it for ``N = 5``). This is used for
+    ``N < 9`` only.
+
+    The candidates depend only on the subspace the four vectors span, not on the basis chosen within
+    it, so the backward differentiates the subspace. With
+    :math:`X^\top X = \sum_j \lambda_j v_j v_j^\top`, each basis vector :math:`v_i` moves only out of
+    the subspace :math:`S`, by
+    :math:`dv_i = \sum_{j \notin S} v_j \, v_j^\top d(X^\top X) \, v_i / (\lambda_i - \lambda_j)`.
+    That needs a gap between the fourth and fifth smallest singular values. Without one the subspace
+    itself is not unique, and a nonzero incoming gradient gives a gradient that is not finite, as for
+    ``torch.linalg.svd``; a zero incoming gradient, as from a sample whose candidates were discarded,
+    gives zero. The forward pass is the same ``_torch_svd_cast`` call as before, so its result is
+    unchanged.
+    """
+
+    # forward and setup_context are separate, so torch.func transforms (grad, vjp, jacrev) accept it
+    @staticmethod
+    def forward(X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        _, S, V = _torch_svd_cast(X)  # V: (B, 9, 9)
+        return V[:, :, -4:].contiguous(), S, V  # (B, 9, 4); S and V are returned only to be saved
+
+    @staticmethod
+    def setup_context(ctx: Any, inputs: Tuple[torch.Tensor], output: Tuple[torch.Tensor, ...]) -> None:
+        (X,) = inputs
+        _, S, V = output
+        ctx.mark_non_differentiable(S, V)
+        ctx.save_for_backward(X, S, V)
+
+    @staticmethod
+    def backward(ctx: Any, grad_basis: torch.Tensor, _grad_S: Any, _grad_V: Any) -> torch.Tensor:
+        X, S, V = ctx.saved_tensors
+        work = torch.float64 if X.dtype == torch.float32 and X.device.type != "mps" else X.dtype
+        X_, S_, V_, g = X.to(work), S.to(work), V.to(work), grad_basis.to(work)
+        # eigenvalues of X^T X in the order of V's columns; the columns past min(N, 9) have eigenvalue 0
+        lam = torch.cat((S_ * S_, S_.new_zeros(S_.shape[0], V_.shape[-1] - S_.shape[-1])), dim=-1)
+        V_out, V_in = V_[:, :, :-4], V_[:, :, -4:]
+        gap = lam[:, -4:].unsqueeze(-2) - lam[:, :-4].unsqueeze(-1)  # (B, 5, 4): lambda_i - lambda_j
+        num = V_out.transpose(-1, -2) @ g
+        # A zero incoming gradient contributes nothing, also where there is no gap: a sample whose
+        # candidates were discarded then gets a zero gradient instead of 0 / 0.
+        K = torch.where(num == 0, torch.zeros_like(num), num / gap)
+        M = V_out @ K @ V_in.transpose(-1, -2)  # dL = <dG, M>
+        return (X_ @ (M + M.transpose(-1, -2))).to(X.dtype)
+
+
 def _null_to_Nister_solution_script(
     X: torch.Tensor,
     batch_size: int,
@@ -210,9 +260,14 @@ def _null_to_Nister_solution_script(
 ) -> torch.Tensor:
     original_dtype = X.dtype
 
-    _, _, V = _torch_svd_cast(X)  # V: (B, 9, 9)
-    null_ = V[:, :, -4:].contiguous()  # (B, 9, 4)
-    nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
+    if X.shape[-2] < 9:
+        null_ = _NullSpaceBasis.apply(X)[0]  # (B, 9, 4)
+        nullSpace = null_.transpose(-1, -2)  # (B, 4, 9)
+    else:
+        # every right singular vector has a gradient in torch.linalg.svd itself
+        _, _, V = _torch_svd_cast(X)  # V: (B, 9, 9)
+        null_ = V[:, :, -4:].contiguous()  # (B, 9, 4)
+        nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
 
     B = batch_size
     device = X.device
@@ -455,6 +510,10 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 
     Uses the method from Hartley/Zisserman 9.6 pag 257 (formula 9.12).
 
+    Convention:
+        - :math:`E = K_2^\top F K_1` with ``K1`` the camera of the first image, so ``E`` follows the
+          :math:`x_2^\top E x_1 = 0` order of :func:`find_essential`; it keeps the scale of ``F_mat``.
+
     Args:
         F_mat: The fundamental matrix with shape of :math:`(*, 3, 3)`.
         K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
@@ -479,6 +538,9 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
     :func:`decompose_essential_matrix` and :func:`motion_from_essential`. The projection averages
     the two largest singular values and zeroes the smallest one.
 
+    Convention:
+        - The result is not normalised to unit Frobenius norm, unlike the candidates of :func:`find_essential`.
+
     Args:
         E_mat: The matrices to project with shape :math:`(*, 3, 3)`.
 
@@ -502,12 +564,22 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     This function decomposes the essential matrix E using svd decomposition [96]
     and give the possible solutions: :math:`R1, R2, t`.
 
+    Convention:
+        - Returns two rotations and a unit translation; the true pose is one of :math:`(R_1, \pm t)`,
+          :math:`(R_2, \pm t)`. :math:`(R_1, -t)` and :math:`(R_2, t)` give :math:`[t]_\times R` with the sign
+          of ``E_mat``, :math:`(R_1, t)` and :math:`(R_2, -t)` the opposite sign. Which of the four is the true
+          pose is not fixed: it can change when ``E_mat`` is negated or rescaled. Select by cheirality with
+          :func:`motion_from_essential_choose_solution`; :ref:`two-view geometry <two-view-conventions>`
+          compares OpenCV's labels.
+        - Known defects: a ``(3, 3)`` input returns rotations of shape ``(1, 3, 3)`` but ``t`` of shape
+          ``(3, 1)`` (`#4878 <https://github.com/kornia/kornia/issues/4878>`_).
+
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
     Returns:
-       A tuple containing the first and second possible rotation matrices and the translation vector.
-       The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
+       A tuple containing the first and second possible rotation matrices and the translation vector,
+       with shapes :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]` for an input with a batch dimension.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -542,16 +614,21 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Decompose the essential matrix to rotation and translation.
 
-       Recover rotation and translation from essential matrices without SVD
-      reference: Horn, Berthold KP. Recovering baseline and orientation from essential matrix[J].
-      J. Opt. Soc. Am, 1990, 110.
+    Recovers the rotations and translation from an essential matrix without SVD.
+    Reference: Horn, Berthold KP. Recovering baseline and orientation from essential matrix[J].
+    J. Opt. Soc. Am, 1990, 110.
+
+    Convention:
+        - Same candidate set as :func:`decompose_essential_matrix`, with ``t`` of unit norm.
+        - Known defects: the rotations are wrong for a batch of more than one matrix
+          (`#4880 <https://github.com/kornia/kornia/issues/4880>`_).
 
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
     Returns:
-       A tuple containing the first and second possible rotation matrices and the translation vector.
-       The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
+       A tuple containing the first and second possible rotation matrices and the translation vector, with
+       shapes :math:`[(B, 3, 3), (B, 3, 3), (B, 3, 1)]`: all leading dims are flattened into one batch dim.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -613,6 +690,11 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
 
     Reference: Hartley/Zisserman 9.6 pag 257 (formula 9.12)
 
+    Convention:
+        - Returns :math:`[t]_\times R` for the relative motion ``(R, t)`` of :func:`relative_camera_motion`, so
+          :math:`x_2^\top E x_1 = 0` in normalised camera coordinates. It is not normalised:
+          :math:`\|E\|_F = \sqrt{2} \|t\|`.
+
     Args:
         R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
         t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
@@ -642,6 +724,12 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
 
     Computes and return four possible poses exist for the decomposition of the Essential
     matrix. The possible solutions are :math:`[R1,t], [R1,-t], [R2,t], [R2,-t]`.
+
+    Convention:
+        - The candidates of :func:`decompose_essential_matrix` are stacked on dim ``-3`` in that order; which
+          index is the true pose is not fixed.
+        - Known defects: a ``(3, 3)`` input returns rotations of shape ``(1, 4, 3, 3)`` but translations of
+          shape ``(4, 3, 1)`` (`#4878 <https://github.com/kornia/kornia/issues/4878>`_).
 
     Args:
         E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -674,26 +762,32 @@ def motion_from_essential_choose_solution(
     r"""Recover the relative camera rotation and the translation from an estimated essential matrix.
 
     The method checks the corresponding points in two images and also returns the triangulated
-    3d points. Internally uses :py:meth:`~kornia.geometry.epipolar.decompose_essential_matrix` and then chooses
-    the best solution based on the combination that gives more 3d points in front of the camera plane from
+    3d points. Internally uses :py:meth:`~kornia.geometry.epipolar.decompose_essential_matrix` and
     :py:meth:`~kornia.geometry.epipolar.triangulate_points`.
 
+    Convention:
+        - ``K1`` and ``K2`` are applied inside, so ``x1`` and ``x2`` are pixel coordinates.
+        - Returns the candidate with the most points at positive depth in both cameras, with
+          :math:`\|t\| = 1`, and the points triangulated in the first camera's frame at that scale.
+        - Known defects: in a batch every element uses the first element's candidate
+          (`#2198 <https://github.com/kornia/kornia/issues/2198>`_); with no valid point it returns candidate 0
+          without a signal (`#4879 <https://github.com/kornia/kornia/issues/4879>`_).
+
     Args:
-        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
-        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
-        x1: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
-        x2: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
+        E_mat: The essential matrix in the form of :math:`(B, 3, 3)`, or :math:`(3, 3)` with every other input
+            unbatched too.
+        K1: The camera matrix from first camera with shape :math:`(B, 3, 3)`.
+        K2: The camera matrix from second camera with shape :math:`(B, 3, 3)`.
+        x1: The set of points in the first image with shape :math:`(B, N, 2)`.
+        x2: The set of points in the second image with shape :math:`(B, N, 2)`.
         mask: A boolean mask which can be used to exclude some points from choosing
           the best solution. This is useful for using this function with sets of points of
           different cardinality (for instance after filtering with RANSAC) while keeping batch
-          semantics. Mask is of shape :math:`(*, N)`.
+          semantics. Mask is of shape :math:`(B, N)`.
 
     Returns:
         The rotation and translation plus the 3d triangulated points.
-        The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
+        The tuple is as following :math:`[(B, 3, 3), (B, 3, 1), (B, N, 3)]`, without ``B`` for unbatched inputs.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -777,6 +871,11 @@ def relative_camera_motion(
     one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,
     the computed relative motion is :math:`T = T_{2}T^{-1}_{1}`.
 
+    Convention:
+        - Inputs are world-to-camera extrinsics, :math:`x_{cam} = R X + t` (see :doc:`camera and world
+          conventions </get-started/camera-conventions>`); the result is :math:`R = R_2 R_1^\top` and
+          :math:`t = t_2 - R_2 R_1^\top t_1`, the motion from camera 1 to camera 2.
+
     Args:
         R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
         t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
@@ -807,15 +906,29 @@ def find_essential(
 ) -> torch.Tensor:
     r"""Find essential matrices.
 
+    Convention:
+        - ``points1`` (first image) and ``points2`` (second image) are normalised camera coordinates
+          :math:`K^{-1} [u, v, 1]^\top`, not pixels; each real candidate satisfies :math:`x_2^\top E x_1 = 0`
+          in them. :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
+        - All ten slots are always returned: each real root gives a candidate of unit Frobenius norm, and each
+          complex root a ``NaN`` slot.
+        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_); a sample
+          with no real solution returns ten identity matrices instead of ``NaN``
+          (`#4883 <https://github.com/kornia/kornia/issues/4883>`_); in ``float32`` an exact five-point sample can
+          miss the true solution, which six or more correspondences recover
+          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); backward raises on some degenerate samples, such
+          as identical point sets (`#4831 <https://github.com/kornia/kornia/issues/4831>`_);
+          on MPS the 5-point solve needs the CPU fallback (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).
+
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+         weights: Accepted with a shape of :math:`(B, N)` and ignored (see Known defects).
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
-         Note that all possible solutions are returned, i.e., 10 essential matrices for each image pair.
-         To choose the best one out of 10, try to check the one with the lowest Sampson distance.
+         To choose the best one out of 10, try to check the one with the lowest Sampson distance, ignoring the
+         ``NaN`` slots.
 
     """
     return run_5point(points1, points2, weights).to(points1.dtype)
