@@ -65,35 +65,54 @@ def triangulate_points(
 ) -> torch.Tensor:
     r"""Reconstructs a bunch of points by triangulation.
 
-    Triangulates the 3d position of 2d correspondences between several images.
-    Reference: Internally it uses DLT formulation from Hartley/Zisserman 12.2 pag.312
+    Triangulates the 3d position of 2d correspondences between two images.
+    Reference: the ``"svd"`` and ``"eigh"`` solvers use the DLT formulation from Hartley/Zisserman 12.2 pag.312.
 
-    The input points are assumed to be in homogeneous coordinate system and being inliers
-    correspondences. The method does not perform any robust estimation.
+    The input points are assumed to be inlier correspondences. The method does not perform any robust
+    estimation.
+
+    Convention:
+        - ``P1`` pairs with ``points1`` and ``P2`` with ``points2``. Input and output points are Euclidean;
+          :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV. The leading
+          dimensions of ``P1`` and ``P2`` broadcast against those of the points.
+        - Cheirality and baseline are not checked: a point behind a camera is returned with negative depth, and with
+          zero baseline the depth is undefined and ``"svd"`` and ``"eigh"`` return an arbitrary point on the line of
+          sight, possibly behind the camera.
+        - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS, and
+          return the input dtype; ``solver`` below compares their accuracy.
+        - Known defects: a correspondence at infinity comes back unflagged, as a finite point at a distance set by
+          roundoff or as ``inf`` in float16 (`#4865 <https://github.com/kornia/kornia/issues/4865>`_);
+          ``solver="cofactor"`` returns NaN for pixel-scale float16 input
+          (`#4863 <https://github.com/kornia/kornia/issues/4863>`_) and can return a point unrelated to the input when a
+          :math:`3 \times 4` sub-system is rank-deficient or nearly so: with zero baseline, and for a point whose
+          row in the first image or column in the second passes through or near the epipole. Rectified stereo pairs
+          are susceptible with or without noise (`#4900 <https://github.com/kornia/kornia/issues/4900>`_).
 
     Args:
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
         P2: The projection matrix for the second camera with shape :math:`(*, 3, 4)`.
-        points1: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
-        points2: The set of points seen from the second camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
+        points1: The set of points seen from the first camera, in the image coordinates of ``P1`` (pixels
+          for ``P1 = K [R | t]``), with shape :math:`(*, N, 2)`.
+        points2: The set of points seen from the second camera, in the image coordinates of ``P2`` (pixels
+          for ``P2 = K [R | t]``), with shape :math:`(*, N, 2)`.
         solver: Back-end used to find the null vector of the :math:`4 \times 4` DLT
           constraint matrix. One of:
 
-          * ``"svd"`` — most numerically stable. Promotes to fp64 and uses a full
-            SVD (via :func:`~kornia.core.utils._torch_svd_cast`). Suitable when
+          * ``"svd"`` — most numerically stable. Uses a full SVD. Suitable when
             maximum accuracy is required regardless of speed.
           * ``"eigh"`` *(default)* — forms :math:`X^\top X` and finds the eigenvector
             for its smallest eigenvalue via :func:`torch.linalg.eigh`. Algebraically
-            equivalent to the SVD solution; slightly less numerically stable because
-            forming :math:`X^\top X` squares the singular values. Typically **10-26x
+            equivalent to the SVD solution, and equal to it to roundoff on well-conditioned
+            input; forming :math:`X^\top X` squares the singular values, so on ill-conditioned
+            rows, such as a baseline much shorter than the depth, it loses accuracy that
+            ``"svd"`` keeps. Typically **10-26x
             faster** than ``"svd"`` on GPU for large batches.
           * ``"cofactor"`` — solves two :math:`3 \times 4` sub-systems analytically
             using :func:`~kornia.geometry.solvers.null_vector_3x4` (closed-form
             cofactor expansion, no LAPACK call). The two solutions are averaged after
             normalisation. This matches the full DLT solution when the constraint
-            system is exactly consistent, but is only an approximation in the noisy
+            system is exactly consistent and both sub-systems have full rank (see the
+            known defects above), but is only an approximation in the noisy
             inconsistent case. Fastest option for all batch sizes.
 
     Returns:
@@ -102,6 +121,7 @@ def triangulate_points(
     Example:
         >>> P1 = torch.eye(3, 4)[None]   # 1x3x4
         >>> P2 = torch.eye(3, 4)[None]
+        >>> P2[..., 0, 3] = -1.0  # second camera shifted along x
         >>> pts1 = torch.rand(1, 5, 2)
         >>> pts2 = torch.rand(1, 5, 2)
         >>> pts3d = triangulate_points(P1, P2, pts1, pts2)
