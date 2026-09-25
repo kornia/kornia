@@ -213,12 +213,14 @@ def find_homography_dlt(
     Convention:
         - ``H`` maps ``points1`` to ``points2``, ``points2 ~ H @ points1``, and is scaled so that
           ``H[2, 2] = 1``; :ref:`two-view-conventions` compares this with OpenCV.
-        - ``weights`` scale each correspondence's equations: a weight of 0 removes the correspondence from the
-          equations, and only relative weights matter.
+        - ``weights`` multiply each correspondence's squared algebraic residual: a weight of 0 removes the
+          correspondence from the equations, and only relative weights matter.
         - ``solver="lu"`` and ``"svd"`` give the same homography on exact data, to roundoff scaled by the
           conditioning of the system; on noisy data they solve different least-squares problems and differ.
         - Known defects: a zero-weight correspondence still enters the point normalisation, so on noisy data it
-          moves the result (`#4890 <https://github.com/kornia/kornia/issues/4890>`_).
+          moves the result (`#4890 <https://github.com/kornia/kornia/issues/4890>`_); and ``H`` is divided by
+          ``H[2, 2] + 1e-8``, so ``H[2, 2]`` is not exactly 1, and it can be far from 1 when the true ``H[2, 2]``
+          is small (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
@@ -331,7 +333,9 @@ def find_homography_dlt_iterated(
         - Direction and ``H[2, 2] = 1`` as :func:`find_homography_dlt`. Each solve after the first re-weights
           with ``exp(-e / (2 * soft_inl_th**2))`` of the unsquared symmetric transfer error ``e``.
         - Known defects: the exponent is linear, not quadratic, in ``e``, so ``soft_inl_th`` is not a pixel
-          standard deviation (`#4870 <https://github.com/kornia/kornia/issues/4870>`_).
+          standard deviation (`#4870 <https://github.com/kornia/kornia/issues/4870>`_); those of
+          :func:`find_homography_dlt` apply (`#4874 <https://github.com/kornia/kornia/issues/4874>`_,
+          `#4890 <https://github.com/kornia/kornia/issues/4890>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
@@ -409,13 +413,13 @@ def find_homography_lines_dlt(
     Convention:
         - ``H`` maps image-1 points to image-2 points, as in :func:`find_homography_dlt`. Each segment is a
           ``[start, end]`` pair of ``(x, y)`` points, and ``weights`` has one entry per segment.
-        - Known defects: the equations of segment ``i`` are built from points ``i`` and ``N + i`` of the
-          flattened ``(B, 2N, 2)`` endpoint list, not from the segment's own start and end, so the estimate is
-          correct when the endpoints are themselves point correspondences but not when an endpoint is slid along
-          its line, and a zero weight does not remove its segment
-          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); the endpoints of a zero-weight segment also
-          enter the point normalisation, as in :func:`find_homography_dlt`
-          (`#4890 <https://github.com/kornia/kornia/issues/4890>`_).
+        - Known defects: each segment's equations are built from endpoints of two different segments, not from
+          its own start and end, so the estimate is correct only when the endpoints are themselves point
+          correspondences, and a zero weight does not remove its segment
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); the endpoints of a zero-weight segment still
+          enter the point normalisation (`#4890 <https://github.com/kornia/kornia/issues/4890>`_); and the
+          ``H[2, 2]`` scaling of :func:`find_homography_dlt` applies
+          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
@@ -493,7 +497,9 @@ def find_homography_lines_dlt_iterated(
         - Known defects: those of the three functions apply
           (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
           `#4867 <https://github.com/kornia/kornia/issues/4867>`_,
-          `#4870 <https://github.com/kornia/kornia/issues/4870>`_).
+          `#4870 <https://github.com/kornia/kornia/issues/4870>`_,
+          `#4874 <https://github.com/kornia/kornia/issues/4874>`_,
+          `#4890 <https://github.com/kornia/kornia/issues/4890>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.

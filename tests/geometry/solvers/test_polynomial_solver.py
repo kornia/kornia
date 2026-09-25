@@ -1153,3 +1153,16 @@ class TestConventionPolynomialSolvers(BaseTester):
         out = solver.solve_quartic(coeffs)
         for root in (1e-3, 2e-3):
             assert (out - root).abs().min() > 1e-2 * root
+
+    def test_wart_solve_quartic_absolute_leading_tolerance_4905(self, device, dtype):
+        # (x - 1)(x - 2)(x - 3)(x - 4), and the same row times a power of two (exact in every dtype) that brings the
+        # leading coefficient below the fallback tolerance (1e-6, or 1e-12 in float64).
+        row = torch.tensor([[1.0, -10.0, 35.0, -50.0, 24.0]], device=device, dtype=dtype)
+        scale = 2.0**-41 if dtype == torch.float64 else 2.0**-21
+        roots = torch.tensor([[1.0, 2.0, 3.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(solver.solve_quartic(row).sort(dim=-1).values, roots)
+        # #4905: the tolerance is absolute, so the scaled row is solved as the cubic that remains without x^4, and
+        # the roots 2, 3 and 4 are lost. Once the test is relative, both rows give the same roots.
+        out = solver.solve_quartic(row * scale)
+        for root in (2.0, 3.0, 4.0):
+            assert (out - root).abs().min() > 0.5

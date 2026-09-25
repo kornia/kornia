@@ -300,8 +300,10 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         - Coefficient layout and zero padding as :func:`solve_quadratic`; the roots are unordered.
         - Known defects: the solver is not scale-invariant, so a quartic whose roots are all small can lose real
           roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_);
-          and a zero leading coefficient is passed to :func:`solve_cubic`, with its defects
-          (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
+          a leading coefficient below ``1e-6`` in magnitude (``1e-12`` in float64) counts as zero whatever the
+          other coefficients are, so a small multiple of a quartic is solved as a cubic and loses its roots
+          (`#4905 <https://github.com/kornia/kornia/issues/4905>`_); and a row with a zero leading coefficient is
+          passed to :func:`solve_cubic`, with its defects (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
 
     Args:
         coeffs : The coefficients quartic equation : `(B, 5)`

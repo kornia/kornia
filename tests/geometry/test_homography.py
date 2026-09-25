@@ -842,9 +842,8 @@ class TestConventionHomography(BaseTester):
         H = iterated(*args, weights, n_iter=3)
         assert len(calls) == 3
         if dtype in (torch.float32, torch.float64):
-            # Same direction as the plain solver. In half precision the re-weighted solves do not hold it on this
-            # fixture (float16 degenerates to NaN, bfloat16 misses by pixels; the half-precision failures of
-            # TestFindHomographyDLTIter), so the direction is checked in float32/64.
+            # Same direction as the plain solver; half precision does not hold it through the re-weighted solves on
+            # this fixture.
             assert _transfer_max(H, p1, p2) < 1e-2
             assert _transfer_max(H, p2, p1) > 100.0
 
@@ -943,6 +942,26 @@ class TestConventionHomography(BaseTester):
         # ... and to the projective denominator, so the error depends on the scale of H: 1e-8 H scores tens of
         # pixels on the same exact matches.
         assert oneway_transfer_error(p1, p2, 1e-8 * H, squared=False).min() > 1.0
+
+    @pytest.mark.parametrize("model", ["points", "lines"])
+    def test_wart_find_homography_dlt_h22_eps_divisor_4874(self, model, device, dtype):
+        _skip_half(dtype, _HALF_DLT)
+        p1, p2, _ = _planar(device, dtype)
+        # The same fixture with the true H[2, 2] set to 1e-6 (a mild warp whose origin maps far out), exact matches.
+        H_small = torch.tensor([_H_TRUE], dtype=torch.float64)
+        H_small[0, 2, 2] = 1e-6
+        p2_small = kornia.geometry.transform_points(H_small, p1.cpu().double()).to(device, dtype)
+
+        def fit(dst):
+            if model == "points":
+                return find_homography_dlt(p1, dst, solver="svd")
+            return find_homography_lines_dlt(p1.reshape(1, 6, 2, 2), dst.reshape(1, 6, 2, 2))
+
+        # With the true H[2, 2] = 1 the returned entry is 1.
+        assert (fit(p2)[0, 2, 2] - 1.0).abs() < 1e-4
+        # #4874: H is divided by H[2, 2] + 1e-8, and the unnormalised entry here is a few 1e-6, so the returned
+        # H[2, 2] misses 1 by about 2e-3. Once the divisor is H[2, 2] itself, it is 1.
+        assert (fit(p2_small)[0, 2, 2] - 1.0).abs() > 1e-3
 
     @pytest.mark.parametrize("solver", ["lu", "svd"])
     def test_wart_find_homography_dlt_zero_weight_moves_normalisation_4890(self, solver, device, dtype):
