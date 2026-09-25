@@ -1,5 +1,8 @@
 # PROSAC on RoMa and ALIKED + LightGlue
 
+**Follow-up:** [CPU/CUDA time–mAA frontiers](prosac_pareto.md) expand the batch,
+refinement and dense-match experiments; the failed stopping patch is withdrawn.
+
 This follows [the SIFT/XFeat experiment](prosac_stopping.md), using stronger
 matchers from `imc2021-simple`. Estimator settings were not tuned on these pairs.
 
@@ -103,8 +106,9 @@ sole cause by this experiment. Increasing an arbitrary minimum draw count on
 these evaluation pairs would hide the problem rather than validate a fix.
 
 All 1,260 paired uniform-control matrices and masks were identical between
-revisions. There were no measurement errors. The current runtime implementation
-is retained as an experimental branch for reproducing this negative result;
+revisions. There were no measurement errors. The experimental implementation
+remains available at commit `cbf98d55` for
+reproducing this negative result; the working branch restores the merged #4902 runtime.
 **`cbf98d55` should not be merged as a validated PROSAC improvement**.
 
 

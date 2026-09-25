@@ -80,8 +80,8 @@ class RANSAC(nn.Module):
           :ref:`two-view-conventions` compares this with OpenCV.
         - ``score_type="msac"`` ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the squared errors
           ``e``; acceptance and early stopping count inliers for either score.
-        - ``prosac_sampling=True`` expects correspondences sorted best-first and uses prefix-based
-          confidence stopping with a non-randomness check. ``confidence=1`` runs the whole budget.
+        - ``prosac_sampling=True`` expects correspondences sorted best-first and always runs the whole
+          ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
           draws from the global generator.
         - Known defects: for ``"homography_from_linesegments"``, local optimization weights segments by the
@@ -97,11 +97,11 @@ class RANSAC(nn.Module):
         batch_size: number of generated samples at once.
         max_iter: maximum batches to generate, giving a budget of ``batch_size * max_iter`` minimal samples.
             The seven- and five-point solvers can return multiple models per sample.
-        confidence: stopping confidence in ``(0, 1]``; 1 disables early stopping.
+        confidence: uniform-sampling stopping confidence in ``(0, 1]``; 1 disables early stopping.
         max_lo_iters: maximum local refitting iterations; zero disables polishing.
         score_type: "ransac" for support count, or "msac" for truncated squared residuals.
         prosac_sampling: use PROSAC sampling on best-first ordered correspondences. The growth schedule
-            advances per sampled set within each batch; stopping tests the support of ranked prefixes.
+            advances per sampled set within each batch; this mode uses the full sampling budget.
         seed: optional seed, reset on each call for reproducible estimation on the same device.
         lo_sample_size: optional inlier-subset size for a batch of ``max_lo_iters`` randomized local
             refits followed by a full-inlier refit. None uses iterative full-inlier refitting.
@@ -134,7 +134,7 @@ class RANSAC(nn.Module):
             score_type: scoring method to use: "ransac" or "msac".
             prosac_sampling: use PROSAC's progressive sampling schedule. Inputs must be sorted best-first
                 by match quality. The schedule advances for every sampled set, including within batches.
-                Uses prefix non-randomness and confidence tests rather than global uniform-sampling confidence.
+                Uses the full sampling budget rather than the uniform sampler's confidence stopping rule.
             seed: optional random seed for reproducible results. If None, uses global random state.
             lo_sample_size: optional cap on the number of inliers used by each randomized local refit.
                 Fits ``max_lo_iters`` independent subsets in one batch, followed by one full-inlier refit.
@@ -301,37 +301,6 @@ class RANSAC(nn.Module):
         if self._prosac_ends is None or self._prosac_ends[0] != key:
             self._prosac_ends = (key, torch.tensor(_prosac_growth(*key[:3]), device=device))
         return self._prosac_ends[1]
-
-    def _prosac_max_samples(self, inliers: torch.Tensor) -> int:
-        """Prefix non-randomness and maximality tests (Chum & Matas, section 2.2).
-
-        Use an upper bound on the binomial tail with accidental-inlier probability
-        beta=0.1 and significance 0.05. Subtract the fitted minimal sample before
-        testing support. This is conservative relative to an exact binomial test.
-        A prefix can certify stopping only if its required draws fit inside its
-        growth interval: later draws from larger populations cannot count for it.
-        """
-        budget = self.batch_size * self.max_iter
-        m, total = self.minimal_sample_size, inliers.numel()
-        if self.confidence == 1 or total <= m:
-            return budget
-        # Independent of the keypoint dtype, including half precision. Double
-        # precision avoids rounding a near-integer confidence bound down on CPU.
-        dtype = torch.float64 if inliers.device.type == "cpu" else torch.float32
-        n = torch.arange(m + 1, total + 1, device=inliers.device, dtype=dtype)
-        support = inliers.cumsum(0)[m:].to(dtype)
-        extra = (support - m).clamp(min=0)
-        q = extra / (n - m)
-        # Chernoff: P[Binomial(n-m, beta) >= I-m] <= exp(-(n-m) D(q || beta)).
-        divergence = torch.special.xlogy(q, q / 0.1) + torch.special.xlogy(1 - q, (1 - q) / 0.9)
-        non_random = (q > 0.1) & ((n - m) * divergence > -math.log(0.05))
-        # Exact without-replacement probability C(I,m)/C(n,m), eq. 10.
-        offsets = torch.arange(m, device=inliers.device, dtype=dtype)
-        probability = ((support[:, None] - offsets).clamp(min=0) / (n[:, None] - offsets)).prod(1)
-        required = (math.log1p(-self.confidence) / torch.log1p(-probability)).ceil().clamp(min=1)
-        ends = self._prosac_schedule(m, total, inliers.device)[1:]
-        eligible = non_random & (required <= ends)
-        return int(torch.where(eligible, required, budget).clamp(max=budget).min().item())
 
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> int:
@@ -671,9 +640,7 @@ class RANSAC(nn.Module):
                 # sampled sets, not the number of roots returned by a minimal solver.
                 # The bound follows the incumbent's own support, as in OpenCV's USAC: under
                 # MSAC a better-scoring model can have less support than the one it replaced.
-                if self.prosac_sampling:
-                    max_samples = self._prosac_max_samples(inliers_best_total)
-                else:
+                if not self.prosac_sampling:
                     max_samples = min(
                         self.max_iter * self.batch_size,
                         self.max_samples_by_conf(int(num_inliers), num_tc, self.minimal_sample_size, self.confidence),

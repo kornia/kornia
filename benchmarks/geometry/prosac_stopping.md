@@ -2,7 +2,8 @@
 
 **Follow-up:** [RoMa and ALIKED + LightGlue](prosac_learned.md) expose premature
 stopping and substantial accuracy loss. The change measured here is experimental
-and should not be merged as a validated PROSAC improvement.
+and should not be merged as a validated PROSAC improvement. The branch restores
+the merged #4902 runtime; see the [subsequent Pareto study](prosac_pareto.md).
 
 Merged #4902 (`dfac11ab`) implements progressive sampling but always spends its
 entire budget. Uniform RANSAC can stop early, so equal maximum budgets do not
