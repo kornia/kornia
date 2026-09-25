@@ -218,6 +218,7 @@ select = [
   "PT017",  # flake8-pytest-style: assertions in exception handlers
   "PT022",  # flake8-pytest-style: useless yield fixtures
   "PT023",  # flake8-pytest-style: mark parentheses
+  "PT030",  # flake8-pytest-style: specific warning matches
   "PYI",  # flake8-pyi
   "RET",  # flake8-return
   "RSE",  # flake8-raise
