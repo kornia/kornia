@@ -45,20 +45,21 @@ def test_cuda_index_is_a_url(task: str) -> None:
 
 @pytest.mark.parametrize("task", ["install", "install-docs"])
 @pytest.mark.parametrize("activation", ["CONDA_PREFIX", "VIRTUAL_ENV"])
-@pytest.mark.parametrize("project_env", [".venv", ".venv-py312", ".venv-py313"])
-def test_cuda_install_and_run_share_environment(tmp_path: Path, task: str, activation: str, project_env: str) -> None:
+def test_cuda_install_and_run_share_environment(tmp_path: Path, task: str, activation: str) -> None:
     uv = shutil.which("uv")
     if uv is None:
         pytest.skip("uv is required; run this test through Pixi")
     env = {key: value for key, value in os.environ.items() if not key.startswith("UV_")}
-    for key in ("CONDA_PREFIX", "VIRTUAL_ENV"):
+    for key in ("CONDA_PREFIX", "CONDA_DEFAULT_ENV", "VIRTUAL_ENV"):
         env.pop(key, None)
     cuda = PIXI["feature"]["cuda"]
-    env.update(cuda.get("activation", {}).get("env", {}))
+    # Activation of every feature the cuda environment composes, as Pixi applies it.
+    env.update(PIXI.get("activation", {}).get("env", {}))
+    for feature in PIXI["environments"]["cuda"]["features"]:
+        env.update(PIXI["feature"][feature].get("activation", {}).get("env", {}))
+    project_env = env.get("UV_PROJECT_ENVIRONMENT", ".venv")
     env.update(UV_CACHE_DIR=str(tmp_path / "cache"), UV_OFFLINE="1", UV_PYTHON_DOWNLOADS="never")
     env["PATH"] = str(Path(uv).parent) + os.pathsep + env["PATH"]
-    if project_env != ".venv":
-        env["UV_PROJECT_ENVIRONMENT"] = project_env
 
     def run(args: list[str]) -> str:
         result = subprocess.run(  # noqa: S603
@@ -92,8 +93,14 @@ def test_cuda_install_and_run_share_environment(tmp_path: Path, task: str, activ
     )
     pixi_env = tmp_path / ".pixi" / "envs" / "cuda"
     run([uv, "venv", "--python", sys.executable, str(pixi_env)])
+    # uv targets CONDA_PREFIX only when it is not a base environment; this marker is how it recognizes a Pixi
+    # environment, whatever CONDA_DEFAULT_ENV says. Without it the CONDA_PREFIX case passes on the old command.
+    (pixi_env / "conda-meta").mkdir()
+    (pixi_env / "conda-meta" / "pixi").write_text("{}", encoding="utf-8")
     run([uv, "venv", "--python", sys.executable, project_env])
     env[activation] = str(pixi_env)
+    if activation == "CONDA_PREFIX":
+        env["CONDA_DEFAULT_ENV"] = "kornia:cuda"  # as `pixi run -e cuda` sets it
     for command in cuda["tasks"][task]["cmd"].split(" && "):
         args = shlex.split(command)
         if "--index" in args:
