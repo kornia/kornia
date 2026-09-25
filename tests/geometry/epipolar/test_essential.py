@@ -172,6 +172,11 @@ class TestFindEssential(BaseTester):
         (basis * 0.0).sum().backward()
         assert torch.isfinite(design.grad).all()
         assert (design.grad == 0).all()
+        # A nonzero incoming gradient has no finite derivative there, as for torch.linalg.svd. It must not
+        # come out as a silent zero, which is what the dropped gradient of #4855 looked like.
+        design.grad = None
+        epi.essential._NullSpaceBasis.apply(design)[0].sum().backward()
+        assert not torch.isfinite(design.grad).all()
 
     def test_torch_func_grad(self, device):
         # torch.func transforms accept an autograd.Function only if it defines setup_context. With 5
