@@ -1541,3 +1541,16 @@ class TestIntensityColourConventions(BaseTester):
             clamped = generator((20000, 3, height, width))
             realised = float((clamped["heights"] > clamped["widths"]).float().mean())
             assert realised == expected, (height, width, realised)
+
+    # With every step neutral both classes return a copy, on the Python guards (a sampled order) and on the
+    # torch.cond path (a fixed order) alike, so writing into the output leaves the input unchanged, as with p=0.
+    @pytest.mark.parametrize("cls", [K.ColorJiggle, K.ColorJitter])
+    @pytest.mark.parametrize("order", [None, (0, 1, 2, 3)])
+    def test_convention_color_neutral_steps_return_a_copy(self, device, dtype, cls, order):
+        image = torch.full((2, 3, 2, 2), 0.5, device=device, dtype=dtype)
+        original = image.clone()
+        output = cls(0.0, 0.0, 0.0, 0.0, p=1.0, order=order)(image)
+        self.assert_close(output, original)
+        assert output.untyped_storage().data_ptr() != image.untyped_storage().data_ptr()
+        output.fill_(-1.0)
+        self.assert_close(image, original)
