@@ -544,10 +544,12 @@ class TestWarpFrameDepth(BaseTester):
         assert image_dst.shape == (1, 2, height, width)
 
     @pytest.mark.parametrize("batch_size", [0, 1])
-    def test_exception_image_depth_size_mismatch(self, batch_size, device, dtype):
-        # kornia#4800: a depth map of another size used to resample the whole image onto its own grid.
+    @pytest.mark.parametrize("depth_hw", [(3, 4), (3, 8), (6, 4)])
+    def test_exception_image_depth_size_mismatch(self, batch_size, depth_hw, device, dtype):
+        # kornia#4800: a depth map of another size used to resample the whole image onto its own grid. A mismatch
+        # in the height alone or the width alone is rejected too.
         image_src = torch.rand(batch_size, 1, 6, 8, device=device, dtype=dtype)
-        depth_dst = torch.ones(batch_size, 1, 3, 4, device=device, dtype=dtype)
+        depth_dst = torch.ones(batch_size, 1, *depth_hw, device=device, dtype=dtype)
         src_trans_dst = torch.eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(batch_size, 1, 1)
 
