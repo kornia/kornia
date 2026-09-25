@@ -34,12 +34,16 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         points: the [x, y] points to be drawn on the image with shape :math`(N, 2)`, a single
             point with shape :math`(2,)`, or an empty tensor with shape :math`(0, 2)`.
         color: the color of the pixel with :math`(C)` where :math`C` is the number of channels of the image.
+            A 0-d scalar is accepted when the image has a single channel or is :math`(H,W)`.
 
     Return:
         The image with points set to the color. This operation modifies image inplace but also
         returns the drawn tensor for convenience. An empty point set leaves the image unchanged.
 
     """
+    # A 0-d scalar has no channel dimension for the check below to read; treat it as one channel, as draw_line does.
+    if color.ndim == 0:
+        color = color.unsqueeze(0)
     KORNIA_CHECK(
         (len(image.shape) == 2 and len(color.shape) == 1) or (image.shape[0] == color.shape[0]),
         "Color dim must match the channel dims of the provided image",
@@ -191,7 +195,7 @@ def draw_rectangle(
         rectangle: represents number of rectangles to draw in BxNx4
             N is the number of boxes to draw per batch index[x1, y1, x2, y2]
             4 is in (top_left.x, top_left.y, bot_right.x, bot_right.y).
-        color: a size 1, size 3, BxNx1, or BxNx3 tensor.
+        color: a 0-d, size 1, size 3, BxNx1, or BxNx3 tensor.
             If C is 3, and color is 1 channel it will be broadcasted.
         fill: is a flag used to fill the boxes with color if True.
 
@@ -225,7 +229,7 @@ def draw_rectangle(
     if fill is None:
         fill = False
 
-    if len(color.shape) == 1:
+    if len(color.shape) <= 1:
         color = color.expand(batch, num_rectangle, c)
     b, n, color_channels = color.shape
 
@@ -331,7 +335,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         polygons: represents polygons as points, either BxNx2 or List of variable length polygons.
             N is the number of points.
             2 is (x, y).
-        colors: a B x 3 tensor or 3 tensor with color to fill in.
+        colors: a B x 3 tensor, 3 tensor, or 0-d scalar with color to fill in.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -354,7 +358,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     if isinstance(polygons, List):
         polygons = _batch_polygons(polygons)
     b_p, _, xy, device_p, dtype_p = *polygons.shape, polygons.device, polygons.dtype
-    if len(colors.shape) == 1:
+    if len(colors.shape) <= 1:
         colors = colors.expand(b_i, c_i)
     b_c, _, device_c = *colors.shape, colors.device
     KORNIA_CHECK(xy == 2, "Polygon vertices must be xy, i.e. 2-dimensional")
