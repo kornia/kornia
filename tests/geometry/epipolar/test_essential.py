@@ -158,6 +158,57 @@ class TestFindEssential(BaseTester):
             assert torch.equal(torch.isnan(E_scaled), torch.isnan(E_est))
             self.assert_close(torch.nan_to_num(E_scaled), torch.nan_to_num(E_est), atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize("num_points", [5, 6, 8])
+    def test_gradcheck(self, num_points, device):
+        # For fewer than 9 points some or all of the four null-space vectors lie past min(N, 9), where
+        # torch.linalg.svd gives no gradient, so the gradient to the correspondences was dropped: exactly
+        # zero for 5 points (#4855). Candidates from complex roots are NaN and are zeroed here; they stay
+        # complex under the small perturbations the check makes.
+        g = torch.Generator().manual_seed(1)
+        points1 = torch.rand(1, num_points, 2, generator=g, dtype=torch.float64).to(device)
+        points2 = torch.rand(1, num_points, 2, generator=g, dtype=torch.float64).to(device)
+
+        def proxy(points1, points2):
+            return epi.essential.find_essential(points1, points2).nan_to_num()
+
+        self.gradcheck(proxy, (points1, points2))
+
+    def test_null_space_gradient_of_a_discarded_sample(self, device):
+        # Points all at the origin give a rank-1 design matrix, so the null space the solver uses is not
+        # unique and its derivative has no gap to divide by. A sample like that has its candidates
+        # discarded, so no gradient reaches its basis, and it must contribute zero rather than 0 / 0.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        design = torch.zeros(1, 5, 9, device=device, dtype=torch.float64)
+        design[..., 8] = 1.0
+        design.requires_grad_()
+        basis = epi.essential._NullSpaceBasis.apply(design)[0]
+        (basis * 0.0).sum().backward()
+        assert torch.isfinite(design.grad).all()
+        assert (design.grad == 0).all()
+        # A nonzero incoming gradient has no finite derivative there, as for torch.linalg.svd. It must not
+        # come out as a silent zero, which is what the dropped gradient of #4855 looked like.
+        design.grad = None
+        epi.essential._NullSpaceBasis.apply(design)[0].sum().backward()
+        assert not torch.isfinite(design.grad).all()
+
+    def test_torch_func_grad(self, device):
+        # torch.func transforms accept an autograd.Function only if it defines setup_context. With 5
+        # points every null-space vector goes through it, so torch.func.grad must agree with autograd.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        g = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device)
+        points2 = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device)
+
+        def loss(points1):
+            return (epi.essential.find_essential(points1, points2).nan_to_num() ** 3).sum()
+
+        leaf = points1.clone().requires_grad_()
+        (expected,) = torch.autograd.grad(loss(leaf), leaf)
+        assert expected.abs().max() > 0
+        self.assert_close(torch.func.grad(loss)(points1), expected)
+
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype, monkeypatch):
         B, N = batch_size, num_points
