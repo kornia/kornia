@@ -76,17 +76,14 @@ def triangulate_points(
           :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV. The leading
           dimensions of ``P1`` and ``P2`` broadcast against those of the points.
         - Cheirality and baseline are not checked: a point behind a camera is returned with negative depth, and with
-          zero baseline the depth is undefined and ``"svd"`` and ``"eigh"`` return an arbitrary point on the line of
-          sight, possibly behind the camera.
-        - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS, and
-          return the input dtype; ``solver`` below compares their accuracy.
-        - Known defects: a correspondence at infinity comes back unflagged, as a finite point at a distance set by
-          roundoff or as ``inf`` in float16 (`#4865 <https://github.com/kornia/kornia/issues/4865>`_);
-          ``solver="cofactor"`` returns NaN for pixel-scale float16 input
-          (`#4863 <https://github.com/kornia/kornia/issues/4863>`_) and can return a point unrelated to the input when a
-          :math:`3 \times 4` sub-system is rank-deficient or nearly so: with zero baseline, and for a point whose
-          row in the first image or column in the second passes through or near the epipole. Rectified stereo pairs
-          are susceptible with or without noise (`#4900 <https://github.com/kornia/kornia/issues/4900>`_).
+          zero baseline the depth is undefined: ``"svd"`` and ``"eigh"`` return an arbitrary point on the line of
+          sight, possibly behind the camera or at infinity (NaN), and ``"cofactor"`` returns NaN.
+        - A correspondence at infinity, whose homogeneous ``w`` is at the roundoff of the input and compute dtypes,
+          returns NaN. In float16 and bfloat16 that roundoff also covers a point a few tens of units away in the
+          scale of ``t``.
+        - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS;
+          ``"cofactor"`` solves in float32, or in float64 for float64 input. All return the input dtype;
+          ``solver`` below compares their accuracy.
 
     Args:
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
@@ -110,10 +107,12 @@ def triangulate_points(
           * ``"cofactor"`` — solves two :math:`3 \times 4` sub-systems analytically
             using :func:`~kornia.geometry.solvers.null_vector_3x4` (closed-form
             cofactor expansion, no LAPACK call). The two solutions are averaged after
-            normalisation. This matches the full DLT solution when the constraint
-            system is exactly consistent and both sub-systems have full rank (see the
-            known defects above), but is only an approximation in the noisy
-            inconsistent case. Fastest option for all batch sizes.
+            normalisation; a rank-deficient sub-system (zero baseline, or a pure ``x``
+            translation with ``R = I`` and one ``K``, which makes two DLT rows coincide)
+            is left out, and the point is NaN when both are. This matches the full DLT
+            solution when the constraint system is exactly consistent, but is only an
+            approximation in the noisy inconsistent case. Fastest option for all batch
+            sizes.
 
     Returns:
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
@@ -143,6 +142,15 @@ def triangulate_points(
     # Unify N1 and N2: one may be 1 when points1/points2 are broadcast-compatible.
     row0, row1, row2, row3 = torch.broadcast_tensors(row0, row1, row2, row3)
 
+    # svd and eigh mirror _torch_svd_cast's promotion: fp32 -> fp64 for stability, fp16/bf16 -> fp32, fp64
+    # stays, MPS capped at fp32 (no fp64 support there). cofactor uses arithmetic only and keeps fp32.
+    if is_mps_tensor_safe(row0):
+        compute_dtype = torch.float32
+    elif row0.dtype == torch.float32:
+        compute_dtype = torch.float64
+    else:
+        compute_dtype = _normalize_to_float32_or_float64(row0.dtype)
+
     if solver == "svd":
         X = torch.stack([row0, row1, row2, row3], dim=-2)  # (*, N, 4, 4)
         # SVD: last right singular vector minimises ||Ax|| s.t. ||x||=1.
@@ -162,15 +170,6 @@ def triangulate_points(
         # which is fine for homogeneous coordinates.
         # The approach is valid in both the noise-free (rank-3) and the noisy
         # inconsistent case, where the rows do not share an exact nullspace.
-        # Mirror _torch_svd_cast's promotion rules so numerical behaviour is
-        # comparable to the "svd" solver: fp32 → fp64 for stability, fp16/bf16 →
-        # fp32, fp64 stays, MPS capped at fp32 (no fp64 support there).
-        if is_mps_tensor_safe(X):
-            compute_dtype = torch.float32
-        elif X.dtype == torch.float32:
-            compute_dtype = torch.float64
-        else:
-            compute_dtype = _normalize_to_float32_or_float64(X.dtype)
         batch_shape = X.shape[:-2]  # (*, N)
         X_cast = X.to(compute_dtype)
         XTX = X_cast.mT @ X_cast  # (*, N, 4, 4) symmetric PSD
@@ -183,36 +182,54 @@ def triangulate_points(
         # average the sign-aligned normalised results.  This matches the full
         # DLT solution when the constraint system is exactly consistent
         # (noise-free), but is only an approximation in the noisy case.
-        # null_vector_3x4 uses only arithmetic ops, so promote fp16/bf16 → fp32.
+        # null_vector_3x4 uses only arithmetic ops, so promote fp16/bf16 -> fp32 and stay there until the
+        # null vectors are normalised: the unnormalised cofactors of pixel-scale rows overflow float16.
         compute_dtype = _normalize_to_float32_or_float64(row0.dtype)
         r0 = row0.to(compute_dtype)
         r1 = row1.to(compute_dtype)
         r2 = row2.to(compute_dtype)
         r3 = row3.to(compute_dtype)
         # Both sub-systems include row2 (from camera 2's x-projection equation),
-        # which carries the camera-2 translation and is therefore well-conditioned
-        # for any camera pair with a non-zero baseline in x.  Using rows {0,1,2}
-        # and {1,2,3} rather than {0,1,2} and {0,1,3} avoids the degenerate case
-        # that arises when camera 2 has zero last-column entries in its y- and
-        # z-projection rows (e.g. [R|t] with t = (-T,0,0)).
+        # which carries the camera-2 translation.  Using rows {0,1,2} and {1,2,3}
+        # rather than {0,1,2} and {0,1,3} keeps at least one sub-system of full
+        # rank when camera 2 has zero last-column entries in its y- and
+        # z-projection rows (e.g. [R|t] with t = (-T,0,0)): rows 1 and 3 then
+        # coincide for a shared K, so {1,2,3} is rank-deficient and {0,1,2} is not.
         A_012 = torch.stack([r0, r1, r2], dim=-2)  # (*, N, 3, 4)
         A_123 = torch.stack([r1, r2, r3], dim=-2)  # (*, N, 3, 4)
-        h_012 = null_vector_3x4(A_012).to(row0.dtype)  # (*, N, 4)
-        h_123 = null_vector_3x4(A_123).to(row0.dtype)  # (*, N, 4)
-        n012 = h_012.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        n123 = h_123.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        v012 = h_012 / n012
-        v123 = h_123 / n123
+        h_012 = null_vector_3x4(A_012)  # (*, N, 4)
+        h_123 = null_vector_3x4(A_123)  # (*, N, 4)
+        # A rank-deficient sub-system (zero baseline, coinciding rows) has cofactors at roundoff. The cofactors
+        # of a full-rank sub-system scale with the product of its row norms, so judge each null vector against
+        # that product and use only the full-rank sub-system(s); the point is NaN when neither is.
+        tol = 8.0 * torch.finfo(compute_dtype).eps
+        n012 = h_012.norm(dim=-1, keepdim=True)
+        n123 = h_123.norm(dim=-1, keepdim=True)
+        ok012 = n012 > tol * A_012.norm(dim=-1).prod(dim=-1, keepdim=True)
+        ok123 = n123 > tol * A_123.norm(dim=-1).prod(dim=-1, keepdim=True)
+        v012 = h_012 / torch.where(ok012, n012, torch.ones_like(n012))
+        v123 = h_123 / torch.where(ok123, n123, torch.ones_like(n123))
         # Null vectors are defined up to a global sign; align signs before
         # averaging in homogeneous space to prevent cancellation when the two
         # sub-system solutions point in opposite directions (which would yield a
         # near-zero homogeneous vector and NaN after dehomogenisation).
         dot = (v012 * v123).sum(dim=-1, keepdim=True)
         v123 = torch.where(dot < 0, -v123, v123)
-        points3d_h = v012 + v123  # (*, N, 4)
+        zeros = torch.zeros_like(v012)
+        points3d_h = torch.where(ok012, v012, zeros) + torch.where(ok123, v123, zeros)  # (*, N, 4)
+        points3d_h = torch.where(ok012 | ok123, points3d_h, torch.full_like(points3d_h, float("nan")))
+        points3d_h = points3d_h.to(row0.dtype)
 
     else:
         raise NotImplementedError(f"Unknown solver '{solver}'. Choose from: 'svd', 'eigh', 'cofactor'.")
+
+    # A correspondence at infinity (parallel rays) has w = 0 up to roundoff: the rows carry the input dtype's
+    # roundoff and the solver the compute dtype's, which eigh amplifies by squaring the conditioning (about 25
+    # epsilons on the two-view fixture against 2 for svd). Flag it as NaN instead of dividing by that roundoff.
+    w_scale = 128.0 if solver == "eigh" else 16.0
+    w_tol = w_scale * torch.finfo(compute_dtype).eps + 4.0 * torch.finfo(points3d_h.dtype).eps
+    at_infinity = points3d_h[..., 3:].abs() <= w_tol * points3d_h.norm(dim=-1, keepdim=True)
+    points3d_h = torch.where(at_infinity, torch.full_like(points3d_h, float("nan")), points3d_h)
 
     points3d: torch.Tensor = convert_points_from_homogeneous(points3d_h)
     return points3d
