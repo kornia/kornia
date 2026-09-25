@@ -34,6 +34,15 @@ def oneway_transfer_error(
 ) -> torch.Tensor:
     r"""Return transfer error in image 2 for correspondences given the homography matrix.
 
+    Convention:
+        - ``oneway_transfer_error(pts1, pts2, H)`` measures in image 2, between ``H`` applied to ``pts1`` and
+          ``pts2``.
+        - ``squared=True``, the default here and in :func:`symmetric_transfer_error`, returns the squared
+          distance; :func:`line_segment_transfer_error_one_way` defaults to ``squared=False``.
+        - Known defects: ``eps`` is added to the projective denominator and inside the square root, so the error
+          depends on the scale of ``H``, and an exact match scores ``sqrt(eps)``, not 0, with ``squared=False``
+          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+
     Args:
         pts1: correspondences from the left images with shape
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
@@ -41,7 +50,7 @@ def oneway_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
-        eps: Small constant for safe sqrt.
+        eps: added to the projective denominator and, with ``squared=False``, inside the square root.
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
@@ -99,6 +108,12 @@ def symmetric_transfer_error(
 ) -> torch.Tensor:
     r"""Return Symmetric transfer error for correspondences given the homography matrix.
 
+    Convention:
+        - Argument order as :func:`oneway_transfer_error`. The squared value is the image-2 error of ``H`` plus
+          the image-1 error of ``H^-1``, and ``squared=False`` returns the square root of that sum.
+        - Known defects: the ``eps`` defect of :func:`oneway_transfer_error` applies here too
+          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+
     Args:
         pts1: correspondences from the left images with shape
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
@@ -106,7 +121,7 @@ def symmetric_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
-        eps: Small constant for safe sqrt.
+        eps: added to the projective denominator and, with ``squared=False``, inside the square root.
 
     Returns:
         the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
@@ -148,8 +163,14 @@ def line_segment_transfer_error_one_way(
 ) -> torch.Tensor:
     r"""Return transfer error in image 2 for line segment correspondences given the homography matrix.
 
-    Line segment end points are reprojected into image 2, and point-to-line error is calculated w.r.t. line,
-    induced by line segment in image 2. See :cite:`homolines2001` for details.
+    Both endpoints of each image-1 segment are mapped into image 2 by ``H`` and scored against the line through
+    the matching image-2 segment. See :cite:`homolines2001` for details.
+
+    Convention:
+        - Argument order and direction as :func:`oneway_transfer_error`.
+        - Known defects: the image-2 line is not normalised, so the error is the mean perpendicular distance of
+          the two mapped endpoints multiplied by the length of the image-2 segment, not a pixel distance
+          (`#4867 <https://github.com/kornia/kornia/issues/4867>`_).
 
     Args:
         ls1: line segment correspondences from the left images with shape
@@ -157,10 +178,10 @@ def line_segment_transfer_error_one_way(
         ls2: line segment correspondences from the right images with shape
           (B, N, 2, 2).
         H: Homographies with shape :math:`(B, 3, 3)`.
-        squared: if True (default is False), the squared distance is returned.
+        squared: if True (default is False), the squared error is returned.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`.
+        the computed error with shape :math:`(B, N)`.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
@@ -187,7 +208,18 @@ def find_homography_dlt(
 ) -> torch.Tensor:
     r"""Compute the homography matrix using the DLT formulation.
 
-    The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
+    The weighted DLT system of four or more correspondences is solved with ``solver``.
+
+    Convention:
+        - ``H`` maps ``points1`` to ``points2``, ``points2 ~ H @ points1``, and is scaled so that
+          ``H[2, 2] = 1``; :ref:`two-view-conventions` compares this with OpenCV.
+        - ``weights`` multiply each correspondence's squared algebraic residual: a weight of 0 removes the
+          correspondence from the equations, and only relative weights matter.
+        - ``solver="lu"`` and ``"svd"`` give the same homography on exact data, to roundoff scaled by the
+          conditioning of the system; on noisy data they solve different least-squares problems and differ.
+        - Known defect: ``H`` is divided by ``H[2, 2] + 1e-8``, so ``H[2, 2]`` is not exactly 1, and it can be
+          far from 1 when the true ``H[2, 2]`` is small
+          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
@@ -299,15 +331,21 @@ def find_homography_dlt_iterated(
 ) -> torch.Tensor:
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS).
 
-    The linear system is solved by using the Reweighted Least Squares Solution for the 4 Points algorithm.
+    Convention:
+        - Direction and ``H[2, 2] = 1`` as :func:`find_homography_dlt`. Each solve after the first re-weights
+          with ``exp(-e / (2 * soft_inl_th**2))`` of the unsquared symmetric transfer error ``e``.
+        - Known defects: the exponent is linear, not quadratic, in ``e``, so ``soft_inl_th`` is not a pixel
+          standard deviation (`#4870 <https://github.com/kornia/kornia/issues/4870>`_); the
+          :func:`find_homography_dlt` scaling defect applies
+          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
-        soft_inl_th: Soft inlier threshold used for weight calculation.
-        n_iter: number of iterations.
+        soft_inl_th: scale in the re-weighting kernel given above.
+        n_iter: number of solves, including the initial one.
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
@@ -326,9 +364,17 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
 
     Analogous to https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/usac/degeneracy.cpp#L88
 
+    Convention:
+        - :class:`~kornia.geometry.ransac.RANSAC` uses it to discard minimal samples for ``"homography"``. It
+          checks only that the four triples of the first four points keep their orientation across the two
+          views, so a mirror-image sample is rejected. A triple that is collinear in both views, for instance
+          through a repeated point, counts as kept, so collinearity alone does not reject a sample.
+
     Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, 4, 2)`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, 4, 2)`.
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`; only the first four
+          points are used.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`; only the first four
+          points are used.
 
     Returns:
         Mask with the minimal sample is good for homography estimation :math:`(B)`.
@@ -362,16 +408,26 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
 def find_homography_lines_dlt(
     ls1: torch.Tensor, ls2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    """Compute the homography matrix using the DLT formulation for line correspondences.
+    """Compute the homography matrix from line segment correspondences with a DLT formulation.
 
     See :cite:`homolines2001` for details.
 
-    The linear system is solved by using the Weighted Least Squares Solution for the 4 Line correspondences algorithm.
+    Convention:
+        - ``H`` maps image-1 points to image-2 points, as in :func:`find_homography_dlt`. Each segment is a
+          ``[start, end]`` pair of ``(x, y)`` points, and ``weights`` has one entry per segment.
+        - Known defects: each segment's equations are built from endpoints of two different segments, not from
+          its own start and end, so the estimate is correct only when the endpoints are themselves point
+          correspondences, and a zero weight does not remove its segment
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); and the ``H[2, 2]`` scaling of
+          :func:`find_homography_dlt` applies
+          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
-        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
-        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
-        weights: Tensor containing the weights per line correspondence with a shape of :math:`(B, N)`.
+        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
+        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
+        weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
           Zero-weight segments are excluded from Hartley normalization.
 
     Returns:
@@ -440,15 +496,22 @@ def find_homography_lines_dlt_iterated(
 ) -> torch.Tensor:
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from line segments.
 
-    The linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
+    Convention:
+        - As :func:`find_homography_dlt_iterated`, with :func:`find_homography_lines_dlt` as the solver and the
+          unsquared error of :func:`line_segment_transfer_error_one_way` as ``e``.
+        - Known defects: those of the three functions apply
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
+          `#4867 <https://github.com/kornia/kornia/issues/4867>`_,
+          `#4870 <https://github.com/kornia/kornia/issues/4870>`_,
+          `#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
-        soft_inl_th: Soft inlier threshold used for weight calculation.
-        n_iter: number of iterations.
+        soft_inl_th: scale in the re-weighting kernel of :func:`find_homography_dlt_iterated`.
+        n_iter: number of solves, including the initial one.
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
