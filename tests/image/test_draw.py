@@ -703,3 +703,13 @@ class TestFillConvexPolygon(BaseTester):
         color = torch.zeros(0, 3, device=device, dtype=dtype)
         out = draw_convex_polygon(im.clone(), [], color)
         assert out.shape == im.shape
+
+    def test_sloped_edge_fills_the_pixel_it_passes_through(self, device, dtype):
+        """The right edge of this triangle crosses x = 4 + 2 * (y - 4) exactly, and that pixel is inside."""
+        tri = torch.tensor([[[4.0, 4.0], [12.0, 8.0], [4.0, 8.0]]], device=device, dtype=dtype)
+        im = torch.zeros(1, 1, 12, 16, device=device, dtype=dtype)
+        out = draw_convex_polygon(im, tri, torch.ones(1, 1, device=device, dtype=dtype))
+        ys = torch.arange(12, device=device)[:, None]
+        xs = torch.arange(16, device=device)[None, :]
+        expected = (ys >= 4) & (ys <= 8) & (xs >= 4) & (xs <= 4 + 2 * (ys - 4))
+        assert out[0, 0].eq(expected).all()

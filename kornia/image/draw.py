@@ -289,7 +289,11 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
 
     # Create scanlines, edge dx/dy, and produce x values
     ys = torch.arange(h, device=polygon.device, dtype=dtype)
-    dx = ((x_end - x_start) / (y_end - y_start + 1e-12)).clamp(-w, w)
+    # A horizontal or zero-length edge is active only on its own scanline, where xs is x_start for any finite dx,
+    # so its dx is set to 0. An epsilon added to dy instead underflows in float16 (0 / 0 blanks the scanline), and
+    # in float64 it shifts a sloped edge enough to drop a pixel centre lying exactly on it.
+    dy = y_end - y_start
+    dx = torch.where(dy == 0, 0.0, (x_end - x_start) / dy).clamp(-w, w)
     xs = (ys[..., :, None] - y_start[..., None, :]) * dx[..., None, :] + x_start[..., None, :]
 
     # Only count edge in their active regions (i.e between the vertices)
