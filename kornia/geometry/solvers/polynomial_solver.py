@@ -41,7 +41,8 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
           it matters.
         - For ``coeffs = [a, b, c]`` and ``D = b**2 - 4 * a * c``, ``solve_quadratic`` returns
           ``[(-b + sqrt(D)) / (2 * a), (-b - sqrt(D)) / (2 * a)]``, so the order flips with the sign of ``a``.
-        - Known defects: ``a = 0`` returns non-finite values (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
+        - A zero leading coefficient lowers the degree: with ``a = 0`` the root ``-c / b`` of the linear equation
+          is in slot 0, as :func:`solve_cubic` and :func:`solve_quartic` do for their lower-degree rows.
 
     Args:
         coeffs : The coefficients of quadratic equation :`(B, 3)`
@@ -68,8 +69,14 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_negative = delta < 0
     mask_zero = delta == 0
 
+    # With a == 0 the equation is linear, bx + c = 0: its root goes to slot 0 and slot 1 is padded.
+    # Dividing by a placeholder 1 there keeps the unused quadratic lanes (and their gradients) finite.
+    one = torch.ones_like(a)
+    mask_linear = a == 0
+    mask_b_zero = b == 0
+
     # Calculate 1/(2*a) for efficient computation
-    inv_2a = 0.5 / a
+    inv_2a = 0.5 / torch.where(mask_linear, one, a)
 
     # Branch-free selection so the function traces under graph capture. The square root is only taken
     # where delta > 0: a zero discriminant yields the double root -b/(2a) with sqrt_delta = 0, and a
@@ -82,9 +89,16 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
 
     root_plus = (-b + sqrt_delta) * inv_2a
     root_minus = (-b - sqrt_delta) * inv_2a
-    return torch.stack(
-        [torch.where(mask_negative, zero, root_plus), torch.where(mask_negative, zero, root_minus)], dim=-1
-    )
+
+    # The a * x^2 / b term is 0 in the forward pass, but it keeps the root's dependence on a in the
+    # gradient (d root / da = -root^2 / b). With b == 0 as well there is no root to report.
+    safe_b = torch.where(mask_b_zero, one, b)
+    root_linear = -c / safe_b
+    root_linear = torch.where(mask_b_zero, zero, root_linear - a * root_linear * root_linear / safe_b)
+
+    root_0 = torch.where(mask_linear, root_linear, torch.where(mask_negative, zero, root_plus))
+    root_1 = torch.where(mask_linear | mask_negative, zero, root_minus)
+    return torch.stack([root_0, root_1], dim=-1)
 
 
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
@@ -98,9 +112,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     Convention:
         - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
           and a single real root is in slot 0.
-        - Known defects: with a zero leading coefficient, a linear equation gets the root ``1.0`` and
-          ``bx^2 + d`` returns zeros
-          (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
+        - A zero leading coefficient lowers the degree, and the roots of the remaining polynomial come first.
 
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
@@ -150,13 +162,18 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     # No need for explicit handling of mask_zero_order as solutions already contains torch.zeros by default.
 
     mask_first_order = mask_a_zero & mask_b_zero & ~mask_c_zero
-    mask_second_order = mask_a_zero & ~mask_b_zero & ~mask_c_zero
+    mask_second_order = mask_a_zero & ~mask_b_zero
 
     if torch.any(mask_second_order):
         solutions[mask_second_order, 0:2] = solve_quadratic(coeffs[mask_second_order, 1:])
 
     if torch.any(mask_first_order):
-        solutions[mask_first_order, 0] = torch.tensor(1.0, device=a.device, dtype=a.dtype)
+        # cx + d = 0. The (a * x + b) * x^2 / c term is 0 in the forward pass, but it keeps the root's
+        # dependence on a and b in the gradient, as solve_quadratic does for its linear case.
+        c_first = c[mask_first_order]
+        x0_first = -d[mask_first_order] / c_first
+        a_first, b_first = a[mask_first_order], b[mask_first_order]
+        solutions[mask_first_order, 0] = x0_first - (a_first * x0_first + b_first) * x0_first * x0_first / c_first
 
     # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
     inv_a = 1.0 / a[~mask_a_zero]
@@ -302,8 +319,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
           roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_);
           a leading coefficient below ``1e-6`` in magnitude (``1e-12`` in float64) counts as zero whatever the
           other coefficients are, so a small multiple of a quartic is solved as a cubic and loses its roots
-          (`#4905 <https://github.com/kornia/kornia/issues/4905>`_); and a row with a zero leading coefficient is
-          passed to :func:`solve_cubic`, with its defects (`#4873 <https://github.com/kornia/kornia/issues/4873>`_).
+          (`#4905 <https://github.com/kornia/kornia/issues/4905>`_).
 
     Args:
         coeffs : The coefficients quartic equation : `(B, 5)`
