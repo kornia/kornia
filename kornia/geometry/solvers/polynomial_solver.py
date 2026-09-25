@@ -103,6 +103,8 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
        In cases where a cubic polynomial has only one or two real roots, the output for the non-real
        roots should be represented as 0. Thus, the output for a single real root should be in the
        format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
+       ``float16`` and ``bfloat16`` cubics are solved in ``float32`` and the roots are cast back to
+       the input dtype.
 
     .. note::
        At the acos boundary reached by a repeated (or near-repeated) real root, backward suppresses
@@ -112,6 +114,13 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
+
+    # In float16, Q^3 underflows to 0 for |Q| below about 4e-3. With R == 0 that makes D == 0, so
+    # the D <= 0 branch divides 0 by sqrt(0) when Q < 0 and takes sqrt(-Q) of a positive Q when
+    # Q > 0: every root comes back NaN. Solve half-precision cubics in float32 and return the roots
+    # in the input dtype, as solve_quartic does for its Ferrari path.
+    if coeffs.dtype in (torch.float16, torch.bfloat16):
+        return solve_cubic(coeffs.float()).to(coeffs.dtype)
 
     _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
 
@@ -330,7 +339,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Normalized coefficients: x^4 + A*x^3 + B*x^2 + C*x + D = 0
     # The Ferrari intermediates overflow or quantize too coarsely in half dtypes even when the
     # final roots are representable. Keep the public half-precision contract while evaluating the
-    # quartic-only path in float32; the cubic fallback above remains in the input dtype.
+    # quartic-only path in float32; the cubic fallback above does the same inside solve_cubic.
     quartic_coeffs = coeffs[mask_quartic]
     if coeffs.dtype in (torch.float16, torch.bfloat16):
         quartic_coeffs = quartic_coeffs.float()
