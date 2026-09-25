@@ -62,7 +62,7 @@ def seed_rng() -> None:
     torch.manual_seed(0)
 
 
-@pytest.fixture()
+@pytest.fixture
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if "cuda" in device.type and dtype == torch.float16:
@@ -70,7 +70,7 @@ def atol(device, dtype):
     return 1.0e-4
 
 
-@pytest.fixture()
+@pytest.fixture
 def rtol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if "cuda" in device.type and dtype == torch.float16:
