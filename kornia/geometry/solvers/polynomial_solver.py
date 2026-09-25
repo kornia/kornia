@@ -91,9 +91,11 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     root_minus = (-b - sqrt_delta) * inv_2a
 
     # The a * x^2 / b term is 0 in the forward pass, but it keeps the root's dependence on a in the
-    # gradient (d root / da = -root^2 / b). With b == 0 as well there is no root to report.
+    # gradient (d root / da = -root^2 / b). With b == 0 as well there is no root to report. The lane
+    # takes c only from the linear rows: torch.where differentiates the lane it discards too, and for an
+    # ordinary row with a tiny b, (c / b)^2 overflows there and turns the row's gradient into nan.
     safe_b = torch.where(mask_b_zero, one, b)
-    root_linear = -c / safe_b
+    root_linear = -torch.where(mask_linear, c, zero) / safe_b
     root_linear = torch.where(mask_b_zero, zero, root_linear - a * root_linear * root_linear / safe_b)
 
     root_0 = torch.where(mask_linear, root_linear, torch.where(mask_negative, zero, root_plus))

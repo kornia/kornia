@@ -1171,6 +1171,23 @@ class TestConventionPolynomialSolvers(BaseTester):
         powers = [3.0 ** (len(coeffs) - 1 - k) for k in range(len(coeffs))]
         self.assert_close(grad, -torch.tensor([powers], device=device, dtype=dtype) / 2.0)
 
+    @pytest.mark.parametrize(
+        "fn, lead", [(solver.solve_quadratic, []), (solver.solve_cubic, [0.0])], ids=["quadratic", "cubic"]
+    )
+    def test_convention_zero_leading_coefficient_branch_keeps_ordinary_gradients_finite_4873(
+        self, fn, lead, device, dtype
+    ):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Gradient values are checked in float32 and float64.")
+        # x^2 + b x - 1 with a tiny b is an ordinary quadratic with the roots +-1, but (c / b)^2 overflows.
+        # torch.where still differentiates the linear lane it discards for this row, so that lane must not see c.
+        b = 1e-20 if dtype == torch.float32 else 1e-160
+        x = torch.tensor([[*lead, 1.0, b, -1.0]], device=device, dtype=dtype, requires_grad=True)
+        (grad,) = torch.autograd.grad(fn(x).sum(), x)
+        # The roots sum to -b / a.
+        expected = torch.tensor([[*lead, b, -1.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(grad, expected)
+
     def test_wart_solve_quartic_small_scale_4833(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("this row's 2e-11 and -4.2e-08 coefficients underflow float16 and keep 3 digits in bfloat16")
