@@ -1,0 +1,9 @@
+`RANSAC("homography_from_linesegments")` now compares the squared mean endpoint-to-line distance with `inl_th**2`, so
+`inl_th` is in coordinate units, as for the point models. It used to compare the unsquared algebraic residual, which
+is that distance multiplied by the target segment's length, so each segment had a different effective threshold;
+re-tune `inl_th` for this model. A zero-length target segment is an outlier. `RANSAC.max_samples_by_conf` returns
+`sys.maxsize` instead of `1` when no finite bound exists (fewer inliers than the sample size, or `conf >= 1`), and
+rounds up instead of truncating; `1` used to stop estimation after the first batch. `RANSAC` now raises `ValueError`
+for a nonpositive or nonfinite `inl_th`, a nonpositive `batch_size` or `max_iter`, a negative `max_lo_iters`, or a
+`confidence` outside `(0, 1]`. `confidence=1` now runs the full budget; it used to stop after the first batch. The
+CPU sampler changed, so a fixed `seed` draws different, still reproducible, samples than earlier releases.
