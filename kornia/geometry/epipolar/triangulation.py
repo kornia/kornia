@@ -84,8 +84,9 @@ def triangulate_points(
           roundoff or as ``inf`` in float16 (`#4865 <https://github.com/kornia/kornia/issues/4865>`_);
           ``solver="cofactor"`` returns NaN for pixel-scale float16 input
           (`#4863 <https://github.com/kornia/kornia/issues/4863>`_) and a point unrelated to the input when a
-          :math:`3 \times 4` sub-system is rank-deficient, as with zero baseline or a pure ``x`` translation with
-          ``R = I`` and one ``K`` (`#4900 <https://github.com/kornia/kornia/issues/4900>`_).
+          :math:`3 \times 4` sub-system is rank-deficient or nearly so: with zero baseline, and for a point whose
+          row in the first image or column in the second passes through or near the epipole, which is every point
+          of a rectified stereo pair, with or without noise (`#4900 <https://github.com/kornia/kornia/issues/4900>`_).
 
     Args:
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.

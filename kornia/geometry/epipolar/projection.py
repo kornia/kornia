@@ -166,9 +166,10 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
           doubles ``K``; divide by ``K[..., 2:, 2:]`` to normalise.
         - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
         - Known defects: a ``P`` whose left :math:`3 \times 3` block has negative determinant returns a
-          reflection (``det R = -1``), the sign moved into one row of ``R`` and the matching entry of ``t``, so
-          ``-P`` gives ``-R`` and ``-t``; and ``eps`` is added to the diagonal before its sign is taken, so an
-          entry in ``(-eps, 0)`` stays negative and the matching row of ``R`` and entry of ``t`` are negated
+          reflection (``det R = -1``), the signs moved into rows of ``R`` and the matching entries of ``t``: all
+          three for ``-P``, which gives ``-R`` and ``-t``; and ``eps`` is added to the diagonal before its sign is
+          taken, so an entry in ``(-eps, 0)`` stays negative and the matching row of ``R`` and entry of ``t`` are
+          negated
           (`#4864 <https://github.com/kornia/kornia/issues/4864>`_).
 
     Args:

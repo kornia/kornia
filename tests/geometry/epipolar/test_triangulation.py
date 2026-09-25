@@ -431,7 +431,8 @@ class TestConventionTriangulation(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("float16 is #4863; in bfloat16 the rows' roundoff leaves the sub-systems full rank")
         # #4900: when a 3x4 sub-system of the DLT matrix is rank-deficient, the cofactor null vector is roundoff
-        # normalised to unit length, and the point is unrelated to the input. svd is the control on the same input.
+        # normalised to unit length, and the point is unrelated to the input; when it is nearly rank-deficient, the
+        # noise takes the place of the roundoff. svd is the control on the same input.
         K1, K2, R, X = two_view["K1"], two_view["K2"], two_view["R"], two_view["X"]
         eye = torch.eye(3, device=device, dtype=dtype)[None]
 
@@ -460,4 +461,14 @@ class TestConventionTriangulation(BaseTester):
             s: (epi.triangulate_points(P1, P2, x1, x2, solver=s) - X).norm(dim=-1).max() for s in ("svd", "cofactor")
         }
         assert err["svd"] <= _TRIANGULATION_ATOL[dtype]
+        assert err["cofactor"] > 1.0
+        # The same rectified pair with 0.5 px of noise: the rows no longer coincide but stay nearly dependent, so
+        # dropping only an exactly rank-deficient sub-system does not fix it. svd stays within 0.1.
+        g = torch.Generator().manual_seed(0)
+        n1, n2 = (0.5 * torch.randn(x1.shape, generator=g, dtype=torch.float64).to(device, dtype) for _ in range(2))
+        err = {
+            s: (epi.triangulate_points(P1, P2, x1 + n1, x2 + n2, solver=s) - X).norm(dim=-1).max()
+            for s in ("svd", "cofactor")
+        }
+        assert err["svd"] <= 0.25
         assert err["cofactor"] > 1.0
