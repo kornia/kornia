@@ -48,8 +48,9 @@ class TestRANSACHomography(BaseTester):
     @pytest.mark.parametrize("model_found", [False, True])
     def test_forward_output_shapes_are_stable(self, device, dtype, model_found):
         generator = torch.Generator().manual_seed(123)
-        points1 = 100.0 * torch.rand(16, 2, generator=generator).to(device=device, dtype=dtype)
-        unrelated_points = 100.0 * torch.rand(16, 2, generator=generator).to(device=device, dtype=dtype)
+        # A 10 px extent keeps bfloat16 rounding of the transformed points below inl_th; at 100 px it drops inliers.
+        points1 = 10.0 * torch.rand(16, 2, generator=generator).to(device=device, dtype=dtype)
+        unrelated_points = 10.0 * torch.rand(16, 2, generator=generator).to(device=device, dtype=dtype)
         homography = torch.tensor([[1.0, 0.1, 2.0], [0.05, 1.0, -1.0], [0.001, 0.002, 1.0]], device=device, dtype=dtype)
         points2 = transform_points(homography[None], points1[None])[0] if model_found else unrelated_points
         ransac = RANSAC("homography", inl_th=0.5, batch_size=4, max_iter=1, max_lo_iters=0, seed=0)
