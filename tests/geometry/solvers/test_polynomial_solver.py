@@ -1160,14 +1160,16 @@ class TestConventionPolynomialSolvers(BaseTester):
         [(solver.solve_quadratic, [0.0, 2.0, -6.0]), (solver.solve_cubic, [0.0, 0.0, 2.0, -6.0])],
         ids=["quadratic_linear", "cubic_linear"],
     )
-    def test_convention_zero_leading_coefficient_gradient_4873(self, fn, coeffs, device):
+    def test_convention_zero_leading_coefficient_gradient_4873(self, fn, coeffs, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Gradient values are checked in float32 and float64.")
         # The root 3 of 2x - 6 keeps its dependence on the zero higher-order coefficients. By the implicit function
         # theorem d root / d coeffs[k] = -root^(n - k) / p'(root), with p'(root) = 2. gradcheck cannot stand in for
         # this: a negative leading coefficient adds real roots, and slot 0 can jump to one of them.
-        x = torch.tensor([coeffs], device=device, dtype=torch.float64, requires_grad=True)
+        x = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
         (grad,) = torch.autograd.grad(fn(x)[0, 0], x)
         powers = [3.0 ** (len(coeffs) - 1 - k) for k in range(len(coeffs))]
-        self.assert_close(grad, -torch.tensor([powers], device=device, dtype=torch.float64) / 2.0)
+        self.assert_close(grad, -torch.tensor([powers], device=device, dtype=dtype) / 2.0)
 
     def test_wart_solve_quartic_small_scale_4833(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
