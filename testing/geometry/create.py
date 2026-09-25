@@ -63,7 +63,9 @@ def generate_two_view_random_scene(
     num_views: int = 2
     num_points: int = 30
 
-    scene: dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
+    with torch.random.fork_rng():
+        torch.manual_seed(4886)
+        scene: dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
 
     # internal parameters (same K)
     K1 = scene["K"].to(device, dtype)
