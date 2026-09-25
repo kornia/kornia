@@ -100,6 +100,31 @@ class TestEqualization(BaseTester):
             enhance.equalize_clahe(img, clip, grid)
         assert expected_error_msg in str(errinfo)
 
+    @pytest.mark.parametrize(
+        ("size", "grid"),
+        [
+            ((8, 8), (8, 8)),  # kornia#4783: an image as large as the grid
+            ((8, 16), (8, 8)),  # only the vertical axis is too small
+            ((16, 8), (8, 8)),  # only the horizontal axis is too small
+            ((4, 4), (8, 8)),  # already rejected before, message now names the limit
+        ],
+    )
+    def test_exception_image_too_small_for_grid_4783(self, size, grid):
+        # kornia#4783: reflect padding needs the pad below the axis it reflects, so an image that
+        # only matches the grid used to reach F.pad and fail with a raw padding error.
+        img = torch.rand(1, 1, *size)
+        with pytest.raises(ValueError) as errinfo:
+            enhance.equalize_clahe(img, grid_size=grid)
+        assert "Cannot compute tiles" in str(errinfo)
+        assert f"smallest image this grid admits is ({grid[0] + 1}, {grid[1] + 1})" in str(errinfo)
+
+    @pytest.mark.parametrize("grid", [(2, 2), (4, 4), (8, 8)])
+    def test_smallest_image_the_grid_admits_is_accepted_4783(self, grid, device, dtype):
+        # The size the message names must work, so the bound it reports is exact.
+        img = torch.rand(1, 1, grid[0] + 1, grid[1] + 1, device=device, dtype=dtype)
+        out = enhance.equalize_clahe(img, grid_size=grid)
+        assert out.shape == img.shape
+
     @pytest.mark.parametrize("dims", [(1, 1, 1, 1, 1), (1, 1)])
     def test_exception_tensor_dims(self, dims):
         img = torch.rand(dims)
