@@ -1018,15 +1018,77 @@ class TestRANSACSampling(BaseTester):
         expected = 40000 / population
         assert (counts - expected).abs().max() < 7 * math.sqrt(expected)
 
-    def test_prosac_does_not_use_uniform_confidence(self, device, dtype):
+    @pytest.mark.parametrize("confidence,batches", [(0.99, 1), (1.0, 3)])
+    def test_prosac_confidence(self, device, dtype, confidence, batches):
         points = torch.rand(20, 2, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("homography", batch_size=8, max_iter=3, max_lo_iters=0, prosac_sampling=True)
+        ransac = RANSAC(
+            "homography", batch_size=8, max_iter=3, max_lo_iters=0, prosac_sampling=True, confidence=confidence
+        )
         calls = []
         ransac.remove_bad_samples = lambda a, b: (a, b)
         ransac.minimal_solver = lambda a, b, w: calls.append(1) or matrix
         ransac(points, points)
-        assert len(calls) == 3
+        assert len(calls) == batches
+
+    def test_prosac_stopping_uses_ranking(self, device):
+        ransac = RANSAC("fundamental", batch_size=16, max_iter=256, prosac_sampling=True)
+        ranked = torch.arange(500, device=device) < 50
+        assert ransac._prosac_max_samples(ranked) == 1
+        assert ransac._prosac_max_samples(ranked.flip(0)) == 4096
+
+    @pytest.mark.parametrize("support", [0, 8, 9])
+    def test_prosac_stopping_rejects_chance_support(self, device, support):
+        ransac = RANSAC("fundamental", batch_size=16, max_iter=256, prosac_sampling=True)
+        # A fitted sample plus one accidental inlier is insufficient evidence.
+        inliers = torch.arange(500, device=device) < support
+        assert ransac._prosac_max_samples(inliers) == 4096
+
+    def test_prosac_stopping_without_replacement(self, device):
+        ransac = RANSAC("homography", batch_size=16, max_iter=256, prosac_sampling=True)
+        # The best prefix is the whole set. C(10,4)/C(20,4) requires 104 draws
+        # for 99% confidence; the with-replacement approximation gives only 72.
+        inliers = torch.arange(20, device=device) >= 10
+        assert ransac._prosac_max_samples(inliers) == 104
+        ransac.confidence = 1
+        assert ransac._prosac_max_samples(inliers) == 4096
+
+    @pytest.mark.parametrize("replace_incumbent", [False, True])
+    def test_prosac_stopping_after_multiple_batches(self, device, dtype, replace_incumbent):
+        points = torch.rand(20, 2, device=device, dtype=dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        ransac = RANSAC(
+            "homography", batch_size=16, max_iter=16, max_lo_iters=0, score_type="msac", prosac_sampling=True
+        )
+        calls = []
+        ransac.remove_bad_samples = lambda a, b: (a, b)
+        ransac.minimal_solver = lambda a, b, w: calls.append(1) or matrix
+
+        def verify(a, b, models, threshold):
+            # The initial incumbent requires 104 draws (seven batches). A
+            # better MSAC score with less support needs the entire budget.
+            replace = replace_incumbent and len(calls) >= 2
+            mask = torch.arange(20, device=device) >= (15 if replace else 10)
+            return matrix[0], mask, 2.0 if replace else 1.0, float(mask.sum())
+
+        ransac.verify = verify
+        for _ in range(2):
+            calls.clear()
+            ransac(points, points)
+            assert len(calls) == (16 if replace_incumbent else 7)
+
+    def test_prosac_minimal_population(self, device):
+        ransac = RANSAC("homography", batch_size=16, max_iter=256, prosac_sampling=True)
+        assert ransac._prosac_max_samples(torch.ones(4, device=device, dtype=torch.bool)) == 4096
+
+    def test_prosac_stopping_respects_growth(self, device):
+        ransac = RANSAC("homography", batch_size=16, max_iter=256, prosac_sampling=True)
+        # A 50% prefix needs many more draws than it receives during growth.
+        # Later prefixes have insufficient support: do not treat all 4096 draws
+        # as if they had sampled from the top 20.
+        inliers = torch.zeros(500, device=device, dtype=torch.bool)
+        inliers[:20:2] = True
+        assert ransac._prosac_max_samples(inliers) == 4096
 
 
 class TestRANSACBoundedLO(BaseTester):

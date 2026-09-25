@@ -1,0 +1,2635 @@
+{
+  "metadata": {
+    "baseline_commit": "dfac11ab",
+    "description": "PROSAC prefix stopping vs merged #4902; mean of repeated-call medians on timed subset, quality on all pairs",
+    "uniform_outputs_identical": true
+  },
+  "results": [
+    {
+      "metadata": {
+        "actual_work": "sampled_sets counts minimal sets in untimed prediction, excluding solver roots",
+        "aggregation": "equal-weight scene/seed cells per feature/config; failures retained",
+        "albumentations": "2.0.8",
+        "confidence": 0.999,
+        "dataset_sha256": "4f61b3a52faab301136c082002af67f0b205dd9a737ead772538e82d01f96090",
+        "device": "cpu",
+        "evaluator_sha256": "e36339a53a62f5ce7949488a9dcdadeedbdee395c537d3e074d63832bacd13aa",
+        "git_commit": "dfac11ab",
+        "kornia": "0.9.0rc1",
+        "kornia_module": "kornia/__init__.py",
+        "kornia_rs": "0.1.14",
+        "load": {
+          "cpu_count": 28,
+          "load_avg_15m": 0.2763671875,
+          "load_avg_1m": 0.8251953125,
+          "load_avg_5m": 0.4951171875,
+          "mem_available_bytes": null,
+          "mem_total_bytes": null
+        },
+        "maa_thresholds_deg": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "machine": "x86_64",
+        "min_run_time": 0.05,
+        "numpy": "2.4.0",
+        "opencv": "4.11.0",
+        "opencv_num_threads": null,
+        "pillow": "12.3.0",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+        "pose_evaluator": "imc2021.metrics.pose_error",
+        "python": "3.11.14",
+        "quality_summary": [
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.37,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.34500000000000003,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.465,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.8099999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7999999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7150000000000001,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.25,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.24499999999999997,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.255,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.47277777777777774,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.27499999999999997,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.32999999999999996,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.3350000000000001,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.735,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.765,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7699999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.3,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.275,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.155,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.43777777777777777,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.22000000000000003,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.26,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.185,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6350000000000001,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.575,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.64,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.095,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.08,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.10500000000000001,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.31055555555555553,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.19,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.19,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.21000000000000002,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.61,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.5850000000000001,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.625,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05500000000000001,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.025,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.2822222222222222,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          }
+        ],
+        "ransac_source_sha256": "7eb46fde6a556dcc021dee4c13aeb05ed1fc11f43e3b3cd1835703588e0ef636",
+        "sample_budget": 4096,
+        "skimage": "0.26.0",
+        "threshold_px": 1.0,
+        "timestamp_utc": "2026-09-25T17:32:53+00:00",
+        "timing_includes": "RANSAC.forward only; fixed estimator seed per repeated call",
+        "timing_pairs_per_scene_feature": 2,
+        "torch": "2.14.0+cu130",
+        "torch_num_threads": 1,
+        "torchvision": "0.29.0+cu130",
+        "units": "pairs/s"
+      },
+      "regime": "Initial scenes, CPU",
+      "results": [
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.47277777777777774,
+          "mean_sampled_sets": 4096.0,
+          "mean_timed_median_ms": 39.98291166620523,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.43777777777777777,
+          "mean_sampled_sets": 1955.5555555555557,
+          "mean_timed_median_ms": 12.94522750488088,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.31055555555555553,
+          "mean_sampled_sets": 4096.0,
+          "mean_timed_median_ms": 36.01499194499209,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.2822222222222222,
+          "mean_sampled_sets": 2579.911111111111,
+          "mean_timed_median_ms": 20.306958411513026,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 18
+        }
+      ],
+      "revision": "Base"
+    },
+    {
+      "metadata": {
+        "actual_work": "sampled_sets counts minimal sets in untimed prediction, excluding solver roots",
+        "aggregation": "equal-weight scene/seed cells per feature/config; failures retained",
+        "albumentations": "2.0.8",
+        "confidence": 0.999,
+        "dataset_sha256": "4f61b3a52faab301136c082002af67f0b205dd9a737ead772538e82d01f96090",
+        "device": "cpu",
+        "evaluator_sha256": "e36339a53a62f5ce7949488a9dcdadeedbdee395c537d3e074d63832bacd13aa",
+        "git_commit": "dfac11ab-dirty",
+        "kornia": "0.9.0rc1",
+        "kornia_module": "kornia/__init__.py",
+        "kornia_rs": "0.1.14",
+        "load": {
+          "cpu_count": 28,
+          "load_avg_15m": 0.3173828125,
+          "load_avg_1m": 0.7783203125,
+          "load_avg_5m": 0.56591796875,
+          "mem_available_bytes": null,
+          "mem_total_bytes": null
+        },
+        "maa_thresholds_deg": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "machine": "x86_64",
+        "min_run_time": 0.05,
+        "numpy": "2.4.0",
+        "opencv": "4.11.0",
+        "opencv_num_threads": null,
+        "pillow": "12.3.0",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+        "pose_evaluator": "imc2021.metrics.pose_error",
+        "python": "3.11.14",
+        "quality_summary": [
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.33999999999999997,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.355,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.395,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.8099999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7649999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.735,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.25,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.215,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.18,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.4494444444444444,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.27499999999999997,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.32999999999999996,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.3350000000000001,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.735,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.765,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7699999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.3,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.275,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.155,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.43777777777777777,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.215,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.23000000000000004,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.175,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6350000000000001,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.575,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.605,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.10999999999999999,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.10499999999999998,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.3,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.19,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.19,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.21000000000000002,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.61,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.5850000000000001,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.625,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05500000000000001,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.025,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.2822222222222222,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          }
+        ],
+        "ransac_source_sha256": "3910075391a99f5218ff4563a5d015b9b1b1e39c12eb85dd58cd9ec9bcee015e",
+        "sample_budget": 4096,
+        "skimage": "0.26.0",
+        "threshold_px": 1.0,
+        "timestamp_utc": "2026-09-25T17:34:06+00:00",
+        "timing_includes": "RANSAC.forward only; fixed estimator seed per repeated call",
+        "timing_pairs_per_scene_feature": 2,
+        "torch": "2.14.0+cu130",
+        "torch_num_threads": 1,
+        "torchvision": "0.29.0+cu130",
+        "units": "pairs/s"
+      },
+      "regime": "Initial scenes, CPU",
+      "results": [
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.4494444444444444,
+          "mean_sampled_sets": 1460.6222222222223,
+          "mean_timed_median_ms": 7.371888314143386,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.43777777777777777,
+          "mean_sampled_sets": 1955.5555555555557,
+          "mean_timed_median_ms": 11.574536407392266,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.3,
+          "mean_sampled_sets": 2178.8444444444444,
+          "mean_timed_median_ms": 15.965757971854247,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.2822222222222222,
+          "mean_sampled_sets": 2579.911111111111,
+          "mean_timed_median_ms": 19.824340749780983,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 18
+        }
+      ],
+      "revision": "Changed"
+    },
+    {
+      "metadata": {
+        "actual_work": "sampled_sets counts minimal sets in untimed prediction, excluding solver roots",
+        "aggregation": "equal-weight scene/seed cells per feature/config; failures retained",
+        "albumentations": "2.0.8",
+        "confidence": 0.999,
+        "cuda_device": "NVIDIA GeForce RTX 4090",
+        "cuda_version": "13.0",
+        "dataset_sha256": "4f61b3a52faab301136c082002af67f0b205dd9a737ead772538e82d01f96090",
+        "device": "cuda",
+        "evaluator_sha256": "e36339a53a62f5ce7949488a9dcdadeedbdee395c537d3e074d63832bacd13aa",
+        "git_commit": "dfac11ab",
+        "kornia": "0.9.0rc1",
+        "kornia_module": "kornia/__init__.py",
+        "kornia_rs": "0.1.14",
+        "load": {
+          "cpu_count": 28,
+          "load_avg_15m": 0.5146484375,
+          "load_avg_1m": 1.97314453125,
+          "load_avg_5m": 1.0390625,
+          "mem_available_bytes": null,
+          "mem_total_bytes": null
+        },
+        "maa_thresholds_deg": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "machine": "x86_64",
+        "min_run_time": 0.05,
+        "numpy": "2.4.0",
+        "opencv": "4.11.0",
+        "opencv_num_threads": null,
+        "pillow": "12.3.0",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+        "pose_evaluator": "imc2021.metrics.pose_error",
+        "python": "3.11.14",
+        "quality_summary": [
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.36,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.41,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.41500000000000004,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.8149999999999998,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7849999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.8049999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.22000000000000003,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.255,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.425,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.4988888888888888,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.325,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.33999999999999997,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.215,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.835,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.82,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7999999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.21500000000000002,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.225,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13999999999999999,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.43500000000000005,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.26,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.225,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.22999999999999998,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.635,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6200000000000001,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.635,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.045,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.11000000000000001,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.31222222222222223,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.555,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.595,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6399999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.034999999999999996,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.015000000000000003,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06999999999999999,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.25111111111111106,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          }
+        ],
+        "ransac_source_sha256": "7eb46fde6a556dcc021dee4c13aeb05ed1fc11f43e3b3cd1835703588e0ef636",
+        "sample_budget": 4096,
+        "skimage": "0.26.0",
+        "threshold_px": 1.0,
+        "timestamp_utc": "2026-09-25T17:36:00+00:00",
+        "timing_includes": "RANSAC.forward only; fixed estimator seed per repeated call",
+        "timing_pairs_per_scene_feature": 2,
+        "torch": "2.14.0+cu130",
+        "torch_num_threads": 1,
+        "torchvision": "0.29.0+cu130",
+        "units": "pairs/s"
+      },
+      "regime": "Initial scenes, CUDA",
+      "results": [
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.4988888888888888,
+          "mean_sampled_sets": 4096.0,
+          "mean_timed_median_ms": 50.89899697223801,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.43500000000000005,
+          "mean_sampled_sets": 1952.7111111111112,
+          "mean_timed_median_ms": 19.1965113056843,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.31222222222222223,
+          "mean_sampled_sets": 4096.0,
+          "mean_timed_median_ms": 55.53730438886204,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.25111111111111106,
+          "mean_sampled_sets": 2538.6666666666665,
+          "mean_timed_median_ms": 35.46517090548554,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 18
+        }
+      ],
+      "revision": "Base"
+    },
+    {
+      "metadata": {
+        "actual_work": "sampled_sets counts minimal sets in untimed prediction, excluding solver roots",
+        "aggregation": "equal-weight scene/seed cells per feature/config; failures retained",
+        "albumentations": "2.0.8",
+        "confidence": 0.999,
+        "cuda_device": "NVIDIA GeForce RTX 4090",
+        "cuda_version": "13.0",
+        "dataset_sha256": "4f61b3a52faab301136c082002af67f0b205dd9a737ead772538e82d01f96090",
+        "device": "cuda",
+        "evaluator_sha256": "e36339a53a62f5ce7949488a9dcdadeedbdee395c537d3e074d63832bacd13aa",
+        "git_commit": "dfac11ab-dirty",
+        "kornia": "0.9.0rc1",
+        "kornia_module": "kornia/__init__.py",
+        "kornia_rs": "0.1.14",
+        "load": {
+          "cpu_count": 28,
+          "load_avg_15m": 0.54833984375,
+          "load_avg_1m": 1.26904296875,
+          "load_avg_5m": 1.02587890625,
+          "mem_available_bytes": null,
+          "mem_total_bytes": null
+        },
+        "maa_thresholds_deg": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "machine": "x86_64",
+        "min_run_time": 0.05,
+        "numpy": "2.4.0",
+        "opencv": "4.11.0",
+        "opencv_num_threads": null,
+        "pillow": "12.3.0",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+        "pose_evaluator": "imc2021.metrics.pose_error",
+        "python": "3.11.14",
+        "quality_summary": [
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.305,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.37,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.35000000000000003,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.8149999999999998,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7849999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.8049999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.22000000000000003,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.205,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.37,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.4694444444444444,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.325,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.33999999999999997,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.215,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.835,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.82,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.7999999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.21500000000000002,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.225,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13999999999999999,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.43500000000000005,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.19,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.24500000000000002,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.26,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.635,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.625,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.635,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06999999999999999,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.11000000000000001,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.3133333333333333,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1,
+                "pairs": 20,
+                "scene": "reichstag",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.555,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.595,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6399999999999999,
+                "pairs": 20,
+                "scene": "sacre_coeur",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.034999999999999996,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.015000000000000003,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06999999999999999,
+                "pairs": 20,
+                "scene": "st_peters_square",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.25111111111111106,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          }
+        ],
+        "ransac_source_sha256": "3910075391a99f5218ff4563a5d015b9b1b1e39c12eb85dd58cd9ec9bcee015e",
+        "sample_budget": 4096,
+        "skimage": "0.26.0",
+        "threshold_px": 1.0,
+        "timestamp_utc": "2026-09-25T17:37:10+00:00",
+        "timing_includes": "RANSAC.forward only; fixed estimator seed per repeated call",
+        "timing_pairs_per_scene_feature": 2,
+        "torch": "2.14.0+cu130",
+        "torch_num_threads": 1,
+        "torchvision": "0.29.0+cu130",
+        "units": "pairs/s"
+      },
+      "regime": "Initial scenes, CUDA",
+      "results": [
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.4694444444444444,
+          "mean_sampled_sets": 1493.3333333333333,
+          "mean_timed_median_ms": 10.442434666684777,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.43500000000000005,
+          "mean_sampled_sets": 1952.7111111111112,
+          "mean_timed_median_ms": 16.367188583131387,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.3133333333333333,
+          "mean_sampled_sets": 2164.6222222222223,
+          "mean_timed_median_ms": 29.934194355680827,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 18
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.25111111111111106,
+          "mean_sampled_sets": 2538.6666666666665,
+          "mean_timed_median_ms": 35.63318191619247,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 18
+        }
+      ],
+      "revision": "Changed"
+    },
+    {
+      "metadata": {
+        "actual_work": "sampled_sets counts minimal sets in untimed prediction, excluding solver roots",
+        "aggregation": "equal-weight scene/seed cells per feature/config; failures retained",
+        "albumentations": "2.0.8",
+        "confidence": 0.999,
+        "dataset_sha256": "a39d400bbb8d757130c6ae90d6ec11981fb3257b7c6ede2cd74ce02e6b6bee70",
+        "device": "cpu",
+        "evaluator_sha256": "e36339a53a62f5ce7949488a9dcdadeedbdee395c537d3e074d63832bacd13aa",
+        "git_commit": "dfac11ab",
+        "kornia": "0.9.0rc1",
+        "kornia_module": "kornia/__init__.py",
+        "kornia_rs": "0.1.14",
+        "load": {
+          "cpu_count": 28,
+          "load_avg_15m": 0.568359375,
+          "load_avg_1m": 1.02001953125,
+          "load_avg_5m": 1.00244140625,
+          "mem_available_bytes": null,
+          "mem_total_bytes": null
+        },
+        "maa_thresholds_deg": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "machine": "x86_64",
+        "min_run_time": 0.05,
+        "numpy": "2.4.0",
+        "opencv": "4.11.0",
+        "opencv_num_threads": null,
+        "pillow": "12.3.0",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+        "pose_evaluator": "imc2021.metrics.pose_error",
+        "python": "3.11.14",
+        "quality_summary": [
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.006666666666666666,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.09333333333333334,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.49333333333333335,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.5866666666666667,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6466666666666667,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.33999999999999997,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.2866666666666666,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.31333333333333335,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1933333333333333,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.14666666666666667,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13999999999999999,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.27555555555555555,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.026666666666666665,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06666666666666667,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.5266666666666666,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6600000000000001,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.68,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.2733333333333333,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.2733333333333333,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.3,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05333333333333333,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1933333333333333,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666666,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.27666666666666667,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.0,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05333333333333333,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.006666666666666666,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666666,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.18,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.11333333333333333,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13333333333333333,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.2533333333333333,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.21333333333333332,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.04,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.18666666666666668,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.09333333333333334,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.12,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06666666666666667,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.07333333333333333,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13333333333333333,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12666666666666665,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.18,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666669,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.18,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.24666666666666667,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666666,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.13999999999999999,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          }
+        ],
+        "ransac_source_sha256": "7eb46fde6a556dcc021dee4c13aeb05ed1fc11f43e3b3cd1835703588e0ef636",
+        "sample_budget": 4096,
+        "skimage": "0.26.0",
+        "threshold_px": 1.0,
+        "timestamp_utc": "2026-09-25T17:38:08+00:00",
+        "timing_includes": "RANSAC.forward only; fixed estimator seed per repeated call",
+        "timing_pairs_per_scene_feature": 2,
+        "torch": "2.14.0+cu130",
+        "torch_num_threads": 1,
+        "torchvision": "0.29.0+cu130",
+        "units": "pairs/s"
+      },
+      "regime": "Held-out scenes, CPU",
+      "results": [
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.27555555555555555,
+          "mean_sampled_sets": 4096.0,
+          "mean_timed_median_ms": 37.349442646094154,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 24
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.27666666666666667,
+          "mean_sampled_sets": 1405.1555555555556,
+          "mean_timed_median_ms": 10.979516699929567,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 24
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.12,
+          "mean_sampled_sets": 4096.0,
+          "mean_timed_median_ms": 35.646011313474446,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 24
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.13999999999999999,
+          "mean_sampled_sets": 2420.6222222222223,
+          "mean_timed_median_ms": 21.633524108544105,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 24
+        }
+      ],
+      "revision": "Base"
+    },
+    {
+      "metadata": {
+        "actual_work": "sampled_sets counts minimal sets in untimed prediction, excluding solver roots",
+        "aggregation": "equal-weight scene/seed cells per feature/config; failures retained",
+        "albumentations": "2.0.8",
+        "confidence": 0.999,
+        "dataset_sha256": "a39d400bbb8d757130c6ae90d6ec11981fb3257b7c6ede2cd74ce02e6b6bee70",
+        "device": "cpu",
+        "evaluator_sha256": "e36339a53a62f5ce7949488a9dcdadeedbdee395c537d3e074d63832bacd13aa",
+        "git_commit": "dfac11ab-dirty",
+        "kornia": "0.9.0rc1",
+        "kornia_module": "kornia/__init__.py",
+        "kornia_rs": "0.1.14",
+        "load": {
+          "cpu_count": 28,
+          "load_avg_15m": 0.55908203125,
+          "load_avg_1m": 0.5712890625,
+          "load_avg_5m": 0.8642578125,
+          "mem_available_bytes": null,
+          "mem_total_bytes": null
+        },
+        "maa_thresholds_deg": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "machine": "x86_64",
+        "min_run_time": 0.05,
+        "numpy": "2.4.0",
+        "opencv": "4.11.0",
+        "opencv_num_threads": null,
+        "pillow": "12.3.0",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+        "pose_evaluator": "imc2021.metrics.pose_error",
+        "python": "3.11.14",
+        "quality_summary": [
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.026666666666666665,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06666666666666667,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.10666666666666666,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.48666666666666664,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.5866666666666667,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6533333333333333,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.3466666666666667,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.21999999999999997,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.3,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666666,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.09333333333333334,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.10666666666666666,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.26333333333333325,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.026666666666666665,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06666666666666667,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.5266666666666666,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.6600000000000001,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.68,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.2733333333333333,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.2733333333333333,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.3,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.05333333333333333,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1933333333333333,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666666,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "sift",
+            "maa": 0.27666666666666667,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.0,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.02,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.0,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666666,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.11333333333333333,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13333333333333333,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.21333333333333332,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06000000000000001,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.18666666666666668,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.1027777777777778,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": true,
+            "score_type": "msac"
+          },
+          {
+            "batch": 256,
+            "cells": [
+              {
+                "failure_rate": 0.0,
+                "maa": 0.06666666666666667,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.07333333333333333,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12,
+                "pairs": 15,
+                "scene": "british_museum",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.13333333333333333,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12666666666666665,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.18,
+                "pairs": 15,
+                "scene": "florence_cathedral_side",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666669,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.18,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.24666666666666667,
+                "pairs": 15,
+                "scene": "lincoln_memorial_statue",
+                "seed": 2
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.1,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 0
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.12,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 1
+              },
+              {
+                "failure_rate": 0.0,
+                "maa": 0.16666666666666666,
+                "pairs": 15,
+                "scene": "london_bridge",
+                "seed": 2
+              }
+            ],
+            "failure_rate": 0.0,
+            "feature": "xfeat",
+            "maa": 0.13999999999999999,
+            "max_lo_iters": 5,
+            "mean_time_ms": null,
+            "model_type": "fundamental",
+            "prosac": false,
+            "score_type": "msac"
+          }
+        ],
+        "ransac_source_sha256": "3910075391a99f5218ff4563a5d015b9b1b1e39c12eb85dd58cd9ec9bcee015e",
+        "sample_budget": 4096,
+        "skimage": "0.26.0",
+        "threshold_px": 1.0,
+        "timestamp_utc": "2026-09-25T17:39:40+00:00",
+        "timing_includes": "RANSAC.forward only; fixed estimator seed per repeated call",
+        "timing_pairs_per_scene_feature": 2,
+        "torch": "2.14.0+cu130",
+        "torch_num_threads": 1,
+        "torchvision": "0.29.0+cu130",
+        "units": "pairs/s"
+      },
+      "regime": "Held-out scenes, CPU",
+      "results": [
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.26333333333333325,
+          "mean_sampled_sets": 1146.3111111111111,
+          "mean_timed_median_ms": 9.254821391671916,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 24
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "sift",
+          "maa": 0.27666666666666667,
+          "mean_sampled_sets": 1405.1555555555556,
+          "mean_timed_median_ms": 10.857855637156414,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 24
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.1027777777777778,
+          "mean_sampled_sets": 2005.3333333333333,
+          "mean_timed_median_ms": 16.40382466869899,
+          "measurement_errors": 0,
+          "prosac": true,
+          "quality_calls": 180,
+          "timed_calls": 24
+        },
+        {
+          "failure_rate": 0.0,
+          "feature": "xfeat",
+          "maa": 0.13999999999999999,
+          "mean_sampled_sets": 2420.6222222222223,
+          "mean_timed_median_ms": 20.770877004821767,
+          "measurement_errors": 0,
+          "prosac": false,
+          "quality_calls": 180,
+          "timed_calls": 24
+        }
+      ],
+      "revision": "Changed"
+    }
+  ]
+}

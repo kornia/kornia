@@ -49,10 +49,21 @@ For example, when smaller descriptor ratios indicate better matches:
     inliers[order] = sorted_inliers
 
 The prefix grows within a batch, and each growth sample includes the newest
-correspondence. This implements PROSAC sampling, not its original prefix-based
-termination test: it runs the full budget and does not apply the uniform-sampling
-confidence formula to biased draws. Uninformative or reversed rankings can hurt
-accuracy. The ``weights`` argument is not used to rank correspondences.
+correspondence. Early stopping tests ranked prefixes using the paper's
+non-randomness and maximality conditions. The non-randomness test uses a
+conservative binomial tail bound, assuming an accidental-inlier probability of
+0.1 and a significance level of 0.05; the fitted minimal sample does not count
+as evidence. Maximality uses the without-replacement all-inlier probability.
+A prefix qualifies only if the required draws fit within its growth schedule;
+draws from later, larger prefixes cannot be counted towards its confidence.
+Stopping occurs at batch boundaries and follows the current best-scoring model.
+The sampler keeps its original growth schedule; it does not truncate future
+sampling to a selected prefix. ``confidence=1`` disables stopping.
+
+As in PROSAC, the stopping argument assumes that quality ordering is informative
+and that accidental matches follow the non-randomness model. Repeated structures,
+degenerate geometry, or uninformative/reversed rankings can hurt accuracy.
+The ``weights`` argument is not used to rank correspondences.
 
 By default, local optimization repeatedly refits all current inliers. A refit
 replaces the model when it raises the score, or when it ties it: a least-squares

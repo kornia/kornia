@@ -1,0 +1,1 @@
+`RANSAC(prosac_sampling=True)` now stops at batch boundaries when ranked-prefix support satisfies non-randomness and confidence tests, instead of always spending the full sample budget. `confidence=1` retains full-budget sampling.
