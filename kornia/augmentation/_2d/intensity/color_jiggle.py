@@ -101,10 +101,13 @@ def _dispatch_color_steps(
                 Distribution.set_default_validate_args(validate_args)
 
     order = fixed_order if fixed_order is not None else params["order"].tolist()
+    output = input
     for idx in order:
         if (factors[idx] != neutral[idx]).any():
-            input = steps[idx](input, factors[idx])
-    return input
+            output = steps[idx](output, factors[idx])
+    # With every step skipped, return a copy, as the torch.cond path and ``p=0`` do, so that writing into the
+    # output never changes the caller's input.
+    return output.clone() if output is input else output
 
 
 def _brightness_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
