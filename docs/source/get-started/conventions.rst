@@ -532,7 +532,7 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
    * - polynomial roots
      - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
        return only the real roots, a missing root padded with ``0.0``; ``solve_quartic``'s order is unspecified;
-       a zero leading coefficient gives wrong roots (`#4873 <https://github.com/kornia/kornia/issues/4873>`_)
+       a zero leading coefficient lowers the degree
      - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
 
 Pitfall checklist
