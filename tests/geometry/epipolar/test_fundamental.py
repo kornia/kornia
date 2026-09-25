@@ -759,14 +759,30 @@ class TestConventionFundamental(BaseTester):
         assert sv[0, 2] < 1e-8 * sv[0, 0]  # candidate 0 is a genuine rank-2 solution
         assert (sv[1:, 2] > 1e-7 * sv[1:, 0]).all()  # the padded candidates are rank 3
 
-    def test_wart_normalize_transformation_eps_divisor_4874(self, device, dtype):
-        # #4874: the divisor is M[2, 2] + eps, so the last entry is 1 only to eps / |M[2, 2]|.
+    def test_convention_normalize_transformation_eps_divisor_4874(self, device, dtype):
+        # #4874: eps guards the divisor without biasing the normalized matrix.
         M = torch.tensor([[[2.0, 0.5, 3.0], [-1.0, 4.0, 0.25], [0.75, -2.0, 0.1]]], device=device, dtype=dtype)
         out = epi.normalize_transformation(M, eps=1e-3)
-        assert (out[0, 2, 2] - 1.0).abs() > 5e-3
-        if dtype != torch.float16:  # float16 rounds 1e-6 + 1e-8 back to 1e-6
-            M[0, 2, 2] = 1e-6
-            assert (epi.normalize_transformation(M)[0, 2, 2] - 1.0).abs() > 5e-3
+        self.assert_close(out, M / M[..., -1:, -1:], rtol=0, atol=0)
+
+    @pytest.mark.parametrize("value", [1.0, 1e-3, 1e-6, -1e-7, 1.01e-8, -1.01e-8])
+    def test_normalize_transformation_exact_last_entry(self, device, dtype, value):
+        if dtype == torch.float16:
+            pytest.skip("the near-threshold values are not representable in float16")
+        M = torch.tensor([[2.0, 0.5, 1.0], [0.3, 1.5, -2.0], [0.1, 0.2, value]], device=device, dtype=dtype)
+        out = epi.normalize_transformation(M)
+        assert out[2, 2] == 1
+        self.assert_close(out, M / M[2, 2], rtol=0, atol=0)
+
+    def test_normalize_transformation_singular_guard(self, device, dtype):
+        values = torch.tensor([0.0, 0.99e-8, -0.99e-8, 1e-8, -1e-8], device=device, dtype=dtype)
+        M = torch.ones(5, 3, 3, device=device, dtype=dtype)
+        M[..., 2, 2] = values
+        M.requires_grad_()
+        out = epi.normalize_transformation(M)
+        self.assert_close(out, M, rtol=0, atol=0)
+        out.sum().backward()
+        self.assert_close(M.grad, torch.ones_like(M), rtol=0, atol=0)
 
     def test_wart_find_fundamental_zero_weight_changes_result_4875(self, device, dtype):
         two_view = two_view_scene(device, dtype)

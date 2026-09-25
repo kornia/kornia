@@ -23,7 +23,7 @@ import torch
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from kornia.geometry.epipolar import normalize_points
+from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.linalg import transform_points
 
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]
@@ -321,7 +321,7 @@ def find_homography_dlt(
     else:
         raise NotImplementedError
     H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
-    return H / (H[..., -1:, -1:] + eps)
+    return normalize_transformation(H, eps)
 
 
 def find_homography_dlt_iterated(
@@ -483,7 +483,7 @@ def find_homography_lines_dlt(
 
     H = V[..., -1].view(-1, 3, 3)
     H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
-    return H / (H[..., -1:, -1:] + eps)
+    return normalize_transformation(H, eps)
 
 
 def find_homography_lines_dlt_iterated(

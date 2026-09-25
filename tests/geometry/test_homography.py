@@ -540,6 +540,53 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         self.gradcheck(find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6)
 
 
+class TestHomographyNormalization(BaseTester):
+    @pytest.mark.parametrize("solver", ["lu", "svd", "lines"])
+    @pytest.mark.parametrize("last_entry", [1e-6, -1e-6, 0.0, 1e-10, -1e-10])
+    def test_small_last_entry(self, device, solver, last_entry):
+        # Float64 resolves the small homogeneous scale without solver rounding masking #4874.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        points = torch.tensor(
+            [
+                [
+                    [1.0, 1.0],
+                    [2.0, 1.0],
+                    [2.0, 3.0],
+                    [1.0, 3.0],
+                    [3.0, 2.0],
+                    [4.0, 1.0],
+                    [4.0, 4.0],
+                    [1.0, 4.0],
+                    [2.0, 5.0],
+                    [5.0, 2.0],
+                    [3.0, 4.0],
+                    [5.0, 5.0],
+                ]
+            ],
+            device=device,
+            dtype=torch.float64,
+        )
+        H = torch.tensor(
+            [[[1.0, 0.2, 0.3], [0.1, 1.0, 0.2], [0.1, 0.2, last_entry]]], device=device, dtype=points.dtype
+        )
+        projected = torch.cat([points, torch.ones_like(points[..., :1])], dim=-1) @ H.transpose(-1, -2)
+        target = (projected[..., :2] / projected[..., 2:]).detach().requires_grad_()
+        if solver == "lines":
+            out = find_homography_lines_dlt(points.reshape(1, 6, 2, 2), target.reshape(1, 6, 2, 2))
+        else:
+            out = find_homography_dlt(points[:, :4], target[:, :4], solver=solver)
+        if abs(last_entry) > 1e-8:
+            assert out[0, 2, 2] == 1
+        else:
+            # Keep the finite, unscaled estimate when its last entry is too small to normalize.
+            assert out[..., 2, 2].abs().max() <= 1e-8
+            assert out.abs().max() < 10
+        self.assert_close(out / out[..., :1, :1], H, rtol=1e-6, atol=1e-8)
+        out.sum().backward()
+        assert torch.isfinite(target.grad).all()
+
+
 class TestFindHomographyDLTIter(BaseTester):
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -944,7 +991,7 @@ class TestConventionHomography(BaseTester):
         assert oneway_transfer_error(p1, p2, 1e-8 * H, squared=False).min() > 1.0
 
     @pytest.mark.parametrize("model", ["points", "lines"])
-    def test_wart_find_homography_dlt_h22_eps_divisor_4874(self, model, device, dtype):
+    def test_convention_find_homography_dlt_h22_eps_divisor_4874(self, model, device, dtype):
         _skip_half(dtype, _HALF_DLT)
         p1, p2, _ = _planar(device, dtype)
         # The same fixture with the true H[2, 2] set to 1e-6 (a mild warp whose origin maps far out), exact matches.
@@ -959,9 +1006,9 @@ class TestConventionHomography(BaseTester):
 
         # With the true H[2, 2] = 1 the returned entry is 1.
         assert (fit(p2)[0, 2, 2] - 1.0).abs() < 1e-4
-        # #4874: H is divided by H[2, 2] + 1e-8, and the unnormalised entry here is a few 1e-6, so the returned
-        # H[2, 2] misses 1 by about 2e-3. Once the divisor is H[2, 2] itself, it is 1.
-        assert (fit(p2_small)[0, 2, 2] - 1.0).abs() > 1e-3
+        # #4874: divide by H[2, 2] itself even when the unnormalised entry is only a few 1e-6.
+        h22 = fit(p2_small)[0, 2, 2]
+        self.assert_close(h22, torch.ones_like(h22), rtol=0.0, atol=1e-6)
 
     @pytest.mark.parametrize("solver", ["lu", "svd"])
     def test_wart_find_homography_dlt_zero_weight_moves_normalisation_4890(self, solver, device, dtype):
