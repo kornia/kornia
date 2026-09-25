@@ -347,10 +347,6 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     b_i, c_i, h_i, w_i, device = *images.shape, images.device
     if isinstance(polygons, List):
         polygons = _batch_polygons(polygons)
-    # Empty polygons used to IndexError on polygon[..., -1, :] when closing the
-    # loop; there is nothing to fill, so leave the image unchanged.
-    if polygons.shape[1] == 0:
-        return images
     b_p, _, xy, device_p, dtype_p = *polygons.shape, polygons.device, polygons.dtype
     if len(colors.shape) == 1:
         colors = colors.expand(b_i, c_i)
@@ -358,6 +354,9 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     KORNIA_CHECK(xy == 2, "Polygon vertices must be xy, i.e. 2-dimensional")
     KORNIA_CHECK(b_i == b_p == b_c, "Image, polygon, and color must have same batch dimension")
     KORNIA_CHECK(device == device_p == device_c, "Image, polygon, and color must have same device")
+    # A polygon without vertices has nothing to fill, and closing its loop below needs a vertex.
+    if polygons.shape[1] == 0:
+        return images
 
     x_left, x_right = _get_convex_edges(polygons, h_i, w_i)
     ws = torch.arange(w_i, device=device, dtype=dtype_p)[None, None, :]

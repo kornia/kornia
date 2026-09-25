@@ -664,3 +664,11 @@ class TestFillConvexPolygon(BaseTester):
         color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
         out = draw_convex_polygon(im.clone(), pts, color)
         self.assert_close(out, im)
+
+    def test_empty_polygon_is_still_validated(self, device, dtype):
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="same batch dimension"):
+            draw_convex_polygon(im, torch.zeros(2, 0, 2, device=device, dtype=dtype), color)
+        with pytest.raises(BaseError, match="xy"):
+            draw_convex_polygon(im, torch.zeros(1, 0, 3, device=device, dtype=dtype), color)
