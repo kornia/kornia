@@ -715,9 +715,7 @@ class TestConventionEssential(BaseTester):
             real[num_points] = E[0, finite]
             assert real[num_points].shape[0] >= 1
             self.assert_close(real[num_points].norm(dim=(-2, -1)), torch.ones_like(real[num_points][:, 0, 0]))
-        # float32 loses the minimal sample's true E to roundoff (#4884); the miss's magnitude is platform-bound
-        # (3e-4 to 1.18 across BLAS builds and even between runs on the same runner class), so it is documented
-        # without a pin, and the truth is checked on all twelve points only.
+        # True-E recovery is checked on all twelve points because the minimal sample can miss it (#4884).
         # Minimal sample: every real candidate satisfies x2^T E x1 = 0 on the normalised coordinates of points1
         # (first image) and points2 (second image); the swapped product is the control.
         p1, p2 = n1[:, :5], n2[:, :5]

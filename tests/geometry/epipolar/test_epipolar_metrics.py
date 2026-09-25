@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from functools import partial
+
 import pytest
 import torch
 
@@ -296,7 +298,11 @@ class TestConventionEpipolarMetrics(BaseTester):
         F = _pixel_F_unit_norm(two_view)
         # #4881: eps is added inside the denominators, so the distance depends on the scale of F: the same F at
         # ||F|| = 1e-3 scores much lower than at ||F|| = 1. Once fixed the two agree.
-        for fn in (epi.sampson_epipolar_distance, epi.symmetrical_epipolar_distance):
+        # Select Sampson's manual path on every device; its CUDA matmul path omits denominator eps.
+        for fn in (
+            partial(epi.sampson_epipolar_distance, use_matmul_at_less_than_points=0),
+            epi.symmetrical_epipolar_distance,
+        ):
             unit, small = fn(x1, x2, F), fn(x1, x2, 1e-3 * F)
             assert ((unit - small).abs() / unit).min() > 0.5
             # squared=False returns sqrt(d^2 + eps), so an exact match scores about sqrt(eps) = 1e-4, not 0.
