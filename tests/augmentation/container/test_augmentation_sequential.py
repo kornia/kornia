@@ -1440,3 +1440,58 @@ class TestConventionAugmentationSequential(BaseTester):
         ):
             with pytest.raises(NotImplementedError):
                 K.AugmentationSequential(factory(), data_keys=["input", "mask"])(img, mask)
+
+    @pytest.mark.parametrize("data_style", ["image", "list", "dict"])
+    def test_show_and_save_cache_a_detached_cpu_image_4835(self, data_style, tmp_path, device, dtype):
+        # `.show()` / `.save()` hand the cached output to `.numpy()`, so the cache must hold the
+        # augmented image alone, detached and on the CPU: the raw forward output keeps the autograd
+        # graph, stays on the input device and, for several data keys, is a list or a dict.
+        from PIL import Image as PILImage
+
+        image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        mask = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        if data_style == "image":
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0))
+            out_image = aug(image)
+        elif data_style == "list":
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+            out_image, _ = aug(image, mask)
+        else:
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+            out_image = aug({"image": image, "mask": mask})["image"]
+
+        assert out_image.requires_grad  # the returned image still carries the graph
+        cached = aug._output_image
+        assert isinstance(cached, torch.Tensor)
+        assert not cached.requires_grad
+        assert cached.device.type == "cpu"
+        self.assert_close(cached, out_image.detach().cpu())
+
+        if dtype != torch.bfloat16:  # `.show()` renders through `Tensor.numpy()`, which has no bfloat16 support
+            assert isinstance(aug.show(display=False), PILImage.Image)
+        path = tmp_path / "augmented.jpg"
+        aug.save(name=str(path))
+        assert path.is_file()
+
+    @pytest.mark.parametrize("no_image_style", ["dict", "data_keys"])
+    def test_show_and_save_reject_a_call_that_carried_no_image_4835(self, no_image_style, tmp_path, device, dtype):
+        # A call whose data keys hold no `DataKey.INPUT` augments no image, so there is nothing to
+        # render: neither the mask that came out nor the raw container output may be cached. Both
+        # helpers report the empty cache instead. `forward` only accepts such a call when `params`
+        # are supplied, since it otherwise has no image to sample them from.
+        mask = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        if no_image_style == "dict":
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+            params = aug.forward_parameters((2, 3, 6, 8))
+            out = aug({"mask": mask}, params=params)
+            assert set(out) == {"mask"}
+        else:
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+            params = aug.forward_parameters((2, 3, 6, 8))
+            out = aug(mask, data_keys=["mask"], params=params)
+            assert isinstance(out, torch.Tensor)
+
+        assert aug._output_image is None
+        for helper in (lambda: aug.show(display=False), lambda: aug.save(name=str(tmp_path / "none.jpg"))):
+            with pytest.raises(ValueError, match="No pre-computed images found"):
+                helper()

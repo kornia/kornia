@@ -250,6 +250,9 @@ class ImageModuleMixIn:
         from kornia.image.utils import make_grid  # pylint: disable=C0415
         from kornia.io import write_image  # pylint: disable=C0415
 
+        if self._output_image is None:
+            raise ValueError("No pre-computed images found. Needs to execute first.")
+
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(self._output_image.shape) == 3:
