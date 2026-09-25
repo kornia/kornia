@@ -103,7 +103,7 @@ covers CUDA or MPS half precision.
 | `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 58 / 56 | `find_fundamental`, `find_essential`, `decompose_essential_matrix`, `motion_from_essential*` and `KRt_from_projection` raise `NotImplementedError`: CPU `lu`, `eigh` and QR have no half kernels |
 | `kornia.geometry.homography` | ⚠️ | ⚠️ | 11 / 16 | The DLT solvers run (SVD is cast to float32) but miss the clean-point accuracy checks |
 | `kornia.geometry.liegroup` | ⚠️ | ⚠️ | 36 / 130 | `So2`/`Se2` use complex tensors: float16 hits missing `ComplexHalf` kernels, and most bfloat16 `So2`/`Se2` tests raise (119 entries); `So3`/`Se3` nearly all pass |
-| `kornia.geometry.solvers` | ⚠️ | ⚠️ | 2 / 2 | `solve_quartic` accuracy on random and one reference quartic |
+| `kornia.geometry.solvers` | ⚠️ | ⚠️ | 1 / 1 | `solve_quartic` accuracy on random quartics |
 | `kornia.geometry.subpix` | ⚠️ | ⚠️ | 14 / 12 | `ConvSoftArgmax3d` raises (CPU `avg_pool3d` has no half kernel); the rest are accuracy |
 | `kornia.geometry.conversions` | ⚠️ | ⚠️ | 72 / 60 | Angle-axis, quaternion and rotation-matrix round trips lose accuracy |
 | `kornia.geometry.ransac` | ⚠️ | ⚠️ | 4 / 4 | The essential and fundamental models raise through the epipolar solvers |
