@@ -396,7 +396,8 @@ def equalize_clahe(
     Args:
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
-        grid_size: number of tiles to be cropped in each direction (GH, GW).
+        grid_size: number of tiles to be cropped in each direction (GH, GW). Each image axis must be larger
+            than its grid size; otherwise a ``ValueError`` names the smallest image the grid admits.
         slow_and_differentiable: flag to select implementation
 
     Returns:

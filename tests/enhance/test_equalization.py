@@ -22,6 +22,7 @@ import torch
 
 from kornia import enhance
 from kornia.core._compat import torch_version_ge
+from kornia.enhance.equalization import _compute_tiles
 from kornia.geometry import rotate
 
 from testing.base import BaseTester
@@ -107,6 +108,7 @@ class TestEqualization(BaseTester):
             ((8, 16), (8, 8)),  # only the vertical axis is too small
             ((16, 8), (8, 8)),  # only the horizontal axis is too small
             ((4, 4), (8, 8)),  # already rejected before, message now names the limit
+            ((4, 10), (4, 6)),  # a non-square grid: the limit is named per axis, in (H, W) order
         ],
     )
     def test_exception_image_too_small_for_grid_4783(self, size, grid):
@@ -115,8 +117,22 @@ class TestEqualization(BaseTester):
         img = torch.rand(1, 1, *size)
         with pytest.raises(ValueError) as errinfo:
             enhance.equalize_clahe(img, grid_size=grid)
-        assert "Cannot compute tiles" in str(errinfo)
-        assert f"smallest image this grid admits is ({grid[0] + 1}, {grid[1] + 1})" in str(errinfo)
+        assert "Cannot compute tiles" in str(errinfo.value)
+        assert f"Got image size {size} and grid size {grid}" in str(errinfo.value)
+        assert f"smallest image this grid admits is ({grid[0] + 1}, {grid[1] + 1})" in str(errinfo.value)
+
+    @pytest.mark.parametrize(
+        ("size", "grid", "smallest"),
+        [((4, 10), (8, 6), (5, 4)), ((10, 3), (5, 6), (3, 4))],
+    )
+    def test_compute_tiles_odd_tiles_names_its_own_limit_4783(self, size, grid, smallest):
+        # equalize_clahe always asks for even tiles; with odd ones an axis only has to exceed half its
+        # grid size, and the limit the message names must be accepted.
+        with pytest.raises(ValueError) as errinfo:
+            _compute_tiles(torch.rand(1, 1, *size), grid, even_tile_size=False)
+        assert f"smallest image this grid admits is {smallest}" in str(errinfo.value)
+        tiles, _ = _compute_tiles(torch.rand(1, 1, *smallest), grid, even_tile_size=False)
+        assert tiles.shape[1:3] == grid
 
     @pytest.mark.parametrize("grid", [(2, 2), (4, 4), (8, 8)])
     def test_smallest_image_the_grid_admits_is_accepted_4783(self, grid, device, dtype):
