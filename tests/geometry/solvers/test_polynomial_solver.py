@@ -177,10 +177,7 @@ class TestCubicSolver(BaseTester):
         x = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
         roots = solver.solve_cubic(x)
         expected = torch.tensor([[root, 0.0, 0.0]], device=device, dtype=dtype)
-        # In half precision R itself carries the rounding of its cancelling terms (bfloat16 gives
-        # R = -0.074 instead of -0.0625 for the shifted case), and the cube root amplifies it.
-        tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype)
-        self.assert_close(roots.detach(), expected, rtol=tol, atol=tol)
+        self.assert_close(roots.detach(), expected)
 
         roots[:, 0].sum().backward()
         assert bool(torch.isfinite(x.grad).all()), x.grad
@@ -191,6 +188,20 @@ class TestCubicSolver(BaseTester):
             dp = 3 * a * root**2 + 2 * b * root + c
             expected_grad = torch.tensor([[-(root ** (3 - k)) / dp for k in range(4)]], device=device, dtype=dtype)
             self.assert_close(x.grad, expected_grad)
+
+    @pytest.mark.parametrize("e", [3e-3, 1e-3, -3e-3, -1e-3])
+    def test_odd_cubic_with_small_q_4856(self, e, device, dtype):
+        # #4856: for x^3 - e*x, R == 0 and |Q| = |e| / 3 is small enough that Q^3 underflowed to 0 in
+        # float16, so D == 0 and all three roots came back nan (e > 0 divided 0 by 0, e < 0 took
+        # sqrt(-Q) of a positive Q).
+        x = torch.tensor([[1.0, 0.0, -e, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_cubic(x)
+        s = e**0.5 if e > 0 else 0.0
+        expected = torch.tensor([[s, -s, 0.0]], device=device, dtype=dtype)
+        self.assert_close(roots.detach(), expected)
+
+        roots.sum().backward()
+        assert bool(torch.isfinite(x.grad).all()), x.grad
 
 
 class TestMultiplyDegOnePoly(BaseTester):

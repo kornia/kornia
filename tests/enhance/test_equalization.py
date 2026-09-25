@@ -216,7 +216,7 @@ class TestEqualization(BaseTester):
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
             _sync(compiled(x).device)
 
-    @pytest.fixture()
+    @pytest.fixture
     def img(self, device, dtype):
         height, width = 20, 20
         # TODO: test with a more realistic pattern

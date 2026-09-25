@@ -426,7 +426,7 @@ class TestELL2LAF(BaseTester):
         inp[..., 4] += 1.0
         return inp
 
-    @pytest.mark.jit()
+    @pytest.mark.jit
     def test_jit(self, device, dtype):
         batch_size, channels, height = 1, 2, 5
         img = torch.rand(batch_size, channels, height, device=device).abs()
