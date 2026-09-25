@@ -63,12 +63,16 @@ def normalize_points(
     else:
         if weights.shape != points.shape[:2]:
             raise AssertionError(weights.shape)
-        positive_weights = weights.clamp_min(0)
+        # Accumulate in at least float32: in half precision a sum followed by a division rounds twice where
+        # ``mean`` rounds once, and uniform weights would then not reproduce the unweighted statistics.
+        acc_dtype = torch.promote_types(dtype, torch.float32)
+        positive_weights = weights.to(acc_dtype).clamp_min(0)
         total_weight = positive_weights.sum(dim=1, keepdim=True)
         # A fully de-weighted sample is degenerate; keep its normalization finite and batched.
         effective_weights = torch.where(total_weight > 0, positive_weights, torch.ones_like(positive_weights))
         total_weight = effective_weights.sum(dim=1, keepdim=True)
-        x_mean = (points * effective_weights[..., None]).sum(dim=1, keepdim=True) / total_weight[..., None]
+        weighted_sum = (points.to(acc_dtype) * effective_weights[..., None]).sum(dim=1, keepdim=True)
+        x_mean = (weighted_sum / total_weight[..., None]).to(dtype)
     centered = points - x_mean  # (B,N,2)
 
     # Mean Euclidean distance to origin (radius)
@@ -76,7 +80,7 @@ def normalize_points(
     if weights is None:
         mean_radius = radii.mean(dim=-1)  # (B,)
     else:
-        mean_radius = (radii * effective_weights).sum(dim=-1) / total_weight.squeeze(-1)
+        mean_radius = ((radii.to(acc_dtype) * effective_weights).sum(dim=-1) / total_weight.squeeze(-1)).to(dtype)
 
     # Scale so that mean radius becomes sqrt(2)
     scale = (math.sqrt(2.0)) / (mean_radius + eps)  # (B,)
