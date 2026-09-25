@@ -343,7 +343,8 @@ def find_fundamental(
         - ``points1`` are in the first image and ``points2`` in the second; the result satisfies
           :math:`x_2^\top F x_1 = 0`, the second image's point on the left.
           :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
-        - The result is scaled so that ``F[2, 2] = 1`` by :func:`normalize_transformation`.
+        - The result is scaled so that ``F[2, 2] = 1`` by :func:`normalize_transformation`, which leaves it at its
+          unnormalised scale when ``F[2, 2]`` is numerically zero, as for exactly rectified stereo.
           ``method="7POINT"`` returns three candidates in no particular order.
         - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
           negative weight counts as zero, and ``method="7POINT"`` ignores them.

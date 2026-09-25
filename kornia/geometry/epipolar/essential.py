@@ -719,7 +719,8 @@ def motion_from_essential_choose_solution(
           without a signal (`#4879 <https://github.com/kornia/kornia/issues/4879>`_).
 
     Args:
-        E_mat: The essential matrix in the form of :math:`(B, 3, 3)`.
+        E_mat: The essential matrix in the form of :math:`(B, 3, 3)`, or :math:`(3, 3)` with every other input
+            unbatched too.
         K1: The camera matrix from first camera with shape :math:`(B, 3, 3)`.
         K2: The camera matrix from second camera with shape :math:`(B, 3, 3)`.
         x1: The set of points in the first image with shape :math:`(B, N, 2)`.
@@ -731,7 +732,7 @@ def motion_from_essential_choose_solution(
 
     Returns:
         The rotation and translation plus the 3d triangulated points.
-        The tuple is as following :math:`[(B, 3, 3), (B, 3, 1), (B, N, 3)]`.
+        The tuple is as following :math:`[(B, 3, 3), (B, 3, 1), (B, N, 3)]`, without ``B`` for unbatched inputs.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])

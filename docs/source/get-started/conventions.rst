@@ -473,8 +473,9 @@ Two-view geometry
 -----------------
 
 The two-view estimators take the first image's points first and follow OpenCV's order:
-:func:`~kornia.geometry.epipolar.find_fundamental` and :func:`~kornia.geometry.epipolar.find_essential` return
-matrices with :math:`x_2^\top F x_1 = 0`, and :func:`~kornia.geometry.homography.find_homography_dlt` and
+:func:`~kornia.geometry.epipolar.find_fundamental` returns an ``F`` with :math:`x_2^\top F x_1 = 0` in image
+coordinates and :func:`~kornia.geometry.epipolar.find_essential` an ``E`` with :math:`x_2^\top E x_1 = 0` in
+normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homography_dlt` and
 :class:`~kornia.geometry.ransac.RANSAC` with ``model_type="homography"`` return an ``H`` that maps ``points1`` to
 ``points2``. Extrinsics are world-to-camera, as in :doc:`/get-started/camera-conventions`. Side by side:
 
@@ -485,9 +486,9 @@ matrices with :math:`x_2^\top F x_1 = 0`, and :func:`~kornia.geometry.homography
      - kornia
      - OpenCV
    * - fundamental matrix
-     - ``find_fundamental(points1, points2)``, scaled to ``F[2, 2] = 1``; ``method="7POINT"`` returns three
-       candidates ``(B, 3, 3, 3)`` in no particular order, padded when the cubic has one real root
-       (`#4862 <https://github.com/kornia/kornia/issues/4862>`_)
+     - ``find_fundamental(points1, points2)``, scaled to ``F[2, 2] = 1`` unless that entry is numerically zero;
+       ``method="7POINT"`` returns three candidates ``(B, 3, 3, 3)`` in no particular order, padded when the cubic
+       has one real root (`#4862 <https://github.com/kornia/kornia/issues/4862>`_)
      - ``findFundamentalMat(points1, points2)``, the same ``F``; ``FM_7POINT`` stacks only the real solutions as
        ``(3k, 3)``
    * - essential matrix

@@ -721,6 +721,15 @@ class TestConventionFundamental(BaseTester):
         assert T[0, 0, 0] == T[0, 1, 1]
         assert T[0, 0, 1] == 0 and T[0, 1, 0] == 0
 
+    def test_convention_normalize_transformation_keeps_zero_last_entry(self, device, dtype):
+        # The F[2, 2] = 1 scaling skips a last entry within eps of zero, such as the F of an exactly rectified pair
+        # (x2^T F x1 = v1 - v2): the matrix comes back unchanged instead of divided by eps.
+        M = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
+        assert torch.equal(epi.normalize_transformation(M), M)
+        # Control: a last entry above eps is divided out.
+        M[0, 2, 2] = 0.5
+        self.assert_close(epi.normalize_transformation(M), M / 0.5)
+
     def test_convention_get_closest_point_on_epipolar_line_in_image2(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _HALF_PIXEL_F)
