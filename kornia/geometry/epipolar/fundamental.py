@@ -28,7 +28,9 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 from kornia.geometry.solvers import solve_cubic
 
 
-def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def normalize_points(
+    points: torch.Tensor, eps: float = 1e-8, weights: Optional[torch.Tensor] = None
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Normalize points (isotropic).
 
     Computes the Hartley normalisation: the points are translated to zero mean and scaled isotropically so
@@ -40,6 +42,8 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     Args:
        points: Tensor containing the points to be normalized with shape :math:`(B, N, 2)`.
        eps: epsilon value to avoid numerical instabilities.
+       weights: Optional nonnegative weights with shape :math:`(B, N)` for the centroid and mean radius.
+          Zero-weight points do not influence the transform. An all-zero batch element uses unweighted statistics.
 
     Returns:
        tuple containing the normalized points in the shape :math:`(B, N, 2)` and the transformation matrix
@@ -54,12 +58,25 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     B, _N, _ = points.shape
     device, dtype = points.device, points.dtype
 
-    # Center at mean
-    x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
+    if weights is None:
+        x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
+    else:
+        if weights.shape != points.shape[:2]:
+            raise AssertionError(weights.shape)
+        positive_weights = weights.clamp_min(0)
+        total_weight = positive_weights.sum(dim=1, keepdim=True)
+        # A fully de-weighted sample is degenerate; keep its normalization finite and batched.
+        effective_weights = torch.where(total_weight > 0, positive_weights, torch.ones_like(positive_weights))
+        total_weight = effective_weights.sum(dim=1, keepdim=True)
+        x_mean = (points * effective_weights[..., None]).sum(dim=1, keepdim=True) / total_weight[..., None]
     centered = points - x_mean  # (B,N,2)
 
     # Mean Euclidean distance to origin (radius)
-    mean_radius = centered.norm(dim=-1, p=2).mean(dim=-1)  # (B,)
+    radii = centered.norm(dim=-1, p=2)
+    if weights is None:
+        mean_radius = radii.mean(dim=-1)  # (B,)
+    else:
+        mean_radius = (radii * effective_weights).sum(dim=-1) / total_weight.squeeze(-1)
 
     # Scale so that mean radius becomes sqrt(2)
     scale = (math.sqrt(2.0)) / (mean_radius + eps)  # (B,)
@@ -285,9 +302,9 @@ def run_8point(
         if weights.shape[1] != points1.shape[1]:
             raise AssertionError(weights.shape)
 
-    # Hartley normalization (same as before)
-    pts1n, T1 = normalize_points(points1)
-    pts2n, T2 = normalize_points(points2)
+    # Use the same correspondences for Hartley statistics and the weighted DLT system.
+    pts1n, T1 = normalize_points(points1, weights=weights)
+    pts2n, T2 = normalize_points(points2, weights=weights)
 
     x1, y1 = torch.chunk(pts1n, dim=-1, chunks=2)  # (B,N,1)
     x2, y2 = torch.chunk(pts2n, dim=-1, chunks=2)  # (B,N,1)
@@ -348,10 +365,8 @@ def find_fundamental(
           ``method="7POINT"`` returns three candidates in no particular order.
         - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
           negative weight counts as zero, and ``method="7POINT"`` ignores them.
-        - Known defects: when the 7-point cubic has one real root, the two extra candidates are one rank-3
-          matrix repeated instead of zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_); a zero weight
-          does not drop a correspondence, which still enters the point normalisation and changes the result
-          (`#4875 <https://github.com/kornia/kornia/issues/4875>`_).
+        - Known defect: when the 7-point cubic has one real root, the two extra candidates are one rank-3
+          matrix repeated instead of zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`: :math:`N \ge 8` for

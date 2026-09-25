@@ -193,6 +193,7 @@ def find_homography_dlt(
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+          Zero-weight points are excluded from the DLT equations and Hartley normalization.
         solver: variants: svd, lu.
 
 
@@ -210,8 +211,10 @@ def find_homography_dlt(
     device, dtype = _extract_device_dtype([points1, points2])
 
     eps: float = 1e-8
-    points1_norm, transform1 = normalize_points(points1)
-    points2_norm, transform2 = normalize_points(points2)
+    if weights is not None and weights.shape != points1.shape[:2]:
+        raise AssertionError(weights.shape)
+    points1_norm, transform1 = normalize_points(points1, weights=weights)
+    points2_norm, transform2 = normalize_points(points2, weights=weights)
 
     x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # BxNx1
     x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # BxNx1
@@ -368,7 +371,8 @@ def find_homography_lines_dlt(
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        weights: Tensor containing the weights per line correspondence with a shape of :math:`(B, N)`.
+          Zero-weight segments are excluded from Hartley normalization.
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
@@ -386,8 +390,11 @@ def find_homography_lines_dlt(
     points1 = ls1.reshape(BS, 2 * N, 2)
     points2 = ls2.reshape(BS, 2 * N, 2)
 
-    points1_norm, transform1 = normalize_points(points1)
-    points2_norm, transform2 = normalize_points(points2)
+    if weights is not None and weights.shape != ls1.shape[:2]:
+        raise AssertionError(weights.shape)
+    endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
+    points1_norm, transform1 = normalize_points(points1, weights=endpoint_weights)
+    points2_norm, transform2 = normalize_points(points2, weights=endpoint_weights)
     lst1, le1 = torch.chunk(points1_norm, dim=1, chunks=2)
     lst2, le2 = torch.chunk(points2_norm, dim=1, chunks=2)
 
