@@ -849,13 +849,15 @@ class TestDilate(BaseTester):
                     op(frame, float_kernel, structuring_element=flat_se),
                 ), (mask_dtype, op.__name__)
 
-    def test_wart_convolution_engine_keeps_image_dtype_4762(self, device):
-        # `unfold`, `shift`, and `convolution` all compute in the promoted dtype of the image and the
-        # kernel (or the structuring element), so all three engines return the same result dtype.
-        # Fixed in #4762. Dtypes are explicit, so this pin takes `device` only.
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_engines_return_promoted_dtype_4762(self, device, engine):
+        # Every engine computes in the dtype promoted from the image and the kernel, or the structuring
+        # element when one is given, so the result dtype does not depend on `engine` (#4762). Dtypes are
+        # explicit, so this pin takes `device` only.
         tensor = torch.rand(1, 1, 4, 5, generator=torch.Generator().manual_seed(0)).to(device, torch.float16)
-        kernel = torch.ones(3, 3, device=device)
+        half_kernel = torch.ones(3, 3, device=device, dtype=torch.float16)
+        structuring_element = torch.zeros(3, 3, device=device)
         for op in (dilation, erosion):
-            assert op(tensor, kernel, engine="unfold").dtype == torch.float32, op.__name__
-            assert op(tensor, kernel, engine="shift").dtype == torch.float32, op.__name__
-            assert op(tensor, kernel, engine="convolution").dtype == torch.float32, op.__name__
+            assert op(tensor, half_kernel.float(), engine=engine).dtype == torch.float32, op.__name__
+            actual = op(tensor, half_kernel, structuring_element=structuring_element, engine=engine)
+            assert actual.dtype == torch.float32, op.__name__
