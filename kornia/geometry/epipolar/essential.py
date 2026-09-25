@@ -624,8 +624,6 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     Convention:
         - Same candidate set as :func:`decompose_essential_matrix`, with ``t`` of unit norm.
-        - Known defects: the rotations are wrong for a batch of more than one matrix
-          (`#4880 <https://github.com/kornia/kornia/issues/4880>`_).
 
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -683,8 +681,8 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     # Eq.24, recover R
     # (bb)R = Cofactors(E)^T - BE
-    R1 = (matrix_cofactor_tensor(E_mat) - B1 @ E_mat) / (b1 * b1).sum().unsqueeze(-1)
-    R2 = (matrix_cofactor_tensor(E_mat) - B2 @ E_mat) / (b2 * b2).sum().unsqueeze(-1)
+    R1 = (matrix_cofactor_tensor(E_mat) - B1 @ E_mat) / (b1 * b1).sum(-1)[:, None, None]
+    R2 = (matrix_cofactor_tensor(E_mat) - B2 @ E_mat) / (b2 * b2).sum(-1)[:, None, None]
 
     return (R1, R2, b1_.unsqueeze(-1))
 
