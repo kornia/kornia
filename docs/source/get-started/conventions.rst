@@ -467,6 +467,73 @@ The equivalences hold on every window that holds an in-image kernel cell while :
 ``max_val``: an empty ``geodesic`` window returns an infinity in scipy and scikit-image and a finite value built
 from ``max_val`` in kornia (`#4734 <https://github.com/kornia/kornia/issues/4734>`_).
 
+.. _two-view-conventions:
+
+Two-view geometry
+-----------------
+
+The two-view estimators take the first image's points first and follow OpenCV's order:
+:func:`~kornia.geometry.epipolar.find_fundamental` returns an ``F`` with :math:`x_2^\top F x_1 = 0` in image
+coordinates and :func:`~kornia.geometry.epipolar.find_essential` an ``E`` with :math:`x_2^\top E x_1 = 0` in
+normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homography_dlt` and
+:class:`~kornia.geometry.ransac.RANSAC` with ``model_type="homography"`` return an ``H`` that maps ``points1`` to
+``points2``. Extrinsics are world-to-camera, as in :doc:`/get-started/camera-conventions`. Side by side:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - OpenCV
+   * - fundamental matrix
+     - ``find_fundamental(points1, points2)``, scaled to ``F[2, 2] = 1`` unless that entry is numerically zero;
+       ``method="7POINT"`` returns three candidates ``(B, 3, 3, 3)`` in no particular order, padded when the cubic
+       has one real root (`#4862 <https://github.com/kornia/kornia/issues/4862>`_)
+     - ``findFundamentalMat(points1, points2)``, the same ``F``; ``FM_7POINT`` stacks only the real solutions as
+       ``(3k, 3)``
+   * - essential matrix
+     - ``find_essential`` takes normalised camera coordinates :math:`K^{-1} [u, v, 1]^\top` and returns ten
+       slots, ``NaN`` for complex roots; a sample with no real solution returns ten identity matrices
+       (`#4883 <https://github.com/kornia/kornia/issues/4883>`_)
+     - ``findEssentialMat`` takes pixels and ``cameraMatrix`` (or one matrix per camera); with exactly 5 points it
+       stacks the real solutions as ``(3k, 3)``, with more it returns the single ``E`` its RANSAC or LMedS selects
+   * - homography
+     - ``find_homography_dlt(points1, points2)`` maps ``points1`` to ``points2``
+     - ``findHomography(src, dst)``, the same direction
+   * - pose from ``E``
+     - ``decompose_essential_matrix`` returns ``R1``, ``R2`` and a unit ``t``; which candidate is the true pose is
+       not fixed.
+       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates, and returns
+       candidate 0 when no point passes (`#4879 <https://github.com/kornia/kornia/issues/4879>`_)
+     - ``decomposeEssentialMat`` returns the same candidate set, whose labels are not fixed either and differ from
+       kornia's, so a candidate index does not port; ``recoverPose`` selects the same pose and also returns the
+       inlier count
+   * - projection matrix
+     - ``KRt_from_projection`` returns the translation ``t`` of ``P = K [R | t]``; for ``det P[:, :3] < 0`` it
+       returns a reflection (`#4864 <https://github.com/kornia/kornia/issues/4864>`_)
+     - ``decomposeProjectionMatrix`` returns the homogeneous camera centre :math:`C = -R^\top t`; for
+       ``det P[:, :3] < 0`` it keeps ``det R = 1`` and returns ``K[2, 2] < 0``
+   * - triangulation
+     - ``triangulate_points`` returns Euclidean points ``(*, N, 3)``
+     - ``triangulatePoints`` returns homogeneous points ``(4, N)``
+   * - epipolar lines
+     - ``compute_correspond_epilines(x1, F)`` for first-image points; pass ``F.transpose(-2, -1)`` for
+       second-image points
+     - ``computeCorrespondEpilines(x1, 1, F)``; ``whichImage=2`` for second-image points
+   * - Sampson distance
+     - ``sampson_epipolar_distance(pts1, pts2, F)``, squared by default; the value depends on the scale of ``F``
+       (`#4881 <https://github.com/kornia/kornia/issues/4881>`_)
+     - ``sampsonDistance(pt1, pt2, F)``, the same argument order, independent of the scale of ``F``
+   * - RANSAC threshold
+     - ``inl_th`` is a point distance in the keypoints' units, calibrated units for ``model_type="essential"``;
+       for line segments it depends on the segment length (`#4867 <https://github.com/kornia/kornia/issues/4867>`_)
+     - ``ransacReprojThreshold`` of ``findHomography``, the same unit for points
+   * - polynomial roots
+     - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
+       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic``'s order is unspecified;
+       a zero leading coefficient gives wrong roots (`#4873 <https://github.com/kornia/kornia/issues/4873>`_)
+     - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
+
 Pitfall checklist
 -----------------
 
