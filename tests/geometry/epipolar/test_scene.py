@@ -53,8 +53,8 @@ class TestConventionScene(BaseTester):
 
     def test_convention_generate_scene_global_generator(self, device, dtype):
         if device.type != "cpu":
-            pytest.skip("generate_scene takes no device argument and draws on the CPU")
-        # The same global generator as random_intrinsics, CPU tensors in the default dtype.
+            pytest.skip("generate_scene takes no device argument and draws on torch's default device")
+        # The same global generator as random_intrinsics, tensors in the default dtype.
         default_dtype = torch.get_default_dtype()
         try:
             torch.set_default_dtype(dtype)

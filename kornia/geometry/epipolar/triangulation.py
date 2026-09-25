@@ -73,13 +73,13 @@ def triangulate_points(
 
     Convention:
         - ``P1`` pairs with ``points1`` and ``P2`` with ``points2``. Input and output points are Euclidean;
-          :doc:`Conventions & Pitfalls </get-started/conventions>` compares this with OpenCV. The leading
+          :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV. The leading
           dimensions of ``P1`` and ``P2`` broadcast against those of the points.
         - Cheirality and baseline are not checked: a point behind a camera is returned with negative depth, and with
           zero baseline the depth is undefined and the output is an arbitrary point on the line of sight, possibly
           behind the camera.
-        - ``"svd"`` and ``"eigh"`` agree to roundoff, solve float16 and bfloat16 input in float32, and return
-          the input dtype.
+        - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS, and
+          return the input dtype; ``solver`` below compares their accuracy.
         - Known defects: a correspondence at infinity comes back as a finite, unflagged point whose position is
           set by roundoff (`#4865 <https://github.com/kornia/kornia/issues/4865>`_); ``solver="cofactor"``
           returns NaN for pixel-scale float16 input (`#4863 <https://github.com/kornia/kornia/issues/4863>`_).
@@ -98,8 +98,10 @@ def triangulate_points(
             maximum accuracy is required regardless of speed.
           * ``"eigh"`` *(default)* — forms :math:`X^\top X` and finds the eigenvector
             for its smallest eigenvalue via :func:`torch.linalg.eigh`. Algebraically
-            equivalent to the SVD solution; slightly less numerically stable because
-            forming :math:`X^\top X` squares the singular values. Typically **10-26x
+            equivalent to the SVD solution, and equal to it to roundoff on well-conditioned
+            input; forming :math:`X^\top X` squares the singular values, so on ill-conditioned
+            rows, such as a baseline much shorter than the depth, it loses accuracy that
+            ``"svd"`` keeps. Typically **10-26x
             faster** than ``"svd"`` on GPU for large batches.
           * ``"cofactor"`` — solves two :math:`3 \times 4` sub-systems analytically
             using :func:`~kornia.geometry.solvers.null_vector_3x4` (closed-form

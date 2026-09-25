@@ -40,7 +40,7 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
         num_points: the number of 3d points :math:`N`.
 
     Returns:
-        A dictionary of tensors on the CPU in the default dtype:
+        A dictionary of tensors on torch's default device and in the default dtype:
 
         - ``"K"``: the camera matrix shared by all views, with shape :math:`(1, 3, 3)`.
         - ``"R"``: the rotation of each view, with shape :math:`(V, 3, 3)`.

@@ -357,7 +357,7 @@ class TestConventionTriangulation(BaseTester):
             ):
                 assert (wrong - X).norm(dim=-1).min() > 1.0
             results[solver] = out
-        # svd and eigh agree to roundoff.
+        # svd and eigh agree to roundoff on this well-conditioned fixture.
         self.assert_close(results["svd"], results["eigh"], rtol=0.0, atol=atol)
 
     def test_convention_triangulate_points_unchecked_cheirality_and_baseline(self, device, dtype):

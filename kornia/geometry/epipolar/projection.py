@@ -156,8 +156,8 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
     Convention:
         - Inverse of :func:`projection_from_KRt`: returns ``K`` (upper triangular, positive diagonal), ``R``
-          and the translation ``t``, not the camera centre; :doc:`Conventions & Pitfalls </get-started/conventions>`
-          compares this with OpenCV.
+          and the translation ``t``, not the camera centre; :ref:`Two-view geometry <two-view-conventions>` maps
+          this onto OpenCV.
         - ``K`` is not normalised to ``K[2, 2] = 1``: it carries the scale of ``P``, so ``2 * P`` doubles ``K``;
           divide by ``K[..., 2:, 2:]`` to normalise.
         - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
