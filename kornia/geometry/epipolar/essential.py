@@ -920,8 +920,8 @@ def find_essential(
           with no real solution returns ten identity matrices instead of ``NaN``
           (`#4883 <https://github.com/kornia/kornia/issues/4883>`_); in ``float32`` an exact five-point sample can
           miss the true solution, which six or more correspondences recover
-          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); backward raises on some degenerate samples, such
-          as identical point sets (`#4831 <https://github.com/kornia/kornia/issues/4831>`_);
+          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); backward can raise on a degenerate sample whose
+          polynomial has a multiple root at zero (`#4903 <https://github.com/kornia/kornia/issues/4903>`_);
           on MPS the 5-point solve needs the CPU fallback (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).
 
     Args:

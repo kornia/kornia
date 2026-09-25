@@ -224,12 +224,12 @@ class TestFindEssential(BaseTester):
 
         # Its degree-10 polynomial also has an exactly zero leading coefficient. The companion matrix
         # built from it had a repeated eigenvalue and a singular eigenvector matrix, so the backward
-        # raised in torch.linalg.eigvals (#4831). It now completes. Whether the gradient is finite is
-        # up to the SVD of its rank-1 design matrix, which is #4855.
+        # raised in torch.linalg.eigvals (#4831). It now completes, and since the sample's candidates are
+        # discarded its gradient is exactly zero, also through the SVD of its rank-1 design matrix (#4855).
         origin = torch.zeros(B, N, 2, device=device, dtype=dtype, requires_grad=True)
         weights_bn = torch.ones(B, N, device=device, dtype=dtype)
         epi.essential.find_essential(origin, origin, weights_bn).nan_to_num().sum().backward()
-        assert origin.grad is not None
+        assert (origin.grad == 0).all()
 
         # A singular element does not disturb the rest of its batch: next to one, a regular sample
         # returns exactly what it returns next to a regular sample, NaN candidates from complex roots
@@ -312,8 +312,8 @@ class TestFindEssential(BaseTester):
         patched.nan_to_num().sum().backward()
         assert torch.isfinite(points1.grad).all()
 
-        # For fewer than 9 points torch.linalg.svd drops the gradient before it reaches the points (#4855),
-        # so check the backward through a zeroed element once more with 9 points, where it does not.
+        # Check the backward through a zeroed element once more with 9 points, where the null space comes
+        # from torch.linalg.svd itself instead of the N < 9 path.
         g9 = torch.Generator().manual_seed(1)
         points9 = torch.rand(2, 9, 2, generator=g9, dtype=torch.float64).to(device=device, dtype=dtype)
         points9.requires_grad_()
