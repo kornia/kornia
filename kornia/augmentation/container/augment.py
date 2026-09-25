@@ -98,9 +98,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     :class:`~kornia.augmentation.RandomResizedCrop` in the default ``cropping_mode='slice'``
                     ignores it for nearest resampling.
                     :class:`~kornia.augmentation.RandomElasticTransform` has its own mask path and honours
-                    both entries. Unlike the constructors, the override is not normalized: a string ``resample``
-                    raises ``AttributeError`` wherever the mask is resampled, so pass a
-                    ``kornia.constants.Resample`` member (`#4815 <https://github.com/kornia/kornia/issues/4815>`_).
+                    both entries. As in the constructors, ``resample`` may be a string, an int or a
+                    ``kornia.constants.Resample`` member.
 
     Convention:
         - each child keeps the contract of its own base and class; mix and 3D children do not inherit every
@@ -351,7 +350,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
         self._transform_matrix = None
-        self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
+        extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
+        # Normalize a ``resample`` override as the constructors do, so a string or int works like a member.
+        self.extra_args = {
+            key: {**value, "resample": Resample.get(value["resample"])} if "resample" in value else value
+            for key, value in extra_args.items()
+        }
 
     def clear_state(self) -> None:
         """Reset cached params and transformation-matrix state."""
