@@ -360,6 +360,9 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     KORNIA_CHECK(xy == 2, "Polygon vertices must be xy, i.e. 2-dimensional")
     KORNIA_CHECK(b_i == b_p == b_c, "Image, polygon, and color must have same batch dimension")
     KORNIA_CHECK(device == device_p == device_c, "Image, polygon, and color must have same device")
+    # A polygon without vertices has nothing to fill, and closing its loop below needs a vertex.
+    if polygons.shape[1] == 0:
+        return images
 
     x_left, x_right = _get_convex_edges(polygons, h_i, w_i)
     ws = torch.arange(w_i, device=device, dtype=dtype_p)[None, None, :]

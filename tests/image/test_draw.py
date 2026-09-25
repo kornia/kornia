@@ -662,3 +662,19 @@ class TestFillConvexPolygon(BaseTester):
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
         self.assert_close(rect_im, poly_im)
+
+    def test_empty_polygon_leaves_image_unchanged(self, device, dtype):
+        """An empty (B, 0, 2) polygon batch must not IndexError on loop close."""
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        pts = torch.zeros(1, 0, 2, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), pts, color)
+        self.assert_close(out, im)
+
+    def test_empty_polygon_is_still_validated(self, device, dtype):
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="same batch dimension"):
+            draw_convex_polygon(im, torch.zeros(2, 0, 2, device=device, dtype=dtype), color)
+        with pytest.raises(BaseError, match="xy"):
+            draw_convex_polygon(im, torch.zeros(1, 0, 3, device=device, dtype=dtype), color)
