@@ -381,6 +381,21 @@ class TestBoxes2D(BaseTester):
         assert boxes_vertices_plus.shape == expected_box.shape
         self.assert_close(boxes_vertices_plus, expected_box)
 
+    def test_from_tensor_accepts_nested_numeric_list(self, device, dtype):
+        """A nested Python list shaped like (N, 4) must convert like a tensor."""
+        boxes = Boxes.from_tensor([[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]], mode="xyxy")
+        expected = Boxes.from_tensor(
+            torch.tensor([[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]], device=device, dtype=dtype),
+            mode="xyxy",
+        )
+        self.assert_close(boxes.data.to(device=device, dtype=dtype), expected.data)
+        self.assert_close(boxes.to_tensor("xyxy").to(device=device, dtype=dtype), expected.to_tensor("xyxy"))
+
+    def test_from_tensor_accepts_empty_list(self, device, dtype):
+        """An empty Python list must yield an empty boxes tensor, not raise."""
+        boxes = Boxes.from_tensor([], mode="xyxy")
+        assert boxes.data.shape == (0, 4, 2)
+
     @pytest.mark.parametrize("shape", [(1, 4), (1, 1, 4)])
     def test_from_invalid_tensor(self, shape, device, dtype):
         box_xyxy = torch.as_tensor([[1, 2, -3, 4]], device=device, dtype=dtype).view(*shape)  # Invalid width

@@ -630,7 +630,7 @@ class Boxes:
 
     @classmethod
     def from_tensor(
-        cls, boxes: torch.Tensor | list[torch.Tensor], mode: str = "xyxy", validate_boxes: bool = True
+        cls, boxes: torch.Tensor | list, mode: str = "xyxy", validate_boxes: bool = True
     ) -> Boxes:
         r"""Create :class:`Boxes` from boxes stored in another format.
 
@@ -638,7 +638,8 @@ class Boxes:
 
         Args:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or
-                :math:`(B, N, 4, 2)`, or a list of :math:`(N, 4)` or :math:`(N, 4, 2)` tensors matching ``mode``.
+                :math:`(B, N, 4, 2)`, a nested numeric list with one of those shapes, or a list of
+                :math:`(N, 4)` or :math:`(N, 4, 2)` tensors matching ``mode``.
             mode: The format in which the boxes are provided:
 
                 * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent. With shape :math:`(N, 4)`,
@@ -678,8 +679,17 @@ class Boxes:
         quadrilaterals: torch.Tensor | list[torch.Tensor]
         if isinstance(boxes, torch.Tensor):
             quadrilaterals = _boxes_to_quadrilaterals(boxes, mode=mode, validate_boxes=validate_boxes)
-        else:
+        elif len(boxes) == 0:
+            # Empty Python list used to fail inside the per-element conversion path.
+            quadrilaterals = torch.zeros(0, 4, 2)
+        elif isinstance(boxes[0], torch.Tensor):
             quadrilaterals = [_boxes_to_quadrilaterals(box, mode, validate_boxes) for box in boxes]
+        else:
+            # Nested numeric lists shaped like (N, 4) / (B, N, 4) used to AttributeError
+            # on list.ndim when each row was treated as a Tensor.
+            quadrilaterals = _boxes_to_quadrilaterals(
+                torch.as_tensor(boxes), mode=mode, validate_boxes=validate_boxes
+            )
 
         return cls(quadrilaterals, False, mode)
 
