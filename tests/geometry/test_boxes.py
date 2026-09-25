@@ -381,20 +381,36 @@ class TestBoxes2D(BaseTester):
         assert boxes_vertices_plus.shape == expected_box.shape
         self.assert_close(boxes_vertices_plus, expected_box)
 
-    def test_from_tensor_accepts_nested_numeric_list(self, device, dtype):
-        """A nested Python list shaped like (N, 4) must convert like a tensor."""
-        boxes = Boxes.from_tensor([[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]], mode="xyxy")
-        expected = Boxes.from_tensor(
-            torch.tensor([[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]], device=device, dtype=dtype),
-            mode="xyxy",
-        )
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_from_tensor_accepts_nested_numeric_list(self, mode, batched, device, dtype):
+        """A nested Python list converts like the tensor it spells, in every mode."""
+        rows = [[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]]
+        if mode.startswith("vertices"):
+            rows = Boxes.from_tensor(torch.tensor(rows), mode="xyxy").to_tensor(mode).tolist()
+        if batched:
+            rows = [rows]
+        boxes = Boxes.from_tensor(rows, mode=mode)
+        expected = Boxes.from_tensor(torch.tensor(rows, device=device, dtype=dtype), mode=mode)
+        assert boxes.data.shape == expected.data.shape
         self.assert_close(boxes.data.to(device=device, dtype=dtype), expected.data)
-        self.assert_close(boxes.to_tensor("xyxy").to(device=device, dtype=dtype), expected.to_tensor("xyxy"))
+        self.assert_close(boxes.to_tensor(mode).to(device=device, dtype=dtype), expected.to_tensor(mode))
 
-    def test_from_tensor_accepts_empty_list(self, device, dtype):
-        """An empty Python list must yield an empty boxes tensor, not raise."""
-        boxes = Boxes.from_tensor([], mode="xyxy")
+    def test_from_tensor_nested_numeric_list_honours_validate_boxes(self):
+        with pytest.raises(ValueError, match="negative widths"):
+            Boxes.from_tensor([[1.0, 2.0, -3.0, 4.0]], mode="xyxy")
+        assert Boxes.from_tensor([[1.0, 2.0, -3.0, 4.0]], mode="xyxy", validate_boxes=False).data.shape == (1, 4, 2)
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xywh", "vertices"])
+    def test_from_tensor_accepts_empty_list(self, mode):
+        """An empty Python list yields an empty boxes tensor, as an empty (0, 4) tensor does."""
+        boxes = Boxes.from_tensor([], mode=mode)
         assert boxes.data.shape == (0, 4, 2)
+        assert boxes.to_tensor("xyxy").shape == (0, 4)
+
+    def test_from_tensor_empty_list_checks_mode(self):
+        with pytest.raises(ValueError, match="Unknown mode"):
+            Boxes.from_tensor([], mode="bogus")
 
     @pytest.mark.parametrize("shape", [(1, 4), (1, 1, 4)])
     def test_from_invalid_tensor(self, shape, device, dtype):

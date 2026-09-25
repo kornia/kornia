@@ -678,13 +678,13 @@ class Boxes:
         if isinstance(boxes, torch.Tensor):
             quadrilaterals = _boxes_to_quadrilaterals(boxes, mode=mode, validate_boxes=validate_boxes)
         elif len(boxes) == 0:
-            # Empty Python list used to fail inside the per-element conversion path.
-            quadrilaterals = torch.zeros(0, 4, 2)
+            # An empty list holds no boxes, like an empty (0, 4) or (0, 4, 2) tensor; converting one checks ``mode``.
+            empty = torch.zeros(0, 4, 2) if mode.lower().startswith("vertices") else torch.zeros(0, 4)
+            quadrilaterals = _boxes_to_quadrilaterals(empty, mode=mode, validate_boxes=validate_boxes)
         elif isinstance(boxes[0], torch.Tensor):
             quadrilaterals = [_boxes_to_quadrilaterals(box, mode, validate_boxes) for box in boxes]
         else:
-            # Nested numeric lists shaped like (N, 4) / (B, N, 4) used to AttributeError
-            # on list.ndim when each row was treated as a Tensor.
+            # A nested numeric list converts as the tensor it spells.
             quadrilaterals = _boxes_to_quadrilaterals(torch.as_tensor(boxes), mode=mode, validate_boxes=validate_boxes)
 
         return cls(quadrilaterals, False, mode)
