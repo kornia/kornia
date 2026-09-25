@@ -34,7 +34,9 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - ``fx = fy = focal`` and the principal point is ``(W / 2, H / 2)`` of the :math:`(B, C, H, W)` input;
-          dtype and device follow the input, and an integer input raises.
+          dtype and device follow the input.
+        - The input must be floating point, like kornia's images: an integer input raises by design rather than
+          returning an integer ``K``.
         - Known defects: ``(W / 2, H / 2)`` is the half-pixel centre, not the integer-pixel centre
           ``((W - 1) / 2, (H - 1) / 2)`` of kornia's grids
           (`#4263 <https://github.com/kornia/kornia/issues/4263>`_).
@@ -42,7 +44,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     Args:
         focal: the focal length for the camera matrix.
         input: image tensor that will determine the batch size and image height
-          and width. It is assumed to be a tensor in the shape of :math:`(B, C, H, W)`.
+          and width. It is assumed to be a floating-point tensor in the shape of :math:`(B, C, H, W)`.
 
     Returns:
         The camera matrix with the shape of :math:`(B, 3, 3)`.

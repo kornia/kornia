@@ -388,7 +388,8 @@ class TestConventionProjection(BaseTester):
         self.assert_close(K[:, 0, 2] - K[:, 1, 2], torch.full_like(zeros, 1.0))
         K_t = epi.intrinsics_like(500.0, image.transpose(-2, -1))
         self.assert_close(K_t[:, 0, 2] - K_t[:, 1, 2], torch.full_like(zeros, -1.0))
-        # An integer image raises instead of returning an integer K.
+        # The image must be floating point (a design choice): an integer image raises instead of returning an
+        # integer K.
         with pytest.raises(Exception):
             epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=torch.uint8))
 
