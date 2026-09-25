@@ -179,29 +179,22 @@ class TestOpening(BaseTester):
             assert torch.equal(opening(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(opening(tensor, side_kernel, border_type="circular"), tensor)
 
-    def test_wart_opening_sentinel_round_trip_4734(self, device, dtype):
-        # Under `geodesic` the dilation window of `[[1, 0, 0]]` leaves the image on the right, so it can emit
-        # `x - max_val`, and the next stage's `+ max_val` returns `x` quantised to `max_val`'s spacing:
-        # idempotence, and on negative data anti-extensivity, miss by less than one ULP of `max_val` in the
-        # image's dtype, in the columns next to the empty window. A true infinity would miss by exactly 0.
-        # Tracked in #4734. `torch.finfo(dtype).eps * 8192` is that ULP for the default `max_val=1e4`.
-        one_ulp = torch.finfo(dtype).eps * 8192.0
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_opening_empty_geodesic_window_is_infinite_4734(self, device, dtype, engine):
+        # Under `geodesic` the dilation window of `[[1, 0, 0]]` is empty in the last column, which becomes
+        # `-inf`; every other column round-trips exactly, so opening is anti-extensive and idempotent on data
+        # of either sign, and `[0.5, 0.7]` opens to `[0.5, -inf]` as in scikit-image's `mode="ignore"`. Before
+        # #4734 the finite `max_val` sentinel made both miss by up to one ULP of `max_val`.
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
-        # A float64 frame drawn in float32 has no bits below float64's ULP of `max_val`, so draw it natively.
-        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
-        tensor = tensor.to(device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(
+            device=device, dtype=dtype
+        )
 
-        opened = opening(tensor, side_kernel)
-        assert (opened <= tensor).all()
-        deviation = (opening(opened, side_kernel) - opened).abs()
-        assert 0.0 < deviation.max() < one_ulp
-        assert not bool(deviation[..., :-3].any())
-        assert not bool(deviation[..., -1].any())
-
-        negative = -tensor
-        overshoot = (opening(negative, side_kernel) - negative).clamp(min=0)
-        assert 0.0 < overshoot.max() < one_ulp
-        # The empty window is not an infinity: `[0.5, 0.7]` opens to `[0.5, 0.0]`, where scikit-image's
-        # `mode="ignore"` gives `[0.5, -inf]`.
+        for data in (tensor, -tensor):
+            opened = opening(data, side_kernel, engine=engine)
+            expected = torch.cat((data[..., :-1], torch.full_like(data[..., :1], -float("inf"))), dim=-1)
+            assert torch.equal(opened, expected)
+            assert (opened <= data).all()
+            assert torch.equal(opening(opened, side_kernel, engine=engine), opened)
         pair = torch.tensor([[0.5, 0.7]], device=device, dtype=dtype)[None, None]
-        assert opening(pair, side_kernel).flatten().tolist() == [0.5, 0.0]
+        assert opening(pair, side_kernel, engine=engine).flatten().tolist() == [0.5, float("-inf")]

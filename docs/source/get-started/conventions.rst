@@ -463,9 +463,8 @@ is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``
      - ``wrap``
      - rejected (``BORDER_WRAP``)
 
-The equivalences hold on every window that holds an in-image kernel cell while :math:`|x|` stays well below
-``max_val``: an empty ``geodesic`` window returns an infinity in scipy and scikit-image and a finite value built
-from ``max_val`` in kornia (`#4734 <https://github.com/kornia/kornia/issues/4734>`_).
+The equivalences cover empty ``geodesic`` windows too: scipy, scikit-image and kornia all return ``-inf`` from
+such a window in a dilation and ``+inf`` in an erosion, whatever the data range.
 
 .. _two-view-conventions:
 
