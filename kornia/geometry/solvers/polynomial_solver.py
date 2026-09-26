@@ -75,9 +75,6 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_linear = a == 0
     mask_b_zero = b == 0
 
-    # Calculate 1/(2*a) for efficient computation
-    inv_2a = 0.5 / torch.where(mask_linear, one, a)
-
     # Branch-free selection so the function traces under graph capture. The square root is only taken
     # where delta > 0: a zero discriminant yields the double root -b/(2a) with sqrt_delta = 0, and a
     # negative one yields zeros; feeding those lanes a safe placeholder keeps their gradients finite.
@@ -87,8 +84,19 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
         mask_nonpositive, zero, torch.sqrt(torch.where(mask_nonpositive, torch.ones_like(delta), delta))
     )
 
-    root_plus = (-b + sqrt_delta) * inv_2a
-    root_minus = (-b - sqrt_delta) * inv_2a
+    # (-b +- sqrt(delta)) / (2a) subtracts nearly equal numbers for the root of smaller magnitude when
+    # |4ac| << b^2 (#4914). q = -(b + sign(b) sqrt(delta)) / 2 adds numbers of the same sign; the roots are
+    # q / a and c / q, which are (-b - sqrt(delta)) / (2a) and (-b + sqrt(delta)) / (2a) for b >= 0 and the
+    # other way round for b < 0. c / q is only taken where delta > 0 and a != 0, where |q| >= sqrt(delta) / 2 > 0;
+    # at a double root both slots are q / a = -b / (2a). Elsewhere a placeholder q keeps the discarded lane's
+    # gradient finite: with no real root and a tiny b, c / q^2 overflows and torch.where would turn it into nan.
+    sign_b = torch.where(b >= 0, one, -one)
+    q = -0.5 * (b + sign_b * sqrt_delta)
+    mask_distinct = ~(mask_nonpositive | mask_linear)
+    root_q_over_a = q / torch.where(mask_linear, one, a)
+    root_c_over_q = torch.where(mask_distinct, c / torch.where(mask_distinct, q, one), root_q_over_a)
+    root_plus = torch.where(b >= 0, root_c_over_q, root_q_over_a)
+    root_minus = torch.where(b >= 0, root_q_over_a, root_c_over_q)
 
     # The a * x^2 / b term is 0 in the forward pass, but it keeps the root's dependence on a in the
     # gradient (d root / da = -root^2 / b). With b == 0 as well there is no root to report. The lane
@@ -318,10 +326,11 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     Convention:
         - Coefficient layout and zero padding as :func:`solve_quadratic`; the roots are unordered.
         - Known defects: the solver is not scale-invariant, so a quartic whose roots are all small can lose real
-          roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_);
-          a leading coefficient below ``1e-6`` in magnitude (``1e-12`` in float64) counts as zero whatever the
-          other coefficients are, so a small multiple of a quartic is solved as a cubic and loses its roots
-          (`#4905 <https://github.com/kornia/kornia/issues/4905>`_).
+          roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_).
+        - A row is solved as the cubic of its last four coefficients when its leading coefficient is 0 or smaller in
+          magnitude than ``1e-6`` (``1e-12`` in float64) times ``min(1, max_i |coeffs_i|)``. For a row whose largest
+          coefficient is at most 1 the test is relative, so scaling the row down does not change how it is solved;
+          at unit scale and above it is absolute, as before.
 
     Args:
         coeffs : The coefficients quartic equation : `(B, 5)`
@@ -360,8 +369,10 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # float32's cubic-fallback tolerance; float64's 1e-12 would also round to 0 in float16.
     zero_tol = 1e-6 if coeffs.dtype in (torch.float32, torch.float16, torch.bfloat16) else 1e-12
 
-    # Cubic fallback for a approx 0
-    mask_a_zero = torch.abs(a) < zero_tol
+    # Cubic fallback for a approx 0. Scaling a row does not move its roots, so a row whose largest coefficient is
+    # below 1 gets a proportionally smaller tolerance; rows at unit scale or above keep the absolute one.
+    row_scale = coeffs.abs().amax(dim=-1).clamp(max=1.0)
+    mask_a_zero = (torch.abs(a) < zero_tol * row_scale) | (a == 0)
     mask_quartic = ~mask_a_zero
 
     if torch.any(mask_a_zero):

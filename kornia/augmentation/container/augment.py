@@ -632,28 +632,34 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             _output_image = decorated_forward(*inputs, **kwargs)
 
             in_data_keys: Optional[List[DataKey]]
+            original_keys: Optional[Tuple[str, ...]] = None
             if len(inputs) == 1 and isinstance(inputs[0], dict):
                 original_keys, in_data_keys, inputs, _invalid_data = self._preproc_dict_data(inputs[0])
             else:
                 in_data_keys = kwargs.get("data_keys", self.data_keys)
             data_keys = self.transform_op.preproc_datakeys(in_data_keys)
 
+            # cache a detached view of the augmented image for ``.show()`` / ``.save()``, which move it to the
+            # CPU themselves, so the forward pass pays no device-to-host copy or sync
             if not is_exporting():
-                if len(data_keys) > 1 and DataKey.INPUT in data_keys:
-                    idx = data_keys.index(DataKey.INPUT)
-                    if output_type == "pt":
-                        # ``self._output_image`` already holds ``_output_image`` here, so the old
-                        # per-key rebind was a no-op; just store the whole output.
-                        self._output_image = _output_image
-                    elif isinstance(_output_image, dict):
-                        self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
-                    else:
-                        self._output_image[idx] = _output_image[idx]
-                else:
-                    self._output_image = _output_image
+                image = self._select_output_image(_output_image, data_keys, original_keys)
+                self._output_image = image.detach() if isinstance(image, torch.Tensor) else image
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
+
+    def _select_output_image(
+        self, output: Any, data_keys: List[DataKey], original_keys: Optional[Tuple[str, ...]]
+    ) -> Any:
+        # ``forward`` returns the image itself, a list ordered like ``data_keys``, or a dict keyed like the input
+        if DataKey.INPUT not in data_keys:
+            return None
+        idx = data_keys.index(DataKey.INPUT)
+        if isinstance(output, dict):
+            return output[original_keys[idx]]
+        if len(data_keys) > 1 and isinstance(output, list | tuple):
+            return output[idx]
+        return output
 
     def _preproc_dict_data(
         self, data: Dict[str, DataType]

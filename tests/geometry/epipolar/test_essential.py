@@ -212,15 +212,14 @@ class TestFindEssential(BaseTester):
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
     def test_degenerate_case(self, batch_size, num_points, device, dtype, monkeypatch):
         B, N = batch_size, num_points
-        eye = torch.eye(3, device=device, dtype=dtype)
 
         # Points all at the origin give a design matrix whose SVD returns unit vectors for its null
         # space, and every basis of four unit vectors makes the 10x10 elimination matrix exactly
-        # singular. A singular sample has no solution, so find_essential returns run_5point's fallback
-        # for an element without candidates: the identity, for all 10.
+        # singular. A singular sample has no solution, so all 10 of its slots are NaN (#4883).
         zeros = torch.zeros(B, N, 2, device=device, dtype=dtype)
         E_zeros = epi.essential.find_essential(zeros, zeros, torch.ones(B, N, device=device, dtype=dtype))
-        self.assert_close(E_zeros, eye.expand(B, 10, 3, 3), atol=0.0, rtol=0.0)
+        assert E_zeros.shape == (B, 10, 3, 3)
+        assert torch.isnan(E_zeros).all()
 
         # Its degree-10 polynomial also has an exactly zero leading coefficient. The companion matrix
         # built from it had a repeated eigenvalue and a singular eigenvector matrix, so the backward
@@ -252,7 +251,7 @@ class TestFindEssential(BaseTester):
             torch.stack((zeros[0, :5], x2)),
             weights,
         )
-        self.assert_close(mixed[0], eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
+        assert torch.isnan(mixed[0]).all()
         assert torch.equal(torch.isnan(mixed[1]), torch.isnan(regular))
         self.assert_close(torch.nan_to_num(mixed[1]), torch.nan_to_num(regular), atol=0.0, rtol=0.0)
 
@@ -279,8 +278,8 @@ class TestFindEssential(BaseTester):
 
         # A companion matrix that is not finite has no roots, and torch.linalg.eigvals aborts on one, which
         # used to take the whole batch down. Which inputs produce it is platform-dependent, so make the
-        # determinant polynomial of one element non-finite instead: that element takes the identity
-        # fallback, and the other returns exactly what it returns in the unpatched batch above.
+        # determinant polynomial of one element non-finite instead: that element returns NaN slots, and the
+        # other returns exactly what it returns in the unpatched batch above.
         determinant = epi.essential._determinant_to_polynomial_jit
 
         def overflowed(A, *args):
@@ -290,13 +289,13 @@ class TestFindEssential(BaseTester):
 
         monkeypatch.setattr(epi.essential, "_determinant_to_polynomial_jit", overflowed)
         patched = epi.essential.find_essential(torch.stack((x1, x1)), torch.stack((x2, x2)), weights)
-        self.assert_close(patched[0], eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
+        assert torch.isnan(patched[0]).all()
         assert torch.equal(torch.isnan(patched[1]), torch.isnan(regular))
         self.assert_close(torch.nan_to_num(patched[1]), torch.nan_to_num(regular), atol=0.0, rtol=0.0)
 
         # A zero leading coefficient means the polynomial has no usable companion matrix either (#4831).
         # Which inputs give one exactly is platform-dependent, so zero it for one element: that element
-        # takes the identity fallback, the other returns exactly what it returns unpatched, and the
+        # returns NaN slots, the other returns exactly what it returns unpatched, and the
         # backward through both completes with a finite gradient.
         def degree_deficient(A, *args):
             cs = determinant(A, *args).clone()
@@ -306,7 +305,7 @@ class TestFindEssential(BaseTester):
         monkeypatch.setattr(epi.essential, "_determinant_to_polynomial_jit", degree_deficient)
         points1 = torch.stack((x1, x1)).requires_grad_()
         patched = epi.essential.find_essential(points1, torch.stack((x2, x2)), weights)
-        self.assert_close(patched[0].detach(), eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
+        assert torch.isnan(patched[0]).all()
         assert torch.equal(torch.isnan(patched[1]), torch.isnan(regular))
         self.assert_close(torch.nan_to_num(patched[1].detach()), torch.nan_to_num(regular), atol=0.0, rtol=0.0)
         patched.nan_to_num().sum().backward()
@@ -319,7 +318,7 @@ class TestFindEssential(BaseTester):
         points9.requires_grad_()
         other9 = torch.rand(2, 9, 2, generator=g9, dtype=torch.float64).to(device=device, dtype=dtype)
         E9 = epi.essential.find_essential(points9, other9, torch.ones(2, 9, device=device, dtype=dtype))
-        self.assert_close(E9[0].detach(), eye.expand(10, 3, 3), atol=0.0, rtol=0.0)
+        assert torch.isnan(E9[0]).all()
         E9.nan_to_num().sum().backward()
         assert torch.isfinite(points9.grad).all()
 
@@ -569,8 +568,8 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
             epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2, -t), rtol=1e-3, atol=1e-3
         )
 
-    @pytest.mark.xfail(reason="skip the tests where there are no solutions.")
     def test_consistency(self, device, dtype):
+        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
         scene = generate_two_view_random_scene(device, dtype)
 
         R1, t1 = scene["R1"], scene["t1"]
@@ -998,10 +997,10 @@ class TestConventionEssential(BaseTester):
         self.assert_close(R_one, R, rtol=1e-4, atol=1e-4)
         self.assert_close(t_one, t_unit, rtol=1e-4, atol=1e-4)
 
-    def test_wart_decompose_no_svd_batch_non_rotations_4880(self, device, dtype):
+    def test_decompose_no_svd_batch_matches_single_4880(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        # #4880: the rotation normaliser sums over the whole batch, so a batch of two copies of E returns non-rotations,
-        # while the same E alone returns rotations.
+        # #4880 (fixed): the rotation normaliser used to sum over the whole batch, so a batch of two copies of E
+        # returned non-rotations. Each element is now normalised on its own and matches the unbatched result.
         E = _gt_essential(two_view)
         eye = torch.eye(3, device=device, dtype=torch.float32)
 
@@ -1009,10 +1008,14 @@ class TestConventionEssential(BaseTester):
             Rm = Rm.float()
             return (Rm @ Rm.transpose(-2, -1) - eye).norm(dim=(-2, -1))
 
-        R1, R2, _ = epi.decompose_essential_matrix_no_svd(E)
+        R1, R2, t = epi.decompose_essential_matrix_no_svd(E)
         assert orthogonality_error(R1).max() < 0.25 and orthogonality_error(R2).max() < 0.25
-        R1b, R2b, _ = epi.decompose_essential_matrix_no_svd(torch.cat([E, E]))
-        assert (orthogonality_error(R1b) > 1.0).all() and (orthogonality_error(R2b) > 1.0).all()
+        for B in (2, 3):
+            R1b, R2b, tb = epi.decompose_essential_matrix_no_svd(E.repeat(B, 1, 1))
+            assert orthogonality_error(R1b).max() < 0.25 and orthogonality_error(R2b).max() < 0.25
+            self.assert_close(R1b, R1.expand_as(R1b))
+            self.assert_close(R2b, R2.expand_as(R2b))
+            self.assert_close(tb, t.expand_as(tb))
 
     def test_wart_choose_solution_batched_uses_element0_index_2198(self, device, dtype):
         two_view = two_view_scene(device, dtype)
@@ -1038,13 +1041,23 @@ class TestConventionEssential(BaseTester):
         assert not is_truth(R_b[1], t_b[1])
         assert (X_b[1, :, 2] < 0).any()
 
-    def test_wart_find_essential_no_real_root_identity_4883(self, device, dtype):
+    def test_convention_find_essential_no_real_root_nan_4883(self, device, dtype):
         _skip_find_essential(device, dtype)
-        # #4883: a five-point sample with no real root returns ten identity matrices instead of NaN slots. Sample:
+        # #4883: a five-point sample with no real root returns ten NaN slots, like the complex slots of any other
+        # sample, so an isfinite filter drops it. Sample:
         #   g = torch.Generator().manual_seed(0)
         #   p1 = torch.randn(4000, 5, 2, generator=g, dtype=torch.float64) * 0.5  # then p2 from the same g
         #   p1[1371], p2[1371]
-        p1 = torch.tensor(_NO_REAL_ROOT_P1, device=device, dtype=dtype)[None]
-        p2 = torch.tensor(_NO_REAL_ROOT_P2, device=device, dtype=dtype)[None]
+        # Batched with an ordinary sample, which keeps its real candidates and finite gradients.
+        g = torch.Generator().manual_seed(0)
+        q1, q2 = (torch.randn(1, 5, 2, generator=g, dtype=torch.float64) * 0.5 for _ in range(2))
+        p1 = torch.cat([torch.tensor(_NO_REAL_ROOT_P1, dtype=torch.float64)[None], q1]).to(device, dtype)
+        p2 = torch.cat([torch.tensor(_NO_REAL_ROOT_P2, dtype=torch.float64)[None], q2]).to(device, dtype)
+        p1.requires_grad_()
         E = epi.find_essential(p1, p2)
-        assert torch.equal(E, torch.eye(3, device=device, dtype=dtype).expand(1, 10, 3, 3))
+        assert torch.isnan(E[0]).all()
+        real = torch.isfinite(E[1]).flatten(1).all(1)
+        assert real.any()
+        (grad,) = torch.autograd.grad(E[1][real].sum(), p1)
+        assert torch.isfinite(grad).all()
+        assert (grad[0] == 0).all()

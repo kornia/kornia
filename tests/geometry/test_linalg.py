@@ -27,6 +27,15 @@ from testing.geometry.create import create_random_homography
 from testing.geometry.linalg import euler_angles_to_rotation_matrix, identity_matrix
 
 
+def _rigid_transforms(batch_size, device, dtype):
+    """Distinct, non-identity rigid transforms, so a swapped or dropped operand changes the result."""
+    angles = torch.linspace(0.1, 0.9, batch_size, device=device, dtype=dtype)
+    # the helper returns homogeneous (4, 4) rotations
+    trans = euler_angles_to_rotation_matrix(angles, 2 * angles, -angles).reshape(batch_size, 4, 4).clone()
+    trans[:, :3, 3] = torch.stack([angles, 1 - angles, 2 * angles], dim=-1)
+    return trans
+
+
 class TestTransformPoints(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
@@ -176,6 +185,23 @@ class TestComposeTransforms(BaseTester):
 
         self.gradcheck(kgl.compose_transformations, (trans_01, trans_12))
 
+    def test_broadcast(self, device, dtype):
+        # Broadcasting batch size 1 against B in both directions (#4933)
+        A = _rigid_transforms(1, device=device, dtype=dtype)
+        B = _rigid_transforms(3, device=device, dtype=dtype)
+        out_ab = kgl.compose_transformations(A, B)
+        out_ba = kgl.compose_transformations(B, A)
+        assert out_ab.shape == (3, 4, 4)
+        assert out_ba.shape == (3, 4, 4)
+        self.assert_close(out_ab, A @ B)
+        self.assert_close(out_ba, B @ A)
+
+    def test_mismatched_batch_exception(self, device, dtype):
+        A = identity_matrix(batch_size=2, device=device, dtype=dtype)
+        B = identity_matrix(batch_size=3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Incompatible batch shapes"):
+            kgl.compose_transformations(A, B)
+
 
 class TestInverseTransformation(BaseTester):
     def test_smoke(self, device, dtype):
@@ -314,6 +340,23 @@ class TestRelativeTransformation(BaseTester):
         trans_02 = identity_matrix(batch_size, device=device, dtype=torch.float64)
 
         self.gradcheck(kgl.relative_transformation, (trans_01, trans_02))
+
+    def test_broadcast(self, device, dtype):
+        # Broadcasting batch size 1 against B in both directions (#4933)
+        A = _rigid_transforms(1, device=device, dtype=dtype)
+        B = _rigid_transforms(3, device=device, dtype=dtype)
+        out_ab = kgl.relative_transformation(A, B)
+        out_ba = kgl.relative_transformation(B, A)
+        assert out_ab.shape == (3, 4, 4)
+        assert out_ba.shape == (3, 4, 4)
+        self.assert_close(out_ab, kgl.inverse_transformation(A) @ B)
+        self.assert_close(out_ba, kgl.inverse_transformation(B) @ A)
+
+    def test_mismatched_batch_exception(self, device, dtype):
+        A = identity_matrix(batch_size=2, device=device, dtype=dtype)
+        B = identity_matrix(batch_size=3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Incompatible batch shapes"):
+            kgl.relative_transformation(A, B)
 
 
 class TestPointsLinesDistances(BaseTester):

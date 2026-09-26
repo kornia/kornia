@@ -164,7 +164,14 @@ class NamedPose:
         if isinstance(rotation, torch.Tensor):
             check_matrix_shape(rotation)
             dim = rotation.shape[-1]
+            batch_shape = rotation.shape[:-2]
+            if translation.shape != rotation.shape[:-1]:
+                raise ValueError(
+                    f"translation must have shape {tuple(rotation.shape[:-1])} for a rotation of shape "
+                    f"{tuple(rotation.shape)}, got {tuple(translation.shape)}"
+                )
             RT = torch.eye(dim + 1, device=rotation.device, dtype=rotation.dtype)
+            RT = RT.expand(*batch_shape, dim + 1, dim + 1).clone()
             RT[..., :dim, :dim] = rotation
             RT[..., :dim, dim] = translation
             if dim == 2:

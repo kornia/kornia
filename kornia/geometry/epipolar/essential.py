@@ -72,12 +72,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     # BxNx9
     X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
     # use Nister's 5PC to solve essential matrix
-    E = null_to_Nister_solution(X, batch_size)
-    bad = torch.isnan(E).flatten(-2).all(-1).all(-1)  # (B,)
-    if bad.any():
-        eye3 = torch.eye(3, device=E.device, dtype=E.dtype).view(1, 1, 3, 3).expand(batch_size, 10, 3, 3)
-        E = torch.where(bad.view(batch_size, 1, 1, 1), eye3, E)
-    return E
+    # A sample without a real root keeps ten NaN slots, like the complex slots of any other sample.
+    return null_to_Nister_solution(X, batch_size)
 
 
 def _multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tensor) -> torch.Tensor:
@@ -330,7 +326,7 @@ def _null_to_Nister_solution_script(
     # element rather than returning NaN, so the singular elements are found first with lu_factor_ex,
     # which reports a zero pivot through ``info`` instead of raising, and are solved against the
     # identity so that nothing below can raise or overflow on them in the forward pass. Their
-    # candidates are set to NaN at the end, which run_5point maps to its identity fallback. Every
+    # candidates are set to NaN at the end, so all ten of their slots are NaN. Every
     # other element keeps A10: the replacement is made in ``coeffs`` and sliced like A10, because
     # torch.linalg.solve can round a contiguous copy differently from the strided slice.
     _, _, info = torch.linalg.lu_factor_ex(A10)
@@ -624,8 +620,6 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     Convention:
         - Same candidate set as :func:`decompose_essential_matrix`, with ``t`` of unit norm.
-        - Known defects: the rotations are wrong for a batch of more than one matrix
-          (`#4880 <https://github.com/kornia/kornia/issues/4880>`_).
 
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -683,8 +677,8 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     # Eq.24, recover R
     # (bb)R = Cofactors(E)^T - BE
-    R1 = (matrix_cofactor_tensor(E_mat) - B1 @ E_mat) / (b1 * b1).sum().unsqueeze(-1)
-    R2 = (matrix_cofactor_tensor(E_mat) - B2 @ E_mat) / (b2 * b2).sum().unsqueeze(-1)
+    R1 = (matrix_cofactor_tensor(E_mat) - B1 @ E_mat) / (b1 * b1).sum(-1)[:, None, None]
+    R2 = (matrix_cofactor_tensor(E_mat) - B2 @ E_mat) / (b2 * b2).sum(-1)[:, None, None]
 
     return (R1, R2, b1_.unsqueeze(-1))
 
@@ -915,11 +909,9 @@ def find_essential(
           :math:`K^{-1} [u, v, 1]^\top`, not pixels; each real candidate satisfies :math:`x_2^\top E x_1 = 0`
           in them. :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
         - All ten slots are always returned: each real root gives a candidate of unit Frobenius norm, and each
-          complex root a ``NaN`` slot.
-        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_); a sample
-          with no real solution returns ten identity matrices instead of ``NaN``
-          (`#4883 <https://github.com/kornia/kornia/issues/4883>`_); in ``float32`` an exact five-point sample can
-          miss the true solution, which six or more correspondences recover
+          complex root a ``NaN`` slot, so a sample with no real solution returns ten ``NaN`` slots.
+        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_); in
+          ``float32`` an exact five-point sample can miss the true solution, which six or more correspondences recover
           (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); backward can raise on a degenerate sample whose
           polynomial has a multiple root at zero (`#4903 <https://github.com/kornia/kornia/issues/4903>`_);
           on MPS the 5-point solve needs the CPU fallback (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).

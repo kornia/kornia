@@ -278,6 +278,11 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     """
     dtype = polygon.dtype
 
+    # A single vertex is its own first and last point, so the loop below would leave no edge;
+    # draw it as a zero-length edge, like a two-vertex polygon whose vertices coincide.
+    if polygon.shape[-2] == 1:
+        polygon = torch.cat((polygon, polygon), dim=-2)
+
     # Check if polygons are in loop closed format, if not -> make it so
     if not torch.allclose(polygon[..., -1, :], polygon[..., 0, :]):
         polygon = torch.cat((polygon, polygon[..., :1, :]), dim=-2)  # (B, N+1, 2)
@@ -288,7 +293,11 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
 
     # Create scanlines, edge dx/dy, and produce x values
     ys = torch.arange(h, device=polygon.device, dtype=dtype)
-    dx = ((x_end - x_start) / (y_end - y_start + 1e-12)).clamp(-w, w)
+    # A horizontal or zero-length edge is active only on its own scanline, where xs is x_start for any finite dx,
+    # so its dx is set to 0. An epsilon added to dy instead underflows in float16 (0 / 0 blanks the scanline), and
+    # in float64 it shifts a sloped edge enough to drop a pixel centre lying exactly on it.
+    dy = y_end - y_start
+    dx = torch.where(dy == 0, 0.0, (x_end - x_start) / dy).clamp(-w, w)
     xs = (ys[..., :, None] - y_start[..., None, :]) * dx[..., None, :] + x_start[..., None, :]
 
     # Only count edge in their active regions (i.e between the vertices)
@@ -323,6 +332,9 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     B, N = len(polygons), len(max(polygons, key=len))
     batched_polygons = torch.zeros(B, N, 2, dtype=polygons[0].dtype, device=polygons[0].device)
     for b, p in enumerate(polygons):
+        if len(p) == 0:
+            # No last vertex to repeat; the row stays zero and the caller must not fill it.
+            continue
         batched_polygons[b] = torch.cat((p, p[-1:].expand(N - len(p), 2))) if len(p) < N else p
     return batched_polygons
 
@@ -355,8 +367,11 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     # TODO: implement optional linetypes for smooth edges
     KORNIA_CHECK_SHAPE(images, ["B", "C", "H", "W"])
     b_i, c_i, h_i, w_i, device = *images.shape, images.device
+    empty_polygons = None
     if isinstance(polygons, List):
-        polygons = _batch_polygons(polygons)
+        empty_polygons = torch.tensor([len(p) == 0 for p in polygons], dtype=torch.bool, device=device)
+        # `[]` has no polygon to take a dtype or device from; an empty (0, 0, 2) batch returns below.
+        polygons = _batch_polygons(polygons) if polygons else images.new_zeros(0, 0, 2)
     b_p, _, xy, device_p, dtype_p = *polygons.shape, polygons.device, polygons.dtype
     if len(colors.shape) <= 1:
         colors = colors.expand(b_i, c_i)
@@ -371,5 +386,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     x_left, x_right = _get_convex_edges(polygons, h_i, w_i)
     ws = torch.arange(w_i, device=device, dtype=dtype_p)[None, None, :]
     fill_region = (ws >= x_left[..., :, None]) & (ws <= x_right[..., :, None])
+    if empty_polygons is not None:
+        fill_region &= ~empty_polygons[:, None, None]
     images.mul_(~fill_region[:, None]).add_(fill_region[:, None] * colors[..., None, None])
     return images

@@ -289,7 +289,10 @@ class Quaternion(nn.Module):
         return self.__rtruediv__(left)
 
     def __pow__(self, t: float) -> "Quaternion":
-        """Return the power of a quaternion raised to exponent t.
+        r"""Return the power of a quaternion raised to exponent t.
+
+        For :math:`q = \|q\| (\cos\theta + n \sin\theta)` this is
+        :math:`q^t = \|q\|^t (\cos t\theta + n \sin t\theta)`, so ``q**2 == q * q`` and ``q**-1 == q.inv()``.
 
         Args:
             t: raised exponent.
@@ -299,12 +302,17 @@ class Quaternion(nn.Module):
             >>> q_pow = q**2
 
         """
-        theta = self.polar_angle[..., None]
+        w = self.scalar[..., None]
         vec_norm = self.vec.norm(dim=-1, keepdim=True)
-        n = torch.where(vec_norm != 0, self.vec / vec_norm, self.vec * 0)
-        w = (t * theta).cos()
-        xyz = (t * theta).sin() * n
-        return Quaternion(torch.cat((w, xyz), -1))
+        theta = torch.atan2(vec_norm, w)
+        # On the real axis (|v| = 0) take sin(t * theta) / |v| from its limit t * cos(t * theta) / w, exact when
+        # theta = 0 or t is an integer, and keep both arms' denominators nonzero so values and gradients stay finite.
+        is_real = vec_norm == 0
+        safe_vec_norm = torch.where(is_real, torch.ones_like(vec_norm), vec_norm)
+        safe_w = torch.where(w == 0, torch.ones_like(w), w)
+        sin_ratio = torch.where(is_real, t * (t * theta).cos() / safe_w, (t * theta).sin() / safe_vec_norm)
+        scale = self.norm(keepdim=True) ** t
+        return Quaternion(torch.cat((scale * (t * theta).cos(), scale * sin_ratio * self.vec), -1))
 
     @property
     def data(self) -> torch.Tensor:

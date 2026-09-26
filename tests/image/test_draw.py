@@ -710,6 +710,41 @@ class TestFillConvexPolygon(BaseTester):
         with pytest.raises(BaseError, match="xy"):
             draw_convex_polygon(im, torch.zeros(1, 0, 3, device=device, dtype=dtype), color)
 
+    def test_single_vertex_fills_its_pixel(self, device, dtype):
+        """A one-vertex polygon draws that point, like a zero-length two-vertex polygon."""
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        vertex = torch.tensor([[[4.0, 4.0]]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), vertex, color)
+        expected = draw_convex_polygon(im.clone(), vertex.expand(1, 2, 2), color)
+        self.assert_close(out, expected)
+        self.assert_close(out[..., 4, 4], color)
+
+    def test_empty_polygon_in_a_list_leaves_its_image_unchanged(self, device, dtype):
+        """An empty polygon has no vertex to pad with; the rest of the batch is still drawn."""
+        im = torch.rand(2, 3, 12, 16, device=device, dtype=dtype)
+        square = torch.tensor([[4, 4], [12, 4], [12, 8], [4, 8]], device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5], [0.5, 0.5, 0.75]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), [torch.zeros(0, 2, device=device, dtype=dtype), square], color)
+        self.assert_close(out[:1], im[:1])
+        self.assert_close(out[1:], draw_convex_polygon(im[1:].clone(), square[None], color[1:]))
+
+    def test_empty_list_with_empty_batch(self, device, dtype):
+        im = torch.rand(0, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.zeros(0, 3, device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), [], color)
+        assert out.shape == im.shape
+
+    def test_sloped_edge_fills_the_pixel_it_passes_through(self, device, dtype):
+        """The right edge of this triangle crosses x = 4 + 2 * (y - 4) exactly, and that pixel is inside."""
+        tri = torch.tensor([[[4.0, 4.0], [12.0, 8.0], [4.0, 8.0]]], device=device, dtype=dtype)
+        im = torch.zeros(1, 1, 12, 16, device=device, dtype=dtype)
+        out = draw_convex_polygon(im, tri, torch.ones(1, 1, device=device, dtype=dtype))
+        ys = torch.arange(12, device=device)[:, None]
+        xs = torch.arange(16, device=device)[None, :]
+        expected = (ys >= 4) & (ys <= 8) & (xs >= 4) & (xs <= 4 + 2 * (ys - 4))
+        assert out[0, 0].eq(expected).all()
+
     def test_0d_scalar_color_matches_one_channel_color(self, device, dtype):
         """A 0-d color used to fail unpacking (b, c); it now fills like a size-1 color."""
         square = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)

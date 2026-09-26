@@ -219,13 +219,12 @@ def find_homography_dlt(
           correspondence from the equations, and only relative weights matter.
         - ``solver="lu"`` and ``"svd"`` give the same homography on exact data, to roundoff scaled by the
           conditioning of the system; on noisy data they solve different least-squares problems and differ.
-        - Known defect: a zero-weight correspondence still enters the point normalisation, so on noisy data it
-          moves the result (`#4890 <https://github.com/kornia/kornia/issues/4890>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+          Zero-weight points are excluded from the DLT equations and Hartley normalization.
         solver: variants: svd, lu.
 
 
@@ -243,8 +242,10 @@ def find_homography_dlt(
     device, dtype = _extract_device_dtype([points1, points2])
 
     eps: float = 1e-8
-    points1_norm, transform1 = normalize_points(points1)
-    points2_norm, transform2 = normalize_points(points2)
+    if weights is not None and weights.shape != points1.shape[:2]:
+        raise AssertionError(weights.shape)
+    points1_norm, transform1 = normalize_points(points1, weights=weights)
+    points2_norm, transform2 = normalize_points(points2, weights=weights)
 
     x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # BxNx1
     x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # BxNx1
@@ -332,9 +333,8 @@ def find_homography_dlt_iterated(
     Convention:
         - Direction and ``H[2, 2] = 1`` as :func:`find_homography_dlt`. Each solve after the first re-weights
           with ``exp(-e / (2 * soft_inl_th**2))`` of the unsquared symmetric transfer error ``e``.
-        - Known defects: the exponent is linear, not quadratic, in ``e``, so ``soft_inl_th`` is not a pixel
-          standard deviation (`#4870 <https://github.com/kornia/kornia/issues/4870>`_); that of
-          :func:`find_homography_dlt` applies (`#4890 <https://github.com/kornia/kornia/issues/4890>`_).
+        - Known defect: the exponent is linear, not quadratic, in ``e``, so ``soft_inl_th`` is not a pixel
+          standard deviation (`#4870 <https://github.com/kornia/kornia/issues/4870>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
@@ -412,11 +412,10 @@ def find_homography_lines_dlt(
     Convention:
         - ``H`` maps image-1 points to image-2 points, as in :func:`find_homography_dlt`. Each segment is a
           ``[start, end]`` pair of ``(x, y)`` points, and ``weights`` has one entry per segment.
-        - Known defects: each segment's equations are built from endpoints of two different segments, not from
+        - Known defect: each segment's equations are built from endpoints of two different segments, not from
           its own start and end, so the estimate is correct only when the endpoints are themselves point
           correspondences, and a zero weight does not remove its segment
-          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); and the endpoints of a zero-weight segment
-          still enter the point normalisation (`#4890 <https://github.com/kornia/kornia/issues/4890>`_).
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
@@ -424,6 +423,7 @@ def find_homography_lines_dlt(
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
           :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
         weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
+          Zero-weight segments are excluded from Hartley normalization.
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
@@ -441,8 +441,11 @@ def find_homography_lines_dlt(
     points1 = ls1.reshape(BS, 2 * N, 2)
     points2 = ls2.reshape(BS, 2 * N, 2)
 
-    points1_norm, transform1 = normalize_points(points1)
-    points2_norm, transform2 = normalize_points(points2)
+    if weights is not None and weights.shape != ls1.shape[:2]:
+        raise AssertionError(weights.shape)
+    endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
+    points1_norm, transform1 = normalize_points(points1, weights=endpoint_weights)
+    points2_norm, transform2 = normalize_points(points2, weights=endpoint_weights)
     lst1, le1 = torch.chunk(points1_norm, dim=1, chunks=2)
     lst2, le2 = torch.chunk(points2_norm, dim=1, chunks=2)
 
@@ -494,8 +497,7 @@ def find_homography_lines_dlt_iterated(
         - Known defects: those of the three functions apply
           (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
           `#4867 <https://github.com/kornia/kornia/issues/4867>`_,
-          `#4870 <https://github.com/kornia/kornia/issues/4870>`_,
-          `#4890 <https://github.com/kornia/kornia/issues/4890>`_).
+          `#4870 <https://github.com/kornia/kornia/issues/4870>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.

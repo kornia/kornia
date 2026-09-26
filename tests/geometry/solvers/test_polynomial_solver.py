@@ -70,6 +70,45 @@ class TestQuadraticSolver(BaseTester):
         coeffs = torch.tensor([[1.0, -5.0, 6.0]], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.solve_quadratic, (coeffs,))
 
+    def test_stable_formula_4914(self, device, dtype):
+        # #4914: the direct quadratic formula loses the finite root through cancellation
+        # when |4ac| << b^2. The stable formulation should retain both real roots.
+        if dtype == torch.float16:
+            pytest.skip("1e-8 rounds to 0 in float16, and the root near -2e8 is beyond its range")
+        coeffs = torch.tensor([[1e-8, 2.0, -6.0]], device=device, dtype=dtype)
+        roots = solver.solve_quadratic(coeffs)
+
+        expected = torch.tensor([3.0, -2e8], device=device, dtype=dtype)
+        self.assert_close(roots[0], expected, rtol=1e-6, atol=1e-5)
+
+    def test_stable_formula_gradient_4914(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Gradient values are checked in float32 and float64.")
+        # By the implicit function theorem d root / d coeffs[k] = -root^(2 - k) / p'(root), with p'(r) = 2ar + b.
+        # (-b + sqrt(D)) / (2a) loses the root near 3 of 1e-8 x^2 + 2x - 6 to cancellation, and its gradient with
+        # it: d root / da came out as 3e8 in float32 and -4.96 instead of -4.5 in float64.
+        x = torch.tensor([[1e-8, 2.0, -6.0]], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quadratic(x)
+        for slot in range(2):
+            (grad,) = torch.autograd.grad(roots[0, slot], x, retain_graph=True)
+            r = roots[0, slot].detach()
+            expected = -torch.stack([r * r, r, torch.ones_like(r)]) / (2e-8 * r + 2.0)
+            self.assert_close(grad[0], expected, rtol=1e-5, atol=0.0)
+
+    def test_stable_formula_keeps_order_and_edge_gradients_4914(self, device, dtype):
+        # Slot 0 is (-b + sqrt(D)) / (2a) also for b == 0, where the sign of b does not pick the branch.
+        out = solver.solve_quadratic(torch.tensor([[1.0, 0.0, -4.0], [-1.0, 0.0, 4.0]], device=device, dtype=dtype))
+        self.assert_close(out, torch.tensor([[2.0, -2.0], [-2.0, 2.0]], device=device, dtype=dtype))
+        if dtype not in (torch.float32, torch.float64):
+            return
+        # c / q is only taken where the two real roots differ. With no real root and a tiny b, c / q^2 overflows,
+        # and torch.where would turn the row's zero gradient into nan. At the double root of x^2 - 6x + 9 both
+        # slots are -b / (2a), so the gradient of their sum is that of -b / a, [b / a^2, -1 / a, 0].
+        tiny = 1e-25 if dtype == torch.float32 else 1e-160
+        x = torch.tensor([[1.0, tiny, 1.0], [1.0, -6.0, 9.0]], device=device, dtype=dtype, requires_grad=True)
+        (grad,) = torch.autograd.grad(solver.solve_quadratic(x).sum(), x)
+        self.assert_close(grad, torch.tensor([[0.0, 0.0, 0.0], [-6.0, -1.0, 0.0]], device=device, dtype=dtype))
+
 
 class TestCubicSolver(BaseTester):
     def test_smoke(self, device, dtype):
@@ -1198,15 +1237,45 @@ class TestConventionPolynomialSolvers(BaseTester):
         for root in (1e-3, 2e-3):
             assert (out - root).abs().min() > 1e-2 * root
 
-    def test_wart_solve_quartic_absolute_leading_tolerance_4905(self, device, dtype):
+    def test_convention_solve_quartic_relative_leading_tolerance_4905(self, device, dtype):
         # (x - 1)(x - 2)(x - 3)(x - 4), and the same row times a power of two (exact in every dtype) that brings the
         # leading coefficient below the fallback tolerance (1e-6, or 1e-12 in float64).
         row = torch.tensor([[1.0, -10.0, 35.0, -50.0, 24.0]], device=device, dtype=dtype)
         scale = 2.0**-41 if dtype == torch.float64 else 2.0**-21
         roots = torch.tensor([[1.0, 2.0, 3.0, 4.0]], device=device, dtype=dtype)
         self.assert_close(solver.solve_quartic(row).sort(dim=-1).values, roots)
-        # #4905: the tolerance is absolute, so the scaled row is solved as the cubic that remains without x^4, and
-        # the roots 2, 3 and 4 are lost. Once the test is relative, both rows give the same roots.
-        out = solver.solve_quartic(row * scale)
-        for root in (2.0, 3.0, 4.0):
-            assert (out - root).abs().min() > 0.5
+        # #4905: below unit scale the tolerance is relative to the row's largest coefficient, so scaling the row
+        # down does not turn it into a cubic.
+        self.assert_close(solver.solve_quartic(row * scale).sort(dim=-1).values, roots)
+
+    def test_convention_solve_quartic_cubic_fallback_4905(self, device, dtype):
+        # Rows at unit scale or above keep the absolute tolerance: (x - 50)(x - 60)(x - 70)(x - 80) has a leading
+        # coefficient 6e-8 times its constant term and is still a quartic, while a leading coefficient below the
+        # tolerance on a unit-scale row, or an exact 0 on an all-zero row, still falls back to the cubic. Below unit
+        # scale the test is relative in both directions: the unit-scale fallback row times 2^-14 falls back as well.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the 50..80 row's 1.68e7 constant term overflows float16 and keeps 3 digits in bfloat16")
+        tiny = 1e-13 if dtype == torch.float64 else 1e-7
+        cubic_row = [tiny, 1.0, -6.0, 11.0, -6.0]
+        coeffs = torch.tensor(
+            [
+                [1.0, -260.0, 25100.0, -1066000.0, 16800000.0],
+                cubic_row,
+                [c * 2.0**-14 for c in cubic_row],
+                [0.0, 0.0, 0.0, 0.0, 0.0],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        expected = torch.tensor(
+            [[50.0, 60.0, 70.0, 80.0], [0.0, 1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 3.0], [0.0, 0.0, 0.0, 0.0]],
+            device=device,
+            dtype=dtype,
+        )
+        roots = solver.solve_quartic(coeffs)
+        self.assert_close(roots.detach().sort(dim=-1).values, expected, atol=1e-3, rtol=1e-4)
+        # The all-zero row's relative tolerance is 0; the exact a == 0 test keeps it off the quartic path, where its
+        # gradient is nan.
+        (grad,) = torch.autograd.grad(roots.sum(), coeffs)
+        assert grad.isfinite().all()
