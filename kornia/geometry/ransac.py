@@ -80,8 +80,8 @@ class RANSAC(nn.Module):
           :ref:`two-view-conventions` compares this with OpenCV.
         - ``score_type="msac"`` ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the squared errors
           ``e``; acceptance and early stopping count inliers for either score.
-        - ``prosac_sampling=True`` expects correspondences sorted best-first and always runs the whole
-          ``batch_size * max_iter`` budget.
+        - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
+          termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
           draws from the global generator.
         - Known defects: for ``"homography_from_linesegments"``, local optimization weights segments by the
@@ -97,11 +97,12 @@ class RANSAC(nn.Module):
         batch_size: number of generated samples at once.
         max_iter: maximum batches to generate, giving a budget of ``batch_size * max_iter`` minimal samples.
             The seven- and five-point solvers can return multiple models per sample.
-        confidence: uniform-sampling stopping confidence in ``(0, 1]``; 1 disables early stopping.
+        confidence: stopping confidence in ``(0, 1]``; 1 disables early stopping.
         max_lo_iters: maximum local refitting iterations; zero disables polishing.
         score_type: "ransac" for support count, or "msac" for truncated squared residuals.
         prosac_sampling: use PROSAC sampling on best-first ordered correspondences. The growth schedule
-            advances per sampled set within each batch; this mode uses the full sampling budget.
+            advances per sampled set within each batch; stopping tests the incumbent's support within ranked
+            prefixes (Chum and Matas, 2005, section 2.2) as well as within the whole set.
         seed: optional seed, reset on each call for reproducible estimation on the same device.
         lo_sample_size: optional inlier-subset size for a batch of ``max_lo_iters`` randomized local
             refits followed by a full-inlier refit. None uses iterative full-inlier refitting.
@@ -134,7 +135,7 @@ class RANSAC(nn.Module):
             score_type: scoring method to use: "ransac" or "msac".
             prosac_sampling: use PROSAC's progressive sampling schedule. Inputs must be sorted best-first
                 by match quality. The schedule advances for every sampled set, including within batches.
-                Uses the full sampling budget rather than the uniform sampler's confidence stopping rule.
+                Stops when a ranked prefix, or the whole set, certifies the incumbent with ``confidence``.
             seed: optional random seed for reproducible results. If None, uses global random state.
             lo_sample_size: optional cap on the number of inliers used by each randomized local refit.
                 Fits ``max_lo_iters`` independent subsets in one batch, followed by one full-inlier refit.
@@ -301,6 +302,50 @@ class RANSAC(nn.Module):
         if self._prosac_ends is None or self._prosac_ends[0] != key:
             self._prosac_ends = (key, torch.tensor(_prosac_growth(*key[:3]), device=device))
         return self._prosac_ends[1]
+
+    def _prosac_max_samples(self, inliers: torch.Tensor, num_inliers: int) -> int:
+        """PROSAC termination length test (Chum and Matas, CVPR 2005, section 2.2).
+
+        A ranked prefix ``U_n`` certifies the incumbent when its support ``I_n`` there is non-random and
+        ``k_n = log(1 - confidence) / log(1 - C(I_n, m) / C(n, m))`` draws fit inside the prefix's growth
+        interval ``T'_n``, so that every counted draw was taken from ``U_n`` or a shorter prefix. The
+        binomial tail of ``I_n - m`` accidental inliers with per-correspondence probability ``beta = 0.05`` is
+        bounded by Chernoff's inequality at significance 0.05. As in OpenCV's USAC, prefixes shorter than
+        ``min(N / 2, 100)`` correspondences or supporting fewer than 20% of all correspondences cannot
+        terminate: a handful of top-ranked inliers to a model fitted to their neighbours is no evidence of a
+        good model. The whole set is always a candidate, which is the uniform-sampling bound.
+        """
+        budget = self.batch_size * self.max_iter
+        m, total = self.minimal_sample_size, inliers.numel()
+        if self.confidence >= 1.0 or total <= m:
+            return budget
+        bound = min(budget, self.max_samples_by_conf(num_inliers, total, m, self.confidence))
+        n_min = max(m + 1, min(total // 2, 100))
+        if n_min > total:
+            return bound
+        # Independent of the keypoint dtype, including half precision. Double precision keeps a
+        # near-integer bound from rounding down; MPS has no float64.
+        dtype = torch.float32 if inliers.device.type == "mps" else torch.float64
+        n = torch.arange(n_min, total + 1, device=inliers.device, dtype=dtype)
+        support = inliers.cumsum(0)[n_min - 1 :].to(dtype)
+        # Chernoff: P[Binomial(n - m, beta) >= I - m] <= exp(-(n - m) * D(q || beta)) for q > beta.
+        beta = 0.05
+        q = (support - m).clamp(min=0) / (n - m)
+        divergence = torch.special.xlogy(q, q / beta) + torch.special.xlogy(1 - q, (1 - q) / (1 - beta))
+        non_random = (q > beta) & ((n - m) * divergence > -math.log(0.05))
+        enough = support >= 0.2 * total
+        # Exact without-replacement probability of an all-inlier sample from the prefix, eq. 10.
+        offsets = torch.arange(m, device=inliers.device, dtype=dtype)
+        probability = ((support[:, None] - offsets).clamp(min=0) / (n[:, None] - offsets)).prod(1)
+        required = torch.where(
+            probability > 0,
+            (math.log1p(-self.confidence) / torch.log1p(-probability)).ceil().clamp(min=1),
+            torch.full_like(probability, float("inf")),
+        )
+        ends = self._prosac_schedule(m, total, inliers.device)[n_min - m :].to(dtype)
+        eligible = non_random & enough & (required <= ends)
+        candidate = torch.where(eligible, required, torch.full_like(required, float(budget))).min()
+        return min(bound, int(candidate.item()))
 
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> int:
@@ -640,7 +685,10 @@ class RANSAC(nn.Module):
                 # sampled sets, not the number of roots returned by a minimal solver.
                 # The bound follows the incumbent's own support, as in OpenCV's USAC: under
                 # MSAC a better-scoring model can have less support than the one it replaced.
-                if not self.prosac_sampling:
+                # PROSAC also tests ranked prefixes, which is where its speed comes from.
+                if self.prosac_sampling:
+                    max_samples = self._prosac_max_samples(inliers, int(num_inliers))
+                else:
                     max_samples = min(
                         self.max_iter * self.batch_size,
                         self.max_samples_by_conf(int(num_inliers), num_tc, self.minimal_sample_size, self.confidence),

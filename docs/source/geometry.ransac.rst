@@ -49,10 +49,16 @@ For example, when smaller descriptor ratios indicate better matches:
     inliers[order] = sorted_inliers
 
 The prefix grows within a batch, and each growth sample includes the newest
-correspondence. This implements PROSAC sampling, not its original prefix-based
-termination test: it runs the full budget and does not apply the uniform-sampling
-confidence formula to biased draws. Uninformative or reversed rankings can hurt
-accuracy. The ``weights`` argument is not used to rank correspondences.
+correspondence. Stopping follows the paper's termination-length test: a ranked
+prefix certifies the incumbent when its support there is non-random (a Chernoff
+bound on accidental inliers with probability 0.05, at significance 0.05) and the
+draws it needs for ``confidence`` fit inside the prefix's growth interval, so
+that only draws from that prefix count. As in OpenCV's USAC, a prefix shorter
+than ``min(N / 2, 100)`` or supporting fewer than 20% of all correspondences
+cannot terminate; the whole set is always a candidate, so PROSAC never runs
+longer than the uniform bound. Stopping is checked between batches.
+Uninformative or reversed rankings can hurt accuracy. The ``weights`` argument
+is not used to rank correspondences.
 
 By default, local optimization repeatedly refits all current inliers. A refit
 replaces the model when it raises the score, or when it ties it: a least-squares

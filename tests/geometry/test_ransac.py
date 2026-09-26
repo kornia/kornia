@@ -1018,15 +1018,113 @@ class TestRANSACSampling(BaseTester):
         expected = 40000 / population
         assert (counts - expected).abs().max() < 7 * math.sqrt(expected)
 
-    def test_prosac_does_not_use_uniform_confidence(self, device, dtype):
+    @pytest.mark.parametrize("confidence,batches", [(0.99, 1), (1.0, 3)])
+    def test_prosac_confidence(self, device, dtype, confidence, batches):
         points = torch.rand(20, 2, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("homography", batch_size=8, max_iter=3, max_lo_iters=0, prosac_sampling=True)
+        ransac = RANSAC(
+            "homography", batch_size=8, max_iter=3, max_lo_iters=0, prosac_sampling=True, confidence=confidence
+        )
         calls = []
         ransac.remove_bad_samples = lambda a, b: (a, b)
         ransac.minimal_solver = lambda a, b, w: calls.append(1) or matrix
         ransac(points, points)
-        assert len(calls) == 3
+        assert len(calls) == batches
+
+    def test_prosac_stopping_uses_ranking(self, device):
+        ransac = RANSAC("fundamental", batch_size=16, max_iter=256, prosac_sampling=True)
+        # 150 inliers of 500: ranked first, one draw from the top-150 prefix certifies the model.
+        # Ranked last, no prefix qualifies and the uniform bound (over 60,000 draws) caps at the budget.
+        ranked = torch.arange(500, device=device) < 150
+        assert ransac._prosac_max_samples(ranked, 150) == 1
+        assert ransac._prosac_max_samples(ranked.flip(0), 150) == 4096
+
+    @pytest.mark.parametrize("support", [0, 8, 9, 50, 99])
+    def test_prosac_stopping_rejects_small_prefix_support(self, device, support):
+        ransac = RANSAC("fundamental", batch_size=16, max_iter=256, prosac_sampling=True)
+        # Fewer than 20% of all correspondences cannot terminate, however perfect the prefix
+        # (OpenCV USAC guard): the top ten all-inlier matches of a locally fitted model are no evidence.
+        inliers = torch.arange(500, device=device) < support
+        assert ransac._prosac_max_samples(inliers, support) == 4096
+
+    def test_prosac_stopping_without_replacement(self, device):
+        ransac = RANSAC("homography", batch_size=16, max_iter=256, prosac_sampling=True)
+        # The best prefix is the whole set. C(10,4)/C(20,4) requires 104 draws
+        # for 99% confidence; the with-replacement approximation gives only 72.
+        inliers = torch.arange(20, device=device) >= 10
+        assert ransac._prosac_max_samples(inliers, 10) == 104
+        assert ransac.max_samples_by_conf(10, 20, 4, 0.99) == 104
+        ransac.confidence = 1
+        assert ransac._prosac_max_samples(inliers, 10) == 4096
+
+    def test_prosac_stopping_never_exceeds_uniform_bound(self, device):
+        ransac = RANSAC("homography", batch_size=16, max_iter=256, prosac_sampling=True)
+        generator = torch.Generator().manual_seed(0)
+        for _ in range(20):
+            inliers = (torch.rand(300, generator=generator) < 0.4).to(device)
+            support = int(inliers.sum())
+            uniform = min(4096, ransac.max_samples_by_conf(support, 300, 4, 0.99))
+            assert 1 <= ransac._prosac_max_samples(inliers, support) <= uniform
+
+    @pytest.mark.parametrize("replace_incumbent", [False, True])
+    def test_prosac_stopping_after_multiple_batches(self, device, dtype, replace_incumbent):
+        points = torch.rand(20, 2, device=device, dtype=dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        ransac = RANSAC(
+            "homography", batch_size=16, max_iter=16, max_lo_iters=0, score_type="msac", prosac_sampling=True
+        )
+        calls = []
+        ransac.remove_bad_samples = lambda a, b: (a, b)
+        ransac.minimal_solver = lambda a, b, w: calls.append(1) or matrix
+
+        def verify(a, b, models, threshold):
+            # The initial incumbent requires 104 draws (seven batches). A
+            # better MSAC score with less support needs the entire budget.
+            replace = replace_incumbent and len(calls) >= 2
+            mask = torch.arange(20, device=device) >= (15 if replace else 10)
+            return matrix[0], mask, 2.0 if replace else 1.0, float(mask.sum())
+
+        ransac.verify = verify
+        for _ in range(2):
+            calls.clear()
+            ransac(points, points)
+            assert len(calls) == (16 if replace_incumbent else 7)
+
+    def test_prosac_minimal_population(self, device):
+        ransac = RANSAC("homography", batch_size=16, max_iter=256, prosac_sampling=True)
+        assert ransac._prosac_max_samples(torch.ones(4, device=device, dtype=torch.bool), 4) == 4096
+
+    def test_prosac_stopping_respects_growth(self, device):
+        ransac = RANSAC("fundamental", batch_size=16, max_iter=256, prosac_sampling=True)
+        # 45 inliers among the top 100 of 200 pass the support guards, but the 3970 draws that
+        # prefix needs exceed the ~106 draws PROSAC takes from it: later draws sampled larger
+        # prefixes and must not be credited to the top 100. The uniform bound caps at the budget.
+        inliers = torch.zeros(200, device=device, dtype=torch.bool)
+        inliers[:90:2] = True
+        assert ransac._prosac_max_samples(inliers, 45) == 4096
+        assert ransac._prosac_schedule(8, 200, inliers.device)[100 - 8].item() < 3970
+
+    def test_prosac_stops_on_a_certified_prefix(self, device, dtype):
+        # 150 of 500 correspondences follow the homography and are ranked first: PROSAC stops after
+        # its first batch, while uniform sampling needs far more than one batch of 16 at 30% inliers.
+        torch.manual_seed(0)
+        matrix = torch.tensor([[1.1, 0.05, 20.0], [0.02, 0.95, -10.0], [1e-4, -2e-4, 1.0]], device=device, dtype=dtype)
+        points1 = torch.rand(500, 2, device=device, dtype=dtype) * 800
+        points2 = transform_points(matrix[None], points1[None])[0]
+        points2[150:] = torch.rand(350, 2, device=device, dtype=dtype) * 800
+        calls = []
+        for prosac in (True, False):
+            ransac = RANSAC(
+                "homography", inl_th=1.0, batch_size=16, max_iter=64, max_lo_iters=0, prosac_sampling=prosac, seed=0
+            )
+            sample = ransac.sample
+            count = []
+            ransac.sample = lambda *a, _s=sample, _c=count, **k: _c.append(1) or _s(*a, **k)
+            _, mask = ransac(points1, points2)
+            calls.append(len(count))
+            assert mask[:150].all()
+        assert calls[0] == 1
+        assert calls[1] > 1
 
 
 class TestRANSACBoundedLO(BaseTester):
