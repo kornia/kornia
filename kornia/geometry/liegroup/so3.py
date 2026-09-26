@@ -158,14 +158,15 @@ class So3(nn.Module):
         theta = v.norm(dim=-1, keepdim=True)
         w = torch.cos(0.5 * theta)
         # sin(theta / 2) / theta is a 0/0 at theta = 0 (the identity, and the standard initialisation
-        # for pose optimisation), and torch.where differentiates the branch it does not select, so
-        # the closed form is evaluated on a substituted 1.0 there and its series through theta**10 is
-        # used below 0.5 rad, where the truncation error is under 1e-17 for every dtype. The old
-        # bound, finfo(dtype).eps * 1e3 with a two-term series, was 7.8 rad in bfloat16, so every
-        # bfloat16 exp used the two terms and theta = 3 gave a quaternion of norm 0.94 (kornia#4928).
+        # for pose optimisation), so below 0.5 rad its series through theta**10 is used instead; the
+        # truncation error there is under 1e-17, below the resolution of every dtype. torch.where
+        # differentiates the branch it does not select, so each branch is evaluated on an input that
+        # keeps it finite: the closed form on 1.0 below the switch, and the series on 0.0 above it
+        # (on theta itself its powers overflow float16 above about 90 rad and 0 * inf = nan).
         small = theta < 0.5
         safe_theta = torch.where(small, torch.ones_like(theta), theta)
-        t2 = theta * theta
+        series_theta = torch.where(small, theta, torch.zeros_like(theta))
+        t2 = series_theta * series_theta
         b_series = 0.5 + t2 * (-1 / 48 + t2 * (1 / 3840 + t2 * (-1 / 645120 + t2 * (1 / 185794560 - t2 / 81749606400))))
         b = torch.where(small, b_series, torch.sin(0.5 * safe_theta) / safe_theta)
         return So3(Quaternion(torch.cat((w, b * v), dim=-1)))

@@ -174,6 +174,37 @@ class TestSo3(BaseTester):
             self.assert_close(q, q_ref)
             self.assert_close(q.norm(dim=-1), torch.ones(2, device=device, dtype=dtype))
 
+    def test_exp_across_the_series_switch_4928(self, device, dtype):
+        # exp about z is (cos(t / 2), 0, 0, sin(t / 2)) on both sides of the 0.5 rad switch, against
+        # 50-digit references. Generated with mpmath (mp.dps = 50): cos(t / 2), sin(t / 2).
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half precision keeps too few bits to see the series coefficients")
+        ref = torch.tensor(
+            [
+                (1e-3, 0.9999998750000026, 0.0004999999791666669),
+                (0.3, 0.9887710779360422, 0.14943813247359922),
+                (0.49, 0.9701373249726354, 0.24255632478857206),
+                (0.51, 0.9676632956885756, 0.25224540863437805),
+                (1.9, 0.5816830894638836, 0.8134155047893737),
+                (3.0, 0.0707372016677029, 0.9974949866040544),
+                (6.0, -0.9899924966004454, 0.1411200080598672),
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        zero = torch.zeros_like(ref[:, :1])
+        q = So3.exp(torch.cat((zero, zero, ref[:, :1]), -1)).q.data
+        rtol = 1e-15 if dtype == torch.float64 else 1e-6
+        self.assert_close(q, torch.cat((ref[:, 1:2], zero, zero, ref[:, 2:]), -1), rtol=rtol, atol=0.0)
+
+    def test_exp_gradient_is_finite_at_large_angles(self, device, dtype):
+        # The series branch is differentiated even where the closed form is selected; evaluated on the
+        # raw angle its powers overflow float16 above about 90 rad and 0 * inf = nan reached v.grad.
+        axis = torch.tensor([0.48, 0.6, 0.64], device=device, dtype=dtype)
+        v = (torch.tensor([[0.0], [0.3], [3.0], [120.0]], device=device, dtype=dtype) * axis).requires_grad_(True)
+        So3.exp(v).q.data.sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
+
     # TODO: implement me
     def test_jit(self, device, dtype):
         pass
