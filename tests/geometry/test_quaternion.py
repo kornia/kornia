@@ -203,6 +203,53 @@ class TestQuaternion(BaseTester):
         data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
         self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
 
+    def test_polar_angle(self, device, dtype):
+        # polar_angle is acos(w / |q|), half the rotation angle, in [0, pi], and the same for every positive scale of q
+        angles = torch.tensor([0.0, 0.3, 1.2, math.pi / 2, math.pi - 0.1, math.pi], dtype=torch.float64)
+        axis = torch.tensor(
+            [[0.0, 0.0, 1.0], [0.6, 0.0, 0.8], [-0.36, 0.48, 0.8], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]]
+        )
+        data = torch.cat((angles.cos()[:, None], angles.sin()[:, None] * axis.double()), -1)
+        q = Quaternion(data.to(device=device, dtype=dtype))
+        expected = angles.to(device=device, dtype=dtype)
+        self.assert_close(q.polar_angle, expected)
+        self.assert_close((q * 3.0).polar_angle, expected)
+        self.assert_close(Quaternion(q.data[1]).polar_angle, expected[1])
+
+    def test_polar_angle_small_angle(self, device, dtype):
+        # below sqrt(eps) the norm of q rounds to |w|, so acos(w / |q|) returned exactly 0 for an angle that is not
+        # zero (#4927); q = (1, tan(theta) n) has polar angle theta whatever the formula
+        eps = torch.finfo(dtype).eps
+        theta = math.sqrt(eps) / 8
+        data = torch.tensor([[1.0, math.tan(theta) * 0.6, 0.0, math.tan(theta) * 0.8]], device=device, dtype=dtype)
+        expected = torch.tensor([theta], device=device, dtype=dtype)
+        # no absolute tolerance, the old result 0 is within the default one
+        self.assert_close(Quaternion(data).polar_angle, expected, rtol=8 * eps, atol=0.0)
+
+    def test_polar_angle_gradient_is_zero_on_the_real_axis(self, device, dtype):
+        # acos has an infinite derivative at 1, so the gradient of polar_angle used to be nan at the identity and at
+        # every other quaternion with a zero vector part (#4927); atan2(|v|, w) gives the zero subgradient there
+        data = torch.tensor(
+            [[1.0, 0.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0], [2.0, 0.0, 0.0, 0.0], [0.8, 0.0, 0.6, 0.0]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        Quaternion(data).polar_angle.sum().backward()
+        self.assert_close(data.grad[:3], torch.zeros_like(data.grad[:3]), rtol=0.0, atol=0.0)
+        # d acos(w / |q|) / d(w, x, y, z) at (0.8, 0, 0.6, 0) is (-0.6, 0, 0.8, 0)
+        expected = torch.tensor([-0.6, 0.0, 0.8, 0.0], device=device, dtype=dtype)
+        self.assert_close(data.grad[3], expected)
+
+    def test_polar_angle_gradcheck(self, device):
+        # identity, negative real axis, generic, and pure imaginary (w = 0)
+        data = torch.tensor(
+            [[1.0, 0.0, 0.0, 0.0], [-2.0, 0.0, 0.0, 0.0], [1.0, 0.5, -0.3, 0.2], [0.0, 0.3, -0.4, 0.5]],
+            device=device,
+            dtype=torch.float64,
+        )
+        self.gradcheck(lambda x: Quaternion(x).polar_angle, (data,))
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
         """Test scalar multiplication for issue #3101."""
