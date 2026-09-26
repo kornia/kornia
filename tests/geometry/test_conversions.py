@@ -2466,9 +2466,11 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         self.assert_close(multi_batched[1, 4], expected)
 
     def test_wart_reflection_is_returned_as_the_identity_4773(self, device, dtype):
-        # Wart pin for kornia#4773: an improper matrix (det = -1) is not rejected, and the
-        # reflection diag(-1, 1, 1) comes back as the zero vector -- "no rotation". Flips when the
-        # function raises or returns anything else for it.
+        # Wart pin for kornia#4773: with the default check_rotation=False an improper matrix
+        # (det = -1) is still not rejected, and the reflection diag(-1, 1, 1) comes back as the
+        # zero vector -- "no rotation". The call below deliberately omits the argument; passing
+        # check_rotation=True raises instead, which TestRotationMatrixToAxisAngleCheckRotation
+        # covers. Flips when the default raises or returns anything else for it.
         reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
 
         out = kornia.geometry.conversions.rotation_matrix_to_axis_angle(reflection)
@@ -6061,3 +6063,62 @@ def test_convention_deprecated_alias_leaves_the_global_warning_filters_alone_395
         after = list(warnings.filters)
 
     assert after == [], f"kornia#3956: {alias_name} mutated the global DeprecationWarning filters; got {after}"
+
+
+class TestRotationMatrixToAxisAngleCheckRotation:
+    # kornia#4773: by default an improper matrix is reported as a rotation, and check_rotation=True
+    # rejects it, following the opt-in introduced in kornia#3961 for camtoworld/worldtocam Rt.
+    fns = [
+        kornia.geometry.conversions.rotation_matrix_to_axis_angle,
+        kornia.geometry.conversions.rotation_matrix_to_quaternion,
+    ]
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_default_is_unchanged(self, fn, device, dtype):
+        # The default path still accepts the reflection, so the flag is opt-in only.
+        _skip_if_dtype_unavailable(device, dtype)
+        reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
+        fn(reflection)  # must not raise
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_accepts_rotation_unchanged(self, fn, device, dtype):
+        # A genuine rotation passes and the result is bitwise the unchecked one.
+        _skip_if_dtype_unavailable(device, dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        assert_close(fn(rotation, check_rotation=True), fn(rotation), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_accepts_rounding_error(self, fn, device, dtype):
+        # Rotations carrying only their dtype's rounding must pass.
+        _skip_if_dtype_unavailable(device, dtype)
+        build_dtype = dtype if dtype in (torch.float32, torch.float64) else torch.float32
+        generator = torch.Generator().manual_seed(0)
+        axis_angle = torch.randn(64, 3, generator=generator, dtype=build_dtype) * 3
+        rotation = axis_angle_to_rotation_matrix(axis_angle.to(device)).to(dtype)
+        fn(rotation, check_rotation=True)  # must not raise
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_rejects_reflection(self, fn, device, dtype):
+        # A mirror is orthogonal (R @ R^T = I) but det = -1, so only the determinant test catches it.
+        _skip_if_dtype_unavailable(device, dtype)
+        reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="reflection"):
+            fn(reflection, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_rejects_non_orthogonal(self, fn, device, dtype):
+        # 2 * I is exact in every dtype and has det = 8, so it fails the orthogonality test first.
+        _skip_if_dtype_unavailable(device, dtype)
+        scaled = 2.0 * torch.eye(3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="not a rotation matrix"):
+            fn(scaled, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_rejects_one_bad_matrix_in_batch(self, fn, device, dtype):
+        # One improper matrix among good ones is enough to raise, at any batch rank.
+        _skip_if_dtype_unavailable(device, dtype)
+        good = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        bad = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))[None]
+        batch = torch.cat([good, bad, good]).reshape(3, 1, 3, 3)
+        with pytest.raises(ValueError, match="reflection"):
+            fn(batch, check_rotation=True)
