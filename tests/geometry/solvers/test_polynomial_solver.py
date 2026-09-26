@@ -70,15 +70,14 @@ class TestQuadraticSolver(BaseTester):
         coeffs = torch.tensor([[1.0, -5.0, 6.0]], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.solve_quadratic, (coeffs,))
 
-    def test_stable_formula_4914(self, device):
+    def test_stable_formula_4914(self, device, dtype):
         # #4914: the direct quadratic formula loses the finite root through cancellation
         # when |4ac| << b^2. The stable formulation should retain both real roots.
-        for dtype in (torch.float32, torch.float64):
-            coeffs = torch.tensor([[1e-8, 2.0, -6.0]], device=device, dtype=dtype)
-            roots = solver.solve_quadratic(coeffs)
+        coeffs = torch.tensor([[1e-8, 2.0, -6.0]], device=device, dtype=dtype)
+        roots = solver.solve_quadratic(coeffs)
 
-            expected = torch.tensor([3.0, -2e8], device=device, dtype=dtype)
-            self.assert_close(roots[0], expected, rtol=1e-6, atol=1e-5)
+        expected = torch.tensor([3.0, -2e8], device=device, dtype=dtype)
+        self.assert_close(roots[0], expected, rtol=1e-6, atol=1e-5)
 
 
 class TestCubicSolver(BaseTester):
