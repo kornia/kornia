@@ -208,13 +208,15 @@ class TestSe2(BaseTester):
         if dtype == torch.bfloat16:
             pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
         theta = {torch.float16: 2e-2, torch.float32: 1e-4}.get(dtype, 1e-8)
-        v = torch.tensor([[1.0, 2.0, 0.0], [1.0, 2.0, theta], [1.0, 2.0, -theta]], device=device, dtype=dtype)
-        # V(theta) (vx, vy) in float64 without cancellation: 1 - cos(theta) = 2 sin(theta / 2)^2
+        v = torch.tensor([[1.0, 2.0, 0.0], [1.0, 2.0, theta], [1.0, 2.0, -theta]], dtype=dtype)
+        # V(theta) (vx, vy) for the rounded angle, in float64 on the CPU (MPS has no float64) and
+        # without cancellation: 1 - cos(theta) = 2 sin(theta / 2)^2
         th = v[..., 2].double()
         a = torch.where(th == 0, torch.ones_like(th), torch.sin(th) / th)
         b = torch.where(th == 0, torch.zeros_like(th), 2 * torch.sin(th / 2) ** 2 / th)
         x, y = v[..., 0].double(), v[..., 1].double()
-        t_ref = torch.stack((a * x - b * y, b * x + a * y), -1).to(dtype)
+        t_ref = torch.stack((a * x - b * y, b * x + a * y), -1).to(device=device, dtype=dtype)
+        v = v.to(device)
         eps = torch.finfo(dtype).eps
         self.assert_close(Se2.exp(v).t, t_ref, rtol=8 * eps, atol=8 * eps)
         g = Se2(So2.exp(v[..., 2]), t_ref)  # the element exp(v), rounded to dtype
