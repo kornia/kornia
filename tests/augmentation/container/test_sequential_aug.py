@@ -131,6 +131,12 @@ class TestConventionImageSequential(BaseTester):
         aug.save(name=str(output_path))
         assert output_path.is_file()
 
+    @pytest.mark.parametrize("container", ["ImageSequential", "AugmentationSequential"])
+    def test_invalid_output_type_raises(self, container, device, dtype):
+        aug = getattr(K, container)(K.RandomHorizontalFlip(p=1.0))
+        with pytest.raises(ValueError, match="Invalid output_type"):
+            aug(torch.zeros(1, 3, 4, 4, device=device, dtype=dtype), output_type="jpg")
+
     def test_convention_slice_crop_inverse_raises(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
         out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
