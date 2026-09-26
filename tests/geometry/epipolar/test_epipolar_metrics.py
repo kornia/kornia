@@ -230,8 +230,8 @@ class TestRightToLeftEpipolarDistance(BaseTester):
         self.gradcheck(epi.right_to_left_epipolar_distance, (points1, points2, Fm), requires_grad=(True, False, False))
 
     def test_homogeneous_weight_4935(self, device, dtype):
-        # #4935: the measured point went to point_line_distance with its weight ignored, so a pts1 with w = 2 scored
-        # half of what the same Euclidean point scored.
+        # #4935: the measured point went to point_line_distance with its weight ignored, so (20, 40, 2) scored 29.54
+        # where the same point (10, 20) scored 11.89.
         Fm = torch.tensor([[[0.0, -0.02, 0.3], [0.02, 0.0, -0.9], [-0.3, 0.9, 0.1]]], device=device, dtype=dtype)
         pts1 = torch.tensor([[[10.0, 20.0]]], device=device, dtype=dtype)
         pts1_weighted = torch.tensor([[[20.0, 40.0, 2.0]]], device=device, dtype=dtype)
