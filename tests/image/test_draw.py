@@ -718,3 +718,32 @@ class TestFillConvexPolygon(BaseTester):
         expected = draw_convex_polygon(im.clone(), square, torch.tensor([9.0], device=device, dtype=dtype))
         self.assert_close(out, expected)
         assert out.count_nonzero() > 0
+
+    def test_one_vertex_polygon(self, device, dtype):
+        """A one-vertex polygon fills the single pixel at the vertex coordinate (#4904)."""
+        im = torch.zeros(1, 3, 10, 10, device=device, dtype=dtype)
+        pt = torch.tensor([[[4.0, 5.0]]], device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), pt, color)
+        expected = torch.zeros_like(im)
+        expected[0, :, 5, 4] = color[0]
+        self.assert_close(out, expected)
+
+    def test_mixed_empty_polygon_list(self, device, dtype):
+        """A list mixing empty and non-empty polygons should not crash and leave empty batches unchanged (#4904)."""
+        im = torch.zeros(2, 3, 12, 16, device=device, dtype=dtype)
+        sq = torch.tensor([[4.0, 4.0], [8.0, 4.0], [8.0, 8.0], [4.0, 8.0]], device=device, dtype=dtype)
+        polygons = [torch.zeros(0, 2, device=device, dtype=dtype), sq]
+        color = torch.tensor([[0.5, 0.5, 0.5], [0.8, 0.8, 0.8]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), polygons, color)
+        self.assert_close(out[0], im[0])
+        assert out[1].count_nonzero() > 0
+
+    def test_empty_polygon_list(self, device, dtype):
+        """Empty polygon list with 0 batch dimension returns empty batch without error (#4904)."""
+        im = torch.zeros(0, 3, 10, 10, device=device, dtype=dtype)
+        polygons = []
+        color = torch.zeros(0, 3, device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), polygons, color)
+        assert out.shape == (0, 3, 10, 10)
+

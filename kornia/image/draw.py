@@ -279,7 +279,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     dtype = polygon.dtype
 
     # Check if polygons are in loop closed format, if not -> make it so
-    if not torch.allclose(polygon[..., -1, :], polygon[..., 0, :]):
+    if polygon.shape[-2] == 1 or not torch.allclose(polygon[..., -1, :], polygon[..., 0, :]):
         polygon = torch.cat((polygon, polygon[..., :1, :]), dim=-2)  # (B, N+1, 2)
 
     # Partition points into edges
@@ -305,7 +305,9 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     return x_left, x_right
 
 
-def _batch_polygons(polygons: List[Tensor]) -> Tensor:
+def _batch_polygons(
+    polygons: List[Tensor], device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+) -> Tensor:
     r"""Convert a List of variable length polygons into a fixed size tensor.
 
     Works by repeating the last element in the tensor.
@@ -315,14 +317,26 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
                     B is the batch size,
                     N_i is the number of points,
                     2 is (x, y).
+        device: device of the returned tensor.
+        dtype: dtype of the returned tensor.
 
     Returns:
         A fixed size tensor of shape (B, N, 2) where N = max_i(N_i)
 
     """
-    B, N = len(polygons), len(max(polygons, key=len))
-    batched_polygons = torch.zeros(B, N, 2, dtype=polygons[0].dtype, device=polygons[0].device)
+    if not polygons:
+        return torch.zeros(0, 0, 2, dtype=dtype, device=device)
+
+    dtype = polygons[0].dtype if dtype is None else dtype
+    device = polygons[0].device if device is None else device
+    B, N = len(polygons), max(len(p) for p in polygons)
+    if N == 0:
+        return torch.zeros(B, 0, 2, dtype=dtype, device=device)
+
+    batched_polygons = torch.zeros(B, N, 2, dtype=dtype, device=device)
     for b, p in enumerate(polygons):
+        if len(p) == 0:
+            continue
         batched_polygons[b] = torch.cat((p, p[-1:].expand(N - len(p), 2))) if len(p) < N else p
     return batched_polygons
 
@@ -355,8 +369,10 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     # TODO: implement optional linetypes for smooth edges
     KORNIA_CHECK_SHAPE(images, ["B", "C", "H", "W"])
     b_i, c_i, h_i, w_i, device = *images.shape, images.device
+    empty_mask: Optional[Tensor] = None
     if isinstance(polygons, List):
-        polygons = _batch_polygons(polygons)
+        empty_mask = torch.tensor([len(p) == 0 for p in polygons], device=device, dtype=torch.bool)
+        polygons = _batch_polygons(polygons, device=device, dtype=images.dtype)
     b_p, _, xy, device_p, dtype_p = *polygons.shape, polygons.device, polygons.dtype
     if len(colors.shape) <= 1:
         colors = colors.expand(b_i, c_i)
@@ -371,5 +387,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     x_left, x_right = _get_convex_edges(polygons, h_i, w_i)
     ws = torch.arange(w_i, device=device, dtype=dtype_p)[None, None, :]
     fill_region = (ws >= x_left[..., :, None]) & (ws <= x_right[..., :, None])
+    if empty_mask is not None and empty_mask.any():
+        fill_region = fill_region & (~empty_mask[:, None, None])
     images.mul_(~fill_region[:, None]).add_(fill_region[:, None] * colors[..., None, None])
     return images
