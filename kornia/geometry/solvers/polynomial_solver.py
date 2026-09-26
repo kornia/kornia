@@ -318,10 +318,9 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     Convention:
         - Coefficient layout and zero padding as :func:`solve_quadratic`; the roots are unordered.
         - Known defects: the solver is not scale-invariant, so a quartic whose roots are all small can lose real
-          roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_);
-          a leading coefficient below ``1e-6`` in magnitude (``1e-12`` in float64) counts as zero whatever the
-          other coefficients are, so a small multiple of a quartic is solved as a cubic and loses its roots
-          (`#4905 <https://github.com/kornia/kornia/issues/4905>`_).
+          roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_).
+        - A row is solved as a cubic when its leading coefficient is below ``1e-6`` (``1e-12`` in float64) times
+          its largest coefficient magnitude, capped at 1; a small multiple of a quartic keeps its roots.
 
     Args:
         coeffs : The coefficients quartic equation : `(B, 5)`
@@ -360,8 +359,10 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # float32's cubic-fallback tolerance; float64's 1e-12 would also round to 0 in float16.
     zero_tol = 1e-6 if coeffs.dtype in (torch.float32, torch.float16, torch.bfloat16) else 1e-12
 
-    # Cubic fallback for a approx 0
-    mask_a_zero = torch.abs(a) < zero_tol
+    # Cubic fallback for a approx 0. Scaling a row does not move its roots, so a row whose largest coefficient is
+    # below 1 gets a proportionally smaller tolerance; rows at unit scale or above keep the absolute one.
+    row_scale = coeffs.abs().amax(dim=-1).clamp(max=1.0)
+    mask_a_zero = (torch.abs(a) < zero_tol * row_scale) | (a == 0)
     mask_quartic = ~mask_a_zero
 
     if torch.any(mask_a_zero):

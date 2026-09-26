@@ -1198,15 +1198,29 @@ class TestConventionPolynomialSolvers(BaseTester):
         for root in (1e-3, 2e-3):
             assert (out - root).abs().min() > 1e-2 * root
 
-    def test_wart_solve_quartic_absolute_leading_tolerance_4905(self, device, dtype):
+    def test_convention_solve_quartic_relative_leading_tolerance_4905(self, device, dtype):
         # (x - 1)(x - 2)(x - 3)(x - 4), and the same row times a power of two (exact in every dtype) that brings the
         # leading coefficient below the fallback tolerance (1e-6, or 1e-12 in float64).
         row = torch.tensor([[1.0, -10.0, 35.0, -50.0, 24.0]], device=device, dtype=dtype)
         scale = 2.0**-41 if dtype == torch.float64 else 2.0**-21
         roots = torch.tensor([[1.0, 2.0, 3.0, 4.0]], device=device, dtype=dtype)
         self.assert_close(solver.solve_quartic(row).sort(dim=-1).values, roots)
-        # #4905: the tolerance is absolute, so the scaled row is solved as the cubic that remains without x^4, and
-        # the roots 2, 3 and 4 are lost. Once the test is relative, both rows give the same roots.
-        out = solver.solve_quartic(row * scale)
-        for root in (2.0, 3.0, 4.0):
-            assert (out - root).abs().min() > 0.5
+        # #4905: the tolerance is relative to the row's largest coefficient, so scaling does not turn it into a cubic.
+        self.assert_close(solver.solve_quartic(row * scale).sort(dim=-1).values, roots)
+
+    def test_convention_solve_quartic_cubic_fallback_4905(self, device, dtype):
+        # Rows at unit scale or above keep the absolute tolerance: (x - 50)(x - 60)(x - 70)(x - 80) has a leading
+        # coefficient 6e-8 times its constant term and is still a quartic, while a leading coefficient below the
+        # tolerance on a unit-scale row, or an exact 0 on an all-zero row, still falls back to the cubic.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the 50..80 row's 1.68e7 constant term overflows float16 and keeps 3 digits in bfloat16")
+        tiny = 1e-13 if dtype == torch.float64 else 1e-7
+        coeffs = torch.tensor(
+            [[1.0, -260.0, 25100.0, -1066000.0, 16800000.0], [tiny, 1.0, -6.0, 11.0, -6.0], [0.0, 0.0, 0.0, 0.0, 0.0]],
+            device=device,
+            dtype=dtype,
+        )
+        expected = torch.tensor(
+            [[50.0, 60.0, 70.0, 80.0], [0.0, 1.0, 2.0, 3.0], [0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype
+        )
+        self.assert_close(solver.solve_quartic(coeffs).sort(dim=-1).values, expected, atol=1e-3, rtol=1e-4)
