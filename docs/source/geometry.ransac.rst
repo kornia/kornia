@@ -16,7 +16,13 @@ Batches, scores, and refinement
 solvers may produce several candidate matrices from each set. Smaller batches
 permit earlier stopping, while larger batches amortize accelerator overhead.
 ``confidence=1`` disables early stopping and runs the whole budget.
-Measure end-to-end latency and pose accuracy when choosing a batch size.
+On CUDA keep the default batch of 2048 or larger: a batch costs about the same
+up to a few thousand hypotheses, and a PROSAC batch of that size already spans
+most of the growth schedule, whereas certifying a model after a small first
+batch drawn from a short prefix can stop on a poorly conditioned fit. On CPU
+the batch cost grows with its size, so 32 to 256 hypotheses per batch let
+early stopping pay off. Measure end-to-end latency and pose accuracy when
+choosing a batch size.
 
 ``score_type="msac"`` minimizes the sum of squared residuals truncated at
 ``inl_th ** 2``. The returned internal score is normalized to increase with
