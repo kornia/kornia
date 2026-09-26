@@ -46,14 +46,15 @@ test-slow = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_RUNSLOW = "true"
 test-quick = { cmd = "uv run pytest tests/" }
 test-half = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DTYPE = "float16,bfloat16" }, description = "Run CPU half-precision tests" }
 test-mps = { cmd = "uv run pytest tests/ --xfail-known-failures", env = { KORNIA_TEST_DEVICE = "mps", KORNIA_TEST_DTYPE = "float32" }, description = "Run blocking MPS float32 tests against the strict known-failure baseline (unset PYTORCH_ENABLE_MPS_FALLBACK)" }
+verify-delta = { cmd = "uv run python -m testing.verify_delta", description = "Diff failing-test sets vs origin/main on cpu/half/mps/inductor (usage: pixi run verify-delta [-- --only 'cpu float32'])" }
 test-module = { cmd = "uv run pytest", description = "Run tests for a specific module (usage: pixi run test-module tests/<module_path>, e.g., pixi run test-module tests/contrib/)" }
 # Quality
 lint = { cmd = "uv run pre-commit run ruff-check --all-files && uv run pre-commit run ruff-format --all-files" }
 pre-commit-all = { cmd = "uv run pre-commit run --all-files", description = "Run all repository pre-commit checks" }
 pre-commit-install = { cmd = "uv run pre-commit install", description = "Install the pre-commit Git hook" }
 typecheck = { cmd = "ty check kornia" }
-doctest = { cmd = "uv run pytest --doctest-modules kornia/", description = "Run docstring examples; examples needing an uncached model checkpoint are skipped" }
-doctest-weights = { cmd = "uv run pytest --doctest-modules kornia/", env = { KORNIA_DOCTEST_DOWNLOAD = "1" }, description = "Run docstring examples, downloading pretrained weights when the cache misses (~838 MB cold)" }
+doctest = { cmd = "uv run pytest --doctest-modules kornia/ testing/precision.py", description = "Run docstring examples; examples needing an uncached model checkpoint are skipped" }
+doctest-weights = { cmd = "uv run pytest --doctest-modules kornia/ testing/precision.py", env = { KORNIA_DOCTEST_DOWNLOAD = "1" }, description = "Run docstring examples, downloading pretrained weights when the cache misses (~838 MB cold)" }
 toml-fmt = { cmd = "tombi format", description = "Format TOML files" }
 toml-fmt-check = { cmd = "tombi format --check", description = "Check TOML formatting" }
 # Docs
