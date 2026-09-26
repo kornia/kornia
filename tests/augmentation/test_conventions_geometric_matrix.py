@@ -147,16 +147,42 @@ class TestConventionGeometricMatrices(BaseTester):
 
     @pytest.mark.parametrize("size", [(1, 7), (5, 1), (1, 1)])
     @pytest.mark.parametrize("align_corners", [False, True])
-    def test_wart_random_perspective_singleton_dimensions_4787(self, device, dtype, size, align_corners):
+    def test_convention_random_perspective_singleton_dimensions_4787(self, device, dtype, size, align_corners):
+        # #4787: a size-1 axis gets a unit source extent and no offset, so the solve is not degenerate and
+        # zero distortion is the identity.
         height, width = size
         image = torch.arange(height * width, device=device, dtype=dtype).reshape(1, 1, height, width)
         augmentation = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)
 
         output = augmentation(image)
 
-        # Coincident source corners make the perspective solve degenerate, even without distortion.
-        assert torch.isnan(augmentation.transform_matrix).all()
-        assert torch.isnan(output).all()
+        assert torch.isfinite(augmentation.transform_matrix).all()
+        self.assert_close(output, image, low_tolerance=True)
+
+    @pytest.mark.parametrize("sampling_method", ["basic", "area_preserving"])
+    @pytest.mark.parametrize("size", [(1, 7), (5, 1)])
+    def test_convention_random_perspective_does_not_distort_a_singleton_axis_4787(
+        self, device, dtype, size, sampling_method
+    ):
+        height, width = size
+        torch.manual_seed(0)
+        image = torch.rand(4, 1, height, width, device=device, dtype=dtype)
+        augmentation = K.RandomPerspective(1.0, p=1.0, sampling_method=sampling_method)
+
+        output = augmentation(image)
+
+        assert torch.isfinite(output).all()
+        matrix = augmentation.transform_matrix.to(torch.float32)
+        assert torch.isfinite(matrix).all()
+        # The singleton row (or column) maps onto itself, while the other axis is still warped.
+        axis = 1 if height == 1 else 0
+        extent = width if height == 1 else height
+        points = torch.zeros(4, extent, 2, device=device)
+        points[..., 1 - axis] = torch.arange(extent, device=device, dtype=torch.float32)
+        homogeneous = torch.cat([points, torch.ones_like(points[..., :1])], dim=-1) @ matrix.transpose(-1, -2)
+        mapped = homogeneous[..., :2] / homogeneous[..., 2:]
+        self.assert_close(mapped[..., axis], torch.zeros_like(mapped[..., axis]), low_tolerance=True)
+        assert not torch.allclose(mapped[..., 1 - axis], points[..., 1 - axis], atol=1e-2)
 
     def test_wart_random_affine_rotation_sign_4408(self, device, dtype):
         x = torch.zeros(1, 1, 7, 7, device=device, dtype=dtype)

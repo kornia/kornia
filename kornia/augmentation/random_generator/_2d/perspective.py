@@ -80,18 +80,25 @@ class PerspectiveGenerator(RandomGeneratorBase):
         _check_positive_int_or_traced(height, "height")
         _check_positive_int_or_traced(width, "width")
 
+        # A size-1 axis would make two source corners coincide and the homography singular. Give it a
+        # unit extent and no offset instead: the single row or column then maps onto itself.
+        flat_x = isinstance(width, int) and width == 1
+        flat_y = isinstance(height, int) and height == 1
+        x_end = 1 if flat_x else width - 1
+        y_end = 1 if flat_y else height - 1
+
         # Subtract before casting: bbox_generator subtracts in the tensor dtype,
         # which changes large half-precision image coordinates.
         start_points = _constant_tensor(
-            [[[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]],
+            [[[0, 0], [x_end, 0], [x_end, y_end], [0, y_end]]],
             device=_device,
             dtype=_dtype,
         )
         start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        fx = self._distortion_scale * width / 2
-        fy = self._distortion_scale * height / 2
+        fx = self._distortion_scale * (0 if flat_x else width) / 2
+        fy = self._distortion_scale * (0 if flat_y else height) / 2
 
         factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
 
