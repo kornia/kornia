@@ -463,9 +463,12 @@ class TestSe3(BaseTester):
         self.assert_close((g * Se3.exp(v)).matrix(), (Se3.exp(ad_v) * g).matrix())
 
     def test_convention_se3_composition_is_left_matrix_product(self, device, dtype):
-        # a * b is the matrix product a b: b acts first on a point.
+        # With unit rotations from exp, a * b is the matrix product a b: b acts first on a point. Non-unit
+        # quaternions violate this #4942 precondition.
         a = Se3.exp(torch.tensor([1.0, -2.0, 3.0, 0.4, 0.2, -0.3], device=device, dtype=dtype))
         b = Se3.exp(torch.tensor([0.3, 0.1, -0.2, -0.1, 0.3, 0.05], device=device, dtype=dtype))
+        self.assert_close(a.r.q.norm(), torch.ones((), device=device, dtype=dtype))
+        self.assert_close(b.r.q.norm(), torch.ones((), device=device, dtype=dtype))
         ab, ba = a.matrix() @ b.matrix(), b.matrix() @ a.matrix()
         assert (ab - ba).abs().max() > 0.1  # a non-commuting pair
         self.assert_close((a * b).matrix(), ab)

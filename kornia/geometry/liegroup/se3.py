@@ -46,8 +46,9 @@ class Se3(nn.Module):
           (:doc:`Conventions </get-started/conventions>` maps it onto Sophus and GTSAM): ``exp`` rotates by
           ``So3.exp(omega)`` and translates by :math:`V(\omega) \upsilon`, ``hat`` is
           :math:`[[\hat\omega, \upsilon], [0, 0]]`, and ``log`` is principal, with :math:`|\omega| \le \pi`.
-        - ``matrix()`` is the 4x4 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()``, so ``b`` acts
-          first, and ``g * p`` is :math:`R p + t`. ``adjoint()`` is :math:`[[R, \hat t R], [0, R]]`.
+        - ``matrix()`` is the 4x4 :math:`[[R, t], [0, 1]]`. When both rotations are unit, ``a * b`` is
+          ``a.matrix() @ b.matrix()``, so ``b`` acts first, and ``g * p`` is :math:`R p + t`. ``adjoint()`` is
+          :math:`[[R, \hat t R], [0, R]]`.
         - The rotation is an :class:`~kornia.geometry.liegroup.So3`, whose storage and point-shape conventions
           apply, including its non-unit quaternion defect (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
           ``from_matrix`` ignores the bottom row.

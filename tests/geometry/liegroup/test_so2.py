@@ -180,24 +180,16 @@ class TestSo2(BaseTester):
         self.assert_close(So2.exp(theta).log(), theta)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_hat(self, device, dtype, batch_size):
+    def test_wart_so2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
+        # https://github.com/kornia/kornia/issues/4929: hat is symmetric rather than the so(2) generator and vee
+        # reads its upper-right entry. Keep both layouts together because vee(hat(theta)) conceals the defect.
         theta = self._make_rand_data(device, dtype, (batch_size,))
         m = So2.hat(theta)
         o = torch.ones((2, 1), device=device, dtype=dtype)
         self.assert_close((m @ o).reshape(-1, 2, 1), theta.reshape(-1, 1, 1).repeat(1, 2, 1))
-
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_vee(self, device, dtype, batch_size):
         omega = self._make_rand_data(device, dtype, (batch_size, 2, 2))
-        theta = So2.vee(omega)
-        self.assert_close(omega[..., 0, 1], theta)
-
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_hat_vee(self, device, dtype, batch_size):
-        a = self._make_rand_data(device, dtype, (batch_size,))
-        omega = So2.hat(a)
-        b = So2.vee(omega)
-        self.assert_close(b, a)
+        self.assert_close(So2.vee(omega), omega[..., 0, 1])
+        self.assert_close(So2.vee(m), theta)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_matrix(self, device, dtype, batch_size):
@@ -341,9 +333,16 @@ class TestSo2(BaseTester):
         p = torch.tensor([[1.0, 0.0], [0.0, 1.0], [2.0, 3.0]], device=device, dtype=dtype)
         paired = So2.exp(theta) * p  # the (B,) layout rotates point i by angle i
         assert paired.shape == (3, 2)
-        # https://github.com/kornia/kornia/issues/4932: the documented (B, 1) layout broadcasts z against the (B,)
-        # coordinates, so entry [i, j] is R(theta_i) p_j: every rotation applied to every point.
-        out = So2.exp(theta[:, None]) * p
+        # https://github.com/kornia/kornia/issues/4932: the accepted (B, 1) layout keeps its singleton axis in
+        # matrix() and hat(), but vee() rejects the latter. Multiplication broadcasts z against (B,) coordinates,
+        # so entry [i, j] is R(theta_i) p_j: every rotation applied to every point.
+        column = theta[:, None]
+        assert So2.exp(column).matrix().shape == (3, 1, 2, 2)
+        column_hat = So2.hat(column)
+        assert column_hat.shape == (3, 1, 2, 2)
+        with pytest.raises(ValueError):
+            So2.vee(column_hat)
+        out = So2.exp(column) * p
         assert out.shape == (3, 3, 2)
         self.assert_close(out.diagonal(dim1=0, dim2=1).mT, paired)
         self.assert_close(out[0, 2], So2.exp(theta[0]) * p[2])

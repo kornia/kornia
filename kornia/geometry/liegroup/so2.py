@@ -38,19 +38,22 @@ class So2(nn.Module):
     See more: https://en.wikipedia.org/wiki/Orthogonal_group#Special_orthogonal_group
 
     Convention:
-        - Stores the rotation as a complex number :math:`z = \cos\theta + i \sin\theta` of shape :math:`()` or
-          :math:`(B,)`. ``z`` is not normalised: a non-unit ``z`` rotates and scales by :math:`|z|`. The complex
-          storage rules out bfloat16.
+        - Stores the rotation as a complex number ``z`` of shape :math:`()`, :math:`(B)`, or :math:`(B, 1)`.
+          For unit ``z = \cos\theta + i \sin\theta`, ``matrix()`` is
+          :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b`` is accepted
+          and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex storage rules
+          out bfloat16.
         - A positive angle rotates the x axis toward the y axis: counter-clockwise in a y-up frame, clockwise as
-          displayed on y-down image axes. ``matrix()`` is :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`,
-          the transpose of :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`, which takes degrees.
+          displayed on y-down image axes. For a unit rotation, ``matrix()`` is the transpose of
+          :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`, which takes degrees.
           ``log`` returns the angle in :math:`[-\pi, \pi]`, and ``adjoint()`` is the 2x2 identity.
         - Known defects: ``hat`` returns the symmetric :math:`[[0, \theta], [\theta, 0]]` instead of the generator
           :math:`[[0, -\theta], [\theta, 0]]`, and ``vee`` reads its ``[0, 1]`` entry
-          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); a :math:`(B, 1)` ``z`` or angle times
+          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); an accepted :math:`(B, 1)` ``z`` or angle
+          yields :math:`(B, 1, 2, 2)` from ``matrix()`` or ``hat()``, which ``vee()`` rejects, and times
           :math:`(B, 2)` points returns :math:`(B, B, 2)`, every rotation applied to every point
-          (`#4932 <https://github.com/kornia/kornia/issues/4932>`_); ``.to()`` a real dtype keeps
-          :math:`\cos\theta`, drops :math:`\sin\theta` and makes ``matrix()`` raise
+          (`#4932 <https://github.com/kornia/kornia/issues/4932>`_); ``.to()`` a real dtype keeps the real part of
+          ``z``, drops its imaginary part and makes ``matrix()`` raise
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
@@ -68,7 +71,7 @@ class So2(nn.Module):
         Internally represented by torch.complex number `z`.
 
         Args:
-            z: Complex number with the shape of :math:`(B,)` or :math:`()`.
+            z: Complex number with the shape of :math:`(B,)`, :math:`(B, 1)`, or :math:`()`.
 
         Example:
             >>> real = torch.tensor(0.6)
@@ -143,7 +146,7 @@ class So2(nn.Module):
         """Convert elements of lie algebra to elements of lie group.
 
         Args:
-            theta: angle in radians of shape :math:`(B,)` or :math:`()`.
+            theta: angle in radians of shape :math:`(B,)`, :math:`(B, 1)`, or :math:`()`.
 
         Example:
             >>> v = torch.tensor([3.1415/2])
@@ -175,12 +178,14 @@ class So2(nn.Module):
 
     @staticmethod
     def hat(theta: torch.Tensor) -> torch.Tensor:
-        """Convert an angle to the matrix that :meth:`vee` inverts. Returns matrix of shape :math:`(B, 2, 2)`.
+        """Convert an angle to the matrix that :meth:`vee` inverts for scalar or :math:`(B,)` input.
+
+        The output has shape ``theta.shape + (2, 2)``; see the class convention for :math:`(B, 1)`.
 
         The matrix is not the so(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            theta: angle in radians of shape :math:`(B,)` or :math:`()`.
+            theta: angle in radians of shape :math:`(B,)`, :math:`(B, 1)`, or :math:`()`.
 
         Example:
             >>> theta = torch.tensor(3.1415/2)
@@ -202,7 +207,9 @@ class So2(nn.Module):
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
-        r"""Read the angle back from a :meth:`hat` matrix. Returns vector of shape :math:`(B,)`.
+        r"""Read the angle back from a :meth:`hat` matrix of shape :math:`(2, 2)` or :math:`(B, 2, 2)`.
+
+        Returns a scalar or a :math:`(B,)` vector, respectively.
 
         It reads the ``[0, 1]`` entry, which is :math:`-\theta` for the so(2) generator
         (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
@@ -225,7 +232,7 @@ class So2(nn.Module):
         return omega[..., 0, 1]
 
     def matrix(self) -> torch.Tensor:
-        """Convert the torch.complex number to a rotation matrix of shape :math:`(B, 2, 2)`.
+        """Return a matrix of shape ``z.shape + (2, 2)`` for each stored complex number.
 
         Example:
             >>> s = So2.identity()

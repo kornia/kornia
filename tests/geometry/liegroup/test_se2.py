@@ -282,26 +282,19 @@ class TestSe2(BaseTester):
         self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_hat(self, device, dtype, batch_size):
+    def test_wart_se2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
+        # https://github.com/kornia/kornia/issues/4929: hat places translation in the bottom row and has a symmetric
+        # rotation block; vee reads that same non-generator layout, so vee(hat(v)) conceals the defect.
         v = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         s_hat = Se2.hat(torch.cat((v, theta), -1))
         self.assert_close(v, s_hat[..., 2, 0:2])
         self.assert_close(s_hat[..., 0:2, 0:2].squeeze(), So2.hat(theta).squeeze())
-
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_vee(self, device, dtype, batch_size):
         omega = self._make_rand_data(device, dtype, input_shape=(batch_size, 3, 3))
-        v = Se2.vee(omega)
-        self.assert_close(torch.stack((v[..., 0], v[..., 1]), -1), omega[..., 2, :2])
-        self.assert_close(v[..., -1], omega[..., 0, 1])
-
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_hat_vee(self, device, dtype, batch_size):
-        a = self._make_rand_data(device, dtype, (batch_size, 3))
-        omega_hat = Se2.hat(a)
-        b = Se2.vee(omega_hat)
-        self.assert_close(b, a)
+        recovered = Se2.vee(omega)
+        self.assert_close(torch.stack((recovered[..., 0], recovered[..., 1]), -1), omega[..., 2, :2])
+        self.assert_close(recovered[..., -1], omega[..., 0, 1])
+        self.assert_close(Se2.vee(s_hat), torch.cat((v, theta), -1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_identity(self, device, dtype, batch_size):
@@ -421,6 +414,18 @@ class TestSe2(BaseTester):
         assert converted.t.grad_fn is not None
         converted.t.sum().backward()
         assert v.grad is not None
+
+    def test_wart_se2_vector2_translation_is_not_registered_or_moved_4923(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # https://github.com/kornia/kornia/issues/4923: identity and random keep their Vector2 translation outside
+        # module state, so it is absent from state_dict() and .to() leaves it at its original dtype. Cast to a
+        # complex dtype so this pin does not depend on So2's separate real-cast defect under the same issue.
+        for pose in (Se2.identity(1, device, dtype), Se2.random(1, device, dtype)):
+            assert "_translation" not in pose.state_dict()
+            pose.to(torch.complex64)
+            assert pose.r.z.dtype == torch.complex64
+            assert pose.t.data.dtype == dtype
 
     def test_convention_se2_tangent_is_vx_vy_theta_with_V(self, device, dtype):
         if dtype == torch.bfloat16:
