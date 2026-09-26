@@ -162,6 +162,18 @@ class TestSo3(BaseTester):
         So3(Quaternion(q)).log()[0, 0].backward()
         self.assert_close(q.grad, torch.tensor([[0.0, 2.0, 0.0, 0.0]], device=device, dtype=dtype))
 
+    def test_exp_matches_float64_at_large_angles_4928(self, device, dtype):
+        # #4928: exp took the Taylor branch 0.5 - theta**2 / 48 for sin(theta / 2) / theta below
+        # finfo(dtype).eps * 1e3, which is 7.8 rad in bfloat16, so every bfloat16 exp used the two
+        # terms: at theta = 3 the quaternion had norm 0.94 and the rotation matrix was off by 0.23.
+        axis = torch.tensor([[1.0, 0.0, 0.0], [0.48, 0.6, 0.64]], dtype=torch.float64)
+        for theta in (0.97, 3.0):
+            v = theta * axis
+            q_ref = So3.exp(v).q.data.to(device=device, dtype=dtype)
+            q = So3.exp(v.to(device=device, dtype=dtype)).q.data
+            self.assert_close(q, q_ref)
+            self.assert_close(q.norm(dim=-1), torch.ones(2, device=device, dtype=dtype))
+
     # TODO: implement me
     def test_jit(self, device, dtype):
         pass
