@@ -329,9 +329,14 @@ def run_8point(
     else:
         w = weights.clamp_min(0)
         if N < use_einsum_at_more_than_points:
-            # Row-scale by sqrt(w) then GEMM
-            Aw = A * w.unsqueeze(-1).sqrt()
-            M = Aw.transpose(-2, -1).contiguous() @ Aw
+            # Scale one factor by w instead of both by sqrt(w). Both build the same
+            # A^T W A, but sqrt has an unbounded derivative at 0, and a weight of 0 is
+            # the documented way to drop a correspondence, so the sqrt form makes the
+            # gradient there NaN on torch <= 2.9 and 0 on torch >= 2.14, where the
+            # one-sided derivative is finite and nonzero. This form is linear in w and
+            # differentiable at 0, and is how the einsum branch below already weights.
+            Aw = A * w.unsqueeze(-1)
+            M = Aw.transpose(-2, -1).contiguous() @ A
         else:
             # Weighted einsum
             M = torch.einsum("bni,bnj,bn->bij", A, A, w)

@@ -331,6 +331,28 @@ class TestFindFundamental(BaseTester):
         weights = torch.ones(1, 10, device=device, dtype=torch.float64)
         self.gradcheck(epi.find_fundamental, (points1, points2, weights))
 
+    def test_zero_weight_backward_is_finite(self, device):
+        """A weight of exactly 0 must not put NaN into ``weights.grad``.
+
+        Zero weights are the documented way to drop a correspondence, so a caller who
+        differentiates through them gets one NaN per padded entry. ``run_8point`` used
+        to row-scale by ``w.sqrt()``, whose derivative at 0 is unbounded; ``clamp_min``
+        in front of it bounds the value but not the derivative, and only masks the NaN
+        on torch >= 2.14 (AGENTS.md, #4229). This therefore pins the 2.5.1 and 2.9.1
+        legs, where the NaN is observable.
+        """
+        points1 = torch.rand(1, 10, 2, device=device, dtype=torch.float64)
+        points2 = torch.rand(1, 10, 2, device=device, dtype=torch.float64)
+        weights = torch.ones(1, 10, device=device, dtype=torch.float64)
+        weights[0, 3] = 0.0
+        weights.requires_grad_()
+
+        F_mat = epi.find_fundamental(points1, points2, weights)
+        F_mat.abs().sum().backward()
+
+        assert weights.grad is not None
+        assert torch.isfinite(weights.grad).all()
+
 
 class TestComputeCorrespondEpilines(BaseTester):
     def test_smoke(self, device, dtype):
