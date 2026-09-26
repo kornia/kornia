@@ -333,6 +333,33 @@ class TestQuaternion(BaseTester):
                 q4 = Quaternion.from_axis_angle(axis * t * 3.14159)
                 self.assert_close(q3, q4)
 
+    def test_slerp_takes_the_short_arc(self, device, dtype):
+        # q and -q are the same rotation; the interpolation must not depend on the stored sign (#4944).
+        # a and b are 0.33 rad apart with dot(a, b) = 0.986, so dot(a, -b) < 0.
+        a = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=dtype))
+        b = Quaternion.from_axis_angle(torch.tensor([[0.5, 0.1, 0.15]], device=device, dtype=dtype))
+        rel_angle = (a.inv() * b).to_axis_angle().norm()
+        for t in (0.25, 0.5, 0.75):
+            short = a.slerp(b, t).matrix()
+            self.assert_close(a.slerp(-b, t).matrix(), short)
+            # the interpolant sits at t times the relative angle from a
+            self.assert_close((a.inv() * a.slerp(-b, t)).to_axis_angle().norm(), t * rel_angle)
+
+    def test_slerp_gradient_is_finite_at_equal_endpoints(self, device, dtype):
+        # slerp(q, q, t) = q is smooth in both endpoints; its gradient must not be nan (#4927).
+        q = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=dtype)).data
+        q0 = q.clone().requires_grad_(True)
+        q1 = q.clone().requires_grad_(True)
+        Quaternion(q0).slerp(Quaternion(q1), 0.3).data.sum().backward()
+        assert torch.isfinite(q0.grad).all()
+        assert torch.isfinite(q1.grad).all()
+
+    def test_slerp_gradcheck(self, device):
+        q0 = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=torch.float64)).data
+        q1 = Quaternion.from_axis_angle(torch.tensor([[0.5, 0.1, 0.15]], device=device, dtype=torch.float64)).data
+        self.gradcheck(lambda a, b: Quaternion(a).slerp(Quaternion(b), 0.3).data, (q0, q1))
+        self.gradcheck(lambda a, b: Quaternion(a).slerp(Quaternion(b), 0.3).data, (q0, q0.detach().clone()))
+
     def test_from_to_euler_values(self, device, dtype):
         # num_samples = 5
         # data = 2 * torch.rand(3, num_samples, device=device, dtype=dtype) - 1

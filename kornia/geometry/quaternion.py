@@ -564,6 +564,9 @@ class Quaternion(nn.Module):
     def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
         """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
 
+        The interpolation follows the shorter arc between the two rotations, whatever the signs of the stored
+        quaternions: ``q1`` and ``-q1`` give the same result, and at ``t = 1`` the output is ``q1`` or ``-q1``.
+
         See more: https://en.wikipedia.org/wiki/Slerp
 
         Args:
@@ -579,7 +582,10 @@ class Quaternion(nn.Module):
         KORNIA_CHECK_TYPE(q1, Quaternion)
         q0 = self.normalize()
         q1 = q1.normalize()
-        return q0 * (q0.inv() * q1) ** t
+        # q0 * exp(t * log(q0^-1 q1)): the principal log of the relative rotation selects the shorter arc, and both
+        # conversions keep a finite gradient at the identity (q0 == q1).
+        rel = quaternion_to_axis_angle((q0.inv() * q1).data)
+        return q0 * Quaternion(axis_angle_to_quaternion(t * rel))
 
     def norm(self, keepdim: bool = False) -> torch.Tensor:
         """Compute the norm (magnitude) of the quaternion.
