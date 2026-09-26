@@ -15,8 +15,11 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
+from torch import nn
 
 from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
@@ -482,3 +485,141 @@ class TestSo3(BaseTester):
         Jr = So3.right_jacobian(vec)
         Jl = So3.left_jacobian(vec)
         self.assert_close(Jl, Jr.transpose(-1, -2))
+
+
+class _RotationHolder(nn.Module):
+    """A module that keeps a Quaternion and an So3 as attributes, as a pose-holding model would."""
+
+    def __init__(self, data: torch.Tensor, as_parameter: bool) -> None:
+        super().__init__()
+        self.quat = Quaternion(nn.Parameter(data.clone()) if as_parameter else data.clone())
+        self.rot = So3(Quaternion(nn.Parameter(data.clone()) if as_parameter else data.clone()))
+
+
+class TestSo3Conventions(BaseTester):
+    def test_convention_so3_exp_is_rotation_vector(self, device, dtype):
+        # exp(v) is the rotation by |v| about v / |v|, the matrix exponential of hat(v). Expected matrix from scipy:
+        #   Rotation.from_rotvec([0.3, -0.5, 0.2]).as_matrix()
+        v = torch.tensor([[0.3, -0.5, 0.2]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [0.8595338985586632, -0.2602267140480945, -0.43986763295823095],
+                    [0.11491695393636675, 0.937032437284918, -0.3297943376922552],
+                    [0.4979915370029221, 0.23292116428443665, 0.8353156052067087],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(So3.exp(v).matrix(), expected)
+        # the opposite vector is the inverse rotation
+        self.assert_close(So3.exp(-v).matrix(), So3.exp(v).inverse().matrix())
+
+    def test_convention_so3_hat_is_cross_product_matrix(self, device, dtype):
+        v = torch.tensor([[0.3, -0.5, 0.2]], device=device, dtype=dtype)
+        p = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        # hat(v) @ p = v x p; the transposed matrix would give p x v
+        self.assert_close((So3.hat(v) @ p[..., None])[..., 0], torch.linalg.cross(v, p, dim=-1))
+        self.assert_close(So3.vee(So3.hat(v)), v)
+
+    def test_convention_so3_mul_point_is_R_p(self, device, dtype):
+        s = So3.exp(torch.tensor([[0.3, -0.5, 0.2]], device=device, dtype=dtype))
+        s2 = So3.exp(torch.tensor([[-0.1, 0.4, 0.25]], device=device, dtype=dtype))
+        p = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        # s * p rotates the point: R @ p, not R^T @ p. Expected point from scipy:
+        #   Rotation.from_rotvec([0.3, -0.5, 0.2]).apply([1.0, 2.0, 3.0])
+        expected = torch.tensor(
+            [[-0.9805224284122186, 0.9995988154294373, 3.469780681191921]], device=device, dtype=dtype
+        )
+        self.assert_close(s * p, expected)
+        self.assert_close(s * p, (s.matrix() @ p[..., None])[..., 0])
+        # precondition: the pair does not commute
+        assert ((s * s2).matrix() - (s2 * s).matrix()).abs().max() > 0.1
+        # s * s2 applies s2 first: its matrix is R @ R2, and (s * s2) * p = s * (s2 * p)
+        self.assert_close((s * s2).matrix(), s.matrix() @ s2.matrix())
+        # both sides round two rotations of a point with components up to 3.5, where one float16 ulp is 2e-3 (the
+        # default float16 atol is 1e-3; the bfloat16 default already scales with the value)
+        tol = 1e-2 if dtype == torch.float16 else None
+        self.assert_close((s * s2) * p, s * (s2 * p), rtol=tol, atol=tol)
+
+    def test_convention_so3_adjoint_conjugates_the_tangent(self, device, dtype):
+        # Ad(g) xi is the tangent of g exp(xi) g^-1: exp(Ad(g) xi) = g exp(xi) g^-1, with Ad(g) = R
+        g = So3.exp(torch.tensor([[0.7, -0.2, 0.4]], device=device, dtype=dtype))
+        xi = torch.tensor([[0.1, 0.3, -0.2]], device=device, dtype=dtype)
+        moved = (g.adjoint() @ xi[..., None])[..., 0]
+        self.assert_close(So3.exp(moved).matrix(), (g * So3.exp(xi) * g.inverse()).matrix())
+
+    def test_convention_so3_jacobian_sides(self, device, dtype):
+        # exp(w + d) = exp(w) exp(Jr(w) d) = exp(Jl(w) d) exp(w) to first order in d. The references are central
+        # differences in float64 on the CPU with h = 1e-6, whose error is below 1e-9.
+        w = torch.tensor([[0.7, -0.2, 0.4]], dtype=torch.float64)
+        h = 1e-6
+        base = So3.exp(w)
+        right, left = [], []
+        for i in range(3):
+            step = torch.zeros(1, 3, dtype=torch.float64)
+            step[0, i] = h
+            plus, minus = So3.exp(w + step), So3.exp(w - step)
+            right.append(((base.inverse() * plus).log() - (base.inverse() * minus).log()) / (2 * h))
+            left.append(((plus * base.inverse()).log() - (minus * base.inverse()).log()) / (2 * h))
+        right = torch.stack(right, -1).to(device=device, dtype=dtype)
+        left = torch.stack(left, -1).to(device=device, dtype=dtype)
+        # precondition: the two sides differ by 2 a(theta) hat(w), 0.66 here
+        assert (right - left).abs().max() > 0.1
+        w = w.to(device=device, dtype=dtype)
+        # measured float64 error of the differences: 1e-10
+        tol = 1e-8 if dtype == torch.float64 else None
+        self.assert_close(So3.right_jacobian(w), right, rtol=tol, atol=tol)
+        self.assert_close(So3.left_jacobian(w), left, rtol=tol, atol=tol)
+        self.assert_close(So3.left_jacobian(w), So3.right_jacobian(-w))
+
+    def test_convention_so3_rot_axes_are_right_handed(self, device, dtype):
+        # rot_x, rot_y, rot_z by +theta turn y toward z, z toward x and x toward y
+        theta = torch.tensor([0.3], device=device, dtype=dtype)
+        c, s = math.cos(0.3), math.sin(0.3)
+        cases = [
+            (So3.rot_x, [0.0, 1.0, 0.0], [0.0, c, s]),
+            (So3.rot_y, [0.0, 0.0, 1.0], [s, 0.0, c]),
+            (So3.rot_z, [1.0, 0.0, 0.0], [c, s, 0.0]),
+        ]
+        for rot, p, expected in cases:
+            p = torch.tensor([p], device=device, dtype=dtype)
+            self.assert_close(rot(theta) * p, torch.tensor([expected], device=device, dtype=dtype))
+
+    def test_wart_so3_non_unit_quaternion_not_normalised_4942(self, device, dtype):
+        # #4942 https://github.com/kornia/kornia/issues/4942: So3 stores the quaternion as given, and matrix() and
+        # So3 * p use the unit-quaternion formulas, so a non-unit q gives a scaled non-rotation matrix and points
+        # scaled by |q|^2. This test turns red when So3 normalises its quaternion.
+        data = torch.tensor([[2.0, 0.2, -0.6, 0.4]], device=device, dtype=dtype)
+        squared_norm = 4.56
+        s = So3(Quaternion(data))
+        p = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        m = s.matrix()
+        # det = m0 . (m1 x m2), written out so it runs where torch.linalg.det has no half-precision kernel
+        det = (m[:, 0] * torch.linalg.cross(m[:, 1], m[:, 2], dim=-1)).sum(-1)
+        assert bool((det > 2.0).all()), det
+        self.assert_close((s * p).norm(dim=-1), squared_norm * p.norm(dim=-1))
+        # control: the same data through Quaternion.matrix(), and through So3 once normalised, is a rotation
+        self.assert_close(So3(Quaternion(data).normalize()).matrix(), Quaternion(data).matrix())
+        self.assert_close((So3(Quaternion(data).normalize()) * p).norm(dim=-1), p.norm(dim=-1))
+
+    def test_wart_rotation_state_not_registered_4923(self, device, dtype):
+        # #4923 https://github.com/kornia/kornia/issues/4923: a Quaternion built from a plain tensor keeps it as an
+        # unregistered attribute, so a module holding it (directly or through So3) saves no key for the rotation,
+        # and load_state_dict reports success while keeping the old rotation. This test turns red when the
+        # rotation is registered.
+        saved = torch.tensor([[0.8, 0.2, -0.4, 0.4]], device=device, dtype=dtype)
+        stale = torch.tensor([[0.0, 0.6, 0.0, 0.8]], device=device, dtype=dtype)
+        source, target = _RotationHolder(saved, as_parameter=False), _RotationHolder(stale, as_parameter=False)
+        assert list(source.state_dict()) == []
+        result = target.load_state_dict(source.state_dict())
+        assert not result.missing_keys and not result.unexpected_keys
+        self.assert_close(target.quat.data, stale)
+        self.assert_close(target.rot.q.data, stale)
+        # control: a rotation stored as an nn.Parameter is saved and restored
+        source, target = _RotationHolder(saved, as_parameter=True), _RotationHolder(stale, as_parameter=True)
+        assert list(source.state_dict()) == ["quat._data", "rot._q._data"]
+        target.load_state_dict(source.state_dict())
+        self.assert_close(target.quat.data, saved)
+        self.assert_close(target.rot.q.data, saved)
