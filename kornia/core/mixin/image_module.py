@@ -82,6 +82,9 @@ class ImageModuleMixIn:
                 if not isinstance(tensor_outputs, tuple):
                     tensor_outputs = (tensor_outputs,)
 
+                # Keep the original tensor output for visualization helpers.
+                self._output_image_tensor = tensor_outputs[0]
+
                 # Convert outputs to the desired type
                 outputs = []
                 for output in tensor_outputs:

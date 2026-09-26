@@ -100,6 +100,23 @@ class TestConventionImageSequential(BaseTester):
         self.assert_close(inverted, out.flip(-1))  # only the flip was undone, the blur was skipped
         assert (inverted - x).abs().max().item() > 0.1  # and the round trip is not the input
 
+    @pytest.mark.parametrize("output_type", ["numpy", "pil"])
+    def test_output_type_cache_supports_show_and_save(self, output_type, tmp_path, device, dtype):
+        image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        aug = K.ImageSequential(K.RandomHorizontalFlip(p=1.0))
+
+        output = aug(image, output_type=output_type)
+
+        assert not isinstance(output, torch.Tensor)
+        assert isinstance(aug._output_image, torch.Tensor)
+
+        shown = aug.show(display=False)
+        assert shown is not None
+
+        output_path = tmp_path / "output.png"
+        aug.save(name=str(output_path))
+        assert output_path.exists()
+
     def test_convention_slice_crop_inverse_raises(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
         out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))

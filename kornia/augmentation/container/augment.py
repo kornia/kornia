@@ -642,8 +642,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # cache a detached view of the augmented image for ``.show()`` / ``.save()``, which move it to the
             # CPU themselves, so the forward pass pays no device-to-host copy or sync
             if not is_exporting():
-                image = self._select_output_image(_output_image, data_keys, original_keys)
-                self._output_image = image.detach() if isinstance(image, torch.Tensor) else image
+                # Select the input image from the tensor representation before
+                # any NumPy/PIL conversion so show()/save() always receive a tensor.
+                image = self._select_output_image(self._output_image_tensor, data_keys, original_keys)
+                self._output_image = self._detach_tensor_to_cpu(image) if isinstance(image, torch.Tensor) else image
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image

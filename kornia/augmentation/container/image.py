@@ -441,10 +441,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if output_type == "pt":
-                self._output_image = self._detach_tensor_to_cpu(_output_image)
-            else:
-                self._output_image = _output_image
+            self._output_image = self._detach_tensor_to_cpu(self._output_image_tensor)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
