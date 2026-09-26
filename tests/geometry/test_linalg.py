@@ -53,6 +53,12 @@ class TestTransformPoints(BaseTester):
         assert result.shape == points.shape
         self.assert_close(result, points + translation)
 
+    def test_dimension_mismatch_message_names_the_shapes(self, device, dtype):
+        transform = torch.eye(4, device=device, dtype=dtype)
+        points = torch.zeros(5, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"differ by one unit\. Got torch\.Size\(.*\) and torch\.Size\(\[5, 2\]\)"):
+            kgl.transform_points(transform, points)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     @pytest.mark.parametrize("num_dims", [2, 3])

@@ -221,7 +221,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
             f"Input batch size must be the same for both tensors or 1. Got {trans_01.shape} and {points_1.shape}"
         )
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
-        raise ValueError(f"Last input dimensions must differ by one unit Got{trans_01} and {points_1}")
+        raise ValueError(f"Last input dimensions must differ by one unit. Got {trans_01.shape} and {points_1.shape}")
 
     # No points to transform (e.g. an image chip with no annotations): transforming an empty set
     # yields the same empty set. Return early — the reshape below cannot infer ``-1`` from a
