@@ -352,6 +352,16 @@ class TestSe2(BaseTester):
         self.assert_close(se2_in_se2.so2.z.imag, i.so2.z.imag)
         self.assert_close(se2_in_se2.t, i.t)
 
+    def test_random_rotation_is_a_uniform_unit_rotation_4930(self, device, dtype):
+        # #4930: Se2.random takes its rotation from So2.random, which was neither unit nor uniform in angle.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("So2 is only implemented on complex64 and complex128")
+        torch.manual_seed(0)
+        z = Se2.random(1000, device=device, dtype=dtype).so2.z
+        self.assert_close(z.abs(), torch.ones(1000, device=device, dtype=dtype))
+        theta = z.imag.atan2(z.real)
+        assert theta.min() < -math.pi / 2 and theta.max() > math.pi / 2, (theta.min(), theta.max())
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_trans(self, device, dtype, batch_size):
         trans = self._make_rand_data(device, dtype, (batch_size, 2))

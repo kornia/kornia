@@ -235,6 +235,24 @@ class TestSo2(BaseTester):
         self.assert_close(s_in_s.z.real, i.z.real)
         self.assert_close(s_in_s.z.imag, i.z.imag)
 
+    def test_random_is_a_uniform_unit_rotation_4930(self, device, dtype):
+        # #4930: random drew independent uniform real and imaginary parts on [0, 1), so |z| ranged over (0, sqrt 2),
+        # matrix() was a rotation scaled by |z|**2 with det down to 3.5e-6, and every angle was in [0, pi / 2).
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("So2 is only implemented on complex64 and complex128")
+        torch.manual_seed(0)
+        s = So2.random(1000, device=device, dtype=dtype)
+        self.assert_close(s.z.abs(), torch.ones(1000, device=device, dtype=dtype))
+        self.assert_close(torch.linalg.det(s.matrix()), torch.ones(1000, device=device, dtype=dtype))
+        # a uniform angle on [-pi, pi) puts about 250 of 1000 draws in each quadrant (standard deviation 14)
+        theta = s.log()
+        counts = [
+            int(((lo <= theta) & (theta < lo + torch.pi / 2)).sum())
+            for lo in (-torch.pi, -torch.pi / 2, 0.0, torch.pi / 2)
+        ]
+        assert min(counts) > 150, counts
+        self.assert_close(So2.random(device=device, dtype=dtype).z.abs(), torch.tensor(1.0, device=device, dtype=dtype))
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_adjoint(self, device, dtype, batch_size):
         s = So2.identity(batch_size, device=device, dtype=dtype)

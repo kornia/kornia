@@ -311,14 +311,15 @@ class So2(nn.Module):
             >>> s = So2.random(batch_size=3)
 
         """
+        shape: tuple[int, ...] = ()
         if batch_size is not None:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
-            real_data = torch.rand((batch_size,), device=device, dtype=dtype)
-            imag_data = torch.rand((batch_size,), device=device, dtype=dtype)
-        else:
-            real_data = torch.rand((), device=device, dtype=dtype)
-            imag_data = torch.rand((), device=device, dtype=dtype)
-        return cls(torch.complex(real_data, imag_data))
+            shape = (batch_size,)
+        # a uniform rotation has a uniform angle on [-pi, pi). Independent uniform real and imaginary parts on
+        # [0, 1) gave |z| anywhere in (0, sqrt 2), so matrix() was a rotation scaled by |z|**2, and every angle
+        # was in the first quadrant (#4930).
+        theta = (2 * torch.rand(shape, device=device, dtype=dtype) - 1) * torch.pi
+        return cls.exp(theta)
 
     def adjoint(self) -> torch.Tensor:
         """Return the adjoint matrix of shape :math:`(B, 2, 2)`.
