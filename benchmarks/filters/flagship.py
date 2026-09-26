@@ -437,9 +437,11 @@ def main() -> None:
         device,
         units="img/s",
         regimes=[
-            "kornia/torchvision: batched float BCHW; "
-            "albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU), except kornia-rs Sobel float32; "
-            "scikit-image: normalized float HWC per-image loop except uint8 rank mean"
+            (
+                "kornia/torchvision: batched float BCHW; "
+                "albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU), except kornia-rs Sobel float32; "
+                "scikit-image: normalized float HWC per-image loop except uint8 rank mean"
+            )
         ],
         missing=missing,
     )

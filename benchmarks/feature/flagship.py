@@ -194,8 +194,10 @@ def main() -> None:
         device,
         units="items/s",
         regimes=[
-            "kornia: batched float B1HW; opencv/scikit-image: grayscale per-image loop (CPU); "
-            "items = images, except match_snn = descriptor-set pairs"
+            (
+                "kornia: batched float B1HW; opencv/scikit-image: grayscale per-image loop (CPU); "
+                "items = images, except match_snn = descriptor-set pairs"
+            )
         ],
         missing=[(name, err) for lib, name, err in libs if lib is None],
     )
