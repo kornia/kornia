@@ -16,6 +16,7 @@
 #
 
 import functools
+import math
 from typing import Dict
 
 import pytest
@@ -23,6 +24,7 @@ import torch
 
 import kornia
 import kornia.geometry.epipolar as epi
+from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 
 from testing.base import BaseTester
 from testing.two_view import two_view_scene
@@ -436,9 +438,10 @@ class TestConventionTriangulation(BaseTester):
         two_view = two_view_scene(device, dtype)
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("in half precision the rows' roundoff leaves the sub-systems full rank")
-        # A rank-deficient 3x4 sub-system of the DLT matrix is left out of the cofactor average (its null vector
-        # used to be roundoff normalised to unit length): NaN when both are, exact from the other one when only one
-        # is. svd is the control on the same input.
+        # A 3x4 sub-system of the DLT matrix that is rank-deficient, or nearly so with noise, has a null vector set
+        # by roundoff or noise; cofactor used to average a fixed pair of them after normalising (#4900). It now
+        # refines the longest sub-system null vector through the adjugate and returns the svd point: NaN when every
+        # sub-system is rank-deficient (zero baseline), and svd's point for a rectified, vertical or rolled pair.
         K1, K2, R, X = two_view["K1"], two_view["K2"], two_view["R"], two_view["X"]
         eye = torch.eye(3, device=device, dtype=dtype)[None]
 
@@ -453,23 +456,26 @@ class TestConventionTriangulation(BaseTester):
         v = (epi.triangulate_points(P1, P2, x1, x2, solver="svd") - C.transpose(-2, -1)).cpu().double()
         assert (torch.linalg.cross(v, X64, dim=-1).norm(dim=-1) / X64.norm(dim=-1)).max() <= 1e-2
         assert torch.isnan(epi.triangulate_points(P1, P2, x1, x2, solver="cofactor")).all()
-        # A noise-free pure x translation with R = I and one K: y1 == y2 exactly, so DLT rows 1 and 3 coincide.
-        P1, P2 = (
-            epi.projection_from_KRt(K1, eye, torch.zeros_like(C)),
-            epi.projection_from_KRt(K1, eye, -0.5 * eye[:, :, :1]),
-        )
-        x1, x2 = project(P1, X), project(P2, X)
-        assert torch.equal(x1[..., 1], x2[..., 1])
-        for solver in ("svd", "cofactor"):
-            out = epi.triangulate_points(P1, P2, x1, x2, solver=solver)
-            assert (out - X).norm(dim=-1).max() <= _TRIANGULATION_ATOL[dtype]
-        # The same rectified pair with 0.5 px of noise: the rows no longer coincide but stay nearly dependent, so
-        # dropping only an exactly rank-deficient sub-system does not fix it. svd stays within 0.1.
+        # One K, R = I and a pure x (rectified) or y (vertical) translation: DLT rows 1 and 3 (0 and 2) coincide
+        # without noise, so sub-system {1, 2, 3} ({0, 1, 2}) is rank-deficient. Camera 2 rolled by 90 degrees
+        # about its axis with an x baseline makes rows 1 and 2 coincide, so {0, 1, 2} and {1, 2, 3} both are.
+        # With 0.5 px of noise the rows stay nearly dependent; the old average was 5 to 6 units off on every
+        # point of all three pairs and NaN on every point of the exact rolled pair.
+        roll = axis_angle_to_rotation_matrix(torch.tensor([[0.0, 0.0, math.pi / 2]], device=device, dtype=dtype))
+        b = 0.5 * eye[:, :, :1]
+        pairs = {"rectified": (eye, -b), "vertical": (eye, -0.5 * eye[:, :, 1:2]), "rolled": (roll, -roll @ b)}
         g = torch.Generator().manual_seed(0)
-        n1, n2 = (0.5 * torch.randn(x1.shape, generator=g, dtype=torch.float64).to(device, dtype) for _ in range(2))
-        err = {
-            s: (epi.triangulate_points(P1, P2, x1 + n1, x2 + n2, solver=s) - X).norm(dim=-1).max()
-            for s in ("svd", "cofactor")
-        }
-        assert err["svd"] <= 0.25
-        assert err["cofactor"] > 1.0
+        noise = [0.5 * torch.randn(X.shape[:-1] + (2,), generator=g, dtype=torch.float64) for _ in range(2)]
+        n1, n2 = (n.to(device, dtype) for n in noise)
+        for name, (R2, t2) in pairs.items():
+            P1, P2 = epi.projection_from_KRt(K1, eye, torch.zeros_like(C)), epi.projection_from_KRt(K1, R2, t2)
+            x1, x2 = project(P1, X), project(P2, X)
+            if name == "rectified":
+                assert torch.equal(x1[..., 1], x2[..., 1])
+            for solver in ("svd", "cofactor"):
+                out = epi.triangulate_points(P1, P2, x1, x2, solver=solver)
+                assert (out - X).norm(dim=-1).max() <= _TRIANGULATION_ATOL[dtype], (name, solver)
+            svd = epi.triangulate_points(P1, P2, x1 + n1, x2 + n2, solver="svd")
+            cofactor = epi.triangulate_points(P1, P2, x1 + n1, x2 + n2, solver="cofactor")
+            assert (svd - X).norm(dim=-1).max() <= 0.25, name
+            assert (cofactor - svd).norm(dim=-1).max() <= 1e-4, name

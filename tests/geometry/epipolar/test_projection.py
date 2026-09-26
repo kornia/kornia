@@ -406,8 +406,11 @@ class TestConventionProjection(BaseTester):
         ones = torch.ones(1, device=device, dtype=dtype)
         # s * P is the same camera for every nonzero s, sign included: R stays a rotation, t the translation, and
         # K carries |s|. -P and a scale below the former eps = 1e-6 used to return a reflection (#4864). The
-        # 1e-7 scales run on the CPU only: the MPS QR of a matrix with entries near 1e-5 is off by a factor.
-        scales = (-1.0, 2.0) + ((1e-7, -1e-7) if device.type == "cpu" else ())
+        # smallest negative scale makes det(s * P[:, :3, :3]), which scales as s**3, underflow to -0.0, so the sign
+        # cannot be read from it. The small scales run on the CPU only: the MPS QR of a matrix with entries near
+        # 1e-5 is off by a factor.
+        tiny = {torch.float32: -1e-17, torch.float64: -1e-110}[dtype]
+        scales = (-1.0, 2.0) + ((1e-7, -1e-7, tiny) if device.type == "cpu" else ())
         for s in scales:
             K, R, t = epi.KRt_from_projection(s * P)
             assert (K.diagonal(dim1=-2, dim2=-1) > 0).all()

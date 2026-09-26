@@ -156,15 +156,16 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
 
 def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Decompose the Projection matrix into ``K``, ``R`` and ``t`` with :math:`P = K [R|t]`.
+    r"""Decompose the Projection matrix into ``K``, ``R`` and ``t`` with :math:`K [R|t] = \pm P`.
 
     Convention:
         - Inverse of :func:`projection_from_KRt`: returns ``K`` (upper triangular, positive diagonal), a
           rotation ``R`` (``det R = 1``) and the translation ``t``, not the camera centre;
           :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
         - ``P`` is defined up to a nonzero scale, sign included: ``s * P`` gives the same ``R`` and ``t`` for
-          every nonzero ``s`` and ``|s| * K``. ``K`` is not normalised to ``K[2, 2] = 1``; divide by
-          ``K[..., 2:, 2:]`` to normalise.
+          every nonzero ``s`` and ``|s| * K``. So :math:`K [R|t]` is ``P`` when ``P[:, :3, :3]`` has positive
+          determinant and ``-P`` when it has negative determinant (``-P`` gives the factors of ``P``). ``K`` is
+          not normalised to ``K[2, 2] = 1``; divide by ``K[..., 2:, 2:]`` to normalise.
         - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
 
     Args:
@@ -179,9 +180,6 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
     """
     KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
-    # P and -P are the same camera. Decompose the representative whose left block has positive determinant,
-    # so that a positive-diagonal K leaves R a proper rotation.
-    P = torch.where(torch.linalg.det(P[:, 0:3, 0:3])[:, None, None] < 0, -P, P)
     submat_3x3 = P[:, 0:3, 0:3]
     last_column = P[:, 0:3, 3].unsqueeze(-1)
 
@@ -200,6 +198,14 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
     K = torch.matmul(upper_mat, signs_mat)
     R = torch.matmul(signs_mat, ortho_mat)
     t = torch.linalg.solve(K, last_column)
+
+    # P and -P are the same camera. With a positive-diagonal K, a left block of negative determinant leaves
+    # det R = -1; negating R and t decomposes -P instead, so R is a rotation. The sign comes from the orthogonal
+    # factor, whose determinant is +-1 at any scale of P, not from det(P[:, :3, :3]), which scales as s**3 and
+    # underflows to -0.0 for a small negative s.
+    flip = torch.linalg.det(R)[:, None, None] < 0
+    R = torch.where(flip, -R, R)
+    t = torch.where(flip, -t, t)
 
     return K, R, t
 

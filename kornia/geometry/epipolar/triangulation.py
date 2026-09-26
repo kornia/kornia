@@ -24,7 +24,6 @@ import torch
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _normalize_to_float32_or_float64, _torch_svd_cast, is_mps_tensor_safe
 from kornia.geometry.conversions import convert_points_from_homogeneous
-from kornia.geometry.solvers import null_vector_3x4
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 
@@ -54,6 +53,44 @@ def _eigh_smallest_vec(M: torch.Tensor) -> torch.Tensor:
         for i in range(0, N, _CUSOLVER_EIGH_BATCH_LIMIT)
     ]
     return torch.cat(parts, dim=0)
+
+
+def _sub_system_null_vectors(A: torch.Tensor) -> torch.Tensor:
+    r"""Return the null vectors of the four :math:`3 \times 4` sub-systems of each :math:`4 \times 4` matrix.
+
+    Row ``j`` of the result is orthogonal to every row of ``A`` but row ``3 - j`` (sub-systems ``{0, 1, 2}``,
+    ``{0, 1, 3}``, ``{0, 2, 3}``, ``{1, 2, 3}``); up to sign it is the column of the adjugate of ``A`` for the
+    row left out, the vector of :math:`3 \times 3` minors that :func:`~kornia.geometry.solvers.null_vector_3x4`
+    returns. The minors are expanded along the ``2 x 2`` minors of the row pairs ``(0, 1)`` and ``(2, 3)``, which
+    all four share: the Hodge dual of one pair's bivector applied to each row of the other pair. These are the
+    columns of :func:`kornia.core._small_linalg._adjugate_4x4` in fewer, wider kernels, about half its time for a
+    million matrices on the CPU and on MPS.
+
+    Args:
+        A: batch of matrices, shape ``(*, 4, 4)``.
+
+    Returns:
+        The four null vectors, shape ``(*, 4, 4)``, not normalised: a sub-system of rank below 3 gives zero.
+    """
+    P = A[..., 0::2, None, :]  # rows 0 and 2, (*, 2, 1, 4)
+    Q = A[..., 1::2, None, :]  # rows 1 and 3
+
+    def minor(p: int, q: int) -> torch.Tensor:
+        return P[..., p] * Q[..., q] - P[..., q] * Q[..., p]  # (*, 2, 1)
+
+    s01, s02, s03, s12, s13, s23 = minor(0, 1), minor(0, 2), minor(0, 3), minor(1, 2), minor(1, 3), minor(2, 3)
+    # The bivector of rows (0, 1) meets rows 2 and 3; that of rows (2, 3) meets rows 0 and 1.
+    x0, x1, x2, x3 = torch.stack([A[..., 2:, :], A[..., :2, :]], dim=-3).unbind(-1)  # each (*, 2, 2)
+    h = torch.stack(
+        [
+            s23 * x1 - s13 * x2 + s12 * x3,
+            -s23 * x0 + s03 * x2 - s02 * x3,
+            s13 * x0 - s03 * x1 + s01 * x3,
+            -s12 * x0 + s02 * x1 - s01 * x2,
+        ],
+        dim=-1,
+    )  # (*, 2, 2, 4)
+    return h.flatten(-3, -2)
 
 
 def triangulate_points(
@@ -104,15 +141,16 @@ def triangulate_points(
             rows, such as a baseline much shorter than the depth, it loses accuracy that
             ``"svd"`` keeps. Typically **10-26x
             faster** than ``"svd"`` on GPU for large batches.
-          * ``"cofactor"`` — solves two :math:`3 \times 4` sub-systems analytically
-            using :func:`~kornia.geometry.solvers.null_vector_3x4` (closed-form
-            cofactor expansion, no LAPACK call). The two solutions are averaged after
-            normalisation; a rank-deficient sub-system (zero baseline, or a pure ``x``
-            translation with ``R = I`` and one ``K``, which makes two DLT rows coincide)
-            is left out, and the point is NaN when both are. This matches the full DLT
-            solution when the constraint system is exactly consistent, but is only an
-            approximation in the noisy inconsistent case. Fastest option for all batch
-            sizes.
+          * ``"cofactor"`` — closed form, no LAPACK call. The null vectors of the four
+            :math:`3 \times 4` sub-systems (the cofactors, as in
+            :func:`~kornia.geometry.solvers.null_vector_3x4`) form the adjugate of the
+            DLT matrix; the longest one, refined by one step of inverse iteration through
+            the adjugate, gives the ``"svd"`` point to roundoff without noise and nearly
+            the same point with noise, also for rectified and vertical stereo pairs, where
+            a sub-system is nearly rank-deficient. When the noise is comparable to the
+            parallax, so that the DLT point itself is far off, one step does not converge
+            and the two can differ. The point is NaN when every sub-system is
+            rank-deficient (zero baseline). Fastest option for large batches.
 
     Returns:
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
@@ -178,47 +216,36 @@ def triangulate_points(
         points3d_h = v_flat.reshape(*batch_shape, 4)  # (*, N, 4)
 
     elif solver == "cofactor":
-        # Solve two 3x4 sub-systems analytically via cofactor expansion and
-        # average the sign-aligned normalised results.  This matches the full
-        # DLT solution when the constraint system is exactly consistent
-        # (noise-free), but is only an approximation in the noisy case.
-        # null_vector_3x4 uses only arithmetic ops, so promote fp16/bf16 -> fp32 and stay there until the
-        # null vectors are normalised: the unnormalised cofactors of pixel-scale rows overflow float16.
+        # The null vectors of the four 3x4 sub-systems (each DLT row left out once) are, up to sign, the columns
+        # of adj(A) = det(A) A^-1 = det(A) V S^-1 U^T. Each leans towards the DLT solution v4 (the svd one), and
+        # all are parallel to it when A has rank 3 (noise-free). With noise, a sub-system whose three rows are
+        # nearly dependent (a rectified or vertical stereo pair, a camera rolled by 90 degrees, a row through the
+        # epipole) has a null vector set by the noise, and no fixed choice or average of two of them avoids it.
+        # So take the longest one and apply one step of inverse iteration with
+        # adj(A) adj(A)^T = det(A)^2 (A^T A)^-1, which suppresses v3 against v4 by a further (s4 / s3)^2: the
+        # svd solution without a LAPACK call, still defined at rank 3, where A^-1 is not.
+        # The minors use only arithmetic ops, so promote fp16/bf16 -> fp32 and stay there until the null vector
+        # is normalised: the unnormalised minors of pixel-scale rows overflow float16.
         compute_dtype = _normalize_to_float32_or_float64(row0.dtype)
-        r0 = row0.to(compute_dtype)
-        r1 = row1.to(compute_dtype)
-        r2 = row2.to(compute_dtype)
-        r3 = row3.to(compute_dtype)
-        # Both sub-systems include row2 (from camera 2's x-projection equation),
-        # which carries the camera-2 translation.  Using rows {0,1,2} and {1,2,3}
-        # rather than {0,1,2} and {0,1,3} keeps at least one sub-system of full
-        # rank when camera 2 has zero last-column entries in its y- and
-        # z-projection rows (e.g. [R|t] with t = (-T,0,0)): rows 1 and 3 then
-        # coincide for a shared K, so {1,2,3} is rank-deficient and {0,1,2} is not.
-        A_012 = torch.stack([r0, r1, r2], dim=-2)  # (*, N, 3, 4)
-        A_123 = torch.stack([r1, r2, r3], dim=-2)  # (*, N, 3, 4)
-        h_012 = null_vector_3x4(A_012)  # (*, N, 4)
-        h_123 = null_vector_3x4(A_123)  # (*, N, 4)
-        # A rank-deficient sub-system (zero baseline, coinciding rows) has cofactors at roundoff. The cofactors
-        # of a full-rank sub-system scale with the product of its row norms, so judge each null vector against
-        # that product and use only the full-rank sub-system(s); the point is NaN when neither is.
-        tol = 8.0 * torch.finfo(compute_dtype).eps
-        n012 = h_012.norm(dim=-1, keepdim=True)
-        n123 = h_123.norm(dim=-1, keepdim=True)
-        ok012 = n012 > tol * A_012.norm(dim=-1).prod(dim=-1, keepdim=True)
-        ok123 = n123 > tol * A_123.norm(dim=-1).prod(dim=-1, keepdim=True)
-        v012 = h_012 / torch.where(ok012, n012, torch.ones_like(n012))
-        v123 = h_123 / torch.where(ok123, n123, torch.ones_like(n123))
-        # Null vectors are defined up to a global sign; align signs before
-        # averaging in homogeneous space to prevent cancellation when the two
-        # sub-system solutions point in opposite directions (which would yield a
-        # near-zero homogeneous vector and NaN after dehomogenisation).
-        dot = (v012 * v123).sum(dim=-1, keepdim=True)
-        v123 = torch.where(dot < 0, -v123, v123)
-        zeros = torch.zeros_like(v012)
-        points3d_h = torch.where(ok012, v012, zeros) + torch.where(ok123, v123, zeros)  # (*, N, 4)
-        points3d_h = torch.where(ok012 | ok123, points3d_h, torch.full_like(points3d_h, float("nan")))
-        points3d_h = points3d_h.to(row0.dtype)
+        tiny = torch.finfo(compute_dtype).tiny
+        A = torch.stack([row0, row1, row2, row3], dim=-2).to(compute_dtype)  # (*, N, 4, 4)
+        # A common scale of the rows leaves the solution unchanged and keeps the cubic minors in range.
+        row_norms = A.norm(dim=-1)  # (*, N, 4)
+        scale = row_norms.amax(dim=-1, keepdim=True).clamp_min(tiny)
+        A, row_norms = A / scale[..., None], row_norms / scale
+        H = _sub_system_null_vectors(A)  # (*, N, 4, 4); row j leaves out DLT row 3 - j
+        # A sub-system of rank below 3 has minors at roundoff, and every one has when A has rank 2 (zero
+        # baseline): judge each against the product of its row norms, and return NaN when none has full rank.
+        h_norms = H.norm(dim=-1)  # (*, N, 4)
+        sub_row_norms = row_norms.prod(dim=-1, keepdim=True) / row_norms.flip(-1).clamp_min(tiny)
+        full_rank = (h_norms > 8.0 * torch.finfo(compute_dtype).eps * sub_row_norms).any(dim=-1, keepdim=True)
+        longest = h_norms.argmax(dim=-1, keepdim=True)[..., None].expand(*H.shape[:-2], 1, 4)
+        c = H.gather(-2, longest).squeeze(-2) / h_norms.amax(dim=-1, keepdim=True).clamp_min(tiny)
+        w = (H @ c[..., None]).squeeze(-1)  # adj(A)^T c, up to the signs of its entries
+        w = w / w.norm(dim=-1, keepdim=True).clamp_min(tiny)
+        v = (H.mT @ w[..., None]).squeeze(-1)  # adj(A) adj(A)^T c: the signs cancel
+        v = v / v.norm(dim=-1, keepdim=True).clamp_min(tiny)
+        points3d_h = torch.where(full_rank, v, torch.full_like(v, float("nan"))).to(row0.dtype)
 
     else:
         raise NotImplementedError(f"Unknown solver '{solver}'. Choose from: 'svd', 'eigh', 'cofactor'.")
