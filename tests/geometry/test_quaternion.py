@@ -490,3 +490,19 @@ class TestQuaternionAverage(BaseTester):
         w = torch.tensor([0.5, 0.5], device=device, dtype=dtype)  # wrong length
         with pytest.raises(ValueError):
             average_quaternions(Q, w=w)
+        # #4974: a negative weight extrapolated past a member, and an all-zero weight divided by zero
+        with pytest.raises(ValueError, match="non-negative"):
+            average_quaternions(Q, w=torch.tensor([1.0, -0.5, 0.5], device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="zero"):
+            average_quaternions(Q, w=torch.zeros(3, device=device, dtype=dtype))
+
+    def test_member_norm_is_not_a_weight_4974(self, device, dtype):
+        # #4974: the members were used as stored, so a member stored as 3 q counted 9 times (the result was scipy's
+        # Rotation.mean with weights [9, 1]). Reference: scipy 1.18.1 Rotation.from_rotvec(rv).mean().as_rotvec().
+        rv = torch.tensor([[0.9, -0.3, 0.2], [-0.2, 1.1, 0.5]], dtype=torch.float64)
+        q = Quaternion.from_axis_angle(rv).data
+        expected = torch.tensor([0.3823365186803238, 0.41998759136458697, 0.3733961630971692], dtype=torch.float64)
+        scaled = torch.stack((3.0 * q[0], q[1])).to(device=device, dtype=dtype)
+        for members in (q.to(device=device, dtype=dtype), scaled):
+            out = average_quaternions(Quaternion(members))
+            self.assert_close(out.to_axis_angle()[0], expected.to(device=device, dtype=dtype))

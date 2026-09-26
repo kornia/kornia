@@ -666,6 +666,9 @@ class Quaternion(nn.Module):
 def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Quaternion":
     """Compute (weighted) average of multiple quaternions.
 
+    The members are normalised first, so only their directions count, and the weights must be non-negative and not
+    all zero.
+
     Args:
         Q (Quaternion): quaternion object containing data of shape (M, 4).
         w (torch.Tensor, optional): Weights of shape (M,). If None, uniform weights are used.
@@ -674,8 +677,11 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     Returns:
         Quaternion: averaged quaternion (shape (4,)), wrapped back in the Quaternion class.
     """
-    data = Q.data
     KORNIA_CHECK_TYPE(Q, Quaternion)
+    # the chordal mean is the top eigenvector of sum_i w_i q_i q_i^T, which is sign invariant but weights each member
+    # by its squared norm: a member stored as 3 q counted 9 times (#4974). Every other rotation-valued method depends
+    # only on the direction of q, so normalise the members first.
+    data = Q.normalize().data
 
     M = data.shape[0]
     if w is None:
@@ -684,7 +690,12 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         w = w.to(data.device, dtype=data.dtype)
         if w.numel() != M:
             raise ValueError(f"weights length {w.numel()} must match number of quaternions {M}")
-        w = w / w.sum()
+        if bool((w < 0).any()):
+            raise ValueError("weights must be non-negative")
+        w_sum = w.sum()
+        if bool(w_sum == 0):
+            raise ValueError("weights must not all be zero")
+        w = w / w_sum
         A = data.T @ torch.diag(w) @ data
 
     orig_dtype = A.dtype
