@@ -297,8 +297,15 @@ def find_homography_dlt(
             finite = finite_entries.flatten(1).all(-1)
             Aw = torch.where(finite_entries, Aw, torch.zeros_like(Aw))
             gauge_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-            Q, _ = torch.linalg.qr(Aw.detach().to(gauge_dtype).transpose(-2, -1), mode="complete")
-            null = Q[..., -1]
+            design = Aw.detach().to(gauge_dtype)
+            if device.type == "cuda":
+                # torch.linalg.qr has no batched CUDA kernel: it factors the B matrices one cusolver call at a
+                # time (~0.1 ms each), so a 2048-sample RANSAC batch spent ~250 ms here. The batched Jacobi
+                # SVD is one kernel (~1 ms for 2048) and its null vector agrees with the QR one to roundoff.
+                null = torch.linalg.svd(design)[2][..., -1, :]
+            else:
+                Q, _ = torch.linalg.qr(design.transpose(-2, -1), mode="complete")
+                null = Q[..., -1]
             gauge = null.abs().argmax(dim=-1)
             retained = torch.arange(8, device=device).expand(A.shape[0], -1)
             retained = retained + (retained >= gauge[:, None]).to(retained.dtype)
