@@ -908,7 +908,10 @@ class TestConventionHomography(BaseTester):
             name, iterated, args, k = "find_homography_lines_dlt", find_homography_lines_dlt_iterated, (ls1, ls2), 2
 
             def error(H):
-                return line_segment_transfer_error_one_way(ls1, ls2, H, squared=False)
+                # The kernel's e is the perpendicular distance in pixels: the residual of
+                # line_segment_transfer_error_one_way divided by the image-2 segment length it carries (#4867).
+                length = (ls2[..., 1, :] - ls2[..., 0, :]).norm(dim=-1)
+                return line_segment_transfer_error_one_way(ls1, ls2, H, squared=False) / length
 
         plain = getattr(kornia.geometry.homography, name)
         weights = torch.ones(1, args[0].shape[1], device=device, dtype=dtype)

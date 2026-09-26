@@ -21,7 +21,9 @@ checked between batches, and ``confidence=1`` runs the whole budget.
 The default ``batch_size="auto"`` picks the batch per call. On CUDA and MPS a
 homography batch costs about the same from a few hundred up to 8192 hypotheses,
 so the budget is drawn in batches of 8192; the epipolar solvers are
-compute-bound past 2048 hypotheses, so their batches stop there. A PROSAC batch
+compute-bound past 2048 hypotheses, so their batches stop there. Verification
+holds a ``batch x N`` residual matrix, so past ``2**27`` entries (about 1 GiB
+at peak in float32) the batch shrinks with ``N``, down to 2048. A PROSAC batch
 of either size spans most of the growth schedule, whereas certifying a model
 after a small first batch drawn from a short prefix can stop on a poorly
 conditioned fit. On CPU
@@ -38,9 +40,7 @@ Fundamental and essential models use Sampson residuals. Essential estimation
 expects camera-normalized coordinates, so its threshold is not in pixels.
 Line-segment homographies use the squared mean distance from the transferred
 endpoints to the target segment's line; zero-length target segments are outliers.
-Their local optimization still weights segments by the length-scaled residual of
-:func:`~kornia.geometry.homography.line_segment_transfer_error_one_way`, which
-down-weights long segments (`#4867 <https://github.com/kornia/kornia/issues/4867>`_).
+Their local optimization re-weights segments by the same distance.
 
 A model is accepted only with more inliers than its minimal sample (four
 correspondences for homographies, five for essential and seven or eight for
@@ -102,4 +102,4 @@ non-minimal solver's sample size (eight for fundamental/essential matrices).
 Evaluate the accuracy/runtime trade-off on your data before enabling it.
 
 .. autoclass:: RANSAC
-   :members: forward
+   :members: forward, resolve_batch_size

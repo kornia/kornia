@@ -526,8 +526,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
      - ``sampsonDistance(pt1, pt2, F)``, the same argument order, independent of the scale of ``F``
    * - RANSAC threshold
      - ``inl_th`` is a point distance in the keypoints' units, calibrated units for ``model_type="essential"``;
-       for line segments, the mean distance of the transferred endpoints from the target segment's line, though
-       local optimization still weights segments by length (`#4867 <https://github.com/kornia/kornia/issues/4867>`_)
+       for line segments, the mean distance of the transferred endpoints from the target segment's line, which
+       local optimization re-weights by as well
      - ``ransacReprojThreshold`` of ``findHomography``, the same unit for points
    * - polynomial roots
      - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and

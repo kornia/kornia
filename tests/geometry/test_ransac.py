@@ -345,6 +345,41 @@ class TestRANSACLocalOptimization(BaseTester):
         assert len(calls) > 0, "the local-optimization step never ran"
         self.assert_close(Fm, good_fit[0])
 
+    def test_line_segment_polish_improves_the_fit(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("line_segment_transfer_error_one_way overflows half precision on 600 px coordinates")
+        # Segments about 100 px long, half of them outliers. The polisher's Gaussian weights are on the perpendicular
+        # distance in pixels, not on the length-scaled residual of line_segment_transfer_error_one_way (#4867), so
+        # local optimization refines the minimal-sample model instead of fitting a handful of segments.
+        torch.manual_seed(0)
+        H = torch.tensor([[1.1, 0.05, 20.0], [0.02, 0.95, -10.0], [1e-4, 2e-4, 1.0]], device=device, dtype=dtype)
+        centers = torch.rand(300, 2, device=device, dtype=dtype) * 600
+        half = torch.randn(300, 2, device=device, dtype=dtype)
+        half = 50 * half / half.norm(dim=-1, keepdim=True)
+        ls1 = torch.stack([centers - half, centers + half], 1)
+        ls2_clean = transform_points(H[None], ls1.reshape(1, -1, 2)).reshape(300, 2, 2)
+        ls2 = ls2_clean + 0.3 * torch.randn_like(ls2_clean)
+        ls2[150:] = torch.rand(150, 2, 2, device=device, dtype=dtype) * 600
+
+        def endpoint_error(model):
+            mapped = transform_points(model[None], ls1[:150].reshape(1, -1, 2)).reshape(150, 2, 2)
+            return float((mapped - ls2_clean[:150]).norm(dim=-1).mean())
+
+        errors = {}
+        for max_lo_iters in (0, 5):
+            ransac = RANSAC(
+                "homography_from_linesegments",
+                inl_th=2.0,
+                batch_size=1024,
+                max_iter=4,
+                max_lo_iters=max_lo_iters,
+                seed=0,
+                confidence=1.0,
+            )
+            errors[max_lo_iters] = endpoint_error(ransac(ls1, ls2)[0])
+        assert errors[5] < errors[0]
+        assert errors[5] < 1.0
+
 
 class TestRansacMethods:
     def test_max_samples_by_conf(self):
@@ -455,6 +490,32 @@ class TestRANSACSeed:
     def test_none_seed_stored(self, device, dtype):
         ransac = RANSAC("homography")
         assert ransac.seed is None
+
+    def test_local_optimization_has_its_own_seed_stream(self, device, dtype, monkeypatch):
+        # More batches than max_iter: the subset-refit generator must not reuse a sampling generator's seed.
+        seeds = []
+
+        class Spy(torch.Generator):
+            def manual_seed(self, seed):
+                seeds.append(seed)
+                return super().manual_seed(seed)
+
+        monkeypatch.setattr(kornia.geometry.ransac.torch, "Generator", Spy)
+        torch.manual_seed(0)
+        kp1 = torch.rand(200, 2, device=device, dtype=dtype) * 100
+        ransac = RANSAC(
+            "homography",
+            inl_th=1.0,
+            batch_size=16,
+            max_iter=1,
+            max_samples=64,
+            seed=0,
+            lo_sample_size=8,
+            confidence=1.0,
+        )
+        ransac(kp1, kp1.clone())
+        assert len(seeds) > 4  # four sampling batches and at least one local optimization
+        assert len(seeds) == len(set(seeds))
 
 
 class TestRANSACEssential(BaseTester):
@@ -1140,7 +1201,7 @@ class TestRANSACAutoBatch(BaseTester):
         with pytest.raises(ValueError):
             RANSAC("homography", batch_size=bad)
 
-    @pytest.mark.parametrize("bad", [0, -5, True])
+    @pytest.mark.parametrize("bad", [0, -5, True, 1000.0])
     def test_rejects_bad_max_samples(self, bad):
         with pytest.raises(ValueError):
             RANSAC("homography", max_samples=bad)
@@ -1154,6 +1215,24 @@ class TestRANSACAutoBatch(BaseTester):
     def test_max_samples_overrides_the_budget(self):
         assert RANSAC("homography", batch_size=256, max_iter=100, max_samples=1000).sample_budget == 1000
         assert RANSAC("homography", max_samples=1000).sample_budget == 1000
+
+    def test_budget_follows_later_attribute_changes(self):
+        # The budget is read at call time, like confidence, so configuring the module after construction works.
+        ransac = RANSAC("homography", batch_size=256)
+        ransac.max_iter = 100
+        assert ransac.sample_budget == 25600
+        ransac.max_samples = 1000
+        assert ransac.sample_budget == 1000
+
+    def test_accelerator_batch_shrinks_for_many_correspondences(self):
+        # The residual matrix is batch x N: past 2**27 entries (1 GiB in float32 at peak) the batch shrinks, down to
+        # the 2048 of the fixed historical batch, so the default cannot run out of memory where it did not before.
+        cuda = torch.device("cuda")
+        ransac = RANSAC("homography")
+        assert ransac.resolve_batch_size(16384, cuda) == 8192
+        assert ransac.resolve_batch_size(50000, cuda) == 2684
+        assert ransac.resolve_batch_size(1_000_000, cuda) == 2048
+        assert RANSAC("fundamental").resolve_batch_size(1_000_000, cuda) == 2048
 
     def test_accelerators_take_large_batches(self):
         ransac = RANSAC("homography", max_samples=5000)
@@ -1186,12 +1265,32 @@ class TestRANSACAutoBatch(BaseTester):
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
         ransac = RANSAC("homography", batch_size=16, max_samples=40, max_lo_iters=0, confidence=1.0)
         sizes = []
-        sample = ransac.sample
-        ransac.sample = lambda m, n, batch, *a, **k: sizes.append(batch) or sample(m, n, batch, *a, **k)
-        ransac.remove_bad_samples = lambda a, b: (a, b)
+        ransac.remove_bad_samples = lambda a, b: sizes.append(len(a)) or (a, b)
         ransac.minimal_solver = lambda a, b, w: matrix
         ransac(points, points)
         assert sizes == [16, 16, 8]
+
+    def test_truncated_last_batch_continues_the_prosac_schedule(self, device, dtype):
+        # The PROSAC schedule counts draws, not batches: the truncated last batch of a 1000-draw budget takes draws
+        # 801 to 1000, from the largest prefixes, rather than restarting at an earlier point of the schedule.
+        num_tc = 100
+        points = torch.arange(num_tc, device=device, dtype=dtype)[:, None].expand(num_tc, 2)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        ransac = RANSAC(
+            "homography", batch_size=400, max_samples=1000, prosac_sampling=True, max_lo_iters=0, confidence=1.0
+        )
+        batches = []
+        ransac.remove_bad_samples = lambda a, b: (a, b)
+        ransac.minimal_solver = lambda a, b, w: batches.append(a[..., 0].long()) or matrix.expand(len(a), 3, 3)
+        ransac(points, points)
+        assert [len(b) for b in batches] == [400, 400, 200]
+        ends = ransac._prosac_schedule(4, num_tc, points.device)
+        assert int(ends[-1]) >= 1000  # the schedule is still growing at the last draw
+        # Every growth draw includes the newest correspondence of its prefix, so the largest index a batch draws is
+        # the prefix its last draw belongs to.
+        last_draws = torch.tensor([400, 800, 1000], device=points.device)
+        expected = (torch.searchsorted(ends, last_draws) + 4).tolist()
+        assert [int(b.max()) + 1 for b in batches] == expected
 
     def test_auto_batch_forward_matches_explicit_batch(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):

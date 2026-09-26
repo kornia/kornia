@@ -203,6 +203,18 @@ def line_segment_transfer_error_one_way(
     return error
 
 
+def _line_segment_squared_distance_one_way(ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor) -> torch.Tensor:
+    """Squared perpendicular distance, in pixels, of the mapped image-1 endpoints from the image-2 line.
+
+    :func:`line_segment_transfer_error_one_way` carries the image-2 segment length (#4867); dividing by it gives the
+    pixel distance. A zero-length image-2 segment defines no line, so its distance is infinite.
+    """
+    residual = line_segment_transfer_error_one_way(ls1, ls2, H)
+    length = (ls2[..., 1, :] - ls2[..., 0, :]).norm(dim=-1)
+    distance = residual / torch.where(length > 0, length, torch.ones_like(length))
+    return torch.where(length > 0, distance.square(), torch.full_like(distance, float("inf")))
+
+
 def find_homography_dlt(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, solver: str = "lu"
 ) -> torch.Tensor:
@@ -533,8 +545,10 @@ def find_homography_lines_dlt_iterated(
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from line segments.
 
     Convention:
-        - As :func:`find_homography_dlt_iterated`, with :func:`find_homography_lines_dlt` as the solver and the
-          error of :func:`line_segment_transfer_error_one_way` as ``e`` in the Gaussian kernel.
+        - As :func:`find_homography_dlt_iterated`, with :func:`find_homography_lines_dlt` as the solver and, as
+          ``e`` in the Gaussian kernel, the perpendicular distance in pixels of the mapped image-1 endpoints from
+          the image-2 line: the residual of :func:`line_segment_transfer_error_one_way` divided by the image-2
+          segment length it carries. A zero-length image-2 segment gets weight zero.
         - Known defects: those of the three functions apply
           (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
           `#4867 <https://github.com/kornia/kornia/issues/4867>`_,
@@ -556,7 +570,7 @@ def find_homography_lines_dlt_iterated(
     """
     H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
     for _ in range(n_iter - 1):
-        squared_errors: torch.Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, True)
-        weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
+        squared_distances: torch.Tensor = _line_segment_squared_distance_one_way(ls1, ls2, H)
+        weights_new: torch.Tensor = torch.exp(-squared_distances / (2.0 * (soft_inl_th**2)))
         H = find_homography_lines_dlt(ls1, ls2, weights_new)
     return H
