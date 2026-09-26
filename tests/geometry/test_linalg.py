@@ -176,6 +176,23 @@ class TestComposeTransforms(BaseTester):
 
         self.gradcheck(kgl.compose_transformations, (trans_01, trans_12))
 
+    def test_broadcast(self, device, dtype):
+        # Broadcasting batch size 1 against B in both directions (#4933)
+        A = identity_matrix(batch_size=1, device=device, dtype=dtype)
+        B = identity_matrix(batch_size=3, device=device, dtype=dtype)
+        out_ab = kgl.compose_transformations(A, B)
+        out_ba = kgl.compose_transformations(B, A)
+        assert out_ab.shape == (3, 4, 4)
+        assert out_ba.shape == (3, 4, 4)
+        self.assert_close(out_ab, B)
+        self.assert_close(out_ba, B)
+
+    def test_mismatched_batch_exception(self, device, dtype):
+        A = identity_matrix(batch_size=2, device=device, dtype=dtype)
+        B = identity_matrix(batch_size=3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Incompatible batch shapes"):
+            kgl.compose_transformations(A, B)
+
 
 class TestInverseTransformation(BaseTester):
     def test_smoke(self, device, dtype):
@@ -314,6 +331,23 @@ class TestRelativeTransformation(BaseTester):
         trans_02 = identity_matrix(batch_size, device=device, dtype=torch.float64)
 
         self.gradcheck(kgl.relative_transformation, (trans_01, trans_02))
+
+    def test_broadcast(self, device, dtype):
+        # Broadcasting batch size 1 against B in both directions (#4933)
+        A = identity_matrix(batch_size=1, device=device, dtype=dtype)
+        B = identity_matrix(batch_size=3, device=device, dtype=dtype)
+        out_ab = kgl.relative_transformation(A, B)
+        out_ba = kgl.relative_transformation(B, A)
+        assert out_ab.shape == (3, 4, 4)
+        assert out_ba.shape == (3, 4, 4)
+        self.assert_close(out_ab, B)
+        self.assert_close(out_ba, B)
+
+    def test_mismatched_batch_exception(self, device, dtype):
+        A = identity_matrix(batch_size=2, device=device, dtype=dtype)
+        B = identity_matrix(batch_size=3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Incompatible batch shapes"):
+            kgl.relative_transformation(A, B)
 
 
 class TestPointsLinesDistances(BaseTester):
