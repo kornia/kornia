@@ -153,15 +153,19 @@ class TestKnownFailureOutcomes:
                 "@pytest.mark.xfail(reason='different xfail marker', strict=False)",
             ),
             (
-                "request.addfinalizer(lambda: pytest.skip('disabled in teardown')); "
-                "raise RuntimeError('known failure')",
+                (
+                    "request.addfinalizer(lambda: pytest.skip('disabled in teardown')); "
+                    "raise RuntimeError('known failure')"
+                ),
                 "",
             ),
             (
                 "raise RuntimeError('known failure')",
-                "@pytest.fixture(autouse=True)\n"
-                "        def fail_setup():\n"
-                "            raise RuntimeError('setup failure')",
+                (
+                    "@pytest.fixture(autouse=True)\n"
+                    "        def fail_setup():\n"
+                    "            raise RuntimeError('setup failure')"
+                ),
             ),
         ],
         ids=[
