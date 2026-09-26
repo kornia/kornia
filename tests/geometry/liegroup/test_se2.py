@@ -222,6 +222,24 @@ class TestSe2(BaseTester):
         g = Se2(So2.exp(v[..., 2]), t_ref)  # the element exp(v), rounded to dtype
         self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
 
+    def test_exp_log_negative_angles_past_the_series_switch_4924(self, device, dtype):
+        # The coefficients are even in theta, so exp and log evaluate them at |theta|. The So3 helper takes its
+        # series below a positive switch point, so a signed theta would take the truncated series for every
+        # negative angle; at theta = -3 that is off by about 1e-4 in log. Pin both signs past the switch.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        v = torch.tensor([[1.0, 2.0, th] for th in (-3.0, -2.0, -1.0, 1.0, 2.0, 3.0)], dtype=dtype)
+        # V(theta) (vx, vy) for the rounded angle, in float64 on the CPU (MPS has no float64)
+        th = v[..., 2].double()
+        a, b = torch.sin(th) / th, 2 * torch.sin(th / 2) ** 2 / th
+        x, y = v[..., 0].double(), v[..., 1].double()
+        t_ref = torch.stack((a * x - b * y, b * x + a * y), -1).to(device=device, dtype=dtype)
+        v = v.to(device)
+        eps = torch.finfo(dtype).eps
+        self.assert_close(Se2.exp(v).t, t_ref, rtol=8 * eps, atol=8 * eps)
+        g = Se2(So2.exp(v[..., 2]), t_ref)  # the element exp(v), rounded to dtype
+        self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
         v = self._make_rand_data(device, dtype, (batch_size, 2))
