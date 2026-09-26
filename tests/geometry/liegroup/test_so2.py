@@ -240,6 +240,18 @@ class TestSo2(BaseTester):
         s = So2.identity(batch_size, device=device, dtype=dtype)
         self.assert_close(s.matrix(), s.adjoint())
 
+    def test_user_leaf_receives_the_gradient(self, device, dtype):
+        # A complex leaf that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it
+        # (#4943). d/dz of sum(R @ (1, 0)) = d(re + im)/dz.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        re = torch.tensor([0.6], device=device, dtype=dtype)
+        z = torch.complex(re, re + 0.2).requires_grad_(True)
+        s = So2(z)
+        (s * torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)).sum().backward()
+        assert z.grad is not None
+        assert "_z" in s.state_dict()
+
     def test_derived_state_moves_and_serializes(self, device, dtype):
         theta = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
         s = So2.exp(theta)
