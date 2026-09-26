@@ -1441,7 +1441,7 @@ class TestConventionAugmentationSequential(BaseTester):
             with pytest.raises(NotImplementedError):
                 K.AugmentationSequential(factory(), data_keys=["input", "mask"])(img, mask)
 
-    @pytest.mark.parametrize("data_style", ["image", "list", "dict"])
+    @pytest.mark.parametrize("data_style", ["image", "list", "dict", "dict_mask_first"])
     def test_show_and_save_cache_a_detached_cpu_image_4835(self, data_style, tmp_path, device, dtype):
         # `.show()` / `.save()` hand the cached output to `.numpy()`, so the cache must hold the
         # augmented image alone, detached and on the CPU: the raw forward output keeps the autograd
@@ -1456,9 +1456,12 @@ class TestConventionAugmentationSequential(BaseTester):
         elif data_style == "list":
             aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
             out_image, _ = aug(image, mask)
-        else:
+        elif data_style == "dict":
             aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
             out_image = aug({"image": image, "mask": mask})["image"]
+        else:  # the image is not the first key, so the cache must pick it by its position
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+            out_image = aug({"mask": mask, "image": image})["image"]
 
         assert out_image.requires_grad  # the returned image still carries the graph
         cached = aug._output_image
