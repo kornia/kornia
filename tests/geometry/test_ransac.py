@@ -1105,6 +1105,8 @@ class TestRANSACSampling(BaseTester):
         assert ransac._prosac_schedule(8, 200, inliers.device)[100 - 8].item() < 3970
 
     def test_prosac_stops_on_a_certified_prefix(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("a 1 px threshold on 500 px coordinates is below half-precision resolution")
         # 150 of 500 correspondences follow the homography and are ranked first: PROSAC stops after
         # its first batch, while uniform sampling needs far more than one batch of 16 at 30% inliers.
         torch.manual_seed(0)
@@ -1188,6 +1190,8 @@ class TestRANSACAutoBatch(BaseTester):
         assert sizes == [16, 16, 8]
 
     def test_auto_batch_forward_matches_explicit_batch(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("a 1 px threshold on 500 px coordinates is below half-precision resolution")
         # The auto batch is a plain batch size: the same seed gives the same draws as that size given explicitly.
         torch.manual_seed(0)
         kp1 = torch.rand(200, 2, device=device, dtype=dtype) * 500
