@@ -28,6 +28,30 @@ from testing.two_view import two_view_scene
 
 
 class TestNormalizePoints(BaseTester):
+    def test_zero_weight_outlier_does_not_change_transform(self, device, dtype):
+        points = torch.tensor(
+            [[[0.0, 0.0], [0.0, 2.0], [2.0, 0.0], [2.0, 2.0], [100.0, -100.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        weights = torch.tensor([[1.0, 1.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype)
+        normalized, transform = epi.normalize_points(points, weights=weights)
+        expected_normalized, expected_transform = epi.normalize_points(points[:, :-1])
+        self.assert_close(normalized[:, :-1], expected_normalized)
+        self.assert_close(transform, expected_transform)
+
+    def test_all_zero_weights_keep_transform_finite(self, device, dtype):
+        points = torch.tensor([[[0.0, 0.0], [0.0, 2.0], [2.0, 0.0], [2.0, 2.0]]], device=device, dtype=dtype)
+        normalized, transform = epi.normalize_points(points, weights=torch.zeros(1, 4, device=device, dtype=dtype))
+        expected_normalized, expected_transform = epi.normalize_points(points)
+        self.assert_close(normalized, expected_normalized)
+        self.assert_close(transform, expected_transform)
+
+    def test_gradcheck_weighted(self, device):
+        points = torch.rand(2, 6, 2, device=device, dtype=torch.float64, requires_grad=True)
+        weights = (torch.rand(2, 6, device=device, dtype=torch.float64) + 0.2).requires_grad_()
+        self.gradcheck(lambda p, w: epi.normalize_points(p, weights=w), (points, weights))
+
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
         output = epi.normalize_points(points)
@@ -784,11 +808,10 @@ class TestConventionFundamental(BaseTester):
         out.sum().backward()
         self.assert_close(M.grad, torch.ones_like(M), rtol=0, atol=0)
 
-    def test_wart_find_fundamental_zero_weight_changes_result_4875(self, device, dtype):
+    def test_find_fundamental_zero_weight_ignores_outlier_4875(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_EIGH)
-        # #4875: a correspondence with weight 0 leaves the linear system but still enters the Hartley
-        # normalisation, so a far outlier with weight 0 moves the estimate. Once fixed, the two estimates agree.
+        # #4875: zero-weight correspondences must not enter either the DLT system or Hartley statistics.
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
         outlier1 = torch.tensor([[[2000.0, -1500.0]]], device=device, dtype=dtype)
@@ -797,9 +820,7 @@ class TestConventionFundamental(BaseTester):
         weights[0, 12] = 0.0
         F_weighted = epi.find_fundamental(torch.cat([x1, outlier1], 1), torch.cat([x2, outlier2], 1), weights)
         F_dropped = epi.find_fundamental(x1, x2)
-        err_weighted = epi.sampson_epipolar_distance(x1, x2, F_weighted).mean()
-        err_dropped = epi.sampson_epipolar_distance(x1, x2, F_dropped).mean()
-        assert err_weighted > 2.0 * err_dropped
+        self.assert_close(F_weighted, F_dropped, rtol=1e-3, atol=1e-3)
 
     def test_wart_fundamental_from_projections_float16_overflow_4877(self, device, dtype):
         two_view = two_view_scene(device, dtype)
