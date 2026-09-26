@@ -26,7 +26,7 @@ from .distortion_kannala_brandt import (
     dx_distort_points_kannala_brandt,
     undistort_points_kannala_brandt,
 )
-from .perspective import project_points, unproject_points
+from .perspective import project_points, projection_valid_mask, unproject_points
 from .pinhole import PinholeCamera, cam2pixel, pixel2cam
 from .projection_orthographic import (
     dx_project_points_orthographic,
@@ -50,6 +50,7 @@ __all__ = [
     "project_points",
     "project_points_orthographic",
     "project_points_z1",
+    "projection_valid_mask",
     "undistort_points_affine",
     "undistort_points_kannala_brandt",
     "unproject_points",
