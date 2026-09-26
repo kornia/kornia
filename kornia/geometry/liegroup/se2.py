@@ -52,7 +52,24 @@ class Se2(nn.Module):
 
     The SE(2) is the group of rigid body transformations about the origin of two-dimensional Euclidean
     space :math:`R^2` under the operation of composition.
-    See more:
+
+    Convention:
+        - ``matrix()`` is the 3x3 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()`` and ``g * p`` is
+          :math:`R p + t`, as in :class:`~kornia.geometry.liegroup.Se3`, but an unbatched pose also transforms
+          :math:`(N, 2)` points and a batched one a single :math:`(2,)` point. The rotation is an
+          :class:`~kornia.geometry.liegroup.So2`, whose storage and direction conventions apply.
+        - The tangent vector is :math:`(v_x, v_y, \theta)`, angle last: ``exp`` rotates by :math:`\theta` and
+          translates by :math:`V(\theta) (v_x, v_y)`, and ``log`` returns :math:`\theta` in :math:`[-\pi, \pi]`.
+          ``adjoint()`` is :math:`[[R, (t_y, -t_x)^\top], [0, 1]]`.
+        - ``from_matrix`` ignores the bottom row. It accepts any rotation block of the form :math:`[[a, -b], [b, a]]`,
+          a rotation scaled by :math:`\sqrt{a^2 + b^2}`, and keeps the scale as a non-unit ``z`` that ``log`` drops;
+          it rejects any other block, such as a reflection.
+        - Known defects: ``hat`` and ``vee`` put the translation in the bottom row and the angle in a symmetric block
+          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); for ``identity``, ``random`` and any pose
+          composed with or inverted from one, ``t`` and ``g * points`` are a ``Vector2`` instead of a tensor
+          (`#4931 <https://github.com/kornia/kornia/issues/4931>`_), and ``state_dict`` and ``.to()`` skip that
+          translation, while ``.to()`` a real dtype breaks the ``So2`` rotation
+          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
         >>> so2 = So2.identity(1)
@@ -118,13 +135,13 @@ class Se2(nn.Module):
     def __mul__(self, right: torch.Tensor) -> torch.Tensor: ...
 
     def __mul__(self, right: Se2 | torch.Tensor) -> Se2 | torch.Tensor:
-        """Compose two Se2 transformations.
+        """Compose two Se2 transformations, or transform points.
 
         Args:
-            right: the other Se2 transformation.
+            right: the other Se2 transformation, or points of shape :math:`(B, 2)` or :math:`(2,)`.
 
         Return:
-            The resulting Se2 transformation.
+            The resulting Se2 transformation, or the transformed points.
 
         """
         so2 = self.so2
@@ -235,16 +252,19 @@ class Se2(nn.Module):
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
-        """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 3, 3)`.
+        """Convert a tangent vector to the matrix that :meth:`vee` inverts. Returns matrix of shape :math:`(B, 3, 3)`.
+
+        The matrix is not the se(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            v: vector of shape:math:`(B, 3)`.
+            v: vector of shape :math:`(B, 3)`.
 
         Example:
-            >>> theta = torch.tensor(3.1415/2)
-            >>> So2.hat(theta)
-            tensor([[0.0000, 1.5707],
-                    [1.5707, 0.0000]])
+            >>> v = torch.tensor([1.0, 2.0, 0.5])
+            >>> Se2.hat(v)
+            tensor([[0.0000, 0.5000, 0.0000],
+                    [0.5000, 0.0000, 0.0000],
+                    [1.0000, 2.0000, 0.0000]])
 
         """
         # check_v_shape
@@ -259,10 +279,12 @@ class Se2(nn.Module):
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
-        """Convert elements from lie algebra to vector space.
+        """Read the tangent vector back from a :meth:`hat` matrix.
+
+        It reads kornia's layout, not the se(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            omega: 3x3-matrix representing lie algebra of shape :math:`(B, 3, 3)`.
+            omega: 3x3-matrix built by :meth:`hat`, of shape :math:`(B, 3, 3)`.
 
         Returns:
             vector of shape :math:`(B, 3)`.
@@ -378,7 +400,7 @@ class Se2(nn.Module):
         device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
-        """Create a Se2 group representing a random transformation.
+        """Create a Se2 group from ``So2.random`` and a translation drawn from :math:`U[0, 1)`.
 
         Args:
             batch_size: the batch size of the underlying data.
