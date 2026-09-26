@@ -53,8 +53,7 @@ class ImageModuleMixIn:
 
         """
         # Validate output_type at the start
-        if output_type not in ("pt", "numpy", "pil"):
-            raise ValueError(f"Invalid output_type '{output_type}'. Must be one of 'pt', 'numpy', or 'pil'.")
+        self._check_output_type(output_type)
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
@@ -76,32 +75,44 @@ class ImageModuleMixIn:
                         if name in input_names_to_handle:
                             kwargs[name] = self.to_tensor(value)
 
-                # Call the actual forward method
-                tensor_outputs = func(*args, **kwargs)
-
-                if not isinstance(tensor_outputs, tuple):
-                    tensor_outputs = (tensor_outputs,)
-
-                # Keep the original tensor output for visualization helpers.
-                self._output_image_tensor = tensor_outputs[0]
-
-                # Convert outputs to the desired type
-                outputs = []
-                for output in tensor_outputs:
-                    if output_type == "pt":
-                        outputs.append(output)
-                    elif output_type == "numpy":
-                        outputs.append(self.to_numpy(output))
-                    elif output_type == "pil":
-                        outputs.append(self.to_pil(output))
-                    else:
-                        raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
-
-                return outputs if len(outputs) > 1 else outputs[0]
+                # Call the actual forward method and convert its outputs to the desired type
+                return self._convert_output(func(*args, **kwargs), output_type)
 
             return wrapper
 
         return decorator
+
+    @staticmethod
+    def _check_output_type(output_type: str) -> None:
+        if output_type not in ("pt", "numpy", "pil"):
+            raise ValueError(f"Invalid output_type '{output_type}'. Must be one of 'pt', 'numpy', or 'pil'.")
+
+    def _convert_output(self, tensor_outputs: Any, output_type: str) -> Any:
+        """Convert a forward output to ``output_type`` the way :meth:`convert_input_output` does.
+
+        Args:
+            tensor_outputs: The forward output: a tensor, or a tuple whose elements are converted one by one.
+            output_type: Desired output type ('pt', 'numpy', or 'pil').
+
+        Returns:
+            The converted output, or a list of converted outputs for a tuple of several.
+
+        """
+        if not isinstance(tensor_outputs, tuple):
+            tensor_outputs = (tensor_outputs,)
+
+        outputs = []
+        for output in tensor_outputs:
+            if output_type == "pt":
+                outputs.append(output)
+            elif output_type == "numpy":
+                outputs.append(self.to_numpy(output))
+            elif output_type == "pil":
+                outputs.append(self.to_pil(output))
+            else:
+                raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
+
+        return outputs if len(outputs) > 1 else outputs[0]
 
     def _is_valid_arg(self, arg: Any) -> bool:
         """Check if the argument is a valid type for conversion.

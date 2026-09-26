@@ -437,11 +437,13 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """
         # Wrap the forward method with the decorator
         if not self._disable_features:
-            decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type
-            )(super().__call__)
-            _output_image = decorated_forward(*inputs, **kwargs)
-            self._output_image = self._detach_tensor_to_cpu(self._output_image_tensor)
+            self._check_output_type(output_type)
+            # run the forward pass in tensor mode, cache that tensor for ``.show()`` / ``.save()``, and convert the
+            # output to ``output_type`` only afterwards, so the helpers never receive a NumPy array or PIL images
+            decorated_forward = self.convert_input_output(input_names_to_handle=input_names_to_handle)(super().__call__)
+            tensor_output = decorated_forward(*inputs, **kwargs)
+            self._store_output_image(tensor_output, "pt")
+            _output_image = self._convert_output(tensor_output, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image

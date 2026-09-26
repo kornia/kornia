@@ -100,22 +100,36 @@ class TestConventionImageSequential(BaseTester):
         self.assert_close(inverted, out.flip(-1))  # only the flip was undone, the blur was skipped
         assert (inverted - x).abs().max().item() > 0.1  # and the round trip is not the input
 
+    @pytest.mark.parametrize("container", ["ImageSequential", "AugmentationSequential"])
     @pytest.mark.parametrize("output_type", ["numpy", "pil"])
-    def test_output_type_cache_supports_show_and_save(self, output_type, tmp_path, device, dtype):
-        image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
-        aug = K.ImageSequential(K.RandomHorizontalFlip(p=1.0))
+    def test_show_and_save_after_a_numpy_or_pil_output_4956(self, container, output_type, tmp_path, device, dtype):
+        # `.show()` / `.save()` render a tensor cache, so the container caches the augmented tensor before it
+        # converts the output to NumPy or PIL; it used to cache the converted output and the helpers failed on it
+        from PIL import Image as PILImage
+
+        if output_type == "numpy" and dtype == torch.bfloat16:
+            pytest.skip("NumPy has no bfloat16")
+        image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        aug = getattr(K, container)(K.RandomHorizontalFlip(p=1.0))
 
         output = aug(image, output_type=output_type)
 
-        assert not isinstance(output, torch.Tensor)
-        assert isinstance(aug._output_image, torch.Tensor)
+        if output_type == "numpy":
+            assert output.shape == (2, 3, 6, 8) and not isinstance(output, torch.Tensor)
+        else:
+            assert len(output) == 2 and all(isinstance(out, PILImage.Image) for out in output)
+        cached = aug._output_image
+        assert isinstance(cached, torch.Tensor)
+        assert not cached.requires_grad
+        self.assert_close(cached.to(device), image.detach().flip(-1))
+        if container == "AugmentationSequential":
+            assert cached.device == image.device  # no device-to-host copy in the forward pass (#4918)
 
-        shown = aug.show(display=False)
-        assert shown is not None
-
+        if dtype != torch.bfloat16:  # `.show()` renders through `Tensor.numpy()`, which has no bfloat16 support
+            assert isinstance(aug.show(display=False), PILImage.Image)
         output_path = tmp_path / "output.png"
         aug.save(name=str(output_path))
-        assert output_path.exists()
+        assert output_path.is_file()
 
     def test_convention_slice_crop_inverse_raises(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
