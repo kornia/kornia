@@ -215,6 +215,9 @@ class TestNamedPoseConventions(BaseTester):
 
     def test_convention_named_pose_composition_order(self, device, dtype):
         g1, g2 = self._poses(device, dtype)
+        # The matrix product rule applies to unit rotations; Se3 accepts non-unit quaternions under #4942.
+        self.assert_close(g1.r.q.norm(), torch.ones((), device=device, dtype=dtype))
+        self.assert_close(g2.r.q.norm(), torch.ones((), device=device, dtype=dtype))
         b_from_a = NamedPose(g1, frame_src="a", frame_dst="b")
         c_from_b = NamedPose(g2, frame_src="b", frame_dst="c")
         # c_from_b * b_from_a is c_from_a, whose matrix is M2 @ M1; generated in float64 as

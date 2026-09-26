@@ -286,11 +286,11 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
     r"""Return the distance from points to lines.
 
     Convention:
-        - ``line`` need not be normalised: the distance is :math:`|ax + by + c| / \|(a, b)\|`.
-        - Known defect: ``eps`` in the denominator scales every distance down by
-          :math:`\|(a, b)\| / (\|(a, b)\| + \epsilon)` and returns :math:`|c| / \epsilon` for a line with
-          :math:`a = b = 0`, or ``inf`` in ``float16``, where the default ``eps`` rounds to zero
-          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+        - ``line`` need not be normalised. The geometric distance is :math:`|ax + by + c| / \|(a, b)\|` for
+          :math:`(a, b) \ne (0, 0)`; kornia instead divides by :math:`\|(a, b)\| + \epsilon`.
+        - Known defect: this ``eps`` biases the distance when the line coefficients are small and returns
+          :math:`|c| / \epsilon` for a line with :math:`a = b = 0`, or ``inf`` in ``float16``, where the default
+          ``eps`` rounds to zero (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
 
     Args:
        point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the
