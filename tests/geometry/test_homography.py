@@ -888,7 +888,7 @@ class TestConventionHomography(BaseTester):
         assert errors[1] > 1.9 * errors[0]
 
     @pytest.mark.parametrize("model", ["points", "lines"])
-    def test_wart_find_homography_dlt_iterated_weight_unsquared_4870(self, model, device, dtype, monkeypatch):
+    def test_convention_find_homography_dlt_iterated_gaussian_weights_4870(self, model, device, dtype, monkeypatch):
         if model == "points" and dtype == torch.float16:
             pytest.skip(_F16_LU)
         if model == "lines":
@@ -912,9 +912,9 @@ class TestConventionHomography(BaseTester):
 
         plain = getattr(kornia.geometry.homography, name)
         weights = torch.ones(1, args[0].shape[1], device=device, dtype=dtype)
-        # soft_inl_th is set from the moved correspondence's first-solve error e_k, so that its weight under the
-        # linear kernel is exp(-1/2) whatever the error's scale.
-        sigma = float(error(plain(*args, weights))[0, k].sqrt())
+        # soft_inl_th is set to the moved correspondence's first-solve error e_k, so that its Gaussian weight is
+        # exp(-1/2) whatever the error's scale.
+        sigma = float(error(plain(*args, weights))[0, k])
         calls = []
 
         if model == "points":
@@ -938,10 +938,11 @@ class TestConventionHomography(BaseTester):
         iterated(*args, weights, soft_inl_th=sigma, n_iter=2)
         assert len(calls) == 2
         e = error(calls[0][1])
-        # #4870: the second solve weights each correspondence by exp(-e / (2 sigma^2)) with the unsquared error e,
-        # which for the moved correspondence is far from the Gaussian exp(-e^2 / (2 sigma^2)).
-        self.assert_close(calls[1][0], torch.exp(-e / (2.0 * sigma**2)))
-        assert (calls[1][0] - torch.exp(-(e**2) / (2.0 * sigma**2)))[0, k].abs() > 0.1
+        # The second solve weights each correspondence by the Gaussian exp(-e^2 / (2 sigma^2)) of its error e, so
+        # soft_inl_th is a standard deviation in the error's units (#4870 used exp(-e / (2 sigma^2))).
+        self.assert_close(calls[1][0], torch.exp(-(e**2) / (2.0 * sigma**2)))
+        self.assert_close(calls[1][0][0, k], torch.full((), 0.5, device=device, dtype=dtype).neg().exp())
+        assert (calls[1][0] - torch.exp(-e / (2.0 * sigma**2)))[0, k].abs() > 0.1
 
     def test_wart_transfer_error_exact_match_is_sqrt_eps_4881(self, device, dtype):
         _skip_half(

@@ -181,7 +181,8 @@ class RANSAC(nn.Module):
         if model_type == "homography":
             self.error_fn = oneway_transfer_error
             self.minimal_solver = find_homography_dlt
-            self.polisher_solver = find_homography_dlt_iterated
+            # The polisher's Gaussian re-weighting uses the inlier threshold as its standard deviation.
+            self.polisher_solver = partial(find_homography_dlt_iterated, soft_inl_th=inl_th)
             self.minimal_sample_size = 4
             self.polisher_sample_size = 4
         elif model_type == "homography_from_linesegments":
@@ -190,7 +191,7 @@ class RANSAC(nn.Module):
             # Known defect: this IRLS polisher weights segments by the length-scaled residual of
             # line_segment_transfer_error_one_way, not by the distance used for scoring, so local
             # optimization down-weights long segments (https://github.com/kornia/kornia/issues/4867).
-            self.polisher_solver = find_homography_lines_dlt_iterated
+            self.polisher_solver = partial(find_homography_lines_dlt_iterated, soft_inl_th=inl_th)
             self.minimal_sample_size = 4
             self.polisher_sample_size = 4
         elif model_type == "fundamental":

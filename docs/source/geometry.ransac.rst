@@ -60,7 +60,11 @@ longer than the uniform bound. Stopping is checked between batches.
 Uninformative or reversed rankings can hurt accuracy. The ``weights`` argument
 is not used to rank correspondences.
 
-By default, local optimization repeatedly refits all current inliers. A refit
+By default, local optimization repeatedly refits all current inliers. For the
+homography models the refit is the iteratively re-weighted least squares of
+:func:`~kornia.geometry.homography.find_homography_dlt_iterated`, whose Gaussian
+weights use ``inl_th`` as their standard deviation, so a correspondence at the
+threshold keeps weight ``exp(-1/2)``. A refit
 replaces the model when it raises the score, or when it ties it: a least-squares
 fit on the same support is more precise than the minimal-sample model. A refit
 that does not raise the score ends the refinement. This is iterative refitting,

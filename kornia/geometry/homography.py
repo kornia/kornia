@@ -366,10 +366,11 @@ def find_homography_dlt_iterated(
 
     Convention:
         - Direction and ``H[2, 2] = 1`` as :func:`find_homography_dlt`. Each solve after the first re-weights
-          with ``exp(-e / (2 * soft_inl_th**2))`` of the unsquared symmetric transfer error ``e``.
-        - Known defects: the exponent is linear, not quadratic, in ``e``, so ``soft_inl_th`` is not a pixel
-          standard deviation (`#4870 <https://github.com/kornia/kornia/issues/4870>`_); those of
-          :func:`find_homography_dlt` apply (`#4874 <https://github.com/kornia/kornia/issues/4874>`_,
+          with the Gaussian kernel ``exp(-e**2 / (2 * soft_inl_th**2))`` of the symmetric transfer error ``e``
+          (the root of the summed squared forward and backward transfer errors), so ``soft_inl_th`` is a
+          standard deviation in pixels: a correspondence with ``e = soft_inl_th`` keeps weight ``exp(-1/2)``.
+        - Known defects: those of :func:`find_homography_dlt` apply
+          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_,
           `#4890 <https://github.com/kornia/kornia/issues/4890>`_).
 
     Args:
@@ -377,7 +378,7 @@ def find_homography_dlt_iterated(
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
-        soft_inl_th: scale in the re-weighting kernel given above.
+        soft_inl_th: standard deviation, in pixels, of the Gaussian re-weighting kernel given above.
         n_iter: number of solves, including the initial one.
 
     Returns:
@@ -391,8 +392,8 @@ def find_homography_dlt_iterated(
     transform2_inv = safe_inverse_with_mask(transform2)[0]
     H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, dtype)
     for _ in range(n_iter - 1):
-        errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, False)
-        weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
+        squared_errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, True)
+        weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
         H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, dtype)
     return H
 
@@ -533,11 +534,10 @@ def find_homography_lines_dlt_iterated(
 
     Convention:
         - As :func:`find_homography_dlt_iterated`, with :func:`find_homography_lines_dlt` as the solver and the
-          unsquared error of :func:`line_segment_transfer_error_one_way` as ``e``.
+          error of :func:`line_segment_transfer_error_one_way` as ``e`` in the Gaussian kernel.
         - Known defects: those of the three functions apply
           (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
           `#4867 <https://github.com/kornia/kornia/issues/4867>`_,
-          `#4870 <https://github.com/kornia/kornia/issues/4870>`_,
           `#4874 <https://github.com/kornia/kornia/issues/4874>`_,
           `#4890 <https://github.com/kornia/kornia/issues/4890>`_).
 
@@ -546,7 +546,8 @@ def find_homography_lines_dlt_iterated(
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
         weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
-        soft_inl_th: scale in the re-weighting kernel of :func:`find_homography_dlt_iterated`.
+        soft_inl_th: standard deviation, in pixels, of the Gaussian re-weighting kernel of
+          :func:`find_homography_dlt_iterated`.
         n_iter: number of solves, including the initial one.
 
     Returns:
@@ -555,7 +556,7 @@ def find_homography_lines_dlt_iterated(
     """
     H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
     for _ in range(n_iter - 1):
-        errors: torch.Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, False)
-        weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
+        squared_errors: torch.Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, True)
+        weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
         H = find_homography_lines_dlt(ls1, ls2, weights_new)
     return H

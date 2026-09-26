@@ -1127,6 +1127,15 @@ class TestRANSACSampling(BaseTester):
         assert calls[1] > 1
 
 
+class TestRANSACPolisherScale(BaseTester):
+    @pytest.mark.parametrize("model_type", ["homography", "homography_from_linesegments"])
+    @pytest.mark.parametrize("inl_th", [0.5, 2.0])
+    def test_polisher_gaussian_scale_is_inlier_threshold(self, model_type, inl_th):
+        # The IRLS polisher's Gaussian re-weighting uses the inlier threshold as its standard deviation.
+        ransac = RANSAC(model_type, inl_th=inl_th)
+        assert ransac.polisher_solver.keywords == {"soft_inl_th": inl_th}
+
+
 class TestRANSACBoundedLO(BaseTester):
     def test_subset_refits_and_final_full_refit(self, device, dtype):
         points = torch.rand(100, 2, device=device, dtype=dtype)
