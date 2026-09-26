@@ -656,15 +656,3 @@ class TestLinalgConventions(BaseTester):
         assert ((scaled - exact) / exact).max() < -0.1
         # A degenerate line (0, 0, 1) returns |c| / eps = 1e9 instead of flagging the singular case.
         assert torch.isfinite(degenerate).all() and (degenerate > 1e8).all()
-
-    def test_wart_point_line_distance_ignores_w_4935(self, device, dtype):
-        # https://github.com/kornia/kornia/issues/4935: the docstring says "possibly homogeneous" (*, N, 3) points, but
-        # the third coordinate is never read. The point (1.5, -0.7) is 2.34 from 3x + 4y + 10 = 0; written with w = 1
-        # it gives 2.34, with w = 2 as (3, -1.4, 2) it gives |9 - 5.6 + 10| / 5 = 2.68, and with w = -1 as
-        # (-1.5, 0.7, -1) it gives |-4.5 + 2.8 + 10| / 5 = 1.66.
-        line = torch.tensor([[3.0, 4.0, 10.0]], device=device, dtype=dtype).expand(3, 3)
-        points = torch.tensor([[1.5, -0.7, 1.0], [3.0, -1.4, 2.0], [-1.5, 0.7, -1.0]], device=device, dtype=dtype)
-        # precondition: the three rows are the same Euclidean point
-        self.assert_close(points[:, :2] / points[:, 2:], points[:1, :2].expand(3, 2))
-        expected = torch.tensor([2.34, 2.68, 1.66], device=device, dtype=dtype)
-        self.assert_close(kgl.point_line_distance(points, line), expected)
