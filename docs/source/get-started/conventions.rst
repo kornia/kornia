@@ -493,8 +493,7 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
        ``(3k, 3)``
    * - essential matrix
      - ``find_essential`` takes normalised camera coordinates :math:`K^{-1} [u, v, 1]^\top` and returns ten
-       slots, ``NaN`` for complex roots; a sample with no real solution returns ten identity matrices
-       (`#4883 <https://github.com/kornia/kornia/issues/4883>`_)
+       slots, ``NaN`` for complex roots (all ten for a sample with no real solution)
      - ``findEssentialMat`` takes pixels and ``cameraMatrix`` (or one matrix per camera); with exactly 5 points it
        stacks the real solutions as ``(3k, 3)``, with more it returns the single ``E`` its RANSAC or LMedS selects
    * - homography
