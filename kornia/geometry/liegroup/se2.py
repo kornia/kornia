@@ -188,12 +188,18 @@ class Se2(nn.Module):
         theta = v[..., 2]
         so2 = So2.exp(theta)
         # V = [[a, -b], [b, a]] with a = sin(theta) / theta and b = (1 - cos(theta)) / theta. Both are
-        # 0/0 at theta = 0 and cancel just above it, so write them through the cancellation-free
-        # So3 coefficients: a = 1 - theta^2 (theta - sin(theta)) / theta^3 and
-        # b = theta (1 - cos(theta)) / theta^2 (kornia#4924). Both are even in theta.
-        coef_a, coef_b, _ = _so3_small_angle_coefficients(theta.abs())
-        a = 1.0 - theta * theta * coef_b
-        b = theta * coef_a
+        # 0/0 at theta = 0 and their derivatives cancel near it, so below 0.5 rad write them through the
+        # cancellation-free So3 coefficients: a = 1 - theta^2 (theta - sin(theta)) / theta^3 and
+        # b = theta (1 - cos(theta)) / theta^2 (kornia#4924), evaluated at |theta| because both are even.
+        # Above it take sin(theta) / theta and 2 sin(theta / 2)^2 / theta directly: 1 - theta^2 (...)
+        # cancels where sin(theta) / theta is small, and theta^3 overflows float16 from 41 rad. Each
+        # branch sees a substituted angle where it is not selected, since torch.where differentiates both.
+        small = theta.abs() < 0.5
+        theta_s = torch.where(small, theta, torch.zeros_like(theta))
+        theta_l = torch.where(small, torch.ones_like(theta), theta)
+        coef_a, coef_b, _ = _so3_small_angle_coefficients(theta_s.abs())
+        a = torch.where(small, 1.0 - theta_s * theta_s * coef_b, torch.sin(theta_l) / theta_l)
+        b = torch.where(small, theta_s * coef_a, 2.0 * torch.sin(0.5 * theta_l) ** 2 / theta_l)
         x = v[..., 0]
         y = v[..., 1]
         t = torch.stack((a * x - b * y, b * x + a * y), -1)

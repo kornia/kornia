@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -221,6 +223,45 @@ class TestSe2(BaseTester):
         self.assert_close(Se2.exp(v).t, t_ref, rtol=8 * eps, atol=8 * eps)
         g = Se2(So2.exp(v[..., 2]), t_ref)  # the element exp(v), rounded to dtype
         self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
+
+    def test_exp_keeps_large_angles_4924(self, device, dtype):
+        # Past the small-angle branch exp takes sin(theta) / theta and 2 sin(theta / 2)^2 / theta directly.
+        # 1 - theta^2 (theta - sin(theta)) / theta^3 cancels wherever sin(theta) / theta is small (37.7 is
+        # within 1e-3 of 12 pi), 1 - cos(theta) cancels there too, and theta^3 overflows float16 from 41 rad,
+        # which made the coefficient 0 and exp(v).t equal to (vx, vy); the series that torch.where discards
+        # overflows from 50 rad and made the gradient nan.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        angles = (-300.0, -100.0, -41.0, 12.5, 37.7, 41.0, 100.0, 300.0)
+        v = torch.tensor([[1.0, 2.0, th] for th in angles], dtype=dtype)
+        # V(theta) (vx, vy) for the rounded angle, in float64 on the CPU (MPS has no float64)
+        th = v[..., 2].double()
+        a, b = torch.sin(th) / th, 2 * torch.sin(th / 2) ** 2 / th
+        x, y = v[..., 0].double(), v[..., 1].double()
+        t_ref = torch.stack((a * x - b * y, b * x + a * y), -1).to(device=device, dtype=dtype)
+        v = v.to(device).requires_grad_(True)
+        t = Se2.exp(v).t
+        self.assert_close(t, t_ref, rtol=16 * torch.finfo(dtype).eps, atol=0.0)
+        t.sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
+
+    def test_exp_gradient_below_the_switch_4924(self, device, dtype):
+        # Below 0.5 rad the angle gradient comes from the series: autograd of sin(theta) / theta is
+        # cos(theta) / theta - sin(theta) / theta^2, which cancels to a few hundred ulps at theta = 0.06.
+        # Reference: the derivative series of a = sin(theta) / theta and b = (1 - cos(theta)) / theta in float64.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        v = torch.tensor([[1.0, 2.0, 0.06], [1.0, 2.0, -0.3]], dtype=dtype)
+        th = v[..., 2].double()
+        da = sum((-1) ** k * 2 * k * th ** (2 * k - 1) / float(math.factorial(2 * k + 1)) for k in range(1, 12))
+        db = sum((-1) ** (k + 1) * (2 * k - 1) * th ** (2 * k - 2) / float(math.factorial(2 * k)) for k in range(1, 12))
+        # d sum(t) / d theta with t = (a x - b y, b x + a y)
+        x, y = v[..., 0].double(), v[..., 1].double()
+        ref = (da * (x + y) + db * (x - y)).to(device=device, dtype=dtype)
+        v = v.to(device).requires_grad_(True)
+        Se2.exp(v).t.sum().backward()
+        eps = torch.finfo(dtype).eps
+        self.assert_close(v.grad[..., 2], ref, rtol=8 * eps, atol=8 * eps)
 
     def test_exp_log_negative_angles_past_the_series_switch_4924(self, device, dtype):
         # The coefficients are even in theta, so exp and log evaluate them at |theta|. The So3 helper takes its
