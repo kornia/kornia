@@ -164,8 +164,9 @@ def create_meshgrid3d(
     normalized_coordinates: bool = True,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    """Generate a coordinate grid for an image.
+    r"""Generate a coordinate grid for an image.
 
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
@@ -173,6 +174,12 @@ def create_meshgrid3d(
     represented by ``0``, the centre of the normalized range. A zero spatial size
     produces a correspondingly empty grid; this differs from pixel-coordinate
     normalization, where a zero-sized coordinate system is undefined.
+
+    ``grid_sample`` has two such conventions, selected by its own ``align_corners``
+    flag, and ``align_corners`` here picks the matching one, exactly as in
+    :func:`create_meshgrid`. The channel order is kornia's ``(d, x, y)``; see the
+    Convention block of :func:`~kornia.geometry.transform.homography_warp3d` for the
+    reorder ``grid_sample`` needs.
 
     Args:
         depth: the image depth (channels).
@@ -183,9 +190,23 @@ def create_meshgrid3d(
           PyTorch function :py:func:`torch.nn.functional.grid_sample`.
         device: the device on which the grid will be generated.
         dtype: the data type of the generated grid.
+        align_corners: which normalization convention to use when
+          ``normalized_coordinates`` is ``True``. ``True`` maps voxel centers
+          :math:`[0, size-1]` to :math:`[-1, 1]`; ``False`` uses the half-pixel
+          mapping :math:`x_{norm} = (2x + 1) / W - 1`, where :math:`\pm 1` are the
+          outer voxel *edges*. Ignored when ``normalized_coordinates`` is ``False``.
 
     Return:
         grid tensor with shape :math:`(1, D, H, W, 3)`.
+
+    Example:
+        >>> create_meshgrid3d(2, 2, 2)[0, 0, 0]
+        tensor([[-1., -1., -1.],
+                [-1.,  1., -1.]])
+
+        >>> create_meshgrid3d(2, 2, 2, align_corners=False)[0, 0, 0]
+        tensor([[-0.5000, -0.5000, -0.5000],
+                [-0.5000,  0.5000, -0.5000]])
 
     """
     # See ``create_meshgrid``: ``arange`` keeps eager and captured pixel ramps identical at
@@ -205,13 +226,24 @@ def create_meshgrid3d(
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
             depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=work_dtype)
-            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, xs * 0.0)
-            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, ys * 0.0)
-            zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, zs * 0.0)
-        else:
+            if align_corners:
+                xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, xs * 0.0)
+                ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, ys * 0.0)
+                zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, zs * 0.0)
+            else:
+                # See ``create_meshgrid``: the half-pixel mapping lands a singleton axis on the
+                # centre without a special case.
+                xs = (2.0 * xs + 1.0) / width_t - 1.0
+                ys = (2.0 * ys + 1.0) / height_t - 1.0
+                zs = (2.0 * zs + 1.0) / depth_t - 1.0
+        elif align_corners:
             xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
             ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0
             zs = (zs / (depth - 1) - 0.5) * 2 if depth > 1 else zs * 0.0
+        else:
+            xs = (2.0 * xs + 1.0) / width - 1.0
+            ys = (2.0 * ys + 1.0) / height - 1.0
+            zs = (2.0 * zs + 1.0) / depth - 1.0
     if widened:
         xs = xs.to(ramp_dtype)
         ys = ys.to(ramp_dtype)

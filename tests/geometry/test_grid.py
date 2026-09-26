@@ -384,6 +384,30 @@ def test_create_meshgrid3d(device, dtype):
     )
 
 
+def test_create_meshgrid3d_align_corners(device, dtype):
+    # 3D twin of test_create_meshgrid_align_corners (#4503): True puts voxel centres 0 and size-1 at
+    # -1 and +1, False puts the outer voxel EDGES there. Channels are (d, x, y).
+    depth, height, width = 2, 3, 4
+    kw = {"device": device, "dtype": dtype}
+    grid_true = kornia.geometry.create_meshgrid3d(depth, height, width, True, align_corners=True, **kw)
+    grid_false = kornia.geometry.create_meshgrid3d(depth, height, width, True, align_corners=False, **kw)
+
+    # align_corners=True is the default, so the bare call must match it
+    assert_close(kornia.geometry.create_meshgrid3d(depth, height, width, True, **kw), grid_true)
+
+    assert_close(grid_true[0, 0, 0, 0], torch.tensor([-1.0, -1.0, -1.0], **kw))
+    assert_close(grid_true[0, -1, -1, -1], torch.tensor([1.0, 1.0, 1.0], **kw))
+    # False: centres land at (2p + 1)/size - 1, i.e. (d, x, y) = (-0.5, -0.75, -2/3) at the origin
+    assert_close(grid_false[0, 0, 0, 0], torch.tensor([-0.5, -0.75, -2.0 / 3.0], **kw))
+    assert_close(grid_false[0, -1, -1, -1], torch.tensor([0.5, 0.75, 2.0 / 3.0], **kw))
+
+    # align_corners is only about the normalization, so it is a no-op for voxel coordinates
+    assert_close(
+        kornia.geometry.create_meshgrid3d(depth, height, width, False, align_corners=True, **kw),
+        kornia.geometry.create_meshgrid3d(depth, height, width, False, align_corners=False, **kw),
+    )
+
+
 @pytest.mark.parametrize(("depth", "height", "width", "axis"), [(1, 4, 6, 0), (5, 1, 6, 2), (5, 4, 1, 1)])
 def test_normalized_meshgrid3d_singleton_axis_is_centered(depth, height, width, axis, device, dtype):
     grid = kornia.geometry.create_meshgrid3d(
