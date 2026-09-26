@@ -44,6 +44,17 @@ class NamedPose:
 
     Internally represented by either Se2 or Se3.
 
+    Convention:
+        - ``NamedPose(pose, frame_src="a", frame_dst="b")`` is ``b_from_a``: :meth:`transform_points` maps points in
+          frame ``a`` to frame ``b``, so ``NamedPose(pose, frame_src="1", frame_dst="0")`` is the ``trans_01`` of
+          :func:`~kornia.geometry.linalg.relative_transformation`.
+        - ``c_from_b * b_from_a`` is ``c_from_a``, whose matrix is ``c_from_b.pose.matrix() @ b_from_a.pose.matrix()``.
+          The left operand's ``frame_src`` must equal the right operand's ``frame_dst``, otherwise ``*`` raises
+          ``ValueError``; :meth:`inverse` inverts the pose and swaps the frame names.
+        - Known defect: the pose type is not validated, so an ``So3``, ``So2``, ``Quaternion`` or tensor is accepted
+          and :attr:`rotation` then raises ``AttributeError``; a product of an ``Se3`` pose and an ``Se2`` pose also
+          raises ``AttributeError`` instead of ``ValueError`` (`#4937 <https://github.com/kornia/kornia/issues/4937>`_).
+
     Example:
         >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
         >>> b_from_a
@@ -60,8 +71,8 @@ class NamedPose:
 
         Args:
             dst_from_src: Pose from source frame to destination frame.
-            frame_src: Name of frame a.
-            frame_dst: Name of frame b.
+            frame_src: Name of the source frame; a random unique name when omitted.
+            frame_dst: Name of the destination frame; a random unique name when omitted.
 
         """
         self._dst_from_src = dst_from_src

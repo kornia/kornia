@@ -116,7 +116,7 @@ precision, so the table says nothing about those backends.
      - ⚠️ Partial
      - ⚠️ Partial
      - 8 / 17
-     - Accuracy in boxes, depth and line utilities; bfloat16 ``NamedPose`` construction raises.
+     - Accuracy in boxes, depth and line utilities; a bfloat16 ``NamedPose`` of an ``Se2`` pose cannot be built (``So2`` stores a complex number).
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial

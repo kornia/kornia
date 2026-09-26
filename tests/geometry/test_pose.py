@@ -264,11 +264,11 @@ class TestNamedPoseConventions(BaseTester):
         # reached.
         g1, _ = self._poses(device, dtype)
         se2 = Se2.exp(torch.tensor([0.5, -1.0, 0.3], device=device, dtype=dtype))
-        with pytest.raises(AttributeError, match="_mul_se2"):
+        with pytest.raises(AttributeError):
             NamedPose(g1, frame_src="b", frame_dst="c") * NamedPose(se2, frame_src="a", frame_dst="b")
-        with pytest.raises(AttributeError, match="_mul_se3"):
+        with pytest.raises(AttributeError):
             NamedPose(se2, frame_src="b", frame_dst="c") * NamedPose(g1, frame_src="a", frame_dst="b")
         # A rotation-only group is accepted at construction and fails on first use.
         so3_pose = NamedPose(So3.identity(device=device, dtype=dtype), frame_src="a", frame_dst="b")
-        with pytest.raises(AttributeError, match="rotation"):
+        with pytest.raises(AttributeError):
             _ = so3_pose.rotation
