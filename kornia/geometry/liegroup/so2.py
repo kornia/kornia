@@ -316,8 +316,8 @@ class So2(nn.Module):
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             shape = (batch_size,)
         # a uniform rotation has a uniform angle on [-pi, pi). Independent uniform real and imaginary parts on
-        # [0, 1) gave |z| anywhere in (0, sqrt 2), so matrix() was a rotation scaled by |z|**2, and every angle
-        # was in the first quadrant (#4930).
+        # [0, 1) gave |z| anywhere in (0, sqrt 2), so matrix() was a rotation scaled by |z| (determinant |z|**2),
+        # and every angle was in the first quadrant (#4930).
         theta = (2 * torch.rand(shape, device=device, dtype=dtype) - 1) * torch.pi
         return cls.exp(theta)
 

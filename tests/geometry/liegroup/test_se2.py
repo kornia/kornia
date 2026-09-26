@@ -355,7 +355,7 @@ class TestSe2(BaseTester):
     def test_random_rotation_is_a_uniform_unit_rotation_4930(self, device, dtype):
         # #4930: Se2.random takes its rotation from So2.random, which was neither unit nor uniform in angle.
         if dtype not in (torch.float32, torch.float64):
-            pytest.skip("So2 is only implemented on complex64 and complex128")
+            pytest.skip("torch.complex has no bfloat16 overload and ComplexHalf support is experimental")
         torch.manual_seed(0)
         z = Se2.random(1000, device=device, dtype=dtype).so2.z
         self.assert_close(z.abs(), torch.ones(1000, device=device, dtype=dtype))

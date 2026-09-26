@@ -237,9 +237,9 @@ class TestSo2(BaseTester):
 
     def test_random_is_a_uniform_unit_rotation_4930(self, device, dtype):
         # #4930: random drew independent uniform real and imaginary parts on [0, 1), so |z| ranged over (0, sqrt 2),
-        # matrix() was a rotation scaled by |z|**2 with det down to 3.5e-6, and every angle was in [0, pi / 2).
+        # matrix() was a rotation scaled by |z| with det = |z|**2 down to 3.5e-6, and every angle was in [0, pi / 2].
         if dtype not in (torch.float32, torch.float64):
-            pytest.skip("So2 is only implemented on complex64 and complex128")
+            pytest.skip("torch.complex has no bfloat16 overload and linalg.det has no float16 CPU kernel")
         torch.manual_seed(0)
         s = So2.random(1000, device=device, dtype=dtype)
         self.assert_close(s.z.abs(), torch.ones(1000, device=device, dtype=dtype))
@@ -251,6 +251,8 @@ class TestSo2(BaseTester):
             for lo in (-torch.pi, -torch.pi / 2, 0.0, torch.pi / 2)
         ]
         assert min(counts) > 150, counts
+        # the draws reach both ends of the range: P(none of 1000 within 0.05 of -pi, or of pi) = 3e-4 each
+        assert theta.min() < -torch.pi + 0.05 and theta.max() > torch.pi - 0.05, (theta.min(), theta.max())
         self.assert_close(So2.random(device=device, dtype=dtype).z.abs(), torch.tensor(1.0, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
