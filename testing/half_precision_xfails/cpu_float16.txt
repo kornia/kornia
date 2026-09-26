@@ -299,7 +299,6 @@ call	builtins.NotImplementedError	tests/geometry/liegroup/test_se2.py::TestSe2::
 call	builtins.NotImplementedError	tests/geometry/liegroup/test_se2.py::TestSe2::test_random[cpu-float16-2]
 call	builtins.NotImplementedError	tests/geometry/liegroup/test_se2.py::TestSe2::test_random[cpu-float16-5]
 call	builtins.NotImplementedError	tests/geometry/liegroup/test_se2.py::TestSe2::test_random[cpu-float16-None]
-call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_exp_log[cpu-float16-None]
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul[cpu-float16-1]
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul[cpu-float16-5]
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul[cpu-float16-None]

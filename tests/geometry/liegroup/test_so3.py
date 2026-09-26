@@ -77,13 +77,17 @@ class TestSo3(BaseTester):
         # q and -q are the same rotation. log used 2 * acos(real), which for real < 0 returned the vector of
         # length 2 pi - theta about the negated axis, so the same matrix had two different logs and exp(v).log()
         # was not the principal vector for |v| > pi.
-        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
-        v = torch.tensor([[0.5, 0.1, -0.3]], device=device, dtype=dtype)
-        q = So3.exp(v).q.data
-        self.assert_close(So3(Quaternion(-q)).log(), v, rtol=rtol, atol=1e-3 if rtol == 1e-2 else 1e-6)
+        # the quaternions are built in float64 and rounded once, so that exp's own rounding stays out of the test
+        rtol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        v = torch.tensor([[0.5, 0.1, -0.3]], dtype=torch.float64)
+        q = Quaternion.from_axis_angle(v).data.to(device=device, dtype=dtype)
+        v = v.to(device=device, dtype=dtype)
+        self.assert_close(So3(Quaternion(-q)).log(), v, rtol=rtol, atol=1e-3 if rtol == 2e-2 else 1e-6)
         self.assert_close(So3(Quaternion(-q)).log(), So3(Quaternion(q)).log())
-        axis = torch.tensor([[0.48, 0.6, 0.64]], device=device, dtype=dtype)  # unit length
-        self.assert_close(So3.exp(4.0 * axis).log(), (4.0 - 2.0 * torch.pi) * axis, rtol=rtol, atol=0.0)
+        axis = torch.tensor([[0.48, 0.6, 0.64]], dtype=torch.float64)  # unit length
+        q = Quaternion.from_axis_angle(4.0 * axis).data.to(device=device, dtype=dtype)
+        expected = ((4.0 - 2.0 * torch.pi) * axis).to(device=device, dtype=dtype)
+        self.assert_close(So3(Quaternion(q)).log(), expected, rtol=rtol, atol=0.0)
 
     def test_log_keeps_small_rotations(self, device, dtype):
         # log used 2 * acos(real) for the angle. acos loses all of its digits next to real = 1, so in

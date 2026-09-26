@@ -191,8 +191,9 @@ class TestSe3(BaseTester):
         # V_inv(omega), a translation that was six orders of magnitude off. Both signs now give the principal log.
         theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-6}[dtype]
         rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
-        axis = torch.tensor([[0.48, 0.6, 0.64]], device=device, dtype=dtype)  # unit length
-        q = So3.exp(theta * axis).q.data
+        axis = torch.tensor([[0.48, 0.6, 0.64]], dtype=torch.float64)  # unit length
+        q = Quaternion.from_axis_angle(theta * axis).data.to(device=device, dtype=dtype)  # rounded once
+        axis = axis.to(device=device, dtype=dtype)
         t = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
         xi = Se3(So3(Quaternion(-q)), t).log()
         self.assert_close(xi, Se3(So3(Quaternion(q)), t).log())
