@@ -108,9 +108,10 @@ Rotations and rigid motions
 :class:`~kornia.geometry.quaternion.Quaternion` multiplies by the Hamilton product, so ``(q1 * q2).matrix()`` is
 ``q1.matrix() @ q2.matrix()``: the right operand acts first. The Lie groups :class:`~kornia.geometry.liegroup.So3`,
 :class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
-:class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``. Their tangent vectors
-put the rotation part, in radians, last: ``[υ, ω]`` for ``Se3`` and ``[vx, vy, θ]`` for ``Se2``. ``log`` is
-principal: its rotation angle is at most :math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
+:class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``. For ``So3`` and
+``Se3``, this assumes their stored quaternions have unit norm. Their tangent vectors put the rotation part, in radians,
+last: ``[υ, ω]`` for ``Se3`` and ``[vx, vy, θ]`` for ``Se2``. ``log`` is principal: its rotation angle is at most
+:math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
 :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
 ``trans_01`` maps frame-1 coordinates into frame 0, and
 :func:`~kornia.geometry.linalg.relative_transformation` of ``trans_01`` and ``trans_02`` is ``trans_12``;
@@ -127,7 +128,7 @@ principal: its rotation angle is at most :math:`\pi` in magnitude. The Jacobians
    * - quaternion storage
      - ``(w, x, y, z)``
      - ``Rotation.from_quat`` reads ``(x, y, z, w)`` unless ``scalar_first=True``
-     - Eigen's quaternion
+     - ``SO3::data()`` exposes Eigen's ``coeffs()`` order: ``(x, y, z, w)``
      - the ``Quaternion(w, x, y, z)`` constructor is scalar first, ``coeffs()`` is ``(x, y, z, w)``
    * - composition
      - ``a * b``, ``b`` acts first
