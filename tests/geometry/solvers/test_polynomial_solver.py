@@ -70,6 +70,45 @@ class TestQuadraticSolver(BaseTester):
         coeffs = torch.tensor([[1.0, -5.0, 6.0]], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.solve_quadratic, (coeffs,))
 
+    def test_stable_formula_4914(self, device, dtype):
+        # #4914: the direct quadratic formula loses the finite root through cancellation
+        # when |4ac| << b^2. The stable formulation should retain both real roots.
+        if dtype == torch.float16:
+            pytest.skip("1e-8 rounds to 0 in float16, and the root near -2e8 is beyond its range")
+        coeffs = torch.tensor([[1e-8, 2.0, -6.0]], device=device, dtype=dtype)
+        roots = solver.solve_quadratic(coeffs)
+
+        expected = torch.tensor([3.0, -2e8], device=device, dtype=dtype)
+        self.assert_close(roots[0], expected, rtol=1e-6, atol=1e-5)
+
+    def test_stable_formula_gradient_4914(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Gradient values are checked in float32 and float64.")
+        # By the implicit function theorem d root / d coeffs[k] = -root^(2 - k) / p'(root), with p'(r) = 2ar + b.
+        # (-b + sqrt(D)) / (2a) loses the root near 3 of 1e-8 x^2 + 2x - 6 to cancellation, and its gradient with
+        # it: d root / da came out as 3e8 in float32 and -4.96 instead of -4.5 in float64.
+        x = torch.tensor([[1e-8, 2.0, -6.0]], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quadratic(x)
+        for slot in range(2):
+            (grad,) = torch.autograd.grad(roots[0, slot], x, retain_graph=True)
+            r = roots[0, slot].detach()
+            expected = -torch.stack([r * r, r, torch.ones_like(r)]) / (2e-8 * r + 2.0)
+            self.assert_close(grad[0], expected, rtol=1e-5, atol=0.0)
+
+    def test_stable_formula_keeps_order_and_edge_gradients_4914(self, device, dtype):
+        # Slot 0 is (-b + sqrt(D)) / (2a) also for b == 0, where the sign of b does not pick the branch.
+        out = solver.solve_quadratic(torch.tensor([[1.0, 0.0, -4.0], [-1.0, 0.0, 4.0]], device=device, dtype=dtype))
+        self.assert_close(out, torch.tensor([[2.0, -2.0], [-2.0, 2.0]], device=device, dtype=dtype))
+        if dtype not in (torch.float32, torch.float64):
+            return
+        # c / q is only taken where the two real roots differ. With no real root and a tiny b, c / q^2 overflows,
+        # and torch.where would turn the row's zero gradient into nan. At the double root of x^2 - 6x + 9 both
+        # slots are -b / (2a), so the gradient of their sum is that of -b / a, [b / a^2, -1 / a, 0].
+        tiny = 1e-25 if dtype == torch.float32 else 1e-160
+        x = torch.tensor([[1.0, tiny, 1.0], [1.0, -6.0, 9.0]], device=device, dtype=dtype, requires_grad=True)
+        (grad,) = torch.autograd.grad(solver.solve_quadratic(x).sum(), x)
+        self.assert_close(grad, torch.tensor([[0.0, 0.0, 0.0], [-6.0, -1.0, 0.0]], device=device, dtype=dtype))
+
 
 class TestCubicSolver(BaseTester):
     def test_smoke(self, device, dtype):

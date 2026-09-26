@@ -75,9 +75,6 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_linear = a == 0
     mask_b_zero = b == 0
 
-    # Calculate 1/(2*a) for efficient computation
-    inv_2a = 0.5 / torch.where(mask_linear, one, a)
-
     # Branch-free selection so the function traces under graph capture. The square root is only taken
     # where delta > 0: a zero discriminant yields the double root -b/(2a) with sqrt_delta = 0, and a
     # negative one yields zeros; feeding those lanes a safe placeholder keeps their gradients finite.
@@ -87,8 +84,19 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
         mask_nonpositive, zero, torch.sqrt(torch.where(mask_nonpositive, torch.ones_like(delta), delta))
     )
 
-    root_plus = (-b + sqrt_delta) * inv_2a
-    root_minus = (-b - sqrt_delta) * inv_2a
+    # (-b +- sqrt(delta)) / (2a) subtracts nearly equal numbers for the root of smaller magnitude when
+    # |4ac| << b^2 (#4914). q = -(b + sign(b) sqrt(delta)) / 2 adds numbers of the same sign; the roots are
+    # q / a and c / q, which are (-b - sqrt(delta)) / (2a) and (-b + sqrt(delta)) / (2a) for b >= 0 and the
+    # other way round for b < 0. c / q is only taken where delta > 0 and a != 0, where |q| >= sqrt(delta) / 2 > 0;
+    # at a double root both slots are q / a = -b / (2a). Elsewhere a placeholder q keeps the discarded lane's
+    # gradient finite: with no real root and a tiny b, c / q^2 overflows and torch.where would turn it into nan.
+    sign_b = torch.where(b >= 0, one, -one)
+    q = -0.5 * (b + sign_b * sqrt_delta)
+    mask_distinct = ~(mask_nonpositive | mask_linear)
+    root_q_over_a = q / torch.where(mask_linear, one, a)
+    root_c_over_q = torch.where(mask_distinct, c / torch.where(mask_distinct, q, one), root_q_over_a)
+    root_plus = torch.where(b >= 0, root_c_over_q, root_q_over_a)
+    root_minus = torch.where(b >= 0, root_q_over_a, root_c_over_q)
 
     # The a * x^2 / b term is 0 in the forward pass, but it keeps the root's dependence on a in the
     # gradient (d root / da = -root^2 / b). With b == 0 as well there is no root to report. The lane
