@@ -20,6 +20,7 @@
 This package provides tracking algorithms and utilities, including planar homography tracking.
 """
 
+from .lucas_kanade import track_points_lk
 from .planar_tracker import HomographyTracker
 
-__all__ = ["HomographyTracker"]
+__all__ = ["HomographyTracker", "track_points_lk"]
