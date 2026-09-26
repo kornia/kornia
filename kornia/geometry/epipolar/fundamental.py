@@ -66,7 +66,10 @@ def normalize_points(
         # Accumulate in at least float32: in half precision a sum followed by a division rounds twice where
         # ``mean`` rounds once, and uniform weights would then not reproduce the unweighted statistics.
         acc_dtype = torch.promote_types(dtype, torch.float32)
-        positive_weights = weights.to(acc_dtype).clamp_min(0)
+        # Negative weights count as zero. ``where`` rather than ``clamp_min(0)``: the clamp's derivative at the bound
+        # depends on the torch version (#4229), and a weight of exactly 0 is how a correspondence is dropped.
+        positive_weights = weights.to(acc_dtype)
+        positive_weights = torch.where(positive_weights < 0, 0.0, positive_weights)
         total_weight = positive_weights.sum(dim=1, keepdim=True)
         # A fully de-weighted sample is degenerate; keep its normalization finite and batched.
         effective_weights = torch.where(total_weight > 0, positive_weights, torch.ones_like(positive_weights))
@@ -327,14 +330,14 @@ def run_8point(
             # Accumulate via einsum (saves bandwidth for huge N)
             M = torch.einsum("bni,bnj->bij", A, A)
     else:
-        w = weights.clamp_min(0)
+        # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence, and
+        # its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient through
+        # at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on every version.
+        w = torch.where(weights < 0, 0.0, weights)
         if N < use_einsum_at_more_than_points:
-            # Scale one factor by w instead of both by sqrt(w). Both build the same
-            # A^T W A, but sqrt has an unbounded derivative at 0, and a weight of 0 is
-            # the documented way to drop a correspondence, so the sqrt form makes the
-            # gradient there NaN on torch <= 2.9 and 0 on torch >= 2.14, where the
-            # one-sided derivative is finite and nonzero. This form is linear in w and
-            # differentiable at 0, and is how the einsum branch below already weights.
+            # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the derivative
+            # of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in w, like the
+            # einsum branch below.
             Aw = A * w.unsqueeze(-1)
             M = Aw.transpose(-2, -1).contiguous() @ A
         else:
