@@ -97,17 +97,23 @@ class TestSe2(BaseTester):
         v = torch.tensor([[1.0, 2.0, 0.4]], device=device, dtype=torch.float64)
         self.gradcheck(lambda x: Se2.exp(x).matrix(), (v,))
 
-    def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
+    def test_gradient_at_the_identity_4404_4924(self, device, dtype):
         # #4404: both quotients that build the translation block are 0/0 at theta = 0, and the
         # torch.where that discards them still differentiates them, so 0 * nan = nan reached the
-        # gradient at the identity even though the forward returned the correct zero translation.
+        # gradient at the identity. #4924: the value that where fell back to there was 0 where the
+        # limit is 1, so the (vx, vy) gradient of exp(v).t was 0 and the theta gradient of log was
+        # nan. Pin the values: with t = V(theta) (vx, vy), d sum(matrix()) / dv is
+        # [1, 1, (vx - vy) / 2] at theta = 0 and d sum(log(exp(v))) / dv is [1, 1, 1].
         if dtype == torch.bfloat16:
             # Se2 holds its rotation as a complex So2, and torch.complex has no bfloat16 overload,
             # so most of this class already cannot run at that dtype -- unrelated to the guard.
             pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
-        v = torch.zeros(1, 3, device=device, dtype=dtype, requires_grad=True)
+        v = torch.tensor([[1.0, 2.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         Se2.exp(v).matrix().sum().backward()
-        assert bool(torch.isfinite(v.grad).all()), v.grad
+        self.assert_close(v.grad, torch.tensor([[1.0, 1.0, -0.5]], device=device, dtype=dtype))
+        v.grad = None
+        Se2.exp(v).log().sum().backward()
+        self.assert_close(v.grad, torch.tensor([[1.0, 1.0, 1.0]], device=device, dtype=dtype))
 
     # TODO: implement me
     def test_jit(self, device, dtype):
@@ -175,26 +181,44 @@ class TestSe2(BaseTester):
     def test_exp(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = torch.zeros(batch_size if batch_size is not None else (), device=device, dtype=dtype)
-        z = torch.zeros((batch_size, 2) if batch_size is not None else (2,), device=device, dtype=dtype)
         s = Se2.exp(torch.cat((t, theta[..., None]), -1))
         self.assert_close(s.r.z, So2.exp(theta).z)
-        self.assert_close(s.t, z)
+        # V(0) is the identity, so a pure translation keeps its translation (#4924)
+        self.assert_close(s.t, t)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_log(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         s = Se2(So2.identity(batch_size, device, dtype), t)
-        s.log()
-        zero_vec = torch.zeros(3, device=device, dtype=dtype)
-        if batch_size is not None:
-            zero_vec = zero_vec.repeat(batch_size, 1)
-        self.assert_close(s.log(), zero_vec)
+        # V(0)^-1 is the identity, so the log of a pure translation is (t, 0) (#4924)
+        self.assert_close(s.log(), torch.cat((t, torch.zeros_like(t[..., :1])), -1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
         a = self._make_rand_data(device, dtype, (batch_size, 3))
         b = Se2.exp(a).log()
         self.assert_close(b, a, low_tolerance=True)
+
+    def test_exp_log_keep_small_rotations_4924(self, device, dtype):
+        # #4924: exp guarded a = sin(theta) / theta and b = (1 - cos(theta)) / theta with a fallback of 0
+        # at theta = 0, where their limits are 1 and 0, and log guarded (theta / 2) cot(theta / 2) the same
+        # way, so a pure translation went into and out of the tangent space as [0, 0]. Just above
+        # theta = 0 the closed forms cancelled: exp(v).t was off by 1e-4 and log(exp(v)) by 2.0 at
+        # theta = 1e-4 in float32 (2e-2 in float16, 1e-8 in float64).
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        theta = {torch.float16: 2e-2, torch.float32: 1e-4}.get(dtype, 1e-8)
+        v = torch.tensor([[1.0, 2.0, 0.0], [1.0, 2.0, theta], [1.0, 2.0, -theta]], device=device, dtype=dtype)
+        # V(theta) (vx, vy) in float64 without cancellation: 1 - cos(theta) = 2 sin(theta / 2)^2
+        th = v[..., 2].double()
+        a = torch.where(th == 0, torch.ones_like(th), torch.sin(th) / th)
+        b = torch.where(th == 0, torch.zeros_like(th), 2 * torch.sin(th / 2) ** 2 / th)
+        x, y = v[..., 0].double(), v[..., 1].double()
+        t_ref = torch.stack((a * x - b * y, b * x + a * y), -1).to(dtype)
+        eps = torch.finfo(dtype).eps
+        self.assert_close(Se2.exp(v).t, t_ref, rtol=8 * eps, atol=8 * eps)
+        g = Se2(So2.exp(v[..., 2]), t_ref)  # the element exp(v), rounded to dtype
+        self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
