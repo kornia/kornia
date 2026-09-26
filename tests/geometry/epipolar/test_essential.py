@@ -569,8 +569,8 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
             epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2, -t), rtol=1e-3, atol=1e-3
         )
 
-    @pytest.mark.xfail(reason="skip the tests where there are no solutions.")
     def test_consistency(self, device, dtype):
+        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
         scene = generate_two_view_random_scene(device, dtype)
 
         R1, t1 = scene["R1"], scene["t1"]
@@ -998,10 +998,10 @@ class TestConventionEssential(BaseTester):
         self.assert_close(R_one, R, rtol=1e-4, atol=1e-4)
         self.assert_close(t_one, t_unit, rtol=1e-4, atol=1e-4)
 
-    def test_wart_decompose_no_svd_batch_non_rotations_4880(self, device, dtype):
+    def test_decompose_no_svd_batch_matches_single_4880(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        # #4880: the rotation normaliser sums over the whole batch, so a batch of two copies of E returns non-rotations,
-        # while the same E alone returns rotations.
+        # #4880 (fixed): the rotation normaliser used to sum over the whole batch, so a batch of two copies of E
+        # returned non-rotations. Each element is now normalised on its own and matches the unbatched result.
         E = _gt_essential(two_view)
         eye = torch.eye(3, device=device, dtype=torch.float32)
 
@@ -1009,10 +1009,14 @@ class TestConventionEssential(BaseTester):
             Rm = Rm.float()
             return (Rm @ Rm.transpose(-2, -1) - eye).norm(dim=(-2, -1))
 
-        R1, R2, _ = epi.decompose_essential_matrix_no_svd(E)
+        R1, R2, t = epi.decompose_essential_matrix_no_svd(E)
         assert orthogonality_error(R1).max() < 0.25 and orthogonality_error(R2).max() < 0.25
-        R1b, R2b, _ = epi.decompose_essential_matrix_no_svd(torch.cat([E, E]))
-        assert (orthogonality_error(R1b) > 1.0).all() and (orthogonality_error(R2b) > 1.0).all()
+        for B in (2, 3):
+            R1b, R2b, tb = epi.decompose_essential_matrix_no_svd(E.repeat(B, 1, 1))
+            assert orthogonality_error(R1b).max() < 0.25 and orthogonality_error(R2b).max() < 0.25
+            self.assert_close(R1b, R1.expand_as(R1b))
+            self.assert_close(R2b, R2.expand_as(R2b))
+            self.assert_close(tb, t.expand_as(tb))
 
     def test_wart_choose_solution_batched_uses_element0_index_2198(self, device, dtype):
         two_view = two_view_scene(device, dtype)
