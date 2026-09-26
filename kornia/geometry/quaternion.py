@@ -66,7 +66,7 @@ class Quaternion(nn.Module):
           ``+``, ``-``, ``*`` or ``/`` is the real quaternion ``[s, 0, 0, 0]``, and a tensor holds one such scalar per
           quaternion of the batch.
         - Nothing normalises the stored data or the results of ``*``, ``**`` and ``inv()``. ``matrix()``,
-          ``to_axis_angle()``, ``polar_angle`` and ``slerp`` read only the direction of ``q``, so any non-zero scale
+          ``to_axis_angle()``, ``polar_angle`` and ``slerp`` read only the direction of ``q``, so any positive scale
           gives the same result.
         - Known defects: ``to_euler()`` of a non-unit ``q`` returns wrong angles
           (`#3953 <https://github.com/kornia/kornia/issues/3953>`_); the gradient of ``polar_angle`` is NaN at the
@@ -686,10 +686,13 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     r"""Compute (weighted) average of multiple quaternions.
 
     Convention:
-        - The chordal mean of scipy's ``Rotation.mean``: the eigenvector of :math:`\sum_i w_i q_i q_i^\top` with the
-          largest eigenvalue. ``q_i`` and ``-q_i`` count the same, and the sign of the result is arbitrary.
-        - Only the ratios of ``w`` matter, and negative weights are not rejected. The members are not normalised, so
-          a member of norm ``n`` counts with an extra weight ``n**2``.
+        - The chordal mean of scipy's ``Rotation.mean``: the eigenvector of
+          :math:`\sum_i w_i q_i q_i^\top / \sum_i w_i` with the largest eigenvalue. ``q_i`` and ``-q_i`` count the
+          same, and the sign of the result is arbitrary.
+        - Only the ratios of ``w`` matter.
+        - Known defect: the members are not normalised, so a member of norm ``n`` counts with an extra weight
+          ``n**2``, and negative weights are not rejected
+          (`#4974 <https://github.com/kornia/kornia/issues/4974>`_).
 
     Args:
         Q (Quaternion): quaternion object containing data of shape (M, 4).

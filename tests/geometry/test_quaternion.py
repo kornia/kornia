@@ -534,6 +534,11 @@ class TestQuaternionConventions(BaseTester):
         self.assert_close((2.0 * q).data, 2.0 * data)
         self.assert_close((q * torch.tensor([2.0], device=device, dtype=dtype)).data, 2.0 * data)
         self.assert_close((q / 2.0).data, 0.5 * data)
+        # a tensor holds one scalar per quaternion of the batch
+        batch = torch.cat((data, 2.0 * data))
+        per_item = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
+        self.assert_close((Quaternion(batch) + per_item).data, batch + per_item[:, None] * real)
+        self.assert_close((Quaternion(batch) * per_item).data, batch * per_item[:, None])
 
     def test_convention_quaternion_matrix_normalises(self, device, dtype):
         data = torch.tensor([[2.0, 0.2, -0.6, 0.4]], device=device, dtype=dtype)
@@ -556,6 +561,8 @@ class TestQuaternionConventions(BaseTester):
         assert angle.shape == (1,)
         self.assert_close(angle, expected)
         self.assert_close(Quaternion(3.0 * data).polar_angle, expected)
+        # the range is [0, pi]: -q, the same rotation, has the supplementary angle
+        self.assert_close(Quaternion(-data).polar_angle, math.pi - expected)
 
     def test_convention_quaternion_slerp_normalises_inputs(self, device, dtype):
         q1 = self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype)
@@ -574,6 +581,14 @@ class TestQuaternionConventions(BaseTester):
             dtype=dtype,
         )
         self.assert_close(a.slerp(b, 0.3).data, expected)
+
+    def test_convention_quaternion_slerp_extrapolates_outside_unit_interval(self, device, dtype):
+        q1 = Quaternion(self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype))
+        q2 = Quaternion(self._unit([[0.7, -0.4, 0.2, 0.5]], device, dtype))
+        # t is not validated or clamped: t = 2 continues the arc by one more step, q1 (q1^-1 q2)^2 = q2 q1^-1 q2,
+        # and t = -1 steps back from q1, q1 (q1^-1 q2)^-1 = q1 q2^-1 q1
+        self.assert_close(q1.slerp(q2, 2.0).data, (q2 * q1.conj() * q2).data)
+        self.assert_close(q1.slerp(q2, -1.0).data, (q1 * q2.conj() * q1).data)
 
     def test_convention_average_quaternions_is_the_chordal_mean(self, device, dtype):
         # The weighted chordal (eigenvector) mean of Markley et al., "Averaging Quaternions" (2007), the same as
@@ -608,3 +623,19 @@ class TestQuaternionConventions(BaseTester):
         q = self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype).requires_grad_(True)
         Quaternion(q).polar_angle.sum().backward()
         assert bool(torch.isfinite(q.grad).all()), q.grad
+
+    def test_wart_average_quaternions_weights_by_member_norm_4974(self, device, dtype):
+        # https://github.com/kornia/kornia/issues/4974: average_quaternions forms sum_i w_i q_i q_i^T from the stored
+        # quaternions, so a member stored as 3 q counts 9 times, while every other rotation of Quaternion ignores a
+        # positive scale; and a negative weight is accepted where scipy's Rotation.mean raises. This test turns red
+        # when the members are normalised or negative weights are rejected.
+        rotvecs = torch.tensor([[0.9, -0.3, 0.2], [-0.2, 1.1, 0.5]], dtype=torch.float64)
+        data = Quaternion.from_axis_angle(rotvecs).data.to(device=device, dtype=dtype)
+        unit = average_quaternions(Quaternion(data)).to_axis_angle()
+        scaled = average_quaternions(Quaternion(torch.stack((3.0 * data[0], data[1])))).to_axis_angle()
+        # the same rotations, one stored at norm 3: scipy's mean with weights [9, 1] is [0.839, -0.208, 0.224], the
+        # unweighted mean [0.382, 0.420, 0.373]
+        assert (scaled - unit).abs().max() > 0.3
+        weights = torch.tensor([1.0, -0.5], device=device, dtype=dtype)
+        out = average_quaternions(Quaternion(data), w=weights)
+        assert bool(torch.isfinite(out.data).all())

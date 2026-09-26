@@ -604,6 +604,21 @@ class TestSo3Conventions(BaseTester):
         self.assert_close(So3(Quaternion(data).normalize()).matrix(), Quaternion(data).matrix())
         self.assert_close((So3(Quaternion(data).normalize()) * p).norm(dim=-1), p.norm(dim=-1))
 
+    def test_wart_so3_from_matrix_accepts_a_reflection_4773(self, device, dtype):
+        # #4773 https://github.com/kornia/kornia/issues/4773: from_matrix does not reject an improper matrix
+        # (det = -1). It returns a non-unit quaternion, and for diag(-1, 1, 1) its rotation is the identity. This
+        # test turns red when from_matrix rejects a reflection or returns anything else for it.
+        flip = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
+        s = So3.from_matrix(flip)
+        self.assert_close(s.log(), torch.zeros(3, device=device, dtype=dtype))
+        assert bool((s.q.norm() < 0.9).all()), s.q.norm()
+        rotation = So3.exp(torch.tensor([0.3, -0.5, 0.2], device=device, dtype=dtype)).matrix()
+        assert bool((So3.from_matrix(rotation @ flip).q.norm() < 0.9).all())
+        # control: a proper rotation gives a unit quaternion with the same matrix
+        proper = So3.from_matrix(rotation)
+        self.assert_close(proper.q.norm(), torch.ones((), device=device, dtype=dtype))
+        self.assert_close(proper.matrix(), rotation)
+
     def test_wart_rotation_state_not_registered_4923(self, device, dtype):
         # #4923 https://github.com/kornia/kornia/issues/4923: a Quaternion built from a plain tensor keeps it as an
         # unregistered attribute, so a module holding it (directly or through So3) saves no key for the rotation,
