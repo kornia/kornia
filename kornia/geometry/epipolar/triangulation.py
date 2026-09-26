@@ -117,7 +117,8 @@ def triangulate_points(
           sight, possibly behind the camera or at infinity (NaN), and ``"cofactor"`` returns NaN.
         - A correspondence at infinity, whose homogeneous ``w`` is at the roundoff of the input and compute dtypes,
           returns NaN. In float16 and bfloat16 that roundoff also covers a point a few tens of units away in the
-          scale of ``t``.
+          scale of ``t``. Mask those rows before a loss (``out[~out.isnan().any(-1)]``); the gradients with respect
+          to the cameras and the other points stay finite.
         - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS;
           ``"cofactor"`` solves in float32, or in float64 for float64 input. All return the input dtype;
           ``solver`` below compares their accuracy.

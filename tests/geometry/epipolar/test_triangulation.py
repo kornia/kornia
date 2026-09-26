@@ -421,6 +421,25 @@ class TestConventionTriangulation(BaseTester):
             assert torch.isfinite(epi.triangulate_points(P1, P2, two_view["x1"], two_view["x2"], solver=solver)).all()
             assert torch.isfinite(epi.triangulate_points(P1, P2, x1_far, x2_far, solver=solver)).all()
 
+    def test_convention_triangulate_points_masked_infinity_keeps_gradients_finite(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the gradient check of the NaN mask runs in float32 and float64")
+        two_view = two_view_scene(device, dtype)
+        # A point at infinity is NaN, but masking its row before the loss leaves every gradient finite, including
+        # the cameras' gradients, which sum over all rows: the NaN is substituted, not produced by the solve.
+        P1, P2, d = two_view["P1"], two_view["P2"], two_view["X"]
+        x1_inf = _dehom(d[..., :1, :] @ P1[..., :3].transpose(-2, -1))
+        x2_inf = _dehom(d[..., :1, :] @ P2[..., :3].transpose(-2, -1))
+        for solver in SOLVERS:
+            p1, p2 = P1.clone().requires_grad_(), P2.clone().requires_grad_()
+            x1 = torch.cat([two_view["x1"], x1_inf], -2).requires_grad_()
+            x2 = torch.cat([two_view["x2"], x2_inf], -2).requires_grad_()
+            out = epi.triangulate_points(p1, p2, x1, x2, solver=solver)
+            finite = ~out.isnan().any(-1)
+            assert not finite[..., -1].any() and finite[..., :-1].all()
+            for grad in torch.autograd.grad(out[finite].sum(), (p1, p2, x1, x2)):
+                assert torch.isfinite(grad).all()
+
     def test_convention_triangulate_cofactor_half_precision_is_finite(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         if dtype not in (torch.float16, torch.bfloat16):
