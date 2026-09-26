@@ -186,6 +186,38 @@ class TestSe3(BaseTester):
             zero_vec = zero_vec.repeat(batch_size, 1)
         self.assert_close(s.log(), torch.cat((t, zero_vec), -1))
 
+    def test_log_is_principal_4925(self, device, dtype):
+        # Se3.log inherits So3.log: a small rotation stored with real < 0 got |omega| close to 2 pi and, through
+        # V_inv(omega), a translation that was six orders of magnitude off. Both signs now give the principal log.
+        theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-6}[dtype]
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        axis = torch.tensor([[0.48, 0.6, 0.64]], device=device, dtype=dtype)  # unit length
+        q = So3.exp(theta * axis).q.data
+        t = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        xi = Se3(So3(Quaternion(-q)), t).log()
+        self.assert_close(xi, Se3(So3(Quaternion(q)), t).log())
+        self.assert_close(xi[..., 3:], theta * axis, rtol=rtol, atol=0.0)
+        self.assert_close(xi[..., :3], t, rtol=0.0, atol=3.0 * theta)
+        # every random pose logs to a principal rotation vector
+        torch.manual_seed(0)
+        omega = Se3.random(64, device=device, dtype=dtype).log()[..., 3:]
+        assert bool((omega.norm(dim=-1) <= torch.pi * (1 + rtol)).all())
+
+    def test_exp_log_keep_small_rotations(self, device, dtype):
+        # V and V_inv are built from (1 - cos theta) / theta**2 and friends, which evaluate to exactly 0
+        # for theta <= 1e-4 in float32 (1e-8 in float64) and lose most of their digits well above that,
+        # so the rotation-coupled part of the translation vanished for small rotations.
+        theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-8}[dtype]
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        v = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0, theta]], device=device, dtype=dtype)
+        t = Se3.exp(v).t
+        # translating along x while turning by theta about z ends at ((sin theta) / theta, (1 - cos theta) / theta, 0)
+        expected_y = torch.tensor(theta / 2 - theta**3 / 24, device=device, dtype=dtype)
+        self.assert_close(t[0, 1], expected_y, rtol=rtol, atol=0.0)
+        self.assert_close(t[0, 2], torch.zeros((), device=device, dtype=dtype))
+        v = torch.tensor([[1.0, 2.0, 3.0, 0.6 * theta, 0.0, 0.8 * theta]], device=device, dtype=dtype)
+        self.assert_close(Se3.exp(v).log(), v, rtol=rtol, atol=0.0)
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
         a = self._make_rand_data(device, dtype, batch_size, dims=6)

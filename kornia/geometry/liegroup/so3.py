@@ -26,10 +26,45 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.tensor_wrapper import _unwrap
-from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
-from kornia.geometry.linalg import batched_dot_product
+from kornia.geometry.conversions import quaternion_to_axis_angle, vector_to_skew_symmetric_matrix
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
+
+
+def so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    r"""Evaluate the three angle coefficients of the SO(3) and SE(3) closed forms without cancellation.
+
+    Returns :math:`(1 - \cos\theta) / \theta^2`, :math:`(\theta - \sin\theta) / \theta^3` and
+    :math:`(1 - \tfrac{\theta}{2}\cot\tfrac{\theta}{2}) / \theta^2`, the coefficients of :math:`[\omega]_\times`
+    and :math:`[\omega]_\times^2` in the SO(3) Jacobians, in the SE(3) :math:`V` matrix and in its inverse.
+
+    Each closed form is a 0/0 at :math:`\theta = 0` and keeps only about :math:`\epsilon / \theta^2` of its
+    relative accuracy near it: all three evaluate to exactly 0 in float32 for :math:`\theta \le 10^{-4}` and in
+    float64 for :math:`\theta \le 10^{-8}`. Below ``theta_small`` the Taylor series through :math:`\theta^{10}`
+    is used instead. At the switch point the series is accurate to a fraction of an ulp and the closed forms to a
+    few hundred ulps, so the two branches agree there.
+
+    Args:
+        theta: rotation angles of any shape, non-negative.
+
+    Returns:
+        the three coefficients, each with the shape of ``theta``.
+    """
+    theta_small = 0.2 if theta.dtype == torch.float64 else 0.5
+    small = theta < theta_small
+    safe_theta = torch.where(small, torch.ones_like(theta), theta)
+    t2 = theta * theta
+    a_series = 0.5 + t2 * (-1 / 24 + t2 * (1 / 720 + t2 * (-1 / 40320 + t2 * (1 / 3628800 - t2 / 479001600))))
+    b_series = 1 / 6 + t2 * (-1 / 120 + t2 * (1 / 5040 + t2 * (-1 / 362880 + t2 * (1 / 39916800 - t2 / 6227020800))))
+    c_series = 1 / 12 + t2 * (
+        1 / 720 + t2 * (1 / 30240 + t2 * (1 / 1209600 + t2 * (1 / 47900160 + t2 * (691 / 1307674368000))))
+    )
+    safe_sq = safe_theta * safe_theta
+    half = 0.5 * safe_theta
+    a = torch.where(small, a_series, (1 - torch.cos(safe_theta)) / safe_sq)
+    b = torch.where(small, b_series, (safe_theta - torch.sin(safe_theta)) / (safe_sq * safe_theta))
+    c = torch.where(small, c_series, (1 - half * torch.cos(half) / torch.sin(half)) / safe_sq)
+    return a, b, c
 
 
 class So3(nn.Module):
@@ -142,33 +177,17 @@ class So3(nn.Module):
         """Convert elements of lie group  to elements of lie algebra.
 
         Example:
-            >>> data = torch.ones((2, 4))
-            >>> q = Quaternion(data)
-            >>> So3(q).log()
+            >>> So3.identity(batch_size=2).log()
             tensor([[0., 0., 0.],
                     [0., 0., 0.]])
 
         """
-        vec, real = self.q.vec, self.q.real
-        vec_sq = batched_dot_product(vec, vec)
-        nonzero = vec_sq > 0
-        # Each branch below is singular exactly where the other one is selected, and torch.where
-        # differentiates both: at the identity (vec = 0) sqrt and the division by theta diverge,
-        # and at a half turn (real = 0) the small-angle branch divides by zero. Either way
-        # 0 * inf = nan used to reach every coefficient of a gradient whose value was finite.
-        # Substitute a safe argument into each branch -- the where discards those values, so only
-        # the gradients change.
-        safe_vec_sq = torch.where(nonzero, vec_sq, torch.ones_like(vec_sq))
-        theta = torch.where(nonzero, safe_vec_sq.sqrt(), torch.zeros_like(vec_sq))
-        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
-        safe_real = torch.where(nonzero, real, torch.zeros_like(real))
-        safe_real_recip = torch.where(nonzero, torch.ones_like(real), real)
+        # quaternion_to_axis_angle is the principal logarithm and it measures the angle with atan2: q and -q, the
+        # same rotation, give the same vector with |theta| <= pi (#4925), a rotation below 1e-4 rad in float32 keeps
+        # its digits instead of collapsing to 0 through 2 * acos(real) (#4897), and the identity keeps the finite
+        # gradient 2 * vec / real of #4404.
         # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
-        return torch.where(
-            nonzero[..., None],
-            2 * safe_real[..., None].acos() * vec / safe_theta[..., None],
-            2 * vec / safe_real_recip[..., None],
-        )
+        return quaternion_to_axis_angle(_unwrap(self.q.data))
 
     @staticmethod
     def hat(v: Vector3 | torch.Tensor) -> torch.Tensor:
@@ -412,12 +431,9 @@ class So3(nn.Module):
         KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
+        a, b, _ = so3_small_angle_coefficients(theta)
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
-        return (
-            I
-            - ((1 - torch.cos(theta)) / theta**2) * R_skew
-            + ((theta - torch.sin(theta)) / theta**3) * (R_skew @ R_skew)
-        )
+        return I - a * R_skew + b * (R_skew @ R_skew)
 
     @staticmethod
     def Jr(vec: torch.Tensor) -> torch.Tensor:
@@ -447,12 +463,9 @@ class So3(nn.Module):
         KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
+        a, b, _ = so3_small_angle_coefficients(theta)
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
-        return (
-            I
-            + ((1 - torch.cos(theta)) / theta**2) * R_skew
-            + ((theta - torch.sin(theta)) / theta**3) * (R_skew @ R_skew)
-        )
+        return I + a * R_skew + b * (R_skew @ R_skew)
 
     @staticmethod
     def Jl(vec: torch.Tensor) -> torch.Tensor:

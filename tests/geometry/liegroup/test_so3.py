@@ -73,6 +73,46 @@ class TestSo3(BaseTester):
         So3(Quaternion(half_turn)).log().sum().backward()
         assert bool(torch.isfinite(half_turn.grad).all()), half_turn.grad
 
+    def test_log_is_principal_4925(self, device, dtype):
+        # q and -q are the same rotation. log used 2 * acos(real), which for real < 0 returned the vector of
+        # length 2 pi - theta about the negated axis, so the same matrix had two different logs and exp(v).log()
+        # was not the principal vector for |v| > pi.
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        v = torch.tensor([[0.5, 0.1, -0.3]], device=device, dtype=dtype)
+        q = So3.exp(v).q.data
+        self.assert_close(So3(Quaternion(-q)).log(), v, rtol=rtol, atol=1e-3 if rtol == 1e-2 else 1e-6)
+        self.assert_close(So3(Quaternion(-q)).log(), So3(Quaternion(q)).log())
+        axis = torch.tensor([[0.48, 0.6, 0.64]], device=device, dtype=dtype)  # unit length
+        self.assert_close(So3.exp(4.0 * axis).log(), (4.0 - 2.0 * torch.pi) * axis, rtol=rtol, atol=0.0)
+
+    def test_log_keeps_small_rotations(self, device, dtype):
+        # log used 2 * acos(real) for the angle. acos loses all of its digits next to real = 1, so in
+        # float32 every rotation below 1e-4 rad came back as exactly 0 and 1e-3 rad came back 2% short.
+        # quaternion_to_axis_angle measures the same angle with atan2 and keeps full precision.
+        theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-8}[dtype]
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        v = torch.tensor([[0.6, 0.0, 0.8]], device=device, dtype=dtype) * theta
+        self.assert_close(So3.exp(v).log(), v, rtol=rtol, atol=0.0)
+        # the half turn, where real = 0, keeps its value
+        half_turn = So3(Quaternion(torch.tensor([[0.0, 0.0, 1.0, 0.0]], device=device, dtype=dtype)))
+        self.assert_close(half_turn.log(), torch.tensor([[0.0, torch.pi, 0.0]], device=device, dtype=dtype))
+
+    def test_jacobians_keep_small_rotations(self, device, dtype):
+        # (1 - cos theta) / theta**2 and (theta - sin theta) / theta**3 are 0/0 at theta = 0 and evaluate
+        # to exactly 0 instead of 1/2 and 1/6 for theta <= 1e-4 in float32 (1e-8 in float64), so the
+        # Jacobians were nan at the identity and the identity matrix next to it.
+        theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-8}[dtype]
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        I = torch.eye(3, device=device, dtype=dtype)  # noqa: E741
+        zero = torch.zeros(1, 3, device=device, dtype=dtype)
+        self.assert_close(So3.right_jacobian(zero)[0], I)
+        self.assert_close(So3.left_jacobian(zero)[0], I)
+        v = torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype) * theta
+        # for a rotation about z the [0, 1] entry is (1 - cos theta) / theta = theta / 2 - theta**3 / 24
+        expected = torch.tensor(theta / 2 - theta**3 / 24, device=device, dtype=dtype)
+        self.assert_close(So3.right_jacobian(v)[0, 0, 1], expected, rtol=rtol, atol=0.0)
+        self.assert_close(So3.left_jacobian(v)[0, 0, 1], -expected, rtol=rtol, atol=0.0)
+
     def test_convention_log_identity_gradient_is_the_on_manifold_limit_4404(self, device, dtype):
         # The value the guard leaves in place, pinned rather than merely asserted finite: at the
         # identity log evaluates 2 * vec / real, so d(omega_x)/dq_x = 2 -- exact in every dtype,
