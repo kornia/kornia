@@ -127,10 +127,24 @@ class TestNamedPose(BaseTester):
             b_from_a.pose.matrix(), NamedPose.from_rt(So2.from_matrix(rotation), translation).pose.matrix()
         )
 
-    def test_from_rt_tensor_batch_translation_mismatch(self, device, dtype):
-        rotation = So3.random(2, device=device, dtype=dtype).matrix()
+    @pytest.mark.parametrize(
+        ("rotation_shape", "translation_shape"),
+        [
+            ((2, 3, 3), (1, 3)),
+            ((2, 3, 3), (3,)),
+            ((1, 3, 3), (3,)),
+            ((3, 3), (1, 3)),
+            ((2, 2, 2), (2,)),
+            ((2, 2), (1, 2)),
+        ],
+    )
+    def test_from_rt_tensor_batch_translation_mismatch(self, device, dtype, rotation_shape, translation_shape):
+        # The translation must carry exactly the rotation's batch shape, as with So3/So2 rotations: neither a
+        # broadcast translation nor a batched translation for an unbatched rotation is accepted.
+        rotation = torch.eye(rotation_shape[-1], device=device, dtype=dtype).expand(*rotation_shape)
+        translation = torch.zeros(*translation_shape, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="translation must have shape"):
-            NamedPose.from_rt(rotation, torch.rand(1, 3, device=device, dtype=dtype))
+            NamedPose.from_rt(rotation, translation)
 
     def test_from_matrix(self, device, dtype):
         b_from_a_matrix = Se3.identity(device=device, dtype=dtype).matrix()
