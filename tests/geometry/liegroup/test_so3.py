@@ -240,10 +240,32 @@ class TestSo3(BaseTester):
     def test_exp_gradient_is_finite_at_large_angles(self, device, dtype):
         # The series branch is differentiated even where the closed form is selected; evaluated on the
         # raw angle its powers overflow float16 above about 90 rad and 0 * inf = nan reached v.grad.
+        # At 1000 rad theta**2 = v . v itself overflows float16, so the closed forms must take their
+        # angle from |v| and not from sqrt(theta**2).
         axis = torch.tensor([0.48, 0.6, 0.64], device=device, dtype=dtype)
-        v = (torch.tensor([[0.0], [0.3], [3.0], [120.0]], device=device, dtype=dtype) * axis).requires_grad_(True)
-        So3.exp(v).q.data.sum().backward()
+        angles = torch.tensor([[0.0], [0.3], [3.0], [120.0], [1000.0]], device=device, dtype=dtype)
+        v = (angles * axis).requires_grad_(True)
+        q = So3.exp(v).q.data
+        assert bool(torch.isfinite(q).all()), q
+        q.sum().backward()
         assert bool(torch.isfinite(v.grad).all()), v.grad
+
+    def test_exp_hessian_at_the_identity_4966(self, device):
+        # #4966: exp evaluated cos(theta / 2) on theta = |v|, which has no second derivative at v = 0, so the
+        # Hessian of exp at the identity was nan although its value and gradient there were finite. Both
+        # quaternion coefficients are even in theta, so below the switch they are now series in theta**2 = v . v:
+        # cos(|v| / 2) = 1 - v . v / 8 + ... has Hessian -I / 4 at v = 0, and the vector part sin(|v| / 2) / |v| * v
+        # is odd in v, so its Hessian there is 0.
+        zero = torch.zeros(3, device=device, dtype=torch.float64)
+        hessian = torch.autograd.functional.hessian(lambda x: So3.exp(x).q.data[0], zero)
+        self.assert_close(hessian, -0.25 * torch.eye(3, device=device, dtype=torch.float64))
+        for i in range(1, 4):
+            hessian = torch.autograd.functional.hessian(lambda x, i=i: So3.exp(x).q.data[i], zero)
+            self.assert_close(hessian, torch.zeros(3, 3, device=device, dtype=torch.float64))
+        axis = torch.tensor([0.48, 0.6, 0.64], device=device, dtype=torch.float64)
+        for theta in (0.0, 0.3, 2.0):
+            v = (theta * axis).requires_grad_(True)
+            assert torch.autograd.gradgradcheck(lambda x: So3.exp(x).q.data, (v,))
 
     # TODO: implement me
     def test_jit(self, device, dtype):

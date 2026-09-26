@@ -159,19 +159,26 @@ class So3(nn.Module):
 
         """
         KORNIA_CHECK_SHAPE(v, ["*", "3"])
-        theta = v.norm(dim=-1, keepdim=True)
-        w = torch.cos(0.5 * theta)
-        # sin(theta / 2) / theta is a 0/0 at theta = 0 (the identity, and the standard initialisation
-        # for pose optimisation), so below 0.5 rad its series through theta**10 is used instead; the
-        # truncation error there is under 1e-17, below the resolution of every dtype. torch.where
-        # differentiates the branch it does not select, so each branch is evaluated on an input that
-        # keeps it finite: the closed form on 1.0 below the switch, and the series on 0.0 above it
-        # (on theta itself its powers overflow float16 above about 90 rad and 0 * inf = nan).
-        small = theta < 0.5
-        safe_theta = torch.where(small, torch.ones_like(theta), theta)
-        series_theta = torch.where(small, theta, torch.zeros_like(theta))
-        t2 = series_theta * series_theta
+        # cos(theta / 2) and sin(theta / 2) / theta are even in theta, so below 0.5 rad both are evaluated as
+        # series in theta**2 = v . v, a polynomial in v. theta = |v| itself has no second derivative at v = 0,
+        # so the Hessian of exp at the identity, the standard initialisation for pose optimisation, was nan
+        # (#4966), and sin(theta / 2) / theta is a 0/0 there. The series run through theta**12 and theta**10;
+        # their truncation error at the switch is under 1e-17, below the resolution of every dtype.
+        # torch.where differentiates the branch it does not select, so each branch is evaluated on an input
+        # that keeps it finite: the series on 0 above the switch (on theta**2 itself their powers overflow
+        # float16 above about 90 rad and 0 * inf = nan), and the closed forms on the norm of the unit vector
+        # e_x below it, which keeps |v| out of the graph where it is not differentiable.
+        theta_sq = (v * v).sum(-1, keepdim=True)
+        small = theta_sq < 0.25
+        t2 = torch.where(small, theta_sq, torch.zeros_like(theta_sq))
+        w_series = 1 + t2 * (
+            -1 / 8
+            + t2 * (1 / 384 + t2 * (-1 / 46080 + t2 * (1 / 10321920 + t2 * (-1 / 3715891200 + t2 / 1961990553600))))
+        )
         b_series = 0.5 + t2 * (-1 / 48 + t2 * (1 / 3840 + t2 * (-1 / 645120 + t2 * (1 / 185794560 - t2 / 81749606400))))
+        unit_x = torch.cat((torch.ones_like(theta_sq), torch.zeros_like(v[..., 1:])), dim=-1)
+        safe_theta = torch.where(small, unit_x, v).norm(dim=-1, keepdim=True)
+        w = torch.where(small, w_series, torch.cos(0.5 * safe_theta))
         b = torch.where(small, b_series, torch.sin(0.5 * safe_theta) / safe_theta)
         return So3(Quaternion(torch.cat((w, b * v), dim=-1)))
 
