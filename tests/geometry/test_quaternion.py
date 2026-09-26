@@ -166,6 +166,42 @@ class TestQuaternion(BaseTester):
         self.assert_close((q1**1), q1)
         self.assert_close((q1**2), q1)
 
+    def test_pow_non_unit(self, device, dtype):
+        # issue #4926: q**t keeps the norm, |q**t| == |q|**t, so it agrees with * and inv() for non-unit q
+        data = [[1.0, 0.5, 0.0, 0.0], [0.5, -0.25, 0.5, 0.25], [1.5, 0.0, 0.5, -0.5], [0.0, 0.0, 0.75, 0.0]]
+        q = Quaternion(torch.tensor(data, device=device, dtype=dtype))
+        self.assert_close(q**0, Quaternion.identity(4, device, dtype))
+        self.assert_close(q**1, q)
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        self.assert_close((q**0.5) * (q**0.5), q)
+        self.assert_close((q**0.5).norm(), q.norm() ** 0.5)
+        # the direction is the power of the unit quaternion, as before
+        self.assert_close((q**0.5).normalize(), q.normalize() ** 0.5)
+
+    def test_pow_real_axis(self, device, dtype):
+        q = Quaternion(torch.tensor([[2.0, 0.0, 0.0, 0.0], [-2.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        expected = torch.tensor([2.0**0.5, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close((q**0.5).data[0], expected)
+
+    @pytest.mark.parametrize("t", (-1.0, 0.5, 2.0))
+    def test_pow_gradcheck(self, device, t):
+        # the first quaternion lies on the real axis, where the vector part has zero norm; the last is pure imaginary
+        # (w = 0), where the unselected real-axis arm divides by w
+        data = torch.tensor(
+            [[2.0, 0.0, 0.0, 0.0], [1.0, 0.5, -0.3, 0.2], [0.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64
+        )
+        self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
+
+    @pytest.mark.parametrize("t", (-1.0, 2.0, 3.0))
+    def test_pow_gradcheck_negative_real_axis(self, device, t):
+        # q = -2 has theta = pi, where the real-axis limit t * cos(t * theta) / w carries the signs of cos(t * pi) and
+        # of w. Only integer t: for a non-integer t the negative real axis is a branch cut with no derivative.
+        data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
         """Test scalar multiplication for issue #3101."""
