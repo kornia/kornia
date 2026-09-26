@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -132,4 +134,11 @@ class TestNamedPose(BaseTester):
         a_from_b = b_from_a.inverse()
         points_in_b = b_from_a.transform_points(points_in_a)
         assert points_in_b.shape == points_in_a.shape
-        self.assert_close(a_from_b.transform_points(points_in_b), points_in_a)
+        # b_from_a = Rz(0.5) * Tx(1): translate by +1 along x, then rotate 0.5 rad about z. In half precision the
+        # rotation is rounded, and the round trip applies two rounded rotations: about one ulp at |p| ~ 2.
+        low_tolerance = dtype in (torch.float16, torch.bfloat16)
+        c, s = math.cos(0.5), math.sin(0.5)
+        rot_z = torch.tensor([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        shift_x = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(points_in_b, (points_in_a + shift_x) @ rot_z.T, low_tolerance=low_tolerance)
+        self.assert_close(a_from_b.transform_points(points_in_b), points_in_a, low_tolerance=low_tolerance)
