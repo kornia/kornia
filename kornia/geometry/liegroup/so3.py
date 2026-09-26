@@ -156,22 +156,20 @@ class So3(nn.Module):
         """
         KORNIA_CHECK_SHAPE(v, ["*", "3"])
         theta = v.norm(dim=-1, keepdim=True)
-        theta_half = 0.5 * theta
-        w = torch.cos(theta_half)
-        eps = torch.finfo(v.dtype).eps * 1e3
-        small_mask = theta <= eps
-        # theta = 0 (the identity, and the standard initialisation for pose optimisation) makes
-        # b_large a 0/0. torch.where differentiates the branch it does not select, so 0 * nan =
-        # nan used to reach every component of v.grad even though the value came from b_small.
-        # Divide by a substituted 1.0 there: the where discards that value, only the gradient
-        # changes.
-        safe_theta = torch.where(small_mask, torch.ones_like(theta), theta)
-        b_large = torch.sin(theta_half) / safe_theta
-        b_small = 0.5 - (theta * theta) / 48.0
-        b = torch.where(small_mask, b_small, b_large)
-        xyz = b * v
-        q = torch.cat((w, xyz), dim=-1)
-        return So3(Quaternion(q))
+        w = torch.cos(0.5 * theta)
+        # sin(theta / 2) / theta is a 0/0 at theta = 0 (the identity, and the standard initialisation
+        # for pose optimisation), so below 0.5 rad its series through theta**10 is used instead; the
+        # truncation error there is under 1e-17, below the resolution of every dtype. torch.where
+        # differentiates the branch it does not select, so each branch is evaluated on an input that
+        # keeps it finite: the closed form on 1.0 below the switch, and the series on 0.0 above it
+        # (on theta itself its powers overflow float16 above about 90 rad and 0 * inf = nan).
+        small = theta < 0.5
+        safe_theta = torch.where(small, torch.ones_like(theta), theta)
+        series_theta = torch.where(small, theta, torch.zeros_like(theta))
+        t2 = series_theta * series_theta
+        b_series = 0.5 + t2 * (-1 / 48 + t2 * (1 / 3840 + t2 * (-1 / 645120 + t2 * (1 / 185794560 - t2 / 81749606400))))
+        b = torch.where(small, b_series, torch.sin(0.5 * safe_theta) / safe_theta)
+        return So3(Quaternion(torch.cat((w, b * v), dim=-1)))
 
     def log(self) -> torch.Tensor:
         """Convert elements of lie group  to elements of lie algebra.
