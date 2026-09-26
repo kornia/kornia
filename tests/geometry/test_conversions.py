@@ -5600,28 +5600,15 @@ class TestEulerFromQuaternion(BaseTester):
             f"roll for the w = {zero_sign} half-turn is {roll.item()}, not the exact {expected_roll} endpoint"
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="euler_from_quaternion has no gimbal-lock branch, so at pitch = ±pi/2 the returned "
-        "triple does not represent the input rotation — kornia#3950",
-        strict=True,
-    )
     def test_convention_roundtrip_holds_at_gimbal_lock_3950(self, device):
-        # Intended behavior: euler_from_quaternion returns *a* triple representing the input
-        # rotation. At pitch = ±pi/2 (gimbal lock) roll and yaw are individually undetermined --
-        # only their sum or difference is -- so no library can return the input triple back, but a
-        # correct implementation still returns a triple whose rotation matrix is the input's, which
-        # is what this pin asserts. There is no gimbal-lock branch at all: roll and yaw come from
-        # atan2 of two quantities that both cancel there, and the result is simply wrong. For
-        # (roll, pitch, yaw) = (0.1, pi/2, 0.2) in float64 the reconstructed rotation is far from
-        # the input -- by a margin that varies with rounding, so no figure is quoted here -- and
-        # random (roll, yaw) at pitch = +pi/2 fail the same way, while |pitch| < pi/4 round trips
-        # to rounding. float64 is hardcoded and the dtype fixture
-        # dropped because the returned triple is wildly dtype-dependent here (see the companion
-        # wart), and the skip is visible so a raw TypeError on MPS, which has no float64, cannot
-        # satisfy the raises=AssertionError mark instead of the assertion. Marked xfail(strict=True)
-        # so fixing #3950 makes this XPASS and forces the mark out. Companion wart:
-        # test_wart_gimbal_lock_returns_a_wrong_triple_3950.
+        # euler_from_quaternion returns *a* triple representing the input rotation, including at
+        # pitch = ±pi/2 (gimbal lock). There roll and yaw are individually undetermined -- only
+        # their sum or difference is -- so the input triple cannot be handed back, but the returned
+        # triple's rotation matrix must still equal the input's. Regression for kornia#3950: the
+        # gimbal-lock branch pins roll to 0, snaps pitch to ±pi/2 and folds the one resolved angle
+        # into yaw. float64 is hardcoded because the round-trip margin is a float64 fact, and the
+        # skip is visible so a raw TypeError on MPS, which has no float64, cannot pass for the
+        # assertion. Companion: test_convention_roundtrip_holds_at_gimbal_lock_both_signs_3950.
         _skip_if_dtype_unavailable(device, torch.float64)
 
         roll = torch.tensor(0.1, device=device, dtype=torch.float64)
@@ -5638,65 +5625,16 @@ class TestEulerFromQuaternion(BaseTester):
         )
 
     @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
-    def test_wart_gimbal_lock_returns_a_wrong_triple_3950(self, device, sign):
-        # Wart pin for kornia#3950, companion to the strict xfail above. It pins the two facts about
-        # gimbal lock that are STABLE, and deliberately pins no exact triple.
-        #
-        # Pinning the returned triples themselves ((pi/2, pi/2, pi/2) at +pi/2 and (0, -pi/2, pi/2)
-        # at -pi/2 on this build) is not an option: those values are not reproducible. roll and yaw
-        # come from atan2 of two quantities that cancel to ~1e-17 there, so which way they
-        # cancel is decided by rounding. Perturbing the input pitch by a single ulp on this very
-        # build changes the +pi/2 triple to (0.15500, pi/2, 0.35877) at -2 ulp and to
-        # (-3.12597, pi/2, -3.07917) at +1 ulp; a review on torch 2.12.0 saw different triples again
-        # on the unperturbed input. Kornia declares torch>=2.5.1, so pinning any one of them makes
-        # the suite red on builds the pin was never measured against, for a value that is not the
-        # defect being tracked.
-        #
-        # What this pin asserts instead:
-        #   1. pitch_back is +-pi/2 to a tolerance -- the asin saturates. Note this fact SURVIVES a
-        #      fix to #3950 (a correct gimbal-lock branch still reports pitch = +-pi/2); it is
-        #      pinned as the structural claim the strict xfail above does not make, not as a defect
-        #      indicator.
-        #   2. the round-tripped rotation is far from the input -- this is the defect, and the half
-        #      of this pin that flips when #3950 is fixed.
-        #
-        # Assertion 1 is a TOLERANCE and not exact equality, which matters. At gimbal lock the asin
-        # argument is 1 - O(eps), and asin(1 - d) ~= pi/2 - sqrt(2d), so one ulp of slack in the
-        # argument amplifies to a sqrt-scale error in the output: sqrt(2 * eps_f64) = 2.107e-08.
-        # Whether the argument rounds to exactly 1.0 or to one ulp below is decided by the last bit
-        # of the sin/cos computation upstream, so it moves between torch builds, backends and
-        # vectorisation paths. torch 2.12.0 reports -1.5707963057214724 for the -pi/2 cell, which is
-        # pi/2 - 2.1073424116835326e-08 -- agreeing with sqrt(2 * eps) to eight significant figures.
-        # Exact equality here is therefore red on 2.12; the tolerance is what keeps the cell green.
-        # Reproducing the 2.12 value locally needs the right probe: perturbing the input pitch, or any component
-        # by a single ulp, does NOT move pitch_back at all (a +-1 ulp sweep over all four quaternion
-        # components returns one distinct value, as does a +-200 ulp input-pitch sweep). Perturbing
-        # w -- the component the saturation actually depends on -- by two or more ulps walks up the
-        # same sqrt-scale family and reproduces the 2.12.0 figure bit-for-bit: w - 2 ulp gives
-        # -1.5707963057214724 on the -pi/2 cell, and w - 3 ulp gives +1.5707963057214724 on the
-        # +pi/2 cell. The rule for the next pin here is therefore to perturb the intermediate the
-        # branch depends on, and to go wider than one ulp -- not to assume the input is the probe.
-        # Tolerance sizing stays mechanism-based rather than sampled: dev = sqrt(2 * k * eps) for an
-        # argument k ulps below 1.0, so 1e-6 is only reached at k ~ 2250, far beyond the one-to-few
-        # ulps a cross-build rounding difference can move it, and far below any real defect, which
-        # would move pitch by O(1). Note the deviation is NOT bounded by the values above: pushing w
-        # to -20000 ulp reaches 2.5e-06 and does cross the tolerance. That is not a realistic
-        # rounding difference, but it is why the sizing argument is the mechanism and the measured
-        # figures here (2.1e-08 at w - 2 ulp, 5.4e-08 at w - 10 ulp) are sample points, not bounds.
-        #
-        # The 1e-9 floor in 2 is likewise a chosen threshold with margin, NOT a measured bound:
-        # a correct gimbal-lock branch round trips to ~1e-16, and widening the probe drives the
-        # sample minimum steadily toward 0, which is why no sampled extremum is quoted as a bound.
-        #
-        # Two cells, one per sign, because a fix could plausibly add a gimbal-lock branch for one
-        # sign only or get the roll/yaw split sign wrong; the strict xfail above only covers +pi/2,
-        # so the -pi/2 cell here is the only coverage of that sign. If either cell fails, #3950 was
-        # (partly) fixed -- flip/remove the strict xfail above. NOT a contract that the current
-        # output is correct: any triple whose rotation matrix matches the input is an acceptable
-        # replacement, and such a triple would fail assertion 2 as intended.
-        # float64 is hardcoded and the dtype fixture dropped because the round-trip margin is a
-        # float64 fact; the skip is visible so a raw TypeError on MPS, which has no float64, cannot
-        # pass for the assertion.
+    def test_convention_roundtrip_holds_at_gimbal_lock_both_signs_3950(self, device, sign):
+        # Regression for kornia#3950 across both gimbal-lock signs (the single-case companion above
+        # only covers +pi/2). Two facts are pinned:
+        #   1. pitch_back saturates to sign*pi/2 -- the gimbal-lock branch reports it exactly.
+        #   2. the round-tripped rotation matches the input -- the half the pre-fix code got wrong,
+        #      where roll and yaw came from atan2 of two quantities that both cancel there.
+        # roll and yaw are not pinned individually: at gimbal lock only one of (roll ± yaw) is
+        # determined, so any triple whose rotation matrix matches the input is acceptable. float64
+        # is hardcoded because the round-trip margin is a float64 fact; the skip is visible so a raw
+        # TypeError on MPS, which has no float64, cannot pass for the assertion.
         _skip_if_dtype_unavailable(device, torch.float64)
 
         pitch_in = sign * torch.pi / 2
@@ -5717,10 +5655,41 @@ class TestEulerFromQuaternion(BaseTester):
         rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip))
         error = (rot_in - rot_back).abs().max().item()
 
-        assert error > 1e-9, (
-            f"kornia#3950: the triple returned at pitch = {pitch_in} now reproduces the input "
-            f"rotation to {error} -- the gimbal-lock defect looks fixed"
+        assert error < 1e-12, (
+            f"kornia#3950: the triple returned at pitch = {pitch_in} does not reproduce the input "
+            f"rotation (error {error})"
         )
+
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_convention_roundtrip_holds_at_gimbal_lock_random_roll_yaw_3993(self, device, dtype, sign):
+        # Regression for kornia#3993: a single fixed (roll, yaw) = (0.1, 0.2) probe at gimbal lock is
+        # not enough to catch a gimbal detector that only fires for SOME (roll, yaw) pairs at the
+        # pole -- exactly the failure mode of the cos(pitch) estimator this test guards against
+        # regressing to. sqrt(1 - sinp**2) recomputes cos(pitch) from an already-rounded sinp, so at
+        # a true pole it does not evaluate to ~0 but to sqrt(k * eps) for however many ulps k the
+        # rounded sinp fell short of 1 -- and k varies with (roll, yaw). Measured over 500 random
+        # (roll, yaw) per (dtype, sign) cell, that estimator missed 9-13 poles per 500 at the
+        # threshold this branch uses; hypot(sinr_cosp, cosr_cosp) has no such cancellation and
+        # measured 0/500. Both dtype and sign are covered here (dtype via the fixture, both signs via
+        # this parametrize) because the failure rate differs by dtype and the two signs exercise
+        # different branches of the yaw-folding logic.
+        _skip_if_dtype_unavailable(device, dtype)
+
+        pitch_in = sign * torch.pi / 2
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        roll_in = (torch.rand(200, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        yaw_in = (torch.rand(200, generator=generator, dtype=torch.float64) * 2 - 1) * torch.pi
+        roll_in = roll_in.to(device=device, dtype=dtype)
+        yaw_in = yaw_in.to(device=device, dtype=dtype)
+        pitch_batch = torch.full_like(roll_in, pitch_in)
+
+        quaternion = quaternion_from_euler(roll_in, pitch_batch, yaw_in)
+        roundtrip = quaternion_from_euler(*euler_from_quaternion(*quaternion))
+
+        rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion, dim=-1))
+        rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip, dim=-1))
+
+        self.assert_close(rot_in, rot_back, low_tolerance=True)
 
     @pytest.mark.xfail(
         raises=AssertionError,
