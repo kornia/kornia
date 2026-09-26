@@ -100,6 +100,29 @@ def parse_batches(spec: str) -> list[int | str]:
     return [item if item == "auto" else int(item) for item in spec.split(",")]
 
 
+def make_estimator(args: argparse.Namespace, config: dict[str, Any], seed: int) -> RANSAC:
+    """Build the estimator; older revisions without ``max_samples`` get the budget as whole batches."""
+    common: dict[str, Any] = {
+        "inl_th": args.threshold,
+        "confidence": args.confidence,
+        "max_lo_iters": config["max_lo_iters"],
+        "score_type": args.score,
+        "prosac_sampling": config["prosac"],
+        "seed": seed,
+    }
+    try:
+        return RANSAC("homography", batch_size=config["batch_size"], max_samples=config["budget"], **common)
+    except TypeError:
+        if config["batch_size"] == "auto":
+            raise SystemExit("This revision has no auto batch size; pass integer --batches") from None
+        return RANSAC(
+            "homography",
+            batch_size=config["batch_size"],
+            max_iter=-(-config["budget"] // config["batch_size"]),
+            **common,
+        )
+
+
 def run(args: argparse.Namespace) -> None:
     device, dtype, sync = setup_run(args, opencv=False)
     meta = start_run(
@@ -145,17 +168,7 @@ def run(args: argparse.Namespace) -> None:
     for index, config in enumerate(configs):
         errors = []
         for seed in seeds:
-            estimator = RANSAC(
-                "homography",
-                inl_th=args.threshold,
-                batch_size=config["batch_size"],
-                max_samples=config["budget"],
-                confidence=args.confidence,
-                max_lo_iters=config["max_lo_iters"],
-                score_type=args.score,
-                prosac_sampling=config["prosac"],
-                seed=seed,
-            ).to(device)
+            estimator = make_estimator(args, config, seed).to(device)
             for count, (name, (kp1, kp2)) in enumerate(inputs.items()):
                 row: dict[str, Any] = {**config, "pair": name, "seed": seed, "correspondences": len(kp1)}
                 if len(kp1) < 4:
