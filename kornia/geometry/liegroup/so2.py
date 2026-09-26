@@ -37,14 +37,29 @@ class So2(nn.Module):
     :math:`R^2` under the operation of composition.
     See more: https://en.wikipedia.org/wiki/Orthogonal_group#Special_orthogonal_group
 
-    We internally represent the rotation by a torch.complex number.
+    Convention:
+        - Stores the rotation as a complex number :math:`z = \cos\theta + i \sin\theta` of shape :math:`()` or
+          :math:`(B,)`. ``z`` is not normalised: a non-unit ``z`` rotates and scales by :math:`|z|`. The complex
+          storage rules out bfloat16.
+        - A positive angle rotates the x axis toward the y axis: counter-clockwise in a y-up frame, clockwise as
+          displayed on y-down image axes. ``matrix()`` is :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`,
+          the transpose of :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`, which takes degrees.
+          ``log`` returns the angle in :math:`[-\pi, \pi]`, and ``adjoint()`` is the 2x2 identity.
+        - Known defects: ``hat`` returns the symmetric :math:`[[0, \theta], [\theta, 0]]` instead of the generator
+          :math:`[[0, -\theta], [\theta, 0]]`, and ``vee`` reads its ``[0, 1]`` entry
+          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); ``random`` is not a unit rotation and its angle
+          lies in :math:`[0, \pi/2)` (`#4930 <https://github.com/kornia/kornia/issues/4930>`_); a :math:`(B, 1)`
+          ``z`` or angle times :math:`(B, 2)` points returns :math:`(B, B, 2)`, every rotation applied to every point
+          (`#4932 <https://github.com/kornia/kornia/issues/4932>`_); ``.to()`` a real dtype keeps
+          :math:`\cos\theta`, drops :math:`\sin\theta` and makes ``matrix()`` raise
+          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
-        >>> real = torch.tensor([1.0])
-        >>> imag = torch.tensor([2.0])
+        >>> real = torch.tensor([0.6])
+        >>> imag = torch.tensor([0.8])
         >>> So2(torch.complex(real, imag))
         Parameter containing:
-        tensor([1.+2.j], requires_grad=True)
+        tensor([0.6000+0.8000j], requires_grad=True)
 
     """
 
@@ -54,14 +69,14 @@ class So2(nn.Module):
         Internally represented by torch.complex number `z`.
 
         Args:
-            z: Complex number with the shape of :math:`(B, 1)` or :math:`(B)`.
+            z: Complex number with the shape of :math:`(B,)` or :math:`()`.
 
         Example:
-            >>> real = torch.tensor(1.0)
-            >>> imag = torch.tensor(2.0)
+            >>> real = torch.tensor(0.6)
+            >>> imag = torch.tensor(0.8)
             >>> So2(torch.complex(real, imag)).z
             Parameter containing:
-            tensor(1.+2.j, requires_grad=True)
+            tensor(0.6000+0.8000j, requires_grad=True)
 
         """
         super().__init__()
@@ -91,10 +106,11 @@ class So2(nn.Module):
         """Perform a left-multiplication either rotation concatenation or point-transform.
 
         Args:
-            right: the other So2 transformation.
+            right: the other So2 transformation, or points of shape :math:`(B, 2)` or :math:`(2,)` as a tensor or
+                a ``Vector2``.
 
         Return:
-            The resulting So2 transformation.
+            The resulting So2 transformation, or the rotated points with the type of ``right``.
 
         """
         z = self.z
@@ -120,7 +136,7 @@ class So2(nn.Module):
 
     @property
     def z(self) -> torch.Tensor:
-        """Return the underlying data with shape :math:`(B, 1)`."""
+        """Return the underlying complex number, with the shape it was constructed with."""
         return self._z
 
     @staticmethod
@@ -128,7 +144,7 @@ class So2(nn.Module):
         """Convert elements of lie algebra to elements of lie group.
 
         Args:
-            theta: angle in radians of shape :math:`(B, 1)` or :math:`(B)`.
+            theta: angle in radians of shape :math:`(B,)` or :math:`()`.
 
         Example:
             >>> v = torch.tensor([3.1415/2])
@@ -150,20 +166,22 @@ class So2(nn.Module):
         """Convert elements of lie group to elements of lie algebra.
 
         Example:
-            >>> real = torch.tensor([1.0])
-            >>> imag = torch.tensor([3.0])
+            >>> real = torch.tensor([0.6])
+            >>> imag = torch.tensor([0.8])
             >>> So2(torch.complex(real, imag)).log()
-            tensor([1.2490], grad_fn=<Atan2Backward0>)
+            tensor([0.9273], grad_fn=<Atan2Backward0>)
 
         """
         return self.z.imag.atan2(self.z.real)
 
     @staticmethod
     def hat(theta: torch.Tensor) -> torch.Tensor:
-        """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
+        """Convert an angle to the matrix that :meth:`vee` inverts. Returns matrix of shape :math:`(B, 2, 2)`.
+
+        The matrix is not the so(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            theta: angle in radians of shape :math:`(B)`.
+            theta: angle in radians of shape :math:`(B,)` or :math:`()`.
 
         Example:
             >>> theta = torch.tensor(3.1415/2)
@@ -185,10 +203,13 @@ class So2(nn.Module):
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
-        """Convert elements from lie algebra to vector space. Returns vector of shape :math:`(B,)`.
+        r"""Read the angle back from a :meth:`hat` matrix. Returns vector of shape :math:`(B,)`.
+
+        It reads the ``[0, 1]`` entry, which is :math:`-\theta` for the so(2) generator
+        (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            omega: 2x2-matrix representing lie algebra.
+            omega: 2x2-matrix built by :meth:`hat`.
 
         Example:
             >>> v = torch.ones(3)
@@ -299,7 +320,9 @@ class So2(nn.Module):
         device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> So2:
-        """Create a So2 group representing a random rotation.
+        """Create a So2 group with real and imaginary parts drawn from :math:`U[0, 1)`.
+
+        The result is not a uniform unit rotation (`#4930 <https://github.com/kornia/kornia/issues/4930>`_).
 
         Args:
             batch_size: the batch size of the underlying data.

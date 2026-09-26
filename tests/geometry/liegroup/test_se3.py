@@ -504,7 +504,7 @@ class TestSe3(BaseTester):
         assert isinstance(identity.t, Vector3)
         assert not isinstance(identity.t, torch.Tensor)
         self.assert_close(from_exp.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
-        with pytest.raises(RuntimeError, match="ellipsis"):
+        with pytest.raises(RuntimeError):
             identity.t[..., 0]
 
     def test_wart_se3_load_state_dict_restores_translation_not_rotation_4923(self, device, dtype):

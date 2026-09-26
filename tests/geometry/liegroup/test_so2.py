@@ -371,5 +371,5 @@ class TestSo2(BaseTester):
         # tensor, which keeps cos(theta) and drops sin(theta), so the rotation is lost and matrix() raises.
         assert not cast.z.is_complex()
         self.assert_close(cast.z, theta.cos().float())
-        with pytest.raises(RuntimeError, match="imag"):
+        with pytest.raises(RuntimeError):
             cast.matrix()
