@@ -100,6 +100,61 @@ Angles and rotations
     q = Quaternion.identity()
     assert q.data.tolist() == [1.0, 0.0, 0.0, 0.0]  # w, x, y, z
 
+.. _rotation-conventions:
+
+Rotations and rigid motions
+---------------------------
+
+:class:`~kornia.geometry.quaternion.Quaternion` multiplies by the Hamilton product, so ``(q1 * q2).matrix()`` is
+``q1.matrix() @ q2.matrix()``: the right operand acts first. The Lie groups :class:`~kornia.geometry.liegroup.So3`,
+:class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
+:class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``. Their tangent vectors
+put the rotation part, in radians, last: ``[υ, ω]`` for ``Se3`` and ``[vx, vy, θ]`` for ``Se2``. ``log`` is
+principal: its rotation angle is at most :math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
+:math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
+``trans_01`` maps frame-1 coordinates into frame 0, and
+:func:`~kornia.geometry.linalg.relative_transformation` of ``trans_01`` and ``trans_02`` is ``trans_12``;
+:class:`~kornia.geometry.pose.NamedPose` names the same transform ``dst_from_src``.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - scipy
+     - Sophus
+     - Eigen
+   * - quaternion storage
+     - ``(w, x, y, z)``
+     - ``Rotation.from_quat`` reads ``(x, y, z, w)`` unless ``scalar_first=True``
+     - Eigen's quaternion
+     - the ``Quaternion(w, x, y, z)`` constructor is scalar first, ``coeffs()`` is ``(x, y, z, w)``
+   * - composition
+     - ``a * b``, ``b`` acts first
+     - ``r1 * r2``, the same
+     - ``a * b``, the same
+     - ``q1 * q2``, the same
+   * - SE(3) tangent
+     - ``[υ, ω]``, translation first
+     - ``RigidTransform.as_exp_coords`` returns ``[ω, υ]``, rotation first
+     - ``SE3::log`` returns ``[υ, ω]``, the same (GTSAM's ``Pose3`` is ``[ω, υ]``)
+     - ``Isometry3d`` has no tangent or ``log``
+   * - rotation ``log``
+     - principal
+     - ``as_rotvec``, principal
+     - ``SO3::log``, principal
+     - ``AngleAxis(q)``, angle in :math:`[0, \pi]`
+   * - ``slerp``
+     - the short arc
+     - ``Slerp``, the short arc
+     - ``interpolate``, the short arc
+     - ``Quaternion::slerp``, the short arc
+   * - frame naming
+     - ``trans_01`` and ``dst_from_src`` map frame 1 (``src``) into frame 0 (``dst``)
+     - ``tf_A_B`` maps ``B`` into ``A``
+     - ``foo_T_bar`` maps ``bar`` into ``foo``
+     - no frames
+
 Transformation matrices and homographies
 ----------------------------------------
 
