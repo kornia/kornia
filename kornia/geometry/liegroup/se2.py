@@ -54,20 +54,23 @@ class Se2(nn.Module):
     space :math:`R^2` under the operation of composition.
 
     Convention:
-        - Composition and point action follow :class:`~kornia.geometry.liegroup.Se3`; ``matrix()`` is the 3x3
-          :math:`[[R, t], [0, 1]]`. The rotation is an :class:`~kornia.geometry.liegroup.So2`, whose storage and
-          direction conventions apply.
+        - ``matrix()`` is the 3x3 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()`` and ``g * p`` is
+          :math:`R p + t`, as in :class:`~kornia.geometry.liegroup.Se3`, but an unbatched pose also transforms
+          :math:`(N, 2)` points and a batched one a single :math:`(2,)` point. The rotation is an
+          :class:`~kornia.geometry.liegroup.So2`, whose storage and direction conventions apply.
         - The tangent vector is :math:`(v_x, v_y, \theta)`, angle last: ``exp`` rotates by :math:`\theta` and
           translates by :math:`V(\theta) (v_x, v_y)`, and ``log`` returns :math:`\theta` in :math:`[-\pi, \pi]`.
           ``adjoint()`` is :math:`[[R, (t_y, -t_x)^\top], [0, 1]]`.
-        - ``from_matrix`` ignores the bottom row and rejects a rotation block that is not of the form
-          :math:`[[a, -b], [b, a]]`, but not a scaled one.
+        - ``from_matrix`` ignores the bottom row. It accepts any rotation block of the form :math:`[[a, -b], [b, a]]`,
+          a rotation scaled by :math:`\sqrt{a^2 + b^2}`, and keeps the scale as a non-unit ``z`` that ``log`` drops;
+          it rejects any other block, such as a reflection.
         - Known defects: ``hat`` and ``vee`` put the translation in the bottom row and the angle in a symmetric block
           (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); ``random`` takes the non-unit rotation of
-          ``So2.random`` (`#4930 <https://github.com/kornia/kornia/issues/4930>`_); for ``identity`` and ``random``,
-          ``t`` and ``g * points`` are a ``Vector2`` instead of a tensor
-          (`#4931 <https://github.com/kornia/kornia/issues/4931>`_) and the translation is missing from
-          ``state_dict`` (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+          ``So2.random`` (`#4930 <https://github.com/kornia/kornia/issues/4930>`_); for ``identity``, ``random`` and
+          any pose composed with or inverted from one, ``t`` and ``g * points`` are a ``Vector2`` instead of a tensor
+          (`#4931 <https://github.com/kornia/kornia/issues/4931>`_), and ``state_dict`` and ``.to()`` skip that
+          translation, while ``.to()`` a real dtype breaks the ``So2`` rotation
+          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
         >>> so2 = So2.identity(1)

@@ -324,11 +324,13 @@ class TestSo2(BaseTester):
     def test_convention_so2_from_matrix_rejects_a_reflection(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
-        # from_matrix checks m00 == m11 and m01 == -m10, which a reflection fails.
-        reflection = torch.tensor([[1.0, 0.0], [0.0, -1.0]], device=device, dtype=dtype)
-        assert torch.linalg.det(reflection.float()) < 0
-        with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
-            So2.from_matrix(reflection)
+        # from_matrix checks m00 == m11 and m01 == -m10. The first reflection fails only the diagonal check, the
+        # axis swap only the off-diagonal one.
+        for reflection in ([[1.0, 0.0], [0.0, -1.0]], [[0.0, 1.0], [1.0, 0.0]]):
+            reflection = torch.tensor(reflection, device=device, dtype=dtype)
+            assert torch.linalg.det(reflection.float()) < 0
+            with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
+                So2.from_matrix(reflection)
         rotation = So2.exp(torch.tensor(0.3, device=device, dtype=dtype)).matrix().detach()
         self.assert_close(So2.from_matrix(rotation).log(), torch.tensor(0.3, device=device, dtype=dtype))
 
@@ -340,7 +342,7 @@ class TestSo2(BaseTester):
         s = So2.random(1000, device=device, dtype=dtype)
         radius = (s.z.real**2 + s.z.imag**2).sqrt()
         # https://github.com/kornia/kornia/issues/4930: both parts of z are drawn from U[0, 1), so |z| spans
-        # (0, sqrt(2)) and every angle lies in [0, pi / 2). A uniform rotation has |z| = 1 and angles of both signs.
+        # [0, sqrt(2)) and every angle lies in [0, pi / 2]. A uniform rotation has |z| = 1 and angles of both signs.
         assert (radius - 1).abs().max() > 0.1
         assert s.log().min() >= 0
 

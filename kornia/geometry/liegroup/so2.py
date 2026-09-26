@@ -48,7 +48,7 @@ class So2(nn.Module):
         - Known defects: ``hat`` returns the symmetric :math:`[[0, \theta], [\theta, 0]]` instead of the generator
           :math:`[[0, -\theta], [\theta, 0]]`, and ``vee`` reads its ``[0, 1]`` entry
           (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); ``random`` is not a unit rotation and its angle
-          lies in :math:`[0, \pi/2)` (`#4930 <https://github.com/kornia/kornia/issues/4930>`_); a :math:`(B, 1)`
+          lies in :math:`[0, \pi/2]` (`#4930 <https://github.com/kornia/kornia/issues/4930>`_); a :math:`(B, 1)`
           ``z`` or angle times :math:`(B, 2)` points returns :math:`(B, B, 2)`, every rotation applied to every point
           (`#4932 <https://github.com/kornia/kornia/issues/4932>`_); ``.to()`` a real dtype keeps
           :math:`\cos\theta`, drops :math:`\sin\theta` and makes ``matrix()`` raise

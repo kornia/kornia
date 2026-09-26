@@ -506,6 +506,7 @@ class TestSe3(BaseTester):
         self.assert_close(from_exp.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
         with pytest.raises(RuntimeError):
             identity.t[..., 0]
+        assert isinstance((from_exp * identity).t, Vector3)  # a product with the identity inherits it
 
     def test_wart_se3_load_state_dict_restores_translation_not_rotation_4923(self, device, dtype):
         src = Se3.exp(torch.tensor([[1.0, -2.0, 3.0, 0.4, 0.2, -0.3]], device=device, dtype=dtype))
@@ -516,6 +517,7 @@ class TestSe3(BaseTester):
         # only the translation; loading reports every key matched, restores the translation and keeps the old
         # rotation.
         assert list(src.state_dict()) == ["_translation"]
+        assert list(Se3.identity(1, device, dtype).state_dict()) == []  # a Vector3 translation is not saved either
         result = dst.load_state_dict(src.state_dict())
         assert not result.missing_keys and not result.unexpected_keys
         self.assert_close(dst.t, src.t.detach())

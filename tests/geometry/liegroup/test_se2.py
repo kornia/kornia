@@ -460,6 +460,17 @@ class TestSe2(BaseTester):
         p = torch.tensor([0.7, -1.3], device=device, dtype=dtype)
         self.assert_close((a * b) * p, a * (b * p))
 
+    def test_convention_se2_point_action_broadcasts_the_pose(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # Unlike Se3, an unbatched pose transforms (N, 2) points and a batched pose a single (2,) point.
+        v = torch.tensor([[1.0, -0.5, 0.9], [-0.3, 2.0, -0.4]], device=device, dtype=dtype)
+        p = torch.tensor([[0.7, -1.3], [2.0, 0.5], [-1.0, 1.0]], device=device, dtype=dtype)
+        g0 = Se2.exp(v[0])
+        self.assert_close(g0 * p, p @ g0.so2.matrix().mT + g0.t)
+        g = Se2.exp(v)
+        self.assert_close(g * p[0], torch.stack([Se2.exp(v[i]) * p[0] for i in range(2)]))
+
     def test_convention_se2_log_is_principal(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
@@ -478,10 +489,17 @@ class TestSe2(BaseTester):
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # from_matrix reads the rotation block, validated by So2.from_matrix, and the last column; it does not
         # check the bottom row.
-        clean = Se2.exp(torch.tensor([1.0, 2.0, 0.3], device=device, dtype=dtype)).matrix().detach()
+        v = torch.tensor([1.0, 2.0, 0.3], device=device, dtype=dtype)
+        clean = Se2.exp(v).matrix().detach()
         junk = clean.clone()
         junk[2] = torch.tensor([0.5, -4.0, 7.0], device=device, dtype=dtype)
         self.assert_close(Se2.from_matrix(junk).matrix(), clean)
+        # A scaled rotation block is accepted and its scale kept in z, which log drops.
+        scaled = clean.clone()
+        scaled[:2, :2] *= 2.0
+        g = Se2.from_matrix(scaled)
+        self.assert_close(g.matrix(), scaled)
+        self.assert_close(g.log()[2], v[2])
         reflection = clean.clone()
         reflection[:2, :2] = torch.tensor([[1.0, 0.0], [0.0, -1.0]], device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
@@ -501,3 +519,4 @@ class TestSe2(BaseTester):
         assert isinstance(out, Vector2)
         assert not isinstance(out, torch.Tensor)
         self.assert_close(out.data, p)
+        assert isinstance((from_exp * identity) * p, Vector2)  # a product with the identity inherits it

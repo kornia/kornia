@@ -49,10 +49,12 @@ class Se3(nn.Module):
         - ``matrix()`` is the 4x4 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()``, so ``b`` acts
           first, and ``g * p`` is :math:`R p + t`. ``adjoint()`` is :math:`[[R, \hat t R], [0, R]]`.
         - The rotation is an :class:`~kornia.geometry.liegroup.So3`, whose storage and point-shape conventions
-          apply, including its non-unit quaternion defect. ``from_matrix`` ignores the bottom row.
-        - Known defects: for ``identity``, ``random`` and ``from_qxyz``, ``t`` is a ``Vector3``, which rejects tensor
-          indexing such as ``t[..., 0]`` (`#4931 <https://github.com/kornia/kornia/issues/4931>`_); ``state_dict`` and
-          ``.to()`` skip the rotation unless its quaternion is an ``nn.Parameter``, so ``load_state_dict`` can
+          apply, including its non-unit quaternion defect (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
+          ``from_matrix`` ignores the bottom row.
+        - Known defects: for ``identity``, ``random``, ``from_qxyz`` and any pose composed with or inverted from one,
+          ``t`` is a ``Vector3``, which rejects tensor indexing such as ``t[..., 0]``
+          (`#4931 <https://github.com/kornia/kornia/issues/4931>`_); ``state_dict`` and ``.to()`` skip such a
+          translation, and skip the rotation unless its quaternion is an ``nn.Parameter``, so ``load_state_dict`` can
           restore one pose's translation next to another pose's rotation
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
@@ -73,7 +75,8 @@ class Se3(nn.Module):
         Internally represented by an So3 rotation and a translation 3-vector.
 
         Args:
-            rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is not normalised.
+            rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is not normalised
+                (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
             translation: Vector3 or translation torch.Tensor with the shape of :math:`(B, 3)`.
 
         Example:
@@ -361,7 +364,7 @@ class Se3(nn.Module):
 
         Args:
             qxyz: torch.Tensor of shape :math:`(B, 7)` laid out as ``[qw, qx, qy, qz, x, y, z]``, scalar first; the
-                quaternion is not normalised.
+                quaternion is not normalised (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
 
         Example:
             >>> qxyz = torch.tensor([0., 0., 0., 1., 0., 0., 1.])
