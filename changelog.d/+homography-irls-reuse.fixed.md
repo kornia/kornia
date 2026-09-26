@@ -1,0 +1,1 @@
+`find_homography_dlt_iterated` rebuilt the normalized DLT system, including both point normalizations and the inverse of the second normalizing transform, for every one of its solves. It now builds the system once and only re-solves it with the new weights, which removes about a third of the small kernel launches of a RANSAC local-optimization polish; results are bit-identical.

@@ -821,17 +821,20 @@ class TestConventionHomography(BaseTester):
             pytest.skip(_F16_LU)
         p1, p2, _ = _planar(device, dtype)
         if model == "points":
-            name, iterated, args = "find_homography_dlt", find_homography_dlt_iterated, (p1, p2)
+            # The point polisher builds the DLT system once and solves it per iteration: count the solves.
+            name, iterated, args = "_homography_from_dlt_system", find_homography_dlt_iterated, (p1, p2)
+            plain = find_homography_dlt
         else:
             name = "find_homography_lines_dlt"
             iterated, args = find_homography_lines_dlt_iterated, (p1.reshape(1, 6, 2, 2), p2.reshape(1, 6, 2, 2))
-        plain = getattr(kornia.geometry.homography, name)
+            plain = getattr(kornia.geometry.homography, name)
+        solve = getattr(kornia.geometry.homography, name)
         weights = torch.ones(1, args[0].shape[1], device=device, dtype=dtype)
         calls = []
 
         def spy(*a, **k):
             calls.append(1)
-            return plain(*a, **k)
+            return solve(*a, **k)
 
         monkeypatch.setattr(kornia.geometry.homography, name, spy)
         # n_iter counts the solves, the initial one included, so n_iter=1 is the plain solver.
@@ -914,10 +917,22 @@ class TestConventionHomography(BaseTester):
         sigma = float(error(plain(*args, weights))[0, k].sqrt())
         calls = []
 
-        def spy(a, b, w=None, *rest):
-            H = plain(a, b, w, *rest)
-            calls.append((w, H))
-            return H
+        if model == "points":
+            # The point polisher solves the prebuilt DLT system; its weights are the second argument.
+            name = "_homography_from_dlt_system"
+            solve = kornia.geometry.homography._homography_from_dlt_system
+
+            def spy(system, w, *rest):
+                H = solve(system, w, *rest)
+                calls.append((w, H))
+                return H
+
+        else:
+
+            def spy(a, b, w=None, *rest):
+                H = plain(a, b, w, *rest)
+                calls.append((w, H))
+                return H
 
         monkeypatch.setattr(kornia.geometry.homography, name, spy)
         iterated(*args, weights, soft_inl_th=sigma, n_iter=2)

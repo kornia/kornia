@@ -233,6 +233,20 @@ def find_homography_dlt(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
+    device, dtype = _extract_device_dtype([points1, points2])
+    A, transform1, transform2 = _homography_dlt_system(points1, points2)
+    return _homography_from_dlt_system(
+        A, weights, transform1, safe_inverse_with_mask(transform2)[0], solver, device, dtype
+    )
+
+
+def _homography_dlt_system(
+    points1: torch.Tensor, points2: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Build the normalized DLT design matrix ``(B, 2N, 9)`` and the two normalizing transforms.
+
+    The system depends on the points only, so iterative re-weighting builds it once and solves it repeatedly.
+    """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
     if points1.shape[1] < 4:
@@ -240,9 +254,6 @@ def find_homography_dlt(
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
 
-    device, dtype = _extract_device_dtype([points1, points2])
-
-    eps: float = 1e-8
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
 
@@ -254,20 +265,37 @@ def find_homography_dlt(
     ax = torch.cat([zeros, zeros, zeros, -x1, -y1, -ones, y2 * x1, y2 * y1, y2], dim=-1)
     ay = torch.cat([x1, y1, ones, zeros, zeros, zeros, -x2 * x1, -x2 * y1, -x2], dim=-1)
     A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
+    return A, transform1, transform2
 
+
+def _homography_from_dlt_system(
+    A: torch.Tensor,
+    weights: Optional[torch.Tensor],
+    transform1: torch.Tensor,
+    transform2_inv: torch.Tensor,
+    solver: str,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Solve the (weighted) DLT system of :func:`_homography_dlt_system` and denormalize the homography.
+
+    The operand order matches the original single-call implementation, so the result is bit-identical to it.
+    """
+    eps: float = 1e-8
+    num_points = A.shape[1] // 2
     if weights is None:
         # All points are equally important
         w_full = None
     else:
         # We should use provided weights
-        if not (len(weights.shape) == 2 and weights.shape == points1.shape[:2]):
+        if not (len(weights.shape) == 2 and weights.shape == (A.shape[0], num_points)):
             raise AssertionError(weights.shape)
         w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
 
     # Only the minimal four-point LU path works from the design matrix itself (see below).
     # Every other case forms the normal equations in the exact operand order the pre-gauge
     # implementation used, so weighted results stay bit-identical to it.
-    minimal_lu = solver == "lu" and points1.shape[1] == 4
+    minimal_lu = solver == "lu" and num_points == 4
     if not minimal_lu:
         A = A.transpose(-2, -1) @ A if w_full is None else (A.transpose(-2, -1) * w_full) @ A
 
@@ -276,7 +304,7 @@ def find_homography_dlt(
             _, _, V = _torch_svd_cast(A)
         except RuntimeError:
             warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
-            return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
+            return torch.empty((A.shape[0], 3, 3), device=device, dtype=dtype)
         H = V[..., -1].view(-1, 3, 3)
     elif solver == "lu":
         if not minimal_lu:
@@ -327,7 +355,7 @@ def find_homography_dlt(
         H = sol.reshape(-1, 3, 3)
     else:
         raise NotImplementedError
-    H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
+    H = transform2_inv @ (H @ transform1)
     return H / (H[..., -1:, -1:] + eps)
 
 
@@ -356,11 +384,16 @@ def find_homography_dlt_iterated(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
-    H: torch.Tensor = find_homography_dlt(points1, points2, weights)
+    device, dtype = _extract_device_dtype([points1, points2])
+    # The design matrix and the normalizing transforms depend on the points only: build them once
+    # instead of once per solve, which is most of the launch overhead of a five-solve polish.
+    A, transform1, transform2 = _homography_dlt_system(points1, points2)
+    transform2_inv = safe_inverse_with_mask(transform2)[0]
+    H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, dtype)
     for _ in range(n_iter - 1):
         errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, False)
         weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
-        H = find_homography_dlt(points1, points2, weights_new)
+        H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, dtype)
     return H
 
 
