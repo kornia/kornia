@@ -206,6 +206,46 @@ class TestSymmetricTransferError(BaseTester):
 
 
 class TestFindHomographyDLT(BaseTester):
+    @pytest.mark.parametrize("solver", ["lu", "svd"])
+    def test_zero_weight_outlier_does_not_change_estimate(self, solver, device, dtype):
+        if dtype != torch.float64 or device.type == "mps":
+            pytest.skip("This numerical regression requires float64 linear algebra")
+
+        points1 = torch.tensor(
+            [
+                [
+                    [0.0, 0.0],
+                    [100.0, 0.0],
+                    [0.0, 100.0],
+                    [100.0, 100.0],
+                    [50.0, 15.0],
+                    [15.0, 60.0],
+                    [85.0, 65.0],
+                    [40.0, 90.0],
+                    [10.0, 20.0],
+                    [70.0, 30.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        points2 = points1 * torch.tensor([1.1, 0.9], device=device, dtype=dtype) + 7.0
+        points2 = points2 + torch.arange(20, device=device, dtype=dtype).reshape(1, 10, 2) * 0.03
+        outlier1 = torch.tensor([[[5000.0, -3000.0]]], device=device, dtype=dtype)
+        outlier2 = torch.tensor([[[-4000.0, 6000.0]]], device=device, dtype=dtype)
+        weights = torch.tensor([[1.0] * 10 + [0.0]], device=device, dtype=dtype)
+
+        reference = find_homography_dlt(points1, points2, solver=solver)
+        with_outlier = find_homography_dlt(
+            torch.cat([points1, outlier1], dim=1), torch.cat([points2, outlier2], dim=1), weights, solver
+        )
+        self.assert_close(
+            kornia.geometry.transform_points(with_outlier, points1),
+            kornia.geometry.transform_points(reference, points1),
+            rtol=0.0,
+            atol=1e-5,
+        )
+
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -393,6 +433,56 @@ class TestFindHomographyDLT(BaseTester):
 
 
 class TestFindHomographyFromLinesDLT(BaseTester):
+    def test_zero_weight_segment_does_not_change_estimate(self, device, dtype):
+        if dtype != torch.float64 or device.type == "mps":
+            pytest.skip("This numerical regression requires float64 linear algebra")
+
+        starts = torch.tensor(
+            [
+                [0.0, 0.0],
+                [20.0, 5.0],
+                [10.0, 35.0],
+                [55.0, 15.0],
+                [70.0, 50.0],
+                [25.0, 65.0],
+                [90.0, 80.0],
+                [45.0, 95.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        directions = torch.tensor(
+            [
+                [12.0, 4.0],
+                [7.0, 16.0],
+                [18.0, -6.0],
+                [-9.0, 14.0],
+                [11.0, -8.0],
+                [5.0, 20.0],
+                [-15.0, 6.0],
+                [8.0, -12.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        segments1 = torch.stack([starts, starts + directions], dim=1)[None]
+        segments2 = segments1 * torch.tensor([1.1, 0.9], device=device, dtype=dtype) + 7.0
+        segments2 = segments2 + torch.arange(32, device=device, dtype=dtype).reshape(1, 8, 2, 2) * 0.03
+        weights = torch.tensor([[0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]], device=device, dtype=dtype)
+        # #4866 pairs endpoints incorrectly; these two zero weights isolate the normalization defect here.
+        outlier1, outlier2 = segments1.clone(), segments2.clone()
+        outlier1[:, 0] += torch.tensor([5000.0, -3000.0], device=device, dtype=dtype)
+        outlier2[:, 0] += torch.tensor([-4000.0, 6000.0], device=device, dtype=dtype)
+
+        reference = find_homography_lines_dlt(segments1, segments2, weights)
+        with_outlier = find_homography_lines_dlt(outlier1, outlier2, weights)
+        self.assert_close(
+            kornia.geometry.transform_points(with_outlier, starts[None]),
+            kornia.geometry.transform_points(reference, starts[None]),
+            rtol=0.0,
+            atol=1e-5,
+        )
+
     def test_smoke(self, device, dtype):
         points1st = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points1end = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -540,7 +630,73 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         self.gradcheck(find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6)
 
 
+class TestHomographyNormalization(BaseTester):
+    @pytest.mark.parametrize("solver", ["lu", "svd", "lines"])
+    @pytest.mark.parametrize("last_entry", [1e-6, -1e-6, 0.0, 1e-10, -1e-10])
+    def test_small_last_entry(self, device, solver, last_entry):
+        # Float64 resolves the small homogeneous scale without solver rounding masking #4874.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        points = torch.tensor(
+            [
+                [
+                    [1.0, 1.0],
+                    [2.0, 1.0],
+                    [2.0, 3.0],
+                    [1.0, 3.0],
+                    [3.0, 2.0],
+                    [4.0, 1.0],
+                    [4.0, 4.0],
+                    [1.0, 4.0],
+                    [2.0, 5.0],
+                    [5.0, 2.0],
+                    [3.0, 4.0],
+                    [5.0, 5.0],
+                ]
+            ],
+            device=device,
+            dtype=torch.float64,
+        )
+        H = torch.tensor(
+            [[[1.0, 0.2, 0.3], [0.1, 1.0, 0.2], [0.1, 0.2, last_entry]]], device=device, dtype=points.dtype
+        )
+        projected = torch.cat([points, torch.ones_like(points[..., :1])], dim=-1) @ H.transpose(-1, -2)
+        target = (projected[..., :2] / projected[..., 2:]).detach().requires_grad_()
+        if solver == "lines":
+            out = find_homography_lines_dlt(points.reshape(1, 6, 2, 2), target.reshape(1, 6, 2, 2))
+        else:
+            out = find_homography_dlt(points[:, :4], target[:, :4], solver=solver)
+        if abs(last_entry) > 1e-8:
+            assert out[0, 2, 2] == 1
+        else:
+            # Keep the finite, unscaled estimate when its last entry is too small to normalize.
+            assert out[..., 2, 2].abs().max() <= 1e-8
+            assert out.abs().max() < 10
+        self.assert_close(out / out[..., :1, :1], H, rtol=1e-6, atol=1e-8)
+        out.sum().backward()
+        assert torch.isfinite(target.grad).all()
+
+
 class TestFindHomographyDLTIter(BaseTester):
+    def test_initial_solve_uses_weighted_normalization(self, device, dtype):
+        points1 = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [2.0, 1.0], [1.0, 2.0], [2.0, 2.0], [100.0, -100.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        points2 = torch.tensor(
+            [[[2.0, 3.0], [3.1, 3.0], [2.0, 4.0], [4.0, 4.1], [3.0, 5.0], [4.1, 5.1], [-100.0, 100.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        weights = torch.tensor([[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype)
+
+        # A zero-weight outlier must not change Hartley normalization in the first IRLS solve.
+        self.assert_close(
+            find_homography_dlt_iterated(points1, points2, weights, n_iter=1),
+            find_homography_dlt(points1, points2, weights),
+        )
+
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -711,7 +867,7 @@ class TestConventionHomography(BaseTester):
             return _transfer_max(H, p1[:, clean], p2[:, clean])
 
         # On exact data: unweighted, the outlier pulls H by about 12 px on the clean points, and a weight of 0 removes
-        # its equations (on noisy data it still moves H through the point normalisation, #4890).
+        # its equations and excludes it from point normalisation, including on noisy data.
         assert clean_error(find_homography_dlt(p1, p2_out, None, solver)) > 5.0
         w_zero = torch.ones(1, 12, device=device, dtype=dtype)
         w_zero[0, 5] = 0.0
@@ -821,7 +977,7 @@ class TestConventionHomography(BaseTester):
             pytest.skip(_F16_LU)
         p1, p2, _ = _planar(device, dtype)
         if model == "points":
-            # The point polisher builds the DLT system once and solves it per iteration: count the solves.
+            # Count the point polisher's DLT solves across iterations.
             name, iterated, args = "_homography_from_dlt_system", find_homography_dlt_iterated, (p1, p2)
             plain = find_homography_dlt
         else:
@@ -921,7 +1077,7 @@ class TestConventionHomography(BaseTester):
         calls = []
 
         if model == "points":
-            # The point polisher solves the prebuilt DLT system; its weights are the second argument.
+            # The point polisher's solver takes the weights as its second argument.
             name = "_homography_from_dlt_system"
             solve = kornia.geometry.homography._homography_from_dlt_system
 
@@ -963,7 +1119,7 @@ class TestConventionHomography(BaseTester):
         assert oneway_transfer_error(p1, p2, 1e-8 * H, squared=False).min() > 1.0
 
     @pytest.mark.parametrize("model", ["points", "lines"])
-    def test_wart_find_homography_dlt_h22_eps_divisor_4874(self, model, device, dtype):
+    def test_convention_find_homography_dlt_h22_eps_divisor_4874(self, model, device, dtype):
         _skip_half(dtype, _HALF_DLT)
         p1, p2, _ = _planar(device, dtype)
         # The same fixture with the true H[2, 2] set to 1e-6 (a mild warp whose origin maps far out), exact matches.
@@ -978,12 +1134,12 @@ class TestConventionHomography(BaseTester):
 
         # With the true H[2, 2] = 1 the returned entry is 1.
         assert (fit(p2)[0, 2, 2] - 1.0).abs() < 1e-4
-        # #4874: H is divided by H[2, 2] + 1e-8, and the unnormalised entry here is a few 1e-6, so the returned
-        # H[2, 2] misses 1 by about 2e-3. Once the divisor is H[2, 2] itself, it is 1.
-        assert (fit(p2_small)[0, 2, 2] - 1.0).abs() > 1e-3
+        # #4874: divide by H[2, 2] itself even when the unnormalised entry is only a few 1e-6.
+        h22 = fit(p2_small)[0, 2, 2]
+        self.assert_close(h22, torch.ones_like(h22), rtol=0.0, atol=1e-6)
 
     @pytest.mark.parametrize("solver", ["lu", "svd"])
-    def test_wart_find_homography_dlt_zero_weight_moves_normalisation_4890(self, solver, device, dtype):
+    def test_find_homography_dlt_zero_weight_preserves_normalisation_4890(self, solver, device, dtype):
         _skip_half(dtype, _HALF_DLT)
         p1, p2, _ = _planar(device, dtype)
         # 3-px noise on the twelve matches, generated by
@@ -1001,7 +1157,6 @@ class TestConventionHomography(BaseTester):
         weights[0, 12] = 0.0
         H_weighted = find_homography_dlt(far1, far2, weights, solver)
         H_dropped = find_homography_dlt(p1, p2, None, solver)
-        # #4890: the zero-weight correspondence leaves the equations but still enters the Hartley normalisation, so
-        # on noisy data it moves H (by 0.08 px with solver="lu" and 0.25 px with "svd" here). Once the normalisation
-        # uses the weights, the two estimates agree to roundoff.
-        assert _transfer_max(H_weighted, p1, kornia.geometry.transform_points(H_dropped, p1)) > 1e-2
+        # #4890: excluding the zero-weight match from Hartley statistics must match dropping it entirely.
+        tol = 1e-8 if dtype == torch.float64 else 1e-2
+        assert _transfer_max(H_weighted, p1, kornia.geometry.transform_points(H_dropped, p1)) < tol

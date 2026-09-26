@@ -24,7 +24,6 @@ import torch
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _normalize_to_float32_or_float64, _torch_svd_cast, is_mps_tensor_safe
 from kornia.geometry.conversions import convert_points_from_homogeneous
-from kornia.geometry.solvers import null_vector_3x4
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 
@@ -56,6 +55,44 @@ def _eigh_smallest_vec(M: torch.Tensor) -> torch.Tensor:
     return torch.cat(parts, dim=0)
 
 
+def _sub_system_null_vectors(A: torch.Tensor) -> torch.Tensor:
+    r"""Return the null vectors of the four :math:`3 \times 4` sub-systems of each :math:`4 \times 4` matrix.
+
+    Row ``j`` of the result is orthogonal to every row of ``A`` but row ``3 - j`` (sub-systems ``{0, 1, 2}``,
+    ``{0, 1, 3}``, ``{0, 2, 3}``, ``{1, 2, 3}``); up to sign it is the column of the adjugate of ``A`` for the
+    row left out, the vector of :math:`3 \times 3` minors that :func:`~kornia.geometry.solvers.null_vector_3x4`
+    returns. The minors are expanded along the ``2 x 2`` minors of the row pairs ``(0, 1)`` and ``(2, 3)``, which
+    all four share: the Hodge dual of one pair's bivector applied to each row of the other pair. These are the
+    columns of :func:`kornia.core._small_linalg._adjugate_4x4` in fewer, wider kernels, about half its time for a
+    million matrices on the CPU and on MPS.
+
+    Args:
+        A: batch of matrices, shape ``(*, 4, 4)``.
+
+    Returns:
+        The four null vectors, shape ``(*, 4, 4)``, not normalised: a sub-system of rank below 3 gives zero.
+    """
+    P = A[..., 0::2, None, :]  # rows 0 and 2, (*, 2, 1, 4)
+    Q = A[..., 1::2, None, :]  # rows 1 and 3
+
+    def minor(p: int, q: int) -> torch.Tensor:
+        return P[..., p] * Q[..., q] - P[..., q] * Q[..., p]  # (*, 2, 1)
+
+    s01, s02, s03, s12, s13, s23 = minor(0, 1), minor(0, 2), minor(0, 3), minor(1, 2), minor(1, 3), minor(2, 3)
+    # The bivector of rows (0, 1) meets rows 2 and 3; that of rows (2, 3) meets rows 0 and 1.
+    x0, x1, x2, x3 = torch.stack([A[..., 2:, :], A[..., :2, :]], dim=-3).unbind(-1)  # each (*, 2, 2)
+    h = torch.stack(
+        [
+            s23 * x1 - s13 * x2 + s12 * x3,
+            -s23 * x0 + s03 * x2 - s02 * x3,
+            s13 * x0 - s03 * x1 + s01 * x3,
+            -s12 * x0 + s02 * x1 - s01 * x2,
+        ],
+        dim=-1,
+    )  # (*, 2, 2, 4)
+    return h.flatten(-3, -2)
+
+
 def triangulate_points(
     P1: torch.Tensor,
     P2: torch.Tensor,
@@ -76,17 +113,15 @@ def triangulate_points(
           :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV. The leading
           dimensions of ``P1`` and ``P2`` broadcast against those of the points.
         - Cheirality and baseline are not checked: a point behind a camera is returned with negative depth, and with
-          zero baseline the depth is undefined and ``"svd"`` and ``"eigh"`` return an arbitrary point on the line of
-          sight, possibly behind the camera.
-        - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS, and
-          return the input dtype; ``solver`` below compares their accuracy.
-        - Known defects: a correspondence at infinity comes back unflagged, as a finite point at a distance set by
-          roundoff or as ``inf`` in float16 (`#4865 <https://github.com/kornia/kornia/issues/4865>`_);
-          ``solver="cofactor"`` returns NaN for pixel-scale float16 input
-          (`#4863 <https://github.com/kornia/kornia/issues/4863>`_) and can return a point unrelated to the input when a
-          :math:`3 \times 4` sub-system is rank-deficient or nearly so: with zero baseline, and for a point whose
-          row in the first image or column in the second passes through or near the epipole. Rectified stereo pairs
-          are susceptible with or without noise (`#4900 <https://github.com/kornia/kornia/issues/4900>`_).
+          zero baseline the depth is undefined: ``"svd"`` and ``"eigh"`` return an arbitrary point on the line of
+          sight, possibly behind the camera or at infinity (NaN), and ``"cofactor"`` returns NaN.
+        - A correspondence at infinity, whose homogeneous ``w`` is at the roundoff of the input and compute dtypes,
+          returns NaN. In float16 and bfloat16 that roundoff also covers a point a few tens of units away in the
+          scale of ``t``. Mask those rows before a loss (``out[~out.isnan().any(-1)]``); the gradients with respect
+          to the cameras and the other points stay finite.
+        - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS;
+          ``"cofactor"`` solves in float32, or in float64 for float64 input. All return the input dtype;
+          ``solver`` below compares their accuracy.
 
     Args:
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
@@ -107,13 +142,16 @@ def triangulate_points(
             rows, such as a baseline much shorter than the depth, it loses accuracy that
             ``"svd"`` keeps. Typically **10-26x
             faster** than ``"svd"`` on GPU for large batches.
-          * ``"cofactor"`` — solves two :math:`3 \times 4` sub-systems analytically
-            using :func:`~kornia.geometry.solvers.null_vector_3x4` (closed-form
-            cofactor expansion, no LAPACK call). The two solutions are averaged after
-            normalisation. This matches the full DLT solution when the constraint
-            system is exactly consistent and both sub-systems have full rank (see the
-            known defects above), but is only an approximation in the noisy
-            inconsistent case. Fastest option for all batch sizes.
+          * ``"cofactor"`` — closed form, no LAPACK call. The null vectors of the four
+            :math:`3 \times 4` sub-systems (the cofactors, as in
+            :func:`~kornia.geometry.solvers.null_vector_3x4`) form the adjugate of the
+            DLT matrix; the longest one, refined by one step of inverse iteration through
+            the adjugate, gives the ``"svd"`` point to roundoff without noise and nearly
+            the same point with noise, also for rectified and vertical stereo pairs, where
+            a sub-system is nearly rank-deficient. When the noise is comparable to the
+            parallax, so that the DLT point itself is far off, one step does not converge
+            and the two can differ. The point is NaN when every sub-system is
+            rank-deficient (zero baseline). Fastest option for large batches.
 
     Returns:
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
@@ -143,6 +181,15 @@ def triangulate_points(
     # Unify N1 and N2: one may be 1 when points1/points2 are broadcast-compatible.
     row0, row1, row2, row3 = torch.broadcast_tensors(row0, row1, row2, row3)
 
+    # svd and eigh mirror _torch_svd_cast's promotion: fp32 -> fp64 for stability, fp16/bf16 -> fp32, fp64
+    # stays, MPS capped at fp32 (no fp64 support there). cofactor uses arithmetic only and keeps fp32.
+    if is_mps_tensor_safe(row0):
+        compute_dtype = torch.float32
+    elif row0.dtype == torch.float32:
+        compute_dtype = torch.float64
+    else:
+        compute_dtype = _normalize_to_float32_or_float64(row0.dtype)
+
     if solver == "svd":
         X = torch.stack([row0, row1, row2, row3], dim=-2)  # (*, N, 4, 4)
         # SVD: last right singular vector minimises ||Ax|| s.t. ||x||=1.
@@ -162,15 +209,6 @@ def triangulate_points(
         # which is fine for homogeneous coordinates.
         # The approach is valid in both the noise-free (rank-3) and the noisy
         # inconsistent case, where the rows do not share an exact nullspace.
-        # Mirror _torch_svd_cast's promotion rules so numerical behaviour is
-        # comparable to the "svd" solver: fp32 → fp64 for stability, fp16/bf16 →
-        # fp32, fp64 stays, MPS capped at fp32 (no fp64 support there).
-        if is_mps_tensor_safe(X):
-            compute_dtype = torch.float32
-        elif X.dtype == torch.float32:
-            compute_dtype = torch.float64
-        else:
-            compute_dtype = _normalize_to_float32_or_float64(X.dtype)
         batch_shape = X.shape[:-2]  # (*, N)
         X_cast = X.to(compute_dtype)
         XTX = X_cast.mT @ X_cast  # (*, N, 4, 4) symmetric PSD
@@ -179,40 +217,47 @@ def triangulate_points(
         points3d_h = v_flat.reshape(*batch_shape, 4)  # (*, N, 4)
 
     elif solver == "cofactor":
-        # Solve two 3x4 sub-systems analytically via cofactor expansion and
-        # average the sign-aligned normalised results.  This matches the full
-        # DLT solution when the constraint system is exactly consistent
-        # (noise-free), but is only an approximation in the noisy case.
-        # null_vector_3x4 uses only arithmetic ops, so promote fp16/bf16 → fp32.
+        # The null vectors of the four 3x4 sub-systems (each DLT row left out once) are, up to sign, the columns
+        # of adj(A) = det(A) A^-1 = det(A) V S^-1 U^T. Each leans towards the DLT solution v4 (the svd one), and
+        # all are parallel to it when A has rank 3 (noise-free). With noise, a sub-system whose three rows are
+        # nearly dependent (a rectified or vertical stereo pair, a camera rolled by 90 degrees, a row through the
+        # epipole) has a null vector set by the noise, and no fixed choice or average of two of them avoids it.
+        # So take the longest one and apply one step of inverse iteration with
+        # adj(A) adj(A)^T = det(A)^2 (A^T A)^-1, which suppresses v3 against v4 by a further (s4 / s3)^2: the
+        # svd solution without a LAPACK call, still defined at rank 3, where A^-1 is not.
+        # The minors use only arithmetic ops, so promote fp16/bf16 -> fp32 and stay there until the null vector
+        # is normalised: the unnormalised minors of pixel-scale rows overflow float16.
         compute_dtype = _normalize_to_float32_or_float64(row0.dtype)
-        r0 = row0.to(compute_dtype)
-        r1 = row1.to(compute_dtype)
-        r2 = row2.to(compute_dtype)
-        r3 = row3.to(compute_dtype)
-        # Both sub-systems include row2 (from camera 2's x-projection equation),
-        # which carries the camera-2 translation and is therefore well-conditioned
-        # for any camera pair with a non-zero baseline in x.  Using rows {0,1,2}
-        # and {1,2,3} rather than {0,1,2} and {0,1,3} avoids the degenerate case
-        # that arises when camera 2 has zero last-column entries in its y- and
-        # z-projection rows (e.g. [R|t] with t = (-T,0,0)).
-        A_012 = torch.stack([r0, r1, r2], dim=-2)  # (*, N, 3, 4)
-        A_123 = torch.stack([r1, r2, r3], dim=-2)  # (*, N, 3, 4)
-        h_012 = null_vector_3x4(A_012).to(row0.dtype)  # (*, N, 4)
-        h_123 = null_vector_3x4(A_123).to(row0.dtype)  # (*, N, 4)
-        n012 = h_012.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        n123 = h_123.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        v012 = h_012 / n012
-        v123 = h_123 / n123
-        # Null vectors are defined up to a global sign; align signs before
-        # averaging in homogeneous space to prevent cancellation when the two
-        # sub-system solutions point in opposite directions (which would yield a
-        # near-zero homogeneous vector and NaN after dehomogenisation).
-        dot = (v012 * v123).sum(dim=-1, keepdim=True)
-        v123 = torch.where(dot < 0, -v123, v123)
-        points3d_h = v012 + v123  # (*, N, 4)
+        tiny = torch.finfo(compute_dtype).tiny
+        A = torch.stack([row0, row1, row2, row3], dim=-2).to(compute_dtype)  # (*, N, 4, 4)
+        # A common scale of the rows leaves the solution unchanged and keeps the cubic minors in range.
+        row_norms = A.norm(dim=-1)  # (*, N, 4)
+        scale = row_norms.amax(dim=-1, keepdim=True).clamp_min(tiny)
+        A, row_norms = A / scale[..., None], row_norms / scale
+        H = _sub_system_null_vectors(A)  # (*, N, 4, 4); row j leaves out DLT row 3 - j
+        # A sub-system of rank below 3 has minors at roundoff, and every one has when A has rank 2 (zero
+        # baseline): judge each against the product of its row norms, and return NaN when none has full rank.
+        h_norms = H.norm(dim=-1)  # (*, N, 4)
+        sub_row_norms = row_norms.prod(dim=-1, keepdim=True) / row_norms.flip(-1).clamp_min(tiny)
+        full_rank = (h_norms > 8.0 * torch.finfo(compute_dtype).eps * sub_row_norms).any(dim=-1, keepdim=True)
+        longest = h_norms.argmax(dim=-1, keepdim=True)[..., None].expand(*H.shape[:-2], 1, 4)
+        c = H.gather(-2, longest).squeeze(-2) / h_norms.amax(dim=-1, keepdim=True).clamp_min(tiny)
+        w = (H @ c[..., None]).squeeze(-1)  # adj(A)^T c, up to the signs of its entries
+        w = w / w.norm(dim=-1, keepdim=True).clamp_min(tiny)
+        v = (H.mT @ w[..., None]).squeeze(-1)  # adj(A) adj(A)^T c: the signs cancel
+        v = v / v.norm(dim=-1, keepdim=True).clamp_min(tiny)
+        points3d_h = torch.where(full_rank, v, torch.full_like(v, float("nan"))).to(row0.dtype)
 
     else:
         raise NotImplementedError(f"Unknown solver '{solver}'. Choose from: 'svd', 'eigh', 'cofactor'.")
+
+    # A correspondence at infinity (parallel rays) has w = 0 up to roundoff: the rows carry the input dtype's
+    # roundoff and the solver the compute dtype's, which eigh amplifies by squaring the conditioning (about 25
+    # epsilons on the two-view fixture against 2 for svd). Flag it as NaN instead of dividing by that roundoff.
+    w_scale = 128.0 if solver == "eigh" else 16.0
+    w_tol = w_scale * torch.finfo(compute_dtype).eps + 4.0 * torch.finfo(points3d_h.dtype).eps
+    at_infinity = points3d_h[..., 3:].abs() <= w_tol * points3d_h.norm(dim=-1, keepdim=True)
+    points3d_h = torch.where(at_infinity, torch.full_like(points3d_h, float("nan")), points3d_h)
 
     points3d: torch.Tensor = convert_points_from_homogeneous(points3d_h)
     return points3d

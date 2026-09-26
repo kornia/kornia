@@ -234,7 +234,6 @@ call	builtins.RuntimeError	tests/geometry/liegroup/test_se2.py::TestSe2::test_tr
 call	builtins.RuntimeError	tests/geometry/liegroup/test_se2.py::TestSe2::test_trans_y[cpu-bfloat16-2]
 call	builtins.RuntimeError	tests/geometry/liegroup/test_se2.py::TestSe2::test_trans_y[cpu-bfloat16-5]
 call	builtins.RuntimeError	tests/geometry/liegroup/test_se2.py::TestSe2::test_trans_y[cpu-bfloat16-None]
-call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_exp_log[cpu-bfloat16-5]
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul[cpu-bfloat16-None]
 call	builtins.AssertionError	tests/geometry/liegroup/test_se3.py::TestSe3::test_mul_point[cpu-bfloat16-1]

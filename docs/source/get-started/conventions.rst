@@ -493,8 +493,7 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
        ``(3k, 3)``
    * - essential matrix
      - ``find_essential`` takes normalised camera coordinates :math:`K^{-1} [u, v, 1]^\top` and returns ten
-       slots, ``NaN`` for complex roots; a sample with no real solution returns ten identity matrices
-       (`#4883 <https://github.com/kornia/kornia/issues/4883>`_)
+       slots, ``NaN`` for complex roots (all ten for a sample with no real solution)
      - ``findEssentialMat`` takes pixels and ``cameraMatrix`` (or one matrix per camera); with exactly 5 points it
        stacks the real solutions as ``(3k, 3)``, with more it returns the single ``E`` its RANSAC or LMedS selects
    * - homography
@@ -509,8 +508,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
        kornia's, so a candidate index does not port; ``recoverPose`` selects the same pose and also returns the
        inlier count
    * - projection matrix
-     - ``KRt_from_projection`` returns the translation ``t`` of ``P = K [R | t]``; for ``det P[:, :3] < 0`` it
-       returns a reflection (`#4864 <https://github.com/kornia/kornia/issues/4864>`_)
+     - ``KRt_from_projection`` returns the translation ``t`` of ``P = K [R | t]``; ``P`` and ``-P`` give the same
+       positive-diagonal ``K``, rotation ``R`` and ``t``
      - ``decomposeProjectionMatrix`` returns the homogeneous camera centre :math:`C = -R^\top t`; for
        ``det P[:, :3] < 0`` it keeps ``det R = 1`` and returns ``K[2, 2] < 0``
    * - triangulation
@@ -532,7 +531,7 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
    * - polynomial roots
      - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
        return only the real roots, a missing root padded with ``0.0``; ``solve_quartic``'s order is unspecified;
-       a zero leading coefficient gives wrong roots (`#4873 <https://github.com/kornia/kornia/issues/4873>`_)
+       a zero leading coefficient lowers the degree
      - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
 
 Pitfall checklist

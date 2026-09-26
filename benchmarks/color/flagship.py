@@ -188,8 +188,10 @@ def main() -> None:
         device,
         units="img/s",
         regimes=[
-            "kornia/torchvision: batched float BCHW; opencv/PIL: uint8 HWC per-image loop (CPU), "
-            "opencv Lab on float32; scikit-image: normalized float HWC per-image loop",
+            (
+                "kornia/torchvision: batched float BCHW; opencv/PIL: uint8 HWC per-image loop (CPU), "
+                "opencv Lab on float32; scikit-image: normalized float HWC per-image loop"
+            ),
             "opencv (stacked): one cvtColor on the batch viewed as (B*H, W, 3); PIL: prebuilt Image objects",
         ],
         missing=[(name, err) for lib, name, err in libs if lib is None],

@@ -28,7 +28,9 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 from kornia.geometry.solvers import solve_cubic
 
 
-def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def normalize_points(
+    points: torch.Tensor, eps: float = 1e-8, weights: Optional[torch.Tensor] = None
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Normalize points (isotropic).
 
     Computes the Hartley normalisation: the points are translated to zero mean and scaled isotropically so
@@ -40,6 +42,8 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     Args:
        points: Tensor containing the points to be normalized with shape :math:`(B, N, 2)`.
        eps: epsilon value to avoid numerical instabilities.
+       weights: Optional nonnegative weights with shape :math:`(B, N)` for the centroid and mean radius.
+          Zero-weight points do not influence the transform. An all-zero batch element uses unweighted statistics.
 
     Returns:
        tuple containing the normalized points in the shape :math:`(B, N, 2)` and the transformation matrix
@@ -54,12 +58,32 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     B, _N, _ = points.shape
     device, dtype = points.device, points.dtype
 
-    # Center at mean
-    x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
+    if weights is None:
+        x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
+    else:
+        if weights.shape != points.shape[:2]:
+            raise AssertionError(weights.shape)
+        # Accumulate in at least float32: in half precision a sum followed by a division rounds twice where
+        # ``mean`` rounds once, and uniform weights would then not reproduce the unweighted statistics.
+        acc_dtype = torch.promote_types(dtype, torch.float32)
+        # Negative weights count as zero. ``where`` rather than ``clamp_min(0)``: the clamp's derivative at the bound
+        # depends on the torch version (#4229), and a weight of exactly 0 is how a correspondence is dropped.
+        positive_weights = weights.to(acc_dtype)
+        positive_weights = torch.where(positive_weights < 0, 0.0, positive_weights)
+        total_weight = positive_weights.sum(dim=1, keepdim=True)
+        # A fully de-weighted sample is degenerate; keep its normalization finite and batched.
+        effective_weights = torch.where(total_weight > 0, positive_weights, torch.ones_like(positive_weights))
+        total_weight = effective_weights.sum(dim=1, keepdim=True)
+        weighted_sum = (points.to(acc_dtype) * effective_weights[..., None]).sum(dim=1, keepdim=True)
+        x_mean = (weighted_sum / total_weight[..., None]).to(dtype)
     centered = points - x_mean  # (B,N,2)
 
     # Mean Euclidean distance to origin (radius)
-    mean_radius = centered.norm(dim=-1, p=2).mean(dim=-1)  # (B,)
+    radii = centered.norm(dim=-1, p=2)
+    if weights is None:
+        mean_radius = radii.mean(dim=-1)  # (B,)
+    else:
+        mean_radius = ((radii.to(acc_dtype) * effective_weights).sum(dim=-1) / total_weight.squeeze(-1)).to(dtype)
 
     # Scale so that mean radius becomes sqrt(2)
     scale = (math.sqrt(2.0)) / (mean_radius + eps)  # (B,)
@@ -87,14 +111,10 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     Convention:
         - Divides ``M`` by its last entry ``M[..., -1, -1]``, which gives :func:`find_fundamental` its
           ``F[2, 2] = 1`` scaling. A matrix whose last entry is within ``eps`` of zero is returned unchanged.
-        - Known defects: the divisor is ``M[..., -1, -1] + eps``, so the last entry is not exactly one, and it is
-          far from one when ``|M[..., -1, -1]|`` is close to ``eps``
-          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         M: The transformation to be normalized of any shape with a minimum size of 2x2.
-        eps: added to the divisor, and the magnitude of the last entry at or below which ``M`` is returned
-            unchanged.
+        eps: magnitude of the last entry at or below which ``M`` is returned unchanged.
 
     Returns:
         the normalized transformation matrix with same shape as the input.
@@ -103,7 +123,9 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     if len(M.shape) < 2:
         raise AssertionError(M.shape)
     norm_val: torch.Tensor = M[..., -1:, -1:]
-    return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
+    mask = norm_val.abs() > eps
+    divisor = torch.where(mask, norm_val, torch.ones_like(norm_val))
+    return torch.where(mask, M / divisor, M)
 
 
 def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
@@ -285,9 +307,9 @@ def run_8point(
         if weights.shape[1] != points1.shape[1]:
             raise AssertionError(weights.shape)
 
-    # Hartley normalization (same as before)
-    pts1n, T1 = normalize_points(points1)
-    pts2n, T2 = normalize_points(points2)
+    # Use the same correspondences for Hartley statistics and the weighted DLT system.
+    pts1n, T1 = normalize_points(points1, weights=weights)
+    pts2n, T2 = normalize_points(points2, weights=weights)
 
     x1, y1 = torch.chunk(pts1n, dim=-1, chunks=2)  # (B,N,1)
     x2, y2 = torch.chunk(pts2n, dim=-1, chunks=2)  # (B,N,1)
@@ -308,11 +330,16 @@ def run_8point(
             # Accumulate via einsum (saves bandwidth for huge N)
             M = torch.einsum("bni,bnj->bij", A, A)
     else:
-        w = weights.clamp_min(0)
+        # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence, and
+        # its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient through
+        # at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on every version.
+        w = torch.where(weights < 0, 0.0, weights)
         if N < use_einsum_at_more_than_points:
-            # Row-scale by sqrt(w) then GEMM
-            Aw = A * w.unsqueeze(-1).sqrt()
-            M = Aw.transpose(-2, -1).contiguous() @ Aw
+            # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the derivative
+            # of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in w, like the
+            # einsum branch below.
+            Aw = A * w.unsqueeze(-1)
+            M = Aw.transpose(-2, -1).contiguous() @ A
         else:
             # Weighted einsum
             M = torch.einsum("bni,bnj,bn->bij", A, A, w)
@@ -348,10 +375,8 @@ def find_fundamental(
           ``method="7POINT"`` returns three candidates in no particular order.
         - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
           negative weight counts as zero, and ``method="7POINT"`` ignores them.
-        - Known defects: when the 7-point cubic has one real root, the two extra candidates are one rank-3
-          matrix repeated instead of zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_); a zero weight
-          does not drop a correspondence, which still enters the point normalisation and changes the result
-          (`#4875 <https://github.com/kornia/kornia/issues/4875>`_).
+        - Known defect: when the 7-point cubic has one real root, the two extra candidates are one rank-3
+          matrix repeated instead of zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`: :math:`N \ge 8` for
