@@ -188,11 +188,12 @@ class Se2(nn.Module):
         theta = v[..., 2]
         so2 = So2.exp(theta)
         # V = [[a, -b], [b, a]] with a = sin(theta) / theta and b = (1 - cos(theta)) / theta. Both are
-        # 0/0 at theta = 0 and their derivatives cancel near it, so below 0.5 rad write them through the
-        # cancellation-free So3 coefficients: a = 1 - theta^2 (theta - sin(theta)) / theta^3 and
+        # 0/0 at theta = 0, 1 - cos(theta) cancels just above it, and so does the autograd derivative of
+        # sin(theta) / theta, so below 0.5 rad write them through the cancellation-free So3 coefficients:
+        # a = 1 - theta^2 (theta - sin(theta)) / theta^3 and
         # b = theta (1 - cos(theta)) / theta^2 (kornia#4924), evaluated at |theta| because both are even.
         # Above it take sin(theta) / theta and 2 sin(theta / 2)^2 / theta directly: 1 - theta^2 (...)
-        # cancels where sin(theta) / theta is small, and theta^3 overflows float16 from 41 rad. Each
+        # cancels where sin(theta) / theta is small, and theta^3 overflows float16 above 40.3 rad. Each
         # branch sees a substituted angle where it is not selected, since torch.where differentiates both.
         small = theta.abs() < 0.5
         theta_s = torch.where(small, theta, torch.zeros_like(theta))

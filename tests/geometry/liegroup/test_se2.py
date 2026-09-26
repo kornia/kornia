@@ -227,8 +227,8 @@ class TestSe2(BaseTester):
     def test_exp_keeps_large_angles_4924(self, device, dtype):
         # Past the small-angle branch exp takes sin(theta) / theta and 2 sin(theta / 2)^2 / theta directly.
         # 1 - theta^2 (theta - sin(theta)) / theta^3 cancels wherever sin(theta) / theta is small (37.7 is
-        # within 1e-3 of 12 pi), 1 - cos(theta) cancels there too, and theta^3 overflows float16 from 41 rad,
-        # which made the coefficient 0 and exp(v).t equal to (vx, vy); the series that torch.where discards
+        # within 1e-3 of 12 pi), 1 - cos(theta) cancels there too, and theta^3 overflows float16 above 40.3 rad,
+        # which made that coefficient 0 and exp(v).t close to (vx, vy); the series that torch.where discards
         # overflows from 50 rad and made the gradient nan.
         if dtype == torch.bfloat16:
             pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
@@ -247,7 +247,7 @@ class TestSe2(BaseTester):
 
     def test_exp_gradient_below_the_switch_4924(self, device, dtype):
         # Below 0.5 rad the angle gradient comes from the series: autograd of sin(theta) / theta is
-        # cos(theta) / theta - sin(theta) / theta^2, which cancels to a few hundred ulps at theta = 0.06.
+        # cos(theta) / theta - sin(theta) / theta^2, which loses about three digits at theta = 0.06.
         # Reference: the derivative series of a = sin(theta) / theta and b = (1 - cos(theta)) / theta in float64.
         if dtype == torch.bfloat16:
             pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
