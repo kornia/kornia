@@ -43,7 +43,7 @@ class Se3(nn.Module):
 
     Convention:
         - The tangent vector is :math:`[\upsilon, \omega]`, translation first
-          (:ref:`Rotations and rigid motions <rotation-conventions>` maps it onto Sophus and GTSAM): ``exp`` rotates by
+          (:doc:`Conventions </get-started/conventions>` maps it onto Sophus and GTSAM): ``exp`` rotates by
           ``So3.exp(omega)`` and translates by :math:`V(\omega) \upsilon`, ``hat`` is
           :math:`[[\hat\omega, \upsilon], [0, 0]]`, and ``log`` is principal, with :math:`|\omega| \le \pi`.
         - ``matrix()`` is the 4x4 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()``, so ``b`` acts
