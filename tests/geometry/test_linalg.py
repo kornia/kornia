@@ -495,3 +495,156 @@ class TestEuclideanDistance(BaseTester):
 
     def test_module(self, device, dtype):
         pass
+
+
+# Two rigid, non-commuting transforms (T01 T02 != T02 T01 by 0.854), neither the identity nor a pure translation.
+# Generated in float64:
+#   from kornia.geometry.liegroup import Se3
+#   T01 = Se3.exp(torch.tensor([1.0, -2.0, 3.0, 0.4, 0.2, -0.3], dtype=torch.float64)).matrix()
+#   T02 = Se3.exp(torch.tensor([0.3, 0.1, -0.2, -0.1, 0.3, 0.05], dtype=torch.float64)).matrix()
+_T01 = [
+    [0.9365557269934556, 0.32475143364814213, 0.13190859175670216, 0.8932266973410873],
+    [-0.24666617456316434, 0.8779917826797222, -0.4102270442977377, -2.6663426561315666],
+    [-0.24903648038416887, 0.35166309998400436, 0.9023934261437778, 2.4134071590337385],
+    [0.0, 0.0, 0.0, 1.0],
+]
+_T02 = [
+    [0.9541437047897824, -0.06402251222932676, 0.2924224829555252, 0.26284367361699246],
+    [0.034277888309185565, 0.9938032033499706, 0.10573655651854763, 0.09532423813367488],
+    [-0.2973799202755487, -0.09086424455847703, 0.9504256267997647, -0.24625808156806428],
+    [0.0, 0.0, 0.0, 1.0],
+]
+
+
+class TestLinalgConventions(BaseTester):
+    @staticmethod
+    def _fixture(device, dtype):
+        t01 = torch.tensor(_T01, device=device, dtype=dtype)
+        t02 = torch.tensor(_T02, device=device, dtype=dtype)
+        # precondition: the pair does not commute, so an operand swap changes every result below, and neither
+        # transform is a pure translation
+        assert (t01 @ t02 - t02 @ t01).abs().max() > 0.5
+        eye = torch.eye(3, device=device, dtype=dtype)
+        assert (t01[:3, :3] - eye).abs().max() > 0.1 and (t02[:3, :3] - eye).abs().max() > 0.1
+        return t01, t02
+
+    def test_convention_relative_transformation_is_inverse_first_times_second(self, device, dtype):
+        t01, t02 = self._fixture(device, dtype)
+        # trans_12 = trans_01^-1 @ trans_02, generated in float64 as torch.linalg.inv(T01) @ T02
+        expected = torch.tensor(
+            [
+                [0.9592120041966407, -0.2824697732662307, 0.01109766624060022, -0.6092449687748074],
+                [0.23537769566281422, 0.8198060415906909, 0.5220300705475368, 1.2846969255319278],
+                [-0.15655564949731832, -0.49812536711386907, 0.8528548805325243, -3.6161278131582963],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        trans_12 = kgl.relative_transformation(t01, t02)
+        self.assert_close(trans_12, expected)
+        # and composing it back onto trans_01 recovers trans_02
+        self.assert_close(kgl.compose_transformations(t01, trans_12), t02)
+
+    def test_convention_compose_transformations_order(self, device, dtype):
+        t01, t02 = self._fixture(device, dtype)
+        # compose(a, b) = a @ b, generated in float64 as T01 @ T02
+        expected = torch.tensor(
+            [
+                [0.8655135779661945, 0.25079259002638926, 0.4335773554326974, 1.1378675714180575],
+                [-0.08326598765280734, 0.9256182047971615, -0.3691852031816589, -2.5464616769031294],
+                [-0.4939160066816611, 0.28343255941393825, 0.8220176169691901, 2.1592498388088193],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(kgl.compose_transformations(t01, t02), expected)
+
+    def test_convention_transform_points_maps_frame1_to_frame0(self, device, dtype):
+        t01, _ = self._fixture(device, dtype)
+        points_1 = torch.tensor([[[1.0, 2.0, 3.0]]], device=device, dtype=dtype)
+        # points_0 = R01 p1 + t01, generated in float64 as (T01 @ [1, 2, 3, 1])[:3]; the inverse direction,
+        # inv(T01) @ p1, is [-1.197, 4.338, -1.371]
+        expected = torch.tensor(
+            [[[2.8750110669009334, -2.3877063982284996, 5.5748771570489115]]], device=device, dtype=dtype
+        )
+        self.assert_close(kgl.transform_points(t01[None], points_1), expected)
+
+    def test_convention_transform_points_projective_division(self, device, dtype):
+        # A homography with a non-trivial last row: w = 0.1 * 2 + 2 = 2.2, and the result is (x, y) / w.
+        trans = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.1, 0.0, 2.0]]], device=device, dtype=dtype)
+        points = torch.tensor([[[2.0, 3.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[2.0 / 2.2, 3.0 / 2.2]]], device=device, dtype=dtype)
+        self.assert_close(kgl.transform_points(trans, points), expected)
+
+    def test_convention_inverse_transformation_assumes_rigid(self, device, dtype):
+        t01, _ = self._fixture(device, dtype)
+        # A non-rigid matrix: the rotation block of T01 scaled by 2.
+        m = t01.clone()
+        m[:3, :3] = 2.0 * m[:3, :3]
+        eye3 = torch.eye(3, device=device, dtype=dtype)
+        # precondition: m is not rigid (M^T M = 4 I)
+        assert (m[:3, :3].T @ m[:3, :3] - eye3).abs().max() > 1.0
+        inv = kgl.inverse_transformation(m)
+        # The rigid formula [M^T, -M^T t; 0, 1] is applied without validation: the rotation block is the transpose
+        # to the bit, and the result is not the inverse of m (inv @ m = [4 I, ...], residual 3).
+        assert torch.equal(inv[:3, :3], m[:3, :3].T)
+        # generated in float64 as -(2 R01)^T t01
+        expected_t = torch.tensor(
+            [-1.7864533946821743, 2.4044880965764657, -6.778945795191922], device=device, dtype=dtype
+        )
+        self.assert_close(inv[:3, 3], expected_t)
+        assert (inv @ m - torch.eye(4, device=device, dtype=dtype)).abs().max() > 1.0
+
+    def test_convention_relative_transformation_vs_relative_camera_motion(self, device, dtype):
+        # Read as world-to-camera extrinsics E1 = T01, E2 = T02, relative_camera_motion returns E2 E1^-1, which is
+        # relative_transformation(E2^-1, E1^-1) and not relative_transformation(E1, E2).
+        e1, e2 = self._fixture(device, dtype)
+        # generated in float64 as (T02 @ torch.linalg.inv(T01))[:3]
+        expected = torch.tensor(
+            [
+                [0.9113903863880556, -0.4115258281569324, 0.0037491811348190907, -1.6575517215108124],
+                [0.36878972792479336, 0.8207198555059045, 0.4363634441099808, 0.9011091069599761],
+                [-0.18265185511400522, -0.39631478844236734, 0.8997626844258959, -3.311313297965872],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        rot, t = kornia.geometry.epipolar.relative_camera_motion(
+            e1[None, :3, :3], e1[None, :3, 3:], e2[None, :3, :3], e2[None, :3, 3:]
+        )
+        self.assert_close(torch.cat([rot, t], -1)[0], expected)
+        inv_e1, inv_e2 = kgl.inverse_transformation(e1), kgl.inverse_transformation(e2)
+        self.assert_close(kgl.relative_transformation(inv_e2, inv_e1)[:3], expected)
+        # control: the same-order call is off by more than 1 on this pair
+        assert (kgl.relative_transformation(e1, e2)[:3] - expected).abs().max() > 0.5
+
+    def test_wart_point_line_distance_eps_bias_4881(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip("point_line_distance's default eps=1e-9 is below the float16 subnormal range and rounds away")
+        # https://github.com/kornia/kornia/issues/4881: eps is added to the line norm,
+        # |ax + by + c| / (||(a, b)|| + eps), so the distance depends on the scale of the line. The point (1.5, -0.7)
+        # is 2.34 from 3x + 4y + 10 = 0 at every scale (11.7 / 5); at scale 1e-9 the norm is 5e-9 and the result is
+        # 2.34 * 5 / 6 = 1.95 (-16.7 %).
+        point = torch.tensor([[1.5, -0.7]], device=device, dtype=dtype)
+        line = torch.tensor([[3.0, 4.0, 10.0]], device=device, dtype=dtype)
+        exact = torch.tensor([2.34], device=device, dtype=dtype)
+        self.assert_close(kgl.point_line_distance(point, line), exact)
+        scaled = kgl.point_line_distance(point, 1e-9 * line)
+        assert ((scaled - exact) / exact).max() < -0.1
+        # A degenerate line (0, 0, 1) returns |c| / eps = 1e9 instead of flagging the singular case.
+        degenerate = kgl.point_line_distance(point, torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype))
+        assert torch.isfinite(degenerate).all() and (degenerate > 1e8).all()
+
+    def test_wart_point_line_distance_ignores_w_4935(self, device, dtype):
+        # https://github.com/kornia/kornia/issues/4935: the docstring says "possibly homogeneous" (*, N, 3) points, but
+        # the third coordinate is never read. The point (1.5, -0.7) is 2.34 from 3x + 4y + 10 = 0; written with w = 1
+        # it gives 2.34, with w = 2 as (3, -1.4, 2) it gives |9 - 5.6 + 10| / 5 = 2.68, and with w = -1 as
+        # (-1.5, 0.7, -1) it gives |-4.5 + 2.8 + 10| / 5 = 1.66.
+        line = torch.tensor([[3.0, 4.0, 10.0]], device=device, dtype=dtype).expand(3, 3)
+        points = torch.tensor([[1.5, -0.7, 1.0], [3.0, -1.4, 2.0], [-1.5, 0.7, -1.0]], device=device, dtype=dtype)
+        # precondition: the three rows are the same Euclidean point
+        self.assert_close(points[:, :2] / points[:, 2:], points[:1, :2].expand(3, 2))
+        expected = torch.tensor([2.34, 2.68, 1.66], device=device, dtype=dtype)
+        self.assert_close(kgl.point_line_distance(points, line), expected)
