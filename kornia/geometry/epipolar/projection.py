@@ -156,25 +156,22 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
 
 def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Decompose the Projection matrix into ``K``, ``R`` and ``t`` with :math:`P = K [R|t]`.
+    r"""Decompose the Projection matrix into ``K``, ``R`` and ``t`` with :math:`K [R|t] = \pm P`.
 
     Convention:
-        - Inverse of :func:`projection_from_KRt`: returns ``K`` (upper triangular, positive diagonal), ``R``
-          and the translation ``t``, not the camera centre; :ref:`Two-view geometry <two-view-conventions>` maps
-          this onto OpenCV.
-        - ``K`` is not normalised to ``K[2, 2] = 1``: it carries the magnitude of the scale of ``P``, so ``2 * P``
-          doubles ``K``; divide by ``K[..., 2:, 2:]`` to normalise.
+        - Inverse of :func:`projection_from_KRt`: returns ``K`` (upper triangular, positive diagonal), a
+          rotation ``R`` (``det R = 1``) and the translation ``t``, not the camera centre;
+          :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
+        - ``P`` is defined up to a nonzero scale, sign included: ``s * P`` gives the same ``R`` and ``t`` for
+          every nonzero ``s`` and ``|s| * K``. So :math:`K [R|t]` is ``P`` when ``P[:, :3, :3]`` has positive
+          determinant and ``-P`` when it has negative determinant (``-P`` gives the factors of ``P``). ``K`` is
+          not normalised to ``K[2, 2] = 1``; divide by ``K[..., 2:, 2:]`` to normalise.
         - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
-        - Known defects: a ``P`` whose left :math:`3 \times 3` block has negative determinant returns a
-          reflection (``det R = -1``), the signs moved into rows of ``R`` and the matching entries of ``t``: all
-          three for ``-P``, which gives ``-R`` and ``-t``; and ``eps`` is added to the diagonal before its sign is
-          taken, so an entry in ``(-eps, 0)`` stays negative and the matching row of ``R`` and entry of ``t`` are
-          negated
-          (`#4864 <https://github.com/kornia/kornia/issues/4864>`_).
 
     Args:
         P: the projection matrix with shape :math:`(B, 3, 4)`.
-        eps: offset added to the diagonal of the triangular factor before its sign is taken.
+        eps: unused; kept for backward compatibility. The sign of the triangular factor's diagonal is taken
+          exactly.
 
     Returns:
         - The Camera matrix with shape :math:`(B, 3, 3)`.
@@ -193,14 +190,22 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
     ortho_mat = torch.matmul(reverse, ortho_mat.permute(0, 2, 1))
     upper_mat = torch.matmul(reverse, torch.matmul(upper_mat.permute(0, 2, 1), reverse))
 
-    # Turning the `upper_mat's` diagonal elements to positive.
-    diagonals = torch.diagonal(upper_mat, dim1=-2, dim2=-1) + eps
-    signs = torch.sign(diagonals)
+    # Turning the `upper_mat's` diagonal elements to positive (a zero entry keeps its sign: rank-deficient P).
+    diagonals = torch.diagonal(upper_mat, dim1=-2, dim2=-1)
+    signs = torch.where(diagonals < 0, -torch.ones_like(diagonals), torch.ones_like(diagonals))
     signs_mat = torch.diag_embed(signs)
 
     K = torch.matmul(upper_mat, signs_mat)
     R = torch.matmul(signs_mat, ortho_mat)
     t = torch.linalg.solve(K, last_column)
+
+    # P and -P are the same camera. With a positive-diagonal K, a left block of negative determinant leaves
+    # det R = -1; negating R and t decomposes -P instead, so R is a rotation. The sign comes from the orthogonal
+    # factor, whose determinant is +-1 at any scale of P, not from det(P[:, :3, :3]), which scales as s**3 and
+    # underflows to -0.0 for a small negative s.
+    flip = torch.linalg.det(R)[:, None, None] < 0
+    R = torch.where(flip, -R, R)
+    t = torch.where(flip, -t, t)
 
     return K, R, t
 

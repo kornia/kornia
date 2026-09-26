@@ -331,6 +331,30 @@ class TestFindFundamental(BaseTester):
         weights = torch.ones(1, 10, device=device, dtype=torch.float64)
         self.gradcheck(epi.find_fundamental, (points1, points2, weights))
 
+    def test_zero_weight_backward_is_the_one_sided_derivative(self, device, dtype):
+        """The gradient of a weight of exactly 0 is finite and is the derivative from above (#4912).
+
+        A zero weight is the documented way to drop a correspondence. ``run_8point`` used to row-scale by
+        ``w.sqrt()``, whose derivative is unbounded at 0: the gradient was NaN on torch 2.5.1 and 2.9.1, and 0 on
+        2.14, where ``clamp_min(0)`` masks it at the bound. Both differ from the derivative at a tiny positive weight.
+        """
+        _skip_half(dtype, _NO_HALF_EIGH)
+        two_view = two_view_scene(device, dtype)
+        x1 = two_view["x1"]
+        x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
+        grads = []
+        for w3 in (0.0, 1e-6):
+            weights = torch.ones(1, x1.shape[1], device=device, dtype=dtype)
+            weights[0, 3] = w3
+            weights.requires_grad_()
+            F_mat = epi.find_fundamental(x1, x2, weights)
+            (F_mat * F_mat.detach().sign()).sum().backward()
+            grads.append(weights.grad)
+        assert torch.isfinite(grads[0]).all()
+        tol = {"rtol": 1e-3, "atol": 1e-5} if dtype == torch.float64 else {"rtol": 5e-2, "atol": 1e-4}  # f32 eigh: CPU
+        assert grads[1][0, 3].abs() > 1e-3  # control: the dropped match moves F, so a zero gradient would be wrong
+        self.assert_close(grads[0], grads[1], **tol)
+
 
 class TestComputeCorrespondEpilines(BaseTester):
     def test_smoke(self, device, dtype):

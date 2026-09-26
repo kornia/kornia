@@ -29,6 +29,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CH
 from kornia.core.tensor_wrapper import _unwrap
 from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so2 import So2
+from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
 from kornia.geometry.vector import Vector2
 
 
@@ -175,7 +176,8 @@ class Se2(nn.Module):
             Parameter containing:
             tensor([0.5403+0.8415j], requires_grad=True)
             >>> s.t
-            tensor([[0.3818, 1.3012]], grad_fn=<StackBackward0>)
+            Parameter containing:
+            tensor([[0.3818, 1.3012]], requires_grad=True)
 
         """
         # check_v_shape
@@ -185,14 +187,20 @@ class Se2(nn.Module):
             raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v.shape}")
         theta = v[..., 2]
         so2 = So2.exp(theta)
-        z = torch.tensor(0.0, device=v.device, dtype=v.dtype)
-        theta_nonzeros = theta != 0.0
-        # both quotients are 0/0 at theta = 0, and torch.where differentiates the branch it does
-        # not select, so 0 * nan = nan used to reach v.grad at the identity. Divide by a
-        # substituted 1.0 there; the where discards that value.
-        safe_theta = torch.where(theta_nonzeros, theta, torch.ones_like(theta))
-        a = torch.where(theta_nonzeros, so2.z.imag / safe_theta, z)
-        b = torch.where(theta_nonzeros, (1.0 - so2.z.real) / safe_theta, z)
+        # V = [[a, -b], [b, a]] with a = sin(theta) / theta and b = (1 - cos(theta)) / theta. Both are
+        # 0/0 at theta = 0, 1 - cos(theta) cancels just above it, and so does the autograd derivative of
+        # sin(theta) / theta, so below 0.5 rad write them through the cancellation-free So3 coefficients:
+        # a = 1 - theta^2 (theta - sin(theta)) / theta^3 and
+        # b = theta (1 - cos(theta)) / theta^2 (kornia#4924), evaluated at |theta| because both are even.
+        # Above it take sin(theta) / theta and 2 sin(theta / 2)^2 / theta directly: 1 - theta^2 (...)
+        # cancels where sin(theta) / theta is small, and theta^3 overflows float16 above 40.3 rad. Each
+        # branch sees a substituted angle where it is not selected, since torch.where differentiates both.
+        small = theta.abs() < 0.5
+        theta_s = torch.where(small, theta, torch.zeros_like(theta))
+        theta_l = torch.where(small, torch.ones_like(theta), theta)
+        coef_a, coef_b, _ = _so3_small_angle_coefficients(theta_s.abs())
+        a = torch.where(small, 1.0 - theta_s * theta_s * coef_b, torch.sin(theta_l) / theta_l)
+        b = torch.where(small, theta_s * coef_a, 2.0 * torch.sin(0.5 * theta_l) ** 2 / theta_l)
         x = v[..., 0]
         y = v[..., 1]
         t = torch.stack((a * x - b * y, b * x + a * y), -1)
@@ -214,12 +222,11 @@ class Se2(nn.Module):
         """
         theta = self.so2.log()
         half_theta = 0.5 * theta
-        denom = self.so2.z.real - 1
-        a = torch.where(
-            denom != 0,
-            -(half_theta * self.so2.z.imag) / denom,
-            torch.tensor(0.0, device=theta.device, dtype=theta.dtype),
-        )
+        # V^-1 = [[a, theta / 2], [-theta / 2, a]] with a = (theta / 2) cot(theta / 2), a 0/0 at
+        # theta = 0 that cancels just above it: a = 1 - theta^2 (1 - (theta / 2) cot(theta / 2)) / theta^2
+        # through the cancellation-free So3 coefficient (kornia#4924).
+        _, _, coef_c = _so3_small_angle_coefficients(theta.abs())
+        a = 1.0 - theta * theta * coef_c
         row0 = torch.stack((a, half_theta), -1)
         row1 = torch.stack((-half_theta, a), -1)
         V_inv = torch.stack((row0, row1), -2)

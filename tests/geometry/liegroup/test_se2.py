@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -97,17 +99,23 @@ class TestSe2(BaseTester):
         v = torch.tensor([[1.0, 2.0, 0.4]], device=device, dtype=torch.float64)
         self.gradcheck(lambda x: Se2.exp(x).matrix(), (v,))
 
-    def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
+    def test_gradient_at_the_identity_4404_4924(self, device, dtype):
         # #4404: both quotients that build the translation block are 0/0 at theta = 0, and the
         # torch.where that discards them still differentiates them, so 0 * nan = nan reached the
-        # gradient at the identity even though the forward returned the correct zero translation.
+        # gradient at the identity. #4924: the value that where fell back to there was 0 where the
+        # limit is 1, so the (vx, vy) gradient of exp(v).t was 0 and the theta gradient of log was
+        # nan. Pin the values: with t = V(theta) (vx, vy), d sum(matrix()) / dv is
+        # [1, 1, (vx - vy) / 2] at theta = 0 and d sum(log(exp(v))) / dv is [1, 1, 1].
         if dtype == torch.bfloat16:
             # Se2 holds its rotation as a complex So2, and torch.complex has no bfloat16 overload,
             # so most of this class already cannot run at that dtype -- unrelated to the guard.
             pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
-        v = torch.zeros(1, 3, device=device, dtype=dtype, requires_grad=True)
+        v = torch.tensor([[1.0, 2.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         Se2.exp(v).matrix().sum().backward()
-        assert bool(torch.isfinite(v.grad).all()), v.grad
+        self.assert_close(v.grad, torch.tensor([[1.0, 1.0, -0.5]], device=device, dtype=dtype))
+        v.grad = None
+        Se2.exp(v).log().sum().backward()
+        self.assert_close(v.grad, torch.tensor([[1.0, 1.0, 1.0]], device=device, dtype=dtype))
 
     # TODO: implement me
     def test_jit(self, device, dtype):
@@ -175,26 +183,103 @@ class TestSe2(BaseTester):
     def test_exp(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = torch.zeros(batch_size if batch_size is not None else (), device=device, dtype=dtype)
-        z = torch.zeros((batch_size, 2) if batch_size is not None else (2,), device=device, dtype=dtype)
         s = Se2.exp(torch.cat((t, theta[..., None]), -1))
         self.assert_close(s.r.z, So2.exp(theta).z)
-        self.assert_close(s.t, z)
+        # V(0) is the identity, so a pure translation keeps its translation (#4924)
+        self.assert_close(s.t, t)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_log(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         s = Se2(So2.identity(batch_size, device, dtype), t)
-        s.log()
-        zero_vec = torch.zeros(3, device=device, dtype=dtype)
-        if batch_size is not None:
-            zero_vec = zero_vec.repeat(batch_size, 1)
-        self.assert_close(s.log(), zero_vec)
+        # V(0)^-1 is the identity, so the log of a pure translation is (t, 0) (#4924)
+        self.assert_close(s.log(), torch.cat((t, torch.zeros_like(t[..., :1])), -1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
         a = self._make_rand_data(device, dtype, (batch_size, 3))
         b = Se2.exp(a).log()
         self.assert_close(b, a, low_tolerance=True)
+
+    def test_exp_log_keep_small_rotations_4924(self, device, dtype):
+        # #4924: exp guarded a = sin(theta) / theta and b = (1 - cos(theta)) / theta with a fallback of 0
+        # at theta = 0, where their limits are 1 and 0, and log guarded (theta / 2) cot(theta / 2) the same
+        # way, so a pure translation went into and out of the tangent space as [0, 0]. Just above
+        # theta = 0 the closed forms cancelled: exp(v).t was off by 1e-4 and log(exp(v)) by 2.0 at
+        # theta = 1e-4 in float32 (2e-2 in float16, 1e-8 in float64).
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        theta = {torch.float16: 2e-2, torch.float32: 1e-4}.get(dtype, 1e-8)
+        v = torch.tensor([[1.0, 2.0, 0.0], [1.0, 2.0, theta], [1.0, 2.0, -theta]], dtype=dtype)
+        # V(theta) (vx, vy) for the rounded angle, in float64 on the CPU (MPS has no float64) and
+        # without cancellation: 1 - cos(theta) = 2 sin(theta / 2)^2
+        th = v[..., 2].double()
+        a = torch.where(th == 0, torch.ones_like(th), torch.sin(th) / th)
+        b = torch.where(th == 0, torch.zeros_like(th), 2 * torch.sin(th / 2) ** 2 / th)
+        x, y = v[..., 0].double(), v[..., 1].double()
+        t_ref = torch.stack((a * x - b * y, b * x + a * y), -1).to(device=device, dtype=dtype)
+        v = v.to(device)
+        eps = torch.finfo(dtype).eps
+        self.assert_close(Se2.exp(v).t, t_ref, rtol=8 * eps, atol=8 * eps)
+        g = Se2(So2.exp(v[..., 2]), t_ref)  # the element exp(v), rounded to dtype
+        self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
+
+    def test_exp_keeps_large_angles_4924(self, device, dtype):
+        # Past the small-angle branch exp takes sin(theta) / theta and 2 sin(theta / 2)^2 / theta directly.
+        # 1 - theta^2 (theta - sin(theta)) / theta^3 cancels wherever sin(theta) / theta is small (37.7 is
+        # within 1e-3 of 12 pi), 1 - cos(theta) cancels there too, and theta^3 overflows float16 above 40.3 rad,
+        # which made that coefficient 0 and exp(v).t close to (vx, vy); the series that torch.where discards
+        # overflows from 50 rad and made the gradient nan.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        angles = (-300.0, -100.0, -41.0, 12.5, 37.7, 41.0, 100.0, 300.0)
+        v = torch.tensor([[1.0, 2.0, th] for th in angles], dtype=dtype)
+        # V(theta) (vx, vy) for the rounded angle, in float64 on the CPU (MPS has no float64)
+        th = v[..., 2].double()
+        a, b = torch.sin(th) / th, 2 * torch.sin(th / 2) ** 2 / th
+        x, y = v[..., 0].double(), v[..., 1].double()
+        t_ref = torch.stack((a * x - b * y, b * x + a * y), -1).to(device=device, dtype=dtype)
+        v = v.to(device).requires_grad_(True)
+        t = Se2.exp(v).t
+        self.assert_close(t, t_ref, rtol=16 * torch.finfo(dtype).eps, atol=0.0)
+        t.sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
+
+    def test_exp_gradient_below_the_switch_4924(self, device, dtype):
+        # Below 0.5 rad the angle gradient comes from the series: autograd of sin(theta) / theta is
+        # cos(theta) / theta - sin(theta) / theta^2, which loses about three digits at theta = 0.06.
+        # Reference: the derivative series of a = sin(theta) / theta and b = (1 - cos(theta)) / theta in float64.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        v = torch.tensor([[1.0, 2.0, 0.06], [1.0, 2.0, -0.3]], dtype=dtype)
+        th = v[..., 2].double()
+        da = sum((-1) ** k * 2 * k * th ** (2 * k - 1) / float(math.factorial(2 * k + 1)) for k in range(1, 12))
+        db = sum((-1) ** (k + 1) * (2 * k - 1) * th ** (2 * k - 2) / float(math.factorial(2 * k)) for k in range(1, 12))
+        # d sum(t) / d theta with t = (a x - b y, b x + a y)
+        x, y = v[..., 0].double(), v[..., 1].double()
+        ref = (da * (x + y) + db * (x - y)).to(device=device, dtype=dtype)
+        v = v.to(device).requires_grad_(True)
+        Se2.exp(v).t.sum().backward()
+        eps = torch.finfo(dtype).eps
+        self.assert_close(v.grad[..., 2], ref, rtol=8 * eps, atol=8 * eps)
+
+    def test_exp_log_negative_angles_past_the_series_switch_4924(self, device, dtype):
+        # The coefficients are even in theta, so exp and log evaluate them at |theta|. The So3 helper takes its
+        # series below a positive switch point, so a signed theta would take the truncated series for every
+        # negative angle; at theta = -3 that is off by about 1e-4 in log. Pin both signs past the switch.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        v = torch.tensor([[1.0, 2.0, th] for th in (-3.0, -2.0, -1.0, 1.0, 2.0, 3.0)], dtype=dtype)
+        # V(theta) (vx, vy) for the rounded angle, in float64 on the CPU (MPS has no float64)
+        th = v[..., 2].double()
+        a, b = torch.sin(th) / th, 2 * torch.sin(th / 2) ** 2 / th
+        x, y = v[..., 0].double(), v[..., 1].double()
+        t_ref = torch.stack((a * x - b * y, b * x + a * y), -1).to(device=device, dtype=dtype)
+        v = v.to(device)
+        eps = torch.finfo(dtype).eps
+        self.assert_close(Se2.exp(v).t, t_ref, rtol=8 * eps, atol=8 * eps)
+        g = Se2(So2.exp(v[..., 2]), t_ref)  # the element exp(v), rounded to dtype
+        self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
@@ -297,6 +382,17 @@ class TestSe2(BaseTester):
         y = Se2.random(batch_size)
         self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
         self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
+
+    def test_user_leaf_translation_receives_the_gradient(self, device, dtype):
+        # A tensor that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it (#4943).
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        t = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype, requires_grad=True)
+        s = Se2(So2.identity(1, device, dtype), t)
+        (s * torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)).sum().backward()
+        assert t.grad is not None
+        self.assert_close(t.grad, torch.ones_like(t))
+        assert "_translation" in s.state_dict()
 
     def test_derived_state_moves_and_serializes(self, device, dtype):
         # A group built from a tensor with autograd history keeps that history; its state must

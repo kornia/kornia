@@ -69,8 +69,8 @@ class TestSe3(BaseTester):
         self.gradcheck(lambda x: Se3.exp(x).matrix(), (v,))
 
     def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
-        # #4404: at omega = 0 the where below returns upsilon, but autograd still walks V, whose
-        # sqrt has an unbounded derivative there and whose terms divide by theta**2 and theta**3.
+        # #4404: at omega = 0 autograd walks V, whose sqrt has an unbounded derivative there and
+        # whose closed-form terms divide by theta**2 and theta**3.
         # log has the same defect through its own theta, where clamp_min(1e-12) guards the value
         # and not the gradient (#4229) and underflows to 0 in float16 besides.
         v = torch.zeros(1, 6, device=device, dtype=dtype, requires_grad=True)
@@ -80,6 +80,23 @@ class TestSe3(BaseTester):
         data = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         Se3(So3(Quaternion(data[:, :4])), data[:, 4:]).log().sum().backward()
         assert bool(torch.isfinite(data.grad).all()), data.grad
+
+    def test_gradient_at_the_identity_couples_rotation_and_translation_4953(self, device, dtype):
+        # #4953: exp fell back to t = upsilon and log to upsilon = t at omega = 0. The values were
+        # right, V(0) = I, but the fallback did not depend on omega, so autograd returned
+        # d t / d omega = 0 at the identity, the standard initialisation for pose optimisation.
+        # The derivative of V(omega) upsilon = upsilon + 0.5 omega x upsilon + O(|omega|^2) is
+        # -0.5 [upsilon]_x, and d upsilon / d q_vec of log at the identity is [t]_x.
+        v = torch.tensor([[1.0, 2.0, 3.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        jac = torch.autograd.functional.jacobian(lambda x: Se3.exp(x).t, v)[0, :, 0, :]
+        upsilon = v[0, :3]
+        self.assert_close(jac[:, :3], torch.eye(3, device=device, dtype=dtype))
+        self.assert_close(jac[:, 3:], -0.5 * So3.hat(upsilon))
+        qt = torch.tensor([[1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        jac = torch.autograd.functional.jacobian(lambda x: Se3(So3(Quaternion(x[:, :4])), x[:, 4:]).log(), qt)
+        jac = jac[0, :, 0, :]
+        self.assert_close(jac[:3, 4:], torch.eye(3, device=device, dtype=dtype))
+        self.assert_close(jac[:3, 1:4], So3.hat(qt[0, 4:]))
 
     # TODO: implement me
     def test_jit(self, device, dtype):
@@ -357,6 +374,18 @@ class TestSe3(BaseTester):
         i = Se3.identity(batch_size=batch_size, device=device, dtype=dtype)
         self.assert_close(s_in_s.so3.q.data, i.so3.q.data)
         self.assert_close(s_in_s.t, i.t)
+
+    def test_user_leaf_translation_receives_the_gradient(self, device, dtype):
+        # A tensor that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it (#4943).
+        t = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype, requires_grad=True)
+        s = Se3(So3.identity(1, device, dtype), t)
+        (s * torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)).sum().backward()
+        assert t.grad is not None
+        self.assert_close(t.grad, torch.ones_like(t))
+        assert "_translation" in s.state_dict()
+        # a tensor that does not require grad still becomes an optimizable parameter
+        plain = Se3(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype))
+        assert [name for name, _ in plain.named_parameters()] == ["_translation"]
 
     def test_derived_state_moves_and_serializes(self, device, dtype):
         v = torch.rand(2, 6, device=device, dtype=dtype, requires_grad=True)

@@ -163,6 +163,22 @@ class TestParametrizedLine(BaseTester):
         moved.direction.sum().backward()
         assert p1.grad is not None
 
+    def test_user_leaf_receives_the_gradient(self, device, dtype):
+        # A tensor that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it (#4943).
+        origin = torch.tensor([0.5, 1.0], device=device, dtype=dtype, requires_grad=True)
+        direction = torch.tensor([0.6, 0.8], device=device, dtype=dtype, requires_grad=True)
+        line = ParametrizedLine(origin, direction)
+        assert line.origin is origin and line.direction is direction
+        assert [name for name, _ in line.named_buffers()] == ["_origin", "_direction"]
+        assert list(line.state_dict()) == ["_origin", "_direction"]
+        line.point_at(2.0).sum().backward()
+        assert origin.grad is not None and direction.grad is not None
+        self.assert_close(origin.grad, torch.ones_like(origin))
+        self.assert_close(direction.grad, torch.full_like(direction, 2.0))
+        # a tensor that does not require grad still becomes an optimizable parameter
+        plain = ParametrizedLine(origin.detach().clone(), direction.detach().clone())
+        assert [name for name, _ in plain.named_parameters()] == ["_origin", "_direction"]
+
 
 class TestFitLine(BaseTester):
     @pytest.mark.parametrize("B", (1, 2))
