@@ -73,6 +73,15 @@ longer than the uniform bound. Stopping is checked between batches.
 Uninformative or reversed rankings can hurt accuracy. The ``weights`` argument
 is not used to rank correspondences.
 
+PROSAC pays off when the ranking tracks inlier-ness and the inlier ratio is low,
+where uniform sampling cannot stop early: on SIFT correspondences with a ratio
+test (HEB), it adds about 0.1 mAA at equal time for homographies. On learned
+matchers with 85% or more inliers, uniform sampling already stops after one
+batch, and the confidence-ranked prefixes can be spatially clustered, so the
+model PROSAC certifies first may fit them well and the pose poorly. Prefer
+uniform sampling there, or run PROSAC with ``confidence=1`` when the extra
+draws are affordable.
+
 By default, local optimization repeatedly refits all current inliers. For the
 homography models the refit is the iteratively re-weighted least squares of
 :func:`~kornia.geometry.homography.find_homography_dlt_iterated`, whose Gaussian
