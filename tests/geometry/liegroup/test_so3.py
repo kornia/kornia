@@ -250,7 +250,7 @@ class TestSo3(BaseTester):
         q.sum().backward()
         assert bool(torch.isfinite(v.grad).all()), v.grad
 
-    def test_exp_hessian_at_the_identity_4966(self, device):
+    def test_exp_hessian_gradgradcheck_at_the_identity_4966(self, device):
         # #4966: exp evaluated cos(theta / 2) on theta = |v|, which has no second derivative at v = 0, so the
         # Hessian of exp at the identity was nan although its value and gradient there were finite. Both
         # quaternion coefficients are even in theta, so below the switch they are now series in theta**2 = v . v:
