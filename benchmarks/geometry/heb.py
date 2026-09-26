@@ -178,8 +178,8 @@ def run(args: argparse.Namespace) -> None:
                     continue
                 batches = []
                 sample = estimator.sample
-                estimator.sample = lambda m, n, batch, *a, _s=sample, _b=batches, **k: _b.append(batch) or _s(
-                    m, n, batch, *a, **k
+                estimator.sample = lambda m, n, batch, *a, _s=sample, _b=batches, **k: (
+                    _b.append(batch) or _s(m, n, batch, *a, **k)
                 )
                 try:
                     with torch.inference_mode():
