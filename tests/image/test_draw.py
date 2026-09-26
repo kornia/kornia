@@ -138,6 +138,18 @@ class TestDrawPoint(BaseTester):
         with pytest.raises(BaseError, match=match):
             draw_point2d(img, points, color)
 
+    @pytest.mark.parametrize("shape", [(1, 4, 4), (4, 4)])
+    def test_draw_point2d_accepts_0d_scalar_color(self, shape, dtype, device):
+        """A 0-d color used to IndexError reading its channel dimension, as draw_line did before."""
+        img = torch.zeros(shape, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
+        assert out[..., 1, 1].flatten().tolist() == [9.0]
+
+    def test_draw_point2d_0d_color_on_multichannel_image_fails_the_channel_check(self, dtype, device):
+        img = torch.zeros(3, 4, 4, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match="Color dim must match"):
+            draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
+
 
 class TestDrawLine(BaseTester):
     def test_draw_line_vertical(self, dtype, device):
@@ -564,6 +576,25 @@ class TestDrawRectangle(BaseTester):
             <= 0.0001
         )
 
+    @pytest.mark.parametrize("fill", [False, True])
+    def test_0d_scalar_color_matches_one_channel_color(self, fill, dtype, device):
+        """A 0-d color used to fail unpacking (b, n, c); it now draws like a size-1 color."""
+        rect = torch.tensor([[[1, 1, 3, 3]]], device=device)
+        out = draw_rectangle(
+            torch.zeros(1, 1, 5, 5, dtype=dtype, device=device),
+            rect,
+            torch.tensor(9.0, dtype=dtype, device=device),
+            fill=fill,
+        )
+        expected = draw_rectangle(
+            torch.zeros(1, 1, 5, 5, dtype=dtype, device=device),
+            rect,
+            torch.tensor([9.0], dtype=dtype, device=device),
+            fill=fill,
+        )
+        self.assert_close(out, expected)
+        assert out.count_nonzero() > 0
+
 
 class TestFillConvexPolygon(BaseTester):
     def test_circle(self, device, dtype):
@@ -713,3 +744,12 @@ class TestFillConvexPolygon(BaseTester):
         xs = torch.arange(16, device=device)[None, :]
         expected = (ys >= 4) & (ys <= 8) & (xs >= 4) & (xs <= 4 + 2 * (ys - 4))
         assert out[0, 0].eq(expected).all()
+
+    def test_0d_scalar_color_matches_one_channel_color(self, device, dtype):
+        """A 0-d color used to fail unpacking (b, c); it now fills like a size-1 color."""
+        square = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        im = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), square, torch.tensor(9.0, device=device, dtype=dtype))
+        expected = draw_convex_polygon(im.clone(), square, torch.tensor([9.0], device=device, dtype=dtype))
+        self.assert_close(out, expected)
+        assert out.count_nonzero() > 0

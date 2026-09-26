@@ -90,7 +90,7 @@ class TestCubicSolver(BaseTester):
             (torch.tensor([[2.0, 3.0, -11.0, -6.0]]), torch.tensor([[2.0, -3.0, -0.5]])),
             (torch.tensor([[1.0, 0.0, 4.0, 4.0]]), torch.tensor([[-0.847, 0.0, 0.0]])),
             (torch.tensor([[2.0, -6.0, 6.0, -2.0]]), torch.tensor([[1.0, 1.0, 1.0]])),
-            (torch.tensor([[0.0, 0.0, 1.0, -1.0]]), torch.tensor([[1.0, 0.0, 0.0]])),  # handle first order
+            (torch.tensor([[0.0, 0.0, 2.0, -6.0]]), torch.tensor([[3.0, 0.0, 0.0]])),  # handle first order
             (torch.tensor([[0.0, 1.0, -5.0, 6.0]]), torch.tensor([[3.0, 2.0, 0.0]])),  # handle second order
         ],
     )
@@ -1127,22 +1127,66 @@ class TestConventionPolynomialSolvers(BaseTester):
     @pytest.mark.parametrize(
         "fn, coeffs, expected",
         [
-            (solver.solve_cubic, [0.0, 0.0, 2.0, -6.0], [1.0, 0.0, 0.0]),  # 2x - 6: the root is 3
-            (solver.solve_cubic, [0.0, 1.0, 0.0, -4.0], [0.0, 0.0, 0.0]),  # x^2 - 4: the roots +-2 are lost
-            (solver.solve_quartic, [0.0, 0.0, 0.0, 2.0, -6.0], [1.0, 0.0, 0.0, 0.0]),  # through solve_cubic
-            (solver.solve_quadratic, [0.0, 2.0, -6.0], None),  # 2x - 6: non-finite
+            (solver.solve_cubic, [0.0, 0.0, 2.0, -6.0], [3.0, 0.0, 0.0]),  # 2x - 6
+            (solver.solve_cubic, [0.0, 0.0, 1.0, 5.0], [-5.0, 0.0, 0.0]),  # x + 5
+            (solver.solve_cubic, [0.0, 1.0, 0.0, -4.0], [2.0, -2.0, 0.0]),  # x^2 - 4
+            (solver.solve_cubic, [0.0, 0.0, 0.0, 3.0], [0.0, 0.0, 0.0]),  # 3: no root
+            (solver.solve_quartic, [0.0, 0.0, 0.0, 2.0, -6.0], [3.0, 0.0, 0.0, 0.0]),  # through solve_cubic
+            (solver.solve_quartic, [0.0, 0.0, 2.0, 0.0, -8.0], [2.0, -2.0, 0.0, 0.0]),  # 2x^2 - 8
+            (solver.solve_quadratic, [0.0, 2.0, -6.0], [3.0, 0.0]),  # 2x - 6
+            (solver.solve_quadratic, [0.0, -4.0, 2.0], [0.5, 0.0]),  # -4x + 2
+            (solver.solve_quadratic, [0.0, 0.0, 5.0], [0.0, 0.0]),  # 5: no root
         ],
-        ids=["cubic_linear", "cubic_bx2_plus_d", "quartic_linear", "quadratic_linear"],
+        ids=[
+            "cubic_linear",
+            "cubic_linear_negative_root",
+            "cubic_bx2_plus_d",
+            "cubic_constant",
+            "quartic_linear",
+            "quartic_bx2_plus_d",
+            "quadratic_linear",
+            "quadratic_linear_negative_b",
+            "quadratic_constant",
+        ],
     )
-    def test_wart_solve_cubic_linear_returns_one_4873(self, fn, coeffs, expected, device, dtype):
-        # #4873: a zero leading coefficient is not handled. solve_cubic writes the constant 1.0 for any linear
-        # equation and drops the roots of bx^2 + d, solve_quartic inherits that, and solve_quadratic divides by
-        # zero. Once fixed, 2x - 6 gives the root 3 and x^2 - 4 gives +-2.
+    def test_convention_zero_leading_coefficient_4873(self, fn, coeffs, expected, device, dtype):
+        # #4873: a zero leading coefficient lowers the degree. The roots of the remaining polynomial are
+        # returned with the usual 0.0 padding, as numpy.roots does after dropping leading zeros.
         out = fn(torch.tensor([coeffs], device=device, dtype=dtype))
-        if expected is None:
-            assert not bool(torch.isfinite(out).all())
-        else:
-            self.assert_close(out, torch.tensor([expected], device=device, dtype=dtype))
+        self.assert_close(out, torch.tensor([expected], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(
+        "fn, coeffs",
+        [(solver.solve_quadratic, [0.0, 2.0, -6.0]), (solver.solve_cubic, [0.0, 0.0, 2.0, -6.0])],
+        ids=["quadratic_linear", "cubic_linear"],
+    )
+    def test_convention_zero_leading_coefficient_gradient_4873(self, fn, coeffs, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Gradient values are checked in float32 and float64.")
+        # The root 3 of 2x - 6 keeps its dependence on the zero higher-order coefficients. By the implicit function
+        # theorem d root / d coeffs[k] = -root^(n - k) / p'(root), with p'(root) = 2. gradcheck cannot stand in for
+        # this: a negative leading coefficient adds real roots, and slot 0 can jump to one of them.
+        x = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
+        (grad,) = torch.autograd.grad(fn(x)[0, 0], x)
+        powers = [3.0 ** (len(coeffs) - 1 - k) for k in range(len(coeffs))]
+        self.assert_close(grad, -torch.tensor([powers], device=device, dtype=dtype) / 2.0)
+
+    @pytest.mark.parametrize(
+        "fn, lead", [(solver.solve_quadratic, []), (solver.solve_cubic, [0.0])], ids=["quadratic", "cubic"]
+    )
+    def test_convention_zero_leading_coefficient_branch_keeps_ordinary_gradients_finite_4873(
+        self, fn, lead, device, dtype
+    ):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Gradient values are checked in float32 and float64.")
+        # x^2 + b x - 1 with a tiny b is an ordinary quadratic with the roots +-1, but (c / b)^2 overflows.
+        # torch.where still differentiates the linear lane it discards for this row, so that lane must not see c.
+        b = 1e-20 if dtype == torch.float32 else 1e-160
+        x = torch.tensor([[*lead, 1.0, b, -1.0]], device=device, dtype=dtype, requires_grad=True)
+        (grad,) = torch.autograd.grad(fn(x).sum(), x)
+        # The roots sum to -b / a.
+        expected = torch.tensor([[*lead, b, -1.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(grad, expected)
 
     def test_wart_solve_quartic_small_scale_4833(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):

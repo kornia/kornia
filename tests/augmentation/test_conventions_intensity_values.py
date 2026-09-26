@@ -1351,7 +1351,7 @@ class TestIntensityColourConventions(BaseTester):
             assert torch.equal(out, reference)
 
     # At the default grid (8, 8) an image smaller than the grid gets kornia's named ValueError, and 9 x 9 is
-    # admitted.  The 8 x 8 case in between is the #4783 wart below.
+    # admitted.  The 8 x 8 case in between is covered by the #4783 pin below.
     def test_convention_random_clahe_default_grid_rejects_a_smaller_image(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
@@ -1361,16 +1361,18 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomClahe(p=1.0)(torch.rand(1, 1, 9, 9, device=device, dtype=dtype)).shape == (1, 1, 9, 9)
 
-    # Issue #4783: an image exactly as large as the grid passes the named size check and then fails in
-    # the reflect padding with torch's raw error.  A fix that handles it, or names it, flips this pin.
-    def test_wart_random_clahe_grid_sized_image_raises_a_raw_padding_error_4783(self, device, dtype):
+    # Issue #4783: an image exactly as large as the grid used to pass the named size check and fail in the
+    # reflect padding with torch's raw error.  It now gets kornia's ValueError, naming the smallest image
+    # the grid admits.
+    def test_convention_random_clahe_grid_sized_image_is_rejected_by_name_4783(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError) as info:
+        with pytest.raises(ValueError) as info:
             _sync(K.RandomClahe(p=1.0)(torch.rand(1, 1, 8, 8, device=device, dtype=dtype)).device)
-        # A kornia error would name the grid or its tiles; torch's padding error does not.
-        assert not any(word in str(info.value).lower() for word in ("grid", "tile"))
+        # The error names the argument the caller passed, unlike torch's padding error.
+        assert "Cannot compute tiles" in str(info.value)
+        assert "smallest image this grid admits is (9, 9)" in str(info.value)
 
     # Issue #4572: each image is equalized with its own `clip_limit_factor` draw, not the first sample's.
     @pytest.mark.device_agnostic
