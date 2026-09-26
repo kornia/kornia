@@ -351,9 +351,9 @@ class TestFindFundamental(BaseTester):
             (F_mat * F_mat.detach().sign()).sum().backward()
             grads.append(weights.grad)
         assert torch.isfinite(grads[0]).all()
-        # Control: the dropped match does move F, so a zero gradient would be wrong.
-        assert grads[1][0, 3].abs() > 1e-3
-        self.assert_close(grads[0], grads[1], rtol=1e-3, atol=1e-5)
+        tol = {"rtol": 1e-3, "atol": 1e-5} if dtype == torch.float64 else {"rtol": 5e-2, "atol": 1e-4}  # f32 eigh: CPU
+        assert grads[1][0, 3].abs() > 1e-3  # control: the dropped match moves F, so a zero gradient would be wrong
+        self.assert_close(grads[0], grads[1], **tol)
 
 
 class TestComputeCorrespondEpilines(BaseTester):
