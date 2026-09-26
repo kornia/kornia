@@ -41,6 +41,9 @@ from kornia.geometry.homography import (
 
 __all__ = ["RANSAC"]
 
+# The batch size that the ``max_iter`` budget counts in when ``batch_size="auto"``.
+_DEFAULT_BATCH = 2048
+
 
 @lru_cache(maxsize=32)
 def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, ...]:
@@ -94,9 +97,11 @@ class RANSAC(nn.Module):
         model_type: "homography", "fundamental", "fundamental_7pt", "essential", or
             "homography_from_linesegments".
         inl_th: positive inlier threshold, in the units given above.
-        batch_size: number of generated samples at once.
-        max_iter: maximum batches to generate, giving a budget of ``batch_size * max_iter`` minimal samples.
-            The seven- and five-point solvers can return multiple models per sample.
+        batch_size: hypotheses generated and verified at once, or ``"auto"`` to pick the batch per call from
+            the device and the number of correspondences (see :meth:`resolve_batch_size`).
+        max_iter: with an integer ``batch_size``, the maximum number of batches, for a budget of
+            ``batch_size * max_iter`` minimal samples; with ``"auto"``, the budget is ``2048 * max_iter``. The
+            seven- and five-point solvers can return multiple models per sample.
         confidence: stopping confidence in ``(0, 1]``; 1 disables early stopping.
         max_lo_iters: maximum local refitting iterations; zero disables polishing.
         score_type: "ransac" for support count, or "msac" for truncated squared residuals.
@@ -106,6 +111,8 @@ class RANSAC(nn.Module):
         seed: optional seed, reset on each call for reproducible estimation on the same device.
         lo_sample_size: optional inlier-subset size for a batch of ``max_lo_iters`` randomized local
             refits followed by a full-inlier refit. None uses iterative full-inlier refitting.
+        max_samples: optional budget of minimal samples that overrides the one implied by ``batch_size`` and
+            ``max_iter``; the last batch is truncated to it.
 
     """
 
@@ -113,7 +120,7 @@ class RANSAC(nn.Module):
         self,
         model_type: str = "homography",
         inl_th: float = 2.0,
-        batch_size: int = 2048,
+        batch_size: Union[int, str] = "auto",
         max_iter: int = 10,
         confidence: float = 0.99,
         max_lo_iters: int = 5,
@@ -121,6 +128,7 @@ class RANSAC(nn.Module):
         prosac_sampling: bool = False,
         seed: Optional[int] = None,
         lo_sample_size: Optional[int] = None,
+        max_samples: Optional[int] = None,
     ) -> None:
         """Initialize the RANSAC estimator.
 
@@ -128,8 +136,11 @@ class RANSAC(nn.Module):
             model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
                 "homography_from_linesegments".
             inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
-            batch_size: number of generated samples at once.
-            max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn.
+            batch_size: number of generated samples at once, or ``"auto"``: the whole budget in one batch of at
+                most 8192 on accelerators, and on CPU a batch sized for the model and the number of
+                correspondences so that early stopping is checked every millisecond or so.
+            max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn
+                (``2048 * max_iter`` with ``batch_size="auto"``) unless ``max_samples`` is given.
             confidence: desired confidence of the result, used for the early stopping. 1 runs the full budget.
             max_lo_iters: number of local optimization (polishing) iterations.
             score_type: scoring method to use: "ransac" or "msac".
@@ -141,6 +152,7 @@ class RANSAC(nn.Module):
                 Fits ``max_lo_iters`` independent subsets in one batch, followed by one full-inlier refit.
                 None uses iterative full-inlier refitting. Subset refits must raise the score; a full-inlier
                 refit may also tie it, since it is more precise than the minimal-sample model.
+            max_samples: optional budget of minimal samples, overriding ``batch_size * max_iter``.
 
         """
         super().__init__()
@@ -156,14 +168,28 @@ class RANSAC(nn.Module):
             raise ValueError(f"Unsupported score type: {score_type}")
         if not math.isfinite(inl_th * inl_th) or inl_th <= 0 or inl_th * inl_th == 0:
             raise ValueError("inl_th and its square must be positive and finite")
-        if batch_size <= 0 or max_iter <= 0 or max_lo_iters < 0:
-            raise ValueError("batch_size and max_iter must be positive; max_lo_iters must be nonnegative")
+        if isinstance(batch_size, str):
+            if batch_size != "auto":
+                raise ValueError('batch_size must be a positive integer or "auto"')
+        elif isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
+            raise ValueError('batch_size must be a positive integer or "auto"')
+        if max_iter <= 0 or max_lo_iters < 0:
+            raise ValueError("max_iter must be positive; max_lo_iters must be nonnegative")
+        if max_samples is not None and (isinstance(max_samples, bool) or max_samples <= 0):
+            raise ValueError("max_samples must be a positive integer")
         if not 0 < confidence <= 1:
             raise ValueError("confidence must lie in (0, 1]")
         self.score_type = score_type
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size
+        self.max_samples = max_samples
+        if max_samples is not None:
+            self.sample_budget: int = max_samples
+        elif isinstance(batch_size, int):
+            self.sample_budget = batch_size * max_iter
+        else:
+            self.sample_budget = _DEFAULT_BATCH * max_iter
         self.model_type = model_type
         self.confidence = confidence
         self.max_lo_iters = max_lo_iters
@@ -289,6 +315,27 @@ class RANSAC(nn.Module):
             rand.scatter_(1, newest, torch.where(force_newest[:, None], 2.0, rand.gather(1, newest)))
         return rand.topk(k=sample_size, dim=1, sorted=False).indices
 
+    def resolve_batch_size(self, num_tc: int, device: torch.device) -> int:
+        """Return the batch size of a call: the configured one, or the ``"auto"`` choice for the device.
+
+        On accelerators a batch costs about the same up to a few thousand hypotheses, so the whole
+        :attr:`sample_budget` is drawn in one batch of at most 8192. On CPU the cost is linear in
+        ``batch * N`` residuals, and the eight-point solver is about ten times a DLT, so the batch aims at a
+        millisecond or so of work, 256 to 2048 hypotheses for homographies and 128 to 512 for the epipolar
+        models, and early stopping is checked between batches.
+        """
+        if isinstance(self.batch_size, int):
+            return self.batch_size
+        if device.type == "cpu":
+            if self.model_type in ("homography", "homography_from_linesegments"):
+                work, lower, upper = 1 << 19, 256, 2048
+            else:
+                work, lower, upper = 1 << 17, 128, 512
+            batch = min(max(work // max(num_tc, 1), lower), upper)
+        else:
+            batch = 8192
+        return min(batch, self.sample_budget)
+
     def _is_supported(self, num_inliers: float) -> bool:
         """Whether a model has support beyond the minimal sample it may have been fitted to.
 
@@ -299,7 +346,7 @@ class RANSAC(nn.Module):
 
     def _prosac_schedule(self, sample_size: int, pop_size: int, device: torch.device) -> torch.Tensor:
         """Return the cumulative PROSAC draw counts on ``device``, converting them once per configuration."""
-        key = (sample_size, pop_size, self.batch_size * self.max_iter, device)
+        key = (sample_size, pop_size, self.sample_budget, device)
         if self._prosac_ends is None or self._prosac_ends[0] != key:
             self._prosac_ends = (key, torch.tensor(_prosac_growth(*key[:3]), device=device))
         return self._prosac_ends[1]
@@ -316,7 +363,7 @@ class RANSAC(nn.Module):
         terminate: a handful of top-ranked inliers to a model fitted to their neighbours is no evidence of a
         good model. The whole set is always a candidate, which is the uniform-sampling bound.
         """
-        budget = self.batch_size * self.max_iter
+        budget = self.sample_budget
         m, total = self.minimal_sample_size, inliers.numel()
         if self.confidence >= 1.0 or total <= m:
             return budget
@@ -645,17 +692,20 @@ class RANSAC(nn.Module):
         """
         self.validate_inputs(kp1, kp2, weights)
         best_score_total = -float("inf")
-        max_samples = self.max_iter * self.batch_size
         num_tc: int = len(kp1)
+        budget = self.sample_budget
+        batch_size = self.resolve_batch_size(num_tc, kp1.device)
+        max_samples = budget
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
         inliers_best_total: torch.Tensor = torch.zeros(num_tc, device=kp1.device, dtype=torch.bool)
         # Only a minimal-solver model needs projecting onto the essential manifold; LO refits already are.
         best_needs_projection = False
-        for i in range(self.max_iter):
-            if i * self.batch_size >= max_samples:
+        for i in range(-(-budget // batch_size)):
+            if i * batch_size >= max_samples:
                 break
-            # Sample minimal samples in batch to estimate models
-            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i, kp1.device)
+            # Sample minimal samples in batch to estimate models; the last batch is truncated to the budget.
+            current = min(batch_size, budget - i * batch_size)
+            idxs = self.sample(self.minimal_sample_size, num_tc, current, i, kp1.device)
             kp1_sampled = kp1[idxs]
             kp2_sampled = kp2[idxs]
             kp1_sampled, kp2_sampled = self.remove_bad_samples(kp1_sampled, kp2_sampled)
@@ -691,7 +741,7 @@ class RANSAC(nn.Module):
                     max_samples = self._prosac_max_samples(inliers, int(num_inliers))
                 else:
                     max_samples = min(
-                        self.max_iter * self.batch_size,
+                        budget,
                         self.max_samples_by_conf(int(num_inliers), num_tc, self.minimal_sample_size, self.confidence),
                     )
         # The best model may come from the 5-point minimal solver (find_essential), which is not

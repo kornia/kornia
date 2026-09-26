@@ -11,18 +11,23 @@ Robust model fitting with RANSAC (Random Sample Consensus), used to estimate hom
 Batches, scores, and refinement
 -------------------------------
 
-``batch_size`` counts minimal sample sets. The total budget is
-``batch_size * max_iter``; seven-point fundamental and five-point essential
-solvers may produce several candidate matrices from each set. Smaller batches
-permit earlier stopping, while larger batches amortize accelerator overhead.
-``confidence=1`` disables early stopping and runs the whole budget.
-On CUDA keep the default batch of 2048 or larger: a batch costs about the same
-up to a few thousand hypotheses, and a PROSAC batch of that size already spans
+Hypotheses are generated and verified in batches. The sampling budget is
+``max_samples`` minimal samples when given, otherwise ``batch_size * max_iter``
+(``2048 * max_iter``, the historical default, with ``batch_size="auto"``); the
+last batch is truncated to it. Seven-point fundamental and five-point essential
+solvers may produce several candidate matrices from each set. Early stopping is
+checked between batches, and ``confidence=1`` runs the whole budget.
+
+The default ``batch_size="auto"`` picks the batch per call. On CUDA and MPS a
+batch costs about the same up to a few thousand hypotheses, so the whole budget
+is drawn in one batch of at most 8192; a PROSAC batch of that size also spans
 most of the growth schedule, whereas certifying a model after a small first
 batch drawn from a short prefix can stop on a poorly conditioned fit. On CPU
-the batch cost grows with its size, so 32 to 256 hypotheses per batch let
-early stopping pay off. Measure end-to-end latency and pose accuracy when
-choosing a batch size.
+the cost is linear in ``batch * N`` residuals and the eight-point solver costs
+about ten DLTs, so the batch aims at a millisecond or so of work: 256 to 2048
+hypotheses for homographies and 128 to 512 for the epipolar models, fewer for
+more correspondences, which lets early stopping pay off. An integer
+``batch_size`` fixes the batch on every device.
 
 ``score_type="msac"`` minimizes the sum of squared residuals truncated at
 ``inl_th ** 2``. The returned internal score is normalized to increase with

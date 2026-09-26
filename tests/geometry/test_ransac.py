@@ -1127,6 +1127,82 @@ class TestRANSACSampling(BaseTester):
         assert calls[1] > 1
 
 
+class TestRANSACAutoBatch(BaseTester):
+    def test_default_is_auto_with_the_historical_budget(self):
+        ransac = RANSAC("homography")
+        assert ransac.batch_size == "auto"
+        assert ransac.sample_budget == 2048 * 10
+
+    @pytest.mark.parametrize("bad", [0, -1, 2.5, True, "large"])
+    def test_rejects_bad_batch_size(self, bad):
+        with pytest.raises(ValueError):
+            RANSAC("homography", batch_size=bad)
+
+    @pytest.mark.parametrize("bad", [0, -5, True])
+    def test_rejects_bad_max_samples(self, bad):
+        with pytest.raises(ValueError):
+            RANSAC("homography", max_samples=bad)
+
+    def test_explicit_batch_keeps_its_budget(self):
+        ransac = RANSAC("fundamental", batch_size=512, max_iter=4)
+        assert ransac.sample_budget == 2048
+        assert ransac.resolve_batch_size(5000, torch.device("cpu")) == 512
+        assert ransac.resolve_batch_size(5000, torch.device("cuda")) == 512
+
+    def test_max_samples_overrides_the_budget(self):
+        assert RANSAC("homography", batch_size=256, max_iter=100, max_samples=1000).sample_budget == 1000
+        assert RANSAC("homography", max_samples=1000).sample_budget == 1000
+
+    def test_accelerators_take_the_budget_in_one_batch(self):
+        ransac = RANSAC("homography", max_samples=5000)
+        for device in (torch.device("cuda"), torch.device("mps")):
+            assert ransac.resolve_batch_size(500, device) == 5000
+        assert RANSAC("homography").resolve_batch_size(500, torch.device("cuda")) == 8192
+
+    @pytest.mark.parametrize(
+        "model_type,num_tc,expected",
+        [
+            ("homography", 100, 2048),
+            ("homography", 500, 1048),
+            ("homography", 4000, 256),
+            ("fundamental", 100, 512),
+            ("fundamental", 500, 262),
+            ("fundamental", 4000, 128),
+            ("essential", 4000, 128),
+        ],
+    )
+    def test_cpu_batch_follows_model_and_point_count(self, model_type, num_tc, expected):
+        assert RANSAC(model_type).resolve_batch_size(num_tc, torch.device("cpu")) == expected
+        assert RANSAC(model_type, max_samples=200).resolve_batch_size(num_tc, torch.device("cpu")) == min(expected, 200)
+
+    def test_last_batch_is_truncated_to_the_budget(self, device, dtype):
+        points = torch.rand(20, 2, device=device, dtype=dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        ransac = RANSAC("homography", batch_size=16, max_samples=40, max_lo_iters=0, confidence=1.0)
+        sizes = []
+        sample = ransac.sample
+        ransac.sample = lambda m, n, batch, *a, **k: sizes.append(batch) or sample(m, n, batch, *a, **k)
+        ransac.remove_bad_samples = lambda a, b: (a, b)
+        ransac.minimal_solver = lambda a, b, w: matrix
+        ransac(points, points)
+        assert sizes == [16, 16, 8]
+
+    def test_auto_batch_forward_matches_explicit_batch(self, device, dtype):
+        # The auto batch is a plain batch size: the same seed gives the same draws as that size given explicitly.
+        torch.manual_seed(0)
+        kp1 = torch.rand(200, 2, device=device, dtype=dtype) * 500
+        matrix = torch.tensor([[1.0, 0.1, 5.0], [0.0, 1.0, 3.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        kp2 = transform_points(matrix[None], kp1[None])[0]
+        kp2[:60] = torch.rand(60, 2, device=device, dtype=dtype) * 500
+        auto = RANSAC("homography", inl_th=1.0, seed=0)
+        explicit = RANSAC("homography", inl_th=1.0, batch_size=auto.resolve_batch_size(200, kp1.device), seed=0)
+        H_auto, mask_auto = auto(kp1, kp2)
+        H_explicit, mask_explicit = explicit(kp1, kp2)
+        assert torch.equal(mask_auto, mask_explicit)
+        self.assert_close(H_auto, H_explicit)
+        assert mask_auto[60:].all()
+
+
 class TestRANSACPolisherScale(BaseTester):
     @pytest.mark.parametrize("model_type", ["homography", "homography_from_linesegments"])
     @pytest.mark.parametrize("inl_th", [0.5, 2.0])
