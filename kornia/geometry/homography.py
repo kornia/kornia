@@ -23,7 +23,7 @@ import torch
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from kornia.geometry.epipolar import normalize_points
+from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.linalg import transform_points
 
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]
@@ -212,14 +212,13 @@ def find_homography_dlt(
 
     Convention:
         - ``H`` maps ``points1`` to ``points2``, ``points2 ~ H @ points1``, and is scaled so that
-          ``H[2, 2] = 1``; :ref:`two-view-conventions` compares this with OpenCV.
+          ``H[2, 2] = 1`` by :func:`~kornia.geometry.epipolar.normalize_transformation`, which leaves it at its
+          unnormalised scale when ``|H[2, 2]|`` is at most ``1e-8``; :ref:`two-view-conventions` compares this
+          with OpenCV.
         - ``weights`` multiply each correspondence's squared algebraic residual: a weight of 0 removes the
           correspondence from the equations, and only relative weights matter.
         - ``solver="lu"`` and ``"svd"`` give the same homography on exact data, to roundoff scaled by the
           conditioning of the system; on noisy data they solve different least-squares problems and differ.
-        - Known defect: ``H`` is divided by ``H[2, 2] + 1e-8``, so ``H[2, 2]`` is not exactly 1, and it can be
-          far from 1 when the true ``H[2, 2]`` is small
-          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
@@ -323,7 +322,7 @@ def find_homography_dlt(
     else:
         raise NotImplementedError
     H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
-    return H / (H[..., -1:, -1:] + eps)
+    return normalize_transformation(H, eps)
 
 
 def find_homography_dlt_iterated(
@@ -334,10 +333,8 @@ def find_homography_dlt_iterated(
     Convention:
         - Direction and ``H[2, 2] = 1`` as :func:`find_homography_dlt`. Each solve after the first re-weights
           with ``exp(-e / (2 * soft_inl_th**2))`` of the unsquared symmetric transfer error ``e``.
-        - Known defects: the exponent is linear, not quadratic, in ``e``, so ``soft_inl_th`` is not a pixel
-          standard deviation (`#4870 <https://github.com/kornia/kornia/issues/4870>`_); the
-          :func:`find_homography_dlt` scaling defect applies
-          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
+        - Known defect: the exponent is linear, not quadratic, in ``e``, so ``soft_inl_th`` is not a pixel
+          standard deviation (`#4870 <https://github.com/kornia/kornia/issues/4870>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
@@ -415,12 +412,10 @@ def find_homography_lines_dlt(
     Convention:
         - ``H`` maps image-1 points to image-2 points, as in :func:`find_homography_dlt`. Each segment is a
           ``[start, end]`` pair of ``(x, y)`` points, and ``weights`` has one entry per segment.
-        - Known defects: each segment's equations are built from endpoints of two different segments, not from
+        - Known defect: each segment's equations are built from endpoints of two different segments, not from
           its own start and end, so the estimate is correct only when the endpoints are themselves point
           correspondences, and a zero weight does not remove its segment
-          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_); and the ``H[2, 2]`` scaling of
-          :func:`find_homography_dlt` applies
-          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
+          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
@@ -488,7 +483,7 @@ def find_homography_lines_dlt(
 
     H = V[..., -1].view(-1, 3, 3)
     H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
-    return H / (H[..., -1:, -1:] + eps)
+    return normalize_transformation(H, eps)
 
 
 def find_homography_lines_dlt_iterated(
@@ -502,8 +497,7 @@ def find_homography_lines_dlt_iterated(
         - Known defects: those of the three functions apply
           (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
           `#4867 <https://github.com/kornia/kornia/issues/4867>`_,
-          `#4870 <https://github.com/kornia/kornia/issues/4870>`_,
-          `#4874 <https://github.com/kornia/kornia/issues/4874>`_).
+          `#4870 <https://github.com/kornia/kornia/issues/4870>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.

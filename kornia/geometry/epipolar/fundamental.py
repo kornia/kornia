@@ -108,14 +108,10 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     Convention:
         - Divides ``M`` by its last entry ``M[..., -1, -1]``, which gives :func:`find_fundamental` its
           ``F[2, 2] = 1`` scaling. A matrix whose last entry is within ``eps`` of zero is returned unchanged.
-        - Known defects: the divisor is ``M[..., -1, -1] + eps``, so the last entry is not exactly one, and it is
-          far from one when ``|M[..., -1, -1]|`` is close to ``eps``
-          (`#4874 <https://github.com/kornia/kornia/issues/4874>`_).
 
     Args:
         M: The transformation to be normalized of any shape with a minimum size of 2x2.
-        eps: added to the divisor, and the magnitude of the last entry at or below which ``M`` is returned
-            unchanged.
+        eps: magnitude of the last entry at or below which ``M`` is returned unchanged.
 
     Returns:
         the normalized transformation matrix with same shape as the input.
@@ -124,7 +120,9 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     if len(M.shape) < 2:
         raise AssertionError(M.shape)
     norm_val: torch.Tensor = M[..., -1:, -1:]
-    return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
+    mask = norm_val.abs() > eps
+    divisor = torch.where(mask, norm_val, torch.ones_like(norm_val))
+    return torch.where(mask, M / divisor, M)
 
 
 def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
