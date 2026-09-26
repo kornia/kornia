@@ -508,8 +508,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
        kornia's, so a candidate index does not port; ``recoverPose`` selects the same pose and also returns the
        inlier count
    * - projection matrix
-     - ``KRt_from_projection`` returns the translation ``t`` of ``P = K [R | t]``; for ``det P[:, :3] < 0`` it
-       returns a reflection (`#4864 <https://github.com/kornia/kornia/issues/4864>`_)
+     - ``KRt_from_projection`` returns the translation ``t`` of ``P = K [R | t]``; ``P`` and ``-P`` give the same
+       positive-diagonal ``K``, rotation ``R`` and ``t``
      - ``decomposeProjectionMatrix`` returns the homogeneous camera centre :math:`C = -R^\top t`; for
        ``det P[:, :3] < 0`` it keeps ``det R = 1`` and returns ``K[2, 2] < 0``
    * - triangulation

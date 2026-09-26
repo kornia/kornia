@@ -187,13 +187,15 @@ class TestKRtFromProjection(BaseTester):
             dtype=dtype,
         )
 
+        # This P has a negative-determinant left block, so it is -K [R | t] for the camera below: R is a rotation
+        # (det +1) and t its translation; the reflection -R with -t that the decomposition used to return is #4864.
         R_expected = torch.tensor(
-            [[[0.396559, 0.511023, -0.762625], [0.743249, -0.666318, -0.060006], [0.538815, 0.543024, 0.644052]]],
+            [[[-0.396559, -0.511023, 0.762625], [-0.743249, 0.666318, 0.060006], [-0.538815, -0.543024, -0.644052]]],
             device=device,
             dtype=dtype,
         )
 
-        t_expected = torch.tensor([[[-6.477699], [1.129624], [0.143123]]], device=device, dtype=dtype)
+        t_expected = torch.tensor([[[6.477699], [-1.129624], [-0.143123]]], device=device, dtype=dtype)
 
         K_estimated, R_estimated, t_estimated = epi.KRt_from_projection(P)
         self.assert_close(K_estimated, K_expected, atol=1e-4, rtol=1e-4)
@@ -397,32 +399,35 @@ class TestConventionProjection(BaseTester):
         with pytest.raises(Exception):
             epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=torch.uint8))
 
-    def test_wart_krt_from_projection_negative_P_reflection_4864(self, device, dtype):
+    def test_convention_krt_from_projection_scale_and_sign_of_P(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_QR)
-        # #4864: -P is the same camera as P, but the result keeps K's diagonal positive and returns the reflection
-        # -R (det -1) with -t. Once fixed, R is a proper rotation and the sign moves into K.
-        P, R_true, t_true = two_view["P2"], two_view["R"], two_view["t"]
-        _, R_pos, _ = epi.KRt_from_projection(P)
-        self.assert_close(_det3(R_pos), torch.ones(1, device=device, dtype=dtype))
-        K, R, t = epi.KRt_from_projection(-P)
+        P, K_true, R_true, t_true = two_view["P2"], two_view["K2"], two_view["R"], two_view["t"]
+        ones = torch.ones(1, device=device, dtype=dtype)
+        # s * P is the same camera for every nonzero s, sign included: R stays a rotation, t the translation, and
+        # K carries |s|. -P and a scale below the former eps = 1e-6 used to return a reflection (#4864). The
+        # smallest negative scale makes det(s * P[:, :3, :3]), which scales as s**3, underflow to -0.0, so the sign
+        # cannot be read from it. The small scales run on the CPU only: the MPS QR of a matrix with entries near
+        # 1e-5 is off by a factor.
+        tiny = {torch.float32: -1e-17, torch.float64: -1e-110}[dtype]
+        scales = (-1.0, 2.0) + ((1e-7, -1e-7, tiny) if device.type == "cpu" else ())
+        for s in scales:
+            K, R, t = epi.KRt_from_projection(s * P)
+            assert (K.diagonal(dim1=-2, dim2=-1) > 0).all()
+            self.assert_close(_det3(R), ones)
+            self.assert_close(R, R_true)
+            self.assert_close(t, t_true)
+            self.assert_close(K[:, 2, 2], torch.full_like(K[:, 2, 2], abs(s)))
+            self.assert_close(K / K[..., 2:, 2:], K_true, rtol=1e-4, atol=1e-3)
+        # A negative focal length also gives a negative-determinant left block: R is still a rotation, and
+        # K [R | t] reproduces P up to its sign.
+        K_neg = K_true.clone()
+        K_neg[:, 0, 0] = -K_neg[:, 0, 0]
+        P_neg = epi.projection_from_KRt(K_neg, R_true, t_true)
+        K, R, t = epi.KRt_from_projection(P_neg)
         assert (K.diagonal(dim1=-2, dim2=-1) > 0).all()
-        self.assert_close(_det3(R), -torch.ones(1, device=device, dtype=dtype))
-        self.assert_close(R, -R_true)
-        self.assert_close(t, -t_true)
-        if device.type != "cpu":
-            # The sub-eps case depends on the QR backend's sign for an entry of magnitude ~eps (MPS returns +2e-8
-            # where CPU LAPACK returns a negative entry), so it is asserted on the CPU only.
-            return
-        # Same issue: eps is added to K's raw diagonal before its sign is taken, so 1e-7 * P (a positive scale)
-        # keeps a negative K[2, 2] and returns a reflection.
-        # The matching (last) row of R and entry of t are negated; the other two are R_true's and t_true's.
-        K_small, R_small, t_small = epi.KRt_from_projection(1e-7 * P)
-        assert K_small[0, 2, 2] < 0
-        self.assert_close(R_small[:, :2], R_true[:, :2])
-        self.assert_close(R_small[:, 2], -R_true[:, 2])
-        self.assert_close(t_small[:, :2], t_true[:, :2])
-        self.assert_close(t_small[:, 2], -t_true[:, 2])
+        self.assert_close(_det3(R), ones)
+        self.assert_close(epi.projection_from_KRt(K, R, t), -P_neg, rtol=1e-4, atol=1e-3)
 
     def test_wart_scale_intrinsics_principal_point_rule_4263(self, device, dtype):
         # #4263: the same rule as PinholeCamera.scale, pinned there by
