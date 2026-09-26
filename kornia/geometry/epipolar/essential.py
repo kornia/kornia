@@ -394,7 +394,14 @@ def _null_to_Nister_solution_script(
     if no_roots.any():
         C = torch.where(no_roots.view(B, 1, 1), eye10, C)
 
-    roots_eig = torch.linalg.eigvals(C)  # (B,10), complex
+    if C.device.type == "cuda":
+        # torch.linalg.eigvals has no batched CUDA kernel: it hands the companion matrices to cusolver one
+        # at a time with a synchronization each, about 3.6 ms per 10x10 matrix, so a RANSAC batch of 2048
+        # five-point samples spent 6.4 s here. LAPACK on the host takes about 15 ms for the same batch,
+        # transfers included, and the transfers are differentiable.
+        roots_eig = torch.linalg.eigvals(C.cpu()).to(C.device)  # (B,10), complex
+    else:
+        roots_eig = torch.linalg.eigvals(C)  # (B,10), complex
     roots = torch.real(roots_eig)
     is_real = torch.abs(torch.imag(roots_eig)) < 1e-10
 
