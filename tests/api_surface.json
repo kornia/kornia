@@ -483,6 +483,7 @@
     "imgwarp",
     "infer_bbox_shape",
     "infer_bbox_shape3d",
+    "init_camera_intrinsics_zhang",
     "intrinsics_like",
     "inverse_transformation",
     "invert_affine_transform",
