@@ -382,7 +382,9 @@ class Quaternion(nn.Module):
 
     @property
     def polar_angle(self) -> torch.Tensor:
-        """Return the polar angle with shape :math:`(B,1)`.
+        r"""Return the polar angle :math:`\arccos(w / |q|)` in :math:`[0, \pi]`, with shape :math:`(B,)`.
+
+        ``q`` rotates by twice this angle about the axis ``vec``.
 
         Example:
             >>> q = Quaternion.identity()
@@ -390,7 +392,9 @@ class Quaternion(nn.Module):
             tensor(0.)
 
         """
-        return (self.scalar / self.norm()).acos()
+        # atan2(|v|, w) is the same angle, but it keeps the digits of an angle below sqrt(eps) that acos(w / |q|)
+        # rounds to zero, and its gradient on the real axis (v = 0, the identity included) is zero instead of nan.
+        return torch.atan2(self.vec.norm(dim=-1), self.scalar)
 
     def matrix(self) -> torch.Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
