@@ -133,4 +133,3 @@ class TestNamedPose(BaseTester):
         points_in_b = b_from_a.transform_points(points_in_a)
         assert points_in_b.shape == points_in_a.shape
         self.assert_close(a_from_b.transform_points(points_in_b), points_in_a)
-
