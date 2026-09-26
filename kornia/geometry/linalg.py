@@ -258,7 +258,8 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
     r"""Return the distance from points to lines.
 
     Args:
-       point: (possibly homogeneous) points :math:`(*, N, 2 or 3)`.
+       point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the
+         weight :math:`w`; a point at infinity (:math:`w = 0`) is at distance ``inf`` from every line.
        line: lines coefficients :math:`(a, b, c)` with shape :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
        eps: Small constant for safe sqrt.
 
@@ -278,13 +279,26 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
     # Using in-place operations to improve performance
     numerator = line[..., 0] * point[..., 0]
     numerator += line[..., 1] * point[..., 1]
-    numerator += line[..., 2]
+    if point.shape[-1] == 3:
+        numerator += line[..., 2] * point[..., 2]
+    else:
+        numerator += line[..., 2]
     numerator.abs_()
 
     # Avoid computing norm multiple times by saving its value
     denom_norm = (line[..., 0].square() + line[..., 1].square()).sqrt()
 
-    return numerator / (denom_norm + eps)
+    distance = numerator / (denom_norm + eps)
+    if point.shape[-1] == 3:
+        # (x, y, w) is the Euclidean point (x / w, y / w), so its distance is |ax + by + cw| / (|w| |(a, b)|); the
+        # weight used to be ignored, which is right only for w = 1 (#4935). A point at infinity (w = 0) is at
+        # distance inf; torch.where also differentiates the branch it does not select, so that division is kept
+        # finite.
+        w = point[..., 2].abs()
+        at_infinity = w == 0
+        safe_w = torch.where(at_infinity, torch.ones_like(w), w)
+        distance = torch.where(at_infinity, torch.full_like(distance, torch.inf), distance / safe_w)
+    return distance
 
 
 def batched_dot_product(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
