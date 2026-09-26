@@ -1,0 +1,1 @@
+Fixed `RandomDissolving` and `StableDiffusionDissolving` docstring figure tables to render images instead of literal text, and updated the SD XL column to show a pending asset note instead of a mismatched SD 2.1 image.

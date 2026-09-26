@@ -217,9 +217,9 @@ class StableDiffusionDissolving(ImageModule):
         * - SD 1.4
           - SD 1.5
           - SD XL
-        * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
+        * - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
+          - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
+          - SD XL example image pending — see kornia#4601
 
     Args:
         version: the version of the stable diffusion model. Options: "1.4", "1.5", "xl".
