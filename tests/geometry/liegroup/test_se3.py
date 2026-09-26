@@ -186,6 +186,16 @@ class TestSe3(BaseTester):
             zero_vec = zero_vec.repeat(batch_size, 1)
         self.assert_close(s.log(), torch.cat((t, zero_vec), -1))
 
+    def test_log_is_principal(self, device, dtype):
+        # A small rotation stored as -q used to give |omega| close to 2 pi and a translation part of order 1e6 (#4925).
+        v = torch.tensor([[1.0, 2.0, 3.0, 0.05, 0.01, -0.03]], device=device, dtype=dtype)
+        s = Se3.exp(v)
+        flipped = Se3(Quaternion(-s.so3.q.data), s.t)
+        self.assert_close(flipped.log(), s.log())
+        axis = torch.tensor([[0.48, 0.6, 0.64]], device=device, dtype=dtype)
+        long_way = Se3(Quaternion.from_axis_angle(4.0 * axis), torch.zeros_like(axis))
+        self.assert_close(long_way.log()[..., 3:], (4.0 - 2 * torch.pi) * axis)
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
         a = self._make_rand_data(device, dtype, batch_size, dims=6)

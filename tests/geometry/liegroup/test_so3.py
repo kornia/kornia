@@ -175,6 +175,24 @@ class TestSo3(BaseTester):
         zero_vec = 0 * self._make_rand_data(device, dtype, batch_size, dims=3)
         self.assert_close(s.log(), zero_vec)  # log of identity quat is zero vec
 
+    def test_log_is_principal(self, device, dtype):
+        # q and -q are the same rotation and must have the same log, of norm at most pi (#4925).
+        v = torch.tensor([[0.5, 0.1, -0.3]], device=device, dtype=dtype)
+        q = Quaternion.from_axis_angle(v).data
+        self.assert_close(So3.from_wxyz(q).log(), v)
+        self.assert_close(So3.from_wxyz(-q).log(), v)
+        # a rotation vector longer than pi comes back as the shorter rotation about the opposite axis
+        axis = torch.tensor([[0.48, 0.6, 0.64]], device=device, dtype=dtype)
+        long_way = So3.from_wxyz(Quaternion.from_axis_angle(4.0 * axis).data)
+        self.assert_close(long_way.log(), (4.0 - 2 * torch.pi) * axis)
+
+    def test_log_keeps_small_angles(self, device, dtype):
+        # 2 * acos(w) rounded every float32 rotation below 1e-4 rad to zero (#4897).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("a 1e-4 rad rotation is below the resolution of a half-precision unit quaternion")
+        v = torch.tensor([[6e-5, 0.0, 8e-5]], device=device, dtype=dtype)
+        self.assert_close(So3.exp(v).log(), v, rtol=1e-5, atol=0.0)
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)

@@ -26,8 +26,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.tensor_wrapper import _unwrap
-from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
-from kornia.geometry.linalg import batched_dot_product
+from kornia.geometry.conversions import quaternion_to_axis_angle, vector_to_skew_symmetric_matrix
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
@@ -145,30 +144,11 @@ class So3(nn.Module):
             >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q).log()
-            tensor([[0., 0., 0.],
-                    [0., 0., 0.]])
+            tensor([[1.2092, 1.2092, 1.2092],
+                    [1.2092, 1.2092, 1.2092]])
 
         """
-        vec, real = self.q.vec, self.q.real
-        vec_sq = batched_dot_product(vec, vec)
-        nonzero = vec_sq > 0
-        # Each branch below is singular exactly where the other one is selected, and torch.where
-        # differentiates both: at the identity (vec = 0) sqrt and the division by theta diverge,
-        # and at a half turn (real = 0) the small-angle branch divides by zero. Either way
-        # 0 * inf = nan used to reach every coefficient of a gradient whose value was finite.
-        # Substitute a safe argument into each branch -- the where discards those values, so only
-        # the gradients change.
-        safe_vec_sq = torch.where(nonzero, vec_sq, torch.ones_like(vec_sq))
-        theta = torch.where(nonzero, safe_vec_sq.sqrt(), torch.zeros_like(vec_sq))
-        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
-        safe_real = torch.where(nonzero, real, torch.zeros_like(real))
-        safe_real_recip = torch.where(nonzero, torch.ones_like(real), real)
-        # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
-        return torch.where(
-            nonzero[..., None],
-            2 * safe_real[..., None].acos() * vec / safe_theta[..., None],
-            2 * vec / safe_real_recip[..., None],
-        )
+        return quaternion_to_axis_angle(self.q.data)
 
     @staticmethod
     def hat(v: Vector3 | torch.Tensor) -> torch.Tensor:
