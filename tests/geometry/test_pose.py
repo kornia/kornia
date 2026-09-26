@@ -199,3 +199,76 @@ class TestNamedPose(BaseTester):
         shift_x = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
         self.assert_close(points_in_b, (points_in_a + shift_x) @ rot_z.T, low_tolerance=low_tolerance)
         self.assert_close(a_from_b.transform_points(points_in_b), points_in_a, low_tolerance=low_tolerance)
+
+
+class TestNamedPoseConventions(BaseTester):
+    @staticmethod
+    def _poses(device, dtype):
+        # Two rigid, non-commuting poses (M1 M2 != M2 M1 by 0.854), neither the identity nor a pure translation.
+        g1 = Se3.exp(torch.tensor([1.0, -2.0, 3.0, 0.4, 0.2, -0.3], device=device, dtype=dtype))
+        g2 = Se3.exp(torch.tensor([0.3, 0.1, -0.2, -0.1, 0.3, 0.05], device=device, dtype=dtype))
+        m1, m2 = g1.matrix(), g2.matrix()
+        assert (m1 @ m2 - m2 @ m1).abs().max() > 0.5
+        eye = torch.eye(3, device=device, dtype=dtype)
+        assert (m1[:3, :3] - eye).abs().max() > 0.1 and (m2[:3, :3] - eye).abs().max() > 0.1
+        return g1, g2
+
+    def test_convention_named_pose_composition_order(self, device, dtype):
+        g1, g2 = self._poses(device, dtype)
+        b_from_a = NamedPose(g1, frame_src="a", frame_dst="b")
+        c_from_b = NamedPose(g2, frame_src="b", frame_dst="c")
+        # c_from_b * b_from_a is c_from_a, whose matrix is M2 @ M1; generated in float64 as
+        # Se3.exp([0.3, 0.1, -0.2, -0.1, 0.3, 0.05]).matrix() @ Se3.exp([1.0, -2.0, 3.0, 0.4, 0.2, -0.3]).matrix()
+        expected = torch.tensor(
+            [
+                [0.8365770733327115, 0.3564824932541303, 0.41600364466840206, 1.991550772972204],
+                [-0.23936674171706684, 0.9208664847598445, -0.30774742924320647, -2.2686923473188667],
+                [-0.4927903847822421, 0.15787700671524751, 0.85570584163999, 2.0241534574197697],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        c_from_a = c_from_b * b_from_a
+        assert (c_from_a.frame_src, c_from_a.frame_dst) == ("a", "c")
+        self.assert_close(c_from_a.pose.matrix(), expected)
+        # The source frame of the left operand must be the destination frame of the right one.
+        with pytest.raises(ValueError, match="Cannot compose"):
+            b_from_a * c_from_b
+
+    def test_convention_named_pose_inverse_swaps_frames(self, device, dtype):
+        g1, _ = self._poses(device, dtype)
+        a_from_b = NamedPose(g1, frame_src="a", frame_dst="b").inverse()
+        assert (a_from_b.frame_src, a_from_b.frame_dst) == ("b", "a")
+        # generated in float64 as torch.linalg.inv(Se3.exp([1.0, -2.0, 3.0, 0.4, 0.2, -0.3]).matrix())
+        expected = torch.tensor(
+            [
+                [0.9365557269934554, -0.24666617456316428, -0.2490364803841689, -0.893226697341087],
+                [0.32475143364814213, 0.8779917826797222, 0.35166309998400447, 1.2022440482882328],
+                [0.13190859175670216, -0.41022704429773776, 0.9023934261437778, -3.3894728975959616],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # half precision: the quaternion inverse and the matrix rebuild round twice (up to 0.7 of the default
+        # half tolerance on this fixture)
+        low = dtype in (torch.float16, torch.bfloat16)
+        self.assert_close(a_from_b.pose.matrix(), expected, low_tolerance=low)
+
+    def test_wart_named_pose_mixed_groups_4937(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 (and an Se2 pose) cannot be built at all")
+        # https://github.com/kornia/kornia/issues/4937: NamedPose validates no types. Composing an Se3 pose with an
+        # Se2 pose fails inside the dispatch with an AttributeError; the ValueError branch meant for it is never
+        # reached.
+        g1, _ = self._poses(device, dtype)
+        se2 = Se2.exp(torch.tensor([0.5, -1.0, 0.3], device=device, dtype=dtype))
+        with pytest.raises(AttributeError):
+            NamedPose(g1, frame_src="b", frame_dst="c") * NamedPose(se2, frame_src="a", frame_dst="b")
+        with pytest.raises(AttributeError):
+            NamedPose(se2, frame_src="b", frame_dst="c") * NamedPose(g1, frame_src="a", frame_dst="b")
+        # A rotation-only group is accepted at construction, and its rotation then raises.
+        so3_pose = NamedPose(So3.identity(device=device, dtype=dtype), frame_src="a", frame_dst="b")
+        with pytest.raises(AttributeError):
+            _ = so3_pose.rotation

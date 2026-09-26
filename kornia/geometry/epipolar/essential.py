@@ -872,7 +872,9 @@ def relative_camera_motion(
     Convention:
         - Inputs are world-to-camera extrinsics, :math:`x_{cam} = R X + t` (see :doc:`camera and world
           conventions </get-started/camera-conventions>`); the result is :math:`R = R_2 R_1^\top` and
-          :math:`t = t_2 - R_2 R_1^\top t_1`, the motion from camera 1 to camera 2.
+          :math:`t = t_2 - R_2 R_1^\top t_1`, the motion from camera 1 to camera 2. As 4x4 matrices this is
+          :math:`E_2 E_1^{-1}`, whereas :func:`~kornia.geometry.linalg.relative_transformation` of :math:`E_1` and
+          :math:`E_2` returns :math:`E_1^{-1} E_2`.
 
     Args:
         R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.

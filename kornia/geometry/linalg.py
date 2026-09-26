@@ -39,15 +39,21 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     r"""Compose two homogeneous transformations.
 
     .. math::
-        T_0^{2} = \begin{bmatrix} R_0^1 R_1^{2} & R_0^{1} t_1^{2} + t_0^{1} \
-        \\mathbf{0} & 1\end{bmatrix}
+        T_0^{2} = \begin{bmatrix} R_0^{1} R_1^{2} & R_0^{1} t_1^{2} + t_0^{1} \\
+        \mathbf{0} & 1 \end{bmatrix}
+
+    Convention:
+        - The result is the matrix product ``trans_01 @ trans_12``, with the frame naming of
+          :func:`relative_transformation`. Only the top three rows of each input are read and the last row of the
+          result is always :math:`[0, 0, 0, 1]`: any affine pair composes exactly, and a projective input is used as
+          if its last row were :math:`[0, 0, 0, 1]`.
 
     Args:
         trans_01: tensor with the homogeneous transformation from
-          a reference frame 1 respect to a frame 0. The tensor has must have a
+          a reference frame 1 respect to a frame 0. The tensor must have a
           shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
         trans_12: tensor with the homogeneous transformation from
-          a reference frame 2 respect to a frame 1. The tensor has must have a
+          a reference frame 2 respect to a frame 1. The tensor must have a
           shape of :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch of one broadcasts against a batch of
           :math:`N` in either argument.
 
@@ -95,9 +101,9 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
 
 
 def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
-    r"""Invert a 4x4 homogeneous transformation.
+    r"""Invert a 4x4 rigid homogeneous transformation.
 
-     :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
+    :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
 
     The inverse transformation is computed as follows:
 
@@ -106,6 +112,12 @@ def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
         T_2^{1} = (T_1^{2})^{-1} = \begin{bmatrix} R_1^T & -R_1^T t_1 \\
         \mathbf{0} & 1\end{bmatrix}
 
+    Convention:
+        - The input must be a rigid :math:`[R|t]`, and this is not validated: the rotation block is transposed, not
+          inverted, and the last row is read as :math:`[0, 0, 0, 1]`, so a scaled, sheared or projective matrix
+          returns a result that is not its inverse. Use :func:`torch.linalg.inv` for a general matrix. Frame naming
+          is on :func:`relative_transformation`.
+
     Args:
         trans_12: transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
@@ -113,8 +125,12 @@ def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
         tensor with inverted transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
     Example:
-        >>> trans_12 = torch.rand(1, 4, 4)  # Nx4x4
+        >>> trans_12 = torch.eye(4)[None]  # Nx4x4: a rotation of 90 degrees about z and a translation
+        >>> trans_12[:, :3, :3] = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+        >>> trans_12[:, :3, 3] = torch.tensor([1.0, 2.0, 3.0])
         >>> trans_21 = inverse_transformation(trans_12)  # Nx4x4
+        >>> trans_21[:, :3, 3]
+        tensor([[-2.,  1., -3.]])
 
     """
     KORNIA_CHECK_IS_TENSOR(trans_12)
@@ -140,14 +156,26 @@ def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
 def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
     r"""Compute the relative homogeneous transformation from a reference transformation.
 
-    :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
-    \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
-
-    The relative transformation is computed as follows:
+    Given the reference :math:`T_0^{1} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}` and the
+    destination :math:`T_0^{2} = \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`, the relative
+    transformation is computed as follows:
 
     .. math::
 
         T_1^{2} = (T_0^{1})^{-1} \cdot T_0^{2}
+
+    Convention:
+        - ``trans_ab`` (:math:`T_a^{b}`) maps points in frame ``b`` to frame ``a``, :math:`p_a = T_a^{b} p_b`:
+          ``transform_points(trans_01, points_1)`` returns ``points_0``, and
+          ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``.
+          :doc:`Conventions </get-started/conventions>` maps this onto other libraries.
+        - ``trans_01`` must be a rigid :math:`[R|t]`, as for :func:`inverse_transformation`, and the last row of
+          ``trans_02`` is read as :math:`[0, 0, 0, 1]`, as in :func:`compose_transformations`. Neither is validated:
+          a scaled, sheared or projective ``trans_01``, or a projective ``trans_02``, gives a wrong result silently.
+        - :func:`~kornia.geometry.epipolar.relative_camera_motion` takes world-to-camera extrinsics
+          :math:`E_1, E_2` and returns the :math:`[R|t]` of :math:`E_2 E_1^{-1}`, which is
+          ``relative_transformation`` of :math:`E_2^{-1}` and :math:`E_1^{-1}`, in this order, not of :math:`E_1` and
+          :math:`E_2`.
 
     Args:
         trans_01: reference transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -257,11 +285,18 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     r"""Return the distance from points to lines.
 
+    Convention:
+        - ``line`` need not be normalised: the distance is :math:`|ax + by + c| / \|(a, b)\|`.
+        - Known defect: ``eps`` in the denominator scales every distance down by
+          :math:`\|(a, b)\| / (\|(a, b)\| + \epsilon)` and returns :math:`|c| / \epsilon` for a line with
+          :math:`a = b = 0`, or ``inf`` in ``float16``, where the default ``eps`` rounds to zero
+          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+
     Args:
        point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the
          weight :math:`w`; a point at infinity (:math:`w = 0`) is at distance ``inf`` from every line.
        line: lines coefficients :math:`(a, b, c)` with shape :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
-       eps: Small constant for safe sqrt.
+       eps: small constant added to :math:`\|(a, b)\|` in the denominator.
 
     Returns:
         the computed distance with shape :math:`(*, N)`.
