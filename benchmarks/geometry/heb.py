@@ -101,7 +101,7 @@ def parse_batches(spec: str) -> list[int | str]:
 
 
 def make_estimator(args: argparse.Namespace, config: dict[str, Any], seed: int) -> RANSAC:
-    """Build the estimator; older revisions without ``max_samples`` get the budget as whole batches."""
+    """Build the estimator; older revisions need a budget divisible by their fixed batch size."""
     common: dict[str, Any] = {
         "inl_th": args.threshold,
         "confidence": args.confidence,
@@ -115,10 +115,12 @@ def make_estimator(args: argparse.Namespace, config: dict[str, Any], seed: int) 
     except TypeError:
         if config["batch_size"] == "auto":
             raise SystemExit("This revision has no auto batch size; pass integer --batches") from None
+        if config["budget"] % config["batch_size"]:
+            raise SystemExit("This revision has no max_samples; budget must be divisible by batch size") from None
         return RANSAC(
             "homography",
             batch_size=config["batch_size"],
-            max_iter=-(-config["budget"] // config["batch_size"]),
+            max_iter=config["budget"] // config["batch_size"],
             **common,
         )
 
@@ -201,7 +203,8 @@ def run(args: argparse.Namespace) -> None:
                         median, iqr = time_us(partial(estimator, kp1, kp2), args.min_run_time, sync=sync)
                 row.update(
                     inliers=inliers,
-                    sampled_sets=int(sum(batches)),
+                    # The last batch is sampled at nominal size, then truncated before fitting and scoring.
+                    sampled_sets=min(sum(batches), config["budget"]),
                     batches=len(batches),
                     error_px=error,
                     median_us=median,

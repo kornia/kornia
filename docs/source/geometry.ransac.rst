@@ -23,7 +23,8 @@ homography batch costs about the same from a few hundred up to 8192 hypotheses,
 so the budget is drawn in batches of 8192; the epipolar solvers are
 compute-bound past 2048 hypotheses, so their batches stop there. Verification
 holds a ``batch x N`` residual matrix, so past ``2**27`` entries (about 1 GiB
-at peak in float32) the batch shrinks with ``N``, down to 2048. A PROSAC batch
+at peak in float32) the batch shrinks with ``N``, down to 2048. Other devices
+retain the historical 2048-sample batch. A PROSAC batch
 of either size spans most of the growth schedule, whereas certifying a model
 after a small first batch drawn from a short prefix can stop on a poorly
 conditioned fit. On CPU

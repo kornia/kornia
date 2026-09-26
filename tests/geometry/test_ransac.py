@@ -1244,6 +1244,13 @@ class TestRANSACAutoBatch(BaseTester):
         assert RANSAC("fundamental").resolve_batch_size(500, torch.device("cuda")) == 2048
         assert RANSAC("essential", max_samples=1000).resolve_batch_size(500, torch.device("mps")) == 1000
 
+    @pytest.mark.parametrize("backend", ["xla", "privateuseone"])
+    def test_other_devices_keep_historical_batch(self, backend):
+        device = torch.device(backend)
+        assert RANSAC("homography").resolve_batch_size(500, device) == 2048
+        assert RANSAC("fundamental").resolve_batch_size(500, device) == 2048
+        assert RANSAC("homography", max_samples=1000).resolve_batch_size(500, device) == 1000
+
     @pytest.mark.parametrize(
         "model_type,num_tc,expected",
         [
