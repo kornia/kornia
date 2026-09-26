@@ -746,4 +746,3 @@ class TestFillConvexPolygon(BaseTester):
         color = torch.zeros(0, 3, device=device, dtype=dtype)
         out = draw_convex_polygon(im.clone(), polygons, color)
         assert out.shape == (0, 3, 10, 10)
-
