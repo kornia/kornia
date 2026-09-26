@@ -211,15 +211,14 @@ class Se3(nn.Module):
         # incoming gradient straight through at its bound, and 1e-12 underflows to 0 in float16
         # anyway, so sqrt's unbounded derivative at 0 reached v.grad as nan (kornia#4229). Keep
         # the floor on the branch that is selected -- byte-identical for every theta_sq > 0 --
-        # and take the exact zero elsewhere, where V_inv is the identity and both branches of
-        # the where below agree.
+        # and take the exact zero elsewhere, where V_inv is the identity.
         safe_theta_sq = torch.where(nonzero, theta_sq.clamp_min(1e-12), torch.ones_like(theta_sq))
         theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
         t = _unwrap(self.t)
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
         # c is finite at theta = 0 (1/12), so V^-1 @ t is taken for every element; the former fallback
-        # to t at the identity made d upsilon / d q = 0 there instead of [t]_x (kornia#4953).
+        # to t at the identity made d upsilon / d q_vec = 0 there instead of [t]_x (kornia#4953).
         _, _, c = _so3_small_angle_coefficients(theta)
         V_inv = (
             torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
