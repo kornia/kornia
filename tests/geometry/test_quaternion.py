@@ -188,8 +188,18 @@ class TestQuaternion(BaseTester):
 
     @pytest.mark.parametrize("t", (-1.0, 0.5, 2.0))
     def test_pow_gradcheck(self, device, t):
-        # the first quaternion lies on the real axis, where the vector part has zero norm
-        data = torch.tensor([[2.0, 0.0, 0.0, 0.0], [1.0, 0.5, -0.3, 0.2]], device=device, dtype=torch.float64)
+        # the first quaternion lies on the real axis, where the vector part has zero norm; the last is pure imaginary
+        # (w = 0), where the unselected real-axis arm divides by w
+        data = torch.tensor(
+            [[2.0, 0.0, 0.0, 0.0], [1.0, 0.5, -0.3, 0.2], [0.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64
+        )
+        self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
+
+    @pytest.mark.parametrize("t", (-1.0, 2.0, 3.0))
+    def test_pow_gradcheck_negative_real_axis(self, device, t):
+        # q = -2 has theta = pi, where the real-axis limit t * cos(t * theta) / w carries the signs of cos(t * pi) and
+        # of w. Only integer t: for a non-integer t the negative real axis is a branch cut with no derivative.
+        data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
         self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
