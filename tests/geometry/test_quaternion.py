@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Union
 
 import pytest
@@ -344,6 +345,18 @@ class TestQuaternion(BaseTester):
             self.assert_close(a.slerp(-b, t).matrix(), short)
             # the interpolant sits at t times the relative angle from a
             self.assert_close((a.inv() * a.slerp(-b, t)).to_axis_angle().norm(), t * rel_angle)
+
+    def test_slerp_exact_half_turn_follows_the_stored_sign(self, device, dtype):
+        # At an exact half turn both arcs are equally short. The arc follows the sign of the vector part of
+        # q0^-1 q1, so q1 and -q1 take opposite arcs, each of length t * pi from q0 (see the slerp docstring).
+        # Every product below is exact, so the real part of q0^-1 q1 is exactly zero in every dtype.
+        q0 = Quaternion(torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype))
+        q1 = q0 * Quaternion(torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype))
+        for t in (0.25, 0.5):
+            for sign in (1.0, -1.0):
+                rel = (q0.inv() * q0.slerp(q1 * sign, t)).to_axis_angle()
+                expected = torch.tensor([[sign * t * math.pi, 0.0, 0.0]], device=device, dtype=dtype)
+                self.assert_close(rel, expected)
 
     def test_slerp_gradient_is_finite_at_equal_endpoints(self, device, dtype):
         # slerp(q, q, t) = q is smooth in both endpoints; its gradient must not be nan (#4927).

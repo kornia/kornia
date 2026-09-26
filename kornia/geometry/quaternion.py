@@ -566,6 +566,10 @@ class Quaternion(nn.Module):
 
         The interpolation follows the shorter arc between the two rotations, whatever the signs of the stored
         quaternions: ``q1`` and ``-q1`` give the same result, and at ``t = 1`` the output is ``q1`` or ``-q1``.
+        The exception is a half turn whose relative quaternion ``self.inv() * q1`` has a real part of exactly zero:
+        both arcs are then equally short and the path is not unique. The arc taken follows the sign of the vector
+        part of ``self.inv() * q1``, so ``q1`` and ``-q1`` take opposite arcs, and the result is not continuous in
+        ``q1`` there.
 
         See more: https://en.wikipedia.org/wiki/Slerp
 
