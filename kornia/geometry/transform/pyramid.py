@@ -156,30 +156,14 @@ class ScalePyramid(nn.Module):
 
     Convention:
         - input: :math:`(B, C, H, W)`
-        - ``forward`` returns a 3-tuple ``(pyr, sigmas, pixel_dists)``, one entry per
-          octave: ``pyr[octave]`` is :math:`(B, C, L, H_i, W_i)` with
-          ``L = n_levels + extra_levels`` stacked levels; ``sigmas[octave]`` and
-          ``pixel_dists[octave]`` are :math:`(B, L)` — these are **nominal**
-          bookkeeping scale metadata (the values the scale-space construction
-          targets), not measured physical blur. ``sigmas`` is octave-relative,
-          resetting to the same ``init_sigma``-seeded sequence at the start of
-          every octave (octave 0's first entry is instead the assumed input
-          blur, ``0.5``, or ``1.0`` when ``double_image=True``, whenever
-          ``init_sigma`` is below that value) — e.g.
-          ``ScalePyramid(n_levels=1, init_sigma=0.25)`` returns octave 0
-          ``[0.5, 0.5, 1.0, 2.0]`` and octave 1+ ``[0.25, 0.5, 1.0, 2.0]`` (the
-          per-level values scale with ``n_levels``/``extra_levels``); and
-          ``pixel_dists`` is the pixel spacing of each level relative to the
-          input. The nominal blur in original-image pixels is
-          ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]``
-          alone. Caveat: when ``init_sigma`` is below the assumed input blur,
-          the true blur exceeds this nominal value for octave-0 levels
-          :math:`\geq 1` and for everything seeded from them in later octaves
-          (each octave is seeded from an earlier octave's under-labelled
-          level, so the gap propagates onward)
-        - no ``align_corners`` constructor parameter — the internal ``double_image``
-          and octave-seeding resizes are hardcoded to ``align_corners=True`` and are
-          not user-configurable
+        - ``forward`` returns ``(pyr, sigmas, pixel_dists)``, one entry per octave: ``pyr[o]`` is
+          :math:`(B, C, L, H_o, W_o)` with ``L = n_levels + extra_levels``, and ``sigmas[o]`` and
+          ``pixel_dists[o]`` are :math:`(B, L)` nominal values (the targeted blur, not a measurement)
+        - ``sigmas`` is octave-relative: the blur in input pixels is ``sigmas[o] * pixel_dists[o]``
+        - an ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
+          ``double_image=True``) leaves the first level at that blur, and the octave is built and
+          labelled from it, as if ``init_sigma`` were the assumed input blur
+        - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter
 
     Args:
         n_levels: number of the levels in octave.
@@ -221,6 +205,9 @@ class ScalePyramid(nn.Module):
         self.border = min_size // 2 - 1
         self.sigma_step = 2 ** (1.0 / float(self.n_levels))
         self.double_image = double_image
+        # Blur of the first level of every octave: an init_sigma below the assumed input blur
+        # leaves the first level at the input blur.
+        self._base_sigma = max(init_sigma, 1.0 if double_image else 0.5)
         self._precompute_gauss_kernels(n_levels, extra_levels, init_sigma, double_image)
 
     def __repr__(self) -> str:
@@ -256,9 +243,9 @@ class ScalePyramid(nn.Module):
             self.register_buffer("_gk_init", None)
 
         # Level-to-level kernels inside an octave.
-        # cur_sigma_oct resets to init_sigma at the start of every octave, so
+        # cur_sigma_oct resets to the first level's blur at the start of every octave, so
         # these delta_sigma values are the SAME for every octave — precompute once.
-        cur_s = init_sigma
+        cur_s = self._base_sigma
         for lvl in range(n_levels + extra_levels - 1):
             delta = cur_s * math.sqrt(self.sigma_step**2 - 1.0)
             ksize = self.get_kernel_size(delta)
@@ -303,7 +290,8 @@ class ScalePyramid(nn.Module):
         """Create the first image level and its scale metadata.
 
         The method optionally doubles image resolution, then applies initial
-        Gaussian blur so the first level reaches ``self.init_sigma``.
+        Gaussian blur so the first level reaches ``self.init_sigma``. An
+        ``init_sigma`` below the assumed input blur leaves the level unblurred.
 
         Args:
             input: Image tensor with shape :math:`(B, C, H, W)`.
@@ -354,10 +342,9 @@ class ScalePyramid(nn.Module):
             Three lists with one entry per octave. ``pyr`` contains stacked
             image levels, ``sigmas`` contains the octave-relative nominal blur
             sigma for each level (multiply by the matching ``pixel_dists``
-            entry for the nominal absolute blur in original-image pixels — see
-            the class Convention block for when the true blur exceeds this
-            nominal value), and ``pixel_dists`` contains the pixel spacing of
-            each level relative to the original image.
+            entry for the nominal absolute blur in original-image pixels), and
+            ``pixel_dists`` contains the pixel spacing of each level relative
+            to the original image.
         """
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
@@ -372,7 +359,7 @@ class ScalePyramid(nn.Module):
             # Build octave levels incrementally: each level is a Gaussian blur of
             # the previous one.  This matches VLFeat's level-to-level construction
             # and avoids discrete truncation artefacts in DoG differences.
-            cur_sigma_oct = self.init_sigma  # sigma of pyr[-1][0] in current octave pixels
+            cur_sigma_oct = self._base_sigma  # sigma of pyr[-1][0] in current octave pixels
             for level_idx in range(1, self.n_levels + self.extra_levels):
                 kernel = getattr(self, f"_gk_{level_idx - 1}")
                 min_dim = min(pyr[-1][-1].size(2), pyr[-1][-1].size(3))
@@ -399,7 +386,7 @@ class ScalePyramid(nn.Module):
             pixel_distance *= 2.0
             pyr.append([nextOctaveFirstLevel])
             sigmas.append(
-                torch.full((bs, self.n_levels + self.extra_levels), self.init_sigma, device=x.device, dtype=x.dtype)
+                torch.full((bs, self.n_levels + self.extra_levels), self._base_sigma, device=x.device, dtype=x.dtype)
             )
             pixel_dists.append(
                 torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype)
@@ -521,8 +508,6 @@ def build_pyramid(
           unchanged original as level 0), not a 0-based index of the last level
         - each subsequent level is produced by :func:`pyrdown` (``floor(side / 2)``
           per dimension)
-        - border_type: ``'reflect'`` by default
-        - align_corners: ``False`` by default
 
     .. warning::
         The ``max_level`` bounds check does not currently reject non-positive

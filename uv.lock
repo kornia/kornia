@@ -871,7 +871,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'image'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "pydata-sphinx-theme", marker = "extra == 'docs'", specifier = ">=0.21,<0.22" },
-    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
     { name = "pytest-timeout", marker = "extra == 'dev'" },
     { name = "setuptools", marker = "extra == 'dev'" },
     { name = "sphinx", marker = "extra == 'docs'" },

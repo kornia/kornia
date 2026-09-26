@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry import create_meshgrid
 from kornia.image import draw_convex_polygon, draw_rectangle
 from kornia.image.draw import draw_line, draw_point2d
@@ -88,6 +89,66 @@ class TestDrawPoint(BaseTester):
         drawn_mat_img = draw_point2d(mat_img, points, color_mat)
         # Ensure that we get the same underlying image back
         self.assert_close(drawn_vec_img, drawn_mat_img)
+
+    def test_draw_point2d_single_1d_point(self, dtype, device):
+        """A single [x, y] vector used to TypeError via zip over 0-d scalars."""
+        points = torch.tensor([1, 3], device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        self.assert_close(img[:, 3, 1], color.to(img.dtype))
+
+    def test_draw_point2d_empty_points(self, dtype, device):
+        """An empty (0, 2) point set used to fail unpacking zip(*points)."""
+        points = torch.zeros(0, 2, device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.arange(3 * 8 * 8, device=device).reshape(3, 8, 8).to(dtype)
+        expected = img.clone()
+        out = draw_point2d(img, points, color)
+        assert out is img
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("points", [[[1, 3], [2, 4]], [1, 3]])
+    @pytest.mark.parametrize("shape", [(3, 8, 8), (8, 8)])
+    def test_draw_point2d_draws_in_place_and_returns_the_input(self, points, shape, dtype, device):
+        """The Return section documents in-place drawing into, and returning, the input tensor."""
+        img = torch.zeros(shape, dtype=dtype, device=device)
+        color = torch.ones(shape[0] if len(shape) == 3 else 1, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor(points, device=device), color)
+        assert out is img
+        assert img.count_nonzero() > 0
+
+    @pytest.mark.parametrize(
+        "shape, match",
+        [
+            ((0,), "1D points tensor"),
+            ((3,), "1D points tensor"),
+            ((0, 3), "shape \\(N, 2\\)"),
+            ((5, 0), "shape \\(N, 2\\)"),
+            ((2, 3), "shape \\(N, 2\\)"),
+            ((2, 2, 2), "shape \\(N, 2\\)"),
+        ],
+        ids=["empty-1d", "three-1d", "empty-three-columns", "zero-columns", "three-columns", "batched"],
+    )
+    def test_draw_point2d_rejects_malformed_points(self, shape, match, dtype, device):
+        """Only (N, 2) and (2,) are accepted, including when the tensor is empty."""
+        points = torch.zeros(shape, dtype=torch.int64, device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match=match):
+            draw_point2d(img, points, color)
+
+    @pytest.mark.parametrize("shape", [(1, 4, 4), (4, 4)])
+    def test_draw_point2d_accepts_0d_scalar_color(self, shape, dtype, device):
+        """A 0-d color used to IndexError reading its channel dimension, as draw_line did before."""
+        img = torch.zeros(shape, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
+        assert out[..., 1, 1].flatten().tolist() == [9.0]
+
+    def test_draw_point2d_0d_color_on_multichannel_image_fails_the_channel_check(self, dtype, device):
+        img = torch.zeros(3, 4, 4, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match="Color dim must match"):
+            draw_point2d(img, torch.tensor([[1, 1]], device=device), torch.tensor(9, dtype=dtype, device=device))
 
 
 class TestDrawLine(BaseTester):
@@ -337,6 +398,14 @@ class TestDrawLine(BaseTester):
         assert out.shape == (1, 8, 8)
         assert out.count_nonzero() == 0
 
+    @pytest.mark.parametrize("p1, p2", [([1, 4], [6, 4]), ([[1, 1], [0, 7]], [[6, 6], [7, 0]])])
+    def test_draw_line_draws_in_place_and_returns_the_input(self, p1, p2, dtype, device):
+        """The Return section documents in-place drawing into, and returning, the input tensor."""
+        img = torch.zeros(2, 8, 8, dtype=dtype, device=device)
+        out = draw_line(img, torch.tensor(p1), torch.tensor(p2), torch.ones(2, dtype=dtype, device=device))
+        assert out is img
+        assert img.count_nonzero() > 0
+
     def test_draw_line_rejects_points_of_different_shapes(self, dtype, device):
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         with pytest.raises(ValueError, match="must have the same batch sizes"):
@@ -362,6 +431,12 @@ class TestDrawLine(BaseTester):
         for a, b in zip(p1, p2):
             expected = draw_line(expected, a, b, color)
         self.assert_close(batched, expected, rtol=0.0, atol=0.0)
+
+    def test_draw_line_accepts_0d_scalar_color(self, dtype, device):
+        # torch.tensor(255) is a natural grayscale color; color.size(0) used to IndexError.
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        out = draw_line(img, torch.tensor([1, 4]), torch.tensor([6, 4]), torch.tensor(255, dtype=dtype, device=device))
+        assert out[0, 4, 1:7].tolist() == [255.0] * 6
 
 
 class TestDrawRectangle(BaseTester):
@@ -501,6 +576,25 @@ class TestDrawRectangle(BaseTester):
             <= 0.0001
         )
 
+    @pytest.mark.parametrize("fill", [False, True])
+    def test_0d_scalar_color_matches_one_channel_color(self, fill, dtype, device):
+        """A 0-d color used to fail unpacking (b, n, c); it now draws like a size-1 color."""
+        rect = torch.tensor([[[1, 1, 3, 3]]], device=device)
+        out = draw_rectangle(
+            torch.zeros(1, 1, 5, 5, dtype=dtype, device=device),
+            rect,
+            torch.tensor(9.0, dtype=dtype, device=device),
+            fill=fill,
+        )
+        expected = draw_rectangle(
+            torch.zeros(1, 1, 5, 5, dtype=dtype, device=device),
+            rect,
+            torch.tensor([9.0], dtype=dtype, device=device),
+            fill=fill,
+        )
+        self.assert_close(out, expected)
+        assert out.count_nonzero() > 0
+
 
 class TestFillConvexPolygon(BaseTester):
     def test_circle(self, device, dtype):
@@ -599,3 +693,28 @@ class TestFillConvexPolygon(BaseTester):
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
         self.assert_close(rect_im, poly_im)
+
+    def test_empty_polygon_leaves_image_unchanged(self, device, dtype):
+        """An empty (B, 0, 2) polygon batch must not IndexError on loop close."""
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        pts = torch.zeros(1, 0, 2, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), pts, color)
+        self.assert_close(out, im)
+
+    def test_empty_polygon_is_still_validated(self, device, dtype):
+        im = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        color = torch.tensor([[0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="same batch dimension"):
+            draw_convex_polygon(im, torch.zeros(2, 0, 2, device=device, dtype=dtype), color)
+        with pytest.raises(BaseError, match="xy"):
+            draw_convex_polygon(im, torch.zeros(1, 0, 3, device=device, dtype=dtype), color)
+
+    def test_0d_scalar_color_matches_one_channel_color(self, device, dtype):
+        """A 0-d color used to fail unpacking (b, c); it now fills like a size-1 color."""
+        square = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        im = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
+        out = draw_convex_polygon(im.clone(), square, torch.tensor(9.0, device=device, dtype=dtype))
+        expected = draw_convex_polygon(im.clone(), square, torch.tensor([9.0], device=device, dtype=dtype))
+        self.assert_close(out, expected)
+        assert out.count_nonzero() > 0

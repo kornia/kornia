@@ -32,7 +32,7 @@ default_policy: List[SUBPOLICY_CONFIG] = [
     [("equalize", 0, 1)],
     [("invert", 0, 1)],
     [("rotate", -30.0, 30.0)],
-    [("posterize", 0.0, 4)],
+    [("posterize", 4.0, 8.0)],
     [("solarize", 0.0, 1.0)],
     [("solarize_add", 0.0, 0.43)],
     [("color", 0.1, 1.9)],
@@ -50,6 +50,21 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 class RandAugment(PolicyAugmentBase):
     """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects ``n`` distinct one-operation candidate sub-policies uniformly without replacement, then
+          applies them in the order drawn. ``n`` must be in ``[1, len(policy)]``.
+        - ``m`` must be strictly between ``0`` and ``30`` and sets the magnitude of every selected operation that
+          has one to ``low + (high - low) * m / 30`` over its magnitude range. A symmetric operation's range is
+          ``(0, max)`` with a random sign per row: ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. A
+          ``translate_x`` / ``translate_y`` value is a fraction of the image width / height, applied in pixels.
+          The operation's magnitude mapping is the identity for every default entry except ``shear_x`` /
+          ``shear_y``, which multiply by ``180`` (``27`` degrees at ``m=15`` for the default range), and
+          ``posterize``, which truncates to integer bits. ``posterize`` also runs its range backwards,
+          ``high - (high - low) * m / 30``, so a larger ``m`` keeps fewer bits (``7``, ``6`` and ``4`` at ``m=7``,
+          ``15`` and ``29``).
+
     Args:
         n: the number of augmentations to apply sequentially. Must be at least ``1`` and at
             most the number of sub-policies in ``policy``, since they are sampled without
@@ -60,12 +75,14 @@ class RandAugment(PolicyAugmentBase):
                                     attribute.
                                     If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
-                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
-                                    modules will trigger errors.
+                                    If `rigid`, the result is the same for a policy: every operation wrapper
+                                    contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:
+        >>> import torch
         >>> import kornia.augmentation as K
+        >>> from kornia.augmentation.auto import RandAugment
         >>> in_tensor = torch.rand(5, 3, 30, 30)
         >>> aug = K.AugmentationSequential(RandAugment(n=2, m=10))
         >>> aug(in_tensor).shape
@@ -107,8 +124,7 @@ class RandAugment(PolicyAugmentBase):
             Tensor of indices into this module's children.
         """
         perm = torch.randperm(len(self._modules))
-        idx = perm[:n]
-        return idx
+        return perm[:n]
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         """Build a :class:`PolicySequential` for one RandAugment candidate op.
@@ -165,7 +181,19 @@ class RandAugment(PolicyAugmentBase):
             mag = None
             if op.magnitude_range is not None:
                 minval, maxval = op.magnitude_range
-                mag = m * float(maxval - minval) + minval
+                if op._factor_name == "bits_factor":
+                    mag = (1 - m) * float(maxval - minval) + minval
+                else:
+                    mag = m * float(maxval - minval) + minval
+
+                # RandAugment magnitudes for translation are specified as fractions
+                # of the image dimensions, while RandomTranslate stores pixel
+                # translations in its sampled parameters.
+                if op._factor_name == "translate_x":
+                    mag = mag * batch_shape[-1]
+                elif op._factor_name == "translate_y":
+                    mag = mag * batch_shape[-2]
+
             mod_param = op.forward_parameters(batch_shape, mag=mag)
             # Compose it
             param = ParamItem(name, [ParamItem(next(iter(module.named_children()))[0], mod_param)])

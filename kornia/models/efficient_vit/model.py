@@ -107,5 +107,4 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
             Dict[str, torch.Tensor]: a dictionary containing the features.
 
         """
-        feats = self.backbone(images)
-        return feats
+        return self.backbone(images)

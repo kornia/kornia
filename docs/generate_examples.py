@@ -107,9 +107,7 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
         rectangle2[..., n, 2] = keypoints[..., n, 0] + 2
         rectangle2[..., n, 3] = keypoints[..., n, 1] + 2
     color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
-    imgs_draw = K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
-
-    return imgs_draw
+    return K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
 
 
 def main():

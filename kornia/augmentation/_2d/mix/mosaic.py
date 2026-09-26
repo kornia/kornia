@@ -25,6 +25,7 @@ from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
@@ -45,15 +46,16 @@ class RandomMosaic(MixAugmentationBaseV2):
          1. Concate selected images into a super-image.
          2. Crop out the outcome image according to the top-left corner and crop size.
 
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
     Args:
-        output_size: the output torch.Tensor width and height after mosaicing.
-        start_ratio_range: top-left (x, y) position for cropping the mosaic images.
+        output_size: the output ``(height, width)`` after mosaicing.
+        start_ratio_range: the ``(low, high)`` range from which both top-left crop ratios ``(x / W, y / H)`` are drawn.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
         min_bbox_size: minimum area of bounding boxes. Default to 0.
-        data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints",
-            "class", "label".
+        data_keys: the input type sequential for applying augmentations. Only "input", "image", "bbox",
+            "bbox_xyxy" and "bbox_xywh" are implemented; see the Convention block.
         p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
@@ -62,7 +64,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         align_corners: interpolation flag.
         cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
             on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
-            to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+            to extract the window. Use `slice` for efficiency, or `resample` for proper
             differentiability.
 
     Examples:
@@ -75,6 +77,38 @@ class RandomMosaic(MixAugmentationBaseV2):
         >>> out = mosaic(input, boxes)
         >>> out[0].shape, out[1].shape
         (torch.Size([8, 3, 300, 300]), torch.Size([8, 8, 4]))
+
+    Convention:
+        - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
+          the output preserves the input's ``(H, W)`` even when they differ, in both ``cropping_mode="slice"`` and
+          ``cropping_mode="resample"``. ``start_ratio_range`` draws a pair used as ``(x / W, y / H)`` for the crop's
+          top-left corner. These are the repaired axis conventions from
+          `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
+        - ``p`` is per sample and this class fixes ``same_on_batch=False``. It composes ``mosaic_grid[0]`` tiles
+          along width and ``mosaic_grid[1]`` tiles along height, then crops each result. It supports
+          ``"bbox"``, ``"bbox_xyxy"``, and ``"bbox_xywh"`` in addition to image inputs; it does not support
+          masks, keypoints, or class labels.
+        - Both ``cropping_mode`` values take an ``output_size`` window of the composed canvas at the drawn corner,
+          without rescaling; where the window passes the canvas edge it is zero. With an explicit ``output_size`` an
+          unselected sample is zero-padded or cropped to that size rather than returned unchanged. The boxes of a
+          selected sample are translated with its tiles, not rescaled, and clipped to the output window
+          ``[0, W_out] x [0, H_out]``.
+        - A tensor box input comes back as one dense tensor. When the gate selects any sample, every row holds
+          ``N * mosaic_grid[0] * mosaic_grid[1]`` boxes for ``N`` input boxes per sample: a selected row holds its
+          mosaic boxes, and an unselected row holds its own ``N`` boxes unchanged followed by all-zero padding rows
+          (``[0, 0, 0, 0]`` in ``"bbox_xyxy"`` and ``"bbox_xywh"``, four ``(0, 0)`` vertices in ``"bbox"``), which
+          have zero area. When the gate selects no sample the boxes are returned unchanged with their ``N`` rows.
+        - A list box input comes back as a list with one tensor per sample, from a direct call and from
+          :class:`~kornia.augmentation.container.AugmentationSequential` alike, whatever the gate selects. An
+          unselected sample's tensor is its own boxes unchanged, with no padding rows. A selected sample's tensor
+          takes its box count from the wrong source images, so it can drop real boxes or keep padding rows
+          (`#4715 <https://github.com/kornia/kornia/issues/4715>`_).
+        - In either form, a selected sample's box that falls below ``min_bbox_size`` is zeroed by
+          :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area`. A direct call exports it as ``[0, 0, 1, 1]``
+          in ``"bbox_xyxy"`` and ``"bbox_xywh"``, not as zero-area padding
+          (`#4714 <https://github.com/kornia/kornia/issues/4714>`_); inside
+          :class:`~kornia.augmentation.container.AugmentationSequential` it is ``[0, 0, 1, 1]`` in ``"bbox_xywh"``
+          and ``[0, 0, 0, 0]`` in ``"bbox_xyxy"``.
 
     """
 
@@ -123,6 +157,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
 
+        num_boxes = input.data.shape[1]
         maybe_out_boxes: Optional[Boxes] = None
         # ``batch_shapes`` and ``src_box`` are full-batch sized.
         # Subset them to match ``idx`` (the to_apply indices).
@@ -139,16 +174,27 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _idx = i * flags["mosaic_grid"][1] + j
                 _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]
                 _box.translate(_offset, inplace=True)
-                # zero-out unrelated batch elements.
-                _box._data[~to_apply] = 0
                 if maybe_out_boxes is None:
-                    _box._data[~to_apply] = input._data[~to_apply]
                     maybe_out_boxes = _box
                 else:
                     KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
         out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
         out_boxes.clamp(offset, offset_end, inplace=True)
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
+
+        if not bool(to_apply.all()):
+            # An unselected sample keeps its own boxes unchanged, followed by padding up to the mosaic box count.
+            # The padding is recorded in ``_N`` and exported as all-zero (zero-area) rows.
+            out_boxes._data[~to_apply, :num_boxes] = input._data[~to_apply]
+            out_boxes._data[~to_apply, num_boxes:] = 0.0
+            padding = out_boxes._data.shape[1] - num_boxes
+            merged_padding = out_boxes._N if out_boxes._N is not None else [0] * len(to_apply)
+            input_padding = input._N if input._N is not None else [0] * len(to_apply)
+            out_boxes._N = [
+                merged if bool(selected) else own + padding
+                for selected, merged, own in zip(to_apply, merged_padding, input_padding)
+            ]
+
         return out_boxes
 
     def apply_transform_class(
@@ -202,15 +248,26 @@ class RandomMosaic(MixAugmentationBaseV2):
             else:
                 padding_mode = flags["padding_mode"]
 
+            output_size = (
+                tuple(params["batch_shapes"][0, -2:].tolist()) if flags["output_size"] is None else flags["output_size"]
+            )
             return crop_by_transform_mat(
                 input,
                 transform[:, :2, :],
-                flags["output_size"],
+                output_size,
                 mode=flags["resample"].name.lower(),
                 padding_mode=padding_mode,
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            if flags["output_size"] is not None and input.shape[0] > 0 and not is_exporting():
+                # The window is ``output_size`` and may pass the canvas edge. Zero-pad the canvas so every slice is
+                # exactly ``output_size``: ``crop_by_indices`` resizes rather than pads when all boxes coincide.
+                src = params["src"].long()
+                pad_w = int(src[:, 1, 0].max()) + 1 - input.shape[-1]
+                pad_h = int(src[:, 3, 1].max()) + 1 - input.shape[-2]
+                if pad_w > 0 or pad_h > 0:
+                    input = F.pad(input, [0, max(pad_w, 0), 0, max(pad_h, 0)])
             return crop_by_indices(input, params["src"], flags["output_size"], shape_compensation="F.pad")
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
@@ -235,5 +292,4 @@ class RandomMosaic(MixAugmentationBaseV2):
         flags = KORNIA_UNWRAP(maybe_flags, Dict[str, Any])
         output = self._compose_images(input, params, flags=flags)
         transform = self.compute_transformation(output, params, flags=flags)
-        output = self._crop_images(output, params, flags=flags, transform=transform)
-        return output
+        return self._crop_images(output, params, flags=flags, transform=transform)

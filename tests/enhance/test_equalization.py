@@ -21,9 +21,18 @@ import pytest
 import torch
 
 from kornia import enhance
+from kornia.core._compat import torch_version_ge
+from kornia.enhance.equalization import _compute_tiles
 from kornia.geometry import rotate
 
 from testing.base import BaseTester
+
+
+def _sync(device) -> None:
+    # MPS dispatches asynchronously, so a kernel error raised by the forward under test would
+    # otherwise surface inside an unrelated later test.
+    if device.type == "mps":
+        torch.mps.synchronize()
 
 
 class TestEqualization(BaseTester):
@@ -91,6 +100,46 @@ class TestEqualization(BaseTester):
         with pytest.raises(exception_type) as errinfo:
             enhance.equalize_clahe(img, clip, grid)
         assert expected_error_msg in str(errinfo)
+
+    @pytest.mark.parametrize(
+        ("size", "grid"),
+        [
+            ((8, 8), (8, 8)),  # kornia#4783: an image as large as the grid
+            ((8, 16), (8, 8)),  # only the vertical axis is too small
+            ((16, 8), (8, 8)),  # only the horizontal axis is too small
+            ((4, 4), (8, 8)),  # already rejected before, message now names the limit
+            ((4, 10), (4, 6)),  # a non-square grid: the limit is named per axis, in (H, W) order
+        ],
+    )
+    def test_exception_image_too_small_for_grid_4783(self, size, grid):
+        # kornia#4783: reflect padding needs the pad below the axis it reflects, so an image that
+        # only matches the grid used to reach F.pad and fail with a raw padding error.
+        img = torch.rand(1, 1, *size)
+        with pytest.raises(ValueError) as errinfo:
+            enhance.equalize_clahe(img, grid_size=grid)
+        assert "Cannot compute tiles" in str(errinfo.value)
+        assert f"Got image size {size} and grid size {grid}" in str(errinfo.value)
+        assert f"smallest image this grid admits is ({grid[0] + 1}, {grid[1] + 1})" in str(errinfo.value)
+
+    @pytest.mark.parametrize(
+        ("size", "grid", "smallest"),
+        [((4, 10), (8, 6), (5, 4)), ((10, 3), (5, 6), (3, 4))],
+    )
+    def test_compute_tiles_odd_tiles_names_its_own_limit_4783(self, size, grid, smallest):
+        # equalize_clahe always asks for even tiles; with odd ones an axis only has to exceed half its
+        # grid size, and the limit the message names must be accepted.
+        with pytest.raises(ValueError) as errinfo:
+            _compute_tiles(torch.rand(1, 1, *size), grid, even_tile_size=False)
+        assert f"smallest image this grid admits is {smallest}" in str(errinfo.value)
+        tiles, _ = _compute_tiles(torch.rand(1, 1, *smallest), grid, even_tile_size=False)
+        assert tiles.shape[1:3] == grid
+
+    @pytest.mark.parametrize("grid", [(2, 2), (4, 4), (8, 8)])
+    def test_smallest_image_the_grid_admits_is_accepted_4783(self, grid, device, dtype):
+        # The size the message names must work, so the bound it reports is exact.
+        img = torch.rand(1, 1, grid[0] + 1, grid[1] + 1, device=device, dtype=dtype)
+        out = enhance.equalize_clahe(img, grid_size=grid)
+        assert out.shape == img.shape
 
     @pytest.mark.parametrize("dims", [(1, 1, 1, 1, 1), (1, 1)])
     def test_exception_tensor_dims(self, dims):
@@ -172,13 +221,15 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
     def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
         # kornia#4564: the tile-LUT gather used to fail with a raw
-        # "index ... is out of bounds for dimension 5 with size 256".
-        if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        # "index ... is out of bounds for dimension 5 with size 256". MPS range-checks it too
+        # (kornia#4600): from torch 2.13 the assert is asynchronous there, so the message arrives at
+        # the sync.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * scale + shift
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
-            enhance.equalize_clahe(x)
+            _sync(enhance.equalize_clahe(x).device)
 
     def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
         # The check covers exactly the domain the gather can index, so a hair above 1 keeps working.
@@ -192,12 +243,25 @@ class TestEqualization(BaseTester):
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
         self.assert_close(compiled(x), enhance.equalize_clahe(x))
 
-    @pytest.fixture()
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+        # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
+        # compiling if the asynchronous assert is traced, because a host read cannot be.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
+        torch._dynamo.reset()
+        compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
+    @pytest.fixture
     def img(self, device, dtype):
         height, width = 20, 20
         # TODO: test with a more realistic pattern
-        img = torch.arange(width, device=device).div(float(width - 1))[None].expand(height, width)[None][None]
-        return img
+        return torch.arange(width, device=device).div(float(width - 1))[None].expand(height, width)[None][None]
 
     def test_he(self, img):
         # should be similar to enhance.equalize but slower. Similar because the lut is computed in a different way.

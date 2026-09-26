@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from kornia.core.utils import _normalize_to_float32_or_float64
 from kornia.image.utils import perform_keep_shape_image
 
-from .adjust import _assert_async_value_check
+from .adjust import _lookup_value_check
 from .histogram import histogram
 
 
@@ -64,8 +64,19 @@ def _compute_tiles(
     pad_horz = kernel_horz * grid_size[1] - w
 
     # add the padding in the last coluns and rows
-    if pad_vert > batch.shape[-2] or pad_horz > batch.shape[-1]:
-        raise ValueError("Cannot compute tiles on the image according to the given grid size")
+    # reflect padding needs the pad strictly below the axis it reflects, so >= is the bound: an
+    # 8 x 8 image on an 8 x 8 grid pads by 8 on an axis of 8 and fails inside F.pad otherwise.
+    if pad_vert >= batch.shape[-2] or pad_horz >= batch.shape[-1]:
+        # An even tile has to cover more than one grid cell, so the axis must exceed the grid;
+        # an odd one only has to exceed half of it.
+        min_vert = grid_size[0] + 1 if even_tile_size else grid_size[0] // 2 + 1
+        min_horz = grid_size[1] + 1 if even_tile_size else grid_size[1] // 2 + 1
+        raise ValueError(
+            "Cannot compute tiles on the image according to the given grid size. "
+            f"Got image size ({h}, {w}) and grid size {tuple(grid_size)}, which needs "
+            f"({pad_vert}, {pad_horz}) of reflect padding, more than the image has to reflect. "
+            f"The smallest image this grid admits is ({min_vert}, {min_horz})."
+        )
 
     if pad_vert > 0 or pad_horz > 0:
         batch = F.pad(batch, [0, pad_horz, 0, pad_vert], mode="reflect")  # B x C x H' x W'
@@ -230,8 +241,7 @@ def _compute_luts(
     luts = luts.clamp(0, num_bins - 1)
     if not diff:
         luts = luts.floor()  # to get the same values as converting to int maintaining the type
-    luts = luts.view((b, gh, gw, c, num_bins))
-    return luts
+    return luts.view((b, gh, gw, c, num_bins))
 
 
 def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
@@ -386,7 +396,8 @@ def equalize_clahe(
     Args:
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
-        grid_size: number of tiles to be cropped in each direction (GH, GW).
+        grid_size: number of tiles to be cropped in each direction (GH, GW). Each image axis must be larger
+            than its grid size; otherwise a ``ValueError`` names the smallest image the grid admits.
         slow_and_differentiable: flag to select implementation
 
     Returns:
@@ -406,8 +417,9 @@ def equalize_clahe(
     .. note::
        The input is expected in :math:`[0, 1]`; each tile is equalized from a 256-bin lookup table.
        Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
-       naming the range. The check runs on CPU and CUDA (via ``torch._assert_async``); on MPS it is
-       skipped, as for :func:`kornia.enhance.equalize`.
+       naming the range. The check is ``torch._assert_async``, which has an MPS kernel from torch
+       ``2.13``; on an older MPS release the condition is read on the host instead, one device sync per
+       call, and is skipped there under ``torch.compile``, as for :func:`kornia.enhance.equalize`.
 
     """
     if not isinstance(clip_limit, float):
@@ -437,8 +449,9 @@ def _equalize_clahe(
 
     # The tile LUTs are gathered below with ``(interp_tiles * 255).long()``, which is in bounds
     # only for values in (-1/255, 256/255). Check that domain without ``.item()``, so there is no
-    # device sync and fullgraph still compiles; inputs the lookup can index are unchanged.
-    _assert_async_value_check(
+    # device sync and fullgraph still compiles; on MPS before torch 2.13 it costs one host sync instead
+    # (see ``_lookup_value_check``). Inputs the lookup can index are unchanged.
+    _lookup_value_check(
         ((input * 255.0 > -1.0) & (input * 255.0 < 256.0)).all(),
         "equalize_clahe expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",

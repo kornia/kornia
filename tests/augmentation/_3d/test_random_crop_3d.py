@@ -261,3 +261,42 @@ class TestRandomCrop3D(BaseTester):
         actual = op_trace(img)
         expected = op(img)
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    def test_rejects_a_crop_one_voxel_larger_than_the_input(self, axis, device, dtype):
+        # The size guard counted valid start offsets and rejected only a negative count, so a crop exactly
+        # one voxel too large passed and the output gained an empty slab.
+        volume = torch.ones(1, 1, 4, 5, 6, device=device, dtype=dtype)
+        size = [4, 5, 6]
+        size[axis] += 1
+        with pytest.raises(ValueError, match="cannot be smaller than crop size"):
+            RandomCrop3D(tuple(size), p=1.0)(volume)
+        # The whole volume is still a valid crop.
+        assert RandomCrop3D((4, 5, 6), p=1.0)(volume).shape == (1, 1, 4, 5, 6)
+        # Padding is counted in, so the same size fits once the axis is padded.
+        padding = [0, 0, 0, 0, 0, 0]
+        padding[2 * (2 - axis)] = 1
+        assert RandomCrop3D(tuple(size), padding=tuple(padding), p=1.0)(volume).shape == (1, 1, *size)
+
+    def test_fill_accepts_one_value_per_channel(self, device, dtype):
+        volume = torch.zeros(1, 3, 2, 2, 2, device=device, dtype=dtype)
+        fill = (0.25, 0.5, 0.75)
+        padded = RandomCrop3D((4, 4, 4), padding=1, fill=fill, p=1.0).precrop_padding(volume)
+        assert padded.shape == (1, 3, 4, 4, 4)
+        expected = volume.new_tensor(fill).view(1, 3, 1, 1, 1)
+        self.assert_close(padded[:, :, 0, 0, 0], expected[:, :, 0, 0, 0])
+        self.assert_close(padded[:, :, -1, -1, -1], expected[:, :, 0, 0, 0])
+        self.assert_close(padded[:, :, 1:3, 1:3, 1:3], volume)  # the interior is untouched
+        # A scalar keeps the old behaviour.
+        scalar = RandomCrop3D((4, 4, 4), padding=1, fill=7.0, p=1.0).precrop_padding(volume)
+        self.assert_close(scalar[:, :, 0, 0, 0], torch.full((1, 3), 7.0, device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    def test_fill_sequence_is_validated(self):
+        volume = torch.zeros(1, 3, 2, 2, 2)
+        with pytest.raises(ValueError, match="one value per channel"):
+            RandomCrop3D((4, 4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(volume)
+        with pytest.raises(ValueError, match="padding_mode='constant'"):
+            RandomCrop3D((4, 4, 4), padding=1, fill=(1.0, 0.0, 0.0), padding_mode="replicate", p=1.0).precrop_padding(
+                volume
+            )

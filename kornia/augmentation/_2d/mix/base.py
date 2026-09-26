@@ -26,9 +26,17 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     _validate_input_dtype,
 )
+from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, DType
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
+
+
+def _export_boxes(box: Boxes, mode: str, box_input: Any) -> torch.Tensor:
+    # A list box input comes back as a list of per-sample tensors; a tensor input as one dense tensor.
+    if isinstance(box_input, list):
+        return KORNIA_UNWRAP(box.to_tensor(mode), torch.Tensor)
+    return _boxes_to_padded_tensor(box, mode)
 
 
 class MixAugmentationBaseV2(_BasicAugmentationBase):
@@ -38,7 +46,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     "apply_transform" will need to handle the probabilities internally.
 
     Args:
-        p: probability for applying an augmentation. This param controls if to apply the augmentation for the batch.
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
@@ -46,6 +55,28 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
           to the batch form ``False``.
         data_keys: the input type sequential for applying augmentations.
             Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
+
+    Convention:
+        - Sampling, replay, and serialization follow the augmentation-wide contracts in
+          :doc:`/get-started/conventions`.
+        - Image inputs are floating tensors of shape ``(H, W)``, ``(C, H, W)``, or ``(B, C, H, W)`` in
+          ``float16``, ``bfloat16``, ``float32`` or ``float64``, promoted to ``(B, C, H, W)``; ``keepdim=True``
+          restores the rank of an unbatched input. :class:`~kornia.augmentation.RandomTransplantation` and
+          :class:`~kornia.augmentation.RandomTransplantation3D` override ``forward`` and take batched inputs only.
+        - A mix operation is not geometric: ``transform_matrix`` and ``inverse()`` raise ``RuntimeError``.
+        - ``data_keys`` chooses which positional inputs are dispatched. Called directly, a key the concrete class
+          does not implement raises ``NotImplementedError`` (or a class-specific error) before anything is
+          sampled; the two transplantation classes, and any mix child of
+          :class:`~kornia.augmentation.container.AugmentationSequential`, raise it after the parameters are drawn.
+          The concrete class blocks state the supported non-image keys.
+        - ``batch_prob`` gates the result: a selected image is mixed and an unselected image keeps its input
+          values, except where a concrete class changes the output size (see
+          :class:`~kornia.augmentation.RandomMosaic`); the transplantation classes read ``acceptor_indices``
+          instead. The box handlers use the same gate. The class-label
+          handlers of :class:`~kornia.augmentation.RandomMixUpV2` and :class:`~kornia.augmentation.RandomCutMixV2`
+          ignore ``batch_prob``; their sampled gate is batch-wide, but a ``params`` whose ``batch_prob`` selects
+          only some rows labels the unselected, unchanged rows as mixed
+          (`#4775 <https://github.com/kornia/kornia/issues/4775>`_).
 
     """
 
@@ -134,8 +165,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             # all-applied branch.
             output = applied_post
 
-        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
-        return output
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
     def transform_mask(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
@@ -251,6 +281,16 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             in_tensor = self.transform_tensor(in_tensor)
             self._params = self.forward_parameters(in_tensor.shape)
             self._params.update({"dtype": torch.full((), DType.get(in_tensor.dtype).value, dtype=torch.long)})
+        elif DataKey.INPUT in keys:
+            # The class handlers read ``"dtype"``, which a ``forward_parameters()`` dictionary does not have: take it
+            # from the input, as above, in a copy that leaves the caller's dictionary alone. A supplied ``"dtype"`` is
+            # replaced too, so a dictionary recorded on another image dtype cannot go stale. Only the dtype check of
+            # ``transform_tensor`` runs here, so that a subclass's shape checks still come after the params checks.
+            in_tensor = input[keys.index(DataKey.INPUT)]
+            _validate_input_dtype(
+                in_tensor, accepted_dtypes=[torch.bfloat16, torch.float16, torch.float32, torch.float64]
+            )
+            self._params = {**params, "dtype": torch.full((), DType.get(in_tensor.dtype).value, dtype=torch.long)}
         else:
             self._params = params
 
@@ -264,15 +304,15 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             elif dcate == DataKey.BBOX:
                 box = Boxes.from_tensor(_input, mode="vertices", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("vertices"), torch.Tensor)
+                output = _export_boxes(box, "vertices", _input)
             elif dcate == DataKey.BBOX_XYXY:
                 box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("xyxy"), torch.Tensor)
+                output = _export_boxes(box, "xyxy", _input)
             elif dcate == DataKey.BBOX_XYWH:
                 box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("xywh"), torch.Tensor)
+                output = _export_boxes(box, "xywh", _input)
             elif dcate == DataKey.KEYPOINTS:
                 output = self.transform_keypoint(_input, self._params, self.flags)
             elif dcate == DataKey.CLASS:

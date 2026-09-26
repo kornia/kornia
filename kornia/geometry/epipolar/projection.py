@@ -30,14 +30,21 @@ from .numeric import cross_product_matrix
 
 
 def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
-    r"""Return a 3x3 intrinsics matrix, with same size as the input.
+    r"""Return a 3x3 intrinsics matrix per batch element of the input.
 
-    The center of projection will be based in the input image size.
+    Convention:
+        - ``fx = fy = focal`` and the principal point is ``(W / 2, H / 2)`` of the :math:`(B, C, H, W)` input;
+          dtype and device follow the input. ``focal`` must be positive and the input 4-D.
+        - The input must be floating point, like kornia's images: an integer input raises by design rather than
+          returning an integer ``K``.
+        - Known defects: ``(W / 2, H / 2)`` is the half-pixel centre, not the integer-pixel centre
+          ``((W - 1) / 2, (H - 1) / 2)`` of kornia's grids
+          (`#4263 <https://github.com/kornia/kornia/issues/4263>`_).
 
     Args:
         focal: the focal length for the camera matrix.
         input: image tensor that will determine the batch size and image height
-          and width. It is assumed to be a tensor in the shape of :math:`(B, C, H, W)`.
+          and width. It is assumed to be a floating-point tensor in the shape of :math:`(B, C, H, W)`.
 
     Returns:
         The camera matrix with the shape of :math:`(B, 3, 3)`.
@@ -61,6 +68,11 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Generate a random camera matrix based on a given uniform distribution.
 
+    Convention:
+        - ``fx``, ``fy``, ``cx`` and ``cy`` are four draws from :math:`U(low, high)` on torch's global generator.
+          The bounds are scalars; dtype and device follow tensor bounds, and Python floats give the default dtype
+          and device.
+
     Args:
         low: lower range (inclusive).
         high: upper range (exclusive).
@@ -81,13 +93,21 @@ def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, tor
 
     Applies the scaling factor to the focal length and center of projection.
 
+    Convention:
+        - Applies the rule of :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale` and returns a new tensor.
+        - Known defects: the principal-point rule of
+          :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale`, and the skew ``K[0, 1]``, which is left
+          unscaled although resizing by ``scale_factor`` scales it
+          (`#4263 <https://github.com/kornia/kornia/issues/4263>`_).
+
     Args:
         camera_matrix: the camera calibration matrix containing the intrinsic
           parameters. The expected shape for the tensor is :math:`(B, 3, 3)`.
-        scale_factor: the scaling factor to be applied.
+        scale_factor: the scaling factor to be applied: a float, or a tensor of shape :math:`(B,)` that
+          scales each batch element by its own factor.
 
     Returns:
-        The scaled camera matrix with shame shape as input :math:`(B, 3, 3)`.
+        The scaled camera matrix with the same shape as the input :math:`(B, 3, 3)`.
 
     """
     K_scale = camera_matrix.clone()
@@ -101,15 +121,22 @@ def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, tor
 def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     r"""Get the projection matrix P from K, R and t.
 
-    This function estimate the projection matrix by solving the following equation: :math:`P = K * [R|t]`.
+    This function computes the product :math:`P = K [R|t]`.
+
+    Convention:
+        - ``R`` and ``t`` take world points into the camera frame, ``X_cam = R @ X + t``, and ``K`` takes the
+          camera frame to pixels. ``t`` is the extrinsic translation; the camera centre is ``-R.T @ t``.
+        - ``K``, ``R`` and ``t`` must have the same number of dimensions, and ``R`` and ``t`` the same batch shape;
+          ``K`` broadcasts against them. The inverse is
+          :func:`KRt_from_projection`, and :func:`depth_from_point` gives the depth of a point in this camera.
 
     Args:
-       K: the camera matrix with the intrinsics with shape :math:`(B, 3, 3)`.
-       R: The rotation matrix with shape :math:`(B, 3, 3)`.
-       t: The translation vector with shape :math:`(B, 3, 1)`.
+       K: the camera matrix with the intrinsics with shape :math:`(*, 3, 3)`.
+       R: The rotation matrix with shape :math:`(*, 3, 3)`.
+       t: The translation vector with shape :math:`(*, 3, 1)`.
 
     Returns:
-       The projection matrix P with shape :math:`(B, 4, 4)`.
+       The projection matrix P with shape :math:`(*, 3, 4)`.
 
     """
     KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
@@ -129,16 +156,30 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
 
 def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Decompose the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
+    r"""Decompose the Projection matrix into ``K``, ``R`` and ``t`` with :math:`P = K [R|t]`.
+
+    Convention:
+        - Inverse of :func:`projection_from_KRt`: returns ``K`` (upper triangular, positive diagonal), ``R``
+          and the translation ``t``, not the camera centre; :ref:`Two-view geometry <two-view-conventions>` maps
+          this onto OpenCV.
+        - ``K`` is not normalised to ``K[2, 2] = 1``: it carries the magnitude of the scale of ``P``, so ``2 * P``
+          doubles ``K``; divide by ``K[..., 2:, 2:]`` to normalise.
+        - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
+        - Known defects: a ``P`` whose left :math:`3 \times 3` block has negative determinant returns a
+          reflection (``det R = -1``), the signs moved into rows of ``R`` and the matching entries of ``t``: all
+          three for ``-P``, which gives ``-R`` and ``-t``; and ``eps`` is added to the diagonal before its sign is
+          taken, so an entry in ``(-eps, 0)`` stays negative and the matching row of ``R`` and entry of ``t`` are
+          negated
+          (`#4864 <https://github.com/kornia/kornia/issues/4864>`_).
 
     Args:
         P: the projection matrix with shape :math:`(B, 3, 4)`.
-        eps: epsilon for numerical stability.
+        eps: offset added to the diagonal of the triangular factor before its sign is taken.
 
     Returns:
         - The Camera matrix with shape :math:`(B, 3, 3)`.
         - The Rotation matrix with shape :math:`(B, 3, 3)`.
-        - The Translation vector with shape :math:`(B, 3)`.
+        - The Translation vector with shape :math:`(B, 3, 1)`.
 
     """
     KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
@@ -167,18 +208,22 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 def depth_from_point(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
     r"""Return the depth of a point transformed by a rigid transform.
 
+    Convention:
+        - Returns the ``z`` coordinate of ``R @ X + t``, the depth in the camera of :func:`projection_from_KRt`
+          with the same ``R`` and ``t``. The sign is not checked. An ``X`` of shape ``(B, 3)`` with a batched
+          ``R`` is read as ``B`` points seen by every camera and gives ``(B, B)``, not one point per camera.
+
     Args:
        R: The rotation matrix with shape :math:`(*, 3, 3)`.
        t: The translation vector with shape :math:`(*, 3, 1)`.
-       X: The 3d points with shape :math:`(*, 3)`.
+       X: The 3d points with shape :math:`(*, N, 3)`.
 
     Returns:
-       The depth value per point with shape :math:`(*, 1)`.
+       The depth value per point with shape :math:`(*, N)`.
 
     """
     X_tmp = R @ X.transpose(-2, -1)
-    X_out = X_tmp[..., 2, :] + t[..., 2, :]
-    return X_out
+    return X_tmp[..., 2, :] + t[..., 2, :]
 
 
 # adapted from:
@@ -195,6 +240,13 @@ def _nullspace(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
 def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
     r"""Get the projection matrices from the Fundamental Matrix.
+
+    Convention:
+        - Returns the canonical pair for ``F`` in the ``x2^T F x1 = 0`` convention of
+          :func:`~kornia.geometry.epipolar.find_fundamental`, stacked on the last dimension:
+          ``[..., 0] = [I | 0]`` for the first image and ``[..., 1] = [[e2]_x F | e2]``, with ``e2`` the
+          left null vector of ``F``, the epipole in the second image (``e2^T F = 0``).
+        - ``F_mat`` must have exactly one batch dimension.
 
     Args:
        F_mat: the fundamental matrix with the shape :math:`(B, 3, 3)`.

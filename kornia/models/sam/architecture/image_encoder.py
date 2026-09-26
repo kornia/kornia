@@ -154,9 +154,7 @@ class ImageEncoderViT(nn.Module):
         for blk in self.blocks:
             x = blk(x)
 
-        x = self.neck(x.permute(0, 3, 1, 2))
-
-        return x
+        return self.neck(x.permute(0, 3, 1, 2))
 
 
 class Block(nn.Module):
@@ -229,9 +227,7 @@ class Block(nn.Module):
             x = window_unpartition(x, self.window_size, pad_hw, (H, W))
 
         x = shortcut + x
-        x = x + self.mlp(self.norm2(x))
-
-        return x
+        return x + self.mlp(self.norm2(x))
 
 
 class Attention(nn.Module):
@@ -294,9 +290,7 @@ class Attention(nn.Module):
 
         attn = attn.softmax(dim=-1)
         x = (attn @ v).view(B, self.num_heads, H, W, -1).permute(0, 2, 3, 1, 4).reshape(B, H, W, -1)
-        x = self.proj(x)
-
-        return x
+        return self.proj(x)
 
 
 def get_rel_pos(q_size: int, k_size: int, rel_pos: torch.Tensor) -> torch.Tensor:
@@ -366,11 +360,9 @@ def add_decomposed_rel_pos(
     rel_h = torch.einsum("bhwc,hkc->bhwk", r_q, Rh)
     rel_w = torch.einsum("bhwc,wkc->bhwk", r_q, Rw)
 
-    attn = (attn.view(B, q_h, q_w, k_h, k_w) + rel_h[:, :, :, :, None] + rel_w[:, :, :, None, :]).view(
+    return (attn.view(B, q_h, q_w, k_h, k_w) + rel_h[:, :, :, :, None] + rel_w[:, :, :, None, :]).view(
         B, q_h * q_w, k_h * k_w
     )
-
-    return attn
 
 
 class PatchEmbed(nn.Module):
@@ -411,5 +403,4 @@ class PatchEmbed(nn.Module):
         """
         x = self.proj(x)
         # B C H W -> B H W C
-        x = x.permute(0, 2, 3, 1)
-        return x
+        return x.permute(0, 2, 3, 1)

@@ -64,6 +64,10 @@ def confusion_matrix(
         raise ValueError(f"The number of classes must be an integer bigger than two. Got: {num_classes}")
 
     batch_size: int = pred.shape[0]
+    # An empty batch used to fail on view(0, -1) because a zero-numel tensor
+    # cannot infer the trailing dimension. Return an empty (0, K, K) matrix.
+    if batch_size == 0:
+        return torch.zeros(0, num_classes, num_classes, device=pred.device, dtype=torch.float32)
 
     # hack for bitcounting 2 arrays together
     # NOTE: torch.bincount does not implement batched version

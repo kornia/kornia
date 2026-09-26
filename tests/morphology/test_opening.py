@@ -20,7 +20,7 @@ import torch
 
 from kornia.morphology import opening
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, supports_replicate_padding
 from testing.parametrized_tester import parametrized_test
 
 
@@ -122,3 +122,86 @@ class TestOpening(BaseTester):
         expected = op(tensor, kernel)
 
         assert_close(actual, expected)
+
+    def test_opening_custom_origin_is_anti_extensive_and_idempotent(self, device, dtype):
+        # opening = dilation(erosion(x)) must stay anti-extensive (opening(x) <= x) and
+        # idempotent (opening(opening(x)) == opening(x)) under a custom origin too, not just the
+        # default centred one. `dilation`'s origin bug broke both for origin=[0, 0]. `block`
+        # already equals its own opening under `ones(3, 3)`, so the equality check also exercises
+        # idempotency; 0/1 fixtures compare exactly with `torch.equal`, the `<=` on the rand
+        # fixture never needs a tolerance (selection only, no interpolation), and repeating
+        # `opening` on its own (already-open) output is likewise exact.
+        # Generated with:
+        #   block = torch.zeros(1, 1, 7, 10); block[..., 2:5, 3:7] = 1
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0))
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        block = torch.zeros(1, 1, 7, 10, device=device, dtype=dtype)
+        block[..., 2:5, 3:7] = 1.0
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        assert torch.equal(opening(block, kernel, origin=[0, 0]), block)
+
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        opened = opening(tensor, kernel, origin=[0, 0])
+        assert (opened <= tensor).all()
+        assert torch.equal(opening(opened, kernel, origin=[0, 0]), opened)
+
+    def test_convention_opening_is_a_morphological_opening(self, device, dtype):
+        # `opening` is `dilation(erosion(x))` with the same kernel in both halves; as only `dilation`
+        # reflects, it is anti-extensive and idempotent for an asymmetric kernel too, and leaves a block that
+        # is a union of translates of the kernel untouched.
+        # Generated with scipy 1.17.1 / scikit-image 0.26.0 / opencv-python-headless 5.0.0 / numpy 2.0.0:
+        #   blk = np.zeros((9, 11), np.float32); blk[3:6, 3:7] = 1.0; A = np.array([[0, 1, 1]], bool)
+        #   ndi.grey_opening(blk, footprint=A, mode="constant", cval=-np.inf) == blk   -> True
+        #   sm.opening(blk, A, mode="ignore") == blk                                   -> True
+        #   cv2.morphologyEx(blk, cv2.MORPH_OPEN, A.astype(np.uint8)) == blk           -> False
+        asymmetric = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        block = torch.zeros(1, 1, 9, 11, device=device, dtype=dtype)
+        block[..., 3:6, 3:7] = 1.0
+        assert torch.equal(opening(block, asymmetric), block)
+
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        for kernel in (l_kernel, asymmetric):
+            opened = opening(tensor, kernel)
+            assert (opened <= tensor).all()
+            assert torch.equal(opening(opened, kernel), opened)
+
+        # `[[1, 0, 0]]` reads `x(p - 1)` in the erosion half and `y(p + 1)` in the dilation half. Under
+        # `replicate` the last column becomes `x(W - 2)`, so the opening is not anti-extensive (idempotence
+        # survives); under `circular` the two shifts cancel and the opening is exactly `x`.
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        if supports_replicate_padding(device, dtype):
+            bump = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)[None, None]
+            replicated = opening(bump, side_kernel, border_type="replicate")
+            assert replicated.flatten().tolist() == [0.0, 1.0, 1.0]
+            assert not bool((replicated <= bump).all())
+            assert torch.equal(opening(replicated, side_kernel, border_type="replicate"), replicated)
+        assert torch.equal(opening(tensor, side_kernel, border_type="circular"), tensor)
+
+    def test_wart_opening_sentinel_round_trip_4734(self, device, dtype):
+        # Under `geodesic` the dilation window of `[[1, 0, 0]]` leaves the image on the right, so it can emit
+        # `x - max_val`, and the next stage's `+ max_val` returns `x` quantised to `max_val`'s spacing:
+        # idempotence, and on negative data anti-extensivity, miss by less than one ULP of `max_val` in the
+        # image's dtype, in the columns next to the empty window. A true infinity would miss by exactly 0.
+        # Tracked in #4734. `torch.finfo(dtype).eps * 8192` is that ULP for the default `max_val=1e4`.
+        one_ulp = torch.finfo(dtype).eps * 8192.0
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        # A float64 frame drawn in float32 has no bits below float64's ULP of `max_val`, so draw it natively.
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
+        tensor = tensor.to(device=device, dtype=dtype)
+
+        opened = opening(tensor, side_kernel)
+        assert (opened <= tensor).all()
+        deviation = (opening(opened, side_kernel) - opened).abs()
+        assert 0.0 < deviation.max() < one_ulp
+        assert not bool(deviation[..., :-3].any())
+        assert not bool(deviation[..., -1].any())
+
+        negative = -tensor
+        overshoot = (opening(negative, side_kernel) - negative).clamp(min=0)
+        assert 0.0 < overshoot.max() < one_ulp
+        # The empty window is not an infinity: `[0.5, 0.7]` opens to `[0.5, 0.0]`, where scikit-image's
+        # `mode="ignore"` gives `[0.5, -inf]`.
+        pair = torch.tensor([[0.5, 0.7]], device=device, dtype=dtype)[None, None]
+        assert opening(pair, side_kernel).flatten().tolist() == [0.5, 0.0]

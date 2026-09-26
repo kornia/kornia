@@ -74,6 +74,27 @@ def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     return input / (norm[..., None, None])
 
 
+def _normalize_kernel2d_2nd_order(input: torch.Tensor) -> torch.Tensor:
+    r"""Scale a stack of second order derivative kernels ``(dxx, dxy, dyy)`` to derivative estimates.
+
+    Each kernel is divided by the magnitude of its response to the quadratic whose second derivative it
+    estimates, ``x**2 / 2`` for ``dxx``, ``x * y`` for ``dxy`` and ``y**2 / 2`` for ``dyy``, so the three
+    channels come out in the same units. Dividing every kernel by its own absolute sum instead, as
+    :func:`normalize_kernel2d` does, scales the mixed kernel differently from the pure ones.
+    """
+    KORNIA_CHECK_SHAPE(input, ["3", "H", "W"])
+
+    h, w = input.shape[-2:]
+    y = torch.arange(h, device=input.device, dtype=torch.float32) - (h - 1) / 2
+    x = torch.arange(w, device=input.device, dtype=torch.float32) - (w - 1) / 2
+    y, x = torch.meshgrid(y, x, indexing="ij")
+    quadratics = torch.stack([x * x / 2, x * y, y * y / 2])
+
+    norm = (input * quadratics).sum(dim=(-2, -1)).abs().to(input.dtype)
+
+    return input / norm[:, None, None]
+
+
 def gaussian(
     window_size: int,
     sigma: torch.Tensor | float,
@@ -386,11 +407,11 @@ def get_sobel_kernel_5x5_2nd_order(
     """Return a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
         [
-            [-1.0, 0.0, 2.0, 0.0, -1.0],
-            [-4.0, 0.0, 8.0, 0.0, -4.0],
-            [-6.0, 0.0, 12.0, 0.0, -6.0],
-            [-4.0, 0.0, 8.0, 0.0, -4.0],
-            [-1.0, 0.0, 2.0, 0.0, -1.0],
+            [1.0, 0.0, -2.0, 0.0, 1.0],
+            [4.0, 0.0, -8.0, 0.0, 4.0],
+            [6.0, 0.0, -12.0, 0.0, 6.0],
+            [4.0, 0.0, -8.0, 0.0, 4.0],
+            [1.0, 0.0, -2.0, 0.0, 1.0],
         ],
         device=device,
         dtype=dtype,
@@ -403,11 +424,11 @@ def _get_sobel_kernel_5x5_2nd_order_xy(
     """Return a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
         [
-            [-1.0, -2.0, 0.0, 2.0, 1.0],
-            [-2.0, -4.0, 0.0, 4.0, 2.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0],
-            [2.0, 4.0, 0.0, -4.0, -2.0],
             [1.0, 2.0, 0.0, -2.0, -1.0],
+            [2.0, 4.0, 0.0, -4.0, -2.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0],
+            [-2.0, -4.0, 0.0, 4.0, 2.0],
+            [-1.0, -2.0, 0.0, 2.0, 1.0],
         ],
         device=device,
         dtype=dtype,
@@ -448,7 +469,7 @@ def get_diff_kernel3d(device: Optional[torch.device] = None, dtype: Optional[tor
 def get_diff_kernel3d_2nd_order(
     device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
-    """Return a first order derivative kernel of 3x3x3."""
+    """Return second order derivative kernels of 3x3x3 for ``(dxx, dyy, dzz, dxy, dyz, dxz)``."""
     kernel = torch.tensor(
         [
             [
@@ -468,18 +489,18 @@ def get_diff_kernel3d_2nd_order(
             ],
             [
                 [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-                [[1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 1.0]],
+                [[0.25, 0.0, -0.25], [0.0, 0.0, 0.0], [-0.25, 0.0, 0.25]],
                 [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
             ],
             [
-                [[0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, -1.0, 0.0]],
+                [[0.0, 0.25, 0.0], [0.0, 0.0, 0.0], [0.0, -0.25, 0.0]],
                 [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-                [[0.0, -1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                [[0.0, -0.25, 0.0], [0.0, 0.0, 0.0], [0.0, 0.25, 0.0]],
             ],
             [
-                [[0.0, 0.0, 0.0], [1.0, 0.0, -1.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.25, 0.0, -0.25], [0.0, 0.0, 0.0]],
                 [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-                [[0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [-0.25, 0.0, 0.25], [0.0, 0.0, 0.0]],
             ],
         ],
         device=device,
@@ -518,7 +539,7 @@ def get_diff_kernel2d_2nd_order(
     """Return 2nd order gradient for diff operator."""
     gxx = torch.tensor([[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype)
     gyy = gxx.transpose(0, 1)
-    gxy = torch.tensor([[-1.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, -1.0]], device=device, dtype=dtype)
+    gxy = torch.tensor([[1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 1.0]], device=device, dtype=dtype)
     return torch.stack([gxx, gxy, gyy])
 
 
@@ -1032,8 +1053,7 @@ def get_hanning_kernel1d(
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
     x = torch.arange(kernel_size, device=device, dtype=dtype)
-    x = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
-    return x
+    return 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
 
 
 def get_hanning_kernel2d(
@@ -1058,9 +1078,7 @@ def get_hanning_kernel2d(
 
     ky = get_hanning_kernel1d(kernel_size[0], device, dtype)[None].T
     kx = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
-    kernel2d = ky @ kx
-
-    return kernel2d
+    return ky @ kx
 
 
 @deprecated(replace_with="get_gaussian_kernel1d", version="0.6.10")

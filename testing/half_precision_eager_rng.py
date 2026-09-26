@@ -188,7 +188,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/geometry/subpix/test_dsnt.py",
-                73,
+                112,
                 "torch.randn",
                 1,
                 (
@@ -199,7 +199,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/image/test_draw.py",
-                305,
+                366,
                 "torch.rand",
                 4,
                 ("tests/image/test_draw.py::TestDrawLine::test_point_size",),

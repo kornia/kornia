@@ -168,8 +168,7 @@ class PatchMerging(nn.Module):
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
-        x = x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
-        return x
+        return x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
 
 
 class ConvLayer(nn.Module):
@@ -359,8 +358,7 @@ class Attention(nn.Module):
 
         attn = attn.softmax(dim=-1)
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.dh)
-        x = self.proj(x)
-        return x
+        return self.proj(x)
 
 
 class TinyViTBlock(nn.Module):
@@ -431,8 +429,7 @@ class TinyViTBlock(nn.Module):
         x = self.local_conv(x)
         x = x.view(B, C, L).transpose(1, 2)
 
-        x = x + self.drop_path2(self.mlp(x))
-        return x
+        return x + self.drop_path2(self.mlp(x))
 
 
 class BasicLayer(nn.Module):

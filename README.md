@@ -103,7 +103,7 @@ covers CUDA or MPS half precision.
 | `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 58 / 56 | `find_fundamental`, `find_essential`, `decompose_essential_matrix`, `motion_from_essential*` and `KRt_from_projection` raise `NotImplementedError`: CPU `lu`, `eigh` and QR have no half kernels |
 | `kornia.geometry.homography` | ⚠️ | ⚠️ | 11 / 16 | The DLT solvers run (SVD is cast to float32) but miss the clean-point accuracy checks |
 | `kornia.geometry.liegroup` | ⚠️ | ⚠️ | 36 / 130 | `So2`/`Se2` use complex tensors: float16 hits missing `ComplexHalf` kernels, and most bfloat16 `So2`/`Se2` tests raise (119 entries); `So3`/`Se3` nearly all pass |
-| `kornia.geometry.solvers` | ⚠️ | ⚠️ | 2 / 2 | `solve_quartic` accuracy on random and one reference quartic |
+| `kornia.geometry.solvers` | ⚠️ | ⚠️ | 1 / 1 | `solve_quartic` accuracy on random quartics |
 | `kornia.geometry.subpix` | ⚠️ | ⚠️ | 14 / 12 | `ConvSoftArgmax3d` raises (CPU `avg_pool3d` has no half kernel); the rest are accuracy |
 | `kornia.geometry.conversions` | ⚠️ | ⚠️ | 72 / 60 | Angle-axis, quaternion and rotation-matrix round trips lose accuracy |
 | `kornia.geometry.ransac` | ⚠️ | ⚠️ | 4 / 4 | The essential and fundamental models raise through the epipolar solvers |
@@ -124,18 +124,23 @@ covers CUDA or MPS half precision.
 | CPU float32 *(baseline)* | 10398 | 0 | 3737 | **100.0%** | `ca5021eb`, 2026-09-14 |
 | CPU float16 | 9795 | 522 | 3821 | **94.9%** | `ca5021eb`, 2026-09-14 |
 | CPU bfloat16 | 9849 | 512 | 3774 | **95.1%** | `ca5021eb`, 2026-09-14 |
-| CUDA float32 *(baseline)* | 7634 | 3 | 3280 | **99.9%** | `6131e98`, 2026-03-21 |
-| CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6727 | 643 | 3556 | **91.3%** | `6131e98`, 2026-03-21 |
-| CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6695 | 713 | 3518 | **90.4%** | `6131e98`, 2026-03-21 |
+| CUDA float32 *(baseline)* | 12193 | 22 | 3957 | **99.8%** | `f8449854`, 2026-09-23 |
+| CUDA float16 | 11738 | 451 | 3983 | **96.3%** | `f8449854`, 2026-09-23 |
+| CUDA bfloat16 | 11736 | 500 | 3936 | **95.9%** | `f8449854`, 2026-09-23 |
 
-Pass% = passed ÷ (passed + failed). The CPU rows are the nightly `main` CI jobs (Linux x86_64, Python 3.11,
+Pass% = passed ÷ (passed + failed). The CPU rows are the scheduled `main` CI jobs (Linux x86_64, Python 3.11,
 PyTorch 2.9.1, no `--runslow`). In the half jobs, *Failed* is the manifest's entry count: CI reports those tests as
 strict xfails, and it fails if any of them passes or fails differently. Tests marked `xfail` in the source are
 excluded from every row. Reproduce a CPU half row in that environment with
 `KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-float16`
 (or `cpu-bfloat16`), and the baseline with `pixi run test-f32`. `pixi run test-half` is an unseeded sweep of both
-dtypes whose counts can drift slightly from the manifests. The CUDA rows have not been re-measured since March 2026
-and predate the CPU half-precision fixes merged since then.
+dtypes whose counts can drift slightly from the manifests. The CUDA rows are a local run, not CI (RTX 4090,
+Python 3.11, PyTorch 2.14.0+cu130). The half rows run in-process with `KORNIA_TEST_IN_SUBPROCESS=1`; every failure,
+in all three rows, is then re-run on its own (with `--isolate-half-precision` for the half dtypes) and counted by that
+result. Eight of the float32 failures are cuDNN TF32 accuracy misses in convolutions
+([#4778](https://github.com/kornia/kornia/issues/4778)); the other 14 are tests that assume CPU behavior
+([#4779](https://github.com/kornia/kornia/issues/4779)). The CUDA rows deselect `TestFindHomographyDLT::test_nocrash`
+and `test_nocrash_lu`, which hang on CUDA ([#4770](https://github.com/kornia/kornia/issues/4770)).
 
 See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
 
