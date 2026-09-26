@@ -20,6 +20,7 @@ import torch
 
 from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
+from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
@@ -116,6 +117,36 @@ class TestSo3(BaseTester):
         expected = torch.tensor(theta / 2 - theta**3 / 24, device=device, dtype=dtype)
         self.assert_close(So3.right_jacobian(v)[0, 0, 1], expected, rtol=rtol, atol=0.0)
         self.assert_close(So3.left_jacobian(v)[0, 0, 1], -expected, rtol=rtol, atol=0.0)
+
+    def test_small_angle_coefficients_across_the_switch(self, device, dtype):
+        # The three coefficients on both sides of the series/closed-form switch (0.2 rad in float64, 0.5 in
+        # float32), against 50-digit references. Generated with mpmath (mp.dps = 50):
+        #   a = (1 - cos t) / t**2, b = (t - sin t) / t**3, c = (1 - (t / 2) * cot(t / 2)) / t**2
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the closed forms above the switch keep only a few bits in half precision")
+        ref = torch.tensor(
+            [
+                (1e-6, 0.4999999999999583, 0.16666666666665833, 0.08333333333333472),
+                (1e-3, 0.4999999583333347, 0.16666665833333352, 0.08333333472222225),
+                (0.05, 0.4998958420135014, 0.16664583457336965, 0.08333680576224836),
+                (0.19, 0.4984976421808776, 0.16636609177714273, 0.08338351535672024),
+                (0.21, 0.498165198998906, 0.16629955230541296, 0.08339464771681691),
+                (0.45, 0.4916192476411016, 0.16498727998649976, 0.08361594626029004),
+                (0.55, 0.48752224112560083, 0.16416391326425744, 0.08375652128283852),
+                (1.0, 0.4596976941318603, 0.1585290151921035, 0.08475613914377404),
+                (2.0, 0.3540367091367856, 0.1363378216467898, 0.08947684601641732),
+                (3.0, 0.2211102774000495, 0.10588444414593084, 0.09929197039400237),
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # measured worst case over [1e-9, pi]: 5.2e-14 (float64, c just above 0.2), 5.9e-6 (float32, c near 0.52)
+        rtol = 2e-13 if dtype == torch.float64 else 2e-5
+        a, b, c = _so3_small_angle_coefficients(ref[:, 0])
+        self.assert_close(torch.stack((a, b, c), -1), ref[:, 1:], rtol=rtol, atol=0.0)
+        # exact at the identity
+        zero = _so3_small_angle_coefficients(torch.zeros(1, device=device, dtype=dtype))
+        self.assert_close(torch.cat(zero), torch.tensor([1 / 2, 1 / 6, 1 / 12], device=device, dtype=dtype))
 
     def test_convention_log_identity_gradient_is_the_on_manifold_limit_4404(self, device, dtype):
         # The value the guard leaves in place, pinned rather than merely asserted finite: at the

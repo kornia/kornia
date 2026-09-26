@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.tensor_wrapper import _unwrap
 from kornia.core.utils import register_module_state
-from kornia.geometry.liegroup.so3 import So3, so3_small_angle_coefficients
+from kornia.geometry.liegroup.so3 import So3, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
@@ -186,7 +186,7 @@ class Se3(nn.Module):
         theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
         safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
         R = So3.exp(omega)
-        a, b, _ = so3_small_angle_coefficients(safe_theta)
+        a, b, _ = _so3_small_angle_coefficients(safe_theta)
         V = (
             torch.eye(3, device=v.device, dtype=v.dtype)
             + a[..., None, None] * omega_hat
@@ -220,7 +220,7 @@ class Se3(nn.Module):
         t = _unwrap(self.t)
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
-        _, _, c = so3_small_angle_coefficients(safe_theta)
+        _, _, c = _so3_small_angle_coefficients(safe_theta)
         V_inv = (
             torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
         )

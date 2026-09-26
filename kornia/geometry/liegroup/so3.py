@@ -31,7 +31,7 @@ from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
 
-def so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Evaluate the three angle coefficients of the SO(3) and SE(3) closed forms without cancellation.
 
     Returns :math:`(1 - \cos\theta) / \theta^2`, :math:`(\theta - \sin\theta) / \theta^3` and
@@ -431,7 +431,7 @@ class So3(nn.Module):
         KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
-        a, b, _ = so3_small_angle_coefficients(theta)
+        a, b, _ = _so3_small_angle_coefficients(theta)
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
         return I - a * R_skew + b * (R_skew @ R_skew)
 
@@ -463,7 +463,7 @@ class So3(nn.Module):
         KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
-        a, b, _ = so3_small_angle_coefficients(theta)
+        a, b, _ = _so3_small_angle_coefficients(theta)
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
         return I + a * R_skew + b * (R_skew @ R_skew)
 
