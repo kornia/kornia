@@ -4469,6 +4469,20 @@ class TestRandomClahe(BaseTester):
                 torch.autograd.grad(expected, input_data, weights)[0],
             )
 
+    def test_clip_limit_on_the_input_device(self, device, dtype):
+        # The per-sample thresholds are computed in float64, on the CPU for an MPS clip tensor. A single
+        # clip.to("cpu", torch.float64) from MPS raised on torch 2.5.1 and returned zeros on torch 2.14, which
+        # clipped every tile histogram at 1. 16x16 tiles make a limit of 40 differ from that floor.
+        torch.manual_seed(0)
+        input_data = torch.rand(2, 1, 32, 32).pow(3).to(device=device, dtype=dtype)
+        aug = RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), p=1.0)
+        params = aug.forward_parameters(input_data.shape)
+        params["clip_limit_factor"] = torch.tensor([0.5, 40.0], device=device, dtype=dtype)
+        expected = torch.cat(
+            [kornia.enhance.equalize_clahe(input_data[i : i + 1], clip, (2, 2)) for i, clip in enumerate((0.5, 40.0))]
+        )
+        self.assert_close(aug(input_data, params=params), expected)
+
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
         input_data = torch.rand(1, 1, 32, 32).to(device=device, dtype=dtype).repeat(2, 1, 1, 1)
