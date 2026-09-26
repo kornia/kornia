@@ -76,7 +76,6 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_b_zero = b == 0
 
     # Calculate 1/(2*a) for efficient computation
-    inv_2a = 0.5 / torch.where(mask_linear, one, a)
 
     # Branch-free selection so the function traces under graph capture. The square root is only taken
     # where delta > 0: a zero discriminant yields the double root -b/(2a) with sqrt_delta = 0, and a
