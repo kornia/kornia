@@ -81,6 +81,23 @@ class TestSe3(BaseTester):
         Se3(So3(Quaternion(data[:, :4])), data[:, 4:]).log().sum().backward()
         assert bool(torch.isfinite(data.grad).all()), data.grad
 
+    def test_gradient_at_the_identity_couples_rotation_and_translation_4953(self, device, dtype):
+        # #4953: exp fell back to t = upsilon and log to upsilon = t at omega = 0. The values were
+        # right, V(0) = I, but the fallback did not depend on omega, so autograd returned
+        # d t / d omega = 0 at the identity, the standard initialisation for pose optimisation.
+        # The derivative of V(omega) upsilon = upsilon + 0.5 omega x upsilon + O(|omega|^2) is
+        # -0.5 [upsilon]_x, and d upsilon / d q_vec of log at the identity is [t]_x.
+        v = torch.tensor([[1.0, 2.0, 3.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        jac = torch.autograd.functional.jacobian(lambda x: Se3.exp(x).t, v)[0, :, 0, :]
+        upsilon = v[0, :3]
+        self.assert_close(jac[:, :3], torch.eye(3, device=device, dtype=dtype))
+        self.assert_close(jac[:, 3:], -0.5 * So3.hat(upsilon))
+        qt = torch.tensor([[1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        jac = torch.autograd.functional.jacobian(lambda x: Se3(So3(Quaternion(x[:, :4])), x[:, 4:]).log(), qt)
+        jac = jac[0, :, 0, :]
+        self.assert_close(jac[:3, 4:], torch.eye(3, device=device, dtype=dtype))
+        self.assert_close(jac[:3, 1:4], So3.hat(qt[0, 4:]))
+
     # TODO: implement me
     def test_jit(self, device, dtype):
         pass

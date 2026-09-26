@@ -178,22 +178,21 @@ class Se3(nn.Module):
         omega_hat_sq = omega_hat @ omega_hat
         theta_sq = batched_dot_product(omega, omega)
         nonzero = theta_sq > 0
-        # V is a 0/0 at omega = 0 and its sqrt has an unbounded derivative there, so although the
-        # where below already returns upsilon at the identity, autograd walked V anyway and
-        # 0 * nan = nan reached v.grad. Evaluate both on a substituted theta of 1 there; the
-        # where discards the value, only the gradient changes (kornia#4229's shape).
+        # sqrt has an unbounded derivative at 0, so it is taken on a substituted 1 at omega = 0 and
+        # the where selects the exact 0 (kornia#4229's shape). The coefficients of V are finite there
+        # (1/2 and 1/6) and even in theta, so V @ upsilon is taken for every element: the former
+        # fallback to upsilon at the identity did not depend on omega and made d t / d omega = 0
+        # there instead of -0.5 [upsilon]_x (kornia#4953). The value is unchanged, V(0) = I exactly.
         safe_theta_sq = torch.where(nonzero, theta_sq, torch.ones_like(theta_sq))
         theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
-        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
         R = So3.exp(omega)
-        a, b, _ = _so3_small_angle_coefficients(safe_theta)
+        a, b, _ = _so3_small_angle_coefficients(theta)
         V = (
             torch.eye(3, device=v.device, dtype=v.dtype)
             + a[..., None, None] * omega_hat
             + b[..., None, None] * omega_hat_sq
         )
-        U = torch.where(nonzero[..., None], (upsilon[..., None, :] * V).sum(-1), upsilon)
-        return Se3(R, U)
+        return Se3(R, (upsilon[..., None, :] * V).sum(-1))
 
     def log(self) -> torch.Tensor:
         """Convert elements of lie group  to elements of lie algebra.
@@ -216,16 +215,16 @@ class Se3(nn.Module):
         # the where below agree.
         safe_theta_sq = torch.where(nonzero, theta_sq.clamp_min(1e-12), torch.ones_like(theta_sq))
         theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
-        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
         t = _unwrap(self.t)
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
-        _, _, c = _so3_small_angle_coefficients(safe_theta)
+        # c is finite at theta = 0 (1/12), so V^-1 @ t is taken for every element; the former fallback
+        # to t at the identity made d upsilon / d q = 0 there instead of [t]_x (kornia#4953).
+        _, _, c = _so3_small_angle_coefficients(theta)
         V_inv = (
             torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
         )
-        t = torch.where(nonzero[..., None], (t[..., None, :] * V_inv).sum(-1), t)
-        return torch.cat((t, omega), -1)
+        return torch.cat(((t[..., None, :] * V_inv).sum(-1), omega), -1)
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
