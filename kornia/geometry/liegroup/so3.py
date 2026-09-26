@@ -52,8 +52,12 @@ def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, to
     """
     theta_small = 0.2 if theta.dtype == torch.float64 else 0.5
     small = theta < theta_small
+    # torch.where differentiates the branch it does not select, so each branch gets a substituted argument
+    # where the other is used: 1 for the closed forms (0/0 at theta = 0) and 0 for the series, whose Horner
+    # terms overflow float16 from about 50 rad and would put 0 * inf = nan into the gradient (kornia#4965).
     safe_theta = torch.where(small, torch.ones_like(theta), theta)
-    t2 = theta * theta
+    series_theta = torch.where(small, theta, torch.zeros_like(theta))
+    t2 = series_theta * series_theta
     a_series = 0.5 + t2 * (-1 / 24 + t2 * (1 / 720 + t2 * (-1 / 40320 + t2 * (1 / 3628800 - t2 / 479001600))))
     b_series = 1 / 6 + t2 * (-1 / 120 + t2 * (1 / 5040 + t2 * (-1 / 362880 + t2 * (1 / 39916800 - t2 / 6227020800))))
     c_series = 1 / 12 + t2 * (

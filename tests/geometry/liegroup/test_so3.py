@@ -148,6 +148,20 @@ class TestSo3(BaseTester):
         zero = _so3_small_angle_coefficients(torch.zeros(1, device=device, dtype=dtype))
         self.assert_close(torch.cat(zero), torch.tensor([1 / 2, 1 / 6, 1 / 12], device=device, dtype=dtype))
 
+    def test_small_angle_coefficients_gradient_past_the_series_range_4965(self, device, dtype):
+        # #4965: the series were evaluated on every angle and discarded above the switch by torch.where, which
+        # still differentiates them. In float16 their Horner terms overflow from about 50 rad, so 0 * inf = nan
+        # reached the gradient of the coefficients and of both Jacobians although the values came from the closed
+        # forms. 200 rad stays below the float16 overflow of theta**2 in the closed forms themselves.
+        theta = torch.tensor([50.0, 100.0, 200.0], device=device, dtype=dtype, requires_grad=True)
+        sum(c.sum() for c in _so3_small_angle_coefficients(theta)).backward()
+        assert bool(torch.isfinite(theta.grad).all()), theta.grad
+        axis = torch.tensor([0.48, 0.6, 0.64], device=device, dtype=dtype)
+        for jacobian in (So3.right_jacobian, So3.left_jacobian):
+            v = (theta.detach()[:, None] * axis).requires_grad_(True)
+            jacobian(v).sum().backward()
+            assert bool(torch.isfinite(v.grad).all()), (jacobian.__name__, v.grad)
+
     def test_convention_log_identity_gradient_is_the_on_manifold_limit_4404(self, device, dtype):
         # The value the guard leaves in place, pinned rather than merely asserted finite: at the
         # identity log evaluates 2 * vec / real, so d(omega_x)/dq_x = 2 -- exact in every dtype,
