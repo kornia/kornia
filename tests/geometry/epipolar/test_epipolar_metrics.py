@@ -169,6 +169,17 @@ class TestLeftToRightEpipolarDistance(BaseTester):
 
         self.gradcheck(epi.left_to_right_epipolar_distance, (points1, points2, Fm), requires_grad=(True, False, False))
 
+    def test_homogeneous_weight_4935(self, device, dtype):
+        # #4935: the measured point went to point_line_distance with its weight ignored, so (10, 14, 2) scored 6.08
+        # where the same point (5, 7) scored 13.72.
+        Fm = torch.tensor([[[0.0, -0.02, 0.3], [0.02, 0.0, -0.9], [-0.3, 0.9, 0.1]]], device=device, dtype=dtype)
+        pts1 = torch.tensor([[[10.0, 20.0]]], device=device, dtype=dtype)
+        pts2 = torch.tensor([[[5.0, 7.0]]], device=device, dtype=dtype)
+        pts2_weighted = torch.tensor([[[10.0, 14.0, 2.0]]], device=device, dtype=dtype)
+        expected = epi.left_to_right_epipolar_distance(pts1, pts2, Fm)
+        self.assert_close(expected, torch.tensor([[13.717871]], device=device, dtype=dtype))
+        self.assert_close(epi.left_to_right_epipolar_distance(pts1, pts2_weighted, Fm), expected)
+
 
 class TestRightToLeftEpipolarDistance(BaseTester):
     def test_smoke(self, device, dtype):
@@ -217,6 +228,16 @@ class TestRightToLeftEpipolarDistance(BaseTester):
         Fm = create_random_fundamental_matrix(batch_size, dtype=torch.float64, device=device)
 
         self.gradcheck(epi.right_to_left_epipolar_distance, (points1, points2, Fm), requires_grad=(True, False, False))
+
+    def test_homogeneous_weight_4935(self, device, dtype):
+        # #4935: the measured point went to point_line_distance with its weight ignored, so (20, 40, 2) scored 29.54
+        # where the same point (10, 20) scored 11.89.
+        Fm = torch.tensor([[[0.0, -0.02, 0.3], [0.02, 0.0, -0.9], [-0.3, 0.9, 0.1]]], device=device, dtype=dtype)
+        pts1 = torch.tensor([[[10.0, 20.0]]], device=device, dtype=dtype)
+        pts1_weighted = torch.tensor([[[20.0, 40.0, 2.0]]], device=device, dtype=dtype)
+        pts2 = torch.tensor([[[5.0, 7.0]]], device=device, dtype=dtype)
+        expected = epi.right_to_left_epipolar_distance(pts1, pts2, Fm)
+        self.assert_close(epi.right_to_left_epipolar_distance(pts1_weighted, pts2, Fm), expected)
 
 
 _HALF_PIXEL_F = (
