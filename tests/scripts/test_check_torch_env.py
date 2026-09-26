@@ -193,8 +193,10 @@ def test_scan_installed_finds_no_duplicates_after_setuptools_adds_its_vendor_pat
         [
             sys.executable,
             "-c",
-            f"import sys; sys.path.insert(0, {str(script_dir)!r}); import setuptools; "
-            "from check_torch_env import scan_installed; assert scan_installed()[1] == {}",
+            (
+                f"import sys; sys.path.insert(0, {str(script_dir)!r}); import setuptools; "
+                "from check_torch_env import scan_installed; assert scan_installed()[1] == {}"
+            ),
         ],
         check=False,
         capture_output=True,
