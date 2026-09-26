@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -37,6 +39,26 @@ def _rigid_transforms(batch_size, device, dtype):
 
 
 class TestTransformPoints(BaseTester):
+    @pytest.mark.parametrize("num_dims", [2, 3])
+    @pytest.mark.parametrize("batch_size", [None, 5])
+    def test_unbatched_transform(self, num_dims, batch_size, device, dtype):
+        transform = torch.eye(num_dims + 1, device=device, dtype=dtype)
+        translation = torch.arange(1, num_dims + 1, device=device, dtype=dtype)
+        transform[:-1, -1] = translation
+        shape = (5, num_dims) if batch_size is None else (batch_size, 5, num_dims)
+        points = torch.arange(math.prod(shape), device=device, dtype=dtype).reshape(shape)
+
+        result = kgl.transform_points(transform, points)
+
+        assert result.shape == points.shape
+        self.assert_close(result, points + translation)
+
+    def test_dimension_mismatch_message_names_the_shapes(self, device, dtype):
+        transform = torch.eye(4, device=device, dtype=dtype)
+        points = torch.zeros(5, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"differ by one unit\. Got torch\.Size\(.*\) and torch\.Size\(\[5, 2\]\)"):
+            kgl.transform_points(transform, points)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     @pytest.mark.parametrize("num_dims", [2, 3])

@@ -197,14 +197,14 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 
     Args:
         trans_01: tensor for transformations of shape
-          :math:`(B, D+1, D+1)`.
-        points_1: tensor of points of shape :math:`(B, N, D)`.
+          :math:`(D+1, D+1)` or :math:`(B, D+1, D+1)`.
+        points_1: tensor of points of shape :math:`(N, D)` or :math:`(B, N, D)`.
 
     Returns:
-        a tensor of N-dimensional points.
+        transformed points with the same shape as ``points_1``.
 
     Shape:
-        - Output: :math:`(B, N, D)`
+        - Output: same shape as ``points_1``.
 
     Examples:
         >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
@@ -214,12 +214,14 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     """
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(points_1)
+    if trans_01.ndim == 2:
+        trans_01 = trans_01.unsqueeze(0)
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError(
             f"Input batch size must be the same for both tensors or 1. Got {trans_01.shape} and {points_1.shape}"
         )
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
-        raise ValueError(f"Last input dimensions must differ by one unit Got{trans_01} and {points_1}")
+        raise ValueError(f"Last input dimensions must differ by one unit. Got {trans_01.shape} and {points_1.shape}")
 
     # No points to transform (e.g. an image chip with no annotations): transforming an empty set
     # yields the same empty set. Return early — the reshape below cannot infer ``-1`` from a
