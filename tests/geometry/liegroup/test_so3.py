@@ -152,15 +152,41 @@ class TestSo3(BaseTester):
         # #4965: the series were evaluated on every angle and discarded above the switch by torch.where, which
         # still differentiates them. In float16 their Horner terms overflow from about 50 rad, so 0 * inf = nan
         # reached the gradient of the coefficients and of both Jacobians although the values came from the closed
-        # forms. 200 rad stays below the float16 overflow of theta**2 in the closed forms themselves.
-        theta = torch.tensor([50.0, 100.0, 200.0], device=device, dtype=dtype, requires_grad=True)
+        # forms. The closed forms then divided by theta**2, which overflows float16 above 256 rad and made the
+        # gradient nan again; they now divide by theta twice, so 300 and 1000 rad are finite as well.
+        theta = torch.tensor([50.0, 100.0, 200.0, 300.0, 1000.0], device=device, dtype=dtype, requires_grad=True)
         sum(c.sum() for c in _so3_small_angle_coefficients(theta)).backward()
         assert bool(torch.isfinite(theta.grad).all()), theta.grad
+        # [omega]_x^2 itself overflows float16 above 256 rad, so the Jacobians are checked up to 200 rad.
         axis = torch.tensor([0.48, 0.6, 0.64], device=device, dtype=dtype)
         for jacobian in (So3.right_jacobian, So3.left_jacobian):
-            v = (theta.detach()[:, None] * axis).requires_grad_(True)
+            v = (theta.detach()[:3, None] * axis).requires_grad_(True)
             jacobian(v).sum().backward()
             assert bool(torch.isfinite(v.grad).all()), (jacobian.__name__, v.grad)
+
+    def test_small_angle_coefficients_and_jacobians_above_40_rad_4965(self, device, dtype):
+        # #4965: the closed forms divided by theta**3 and theta**2, which overflow float16 above 40.3 and 256
+        # rad. From 41 rad b was 0, so the [omega]_x^2 term of both Jacobians dropped out: at 41 rad about
+        # [0.48, 0.6, 0.64] the float16 right_jacobian was off by 0.79. 50-digit references generated with
+        # mpmath (mp.dps = 50): a = (1 - cos t) / t**2, b = (t - sin t) / t**3, c = (1 - (t / 2) * cot(t / 2)) / t**2.
+        finfo = torch.finfo(dtype)
+        ref = torch.tensor(
+            [
+                (41.0, 0.0011822363340415387, 0.0005971855119456292, 0.001568257196741034),
+                (60.0, 0.00054233693900421, 0.00027918893806065843, 0.001578777379124938),
+                (288.0, 5.813614141459137e-06, 1.2092140495844536e-05, 0.0030921829471326203),
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # a and b at 288 rad are subnormal in float16, hence the atol of 8 subnormal steps
+        a, b, c = _so3_small_angle_coefficients(ref[:, 0])
+        self.assert_close(torch.stack((a, b, c), -1), ref[:, 1:], rtol=8 * finfo.eps, atol=8 * finfo.eps * finfo.tiny)
+        # the Jacobians against the float64 path on the CPU, below the float16 overflow of [omega]_x^2 itself
+        v = ref[:2, :1] * torch.tensor([0.48, 0.6, 0.64], device=device, dtype=dtype)
+        for jacobian in (So3.right_jacobian, So3.left_jacobian):
+            expected = jacobian(v.cpu().double()).to(device=device, dtype=dtype)
+            self.assert_close(jacobian(v), expected, rtol=8 * finfo.eps, atol=8 * finfo.eps)
 
     def test_convention_log_identity_gradient_is_the_on_manifold_limit_4404(self, device, dtype):
         # The value the guard leaves in place, pinned rather than merely asserted finite: at the
