@@ -136,8 +136,8 @@ class RANSAC(nn.Module):
             model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
                 "homography_from_linesegments".
             inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
-            batch_size: number of generated samples at once, or ``"auto"``: the whole budget in one batch of at
-                most 8192 on accelerators, and on CPU a batch sized for the model and the number of
+            batch_size: number of generated samples at once, or ``"auto"``: batches of 8192 homography or 2048
+                epipolar hypotheses on accelerators, and on CPU a batch sized for the model and the number of
                 correspondences so that early stopping is checked every millisecond or so.
             max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn
                 (``2048 * max_iter`` with ``batch_size="auto"``) unless ``max_samples`` is given.
@@ -318,22 +318,21 @@ class RANSAC(nn.Module):
     def resolve_batch_size(self, num_tc: int, device: torch.device) -> int:
         """Return the batch size of a call: the configured one, or the ``"auto"`` choice for the device.
 
-        On accelerators a batch costs about the same up to a few thousand hypotheses, so the whole
-        :attr:`sample_budget` is drawn in one batch of at most 8192. On CPU the cost is linear in
-        ``batch * N`` residuals, and the eight-point solver is about ten times a DLT, so the batch aims at a
-        millisecond or so of work, 256 to 2048 hypotheses for homographies and 128 to 512 for the epipolar
-        models, and early stopping is checked between batches.
+        On accelerators a homography batch costs about the same from a few hundred up to 8192 hypotheses
+        (the four-point solve is launch-bound), so the whole :attr:`sample_budget` is drawn in batches of
+        up to 8192; the epipolar solvers are compute-bound past 2048 hypotheses, so their batches stop there
+        and early stopping is checked in between. On CPU the cost is linear in ``batch * N`` residuals, and
+        the eight-point solver is about ten times a DLT, so the batch aims at a millisecond or so of work,
+        256 to 2048 hypotheses for homographies and 128 to 512 for the epipolar models.
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
+        planar = self.model_type in ("homography", "homography_from_linesegments")
         if device.type == "cpu":
-            if self.model_type in ("homography", "homography_from_linesegments"):
-                work, lower, upper = 1 << 19, 256, 2048
-            else:
-                work, lower, upper = 1 << 17, 128, 512
+            work, lower, upper = (1 << 19, 256, 2048) if planar else (1 << 17, 128, 512)
             batch = min(max(work // max(num_tc, 1), lower), upper)
         else:
-            batch = 8192
+            batch = 8192 if planar else 2048
         return min(batch, self.sample_budget)
 
     def _is_supported(self, num_inliers: float) -> bool:

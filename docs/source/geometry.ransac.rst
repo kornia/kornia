@@ -19,10 +19,12 @@ solvers may produce several candidate matrices from each set. Early stopping is
 checked between batches, and ``confidence=1`` runs the whole budget.
 
 The default ``batch_size="auto"`` picks the batch per call. On CUDA and MPS a
-batch costs about the same up to a few thousand hypotheses, so the whole budget
-is drawn in one batch of at most 8192; a PROSAC batch of that size also spans
-most of the growth schedule, whereas certifying a model after a small first
-batch drawn from a short prefix can stop on a poorly conditioned fit. On CPU
+homography batch costs about the same from a few hundred up to 8192 hypotheses,
+so the budget is drawn in batches of 8192; the epipolar solvers are
+compute-bound past 2048 hypotheses, so their batches stop there. A PROSAC batch
+of either size spans most of the growth schedule, whereas certifying a model
+after a small first batch drawn from a short prefix can stop on a poorly
+conditioned fit. On CPU
 the cost is linear in ``batch * N`` residuals and the eight-point solver costs
 about ten DLTs, so the batch aims at a millisecond or so of work: 256 to 2048
 hypotheses for homographies and 128 to 512 for the epipolar models, fewer for

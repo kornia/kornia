@@ -1155,11 +1155,15 @@ class TestRANSACAutoBatch(BaseTester):
         assert RANSAC("homography", batch_size=256, max_iter=100, max_samples=1000).sample_budget == 1000
         assert RANSAC("homography", max_samples=1000).sample_budget == 1000
 
-    def test_accelerators_take_the_budget_in_one_batch(self):
+    def test_accelerators_take_large_batches(self):
         ransac = RANSAC("homography", max_samples=5000)
         for device in (torch.device("cuda"), torch.device("mps")):
             assert ransac.resolve_batch_size(500, device) == 5000
         assert RANSAC("homography").resolve_batch_size(500, torch.device("cuda")) == 8192
+        assert RANSAC("homography_from_linesegments").resolve_batch_size(500, torch.device("cuda")) == 8192
+        # The epipolar solvers are compute-bound past 2048 hypotheses on the GPU.
+        assert RANSAC("fundamental").resolve_batch_size(500, torch.device("cuda")) == 2048
+        assert RANSAC("essential", max_samples=1000).resolve_batch_size(500, torch.device("mps")) == 1000
 
     @pytest.mark.parametrize(
         "model_type,num_tc,expected",
