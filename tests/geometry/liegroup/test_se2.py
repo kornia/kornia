@@ -298,6 +298,17 @@ class TestSe2(BaseTester):
         self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
         self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
 
+    def test_user_leaf_translation_receives_the_gradient(self, device, dtype):
+        # A tensor that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it (#4943).
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        t = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype, requires_grad=True)
+        s = Se2(So2.identity(1, device, dtype), t)
+        (s * torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)).sum().backward()
+        assert t.grad is not None
+        self.assert_close(t.grad, torch.ones_like(t))
+        assert "_translation" in s.state_dict()
+
     def test_derived_state_moves_and_serializes(self, device, dtype):
         # A group built from a tensor with autograd history keeps that history; its state must
         # still be registered so ``state_dict`` and ``.to()`` / ``.double()`` reach it.

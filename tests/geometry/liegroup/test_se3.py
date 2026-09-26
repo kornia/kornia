@@ -325,6 +325,18 @@ class TestSe3(BaseTester):
         self.assert_close(s_in_s.so3.q.data, i.so3.q.data)
         self.assert_close(s_in_s.t, i.t)
 
+    def test_user_leaf_translation_receives_the_gradient(self, device, dtype):
+        # A tensor that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it (#4943).
+        t = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype, requires_grad=True)
+        s = Se3(So3.identity(1, device, dtype), t)
+        (s * torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)).sum().backward()
+        assert t.grad is not None
+        self.assert_close(t.grad, torch.ones_like(t))
+        assert "_translation" in s.state_dict()
+        # a tensor that does not require grad still becomes an optimizable parameter
+        plain = Se3(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype))
+        assert [name for name, _ in plain.named_parameters()] == ["_translation"]
+
     def test_derived_state_moves_and_serializes(self, device, dtype):
         v = torch.rand(2, 6, device=device, dtype=dtype, requires_grad=True)
         s = Se3.exp(v)
