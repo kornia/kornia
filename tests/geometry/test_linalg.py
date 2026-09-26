@@ -428,6 +428,20 @@ class TestEuclideanDistance(BaseTester):
         dst = kgl.euclidean_distance(pt1, pt2)
         self.assert_close(dst, torch.tensor(1.0, device=device, dtype=dtype))
 
+    def test_coincident_points_are_zero(self, device, dtype):
+        pt1 = torch.zeros(3, device=device, dtype=dtype, requires_grad=True)
+        pt2 = torch.zeros(3, device=device, dtype=dtype)
+        dst = kgl.euclidean_distance(pt1, pt2)
+        self.assert_close(dst, torch.tensor(0.0, device=device, dtype=dtype))
+        (grad,) = torch.autograd.grad(dst.sum(), pt1)
+        assert torch.isfinite(grad).all()
+
+    @pytest.mark.parametrize("dist", [1e-4, 1e-3, 1e-2, 1.0])
+    def test_distance_is_exact(self, device, dtype, dist):
+        pt1 = torch.zeros(3, device=device, dtype=dtype)
+        pt2 = torch.tensor([dist, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(kgl.euclidean_distance(pt1, pt2), torch.tensor(dist, device=device, dtype=dtype))
+
     @pytest.mark.parametrize("shape", [(2,), (3,), (1, 2), (2, 3)])
     def test_cardinality(self, device, dtype, shape):
         pt1 = torch.rand(shape, device=device, dtype=dtype)

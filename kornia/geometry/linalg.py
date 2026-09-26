@@ -308,13 +308,20 @@ def euclidean_distance(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False, 
         x: first set of points of shape :math:`(*, N)`.
         y: second set of points of shape :math:`(*, N)`.
         keepdim: whether to keep the dimension after reduction.
-        eps: small value to have numerical stability.
+        eps: deprecated and unused. The result is the exact Euclidean distance; the argument is
+            kept for backward compatibility and no longer biases it.
 
     """
     KORNIA_CHECK_SHAPE(x, ["*", "N"])
     KORNIA_CHECK_SHAPE(y, ["*", "N"])
 
-    return (x - y).pow(2).sum(dim=-1, keepdim=keepdim).add_(eps).sqrt_()
+    d2 = (x - y).pow(2).sum(dim=-1, keepdim=keepdim)
+    # Guard the singular point by substituting a safe argument into the square root and taking the
+    # value from the other arm of the ``torch.where``, so coincident points return exactly ``0``
+    # with a finite (zero) gradient instead of the ``sqrt(eps)`` floor the previous form added.
+    positive = d2 > 0
+    safe_d2 = torch.where(positive, d2, torch.ones_like(d2))
+    return torch.where(positive, safe_d2.sqrt(), torch.zeros_like(d2))
 
 
 # aliases
