@@ -220,15 +220,18 @@ class ImageModuleMixIn:
         """
         if self._output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
+        output_image = self._output_image
+        if isinstance(output_image, torch.Tensor):
+            output_image = output_image.detach().cpu()
 
-        if len(self._output_image.shape) == 3:
-            out_image = self._output_image
-        elif len(self._output_image.shape) == 4:
+        if len(output_image.shape) == 3:
+            out_image = output_image
+        elif len(output_image.shape) == 4:
             from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
-                n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = make_grid(self._output_image, n_row, padding=2)
+                n_row = math.ceil(output_image.shape[0] ** 0.5)
+            out_image = make_grid(output_image, n_row, padding=2)
         else:
             raise ValueError
 
@@ -252,13 +255,16 @@ class ImageModuleMixIn:
 
         if self._output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
+        output_image = self._output_image
+        if isinstance(output_image, torch.Tensor):
+            output_image = output_image.detach().cpu()
 
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"
-        if len(self._output_image.shape) == 3:
-            out_image = self._output_image
-        if len(self._output_image.shape) == 4:
+        if len(output_image.shape) == 3:
+            out_image = output_image
+        if len(output_image.shape) == 4:
             if n_row is None:
-                n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = make_grid(self._output_image, n_row, padding=2)
+                n_row = math.ceil(output_image.shape[0] ** 0.5)
+            out_image = make_grid(output_image, n_row, padding=2)
         write_image(name, out_image.mul(255.0).byte())

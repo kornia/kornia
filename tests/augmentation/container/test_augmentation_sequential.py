@@ -1442,10 +1442,10 @@ class TestConventionAugmentationSequential(BaseTester):
                 K.AugmentationSequential(factory(), data_keys=["input", "mask"])(img, mask)
 
     @pytest.mark.parametrize("data_style", ["image", "list", "dict", "dict_mask_first"])
-    def test_show_and_save_cache_a_detached_cpu_image_4835(self, data_style, tmp_path, device, dtype):
-        # `.show()` / `.save()` hand the cached output to `.numpy()`, so the cache must hold the
-        # augmented image alone, detached and on the CPU: the raw forward output keeps the autograd
-        # graph, stays on the input device and, for several data keys, is a list or a dict.
+    def test_show_and_save_render_a_detached_image_4835(self, data_style, tmp_path, device, dtype):
+        # `.show()` / `.save()` render the cache through `.numpy()`, so it must hold the augmented image
+        # alone and detached: the raw forward output keeps the autograd graph and, for several data keys,
+        # is a list or a dict. It stays on the input device; the helpers move it to the CPU themselves.
         from PIL import Image as PILImage
 
         image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
@@ -1467,8 +1467,8 @@ class TestConventionAugmentationSequential(BaseTester):
         cached = aug._output_image
         assert isinstance(cached, torch.Tensor)
         assert not cached.requires_grad
-        assert cached.device.type == "cpu"
-        self.assert_close(cached, out_image.detach().cpu())
+        assert cached.device == out_image.device  # no device-to-host copy in the forward pass
+        self.assert_close(cached, out_image.detach())
 
         if dtype != torch.bfloat16:  # `.show()` renders through `Tensor.numpy()`, which has no bfloat16 support
             assert isinstance(aug.show(display=False), PILImage.Image)
