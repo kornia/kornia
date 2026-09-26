@@ -48,7 +48,8 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
           shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
         trans_12: tensor with the homogeneous transformation from
           a reference frame 2 respect to a frame 1. The tensor has must have a
-          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
+          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch of one broadcasts against a batch of
+          :math:`N` in either argument.
 
     Returns:
         the transformation between the two frames with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -150,7 +151,8 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
 
     Args:
         trans_01: reference transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
-        trans_02: destination transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
+        trans_02: destination transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch
+          of one broadcasts against a batch of :math:`N` in either argument.
 
     Returns:
         the relative transformation between the transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
