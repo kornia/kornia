@@ -168,7 +168,7 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
         - ``trans_ab`` (:math:`T_a^{b}`) maps points in frame ``b`` to frame ``a``, :math:`p_a = T_a^{b} p_b`:
           ``transform_points(trans_01, points_1)`` returns ``points_0``, and
           ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``.
-          :ref:`Rotations and rigid motions <rotation-conventions>` maps this onto other libraries.
+          :doc:`Conventions </get-started/conventions>` maps this onto other libraries.
         - ``trans_01`` must be a rigid :math:`[R|t]`, as for :func:`inverse_transformation`, and the last row of
           ``trans_02`` is read as :math:`[0, 0, 0, 1]`, as in :func:`compose_transformations`. Neither is validated:
           a scaled, sheared or projective ``trans_01``, or a projective ``trans_02``, gives a wrong result silently.
