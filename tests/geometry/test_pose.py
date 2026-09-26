@@ -91,6 +91,63 @@ class TestNamedPose(BaseTester):
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se2)
 
+    @pytest.mark.parametrize("batch_size", [None, 1, 2])
+    def test_from_rt_tensor_batch_3d(self, device, dtype, batch_size):
+        batch_shape = () if batch_size is None else (batch_size,)
+        rotation = So3.random(batch_size, device=device, dtype=dtype).matrix()
+        translation = torch.rand(*batch_shape, 3, device=device, dtype=dtype)
+        b_from_a = NamedPose.from_rt(rotation, translation, frame_src="frame_a", frame_dst="frame_b")
+        assert isinstance(b_from_a.pose, Se3)
+        assert b_from_a.pose.matrix().shape == (*batch_shape, 4, 4)
+        assert b_from_a.translation.shape == (*batch_shape, 3)
+
+        matrix = torch.eye(4, device=device, dtype=dtype).repeat(*batch_shape, 1, 1)
+        matrix[..., :3, :3] = rotation
+        matrix[..., :3, 3] = translation
+        self.assert_close(b_from_a.pose.matrix(), NamedPose.from_matrix(matrix).pose.matrix())
+        self.assert_close(
+            b_from_a.pose.matrix(), NamedPose.from_rt(So3.from_matrix(rotation), translation).pose.matrix()
+        )
+
+    @pytest.mark.parametrize("batch_size", [None, 1, 2])
+    def test_from_rt_tensor_batch_2d(self, device, dtype, batch_size):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
+        batch_shape = () if batch_size is None else (batch_size,)
+        rotation = So2.random(batch_size, device=device, dtype=dtype).matrix()
+        translation = torch.rand(*batch_shape, 2, device=device, dtype=dtype)
+        b_from_a = NamedPose.from_rt(rotation, translation, frame_src="frame_a", frame_dst="frame_b")
+        assert isinstance(b_from_a.pose, Se2)
+        assert b_from_a.pose.matrix().shape == (*batch_shape, 3, 3)
+        assert b_from_a.translation.shape == (*batch_shape, 2)
+
+        matrix = torch.eye(3, device=device, dtype=dtype).repeat(*batch_shape, 1, 1)
+        matrix[..., :2, :2] = rotation
+        matrix[..., :2, 2] = translation
+        self.assert_close(b_from_a.pose.matrix(), NamedPose.from_matrix(matrix).pose.matrix())
+        self.assert_close(
+            b_from_a.pose.matrix(), NamedPose.from_rt(So2.from_matrix(rotation), translation).pose.matrix()
+        )
+
+    @pytest.mark.parametrize(
+        ("rotation_shape", "translation_shape"),
+        [
+            ((2, 3, 3), (1, 3)),
+            ((2, 3, 3), (3,)),
+            ((1, 3, 3), (3,)),
+            ((3, 3), (1, 3)),
+            ((2, 2, 2), (2,)),
+            ((2, 2), (1, 2)),
+        ],
+    )
+    def test_from_rt_tensor_batch_translation_mismatch(self, device, dtype, rotation_shape, translation_shape):
+        # The translation must carry exactly the rotation's batch shape, as with So3/So2 rotations: neither a
+        # broadcast translation nor a batched translation for an unbatched rotation is accepted.
+        rotation = torch.eye(rotation_shape[-1], device=device, dtype=dtype).expand(*rotation_shape)
+        translation = torch.zeros(*translation_shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="translation must have shape"):
+            NamedPose.from_rt(rotation, translation)
+
     def test_from_matrix(self, device, dtype):
         b_from_a_matrix = Se3.identity(device=device, dtype=dtype).matrix()
         b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
