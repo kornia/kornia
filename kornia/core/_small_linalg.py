@@ -171,10 +171,10 @@ def _inverse_3x3_cross(input: torch.Tensor) -> torch.Tensor:
     Prefer :func:`_inverse_3x3_scalar` wherever a graph is being captured. The reason is
     **kernel coverage, not ONNX lowering**: a backend with no ``cross`` kernel for the working
     dtype makes this raise rather than return -- torch 2.5.1 has no ``bfloat16`` ``cross`` on
-    MPS, while 2.9.1 does.
+    MPS, while 2.14.0 does.
 
     ONNX lowering is *not* a reason, measured: ``torch.linalg.cross`` lowers on both torch
-    versions kornia's CI runs -- 2.5.1 (legacy exporter) and 2.9.1 (legacy and dynamo) -- to
+    versions kornia's CI runs -- 2.5.1 (legacy exporter) and 2.14.0 (legacy and dynamo) -- to
     ``Slice``/``Mul``/``Sub``/``Concat``. What neither exporter lowers on either version is
     ``aten::linalg_inv``, which is what :func:`kornia.core.utils._torch_inverse_cast` avoids by
     reaching for a closed form in the first place. torch 2.0-2.4 is below the declared floor; CI does not run it
