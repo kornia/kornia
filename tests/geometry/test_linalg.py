@@ -597,6 +597,23 @@ class TestLinalgConventions(BaseTester):
         self.assert_close(inv[:3, 3], expected_t)
         assert (inv @ m - torch.eye(4, device=device, dtype=dtype)).abs().max() > 1.0
 
+    def test_convention_transform_helpers_read_the_top_three_rows(self, device, dtype):
+        t01, t02 = self._fixture(device, dtype)
+        # compose, relative and inverse read only the top three rows of each input and write [0, 0, 0, 1] as the
+        # last row of the result, so a projective last row is used as if it were [0, 0, 0, 1].
+        row = torch.tensor([0.1, -0.2, 0.05, 1.3], device=device, dtype=dtype)
+        p02, p01 = t02.clone(), t01.clone()
+        p02[3], p01[3] = row, row
+        # precondition: the projective row changes the full product
+        assert (t01 @ p02 - t01 @ t02).abs().max() > 0.5
+        self.assert_close(kgl.compose_transformations(t01, p02), t01 @ t02)
+        self.assert_close(kgl.relative_transformation(t01, p02), kgl.inverse_transformation(t01) @ t02)
+        self.assert_close(kgl.inverse_transformation(p01), kgl.inverse_transformation(t01))
+        # The first argument of relative_transformation is inverted by transposition, as in inverse_transformation.
+        m = t01.clone()
+        m[:3, :3] = 2.0 * m[:3, :3]
+        self.assert_close(kgl.relative_transformation(m, t02), kgl.inverse_transformation(m) @ t02)
+
     def test_convention_relative_transformation_vs_relative_camera_motion(self, device, dtype):
         # Read as world-to-camera extrinsics E1 = T01, E2 = T02, relative_camera_motion returns E2 E1^-1, which is
         # relative_transformation(E2^-1, E1^-1) and not relative_transformation(E1, E2).
@@ -621,8 +638,6 @@ class TestLinalgConventions(BaseTester):
         assert (kgl.relative_transformation(e1, e2)[:3] - expected).abs().max() > 0.5
 
     def test_wart_point_line_distance_eps_bias_4881(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("point_line_distance's default eps=1e-9 is below the float16 subnormal range and rounds away")
         # https://github.com/kornia/kornia/issues/4881: eps is added to the line norm,
         # |ax + by + c| / (||(a, b)|| + eps), so the distance depends on the scale of the line. The point (1.5, -0.7)
         # is 2.34 from 3x + 4y + 10 = 0 at every scale (11.7 / 5); at scale 1e-9 the norm is 5e-9 and the result is
@@ -631,10 +646,15 @@ class TestLinalgConventions(BaseTester):
         line = torch.tensor([[3.0, 4.0, 10.0]], device=device, dtype=dtype)
         exact = torch.tensor([2.34], device=device, dtype=dtype)
         self.assert_close(kgl.point_line_distance(point, line), exact)
+        degenerate = kgl.point_line_distance(point, torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype))
+        if dtype == torch.float16:
+            # The default eps=1e-9 rounds to zero in float16 (and a 1e-9-scaled line underflows), so the degenerate
+            # line gives inf.
+            assert torch.isinf(degenerate).all()
+            return
         scaled = kgl.point_line_distance(point, 1e-9 * line)
         assert ((scaled - exact) / exact).max() < -0.1
         # A degenerate line (0, 0, 1) returns |c| / eps = 1e9 instead of flagging the singular case.
-        degenerate = kgl.point_line_distance(point, torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype))
         assert torch.isfinite(degenerate).all() and (degenerate > 1e8).all()
 
     def test_wart_point_line_distance_ignores_w_4935(self, device, dtype):

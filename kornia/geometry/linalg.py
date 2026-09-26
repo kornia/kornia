@@ -44,8 +44,9 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
 
     Convention:
         - The result is the matrix product ``trans_01 @ trans_12``, with the frame naming of
-          :func:`relative_transformation`. Any affine pair composes exactly, but the last row of the result is always
-          :math:`[0, 0, 0, 1]`, so a projective last row is dropped.
+          :func:`relative_transformation`. Only the top three rows of each input are read and the last row of the
+          result is always :math:`[0, 0, 0, 1]`: any affine pair composes exactly, and a projective input is used as
+          if its last row were :math:`[0, 0, 0, 1]`.
 
     Args:
         trans_01: tensor with the homogeneous transformation from
@@ -113,8 +114,9 @@ def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - The input must be a rigid :math:`[R|t]`, and this is not validated: the rotation block is transposed, not
-          inverted, so a scaled, sheared or projective matrix returns a result that is not its inverse. Use
-          :func:`torch.linalg.inv` for a general matrix. Frame naming is on :func:`relative_transformation`.
+          inverted, and the last row is read as :math:`[0, 0, 0, 1]`, so a scaled, sheared or projective matrix
+          returns a result that is not its inverse. Use :func:`torch.linalg.inv` for a general matrix. Frame naming
+          is on :func:`relative_transformation`.
 
     Args:
         trans_12: transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -167,11 +169,13 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
           ``transform_points(trans_01, points_1)`` returns ``points_0``, and
           ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``.
           :ref:`Rotations and rigid motions <rotation-conventions>` maps this onto other libraries.
-        - ``trans_01`` must be a rigid :math:`[R|t]`, as for :func:`inverse_transformation`; this is not validated,
-          and a scaled, sheared or projective ``trans_01`` gives a wrong result silently.
+        - ``trans_01`` must be a rigid :math:`[R|t]`, as for :func:`inverse_transformation`, and the last row of
+          ``trans_02`` is read as :math:`[0, 0, 0, 1]`, as in :func:`compose_transformations`. Neither is validated:
+          a scaled, sheared or projective ``trans_01``, or a projective ``trans_02``, gives a wrong result silently.
         - :func:`~kornia.geometry.epipolar.relative_camera_motion` takes world-to-camera extrinsics
-          :math:`E_1, E_2` and returns :math:`E_2 E_1^{-1}`, which is ``relative_transformation`` of
-          :math:`E_2^{-1}` and :math:`E_1^{-1}`, in this order, not of :math:`E_1` and :math:`E_2`.
+          :math:`E_1, E_2` and returns the :math:`[R|t]` of :math:`E_2 E_1^{-1}`, which is
+          ``relative_transformation`` of :math:`E_2^{-1}` and :math:`E_1^{-1}`, in this order, not of :math:`E_1` and
+          :math:`E_2`.
 
     Args:
         trans_01: reference transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -284,9 +288,10 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
     Convention:
         - ``line`` need not be normalised: the distance is :math:`|ax + by + c| / \|(a, b)\|`.
         - Known defects: the third coordinate of a homogeneous point is ignored, so the distance is correct only for
-          :math:`w = 1` (`#4935 <https://github.com/kornia/kornia/issues/4935>`_); ``eps`` in the denominator biases
-          every distance low by about :math:`\epsilon / \|(a, b)\|` in relative terms and returns :math:`|c| / \epsilon`
-          for a line with :math:`a = b = 0` (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+          :math:`w = 1` (`#4935 <https://github.com/kornia/kornia/issues/4935>`_); ``eps`` in the denominator scales
+          every distance down by :math:`\|(a, b)\| / (\|(a, b)\| + \epsilon)` and returns :math:`|c| / \epsilon` for
+          a line with :math:`a = b = 0`, or ``inf`` in ``float16``, where the default ``eps`` rounds to zero
+          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
 
     Args:
        point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the

@@ -268,7 +268,7 @@ class TestNamedPoseConventions(BaseTester):
             NamedPose(g1, frame_src="b", frame_dst="c") * NamedPose(se2, frame_src="a", frame_dst="b")
         with pytest.raises(AttributeError):
             NamedPose(se2, frame_src="b", frame_dst="c") * NamedPose(g1, frame_src="a", frame_dst="b")
-        # A rotation-only group is accepted at construction and fails on first use.
+        # A rotation-only group is accepted at construction, and its rotation then raises.
         so3_pose = NamedPose(So3.identity(device=device, dtype=dtype), frame_src="a", frame_dst="b")
         with pytest.raises(AttributeError):
             _ = so3_pose.rotation
