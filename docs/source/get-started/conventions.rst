@@ -100,6 +100,64 @@ Angles and rotations
     q = Quaternion.identity()
     assert q.data.tolist() == [1.0, 0.0, 0.0, 0.0]  # w, x, y, z
 
+.. _rotation-conventions:
+
+Rotations and rigid motions
+---------------------------
+
+:class:`~kornia.geometry.quaternion.Quaternion` stores ``(w, x, y, z)`` and multiplies by the Hamilton product,
+so ``(q1 * q2).matrix()`` is ``q1.matrix() @ q2.matrix()``: the right operand acts first. The Lie groups
+:class:`~kornia.geometry.liegroup.So3`, :class:`~kornia.geometry.liegroup.Se3`,
+:class:`~kornia.geometry.liegroup.So2` and :class:`~kornia.geometry.liegroup.Se2` compose the same way and act on
+a point as ``R p + t``. Their tangent vectors are in radians, with the rotation part last: ``[υ, ω]`` for ``Se3``
+and ``[vx, vy, θ]`` for ``Se2``. ``log`` is principal: its rotation angle is at most :math:`\pi` in magnitude. The Jacobians satisfy
+:math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
+``trans_01`` maps frame-1 coordinates into frame 0, and
+:func:`~kornia.geometry.linalg.relative_transformation` of ``trans_01`` and ``trans_02`` is ``trans_12``;
+:class:`~kornia.geometry.pose.NamedPose` names the same transform ``dst_from_src``. Known defects: ``So3`` does not
+normalise a non-unit quaternion in ``matrix()`` and ``*`` (`#4942 <https://github.com/kornia/kornia/issues/4942>`_),
+and a rotation built from a plain tensor is missing from ``state_dict`` (`#4923
+<https://github.com/kornia/kornia/issues/4923>`_).
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - scipy ``Rotation``
+     - Sophus
+     - Eigen
+   * - quaternion storage
+     - ``(w, x, y, z)``
+     - ``from_quat`` reads ``(x, y, z, w)`` unless ``scalar_first=True``
+     - Eigen's quaternion
+     - the ``Quaternion(w, x, y, z)`` constructor is scalar first, ``coeffs()`` is ``(x, y, z, w)``
+   * - composition
+     - ``a * b``, ``b`` acts first
+     - ``r1 * r2``, the same
+     - ``a * b``, the same
+     - ``q1 * q2``, the same
+   * - SE(3) tangent
+     - ``[υ, ω]``, translation first
+     - no SE(3)
+     - ``SE3::log`` returns ``[υ, ω]``, the same (GTSAM's ``Pose3`` is ``[ω, υ]``)
+     - no SE(3)
+   * - rotation ``log``
+     - principal
+     - ``as_rotvec``, principal
+     - ``SO3::log``, principal
+     - ``AngleAxis(q)``, angle in :math:`[0, \pi]`
+   * - ``slerp``
+     - the short arc
+     - ``Slerp``, the short arc
+     - ``interpolate``, the short arc
+     - ``Quaternion::slerp``, the short arc
+   * - frame naming
+     - ``trans_01`` and ``dst_from_src`` map frame 1 (``src``) into frame 0 (``dst``)
+     - no frames
+     - ``foo_T_bar`` maps ``bar`` into ``foo``
+     - no frames
+
 Transformation matrices and homographies
 ----------------------------------------
 
