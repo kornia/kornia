@@ -87,8 +87,19 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
         mask_nonpositive, zero, torch.sqrt(torch.where(mask_nonpositive, torch.ones_like(delta), delta))
     )
 
-    root_plus = (-b + sqrt_delta) * inv_2a
-    root_minus = (-b - sqrt_delta) * inv_2a
+    # Use the numerically stable quadratic formula to avoid cancellation when
+    # sqrt(delta) is close to |b|.
+    sign_b = torch.where(b >= 0, torch.ones_like(b), -torch.ones_like(b))
+    q = -0.5 * (b + sign_b * sqrt_delta)
+
+    safe_a = torch.where(mask_linear, one, a)
+    safe_q = torch.where(q == 0, one, q)
+
+    # Preserve the historical root ordering while using the stable formula.
+    root_c_over_q = c / safe_q
+    root_q_over_a = q / safe_a
+    root_plus = torch.where(b >= 0, root_c_over_q, root_q_over_a)
+    root_minus = torch.where(b >= 0, root_q_over_a, root_c_over_q)
 
     # The a * x^2 / b term is 0 in the forward pass, but it keeps the root's dependence on a in the
     # gradient (d root / da = -root^2 / b). With b == 0 as well there is no root to report. The lane
