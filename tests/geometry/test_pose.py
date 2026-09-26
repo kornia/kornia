@@ -117,15 +117,20 @@ class TestNamedPose(BaseTester):
         assert a_from_b.frame_dst == "frame_a"
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def transform_points(self, device, dtype, batch_size):
+    def test_transform_points(self, device, dtype, batch_size):
         if batch_size is None:
             points_in_a = torch.randn(3, device=device, dtype=dtype)
-            b_from_a_se3 = Se3.trans_x(torch.tensor(1.0, device=device, dtype=dtype))
+            b_from_a_se3 = Se3.rot_z(torch.tensor(0.5, device=device, dtype=dtype)) * Se3.trans_x(
+                torch.tensor(1.0, device=device, dtype=dtype)
+            )
         else:
             points_in_a = torch.randn(batch_size, 3, device=device, dtype=dtype)
-            b_from_a_se3 = Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype))
+            b_from_a_se3 = Se3.rot_z(torch.tensor([0.5] * batch_size, device=device, dtype=dtype)) * Se3.trans_x(
+                torch.tensor([1.0] * batch_size, device=device, dtype=dtype)
+            )
         b_from_a = NamedPose(b_from_a_se3, frame_src="frame_a", frame_dst="frame_b")
         a_from_b = b_from_a.inverse()
         points_in_b = b_from_a.transform_points(points_in_a)
         assert points_in_b.shape == points_in_a.shape
         self.assert_close(a_from_b.transform_points(points_in_b), points_in_a)
+
