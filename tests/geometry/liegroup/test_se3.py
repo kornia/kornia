@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -412,3 +414,109 @@ class TestSe3(BaseTester):
         assert moved.t.dtype == other and moved.t.grad_fn is not None
         moved.t.sum().backward()
         assert v.grad is not None
+
+    def test_convention_se3_tangent_is_upsilon_omega_with_V(self, device, dtype):
+        # The tangent is (upsilon, omega), translation part first: exp rotates by the rotation vector omega and
+        # translates by V(omega) upsilon. Reference, float64: m = scipy.linalg.expm of
+        # [[0, 0.3, 0.2, 1], [-0.3, 0, -0.4, -2], [-0.2, 0.4, 0, 3], [0, 0, 0, 0]]; t = m[:3, 3], R = m[:3, :3].
+        v = torch.tensor([1.0, -2.0, 3.0, 0.4, 0.2, -0.3], device=device, dtype=dtype)
+        g = Se3.exp(v)
+        t_expected = torch.tensor(
+            [0.8932266973410874, -2.666342656131567, 2.413407159033739], device=device, dtype=dtype
+        )
+        r_expected = torch.tensor(
+            [
+                [0.9365557269934556, 0.32475143364814213, 0.13190859175670216],
+                [-0.24666617456316434, 0.8779917826797222, -0.4102270442977377],
+                [-0.24903648038416887, 0.35166309998400436, 0.9023934261437778],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        assert (t_expected - v[:3]).abs().max() > 0.1  # V is not the identity at this rotation
+        self.assert_close(g.t, t_expected)
+        self.assert_close(g.r.matrix(), r_expected)
+        self.assert_close(g.r.log(), v[3:])
+
+    def test_convention_se3_hat_layout(self, device, dtype):
+        # hat(upsilon, omega) = [[hat(omega), upsilon], [0, 0]]: the cross-product matrix of omega in the top-left
+        # block, upsilon in the last column, a zero bottom row. Its matrix exponential is exp(v).matrix().
+        v = torch.tensor([1.0, -2.0, 3.0, 0.4, 0.2, -0.3], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[0.0, 0.3, 0.2, 1.0], [-0.3, 0.0, -0.4, -2.0], [-0.2, 0.4, 0.0, 3.0], [0.0, 0.0, 0.0, 0.0]],
+            device=device,
+            dtype=dtype,
+        )
+        m = Se3.hat(v)
+        self.assert_close(m, expected)
+        # matrix_exp has no half-precision kernel and MPS has no float64: take it in float64 on the CPU. Move first,
+        # then cast: on torch 2.14 a single m.to("cpu", torch.float64) from MPS returns zeros.
+        m_exp = torch.linalg.matrix_exp(m.cpu().double()).to(device=device, dtype=dtype)
+        self.assert_close(m_exp, Se3.exp(v).matrix())
+
+    def test_convention_se3_adjoint_conjugates_the_tangent(self, device, dtype):
+        # g exp(v) = exp(Ad(g) v) g, with Ad(g) = [[R, hat(t) R], [0, R]] for the (upsilon, omega) tangent.
+        g = Se3.exp(torch.tensor([1.0, -2.0, 3.0, 0.4, 0.2, -0.3], device=device, dtype=dtype))
+        v = torch.tensor([0.3, 0.1, -0.2, -0.1, 0.3, 0.05], device=device, dtype=dtype)
+        ad_v = (g.adjoint() @ v[:, None])[:, 0]
+        assert (ad_v - v).abs().max() > 0.1  # g does not commute with exp(v)
+        self.assert_close((g * Se3.exp(v)).matrix(), (Se3.exp(ad_v) * g).matrix())
+
+    def test_convention_se3_composition_is_left_matrix_product(self, device, dtype):
+        # a * b is the matrix product a b: b acts first on a point.
+        a = Se3.exp(torch.tensor([1.0, -2.0, 3.0, 0.4, 0.2, -0.3], device=device, dtype=dtype))
+        b = Se3.exp(torch.tensor([0.3, 0.1, -0.2, -0.1, 0.3, 0.05], device=device, dtype=dtype))
+        ab, ba = a.matrix() @ b.matrix(), b.matrix() @ a.matrix()
+        assert (ab - ba).abs().max() > 0.1  # a non-commuting pair
+        self.assert_close((a * b).matrix(), ab)
+        p = torch.tensor([0.7, -1.3, 2.1], device=device, dtype=dtype)
+        self.assert_close((a * b) * p, a * (b * p))
+
+    def test_convention_se3_from_qxyz_is_wxyz_then_xyz(self, device, dtype):
+        # The seven numbers are the quaternion (w, x, y, z), then the translation (x, y, z).
+        # Reference: 95 * scipy.spatial.transform.Rotation.from_quat(q).as_matrix(), which takes (x, y, z, w), for
+        # q = (1, -3, 2, 9) (the wxyz reading) and q = (9, 1, -3, 2) (the xyzw reading).
+        q = torch.tensor([9.0, 1.0, -3.0, 2.0], dtype=torch.float64) / math.sqrt(95.0)
+        qxyz = torch.cat((q, torch.tensor([5.0, 6.0, 7.0], dtype=torch.float64))).to(device=device, dtype=dtype)
+        wxyz = torch.tensor([[69.0, -42.0, -50.0], [30.0, 85.0, -30.0], [58.0, 6.0, 75.0]], device=device, dtype=dtype)
+        xyzw = torch.tensor(
+            [[75.0, 30.0, -50.0], [6.0, -85.0, -42.0], [-58.0, 30.0, -69.0]], device=device, dtype=dtype
+        )
+        assert (wxyz - xyzw).abs().max() > 50.0  # the two readings differ
+        g = Se3.from_qxyz(qxyz)
+        self.assert_close(g.r.matrix(), wxyz / 95.0)
+        self.assert_close(g.t.data, torch.tensor([5.0, 6.0, 7.0], device=device, dtype=dtype))
+
+    def test_convention_se3_from_matrix_ignores_the_bottom_row(self, device, dtype):
+        # from_matrix reads the rotation block and the last column; it does not check the bottom row.
+        clean = Se3.exp(torch.tensor([1.0, -2.0, 3.0, 0.4, 0.2, -0.3], device=device, dtype=dtype)).matrix().detach()
+        junk = clean.clone()
+        junk[3] = torch.tensor([0.5, -4.0, 7.0, 2.0], device=device, dtype=dtype)
+        self.assert_close(Se3.from_matrix(junk).matrix(), clean)
+
+    def test_wart_se3_translation_type_depends_on_constructor_4931(self, device, dtype):
+        from_exp = Se3.exp(torch.zeros(1, 6, device=device, dtype=dtype))
+        identity = Se3.identity(1, device, dtype)
+        self.assert_close(identity.matrix(), from_exp.matrix())  # the same group element
+        assert isinstance(from_exp.t, torch.Tensor)
+        # https://github.com/kornia/kornia/issues/4931: identity stores its translation as a Vector3, which is not a
+        # tensor, so tensor indexing of the translation fails for it and works for the exp-built element.
+        assert isinstance(identity.t, Vector3)
+        assert not isinstance(identity.t, torch.Tensor)
+        self.assert_close(from_exp.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
+        with pytest.raises(RuntimeError, match="ellipsis"):
+            identity.t[..., 0]
+
+    def test_wart_se3_load_state_dict_restores_translation_not_rotation_4923(self, device, dtype):
+        src = Se3.exp(torch.tensor([[1.0, -2.0, 3.0, 0.4, 0.2, -0.3]], device=device, dtype=dtype))
+        dst = Se3(Quaternion.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype))
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        assert (src.r.matrix() - eye).abs().max() > 0.1  # the source rotation is not the identity
+        # https://github.com/kornia/kornia/issues/4923: the quaternion is not registered, so the state dict holds
+        # only the translation; loading reports every key matched, restores the translation and keeps the old
+        # rotation.
+        assert list(src.state_dict()) == ["_translation"]
+        result = dst.load_state_dict(src.state_dict())
+        assert not result.missing_keys and not result.unexpected_keys
+        self.assert_close(dst.t, src.t.detach())
+        self.assert_close(dst.r.matrix(), eye)
