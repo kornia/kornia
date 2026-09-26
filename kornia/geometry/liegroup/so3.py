@@ -42,7 +42,8 @@ def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, to
     relative accuracy near it: all three evaluate to exactly 0 in float32 for :math:`\theta \le 10^{-4}` and in
     float64 for :math:`\theta \le 10^{-8}`. Below ``theta_small`` the Taylor series through :math:`\theta^{10}`
     is used instead. At the switch point the series is accurate to a fraction of an ulp and the closed forms to a
-    few hundred ulps, so the two branches agree there.
+    few hundred ulps, so the two branches agree there. The closed forms divide by :math:`\theta` one factor at a
+    time: :math:`\theta^3` overflows float16 above 40.3 rad and :math:`\theta^2` above 256 rad.
 
     Args:
         theta: rotation angles of any shape, non-negative.
@@ -63,11 +64,10 @@ def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, to
     c_series = 1 / 12 + t2 * (
         1 / 720 + t2 * (1 / 30240 + t2 * (1 / 1209600 + t2 * (1 / 47900160 + t2 * (691 / 1307674368000))))
     )
-    safe_sq = safe_theta * safe_theta
     half = 0.5 * safe_theta
-    a = torch.where(small, a_series, (1 - torch.cos(safe_theta)) / safe_sq)
-    b = torch.where(small, b_series, (safe_theta - torch.sin(safe_theta)) / (safe_sq * safe_theta))
-    c = torch.where(small, c_series, (1 - half * torch.cos(half) / torch.sin(half)) / safe_sq)
+    a = torch.where(small, a_series, (1 - torch.cos(safe_theta)) / safe_theta / safe_theta)
+    b = torch.where(small, b_series, (1 - torch.sin(safe_theta) / safe_theta) / safe_theta / safe_theta)
+    c = torch.where(small, c_series, (1 - half * torch.cos(half) / torch.sin(half)) / safe_theta / safe_theta)
     return a, b, c
 
 

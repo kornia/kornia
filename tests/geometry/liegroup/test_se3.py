@@ -81,6 +81,17 @@ class TestSe3(BaseTester):
         Se3(So3(Quaternion(data[:, :4])), data[:, 4:]).log().sum().backward()
         assert bool(torch.isfinite(data.grad).all()), data.grad
 
+    def test_exp_matches_float64_above_40_rad_4965(self, device, dtype):
+        # #4965: _so3_small_angle_coefficients divided by theta**3, which overflows float16 above 40.3 rad, so the
+        # [omega]_x^2 term of V dropped out and the float16 exp(v).t was off by 0.18 from 41 rad. The reference
+        # is the float64 path on the CPU, run on the same rounded input.
+        eps = torch.finfo(dtype).eps
+        axis = torch.tensor([0.48, 0.6, 0.64], dtype=torch.float64)
+        for theta in (41.0, 60.0):
+            v = torch.cat((torch.ones(3, dtype=torch.float64), theta * axis)).to(device=device, dtype=dtype)
+            t_ref = Se3.exp(v.cpu().double()).t.to(device=device, dtype=dtype)
+            self.assert_close(Se3.exp(v).t, t_ref, rtol=8 * eps, atol=8 * eps)
+
     def test_gradient_at_the_identity_couples_rotation_and_translation_4953(self, device, dtype):
         # #4953: exp fell back to t = upsilon and log to upsilon = t at omega = 0. The values were
         # right, V(0) = I, but the fallback did not depend on omega, so autograd returned
