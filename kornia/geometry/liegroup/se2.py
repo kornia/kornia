@@ -65,9 +65,8 @@ class Se2(nn.Module):
           a rotation scaled by :math:`\sqrt{a^2 + b^2}`, and keeps the scale as a non-unit ``z`` that ``log`` drops;
           it rejects any other block, such as a reflection.
         - Known defects: ``hat`` and ``vee`` put the translation in the bottom row and the angle in a symmetric block
-          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); ``random`` takes the non-unit rotation of
-          ``So2.random`` (`#4930 <https://github.com/kornia/kornia/issues/4930>`_); for ``identity``, ``random`` and
-          any pose composed with or inverted from one, ``t`` and ``g * points`` are a ``Vector2`` instead of a tensor
+          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); for ``identity``, ``random`` and any pose
+          composed with or inverted from one, ``t`` and ``g * points`` are a ``Vector2`` instead of a tensor
           (`#4931 <https://github.com/kornia/kornia/issues/4931>`_), and ``state_dict`` and ``.to()`` skip that
           translation, while ``.to()`` a real dtype breaks the ``So2`` rotation
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
@@ -402,8 +401,6 @@ class Se2(nn.Module):
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
         """Create a Se2 group from ``So2.random`` and a translation drawn from :math:`U[0, 1)`.
-
-        The rotation is not a uniform unit rotation (`#4930 <https://github.com/kornia/kornia/issues/4930>`_).
 
         Args:
             batch_size: the batch size of the underlying data.

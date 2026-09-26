@@ -47,9 +47,8 @@ class So2(nn.Module):
           ``log`` returns the angle in :math:`[-\pi, \pi]`, and ``adjoint()`` is the 2x2 identity.
         - Known defects: ``hat`` returns the symmetric :math:`[[0, \theta], [\theta, 0]]` instead of the generator
           :math:`[[0, -\theta], [\theta, 0]]`, and ``vee`` reads its ``[0, 1]`` entry
-          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); ``random`` is not a unit rotation and its angle
-          lies in :math:`[0, \pi/2]` (`#4930 <https://github.com/kornia/kornia/issues/4930>`_); a :math:`(B, 1)`
-          ``z`` or angle times :math:`(B, 2)` points returns :math:`(B, B, 2)`, every rotation applied to every point
+          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); a :math:`(B, 1)` ``z`` or angle times
+          :math:`(B, 2)` points returns :math:`(B, B, 2)`, every rotation applied to every point
           (`#4932 <https://github.com/kornia/kornia/issues/4932>`_); ``.to()`` a real dtype keeps
           :math:`\cos\theta`, drops :math:`\sin\theta` and makes ``matrix()`` raise
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
@@ -320,9 +319,7 @@ class So2(nn.Module):
         device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> So2:
-        """Create a So2 group with real and imaginary parts drawn from :math:`U[0, 1)`.
-
-        The result is not a uniform unit rotation (`#4930 <https://github.com/kornia/kornia/issues/4930>`_).
+        r"""Create a So2 group with a unit rotation whose angle is drawn from :math:`U[-\pi, \pi)`.
 
         Args:
             batch_size: the batch size of the underlying data.

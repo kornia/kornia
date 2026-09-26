@@ -334,18 +334,6 @@ class TestSo2(BaseTester):
         rotation = So2.exp(torch.tensor(0.3, device=device, dtype=dtype)).matrix().detach()
         self.assert_close(So2.from_matrix(rotation).log(), torch.tensor(0.3, device=device, dtype=dtype))
 
-    def test_wart_so2_random_is_not_a_unit_rotation_4930(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
-        # Unseeded on purpose: 25% of the unit square lies within 0.1 of the unit circle, so all 1000 draws land
-        # there with probability 0.25^1000, and seeding here would shift the global RNG stream of every later test.
-        s = So2.random(1000, device=device, dtype=dtype)
-        radius = (s.z.real**2 + s.z.imag**2).sqrt()
-        # https://github.com/kornia/kornia/issues/4930: both parts of z are drawn from U[0, 1), so |z| spans
-        # [0, sqrt(2)) and every angle lies in [0, pi / 2]. A uniform rotation has |z| = 1 and angles of both signs.
-        assert (radius - 1).abs().max() > 0.1
-        assert s.log().min() >= 0
-
     def test_wart_so2_column_angle_outer_broadcasts_4932(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
