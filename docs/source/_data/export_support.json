@@ -8331,23 +8331,6 @@
       "where": ""
     },
     {
-      "compile": "n/a",
-      "compile_detail": "does not run eagerly with the probed inputs: BaseError : Validation condition failed",
-      "export": "n/a",
-      "export_detail": "does not run eagerly with the probed inputs: BaseError : Validation condition failed",
-      "graph_breaks": 0,
-      "name": "plane.Hyperplane.through[2d]",
-      "note": "KORNIA BUG: 2-D branch wraps a 2-vector into Vector3 -> always fails validation (plane.py:185)",
-      "onnx": "n/a",
-      "onnx_detail": "does not run eagerly with the probed inputs: BaseError : Validation condition failed",
-      "operator": "Hyperplane.through",
-      "package": "kornia.geometry",
-      "ref": "",
-      "section": "plane",
-      "variant": "2d",
-      "where": ""
-    },
-    {
       "compile": "ok",
       "compile_detail": "",
       "export": "ok",
