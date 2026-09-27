@@ -770,9 +770,8 @@ def motion_from_essential_choose_solution(
         - ``K1`` and ``K2`` are applied inside, so ``x1`` and ``x2`` are pixel coordinates.
         - Returns the candidate with the most points at positive depth in both cameras, with
           :math:`\|t\| = 1`, and the points triangulated in the first camera's frame at that scale.
-        - Known defects: in a batch every element uses the first element's candidate
-          (`#2198 <https://github.com/kornia/kornia/issues/2198>`_); with no valid point it returns candidate 0
-          without a signal (`#4879 <https://github.com/kornia/kornia/issues/4879>`_).
+        - Known defects: with no valid point it returns candidate 0 without a signal
+          (`#4879 <https://github.com/kornia/kornia/issues/4879>`_).
 
     Args:
         E_mat: The essential matrix in the form of :math:`(B, 3, 3)`, or :math:`(3, 3)` with every other input
@@ -851,9 +850,10 @@ def motion_from_essential_choose_solution(
     mask_indices = torch.max(depth_mask.sum(-1), dim=-1, keepdim=True)[1]
 
     # get pose and points 3d and return
-    R_out = Rs[:, mask_indices][:, 0, 0]
-    t_out = ts[:, mask_indices][:, 0, 0]
-    points3d_out = X[:, mask_indices][:, 0, 0]
+    batch_idx = torch.arange(mask_indices.shape[0], device=mask_indices.device)
+    R_out = Rs[batch_idx, mask_indices[:, 0]]
+    t_out = ts[batch_idx, mask_indices[:, 0]]
+    points3d_out = X[batch_idx, mask_indices[:, 0]]
 
     if unbatched:
         R_out = R_out[0]

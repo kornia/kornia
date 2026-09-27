@@ -1,0 +1,1 @@
+`motion_from_essential_choose_solution` now selects each batch element's own best candidate pose independently. Previously, every element in a batched call silently reused the first element's chosen candidate index, which could return a wrong rotation, translation, and triangulated points for any batch (size > 1) where different elements' correct candidates differ.
