@@ -694,10 +694,10 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         - The chordal mean of scipy's ``Rotation.mean``: the eigenvector of
           :math:`\sum_i w_i q_i q_i^\top / \sum_i w_i` with the largest eigenvalue. ``q_i`` and ``-q_i`` count the
           same, and the sign of the result is arbitrary.
-        - ``w`` need not sum to one: scaling it by a positive factor does not change the result.
-        - Known defect: the members are not normalised, so a member of norm ``n`` counts with an extra weight
-          ``n**2``, and negative weights are not rejected
-          (`#4974 <https://github.com/kornia/kornia/issues/4974>`_).
+        - ``w`` need not sum to one: scaling it by a positive factor does not change the result. A negative weight,
+          or weights that are all zero, raise ``ValueError``.
+        - The members are normalised first, so only their directions count: a member stored as ``3 * q`` weighs
+          the same as ``q``.
 
     Args:
         Q (Quaternion): quaternion object containing data of shape (M, 4).
@@ -707,8 +707,11 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     Returns:
         Quaternion: averaged quaternion of shape (1, 4), wrapped back in the Quaternion class.
     """
-    data = Q.data
     KORNIA_CHECK_TYPE(Q, Quaternion)
+    # the chordal mean is the top eigenvector of sum_i w_i q_i q_i^T, which is sign invariant but weights each member
+    # by its squared norm: a member stored as 3 q counted 9 times (#4974). Every other rotation-valued method depends
+    # only on the direction of q, so normalise the members first.
+    data = Q.normalize().data
 
     M = data.shape[0]
     if w is None:
@@ -717,7 +720,12 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         w = w.to(data.device, dtype=data.dtype)
         if w.numel() != M:
             raise ValueError(f"weights length {w.numel()} must match number of quaternions {M}")
-        w = w / w.sum()
+        if bool((w < 0).any()):
+            raise ValueError("weights must be non-negative")
+        w_sum = w.sum()
+        if bool(w_sum == 0):
+            raise ValueError("weights must not all be zero")
+        w = w / w_sum
         A = data.T @ torch.diag(w) @ data
 
     orig_dtype = A.dtype
