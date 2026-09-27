@@ -507,13 +507,12 @@ class TestBlurConventions(BaseTester):
                 torch.manual_seed(_FORWARD_SEED)
                 assert make(border)(thin).shape == thin.shape, f"{name} at {border} should accept a 3-row image"
 
-    # Wart (#4784, https://github.com/kornia/kornia/issues/4784): RandomMotionBlur has the same minimum
-    # size under ``"reflect"`` and ``"circular"`` but lets torch's raw padding error out, where RandomBoxBlur
-    # raises a named ValueError.  A kornia check flips this pin; the controls below it do not move.
+    # RandomMotionBlur has the same minimum size as the padding blurs under ``"reflect"`` and ``"circular"``
+    # and raises the same named ValueError below it (#4784); the controls below it do not move.
     @pytest.mark.parametrize(
         ("border", "kernel_size", "shape"), [("reflect", 3, (2, 3, 1, 8)), ("circular", 5, (2, 3, 1, 1))]
     )
-    def test_wart_random_motion_blur_small_image_raises_a_raw_padding_error_4784(
+    def test_convention_random_motion_blur_names_the_size_it_needs_4784(
         self, device, dtype, border, kernel_size, shape
     ):
         if border == "reflect" and not supports_reflect_padding(device, dtype):
@@ -522,9 +521,13 @@ class TestBlurConventions(BaseTester):
         image = torch.rand(*shape).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomMotionBlur(kernel_size, (45.0, 45.0), (0.0, 0.0), border_type=border, p=1.0)
-        with pytest.raises(RuntimeError) as raised:
+        with pytest.raises(ValueError, match="RandomMotionBlur cannot filter an image this small"):
             _sync(aug(image).device)
-        assert type(raised.value) is RuntimeError
+        # A ranged kernel_size is checked against the size drawn for the call.
+        torch.manual_seed(_FORWARD_SEED)
+        ranged = K.RandomMotionBlur((kernel_size, kernel_size), (45.0, 45.0), (0.0, 0.0), border_type=border, p=1.0)
+        with pytest.raises(ValueError, match="RandomMotionBlur cannot filter an image this small"):
+            _sync(ranged(image).device)
         # The default constant border runs on the same image, and one radius less runs under circular.
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomMotionBlur(kernel_size, (45.0, 45.0), (0.0, 0.0), p=1.0)(image).shape == image.shape

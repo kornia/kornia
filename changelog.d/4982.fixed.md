@@ -1,0 +1,1 @@
+`RandomMotionBlur` now raises a `ValueError` naming the class, the drawn kernel, the border type and the input shape when the image is too small for `border_type="reflect"` or `"circular"`, as `RandomBoxBlur` and `RandomGaussianBlur` already do, instead of letting a raw torch padding error out. The sizes it accepts are unchanged.
