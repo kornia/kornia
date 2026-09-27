@@ -210,8 +210,9 @@ def _compute_luts(
     if isinstance(clip, torch.Tensor):
         # Match Python scalar arithmetic before rounding each image's threshold, then broadcast
         # over its tiles and channels. Keeping the limits in tensors avoids compile guards on draws.
-        # MPS cannot store doubles; compute its thresholds on CPU before copying them with the LUTs.
-        limits = clip.to(device="cpu", dtype=torch.float64) if clip.device.type == "mps" else clip.double()
+        # MPS cannot store doubles; compute its thresholds on CPU before copying them with the LUTs. Move first,
+        # then cast: a single clip.to("cpu", torch.float64) from MPS raises on torch 2.5.1 and returns zeros on 2.14.
+        limits = clip.cpu().double() if clip.device.type == "mps" else clip.double()
         max_vals = (limits * pixels).div(num_bins, rounding_mode="floor").clamp(min=1)
         max_vals = max_vals.to(histos).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
         limited = histos.clamp(max=max_vals)

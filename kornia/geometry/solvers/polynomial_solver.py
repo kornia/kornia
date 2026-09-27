@@ -331,6 +331,10 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
           magnitude than ``1e-6`` (``1e-12`` in float64) times ``min(1, max_i |coeffs_i|)``. For a row whose largest
           coefficient is at most 1 the test is relative, so scaling the row down does not change how it is solved;
           at unit scale and above it is absolute, as before.
+        - Known defects: a quartic with large roots has a leading coefficient that is small next to its largest
+          coefficient. Scaled so that the leading coefficient drops below the tolerance while the largest coefficient
+          is still above 1, it is solved as a cubic and its roots are lost
+          (`#4954 <https://github.com/kornia/kornia/issues/4954>`_).
 
     Args:
         coeffs : The coefficients quartic equation : `(B, 5)`

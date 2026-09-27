@@ -678,6 +678,25 @@ class TestHomographyNormalization(BaseTester):
 
 
 class TestFindHomographyDLTIter(BaseTester):
+    def test_initial_solve_uses_weighted_normalization(self, device, dtype):
+        points1 = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [2.0, 1.0], [1.0, 2.0], [2.0, 2.0], [100.0, -100.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        points2 = torch.tensor(
+            [[[2.0, 3.0], [3.1, 3.0], [2.0, 4.0], [4.0, 4.1], [3.0, 5.0], [4.1, 5.1], [-100.0, 100.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        weights = torch.tensor([[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype)
+
+        # A zero-weight outlier must not change Hartley normalization in the first IRLS solve.
+        self.assert_close(
+            find_homography_dlt_iterated(points1, points2, weights, n_iter=1),
+            find_homography_dlt(points1, points2, weights),
+        )
+
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -958,17 +977,20 @@ class TestConventionHomography(BaseTester):
             pytest.skip(_F16_LU)
         p1, p2, _ = _planar(device, dtype)
         if model == "points":
-            name, iterated, args = "find_homography_dlt", find_homography_dlt_iterated, (p1, p2)
+            # Count the point polisher's DLT solves across iterations.
+            name, iterated, args = "_homography_from_dlt_system", find_homography_dlt_iterated, (p1, p2)
+            plain = find_homography_dlt
         else:
             name = "find_homography_lines_dlt"
             iterated, args = find_homography_lines_dlt_iterated, (p1.reshape(1, 6, 2, 2), p2.reshape(1, 6, 2, 2))
-        plain = getattr(kornia.geometry.homography, name)
+            plain = getattr(kornia.geometry.homography, name)
+        solve = getattr(kornia.geometry.homography, name)
         weights = torch.ones(1, args[0].shape[1], device=device, dtype=dtype)
         calls = []
 
         def spy(*a, **k):
             calls.append(1)
-            return plain(*a, **k)
+            return solve(*a, **k)
 
         monkeypatch.setattr(kornia.geometry.homography, name, spy)
         # n_iter counts the solves, the initial one included, so n_iter=1 is the plain solver.
@@ -1022,7 +1044,7 @@ class TestConventionHomography(BaseTester):
         assert errors[1] > 1.9 * errors[0]
 
     @pytest.mark.parametrize("model", ["points", "lines"])
-    def test_wart_find_homography_dlt_iterated_weight_unsquared_4870(self, model, device, dtype, monkeypatch):
+    def test_convention_find_homography_dlt_iterated_gaussian_weights_4870(self, model, device, dtype, monkeypatch):
         if model == "points" and dtype == torch.float16:
             pytest.skip(_F16_LU)
         if model == "lines":
@@ -1042,28 +1064,44 @@ class TestConventionHomography(BaseTester):
             name, iterated, args, k = "find_homography_lines_dlt", find_homography_lines_dlt_iterated, (ls1, ls2), 2
 
             def error(H):
-                return line_segment_transfer_error_one_way(ls1, ls2, H, squared=False)
+                # The kernel's e is the perpendicular distance in pixels: the residual of
+                # line_segment_transfer_error_one_way divided by the image-2 segment length it carries (#4867).
+                length = (ls2[..., 1, :] - ls2[..., 0, :]).norm(dim=-1)
+                return line_segment_transfer_error_one_way(ls1, ls2, H, squared=False) / length
 
         plain = getattr(kornia.geometry.homography, name)
         weights = torch.ones(1, args[0].shape[1], device=device, dtype=dtype)
-        # soft_inl_th is set from the moved correspondence's first-solve error e_k, so that its weight under the
-        # linear kernel is exp(-1/2) whatever the error's scale.
-        sigma = float(error(plain(*args, weights))[0, k].sqrt())
+        # soft_inl_th is set to the moved correspondence's first-solve error e_k, so that its Gaussian weight is
+        # exp(-1/2) whatever the error's scale.
+        sigma = float(error(plain(*args, weights))[0, k])
         calls = []
 
-        def spy(a, b, w=None, *rest):
-            H = plain(a, b, w, *rest)
-            calls.append((w, H))
-            return H
+        if model == "points":
+            # The point polisher's solver takes the weights as its second argument.
+            name = "_homography_from_dlt_system"
+            solve = kornia.geometry.homography._homography_from_dlt_system
+
+            def spy(system, w, *rest):
+                H = solve(system, w, *rest)
+                calls.append((w, H))
+                return H
+
+        else:
+
+            def spy(a, b, w=None, *rest):
+                H = plain(a, b, w, *rest)
+                calls.append((w, H))
+                return H
 
         monkeypatch.setattr(kornia.geometry.homography, name, spy)
         iterated(*args, weights, soft_inl_th=sigma, n_iter=2)
         assert len(calls) == 2
         e = error(calls[0][1])
-        # #4870: the second solve weights each correspondence by exp(-e / (2 sigma^2)) with the unsquared error e,
-        # which for the moved correspondence is far from the Gaussian exp(-e^2 / (2 sigma^2)).
-        self.assert_close(calls[1][0], torch.exp(-e / (2.0 * sigma**2)))
-        assert (calls[1][0] - torch.exp(-(e**2) / (2.0 * sigma**2)))[0, k].abs() > 0.1
+        # The second solve weights each correspondence by the Gaussian exp(-e^2 / (2 sigma^2)) of its error e, so
+        # soft_inl_th is a standard deviation in the error's units (#4870 used exp(-e / (2 sigma^2))).
+        self.assert_close(calls[1][0], torch.exp(-(e**2) / (2.0 * sigma**2)))
+        self.assert_close(calls[1][0][0, k], torch.full((), 0.5, device=device, dtype=dtype).neg().exp())
+        assert (calls[1][0] - torch.exp(-e / (2.0 * sigma**2)))[0, k].abs() > 0.1
 
     def test_wart_transfer_error_exact_match_is_sqrt_eps_4881(self, device, dtype):
         _skip_half(
