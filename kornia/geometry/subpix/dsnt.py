@@ -123,6 +123,9 @@ def render_gaussian2d(
 ) -> torch.Tensor:
     r"""Render the PDF of a 2D Gaussian distribution.
 
+    Each axis is normalised over the grid, so the heatmap sums to one. A mean outside the grid renders the part of
+    the Gaussian that falls on the grid, rescaled to sum to one; far outside, that mass sits on the nearest border.
+
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.
         std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
@@ -170,16 +173,11 @@ def render_gaussian2d(
     k_x = -0.5 * torch.reciprocal(sigma_x**2)
     k_y = -0.5 * torch.reciprocal(sigma_y**2)
 
-    # Assemble the 2D Gaussian.
-    gauss_x = torch.exp(dist_x_sq * k_x)
-    gauss_y = torch.exp(dist_y_sq * k_y)
-
-    # Rescale so that values sum to one. A sum is zero only when every sample on that axis underflows (the mean lies
-    # far off the grid); dividing that all-zero axis by a safe 1 keeps the output 0 and its gradient finite.
-    sum_x = gauss_x.sum(dim=-1, keepdim=True)
-    sum_y = gauss_y.sum(dim=-1, keepdim=True)
-    gauss_x = gauss_x / torch.where(sum_x > 0, sum_x, torch.ones_like(sum_x))
-    gauss_y = gauss_y / torch.where(sum_y > 0, sum_y, torch.ones_like(sum_y))
+    # Assemble each axis normalised to sum to one: softmax(dists * ks) = exp(dists * ks) / sum(exp(dists * ks)).
+    # Softmax subtracts the largest exponent first, so the normaliser is at least 1: no bias term is needed, a mean
+    # far off the grid cannot underflow the sum to 0, and the gradient stays finite at any distance.
+    gauss_x = torch.softmax(dist_x_sq * k_x, dim=-1)
+    gauss_y = torch.softmax(dist_y_sq * k_y, dim=-1)
 
     # Cast the 1-D vectors, not the (*, H, W) outer product, to avoid a full-size float32 intermediate.
     return gauss_y.to(dtype).unsqueeze(-1) * gauss_x.to(dtype).unsqueeze(-2)

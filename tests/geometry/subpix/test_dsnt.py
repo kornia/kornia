@@ -59,7 +59,7 @@ class TestRenderGaussian2d(BaseTester):
     @pytest.mark.parametrize("normalized", [False, True])
     def test_in_image_sums_to_one(self, device, dtype, normalized):
         # An off-centre, anisotropic Gaussian well inside a 9 x 11 grid: the per-axis renormalisation makes it sum to
-        # one up to roundoff (a bias in the denominators showed up as a 1.1e-8 deficit, visible only in float64).
+        # one up to roundoff (a +1e-8 bias in the denominators left this one 8.3e-9 short, visible only in float64).
         size = (9, 11)
         mean_px, std_px = [4.3, 3.7], [1.2, 0.8]
         if normalized:
@@ -72,20 +72,23 @@ class TestRenderGaussian2d(BaseTester):
 
         heatmap = kornia.geometry.subpix.render_gaussian2d(mean_t, std_t, size, normalized)
 
-        total = heatmap.double().sum().item()
+        total = heatmap.cpu().double().sum().item()  # on CPU: MPS has no float64
         tol = 1e-12 if dtype == torch.float64 else 4 * torch.finfo(dtype).eps
         assert abs(total - 1.0) < tol, f"sum {total!r} is not 1 within {tol}"
 
-    def test_all_samples_underflow_stays_finite(self, device, dtype):
-        # With the mean 60 px left of the grid and std 0.5, exp(-(x - mu)^2 / (2 std^2)) underflows at every x column
-        # (exp(-7200) is 0 even in float64), so the x-axis normaliser is 0. The heatmap is defined as 0 there.
-        mean = torch.tensor([[-60.0, 2.0]], device=device, dtype=dtype, requires_grad=True)
-        std = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype, requires_grad=True)
+    @pytest.mark.parametrize("mean_x", [-14.0, -60.0])
+    def test_mean_far_off_grid_renders_on_border(self, device, dtype, mean_x):
+        # With std 1, the nearest x sample of a mean at -14 has exp(-98) = 2.7e-43, subnormal in float32; at -60,
+        # exp(-1800) is 0 in every dtype. Either way the heatmap is the grid part of the Gaussian rescaled to one:
+        # all of the x mass on column 0, and there the y profile of a mean at y = 2. The gradient stays finite.
+        mean = torch.tensor([[mean_x, 2.0]], device=device, dtype=dtype, requires_grad=True)
+        std = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
 
         heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), False)
 
-        assert torch.isfinite(heatmap).all()
-        self.assert_close(heatmap, torch.zeros_like(heatmap))
+        y_profile = torch.softmax(-0.5 * (torch.arange(5, dtype=torch.float64) - 2.0) ** 2, dim=-1)
+        self.assert_close(heatmap[0, :, 0], y_profile.to(device=device, dtype=dtype))
+        self.assert_close(heatmap[..., 1:], torch.zeros_like(heatmap[..., 1:]))
         (heatmap * torch.arange(25, device=device, dtype=dtype).view(1, 5, 5)).sum().backward()
         assert mean.grad is not None and std.grad is not None
         assert torch.isfinite(mean.grad).all() and torch.isfinite(std.grad).all()
