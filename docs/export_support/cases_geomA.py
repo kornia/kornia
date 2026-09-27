@@ -1223,7 +1223,7 @@ CASES += [
         tags=("points",),
         note="3x3 -> Se2 path; points (N,2)",
     ),
-    case("pose.check_matrix_shape", G, None, [], skip="validation helper, returns None"),
+    case("pose._check_matrix_shape", G, None, [], skip="validation helper, returns None"),
     case(
         "pose.Quaternion/Se2/Se3/So2/So3",
         G,

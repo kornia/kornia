@@ -34,6 +34,7 @@ from .line import *
 from .plane import *
 from .pointcloud import *
 from .pose import *
+from .quaternion import Quaternion
 from .ransac import *
 from .solvers import *
 from .subpix import *
