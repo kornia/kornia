@@ -836,6 +836,71 @@ class TestCropByIndices(BaseTester):
         # the plain-copy path, and 'pad'/'resize' agree there too.
         self.assert_close(out_resize[1], out_pad[1])
 
+    @staticmethod
+    def _per_row_boxes_4531(device):
+        # Four 3x4 (h x w) boxes at different positions in a 6x7 image, as RandomCrop produces:
+        # the image's top-left and bottom-right corners, and two interior positions.
+        corners = [(0, 0), (3, 3), (1, 2), (2, 0)]  # (x1, y1)
+        boxes = [[[x, y], [x + 3, y], [x + 3, y + 2], [x, y + 2]] for x, y in corners]
+        return torch.tensor(boxes, device=device, dtype=torch.int64), corners
+
+    def test_crop_by_indices_per_row_boxes_of_the_requested_size_4531(self, device, dtype):
+        # Rows whose slices all match `size` are joined with one `cat` instead of a copy per row
+        # (#4531). Each row must still be its own box's exact slice.
+        inp = torch.rand(4, 2, 6, 7, device=device, dtype=dtype)
+        src_box, corners = self._per_row_boxes_4531(device)
+
+        out = kornia.geometry.transform.crop_by_indices(inp, src_box, size=(3, 4))
+
+        expected = torch.stack([inp[i, :, y : y + 3, x : x + 4] for i, (x, y) in enumerate(corners)])
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
+        assert out.is_contiguous()
+
+    def test_crop_by_indices_channels_last_input_gives_a_contiguous_output_4531(self, device, dtype):
+        # `torch.cat` of channels-last views is channels-last; the per-row loop wrote into a
+        # default-format `torch.empty`, so the output format must not depend on the input's.
+        inp = torch.rand(4, 3, 6, 7, device=device, dtype=dtype)
+        src_box, _ = self._per_row_boxes_4531(device)
+
+        out = kornia.geometry.transform.crop_by_indices(
+            inp.contiguous(memory_format=torch.channels_last), src_box, size=(3, 4)
+        )
+
+        assert out.is_contiguous()
+        self.assert_close(out, kornia.geometry.transform.crop_by_indices(inp, src_box, size=(3, 4)), atol=0.0, rtol=0.0)
+
+    def test_crop_by_indices_copies_once_per_batch_4531(self, device, dtype):
+        # The per-row loop issued one `copy_` per row, so its kernel launches grew with the batch;
+        # rows that already match `size` are now copied by a single `cat`.
+        import collections
+
+        from torch.utils._python_dispatch import TorchDispatchMode
+
+        class _CountOps(TorchDispatchMode):
+            def __init__(self):
+                super().__init__()
+                self.calls = collections.Counter()
+
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                self.calls[func.overloadpacket.__name__] += 1
+                return func(*args, **(kwargs or {}))
+
+        inp = torch.rand(4, 2, 6, 7, device=device, dtype=dtype)
+        src_box, _ = self._per_row_boxes_4531(device)
+        counter = _CountOps()
+        with counter:
+            kornia.geometry.transform.crop_by_indices(inp, src_box, size=(3, 4))
+
+        assert counter.calls["cat"] == 1
+        assert counter.calls["copy_"] == 0
+
+    def test_gradcheck_per_row_boxes_4531(self, device):
+        inp = torch.rand(4, 1, 6, 7, device=device, dtype=torch.float64)
+        src_box, _ = self._per_row_boxes_4531(device)
+        self.gradcheck(
+            kornia.geometry.transform.crop_by_indices, (inp, src_box, (3, 4)), requires_grad=(True, False, False)
+        )
+
 
 class TestCropSizeValidation:
     """Tests that crop functions properly reject invalid size arguments."""

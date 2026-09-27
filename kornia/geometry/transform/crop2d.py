@@ -545,13 +545,21 @@ def crop_by_indices(
     # path the rows are also joined with one ``cat``: writing them into ``out`` row by row would make the
     # backward clone the gradient of the whole output once per row.
     rows = input_tensor.unbind(0) if B > 1 and input_tensor.requires_grad and torch.is_grad_enabled() else None
+    slices = [
+        input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+        if rows is None
+        else rows[i][None, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+        for i in range(B)
+    ]
+    # When every row's slice already has the requested size (always the case for RandomCrop and
+    # CenterCrop2D), join the views with one ``cat``: one copy kernel for the batch instead of a
+    # ``copy_`` per row (#4531). ``contiguous`` keeps the result in the default memory format, as
+    # the ``torch.empty`` below does, when the input is channels-last.
+    if B > 0 and all(crop.shape[-2:] == size for crop in slices):
+        return torch.cat(slices).contiguous()
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype) if rows is None else None
     crops: list[torch.Tensor] = []
-    for i in range(B):
-        if rows is None:
-            _out = input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
-        else:
-            _out = rows[i][None, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+    for i, _out in enumerate(slices):
         if _out.shape[-2:] != size:
             if shape_compensation == "resize":
                 _out = resize(
