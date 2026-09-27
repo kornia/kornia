@@ -62,16 +62,20 @@ class Quaternion(nn.Module):
           Other libraries' orders, such as scipy's default ``(x, y, z, w)``, are mapped on
           :ref:`Rotations and rigid motions <rotation-conventions>`.
         - ``*`` between quaternions is the Hamilton product, so ``(q1 * q2).matrix()`` is
-          ``q1.matrix() @ q2.matrix()``, and ``q`` and ``-q`` are the same rotation. A float or tensor operand of
-          ``+``, ``-``, ``*`` or ``/`` is the real quaternion ``[s, 0, 0, 0]``, and a tensor holds one such scalar per
-          quaternion of the batch.
+          ``q1.matrix() @ q2.matrix()``, ``q1 / q2`` is ``q1 * q2.inv()``, and ``q`` and ``-q`` are the same rotation.
+          A float or tensor operand of ``+``, ``-``, ``*`` or ``/`` is the real quaternion ``[s, 0, 0, 0]``, and a
+          tensor of the shape of ``q.w`` holds one such scalar per quaternion of the batch.
         - Nothing normalises the stored data or the results of ``*``, ``**`` and ``inv()``. ``matrix()``,
-          ``to_axis_angle()``, ``polar_angle`` and ``slerp`` read only the direction of ``q``. A positive rescaling
-          preserves their result to roundoff while norms stay above normalization floors and intermediate calculations
-          avoid underflow and overflow.
-        - Known defects: ``to_euler()`` of a non-unit ``q`` returns wrong angles
-          (`#3953 <https://github.com/kornia/kornia/issues/3953>`_); ``polar_angle`` gives a non-finite gradient at
-          the identity (`#4927 <https://github.com/kornia/kornia/issues/4927>`_); data given as a plain tensor is not
+          ``to_axis_angle()``, ``polar_angle`` and ``slerp`` read only the direction of ``q``: rescaling ``q`` by a
+          positive factor changes their result by roundoff only, as long as its squared components stay within the
+          range of the dtype and its norm stays above ``1e-12``.
+        - Known defects: ``to_euler()`` returns a triple that does not reproduce the rotation for a non-unit ``q``
+          (`#3953 <https://github.com/kornia/kornia/issues/3953>`_) and for most rotations at a pitch of
+          :math:`\pm\pi/2` (`#3950 <https://github.com/kornia/kornia/issues/3950>`_); below a norm of ``1e-12``,
+          ``matrix()`` and ``slerp`` give wrong results, and the zero quaternion's ``matrix()`` is the identity
+          (`#3952 <https://github.com/kornia/kornia/issues/3952>`_); ``polar_angle`` gives a non-finite gradient at
+          the identity and near it, wherever ``w / |q|`` rounds to 1
+          (`#4927 <https://github.com/kornia/kornia/issues/4927>`_); data given as a plain tensor is not
           registered with ``nn.Module``, so an enclosing module's ``state_dict()``, ``load_state_dict()`` and
           ``.to()`` skip it, while an ``nn.Parameter`` is saved, restored and moved
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
@@ -690,7 +694,7 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         - The chordal mean of scipy's ``Rotation.mean``: the eigenvector of
           :math:`\sum_i w_i q_i q_i^\top / \sum_i w_i` with the largest eigenvalue. ``q_i`` and ``-q_i`` count the
           same, and the sign of the result is arbitrary.
-        - Only the ratios of ``w`` matter.
+        - ``w`` need not sum to one: scaling it by a positive factor does not change the result.
         - Known defect: the members are not normalised, so a member of norm ``n`` counts with an extra weight
           ``n**2``, and negative weights are not rejected
           (`#4974 <https://github.com/kornia/kornia/issues/4974>`_).

@@ -82,11 +82,12 @@ class So3(nn.Module):
 
     Convention:
         - The tangent vector is the rotation vector, the axis times the angle in radians, and ``hat(v)`` is its
-          cross-product matrix: ``hat(v) @ p`` equals ``torch.linalg.cross(v, p)``. ``log()`` normalises the
-          quaternion and returns the principal vector, of norm at most :math:`\pi`, the same for ``q`` and ``-q``
-          below a half turn.
-        - For unit quaternions, ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first. ``s * p``
-          rotates points ``p`` of shape :math:`(B, 3)`, a tensor or a ``Vector3``, as :math:`R p`, and ``adjoint()``
+          cross-product matrix: ``hat(v) @ p`` equals ``torch.linalg.cross(v, p)``. ``log()`` is
+          ``q.to_axis_angle()``: it reads only the direction of ``q``, within the range limits stated on
+          :class:`~kornia.geometry.quaternion.Quaternion`, and returns the principal vector, of norm at most
+          :math:`\pi`, the same for ``q`` and ``-q`` below a half turn.
+        - For a unit quaternion, ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p``
+          rotates points ``p`` of shape :math:`(B, 3)`, a tensor or a ``Vector3``, as :math:`R p`; and ``adjoint()``
           is :math:`R` itself.
           :ref:`Rotations and rigid motions <rotation-conventions>` compares these with scipy, Sophus and Eigen.
         - For a small :math:`\delta`,
@@ -96,10 +97,11 @@ class So3(nn.Module):
         - Known defects: the quaternion is stored as given, so with a non-unit ``q`` the ``matrix()`` is not a
           rotation and ``s * p`` scales ``p`` by :math:`|q|^2`
           (`#4942 <https://github.com/kornia/kornia/issues/4942>`_); ``from_matrix`` accepts a reflection
-          (det :math:`-1`) without error and silently reports it as a rotation
-          (`#4773 <https://github.com/kornia/kornia/issues/4773>`_); a quaternion whose data is a
-          plain tensor has no ``state_dict()`` entry and ``.to()`` leaves it unchanged, while an ``nn.Parameter`` is
-          saved and moved (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+          (det :math:`-1`) without error and returns an ``So3`` whose ``matrix()`` is not the input
+          (`#4773 <https://github.com/kornia/kornia/issues/4773>`_); ``exp``, ``identity``, ``random``,
+          ``from_matrix`` and every operation store the quaternion as a plain tensor, which has no ``state_dict()``
+          entry and which ``.to()`` leaves unchanged; only a quaternion built on an ``nn.Parameter`` is saved and moved
+          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
         >>> q = Quaternion.identity()

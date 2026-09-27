@@ -108,9 +108,11 @@ Rotations and rigid motions
 :class:`~kornia.geometry.quaternion.Quaternion` multiplies by the Hamilton product, so ``(q1 * q2).matrix()`` is
 ``q1.matrix() @ q2.matrix()``: the right operand acts first. The Lie groups :class:`~kornia.geometry.liegroup.So3`,
 :class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
-:class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``. For ``So3`` and
-``Se3``, this assumes their stored quaternions have unit norm. Their tangent vectors put the rotation part, in radians,
-last: ``[υ, ω]`` for ``Se3`` and ``[vx, vy, θ]`` for ``Se2``. ``log`` is principal: its rotation angle is at most
+:class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``, with ``R`` the
+``matrix()`` of the rotation part. ``So2`` and ``Se2`` do so for any complex number, and a non-unit one also scales by
+its modulus; ``So3`` and ``Se3`` need a unit quaternion
+(`#4942 <https://github.com/kornia/kornia/issues/4942>`_). The tangent vectors of ``Se3`` and ``Se2`` put the
+rotation part, in radians, last: ``[υ, ω]`` and ``[vx, vy, θ]``. ``log`` is principal: its rotation angle is at most
 :math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
 :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
 ``trans_01`` maps frame-1 coordinates into frame 0, and

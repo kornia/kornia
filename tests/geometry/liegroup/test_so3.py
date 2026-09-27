@@ -541,8 +541,8 @@ class TestSo3Conventions(BaseTester):
         assert ((s * s2).matrix() - (s2 * s).matrix()).abs().max() > 0.1
         # s * s2 applies s2 first: its matrix is R @ R2, and (s * s2) * p = s * (s2 * p)
         self.assert_close((s * s2).matrix(), s.matrix() @ s2.matrix())
-        # both sides round two rotations of a point with components up to 3.5, where one float16 ulp is 2e-3 (the
-        # default float16 atol is 1e-3; the bfloat16 default already scales with the value)
+        # both sides round the intermediate point, whose components reach 3.5, where one float16 ulp is 2e-3; the
+        # error also lands on the small first component, where the default float16 tolerance allows only 1.4e-3
         tol = 1e-2 if dtype == torch.float16 else None
         self.assert_close((s * s2) * p, s * (s2 * p), rtol=tol, atol=tol)
 
@@ -555,7 +555,7 @@ class TestSo3Conventions(BaseTester):
 
     def test_convention_so3_jacobian_sides(self, device, dtype):
         # exp(w + d) = exp(w) exp(Jr(w) d) = exp(Jl(w) d) exp(w) to first order in d. The references are central
-        # differences in float64 on the CPU with h = 1e-6, whose error is below 1e-9.
+        # differences in float64 on the CPU with h = 1e-6.
         w = torch.tensor([[0.7, -0.2, 0.4]], dtype=torch.float64)
         h = 1e-6
         base = So3.exp(w)
@@ -592,7 +592,7 @@ class TestSo3Conventions(BaseTester):
 
     def test_wart_so3_non_unit_quaternion_not_normalised_4942(self, device, dtype):
         # #4942 https://github.com/kornia/kornia/issues/4942: So3 stores the quaternion as given, and matrix() and
-        # So3 * p use the unit-quaternion formulas, so a non-unit q gives a scaled non-rotation matrix and points
+        # So3 * p use the unit-quaternion formulas, so a non-unit q gives a matrix that is not a rotation and points
         # scaled by |q|^2. This test turns red when So3 normalises its quaternion.
         data = torch.tensor([[2.0, 0.2, -0.6, 0.4]], device=device, dtype=dtype)
         squared_norm = 4.56
@@ -606,15 +606,19 @@ class TestSo3Conventions(BaseTester):
         # control: the same data through Quaternion.matrix(), and through So3 once normalised, is a rotation
         self.assert_close(So3(Quaternion(data).normalize()).matrix(), Quaternion(data).matrix())
         self.assert_close((So3(Quaternion(data).normalize()) * p).norm(dim=-1), p.norm(dim=-1))
+        # log() is outside the defect: it reads only the direction of q
+        self.assert_close(s.log(), So3(Quaternion(data).normalize()).log())
 
     def test_wart_so3_from_matrix_accepts_a_reflection_4773(self, device, dtype):
         # #4773 https://github.com/kornia/kornia/issues/4773: from_matrix silently returns an apparently valid
-        # result for an improper matrix (det = -1). This turns red if it rejects the input or signals NaN.
+        # result for an improper matrix (det = -1), whose matrix() is not the input. This turns red if it rejects
+        # the input or signals NaN.
         flip = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
         s = So3.from_matrix(flip)
         assert isinstance(s, So3)
         assert bool(torch.isfinite(s.q.data).all())
         assert bool(torch.isfinite(s.log()).all())
+        assert bool(((s.matrix() - flip).abs() > 0.5).any())
 
     def test_wart_rotation_state_not_registered_4923(self, device, dtype):
         # #4923 https://github.com/kornia/kornia/issues/4923: a Quaternion built from a plain tensor keeps it as an

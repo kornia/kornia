@@ -519,6 +519,9 @@ class TestQuaternionConventions(BaseTester):
         assert ((q1 * q2).data - (q2 * q1).data).norm() > 0.1
         # q1 * q2 is the Hamilton product, the rotation "q2 first, then q1": its matrix is R1 @ R2
         self.assert_close((q1 * q2).matrix(), q1.matrix() @ q2.matrix())
+        # q1 / q2 divides on the right, q1 * q2^-1; the left quotient q2^-1 * q1 differs by 0.40 for this pair
+        self.assert_close((q1 / q2).data, (q1 * q2.inv()).data)
+        assert ((q1 / q2).data - (q2.inv() * q1).data).abs().max() > 0.1
 
     def test_convention_quaternion_scalar_operand_is_real_part(self, device, dtype):
         # A Python number or a tensor operand is the real quaternion (s, 0, 0, 0): + and - move only w, and * and /
@@ -539,6 +542,7 @@ class TestQuaternionConventions(BaseTester):
         per_item = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
         self.assert_close((Quaternion(batch) + per_item).data, batch + per_item[:, None] * real)
         self.assert_close((Quaternion(batch) * per_item).data, batch * per_item[:, None])
+        self.assert_close((Quaternion(batch) / per_item).data, batch / per_item[:, None])
 
     def test_convention_quaternion_matrix_normalises(self, device, dtype):
         data = torch.tensor([[2.0, 0.2, -0.6, 0.4]], device=device, dtype=dtype)
@@ -600,7 +604,7 @@ class TestQuaternionConventions(BaseTester):
         data = Quaternion.from_axis_angle(rotvecs).data.to(device=device, dtype=dtype)
         uniform = torch.tensor([[0.3823365186803237, 0.41998759136458735, 0.37339616309716916]], dtype=torch.float64)
         weighted = torch.tensor([[0.02860900532725633, 0.8470541010728433, 0.4576793994589019]], dtype=torch.float64)
-        # a half-precision fixture is off by one rounding of the quaternions, about 1e-2 rad in bfloat16
+        # a half-precision fixture is off by one rounding of the quaternions, under 1e-2 rad in bfloat16
         tol = {torch.bfloat16: 2e-2, torch.float16: 3e-3}.get(dtype, 1e-5)
         # the weights are relative ([1, 3] and [2, 6] agree), and the sign of a member does not matter (-A is A)
         cases = [(None, uniform), ([1.0, 3.0], weighted), ([2.0, 6.0], weighted)]
@@ -614,10 +618,20 @@ class TestQuaternionConventions(BaseTester):
 
     def test_wart_quaternion_polar_angle_gradient_nonfinite_at_identity_4927(self, device, dtype):
         # #4927 https://github.com/kornia/kornia/issues/4927: polar_angle gives a non-finite gradient at the identity,
-        # the usual initialisation. This test turns red when the gradient becomes finite.
+        # the usual initialisation, and near it. This test turns red when the gradient becomes finite at either.
         identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         Quaternion(identity).polar_angle.sum().backward()
         assert not bool(torch.isfinite(identity.grad).all()), identity.grad
+        # a half-angle of sqrt(eps) / 2 is small enough that w / |q| rounds to 1, so a fix that guards only the exact
+        # identity leaves this row non-finite
+        h = 0.5 * math.sqrt(torch.finfo(dtype).eps)
+        near = torch.tensor(
+            [[math.cos(h), 0.6 * math.sin(h), 0.0, 0.8 * math.sin(h)]], device=device, dtype=dtype, requires_grad=True
+        )
+        # precondition: the vector part survives the rounding, so this is not the identity again
+        assert bool((near[:, 1:] != 0).any())
+        Quaternion(near).polar_angle.sum().backward()
+        assert not bool(torch.isfinite(near.grad).all()), near.grad
         # control: away from the identity the same expression has a finite gradient
         q = self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype).requires_grad_(True)
         Quaternion(q).polar_angle.sum().backward()
@@ -625,7 +639,7 @@ class TestQuaternionConventions(BaseTester):
 
     def test_wart_average_quaternions_weights_by_member_norm_4974(self, device, dtype):
         # https://github.com/kornia/kornia/issues/4974: average_quaternions uses stored q_i q_i^T, so rescaling a
-        # member by 3 weights it by 9; other Quaternion rotation methods are scale-invariant in their stable range.
+        # member by 3 weights it by 9, while matrix(), to_axis_angle(), polar_angle and slerp ignore a positive scale.
         # Negative weights are accepted where scipy's Rotation.mean rejects them. This turns red when members are
         # normalised or negative weights are rejected.
         rotvecs = torch.tensor([[0.9, -0.3, 0.2], [-0.2, 1.1, 0.5]], dtype=torch.float64)
