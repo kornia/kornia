@@ -414,7 +414,7 @@ class TestSo3(BaseTester):
     def test_from_matrix_check_rotation(self, device, dtype, batch_size):
         # kornia#4773: from_matrix delegates to rotation_matrix_to_quaternion, so by default the
         # reflection diag(-1, 1, 1) becomes the identity instead of being rejected. So2.from_matrix
-        # rejects the 2D reflection regardless, which is the inconsistency this closes.
+        # rejects the 2D reflection regardless; check_rotation=True gives So3 the same rejection as an opt-in.
         reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
         if batch_size is not None:
             reflection = reflection.repeat(batch_size, 1, 1)
@@ -656,10 +656,10 @@ class TestSo3Conventions(BaseTester):
         # log() is outside the defect: it reads only the direction of q
         self.assert_close(s.log(), So3(Quaternion(data).normalize()).log())
 
-    def test_wart_so3_from_matrix_accepts_a_reflection_4773(self, device, dtype):
-        # #4773 https://github.com/kornia/kornia/issues/4773: from_matrix silently returns an apparently valid
-        # result for an improper matrix (det = -1), whose matrix() is not the input. This turns red if it rejects
-        # the input or signals NaN.
+    def test_convention_so3_from_matrix_is_unchecked_by_default(self, device, dtype):
+        # kornia#4773: with the default check_rotation=False, from_matrix returns an apparently valid result for an
+        # improper matrix (det = -1), whose matrix() is not the input. This turns red if the default rejects the
+        # input or signals NaN; the opt-in raise is pinned by test_from_matrix_check_rotation.
         flip = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
         s = So3.from_matrix(flip)
         assert isinstance(s, So3)

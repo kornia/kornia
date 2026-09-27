@@ -2465,8 +2465,8 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         assert multi_batched.shape == (2, 5, 3)
         self.assert_close(multi_batched[1, 4], expected)
 
-    def test_wart_reflection_is_returned_as_the_identity_4773(self, device, dtype):
-        # Wart pin for kornia#4773: with the default check_rotation=False an improper matrix
+    def test_convention_reflection_is_returned_as_the_identity_by_default(self, device, dtype):
+        # kornia#4773: with the default check_rotation=False an improper matrix
         # (det = -1) is still not rejected, and the reflection diag(-1, 1, 1) comes back as the
         # zero vector -- "no rotation". The call below deliberately omits the argument; passing
         # check_rotation=True raises instead, which TestRotationMatrixToAxisAngleCheckRotation
@@ -2480,7 +2480,7 @@ class TestRotationMatrixToAngleAxis(BaseTester):
             torch.zeros(3, device=device, dtype=dtype),
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#4773: a reflection is no longer returned as the identity rotation"),
+            msg=_issue_msg("kornia#4773: the default no longer returns a reflection as the identity rotation"),
         )
 
     def test_convention_axis_angle_matrix_roundtrip_is_accurate_in_float64(self, device):

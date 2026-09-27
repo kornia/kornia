@@ -94,11 +94,12 @@ class So3(nn.Module):
           :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`,
           with :math:`J_r` = ``right_jacobian(omega)`` and :math:`J_l` = ``left_jacobian(omega)`` =
           ``right_jacobian(-omega)``.
+        - ``from_matrix`` does not check its input by default: a reflection (det :math:`-1`) is accepted without
+          error and returns an ``So3`` whose ``matrix()`` is not the input. ``check_rotation=True`` raises
+          ``ValueError`` instead.
         - Known defects: the quaternion is stored as given, so with a non-unit ``q`` the ``matrix()`` is not a
           rotation and ``s * p`` scales ``p`` by :math:`|q|^2`
-          (`#4942 <https://github.com/kornia/kornia/issues/4942>`_); ``from_matrix`` accepts a reflection
-          (det :math:`-1`) without error and returns an ``So3`` whose ``matrix()`` is not the input
-          (`#4773 <https://github.com/kornia/kornia/issues/4773>`_); ``exp``, ``identity``, ``random``,
+          (`#4942 <https://github.com/kornia/kornia/issues/4942>`_); ``exp``, ``identity``, ``random``,
           ``from_matrix`` and every operation store the quaternion as a plain tensor, which has no ``state_dict()``
           entry and which ``.to()`` leaves unchanged; only a quaternion built on an ``nn.Parameter`` is saved and moved
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
