@@ -99,7 +99,10 @@ class RANSAC(nn.Module):
         score_type: "msac" (default) for truncated squared residuals, or "ransac" for support count.
         prosac_sampling: use PROSAC sampling on best-first ordered correspondences. The growth schedule
             advances per sampled set within each batch; stopping tests the incumbent's support within ranked
-            prefixes (Chum and Matas, 2005, section 2.2) as well as within the whole set.
+            prefixes (Chum and Matas, 2005, section 2.2) as well as within the whole set. It pays off when the
+            ranking tracks inlier-ness and the inlier ratio is low (ratio-tested SIFT). On learned matches with
+            85% or more inliers it can certify a model fitted to a spatially clustered top-ranked prefix after
+            one batch and score below uniform sampling; use uniform sampling or ``confidence=1`` there.
         seed: optional seed, reset on each call for reproducible estimation on the same device.
         lo_sample_size: inlier-subset size for a batch of ``max_lo_iters`` randomized local refits followed
             by a full-inlier refit (default 32). None uses iterative full-inlier refitting.
