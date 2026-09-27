@@ -24,7 +24,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 
-from .kernels import _unpack_2d_ks, get_binary_kernel2d
+from .kernels import _check_kernel_size, _unpack_2d_ks, get_binary_kernel2d
 
 
 def _median_network(size: int) -> tuple[tuple[int, int, bool, bool], ...]:
@@ -116,6 +116,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    _check_kernel_size(kernel_size, min_value=0)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     # ATen's per-pixel median reduction dominates inference for small windows.

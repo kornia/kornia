@@ -53,6 +53,14 @@ class TestMedianBlur(BaseTester):
             median_blur(torch.ones(1, 1, device=device, dtype=dtype), 1)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
+        with pytest.raises(Exception) as errinfo:
+            median_blur(torch.ones(1, 1, 4, 4, device=device, dtype=dtype), 4)
+        assert "Kernel size must be an odd integer" in str(errinfo.value)
+
+        with pytest.raises(Exception) as errinfo:
+            median_blur(torch.ones(1, 1, 4, 4, device=device, dtype=dtype), (3, 4))
+        assert "Kernel size must be an odd integer" in str(errinfo.value)
+
     def test_kernel_3x3(self, device, dtype):
         inp = torch.tensor(
             [

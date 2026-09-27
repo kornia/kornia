@@ -6040,6 +6040,15 @@ class TestRandomMedianBlur(BaseTester):
 
         self.assert_close(out, expected)
 
+    def test_exception(self):
+        with pytest.raises(Exception) as errinfo:
+            RandomMedianBlur((4, 4), p=1.0)
+        assert "Kernel size must be an odd integer" in str(errinfo.value)
+
+        with pytest.raises(Exception) as errinfo:
+            RandomMedianBlur((3, 4), p=1.0)
+        assert "Kernel size must be an odd integer" in str(errinfo.value)
+
 
 class TestRandomRain(BaseTester):
     torch.manual_seed(0)  # for random reproductibility

@@ -176,18 +176,14 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(K.RandomMedianBlur((1, 5), p=1.0)(transposed)[0, 0].sum(-2), transposed.new_zeros(7))
 
-    # Wart (#4781, https://github.com/kornia/kornia/issues/4781): an even entry is constructed and then fails on
-    # every image size with a raw torch error, not a kornia one.  Rejecting it with a kornia error or
-    # supporting it flips this pin.
-    @pytest.mark.parametrize("shape", [(2, 3, 32, 32), (2, 3, 1, 1)])
-    def test_wart_random_median_blur_even_kernel_raises_a_raw_torch_error_4781(self, device, dtype, shape):
-        torch.manual_seed(_FIXTURE_SEED)
-        image = torch.rand(*shape).to(device=device, dtype=dtype)
-        torch.manual_seed(_FORWARD_SEED)
-        even = K.RandomMedianBlur((4, 4), p=1.0)
-        with pytest.raises(RuntimeError) as raised:
-            _sync(even(image).device)
-        assert type(raised.value) is RuntimeError
+    # Fixed (#4781, https://github.com/kornia/kornia/issues/4781): an even entry used to be accepted at
+    # construction and then fail on every image size with a raw torch error.  It is now rejected at
+    # construction with kornia's odd-size error.
+    @pytest.mark.parametrize("kernel_size", [(4, 4), (3, 4)])
+    def test_convention_random_median_blur_even_kernel_is_rejected_4781(self, kernel_size):
+        with pytest.raises(BaseError) as raised:
+            K.RandomMedianBlur(kernel_size, p=1.0)
+        assert "Kernel size must be an odd integer" in str(raised.value)
 
     # ``normalized`` is forwarded as box_blur's ``separable``; both branches are means and agree to rounding.
     # Snippet used to generate expected:
