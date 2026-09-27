@@ -25,7 +25,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.random_generator import RectangleEraseGenerator
-from kornia.core.exceptions import BaseError, ImageError, ShapeError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
@@ -46,7 +46,7 @@ def _restore_global_rng(restore_torch_rng):
     # reseeds the CUDA and MPS generators, so the root fixture (#4446) snapshots and restores all of
     # them; ``fork_rng(devices=[])`` would restore the CPU generator only and shift the draw of an
     # unseeded later test on an accelerator leg.
-    yield
+    return
 
 
 # One constructor per 2D intensity class for the value-range pins below.  RandomDissolving (its
@@ -573,27 +573,29 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(cls(0.0, 0.0, 0.0, 0.0, p=1.0)(image), image)
 
-    # Issue #4785, ColorJitter: the brightness guard tests the factor against 0, not the multiplier's neutral 1,
-    # so the factor 1 drawn by the default ``brightness=0.0`` still runs the clamping step.  Run first, it
-    # clamps an all-negative input to zero; a contrast or saturation factor above 1 applied before it lifts
-    # part of the image first.  A fix that skips a factor of 1 flips the brightness-first leg; removing the guard
-    # altogether leaves it green, because the clamp is then #4430's.  A fixed order without index 0 skips the
-    # step and its clamp.
+    # Issue #4785, ColorJitter: the brightness guard tests the factor against the multiplier's neutral 1, so the
+    # factor 1 drawn by the default ``brightness=0.0`` skips the step and its clamp.  Whether the brightness index
+    # comes before or after a contrast or saturation step, the output is that step's alone, and an all-negative
+    # input is no longer clamped to zero before the step can lift part of it.  A fixed order without index 0
+    # skips the step as well.
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); neg = torch.rand(1, 3, 8, 8) - 1.0
     #   print(K.ColorJitter(p=1.0, order=order, contrast=(1.9, 1.9))(neg).aminmax())
     @pytest.mark.parametrize(("step", "kwargs"), [(1, {"contrast": (1.9, 1.9)}), (2, {"saturation": (1.9, 1.9)})])
-    def test_wart_color_jitter_default_brightness_step_clamps_4785(self, device, dtype, step, kwargs):
+    def test_convention_color_jitter_default_brightness_step_is_skipped_4785(self, device, dtype, step, kwargs):
         torch.manual_seed(_FIXTURE_SEED)
         negative = (torch.rand(1, 3, 8, 8) - 1.0).to(device=device, dtype=dtype)
+        step_only = K.ColorJitter(p=1.0, order=(step,), **kwargs)(negative)
+        assert float(step_only.min()) >= 0.0
+        assert float(step_only.max()) > 0.25
         brightness_first = K.ColorJitter(p=1.0, order=(0, step), **kwargs)(negative)
-        assert float(brightness_first.abs().max()) == 0.0
+        self.assert_close(brightness_first, step_only, atol=0, rtol=0)
         step_first = K.ColorJitter(p=1.0, order=(step, 0), **kwargs)(negative)
-        assert float(step_first.min()) >= 0.0
-        assert float(step_first.max()) > 0.25
-        # Leaving index 0 out of a fixed order skips the brightness step and its clamp.
+        self.assert_close(step_first, step_only, atol=0, rtol=0)
+        # With every factor neutral nothing clamps, whether or not a fixed order includes index 0.
         above = torch.full((1, 3, 2, 2), 2.0, device=device, dtype=dtype)
         self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0, order=(1, 2, 3))(above), above)
+        self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0)(above), above)
 
     # A fixed constructor `order` ignores a forward `order=` tensor; without one, a forward `order=` replaces
     # ColorJiggle's drawn order, so leaving the hue step out lets a one-channel image through.  ColorJitter's
@@ -623,13 +625,15 @@ class TestIntensityColourConventions(BaseTester):
         with pytest.raises(BaseError, match="Not a color or gray tensor"):
             saturation(four_channel)
 
-    # Issue #4785: ColorJitter's brightness step multiplies (identity 1) but is guarded as if 0 were
-    # neutral, so a batch whose factors are all 0 comes back unchanged while the same sample in a mixed
-    # batch comes back black.  The fix makes the all-zero batch black and flips the first assertion.
-    def test_wart_color_jitter_zero_brightness_factor_is_skipped_4785(self, device, dtype):
+    # Issue #4785: ColorJitter's brightness step multiplies (identity 1), so a factor of 0 gives a black image
+    # whatever the other samples drew: a batch whose factors are all 0 comes back black, like the same sample in
+    # a mixed batch, and a fixed order that includes the step does the same.
+    def test_convention_color_jitter_zero_brightness_factor_is_black_4785(self, device, dtype):
         image = torch.full((2, 3, 2, 2), 0.5, device=device, dtype=dtype)
         aug = K.ColorJitter(brightness=(0.0, 0.0), p=1.0)
-        assert torch.equal(aug(image), image)
+        assert float(aug(image).abs().max()) == 0.0
+        fixed = K.ColorJitter(brightness=(0.0, 0.0), p=1.0, order=(0,))
+        assert float(fixed(image).abs().max()) == 0.0
         params = aug.forward_parameters(image.shape)
         params["brightness_factor"] = torch.tensor([0.0, 1.0])
         mixed = aug(image, params=params)
@@ -1347,7 +1351,7 @@ class TestIntensityColourConventions(BaseTester):
             assert torch.equal(out, reference)
 
     # At the default grid (8, 8) an image smaller than the grid gets kornia's named ValueError, and 9 x 9 is
-    # admitted.  The 8 x 8 case in between is the #4783 wart below.
+    # admitted.  The 8 x 8 case in between is covered by the #4783 pin below.
     def test_convention_random_clahe_default_grid_rejects_a_smaller_image(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
@@ -1357,16 +1361,18 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomClahe(p=1.0)(torch.rand(1, 1, 9, 9, device=device, dtype=dtype)).shape == (1, 1, 9, 9)
 
-    # Issue #4783: an image exactly as large as the grid passes the named size check and then fails in
-    # the reflect padding with torch's raw error.  A fix that handles it, or names it, flips this pin.
-    def test_wart_random_clahe_grid_sized_image_raises_a_raw_padding_error_4783(self, device, dtype):
+    # Issue #4783: an image exactly as large as the grid used to pass the named size check and fail in the
+    # reflect padding with torch's raw error.  It now gets kornia's ValueError, naming the smallest image
+    # the grid admits.
+    def test_convention_random_clahe_grid_sized_image_is_rejected_by_name_4783(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError) as info:
+        with pytest.raises(ValueError) as info:
             _sync(K.RandomClahe(p=1.0)(torch.rand(1, 1, 8, 8, device=device, dtype=dtype)).device)
-        # A kornia error would name the grid or its tiles; torch's padding error does not.
-        assert not any(word in str(info.value).lower() for word in ("grid", "tile"))
+        # The error names the argument the caller passed, unlike torch's padding error.
+        assert "Cannot compute tiles" in str(info.value)
+        assert "smallest image this grid admits is (9, 9)" in str(info.value)
 
     # Issue #4572: each image is equalized with its own `clip_limit_factor` draw, not the first sample's.
     @pytest.mark.device_agnostic
@@ -1489,21 +1495,20 @@ class TestIntensityColourConventions(BaseTester):
                 with pytest.raises(ValueError, match="shape of"):
                     K.ColorJiggle(*factors, p=1.0)(image)
 
-    # Issue #4813: ColorJitter computes every step in the order, neutral or not, so the hue and saturation steps
-    # reject a channel count that the configuration never asks them to touch -- where ColorJiggle, above, and
-    # torchvision accept it.  A fix that skips neutral steps flips the non-RGB legs; the RGB leg is the control.
+    # Issue #4813: ColorJitter skips a step whose factors are all neutral, so the hue and saturation steps accept
+    # a channel count that the configuration never asks them to touch, as ColorJiggle and torchvision do, in the
+    # random and the fixed order alike.  A non-neutral hue still needs three channels.
+    @pytest.mark.parametrize("order", [None, (0, 1, 2, 3)])
     @pytest.mark.parametrize("channels", [1, 3, 4])
-    def test_wart_color_jitter_computes_neutral_steps_4813(self, device, dtype, channels):
+    def test_color_jitter_skips_neutral_steps_4813(self, device, dtype, channels, order):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, channels, 5, 5).to(device=device, dtype=dtype)
         for factors in ((0.0, 0.0, 0.0, 0.0), (0.2, 0.0, 0.0, 0.0), (0.0, 0.2, 0.0, 0.0)):
             torch.manual_seed(_FORWARD_SEED)
-            if channels == 3:
-                assert K.ColorJitter(*factors, p=1.0)(image).shape == image.shape
-            else:
-                # Which neutral step raises first depends on the drawn order.
-                with pytest.raises((ValueError, ImageError)):
-                    K.ColorJitter(*factors, p=1.0)(image)
+            assert K.ColorJitter(*factors, p=1.0, order=order)(image).shape == image.shape
+        if channels != 3:
+            with pytest.raises(ValueError, match="shape of"):
+                K.ColorJitter(hue=0.1, p=1.0, order=order)(image)
 
     # The erasing box is clamped from below as well as above: scale=(0, 0) still erases one pixel and a 1x1
     # image is always erased in full.
@@ -1538,3 +1543,16 @@ class TestIntensityColourConventions(BaseTester):
             clamped = generator((20000, 3, height, width))
             realised = float((clamped["heights"] > clamped["widths"]).float().mean())
             assert realised == expected, (height, width, realised)
+
+    # With every step neutral both classes return a copy, on the Python guards (a sampled order) and on the
+    # torch.cond path (a fixed order) alike, so writing into the output leaves the input unchanged, as with p=0.
+    @pytest.mark.parametrize("cls", [K.ColorJiggle, K.ColorJitter])
+    @pytest.mark.parametrize("order", [None, (0, 1, 2, 3)])
+    def test_convention_color_neutral_steps_return_a_copy(self, device, dtype, cls, order):
+        image = torch.full((2, 3, 2, 2), 0.5, device=device, dtype=dtype)
+        original = image.clone()
+        output = cls(0.0, 0.0, 0.0, 0.0, p=1.0, order=order)(image)
+        self.assert_close(output, original)
+        assert output.untyped_storage().data_ptr() != image.untyped_storage().data_ptr()
+        output.fill_(-1.0)
+        self.assert_close(image, original)

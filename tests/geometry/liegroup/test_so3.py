@@ -20,6 +20,7 @@ import torch
 
 from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
+from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
@@ -73,6 +74,120 @@ class TestSo3(BaseTester):
         So3(Quaternion(half_turn)).log().sum().backward()
         assert bool(torch.isfinite(half_turn.grad).all()), half_turn.grad
 
+    def test_log_is_principal_4925(self, device, dtype):
+        # q and -q are the same rotation. log used 2 * acos(real), which for real < 0 returned the vector of
+        # length 2 pi - theta about the negated axis, so the same matrix had two different logs and exp(v).log()
+        # was not the principal vector for |v| > pi.
+        # the quaternions are built in float64 and rounded once, so that exp's own rounding stays out of the test
+        rtol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        v = torch.tensor([[0.5, 0.1, -0.3]], dtype=torch.float64)
+        q = Quaternion.from_axis_angle(v).data.to(device=device, dtype=dtype)
+        v = v.to(device=device, dtype=dtype)
+        self.assert_close(So3(Quaternion(-q)).log(), v, rtol=rtol, atol=1e-3 if rtol == 2e-2 else 1e-6)
+        self.assert_close(So3(Quaternion(-q)).log(), So3(Quaternion(q)).log())
+        axis = torch.tensor([[0.48, 0.6, 0.64]], dtype=torch.float64)  # unit length
+        q = Quaternion.from_axis_angle(4.0 * axis).data.to(device=device, dtype=dtype)
+        expected = ((4.0 - 2.0 * torch.pi) * axis).to(device=device, dtype=dtype)
+        self.assert_close(So3(Quaternion(q)).log(), expected, rtol=rtol, atol=0.0)
+
+    def test_log_keeps_small_rotations(self, device, dtype):
+        # log used 2 * acos(real) for the angle. acos loses all of its digits next to real = 1, so in
+        # float32 every rotation below 1e-4 rad came back as exactly 0 and 1e-3 rad came back 2% short.
+        # quaternion_to_axis_angle measures the same angle with atan2 and keeps full precision.
+        theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-8}[dtype]
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        v = torch.tensor([[0.6, 0.0, 0.8]], device=device, dtype=dtype) * theta
+        self.assert_close(So3.exp(v).log(), v, rtol=rtol, atol=0.0)
+        # the half turn, where real = 0, keeps its value
+        half_turn = So3(Quaternion(torch.tensor([[0.0, 0.0, 1.0, 0.0]], device=device, dtype=dtype)))
+        self.assert_close(half_turn.log(), torch.tensor([[0.0, torch.pi, 0.0]], device=device, dtype=dtype))
+
+    def test_jacobians_keep_small_rotations(self, device, dtype):
+        # (1 - cos theta) / theta**2 and (theta - sin theta) / theta**3 are 0/0 at theta = 0 and evaluate
+        # to exactly 0 instead of 1/2 and 1/6 for theta <= 1e-4 in float32 (1e-8 in float64), so the
+        # Jacobians were nan at the identity and the identity matrix next to it.
+        theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-8}[dtype]
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        I = torch.eye(3, device=device, dtype=dtype)  # noqa: E741
+        zero = torch.zeros(1, 3, device=device, dtype=dtype)
+        self.assert_close(So3.right_jacobian(zero)[0], I)
+        self.assert_close(So3.left_jacobian(zero)[0], I)
+        v = torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype) * theta
+        # for a rotation about z the [0, 1] entry is (1 - cos theta) / theta = theta / 2 - theta**3 / 24
+        expected = torch.tensor(theta / 2 - theta**3 / 24, device=device, dtype=dtype)
+        self.assert_close(So3.right_jacobian(v)[0, 0, 1], expected, rtol=rtol, atol=0.0)
+        self.assert_close(So3.left_jacobian(v)[0, 0, 1], -expected, rtol=rtol, atol=0.0)
+
+    def test_small_angle_coefficients_across_the_switch(self, device, dtype):
+        # The three coefficients on both sides of the series/closed-form switch (0.2 rad in float64, 0.5 in
+        # float32), against 50-digit references. Generated with mpmath (mp.dps = 50):
+        #   a = (1 - cos t) / t**2, b = (t - sin t) / t**3, c = (1 - (t / 2) * cot(t / 2)) / t**2
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the closed forms above the switch keep only a few bits in half precision")
+        ref = torch.tensor(
+            [
+                (1e-6, 0.4999999999999583, 0.16666666666665833, 0.08333333333333472),
+                (1e-3, 0.4999999583333347, 0.16666665833333352, 0.08333333472222225),
+                (0.05, 0.4998958420135014, 0.16664583457336965, 0.08333680576224836),
+                (0.19, 0.4984976421808776, 0.16636609177714273, 0.08338351535672024),
+                (0.21, 0.498165198998906, 0.16629955230541296, 0.08339464771681691),
+                (0.45, 0.4916192476411016, 0.16498727998649976, 0.08361594626029004),
+                (0.55, 0.48752224112560083, 0.16416391326425744, 0.08375652128283852),
+                (1.0, 0.4596976941318603, 0.1585290151921035, 0.08475613914377404),
+                (2.0, 0.3540367091367856, 0.1363378216467898, 0.08947684601641732),
+                (3.0, 0.2211102774000495, 0.10588444414593084, 0.09929197039400237),
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # measured worst case over [1e-9, pi]: 5.2e-14 (float64, c just above 0.2), 5.9e-6 (float32, c near 0.52)
+        rtol = 2e-13 if dtype == torch.float64 else 2e-5
+        a, b, c = _so3_small_angle_coefficients(ref[:, 0])
+        self.assert_close(torch.stack((a, b, c), -1), ref[:, 1:], rtol=rtol, atol=0.0)
+        # exact at the identity
+        zero = _so3_small_angle_coefficients(torch.zeros(1, device=device, dtype=dtype))
+        self.assert_close(torch.cat(zero), torch.tensor([1 / 2, 1 / 6, 1 / 12], device=device, dtype=dtype))
+
+    def test_small_angle_coefficients_gradient_past_the_series_range_4965(self, device, dtype):
+        # #4965: the series were evaluated on every angle and discarded above the switch by torch.where, which
+        # still differentiates them. In float16 their Horner terms overflow from about 50 rad, so 0 * inf = nan
+        # reached the gradient of the coefficients and of both Jacobians although the values came from the closed
+        # forms. The closed forms then divided by theta**2, which overflows float16 above 256 rad and made the
+        # gradient nan again; they now divide by theta twice, so 300 and 1000 rad are finite as well.
+        theta = torch.tensor([50.0, 100.0, 200.0, 300.0, 1000.0], device=device, dtype=dtype, requires_grad=True)
+        sum(c.sum() for c in _so3_small_angle_coefficients(theta)).backward()
+        assert bool(torch.isfinite(theta.grad).all()), theta.grad
+        # [omega]_x^2 itself overflows float16 above 256 rad, so the Jacobians are checked up to 200 rad.
+        axis = torch.tensor([0.48, 0.6, 0.64], device=device, dtype=dtype)
+        for jacobian in (So3.right_jacobian, So3.left_jacobian):
+            v = (theta.detach()[:3, None] * axis).requires_grad_(True)
+            jacobian(v).sum().backward()
+            assert bool(torch.isfinite(v.grad).all()), (jacobian.__name__, v.grad)
+
+    def test_small_angle_coefficients_and_jacobians_above_40_rad_4965(self, device, dtype):
+        # #4965: the closed forms divided by theta**3 and theta**2, which overflow float16 above 40.3 and 256
+        # rad. From 41 rad b was 0, so the [omega]_x^2 term of both Jacobians dropped out: at 41 rad about
+        # [0.48, 0.6, 0.64] the float16 right_jacobian was off by 0.79. 50-digit references generated with
+        # mpmath (mp.dps = 50): a = (1 - cos t) / t**2, b = (t - sin t) / t**3, c = (1 - (t / 2) * cot(t / 2)) / t**2.
+        finfo = torch.finfo(dtype)
+        ref = torch.tensor(
+            [
+                (41.0, 0.0011822363340415387, 0.0005971855119456292, 0.001568257196741034),
+                (60.0, 0.00054233693900421, 0.00027918893806065843, 0.001578777379124938),
+                (288.0, 5.813614141459137e-06, 1.2092140495844536e-05, 0.0030921829471326203),
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # a and b at 288 rad are subnormal in float16, hence the atol of 8 subnormal steps
+        a, b, c = _so3_small_angle_coefficients(ref[:, 0])
+        self.assert_close(torch.stack((a, b, c), -1), ref[:, 1:], rtol=8 * finfo.eps, atol=8 * finfo.eps * finfo.tiny)
+        # the Jacobians against the float64 path on the CPU, below the float16 overflow of [omega]_x^2 itself
+        v = ref[:2, :1] * torch.tensor([0.48, 0.6, 0.64], device=device, dtype=dtype)
+        for jacobian in (So3.right_jacobian, So3.left_jacobian):
+            expected = jacobian(v.cpu().double()).to(device=device, dtype=dtype)
+            self.assert_close(jacobian(v), expected, rtol=8 * finfo.eps, atol=8 * finfo.eps)
+
     def test_convention_log_identity_gradient_is_the_on_manifold_limit_4404(self, device, dtype):
         # The value the guard leaves in place, pinned rather than merely asserted finite: at the
         # identity log evaluates 2 * vec / real, so d(omega_x)/dq_x = 2 -- exact in every dtype,
@@ -86,6 +201,49 @@ class TestSo3(BaseTester):
         q = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         So3(Quaternion(q)).log()[0, 0].backward()
         self.assert_close(q.grad, torch.tensor([[0.0, 2.0, 0.0, 0.0]], device=device, dtype=dtype))
+
+    def test_exp_matches_float64_at_large_angles_4928(self, device, dtype):
+        # #4928: exp took the Taylor branch 0.5 - theta**2 / 48 for sin(theta / 2) / theta below
+        # finfo(dtype).eps * 1e3, which is 7.8 rad in bfloat16, so every bfloat16 exp used the two
+        # terms: at theta = 3 the quaternion had norm 0.94 and the rotation matrix was off by 0.23.
+        axis = torch.tensor([[1.0, 0.0, 0.0], [0.48, 0.6, 0.64]], dtype=torch.float64)
+        for theta in (0.97, 3.0):
+            v = theta * axis
+            q_ref = So3.exp(v).q.data.to(device=device, dtype=dtype)
+            q = So3.exp(v.to(device=device, dtype=dtype)).q.data
+            self.assert_close(q, q_ref)
+            self.assert_close(q.norm(dim=-1), torch.ones(2, device=device, dtype=dtype))
+
+    def test_exp_across_the_series_switch_4928(self, device, dtype):
+        # exp about z is (cos(t / 2), 0, 0, sin(t / 2)) on both sides of the 0.5 rad switch, against
+        # 50-digit references. Generated with mpmath (mp.dps = 50): cos(t / 2), sin(t / 2).
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half precision keeps too few bits to see the series coefficients")
+        ref = torch.tensor(
+            [
+                (1e-3, 0.9999998750000026, 0.0004999999791666669),
+                (0.3, 0.9887710779360422, 0.14943813247359922),
+                (0.49, 0.9701373249726354, 0.24255632478857206),
+                (0.51, 0.9676632956885756, 0.25224540863437805),
+                (1.9, 0.5816830894638836, 0.8134155047893737),
+                (3.0, 0.0707372016677029, 0.9974949866040544),
+                (6.0, -0.9899924966004454, 0.1411200080598672),
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        zero = torch.zeros_like(ref[:, :1])
+        q = So3.exp(torch.cat((zero, zero, ref[:, :1]), -1)).q.data
+        rtol = 1e-15 if dtype == torch.float64 else 1e-6
+        self.assert_close(q, torch.cat((ref[:, 1:2], zero, zero, ref[:, 2:]), -1), rtol=rtol, atol=0.0)
+
+    def test_exp_gradient_is_finite_at_large_angles(self, device, dtype):
+        # The series branch is differentiated even where the closed form is selected; evaluated on the
+        # raw angle its powers overflow float16 above about 90 rad and 0 * inf = nan reached v.grad.
+        axis = torch.tensor([0.48, 0.6, 0.64], device=device, dtype=dtype)
+        v = (torch.tensor([[0.0], [0.3], [3.0], [120.0]], device=device, dtype=dtype) * axis).requires_grad_(True)
+        So3.exp(v).q.data.sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
 
     # TODO: implement me
     def test_jit(self, device, dtype):

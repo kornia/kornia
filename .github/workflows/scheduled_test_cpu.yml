@@ -1,15 +1,13 @@
 name: Tests on CPU (scheduled)
 
+# Runs on main twice a day rather than on every push. With a push trigger each merge started the
+# full matrix and the next merge cancelled it: from 2026-09-03 to 2026-09-24, 262 of 352 runs
+# were cancelled, about 43,000 runner-minutes, in an org limited to 20 concurrent jobs.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
-      - 'COPYRIGHT'
   schedule:
-    - cron: '0 4 * * *'
+    # Off the hour: GitHub may drop queued scheduled jobs at the start of an hour, when load peaks.
+    - cron: '23 0 * * *'
+    - cron: '23 12 * * *'
   workflow_dispatch:
   workflow_call:
 
@@ -46,39 +44,64 @@ jobs:
         run: echo "windows-2022 runner is available"
 
   check-skip:
-    # For scheduled runs, check if only documentation files changed
-    # If so, skip the expensive test runs
+    # A scheduled run tests everything that reached main since the previous successful scheduled
+    # run. It skips when main has not moved since then, or when every file changed since then is
+    # documentation.
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       should-skip: ${{ steps.check.outputs.should-skip }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          fetch-depth: 2  # Need at least 2 commits to compare
+          fetch-depth: 0  # The previous scheduled run's commit can be any number of commits back
 
-      - name: Check if only docs changed
+      - name: Check what changed since the previous scheduled run
         id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # For non-schedule events, always run tests
+          # Manual and called runs always test.
           if [[ "${{ github.event_name }}" != "schedule" ]]; then
             echo "should-skip=false" >> "$GITHUB_OUTPUT"
             echo "Not a scheduled run, will proceed with tests"
             exit 0
           fi
 
-          # For scheduled runs, check if only documentation files changed
-          # Get the last commit on main
-          LAST_COMMIT=$(git rev-parse HEAD)
+          # Compare against the newest successful scheduled run. A failed run may have tested
+          # nothing (a pre-tests failure skips every test job), and skipping on top of a real
+          # failure would turn the workflow green while main is still red; a cancelled run tested
+          # nothing either. A run that skipped its tests concludes as success; its commit is still
+          # a valid base, because everything before it was tested or was documentation.
+          # Filtering the runs endpoint by status or branch returns an incomplete, unordered
+          # page, so ask for a bounded created= window and sort here.
+          SINCE=$(date -u -d '7 days ago' +%Y-%m-%d)
+          PREV_SHA=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/scheduled_test_cpu.yml/runs?event=schedule&created=>=${SINCE}&per_page=100" \
+            --jq '[.workflow_runs[] | select(.head_branch == "main" and .conclusion == "success")]
+                  | sort_by(.created_at) | last | .head_sha // empty') || PREV_SHA=""
 
-          # Get list of changed files in the last commit
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r $LAST_COMMIT)
+          if [[ -z "$PREV_SHA" ]] || ! git cat-file -e "${PREV_SHA}^{commit}" 2>/dev/null; then
+            echo "should-skip=false" >> "$GITHUB_OUTPUT"
+            echo "No usable previous scheduled run (got '${PREV_SHA}'), will proceed with tests"
+            exit 0
+          fi
 
-          # Check if all changed files are in paths-ignore patterns
+          if [[ "$PREV_SHA" == "$(git rev-parse HEAD)" ]]; then
+            echo "should-skip=true" >> "$GITHUB_OUTPUT"
+            echo "main has not moved since the previous scheduled run at ${PREV_SHA}"
+            exit 0
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$PREV_SHA" HEAD)
+
+          # Skip only if every changed file is documentation
           SHOULD_SKIP="true"
           for file in $CHANGED_FILES; do
-            # Check if file matches any ignore pattern
             if [[ ! "$file" =~ ^docs/ ]] && \
                [[ ! "$file" =~ \.md$ ]] && \
                [[ "$file" != "LICENSE" ]] && \
@@ -89,7 +112,7 @@ jobs:
           done
 
           echo "should-skip=$SHOULD_SKIP" >> "$GITHUB_OUTPUT"
-          echo "Changed files: $CHANGED_FILES"
+          echo "Changed since ${PREV_SHA}: $CHANGED_FILES"
           echo "Should skip: $SHOULD_SKIP"
 
   pre-tests:
@@ -269,7 +292,7 @@ jobs:
     uses: ./.github/workflows/docs.yml
     with:
       python-version: '["3.11"]'
-      # Post-merge run: the model doctests download on a cache miss instead of
+      # Scheduled run on main: the model doctests download on a cache miss instead of
       # skipping, so main always exercises them for real.
       download-weights: true
       cache-path: weights/

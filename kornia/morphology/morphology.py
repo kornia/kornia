@@ -182,11 +182,8 @@ def dilation(
           names. :doc:`Conventions & Pitfalls </get-started/conventions>` maps both, and the kernel
           conventions, onto scipy, scikit-image and OpenCV.
         - Known defects: the finite ``max_val`` sentinel reaches the output in an empty window and once the
-          data range approaches it (`#4734 <https://github.com/kornia/kornia/issues/4734>`_); a non-float
-          image is not rejected (`#4735 <https://github.com/kornia/kornia/issues/4735>`_); and
-          ``engine="convolution"`` returns the image dtype where ``unfold`` and ``shift`` return the dtype
-          promoted with ``structuring_element``, or with ``kernel`` when none is given
-          (`#4762 <https://github.com/kornia/kornia/issues/4762>`_).
+          data range approaches it (`#4734 <https://github.com/kornia/kornia/issues/4734>`_), and a non-float
+          image is not rejected (`#4735 <https://github.com/kornia/kornia/issues/4735>`_).
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -284,12 +281,13 @@ def dilation(
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         h_pad, w_pad = output.shape[-2:]
-        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
+        conv_input = output.to(dtype=compute_dtype)
+        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=compute_dtype)
         output, _ = F.conv2d(
-            output.view(B * C, 1, h_pad, w_pad),
+            conv_input.view(B * C, 1, h_pad, w_pad),
             reshape_kernel,
             padding=0,
-            bias=neighborhood.view(-1).flip(0).to(dtype=output.dtype),
+            bias=neighborhood.view(-1).flip(0).to(dtype=compute_dtype),
         ).max(dim=1)
         output = output.view(B, C, H, W)
     elif engine == "shift":
@@ -427,12 +425,13 @@ def erosion(
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         Hpad, Wpad = output.shape[-2:]
-        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
+        conv_input = output.to(dtype=compute_dtype)
+        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=compute_dtype)
         output, _ = F.conv2d(
-            output.view(B * C, 1, Hpad, Wpad),
+            conv_input.view(B * C, 1, Hpad, Wpad),
             reshape_kernel,
             padding=0,
-            bias=-neighborhood.view(-1).to(dtype=output.dtype),
+            bias=-neighborhood.view(-1).to(dtype=compute_dtype),
         ).min(dim=1)
         output = output.view(B, C, H, W)
     elif engine == "shift":

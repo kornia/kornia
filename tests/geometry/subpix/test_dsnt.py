@@ -24,7 +24,7 @@ from testing.base import BaseTester
 
 
 class TestRenderGaussian2d(BaseTester):
-    @pytest.fixture()
+    @pytest.fixture
     def gaussian(self, device, dtype):
         # For a standard gaussian on 5 points [-1, -0.5, 0, 0.5, 1] with std=0.25
         # The equation is exp( -x^2 / (2 * std^2) ) -> exp( -x^2 * 8 )

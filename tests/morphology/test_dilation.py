@@ -209,17 +209,19 @@ class TestDilate(BaseTester):
     def test_convolution_engine_dtype_mismatch(self, device, dtype):
         # engine="convolution" used to crash when tensor.dtype != kernel.dtype, because the
         # conv weight/bias were built from kernel.dtype instead of the input's dtype. See #4541.
-        # Passing a mismatched kernel must match casting the kernel to the input dtype up front;
-        # that is the same computation, so the results are bitwise equal (no tolerance needed).
+        # It now computes in torch.promote_types(tensor.dtype, kernel.dtype), matching unfold and
+        # shift (#4762). Passing a mismatched kernel must match casting both operands to that
+        # promoted dtype up front; that is the same computation, so the results are bitwise equal.
         other_dtype = torch.float16 if dtype == torch.float32 else torch.float32
+        compute_dtype = torch.promote_types(dtype, other_dtype)
 
         tensor = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=other_dtype)
 
         result = dilation(tensor, kernel, engine="convolution")
 
-        assert result.dtype == dtype
-        self.assert_close(result, dilation(tensor, kernel.to(dtype), engine="convolution"))
+        assert result.dtype == compute_dtype
+        self.assert_close(result, dilation(tensor.to(compute_dtype), kernel.to(compute_dtype), engine="convolution"))
 
     def test_auto_engine(self, device, dtype):
         # engine="auto", the default, runs "unfold" on CUDA and the exact "shift" engine everywhere
@@ -847,13 +849,15 @@ class TestDilate(BaseTester):
                     op(frame, float_kernel, structuring_element=flat_se),
                 ), (mask_dtype, op.__name__)
 
-    def test_wart_convolution_engine_keeps_image_dtype_4762(self, device):
-        # `unfold` and `shift` return the promoted dtype of the image and the kernel (or the structuring
-        # element); `engine="convolution"` casts the kernel to the image's dtype instead, so the result dtype
-        # depends on the engine. Tracked in #4762. Dtypes are explicit, so this pin takes `device` only.
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_engines_return_promoted_dtype_4762(self, device, engine):
+        # Every engine computes in the dtype promoted from the image and the kernel, or the structuring
+        # element when one is given, so the result dtype does not depend on `engine` (#4762). Dtypes are
+        # explicit, so this pin takes `device` only.
         tensor = torch.rand(1, 1, 4, 5, generator=torch.Generator().manual_seed(0)).to(device, torch.float16)
-        kernel = torch.ones(3, 3, device=device)
+        half_kernel = torch.ones(3, 3, device=device, dtype=torch.float16)
+        structuring_element = torch.zeros(3, 3, device=device)
         for op in (dilation, erosion):
-            assert op(tensor, kernel, engine="unfold").dtype == torch.float32, op.__name__
-            assert op(tensor, kernel, engine="shift").dtype == torch.float32, op.__name__
-            assert op(tensor, kernel, engine="convolution").dtype == torch.float16, op.__name__
+            assert op(tensor, half_kernel.float(), engine=engine).dtype == torch.float32, op.__name__
+            actual = op(tensor, half_kernel, structuring_element=structuring_element, engine=engine)
+            assert actual.dtype == torch.float32, op.__name__

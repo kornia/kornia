@@ -15,13 +15,41 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 from torch import Tensor
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D, _input_metadata_only
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+
+
+class _PicklableCompileMixin:
+    """Keep a module picklable after its own ``compile()`` replaced callables with ``torch.compile``d ones.
+
+    ``compile()`` calls :meth:`_record_compile` before compiling. Pickling (and ``copy.deepcopy``) then stores
+    the uncompiled callables, which pickle, and unpickling compiles them again with the same arguments.
+    """
+
+    def _record_compile(self, names: Sequence[str], compile_kwargs: Dict[str, Any]) -> None:
+        # Keep the first, uncompiled callables if compile() is called more than once.
+        if self.__dict__.get("_uncompiled_fns") is None:
+            self._uncompiled_fns = {name: getattr(self, name) for name in names}
+        self._compile_kwargs = compile_kwargs
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state = super().__getstate__()  # type: ignore[misc]
+        uncompiled = state.get("_uncompiled_fns")
+        if uncompiled is not None:
+            state.update(uncompiled)
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)  # type: ignore[misc]
+        compile_kwargs = state.get("_compile_kwargs")
+        if compile_kwargs is not None:
+            self._uncompiled_fns = None
+            self.compile(**compile_kwargs)  # type: ignore[attr-defined]
 
 
 class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):

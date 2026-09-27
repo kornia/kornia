@@ -154,6 +154,11 @@ class TestImageModuleMixIn:
         with pytest.raises(ValueError, match="Unsupported backend"):
             img_module.show(backend="matplotlib", display=False)
 
+    def test_save_without_output_image_raises(self, img_module, tmpdir):
+        img_module._output_image = None
+        with pytest.raises(ValueError, match="No pre-computed images found"):
+            img_module.save(name=tmpdir.join("test_image.jpg"))
+
     def test_detach_tensor_to_cpu_tensor(self, img_module, sample_tensor):
         result = img_module._detach_tensor_to_cpu(sample_tensor)
         assert isinstance(result, torch.Tensor)

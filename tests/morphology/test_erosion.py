@@ -195,17 +195,19 @@ class TestErode(BaseTester):
     def test_convolution_engine_dtype_mismatch(self, device, dtype):
         # engine="convolution" used to crash when tensor.dtype != kernel.dtype, because the
         # conv weight/bias were built from kernel.dtype instead of the input's dtype. See #4541.
-        # Passing a mismatched kernel must match casting the kernel to the input dtype up front;
-        # that is the same computation, so the results are bitwise equal (no tolerance needed).
+        # It now computes in torch.promote_types(tensor.dtype, kernel.dtype), matching unfold and
+        # shift (#4762). Passing a mismatched kernel must match casting both operands to that
+        # promoted dtype up front; that is the same computation, so the results are bitwise equal.
         other_dtype = torch.float16 if dtype == torch.float32 else torch.float32
+        compute_dtype = torch.promote_types(dtype, other_dtype)
 
         tensor = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=other_dtype)
 
         result = erosion(tensor, kernel, engine="convolution")
 
-        assert result.dtype == dtype
-        self.assert_close(result, erosion(tensor, kernel.to(dtype), engine="convolution"))
+        assert result.dtype == compute_dtype
+        self.assert_close(result, erosion(tensor.to(compute_dtype), kernel.to(compute_dtype), engine="convolution"))
 
     def test_auto_engine(self, device, dtype):
         # engine="auto", the default, runs "unfold" on CUDA and the exact "shift" engine everywhere

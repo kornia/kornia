@@ -84,8 +84,10 @@ MODELS: dict[str, "str | list[str]"] = {
     # HardNet: the default descriptor of LAFDescriptor, so nearly every composite.
     "checkpoint_liberty_with_aug.pth": [
         "https://huggingface.co/kornia/hardnet/resolve/main/checkpoint_liberty_with_aug.pth",
-        "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/"
-        "checkpoint_liberty_with_aug.pth",
+        (
+            "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/"
+            "checkpoint_liberty_with_aug.pth"
+        ),
     ],
     # Patch descriptors with pretrained smoke/jit tests.
     "HyNet_LIB.pth": [

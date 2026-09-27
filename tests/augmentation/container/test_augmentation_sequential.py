@@ -980,10 +980,8 @@ class TestConventionAugmentationSequential(BaseTester):
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     @pytest.mark.parametrize("align_corners", [None, False, True])
-    def test_wart_resized_crop_mask_align_corners_depends_on_mode_4802(
-        self, cropping_mode, align_corners, device, dtype
-    ):
-        # #4802: the slice-mode raise flips when slice mode drops `align_corners` for nearest resampling.
+    def test_resized_crop_mask_accepts_any_align_corners_4802(self, cropping_mode, align_corners, device, dtype):
+        # #4802: slice mode drops `align_corners` for nearest resampling, so every override works in both modes.
         image = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4) / 16
         mask = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4).remainder(2)
         seq = K.AugmentationSequential(
@@ -991,13 +989,9 @@ class TestConventionAugmentationSequential(BaseTester):
             data_keys=["input", "mask"],
             extra_args={DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": align_corners}},
         )
-        if cropping_mode == "slice" and align_corners is not None:
-            with pytest.raises(ValueError):
-                seq(image, mask)
-        else:
-            out_image, out_mask = seq(image, mask)
-            assert out_image.shape == out_mask.shape == (1, 1, 2, 2)
-            assert set(out_mask.unique().tolist()).issubset({0.0, 1.0})
+        out_image, out_mask = seq(image, mask)
+        assert out_image.shape == out_mask.shape == (1, 1, 2, 2)
+        assert set(out_mask.unique().tolist()).issubset({0.0, 1.0})
 
     def test_convention_masks_keep_labels_and_add_padding_fill_through_a_rotation(self, device, dtype):
         # Convention pin: masks are resampled with nearest interpolation, so a {2, 3} mask still holds those
@@ -1295,19 +1289,25 @@ class TestConventionAugmentationSequential(BaseTester):
         assert shape(True, False) == (3, 6, 8)
 
     @pytest.mark.parametrize("factory", [lambda: K.RandomAffine(30.0, p=1.0), lambda: K.RandomElasticTransform(p=1.0)])
-    def test_wart_extra_args_mask_resample_must_be_a_resample_member_4815(self, factory, device, dtype):
-        # #4815: flips when the container normalizes a string override as the constructors do, or rejects it with
-        # a kornia error.
+    def test_extra_args_mask_resample_accepts_a_string_or_int_4815(self, factory, device, dtype):
+        # #4815: the container normalizes a `resample` override as the constructors do.
         image = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
-        for resample, raises in ((Resample.NEAREST, False), ("nearest", True)):
+        masks = []
+        for resample in (Resample.NEAREST, "nearest", "NEAREST", 0):
             seq = K.AugmentationSequential(
                 factory(), data_keys=["input", "mask"], extra_args={DataKey.MASK: {"resample": resample}}
             )
-            if raises:
-                with pytest.raises(AttributeError):
-                    seq(image, image.clone())
-            else:
-                assert seq(image, image.clone())[1].shape == image.shape
+            assert seq.extra_args[DataKey.MASK]["resample"] is Resample.NEAREST
+            torch.manual_seed(0)
+            masks.append(seq(image, image.clone())[1])
+        for mask in masks[1:]:
+            assert torch.equal(mask, masks[0])
+
+    def test_extra_args_rejects_an_unknown_resample_4815(self):
+        with pytest.raises(KeyError):
+            K.AugmentationSequential(
+                K.RandomAffine(30.0, p=1.0), data_keys=["input", "mask"], extra_args={DataKey.MASK: {"resample": "foo"}}
+            )
 
     def test_extra_args_mask_override_reaches_the_sampler_4419(self, device, dtype):
         # #4419: both halves of `extra_args[DataKey.MASK]` reach the sampler; `RandomElasticTransform`, which has
@@ -1440,3 +1440,61 @@ class TestConventionAugmentationSequential(BaseTester):
         ):
             with pytest.raises(NotImplementedError):
                 K.AugmentationSequential(factory(), data_keys=["input", "mask"])(img, mask)
+
+    @pytest.mark.parametrize("data_style", ["image", "list", "dict", "dict_mask_first"])
+    def test_show_and_save_render_a_detached_image_4835(self, data_style, tmp_path, device, dtype):
+        # `.show()` / `.save()` render the cache through `.numpy()`, so it must hold the augmented image
+        # alone and detached: the raw forward output keeps the autograd graph and, for several data keys,
+        # is a list or a dict. It stays on the input device; the helpers move it to the CPU themselves.
+        from PIL import Image as PILImage
+
+        image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        mask = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        if data_style == "image":
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0))
+            out_image = aug(image)
+        elif data_style == "list":
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+            out_image, _ = aug(image, mask)
+        elif data_style == "dict":
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+            out_image = aug({"image": image, "mask": mask})["image"]
+        else:  # the image is not the first key, so the cache must pick it by its position
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+            out_image = aug({"mask": mask, "image": image})["image"]
+
+        assert out_image.requires_grad  # the returned image still carries the graph
+        cached = aug._output_image
+        assert isinstance(cached, torch.Tensor)
+        assert not cached.requires_grad
+        assert cached.device == out_image.device  # no device-to-host copy in the forward pass
+        self.assert_close(cached, out_image.detach())
+
+        if dtype != torch.bfloat16:  # `.show()` renders through `Tensor.numpy()`, which has no bfloat16 support
+            assert isinstance(aug.show(display=False), PILImage.Image)
+        path = tmp_path / "augmented.jpg"
+        aug.save(name=str(path))
+        assert path.is_file()
+
+    @pytest.mark.parametrize("no_image_style", ["dict", "data_keys"])
+    def test_show_and_save_reject_a_call_that_carried_no_image_4835(self, no_image_style, tmp_path, device, dtype):
+        # A call whose data keys hold no `DataKey.INPUT` augments no image, so there is nothing to
+        # render: neither the mask that came out nor the raw container output may be cached. Both
+        # helpers report the empty cache instead. `forward` only accepts such a call when `params`
+        # are supplied, since it otherwise has no image to sample them from.
+        mask = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        if no_image_style == "dict":
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+            params = aug.forward_parameters((2, 3, 6, 8))
+            out = aug({"mask": mask}, params=params)
+            assert set(out) == {"mask"}
+        else:
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+            params = aug.forward_parameters((2, 3, 6, 8))
+            out = aug(mask, data_keys=["mask"], params=params)
+            assert isinstance(out, torch.Tensor)
+
+        assert aug._output_image is None
+        for helper in (lambda: aug.show(display=False), lambda: aug.save(name=str(tmp_path / "none.jpg"))):
+            with pytest.raises(ValueError, match="No pre-computed images found"):
+                helper()

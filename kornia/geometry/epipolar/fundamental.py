@@ -28,12 +28,13 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 from kornia.geometry.solvers import solve_cubic
 
 
-def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def normalize_points(
+    points: torch.Tensor, eps: float = 1e-8, weights: Optional[torch.Tensor] = None
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Normalize points (isotropic).
 
-    Computes the transformation matrix such that the two principal moments of the set of points
-    are equal to unity, forming an approximately symmetric circular cloud of points of radius 1
-    about the origin. Reference: Hartley/Zisserman 4.4.4 pag.107
+    Computes the Hartley normalisation: the points are translated to zero mean and scaled isotropically so
+    that their mean distance to the origin is :math:`\sqrt{2}`. Reference: Hartley/Zisserman 4.4.4 pag.107
 
     This operation is an essential step before applying the DLT algorithm in order to consider
     the result as optimal.
@@ -41,10 +42,12 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     Args:
        points: Tensor containing the points to be normalized with shape :math:`(B, N, 2)`.
        eps: epsilon value to avoid numerical instabilities.
+       weights: Optional nonnegative weights with shape :math:`(B, N)` for the centroid and mean radius.
+          Zero-weight points do not influence the transform. An all-zero batch element uses unweighted statistics.
 
     Returns:
        tuple containing the normalized points in the shape :math:`(B, N, 2)` and the transformation matrix
-       in the shape :math:`(B, 3, 3)`.
+       in the shape :math:`(B, 3, 3)` that maps the input points to them.
 
     """
     if points.ndim != 3:
@@ -55,12 +58,32 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     B, _N, _ = points.shape
     device, dtype = points.device, points.dtype
 
-    # Center at mean
-    x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
+    if weights is None:
+        x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
+    else:
+        if weights.shape != points.shape[:2]:
+            raise AssertionError(weights.shape)
+        # Accumulate in at least float32: in half precision a sum followed by a division rounds twice where
+        # ``mean`` rounds once, and uniform weights would then not reproduce the unweighted statistics.
+        acc_dtype = torch.promote_types(dtype, torch.float32)
+        # Negative weights count as zero. ``where`` rather than ``clamp_min(0)``: the clamp's derivative at the bound
+        # depends on the torch version (#4229), and a weight of exactly 0 is how a correspondence is dropped.
+        positive_weights = weights.to(acc_dtype)
+        positive_weights = torch.where(positive_weights < 0, 0.0, positive_weights)
+        total_weight = positive_weights.sum(dim=1, keepdim=True)
+        # A fully de-weighted sample is degenerate; keep its normalization finite and batched.
+        effective_weights = torch.where(total_weight > 0, positive_weights, torch.ones_like(positive_weights))
+        total_weight = effective_weights.sum(dim=1, keepdim=True)
+        weighted_sum = (points.to(acc_dtype) * effective_weights[..., None]).sum(dim=1, keepdim=True)
+        x_mean = (weighted_sum / total_weight[..., None]).to(dtype)
     centered = points - x_mean  # (B,N,2)
 
     # Mean Euclidean distance to origin (radius)
-    mean_radius = centered.norm(dim=-1, p=2).mean(dim=-1)  # (B,)
+    radii = centered.norm(dim=-1, p=2)
+    if weights is None:
+        mean_radius = radii.mean(dim=-1)  # (B,)
+    else:
+        mean_radius = ((radii.to(acc_dtype) * effective_weights).sum(dim=-1) / total_weight.squeeze(-1)).to(dtype)
 
     # Scale so that mean radius becomes sqrt(2)
     scale = (math.sqrt(2.0)) / (mean_radius + eps)  # (B,)
@@ -85,12 +108,13 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
 def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Normalize a given transformation matrix.
 
-    The function trakes the transformation matrix and normalize so that the value in
-    the last row and column is one.
+    Convention:
+        - Divides ``M`` by its last entry ``M[..., -1, -1]``, which gives :func:`find_fundamental` its
+          ``F[2, 2] = 1`` scaling. A matrix whose last entry is within ``eps`` of zero is returned unchanged.
 
     Args:
         M: The transformation to be normalized of any shape with a minimum size of 2x2.
-        eps: small value to avoid unstabilities during the backpropagation.
+        eps: magnitude of the last entry at or below which ``M`` is returned unchanged.
 
     Returns:
         the normalized transformation matrix with same shape as the input.
@@ -99,7 +123,9 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     if len(M.shape) < 2:
         raise AssertionError(M.shape)
     norm_val: torch.Tensor = M[..., -1:, -1:]
-    return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
+    mask = norm_val.abs() > eps
+    divisor = torch.where(mask, norm_val, torch.ones_like(norm_val))
+    return torch.where(mask, M / divisor, M)
 
 
 def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
@@ -156,8 +182,8 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     r"""Compute the fundamental matrix using the 7-point algorithm.
 
     The 7-point algorithm computes the fundamental matrix from exactly 7 point correspondences.
-    Unlike the 8-point algorithm, this method can return up to 3 possible fundamental matrices
-    as solutions to the rank-2 constraint, which is formulated as a cubic equation.
+    Unlike the 8-point algorithm, this method returns 3 candidate fundamental matrices, one per root of the
+    cubic that formulates the rank-2 constraint, padded to three.
 
     Reference: Hartley/Zisserman 11.1.2 pag.281
 
@@ -166,8 +192,9 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
         points2: A set of 7 points in the second image with shape :math:`(B, 7, 2)`.
 
     Returns:
-        The computed fundamental matrices with shape :math:`(B, 3, 3, 3)`, containing up to 3
-        candidate solutions per batch. Invalid solutions are zeroed out.
+        The computed fundamental matrices with shape :math:`(B, 3, 3, 3)`, always 3 candidates per batch
+        element. A cubic with a single real root still gives 3: the two extra candidates are one rank-3 matrix
+        repeated, not zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_).
 
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
@@ -280,9 +307,9 @@ def run_8point(
         if weights.shape[1] != points1.shape[1]:
             raise AssertionError(weights.shape)
 
-    # Hartley normalization (same as before)
-    pts1n, T1 = normalize_points(points1)
-    pts2n, T2 = normalize_points(points2)
+    # Use the same correspondences for Hartley statistics and the weighted DLT system.
+    pts1n, T1 = normalize_points(points1, weights=weights)
+    pts2n, T2 = normalize_points(points2, weights=weights)
 
     x1, y1 = torch.chunk(pts1n, dim=-1, chunks=2)  # (B,N,1)
     x2, y2 = torch.chunk(pts2n, dim=-1, chunks=2)  # (B,N,1)
@@ -303,11 +330,16 @@ def run_8point(
             # Accumulate via einsum (saves bandwidth for huge N)
             M = torch.einsum("bni,bnj->bij", A, A)
     else:
-        w = weights.clamp_min(0)
+        # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence, and
+        # its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient through
+        # at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on every version.
+        w = torch.where(weights < 0, 0.0, weights)
         if N < use_einsum_at_more_than_points:
-            # Row-scale by sqrt(w) then GEMM
-            Aw = A * w.unsqueeze(-1).sqrt()
-            M = Aw.transpose(-2, -1).contiguous() @ Aw
+            # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the derivative
+            # of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in w, like the
+            # einsum branch below.
+            Aw = A * w.unsqueeze(-1)
+            M = Aw.transpose(-2, -1).contiguous() @ A
         else:
             # Weighted einsum
             M = torch.einsum("bni,bnj,bn->bij", A, A, w)
@@ -334,14 +366,28 @@ def find_fundamental(
 ) -> torch.Tensor:
     r"""Find the fundamental matrix.
 
+    Convention:
+        - ``points1`` are in the first image and ``points2`` in the second; the result satisfies
+          :math:`x_2^\top F x_1 = 0`, the second image's point on the left.
+          :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
+        - The result is scaled so that ``F[2, 2] = 1`` by :func:`normalize_transformation`, which leaves it at its
+          unnormalised scale when ``F[2, 2]`` is numerically zero, as for exactly rectified stereo.
+          ``method="7POINT"`` returns three candidates in no particular order.
+        - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
+          negative weight counts as zero, and ``method="7POINT"`` ignores them.
+        - Known defect: when the 7-point cubic has one real root, the two extra candidates are one rank-3
+          matrix repeated instead of zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_).
+
     Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`: :math:`N \ge 8` for
+            ``"8POINT"``, exactly 7 for ``"7POINT"``.
+        points2: A set of points in the second image with the shape of ``points1``.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
         method: The method to use for computing the fundamental matrix. Supported methods are "7POINT" and "8POINT".
 
     Returns:
-        the computed fundamental matrix with shape :math:`(B, 3*m, 3)`, where `m` number of fundamental matrix.
+        the computed fundamental matrix with shape :math:`(B, 3, 3)` for ``"8POINT"`` and
+        :math:`(B, 3, 3, 3)` for ``"7POINT"``.
 
     Raises:
         ValueError: If an invalid method is provided.
@@ -359,13 +405,17 @@ def find_fundamental(
 def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> torch.Tensor:
     r"""Compute the corresponding epipolar line for a given set of points.
 
+    Convention:
+        - For first-image points and ``F`` from :func:`find_fundamental` the lines lie in the second image;
+          for second-image points pass ``F.transpose(-2, -1)``. Lines are scaled to :math:`a^2 + b^2 = 1`.
+
     Args:
         points: tensor containing the set of points to project in the shape of :math:`(*, N, 2)` or :math:`(*, N, 3)`.
         F_mat: the fundamental to use for projection the points in the shape of :math:`(*, 3, 3)`.
 
     Returns:
-        a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
-        lines corresponding to the points to the other image. Each line is described as
+        a tensor with shape :math:`(*, N, 3)` containing the epipolar lines :math:`F x` of the points.
+        Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
 
     """
@@ -393,13 +443,14 @@ def get_perpendicular(lines: torch.Tensor, points: torch.Tensor) -> torch.Tensor
     r"""Compute the perpendicular to a line, through the point.
 
     Args:
-        lines: tensor containing the set of lines :math:`(*, N, 3)`.
-        points:  tensor containing the set of points :math:`(*, N, 2)`.
+        lines: tensor containing the set of lines :math:`(B, N, 3)`.
+        points:  tensor containing the set of points :math:`(B, N, 2)`.
 
     Returns:
-        a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
+        a tensor with shape :math:`(B, N, 3)` containing a vector of the epipolar
         perpendicular lines. Each line is described as
-        :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
+        :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`; the normal :math:`(a, b)` has the
+        norm of the input line's and is not rescaled.
 
     """
     KORNIA_CHECK_SHAPE(lines, ["*", "N", "3"])
@@ -416,17 +467,21 @@ def get_perpendicular(lines: torch.Tensor, points: torch.Tensor) -> torch.Tensor
 
 
 def get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor) -> torch.Tensor:
-    """Return closest point on the epipolar line to the correspondence, given the fundamental matrix.
+    r"""Return closest point on the epipolar line to the correspondence, given the fundamental matrix.
+
+    Convention:
+        - Returns, in the second image, the point of the epipolar line of ``pts1`` closest to ``pts2``, for
+          ``Fm`` in the :math:`x_2^\top F x_1 = 0` order of :func:`find_fundamental`.
 
     Args:
-        pts1: correspondences from the left images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
-              converted automatically.
-        pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
-              converted automatically.
-        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
+        pts1: points in the first image with shape :math:`(B, N, 2)` or :math:`(B, N, 3)`. If they are not
+              homogeneous, converted automatically.
+        pts2: points in the second image with shape :math:`(B, N, 2)` or :math:`(B, N, 3)`. If they are not
+              homogeneous, converted automatically.
+        Fm: Fundamental matrices with shape :math:`(B, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
 
     Returns:
-        point on epipolar line :math:`(*, N, 2)`.
+        point on epipolar line :math:`(B, N, 2)`.
 
     """
     if not isinstance(Fm, torch.Tensor):
@@ -446,6 +501,11 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     r"""Get the Fundamental matrix from Essential and camera matrices.
 
     Uses the method from Hartley/Zisserman 9.6 pag 257 (formula 9.12).
+
+    Convention:
+        - :math:`F = K_2^{-\top} E K_1^{-1}` with ``K1`` the camera of the first image, so ``F`` follows the
+          :math:`x_2^\top F x_1 = 0` order of :func:`find_fundamental`; it keeps the scale of ``E_mat``, with no
+          ``F[2, 2] = 1`` normalisation.
 
     Args:
         E_mat: The essential matrix with shape of :math:`(*, 3, 3)`.
@@ -472,6 +532,13 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 
 def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Tensor:
     r"""Get the Fundamental matrix from Projection matrices.
+
+    Convention:
+        - The result satisfies :math:`x_2^\top F x_1 = 0` for ``(P1, P2)``, the order of :func:`find_fundamental`.
+          It is not normalised, and for ``P1 = [I | 0]``, ``P2 = [R | t]`` it is the negative of
+          :func:`~kornia.geometry.epipolar.essential_from_Rt` for the same motion.
+        - Known defects: float16 overflows to ``inf`` for pixel-unit projection matrices
+          (`#4877 <https://github.com/kornia/kornia/issues/4877>`_).
 
     Args:
         P1: The projection matrix from first camera with shape :math:`(*, 3, 4)`.

@@ -95,14 +95,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     that uses the base mask path the ``resample`` entry is honoured in both directions, and a
                     dict without one resamples masks with nearest neighbour. ``align_corners`` is
                     handler-dependent: some warps honor it, but resize mask paths replace it.
-                    With :class:`~kornia.augmentation.RandomResizedCrop`,
-                    boolean ``align_corners`` overrides raise ``ValueError`` in the default ``cropping_mode='slice'``
-                    mask path (`#4802 <https://github.com/kornia/kornia/issues/4802>`_); ``cropping_mode='resample'``
-                    accepts them. ``None`` works in both modes.
+                    :class:`~kornia.augmentation.RandomResizedCrop` in the default ``cropping_mode='slice'``
+                    ignores it for nearest resampling.
                     :class:`~kornia.augmentation.RandomElasticTransform` has its own mask path and honours
-                    both entries. Unlike the constructors, the override is not normalized: a string ``resample``
-                    raises ``AttributeError`` wherever the mask is resampled, so pass a
-                    ``kornia.constants.Resample`` member (`#4815 <https://github.com/kornia/kornia/issues/4815>`_).
+                    both entries. As in the constructors, ``resample`` may be a string, an int or a
+                    ``kornia.constants.Resample`` member.
 
     Convention:
         - each child keeps the contract of its own base and class; mix and 3D children do not inherit every
@@ -353,7 +350,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
         self._transform_matrix = None
-        self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
+        extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
+        # Normalize a ``resample`` override as the constructors do, so a string or int works like a member.
+        self.extra_args = {
+            key: {**value, "resample": Resample.get(value["resample"])} if "resample" in value else value
+            for key, value in extra_args.items()
+        }
 
     def clear_state(self) -> None:
         """Reset cached params and transformation-matrix state."""
@@ -624,34 +626,44 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if not self._disable_features:
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
-            decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type
-            )(super(ImageSequential, self).__call__)
-            _output_image = decorated_forward(*inputs, **kwargs)
+            self._check_output_type(output_type)
+            # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
+            # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
+            decorated_forward = self.convert_input_output(input_names_to_handle=input_names_to_handle)(
+                super(ImageSequential, self).__call__
+            )
+            tensor_output = decorated_forward(*inputs, **kwargs)
 
             in_data_keys: Optional[List[DataKey]]
+            original_keys: Optional[Tuple[str, ...]] = None
             if len(inputs) == 1 and isinstance(inputs[0], dict):
                 original_keys, in_data_keys, inputs, _invalid_data = self._preproc_dict_data(inputs[0])
             else:
                 in_data_keys = kwargs.get("data_keys", self.data_keys)
             data_keys = self.transform_op.preproc_datakeys(in_data_keys)
 
+            # cache a detached view of the augmented image for ``.show()`` / ``.save()``, which move it to the
+            # CPU themselves, so the forward pass pays no device-to-host copy or sync
             if not is_exporting():
-                if len(data_keys) > 1 and DataKey.INPUT in data_keys:
-                    idx = data_keys.index(DataKey.INPUT)
-                    if output_type == "pt":
-                        # ``self._output_image`` already holds ``_output_image`` here, so the old
-                        # per-key rebind was a no-op; just store the whole output.
-                        self._output_image = _output_image
-                    elif isinstance(_output_image, dict):
-                        self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
-                    else:
-                        self._output_image[idx] = _output_image[idx]
-                else:
-                    self._output_image = _output_image
+                image = self._select_output_image(tensor_output, data_keys, original_keys)
+                self._output_image = image.detach() if isinstance(image, torch.Tensor) else image
+            _output_image = self._convert_output(tensor_output, output_type)
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
+
+    def _select_output_image(
+        self, output: Any, data_keys: List[DataKey], original_keys: Optional[Tuple[str, ...]]
+    ) -> Any:
+        # ``forward`` returns the image itself, a list ordered like ``data_keys``, or a dict keyed like the input
+        if DataKey.INPUT not in data_keys:
+            return None
+        idx = data_keys.index(DataKey.INPUT)
+        if isinstance(output, dict):
+            return output[original_keys[idx]]
+        if len(data_keys) > 1 and isinstance(output, list | tuple):
+            return output[idx]
+        return output
 
     def _preproc_dict_data(
         self, data: Dict[str, DataType]

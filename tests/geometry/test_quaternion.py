@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Union
 
 import pytest
@@ -166,6 +167,42 @@ class TestQuaternion(BaseTester):
         self.assert_close((q1**1), q1)
         self.assert_close((q1**2), q1)
 
+    def test_pow_non_unit(self, device, dtype):
+        # issue #4926: q**t keeps the norm, |q**t| == |q|**t, so it agrees with * and inv() for non-unit q
+        data = [[1.0, 0.5, 0.0, 0.0], [0.5, -0.25, 0.5, 0.25], [1.5, 0.0, 0.5, -0.5], [0.0, 0.0, 0.75, 0.0]]
+        q = Quaternion(torch.tensor(data, device=device, dtype=dtype))
+        self.assert_close(q**0, Quaternion.identity(4, device, dtype))
+        self.assert_close(q**1, q)
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        self.assert_close((q**0.5) * (q**0.5), q)
+        self.assert_close((q**0.5).norm(), q.norm() ** 0.5)
+        # the direction is the power of the unit quaternion, as before
+        self.assert_close((q**0.5).normalize(), q.normalize() ** 0.5)
+
+    def test_pow_real_axis(self, device, dtype):
+        q = Quaternion(torch.tensor([[2.0, 0.0, 0.0, 0.0], [-2.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        expected = torch.tensor([2.0**0.5, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close((q**0.5).data[0], expected)
+
+    @pytest.mark.parametrize("t", (-1.0, 0.5, 2.0))
+    def test_pow_gradcheck(self, device, t):
+        # the first quaternion lies on the real axis, where the vector part has zero norm; the last is pure imaginary
+        # (w = 0), where the unselected real-axis arm divides by w
+        data = torch.tensor(
+            [[2.0, 0.0, 0.0, 0.0], [1.0, 0.5, -0.3, 0.2], [0.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64
+        )
+        self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
+
+    @pytest.mark.parametrize("t", (-1.0, 2.0, 3.0))
+    def test_pow_gradcheck_negative_real_axis(self, device, t):
+        # q = -2 has theta = pi, where the real-axis limit t * cos(t * theta) / w carries the signs of cos(t * pi) and
+        # of w. Only integer t: for a non-integer t the negative real axis is a branch cut with no derivative.
+        data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
         """Test scalar multiplication for issue #3101."""
@@ -296,6 +333,45 @@ class TestQuaternion(BaseTester):
                 q3 = q1.slerp(q2, t)
                 q4 = Quaternion.from_axis_angle(axis * t * 3.14159)
                 self.assert_close(q3, q4)
+
+    def test_slerp_takes_the_short_arc(self, device, dtype):
+        # q and -q are the same rotation; the interpolation must not depend on the stored sign (#4944).
+        # a and b are 0.33 rad apart with dot(a, b) = 0.986, so dot(a, -b) < 0.
+        a = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=dtype))
+        b = Quaternion.from_axis_angle(torch.tensor([[0.5, 0.1, 0.15]], device=device, dtype=dtype))
+        rel_angle = (a.inv() * b).to_axis_angle().norm()
+        for t in (0.25, 0.5, 0.75):
+            short = a.slerp(b, t).matrix()
+            self.assert_close(a.slerp(-b, t).matrix(), short)
+            # the interpolant sits at t times the relative angle from a
+            self.assert_close((a.inv() * a.slerp(-b, t)).to_axis_angle().norm(), t * rel_angle)
+
+    def test_slerp_exact_half_turn_follows_the_stored_sign(self, device, dtype):
+        # At an exact half turn both arcs are equally short. The arc follows the sign of the vector part of
+        # q0^-1 q1, so q1 and -q1 take opposite arcs, each of length t * pi from q0 (see the slerp docstring).
+        # Every product below is exact, so the real part of q0^-1 q1 is exactly zero in every dtype.
+        q0 = Quaternion(torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype))
+        q1 = q0 * Quaternion(torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype))
+        for t in (0.25, 0.5):
+            for sign in (1.0, -1.0):
+                rel = (q0.inv() * q0.slerp(q1 * sign, t)).to_axis_angle()
+                expected = torch.tensor([[sign * t * math.pi, 0.0, 0.0]], device=device, dtype=dtype)
+                self.assert_close(rel, expected)
+
+    def test_slerp_gradient_is_finite_at_equal_endpoints(self, device, dtype):
+        # slerp(q, q, t) = q is smooth in both endpoints; its gradient must not be nan (#4927).
+        q = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=dtype)).data
+        q0 = q.clone().requires_grad_(True)
+        q1 = q.clone().requires_grad_(True)
+        Quaternion(q0).slerp(Quaternion(q1), 0.3).data.sum().backward()
+        assert torch.isfinite(q0.grad).all()
+        assert torch.isfinite(q1.grad).all()
+
+    def test_slerp_gradcheck(self, device):
+        q0 = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=torch.float64)).data
+        q1 = Quaternion.from_axis_angle(torch.tensor([[0.5, 0.1, 0.15]], device=device, dtype=torch.float64)).data
+        self.gradcheck(lambda a, b: Quaternion(a).slerp(Quaternion(b), 0.3).data, (q0, q1))
+        self.gradcheck(lambda a, b: Quaternion(a).slerp(Quaternion(b), 0.3).data, (q0, q0.detach().clone()))
 
     def test_from_to_euler_values(self, device, dtype):
         # num_samples = 5

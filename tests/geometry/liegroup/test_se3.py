@@ -69,8 +69,8 @@ class TestSe3(BaseTester):
         self.gradcheck(lambda x: Se3.exp(x).matrix(), (v,))
 
     def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
-        # #4404: at omega = 0 the where below returns upsilon, but autograd still walks V, whose
-        # sqrt has an unbounded derivative there and whose terms divide by theta**2 and theta**3.
+        # #4404: at omega = 0 autograd walks V, whose sqrt has an unbounded derivative there and
+        # whose closed-form terms divide by theta**2 and theta**3.
         # log has the same defect through its own theta, where clamp_min(1e-12) guards the value
         # and not the gradient (#4229) and underflows to 0 in float16 besides.
         v = torch.zeros(1, 6, device=device, dtype=dtype, requires_grad=True)
@@ -80,6 +80,34 @@ class TestSe3(BaseTester):
         data = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         Se3(So3(Quaternion(data[:, :4])), data[:, 4:]).log().sum().backward()
         assert bool(torch.isfinite(data.grad).all()), data.grad
+
+    def test_exp_matches_float64_above_40_rad_4965(self, device, dtype):
+        # #4965: _so3_small_angle_coefficients divided by theta**3, which overflows float16 above 40.3 rad, so the
+        # [omega]_x^2 term of V dropped out and the float16 exp(v).t was off by 0.18 from 41 rad. The reference
+        # is the float64 path on the CPU, run on the same rounded input.
+        eps = torch.finfo(dtype).eps
+        axis = torch.tensor([0.48, 0.6, 0.64], dtype=torch.float64)
+        for theta in (41.0, 60.0):
+            v = torch.cat((torch.ones(3, dtype=torch.float64), theta * axis)).to(device=device, dtype=dtype)
+            t_ref = Se3.exp(v.cpu().double()).t.to(device=device, dtype=dtype)
+            self.assert_close(Se3.exp(v).t, t_ref, rtol=8 * eps, atol=8 * eps)
+
+    def test_gradient_at_the_identity_couples_rotation_and_translation_4953(self, device, dtype):
+        # #4953: exp fell back to t = upsilon and log to upsilon = t at omega = 0. The values were
+        # right, V(0) = I, but the fallback did not depend on omega, so autograd returned
+        # d t / d omega = 0 at the identity, the standard initialisation for pose optimisation.
+        # The derivative of V(omega) upsilon = upsilon + 0.5 omega x upsilon + O(|omega|^2) is
+        # -0.5 [upsilon]_x, and d upsilon / d q_vec of log at the identity is [t]_x.
+        v = torch.tensor([[1.0, 2.0, 3.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        jac = torch.autograd.functional.jacobian(lambda x: Se3.exp(x).t, v)[0, :, 0, :]
+        upsilon = v[0, :3]
+        self.assert_close(jac[:, :3], torch.eye(3, device=device, dtype=dtype))
+        self.assert_close(jac[:, 3:], -0.5 * So3.hat(upsilon))
+        qt = torch.tensor([[1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        jac = torch.autograd.functional.jacobian(lambda x: Se3(So3(Quaternion(x[:, :4])), x[:, 4:]).log(), qt)
+        jac = jac[0, :, 0, :]
+        self.assert_close(jac[:3, 4:], torch.eye(3, device=device, dtype=dtype))
+        self.assert_close(jac[:3, 1:4], So3.hat(qt[0, 4:]))
 
     # TODO: implement me
     def test_jit(self, device, dtype):
@@ -185,6 +213,39 @@ class TestSe3(BaseTester):
         if batch_size is not None:
             zero_vec = zero_vec.repeat(batch_size, 1)
         self.assert_close(s.log(), torch.cat((t, zero_vec), -1))
+
+    def test_log_is_principal_4925(self, device, dtype):
+        # Se3.log inherits So3.log: a small rotation stored with real < 0 got |omega| close to 2 pi and, through
+        # V_inv(omega), a translation that was six orders of magnitude off. Both signs now give the principal log.
+        theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-6}[dtype]
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        axis = torch.tensor([[0.48, 0.6, 0.64]], dtype=torch.float64)  # unit length
+        q = Quaternion.from_axis_angle(theta * axis).data.to(device=device, dtype=dtype)  # rounded once
+        axis = axis.to(device=device, dtype=dtype)
+        t = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        xi = Se3(So3(Quaternion(-q)), t).log()
+        self.assert_close(xi, Se3(So3(Quaternion(q)), t).log())
+        self.assert_close(xi[..., 3:], theta * axis, rtol=rtol, atol=0.0)
+        self.assert_close(xi[..., :3], t, rtol=0.0, atol=3.0 * theta)
+        # every random pose logs to a principal rotation vector
+        torch.manual_seed(0)
+        omega = Se3.random(64, device=device, dtype=dtype).log()[..., 3:]
+        assert bool((omega.norm(dim=-1) <= torch.pi * (1 + rtol)).all())
+
+    def test_exp_log_keep_small_rotations(self, device, dtype):
+        # V and V_inv are built from (1 - cos theta) / theta**2 and friends, which evaluate to exactly 0
+        # for theta <= 1e-4 in float32 (1e-8 in float64) and lose most of their digits well above that,
+        # so the rotation-coupled part of the translation vanished for small rotations.
+        theta = {torch.bfloat16: 1e-1, torch.float16: 1e-2, torch.float32: 1e-4, torch.float64: 1e-8}[dtype]
+        rtol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        v = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0, theta]], device=device, dtype=dtype)
+        t = Se3.exp(v).t
+        # translating along x while turning by theta about z ends at ((sin theta) / theta, (1 - cos theta) / theta, 0)
+        expected_y = torch.tensor(theta / 2 - theta**3 / 24, device=device, dtype=dtype)
+        self.assert_close(t[0, 1], expected_y, rtol=rtol, atol=0.0)
+        self.assert_close(t[0, 2], torch.zeros((), device=device, dtype=dtype))
+        v = torch.tensor([[1.0, 2.0, 3.0, 0.6 * theta, 0.0, 0.8 * theta]], device=device, dtype=dtype)
+        self.assert_close(Se3.exp(v).log(), v, rtol=rtol, atol=0.0)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
@@ -324,6 +385,18 @@ class TestSe3(BaseTester):
         i = Se3.identity(batch_size=batch_size, device=device, dtype=dtype)
         self.assert_close(s_in_s.so3.q.data, i.so3.q.data)
         self.assert_close(s_in_s.t, i.t)
+
+    def test_user_leaf_translation_receives_the_gradient(self, device, dtype):
+        # A tensor that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it (#4943).
+        t = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype, requires_grad=True)
+        s = Se3(So3.identity(1, device, dtype), t)
+        (s * torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)).sum().backward()
+        assert t.grad is not None
+        self.assert_close(t.grad, torch.ones_like(t))
+        assert "_translation" in s.state_dict()
+        # a tensor that does not require grad still becomes an optimizable parameter
+        plain = Se3(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype))
+        assert [name for name, _ in plain.named_parameters()] == ["_translation"]
 
     def test_derived_state_moves_and_serializes(self, device, dtype):
         v = torch.rand(2, 6, device=device, dtype=dtype, requires_grad=True)

@@ -27,6 +27,15 @@ from testing.geometry.create import create_random_homography
 from testing.geometry.linalg import euler_angles_to_rotation_matrix, identity_matrix
 
 
+def _rigid_transforms(batch_size, device, dtype):
+    """Distinct, non-identity rigid transforms, so a swapped or dropped operand changes the result."""
+    angles = torch.linspace(0.1, 0.9, batch_size, device=device, dtype=dtype)
+    # the helper returns homogeneous (4, 4) rotations
+    trans = euler_angles_to_rotation_matrix(angles, 2 * angles, -angles).reshape(batch_size, 4, 4).clone()
+    trans[:, :3, 3] = torch.stack([angles, 1 - angles, 2 * angles], dim=-1)
+    return trans
+
+
 class TestTransformPoints(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
@@ -176,6 +185,23 @@ class TestComposeTransforms(BaseTester):
 
         self.gradcheck(kgl.compose_transformations, (trans_01, trans_12))
 
+    def test_broadcast(self, device, dtype):
+        # Broadcasting batch size 1 against B in both directions (#4933)
+        A = _rigid_transforms(1, device=device, dtype=dtype)
+        B = _rigid_transforms(3, device=device, dtype=dtype)
+        out_ab = kgl.compose_transformations(A, B)
+        out_ba = kgl.compose_transformations(B, A)
+        assert out_ab.shape == (3, 4, 4)
+        assert out_ba.shape == (3, 4, 4)
+        self.assert_close(out_ab, A @ B)
+        self.assert_close(out_ba, B @ A)
+
+    def test_mismatched_batch_exception(self, device, dtype):
+        A = identity_matrix(batch_size=2, device=device, dtype=dtype)
+        B = identity_matrix(batch_size=3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Incompatible batch shapes"):
+            kgl.compose_transformations(A, B)
+
 
 class TestInverseTransformation(BaseTester):
     def test_smoke(self, device, dtype):
@@ -315,6 +341,23 @@ class TestRelativeTransformation(BaseTester):
 
         self.gradcheck(kgl.relative_transformation, (trans_01, trans_02))
 
+    def test_broadcast(self, device, dtype):
+        # Broadcasting batch size 1 against B in both directions (#4933)
+        A = _rigid_transforms(1, device=device, dtype=dtype)
+        B = _rigid_transforms(3, device=device, dtype=dtype)
+        out_ab = kgl.relative_transformation(A, B)
+        out_ba = kgl.relative_transformation(B, A)
+        assert out_ab.shape == (3, 4, 4)
+        assert out_ba.shape == (3, 4, 4)
+        self.assert_close(out_ab, kgl.inverse_transformation(A) @ B)
+        self.assert_close(out_ba, kgl.inverse_transformation(B) @ A)
+
+    def test_mismatched_batch_exception(self, device, dtype):
+        A = identity_matrix(batch_size=2, device=device, dtype=dtype)
+        B = identity_matrix(batch_size=3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Incompatible batch shapes"):
+            kgl.relative_transformation(A, B)
+
 
 class TestPointsLinesDistances(BaseTester):
     def test_smoke(self, device, dtype):
@@ -376,6 +419,26 @@ class TestPointsLinesDistances(BaseTester):
         pts = torch.rand(2, 3, 2, device=device, requires_grad=True, dtype=torch.float64)
         lines = torch.rand(2, 3, 3, device=device, requires_grad=True, dtype=torch.float64)
         self.gradcheck(kgl.point_line_distance, (pts, lines))
+        # homogeneous points with weights away from 0 and 1
+        pts = (torch.rand(2, 3, 3, device=device, dtype=torch.float64) + 0.5).requires_grad_(True)
+        self.gradcheck(kgl.point_line_distance, (pts, lines))
+
+    def test_homogeneous_weight_4935(self, device, dtype):
+        # #4935: the third coordinate of a (*, N, 3) point was ignored, so the point (1.5, -0.7) was 2.68 from
+        # 3x + 4y + 10 = 0 when written as (3, -1.4, 2) and 1.66 as (-1.5, 0.7, -1), instead of 2.34. The homogeneous
+        # distance is |ax + by + cw| / (|w| |(a, b)|), and a point at infinity (w = 0) is at distance inf.
+        line = torch.tensor([[[3.0, 4.0, 10.0]]], device=device, dtype=dtype)
+        point = torch.tensor([[[1.5, -0.7]]], device=device, dtype=dtype)
+        expected = torch.tensor([[2.34]], device=device, dtype=dtype)
+        self.assert_close(kgl.point_line_distance(point, line), expected)
+        for w in (1.0, 2.0, -1.0, 0.25):
+            homogeneous = torch.cat((w * point, torch.full_like(point[..., :1], w)), dim=-1)
+            self.assert_close(kgl.point_line_distance(homogeneous, line), expected)
+        at_infinity = torch.tensor([[[1.5, -0.7, 0.0]]], device=device, dtype=dtype, requires_grad=True)
+        distance = kgl.point_line_distance(at_infinity, line)
+        assert bool(distance.isposinf().all()), distance
+        distance.sum().backward()
+        assert bool(torch.isfinite(at_infinity.grad).all()), at_infinity.grad
 
 
 class TestEuclideanDistance(BaseTester):
@@ -384,6 +447,26 @@ class TestEuclideanDistance(BaseTester):
         pt2 = torch.tensor([1, 0, 0], device=device, dtype=dtype)
         dst = kgl.euclidean_distance(pt1, pt2)
         self.assert_close(dst, torch.tensor(1.0, device=device, dtype=dtype))
+
+    def test_coincident_points_are_zero(self, device, dtype):
+        # Exactly 0 with a zero gradient, as torch.linalg.norm gives. Compared exactly: the former sqrt(eps)
+        # floor of 1e-3 is inside the default float16 and bfloat16 tolerances.
+        pt1 = torch.zeros(3, device=device, dtype=dtype, requires_grad=True)
+        pt2 = torch.zeros(3, device=device, dtype=dtype)
+        dst = kgl.euclidean_distance(pt1, pt2)
+        assert dst.item() == 0.0
+        (grad,) = torch.autograd.grad(dst.sum(), pt1)
+        assert (grad == 0).all(), grad
+
+    @pytest.mark.parametrize("dist", [1e-4, 1e-3, 1e-2, 1.0])
+    def test_distance_is_exact(self, device, dtype, dist):
+        if dist**2 < torch.finfo(dtype).tiny:
+            pytest.skip(f"the squared distance {dist**2:g} is subnormal in {dtype}")
+        pt1 = torch.zeros(3, device=device, dtype=dtype)
+        pt2 = torch.tensor([dist, 0.0, 0.0], device=device, dtype=dtype)
+        # relative tolerance only: the default half tolerances would absorb the former bias of up to 1e-3
+        rtol = 2 * torch.finfo(dtype).eps
+        self.assert_close(kgl.euclidean_distance(pt1, pt2), pt2[0], rtol=rtol, atol=0.0)
 
     @pytest.mark.parametrize("shape", [(2,), (3,), (1, 2), (2, 3)])
     def test_cardinality(self, device, dtype, shape):

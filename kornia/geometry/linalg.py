@@ -48,7 +48,8 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
           shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
         trans_12: tensor with the homogeneous transformation from
           a reference frame 2 respect to a frame 1. The tensor has must have a
-          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
+          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch of one broadcasts against a batch of
+          :math:`N` in either argument.
 
     Returns:
         the transformation between the two frames with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -71,6 +72,11 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     if trans_01.dim() != trans_12.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
 
+    try:
+        batch_shape = torch.broadcast_shapes(trans_01.shape[:-2], trans_12.shape[:-2])
+    except RuntimeError as err:
+        raise ValueError(f"Incompatible batch shapes: {trans_01.shape} and {trans_12.shape}") from err
+
     # unpack input data
     rmat_01 = trans_01[..., :3, :3]
     rmat_12 = trans_12[..., :3, :3]
@@ -81,7 +87,7 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     rmat_02 = torch.matmul(rmat_01, rmat_12)
     tvec_02 = torch.matmul(rmat_01, tvec_12) + tvec_01
 
-    trans_02 = trans_01.new_zeros(trans_01.shape)
+    trans_02 = trans_01.new_zeros(batch_shape + (4, 4))
     trans_02[..., :3, :3] = rmat_02
     trans_02[..., :3, 3:] = tvec_02
     trans_02[..., 3, 3] = 1.0
@@ -145,7 +151,8 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
 
     Args:
         trans_01: reference transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
-        trans_02: destination transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
+        trans_02: destination transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch
+          of one broadcasts against a batch of :math:`N` in either argument.
 
     Returns:
         the relative transformation between the transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -165,6 +172,11 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
 
+    try:
+        batch_shape = torch.broadcast_shapes(trans_01.shape[:-2], trans_02.shape[:-2])
+    except RuntimeError as err:
+        raise ValueError(f"Incompatible batch shapes: {trans_01.shape} and {trans_02.shape}") from err
+
     rmat_01 = trans_01[..., :3, :3]
     tvec_01 = trans_01[..., :3, 3:4]
     rmat_02 = trans_02[..., :3, :3]
@@ -172,7 +184,7 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
     rmat_10 = rmat_01.transpose(-1, -2)
     rmat_12 = torch.matmul(rmat_10, rmat_02)
     tvec_12 = torch.matmul(rmat_10, tvec_02 - tvec_01)
-    trans_12 = torch.zeros_like(trans_01)
+    trans_12 = trans_01.new_zeros(batch_shape + (4, 4))
     trans_12[..., :3, :3] = rmat_12
     trans_12[..., :3, 3:4] = tvec_12
     trans_12[..., 3, 3] = 1.0
@@ -246,7 +258,8 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
     r"""Return the distance from points to lines.
 
     Args:
-       point: (possibly homogeneous) points :math:`(*, N, 2 or 3)`.
+       point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the
+         weight :math:`w`; a point at infinity (:math:`w = 0`) is at distance ``inf`` from every line.
        line: lines coefficients :math:`(a, b, c)` with shape :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
        eps: Small constant for safe sqrt.
 
@@ -266,13 +279,26 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
     # Using in-place operations to improve performance
     numerator = line[..., 0] * point[..., 0]
     numerator += line[..., 1] * point[..., 1]
-    numerator += line[..., 2]
+    if point.shape[-1] == 3:
+        numerator += line[..., 2] * point[..., 2]
+    else:
+        numerator += line[..., 2]
     numerator.abs_()
 
     # Avoid computing norm multiple times by saving its value
     denom_norm = (line[..., 0].square() + line[..., 1].square()).sqrt()
 
-    return numerator / (denom_norm + eps)
+    distance = numerator / (denom_norm + eps)
+    if point.shape[-1] == 3:
+        # (x, y, w) is the Euclidean point (x / w, y / w), so its distance is |ax + by + cw| / (|w| |(a, b)|); the
+        # weight used to be ignored, which is right only for w = 1 (#4935). A point at infinity (w = 0) is at
+        # distance inf; torch.where also differentiates the branch it does not select, so that division is kept
+        # finite.
+        w = point[..., 2].abs()
+        at_infinity = w == 0
+        safe_w = torch.where(at_infinity, torch.ones_like(w), w)
+        distance = torch.where(at_infinity, torch.full_like(distance, torch.inf), distance / safe_w)
+    return distance
 
 
 def batched_dot_product(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
@@ -296,13 +322,19 @@ def euclidean_distance(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False, 
         x: first set of points of shape :math:`(*, N)`.
         y: second set of points of shape :math:`(*, N)`.
         keepdim: whether to keep the dimension after reduction.
-        eps: small value to have numerical stability.
+        eps: unused; kept for backward compatibility. The result is the exact Euclidean distance.
 
     """
     KORNIA_CHECK_SHAPE(x, ["*", "N"])
     KORNIA_CHECK_SHAPE(y, ["*", "N"])
 
-    return (x - y).pow(2).sum(dim=-1, keepdim=keepdim).add_(eps).sqrt_()
+    d2 = (x - y).pow(2).sum(dim=-1, keepdim=keepdim)
+    # Guard the singular point by substituting a safe argument into the square root and taking the
+    # value from the other arm of the ``torch.where``, so coincident points return exactly ``0``
+    # with a finite (zero) gradient instead of the ``sqrt(eps)`` floor the previous form added.
+    positive = d2 > 0
+    safe_d2 = torch.where(positive, d2, torch.ones_like(d2))
+    return torch.where(positive, safe_d2.sqrt(), torch.zeros_like(d2))
 
 
 # aliases

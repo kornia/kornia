@@ -1823,6 +1823,80 @@ class TestColorJitter(BaseTester):
         fresh = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
         assert torch.compile(fresh, fullgraph=True)(img).shape == img.shape
 
+    @pytest.mark.device_agnostic
+    def test_fixed_order_keeps_distribution_validation(self):
+        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
+        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
+        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        script = (
+            "import torch\n"
+            "from torch.distributions import Distribution\n"
+            "from kornia.augmentation import ColorJitter\n"
+            "Distribution.set_default_validate_args(True)\n"
+            "ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(torch.rand(2, 3, 8, 8))\n"
+            "assert Distribution._validate_args, 'ColorJitter disabled Distribution validation'\n"
+        )
+        # Trusted, fixed command (the current interpreter running a literal script); no external input.
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
+        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
+        # 3.13), so a fixed order must fall back to the Python dispatch there.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        params = op.forward_parameters(image.shape)
+        expected = op(image, params=params)
+        monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
+        fallback = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert torch.equal(fallback(image, params=params), expected)
+
+    @pytest.mark.parametrize(
+        ("step", "factors"),
+        [
+            (0, [0.0, 0.0]),
+            (0, [1.0, 1.0]),
+            (0, [0.0, 1.2]),
+            (1, [1.0, 1.0]),
+            (1, [1.0, 1.2]),
+            (2, [1.0, 1.0]),
+            (2, [1.0, 0.8]),
+            (3, [0.0, 0.0]),
+            (3, [0.0, 0.05]),
+        ],
+        ids=[
+            "brightness-0",
+            "brightness-1",
+            "brightness-mixed",
+            "contrast-1",
+            "contrast-mixed",
+            "saturation-1",
+            "saturation-mixed",
+            "hue-0",
+            "hue-mixed",
+        ],
+    )
+    def test_fixed_order_guards_match_sampled_order(self, device, dtype, step, factors):
+        # A fixed order on an RGB input dispatches through torch.cond, a sampled order through Python guards
+        # (#4813). Both must skip the same factors, and run a step on the whole batch when any factor in it is
+        # not neutral: a skipped step returns the out-of-range pixels as they are, a step that runs clamps them,
+        # and a hue step that runs zeroes the pixel whose largest channel is 0.
+        pixels = torch.tensor([[-0.5, -0.5], [0.25, -0.2], [1.75, 0.0]], device=device, dtype=dtype)
+        image = pixels.reshape(1, 3, 1, 2).repeat(2, 1, 1, 1)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(step,))
+        params = op.forward_parameters(image.shape)
+        key = ("brightness_factor", "contrast_factor", "saturation_factor", "hue_factor")[step]
+        params[key] = torch.tensor(factors, device=params[key].device, dtype=params[key].dtype)
+        params["order"] = torch.tensor([step], device=params["order"].device, dtype=params["order"].dtype)
+        sampled = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0)
+        assert torch.equal(op(image, params=params), sampled(image, params=params))
+
     def test_color_jitter(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
@@ -2228,6 +2302,7 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
+    @pytest.mark.parametrize("fixed", [True, False], ids=["fixed-order", "sampled-order"])
     @pytest.mark.parametrize(
         "jitter_kwargs,order",
         [
@@ -2238,7 +2313,9 @@ class TestColorJitter(BaseTester):
         ],
         ids=["brightness", "contrast", "saturation", "hue"],
     )
-    def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order):
+    def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order, fixed):
+        # .compile() must replace what apply_transform executes (#4038): the torch.cond dispatcher for a fixed
+        # order on an RGB input, the four step helpers for a sampled order.
         compiled_graphs = []
 
         def backend(graph_module, _example_inputs):
@@ -2250,8 +2327,9 @@ class TestColorJitter(BaseTester):
             device=device,
             dtype=dtype,
         )
-        f = ColorJitter(**jitter_kwargs, p=1.0, order=order)
+        f = ColorJitter(**jitter_kwargs, p=1.0, order=order if fixed else None)
         params = f.forward_parameters(input.shape)
+        params["order"] = torch.tensor(order, device=params["order"].device, dtype=params["order"].dtype)
         expected = f(input, params=params)
         assert not torch.equal(expected, input)
 
@@ -3984,9 +4062,9 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.5000, 2.0000],
-                        [4.0000, 4.5000, 5.0000],
-                        [7.0000, 7.5000, 8.0000],
+                        [3.0000, 4.0000, 5.0000],
+                        [4.5000, 5.5000, 6.5000],
+                        [6.0000, 7.0000, 8.0000],
                     ]
                 ]
             ],
@@ -3994,13 +4072,14 @@ class TestRandomResizedCrop(BaseTester):
             dtype=dtype,
         )
         rrc = RandomResizedCrop(size=(3, 3), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         self.assert_close(out, expected)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
-            [[[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]]],
+            [[[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]],
             device=device,
             dtype=dtype,
         )
@@ -4022,10 +4101,10 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.3333, 1.6667, 2.0000],
-                        [3.0000, 3.3333, 3.6667, 4.0000],
-                        [5.0000, 5.3333, 5.6667, 6.0000],
-                        [7.0000, 7.3333, 7.6667, 8.0000],
+                        [3.0000, 3.6667, 4.3333, 5.0000],
+                        [4.0000, 4.6667, 5.3333, 6.0000],
+                        [5.0000, 5.6667, 6.3333, 7.0000],
+                        [6.0000, 6.6667, 7.3333, 8.0000],
                     ]
                 ]
             ],
@@ -4034,14 +4113,15 @@ class TestRandomResizedCrop(BaseTester):
         )
 
         rrc = RandomResizedCrop(size=(4, 4), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         assert out.shape == torch.Size([1, 1, 4, 4])
         self.assert_close(out, exp, low_tolerance=True)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
-            [[[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]]],
+            [[[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]],
             device=device,
             dtype=dtype,
         )
@@ -4063,16 +4143,16 @@ class TestRandomResizedCrop(BaseTester):
             [
                 [
                     [
-                        [1.0000, 1.5000, 2.0000],
-                        [4.0000, 4.5000, 5.0000],
-                        [7.0000, 7.5000, 8.0000],
+                        [3.0000, 4.0000, 5.0000],
+                        [4.5000, 5.5000, 6.5000],
+                        [6.0000, 7.0000, 8.0000],
                     ]
                 ],
                 [
                     [
-                        [0.0000, 0.5000, 1.0000],
-                        [3.0000, 3.5000, 4.0000],
-                        [6.0000, 6.5000, 7.0000],
+                        [0.0000, 1.0000, 2.0000],
+                        [1.5000, 2.5000, 3.5000],
+                        [3.0000, 4.0000, 5.0000],
                     ]
                 ],
             ],
@@ -4080,15 +4160,16 @@ class TestRandomResizedCrop(BaseTester):
             dtype=dtype,
         )
         rrc = RandomResizedCrop(size=(3, 3), scale=(3.0, 3.0), ratio=(2.0, 2.0))
-        # It will crop a size of (2, 2) from the aspect ratio implementation of torch
+        # No candidate fits (area 3x the image), so the fallback applies: with width / height = 2 it keeps the
+        # full width, a 2 x 3 crop, as torchvision's get_params does (#4814).
         out = rrc(inp)
         self.assert_close(out, expected)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
             [
-                [[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]],
-                [[[0.0, 1.0, 0.0], [3.0, 4.0, 0.0], [6.0, 7.0, 0.0]]],
+                [[[0.0, 0.0, 0.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]],
+                [[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [0.0, 0.0, 0.0]]],
             ],
             device=device,
             dtype=dtype,
@@ -4483,8 +4564,8 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         with pytest.raises(ValueError, match="amount must be a tuple or a float"):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
 
-    @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
-    @pytest.mark.parametrize("channel_shape", [1, 1, 3, 3])
+    @pytest.mark.parametrize("batch_shape", [1, 3, 5])
+    @pytest.mark.parametrize("channel_shape", [1, 3])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
         input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
         transform = RandomSaltAndPepperNoise(p=1.0)
@@ -6026,9 +6107,10 @@ class TestRandomRain(BaseTester):
             n = int(params["number_of_drops_factor"][i])
             h, w = int(params["drop_height_factor"][i]), int(params["drop_width_factor"][i])
             size = max(h, abs(w))
-            x = torch.linspace(0, h, steps=size, dtype=torch.long).to(device)
-            y = torch.linspace(0, w, steps=size, dtype=torch.long).to(device)
-            last_dy, last_dx = (h, w) if size > 1 else (0, 0)
+            last_dy = h - 1
+            last_dx = w - 1 if w > 0 else w + 1 if w < 0 else 0
+            x = torch.linspace(0, last_dy, steps=size, dtype=torch.long).to(device)
+            y = torch.linspace(0, last_dx, steps=size, dtype=torch.long).to(device)
             rows, cols = image.shape[2] - last_dy, image.shape[3] - abs(last_dx)
             coords = params["coordinates_factor"][i][:n]
             r0 = (coords[:, 0] * rows).long().clamp(max=rows - 1).to(device)

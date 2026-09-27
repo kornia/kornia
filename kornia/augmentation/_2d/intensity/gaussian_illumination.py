@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
 
@@ -42,7 +42,7 @@ def _apply_gaussian_illumination(
     return input.add(gradient).clamp_(0, 1)
 
 
-class RandomGaussianIllumination(IntensityAugmentationBase2D):
+class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Applies random 2D Gaussian illumination patterns to a batch of images.
 
     .. image:: _static/img/RandomGaussianIllumination.png
@@ -80,10 +80,6 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         The drawn ``center`` is rounded to a whole pixel, half to even, so on an odd-length axis the peak can sit
         a pixel past the pixel-centre position ``center * L - 0.5``: ``center=0.5`` lands on column ``4`` of a
         7-pixel-wide image. Tracked in `#4811 <https://github.com/kornia/kornia/issues/4811>`_.
-
-    .. warning::
-        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
-        Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
 
     .. warning::
         An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
@@ -225,6 +221,17 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> RandomGaussianIllumination:
+        self._record_compile(
+            ["_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
         self._fn = torch.compile(
             self._fn,
             fullgraph=fullgraph,
