@@ -101,9 +101,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
           only drawn labels), and a label list shorter than the acceptors leaves the trailing ones untouched.
         - images are ``float16``, ``bfloat16``, ``float32`` or ``float64``; a mask keeps its own dtype (``bool``,
           integer or floating). Only ``"input"`` / ``"image"`` and ``"mask"`` keys are implemented; any other key
-          raises ``NotImplementedError``. A mask is needed only to draw the parameters, and a call without one
-          fails with Python's ``IndexError`` or ``ValueError``, or a generic key-count error, rather than a kornia
-          error naming the mask (`#4777 <https://github.com/kornia/kornia/issues/4777>`_). With a complete
+          raises ``NotImplementedError``. A mask is needed only to draw the parameters; a call that draws them
+          without one, or whose inputs do not match ``data_keys``, raises a kornia error that names the mask (and
+          the key count, on a mismatch) before any input is read. With a complete
           ``params`` any subset of the inputs is accepted, which is how
           :class:`~kornia.augmentation.container.AugmentationSequential` applies the transplant, one input at a
           time. Outputs come back in input order, a single one as a bare
@@ -243,6 +243,21 @@ class RandomTransplantation(MixAugmentationBaseV2):
         acceptor[selection] = donor[selection]
         return acceptor
 
+    def _check_mask_given(self, input: Sequence[torch.Tensor], data_keys: list[DataKey]) -> None:
+        # The parameters are drawn from the mask, so name it before any lookup fails on its absence.
+        names = [k.name.lower() for k in data_keys]
+        KORNIA_CHECK(
+            len(data_keys) == len(input),
+            f"Length of keys ({len(data_keys)}) does not match number of inputs ({len(input)}). "
+            f"{type(self).__name__} needs a mask to draw its parameters: pass one tensor per data_keys entry, "
+            f"the mask included, or pass complete params. Got data_keys={names}.",
+        )
+        KORNIA_CHECK(
+            DataKey.MASK in data_keys,
+            f"{type(self).__name__} needs a mask to draw its parameters: pass one and name it with a 'mask' "
+            f"entry in data_keys, or pass complete params. Got data_keys={names}.",
+        )
+
     def params_from_input(
         self,
         *input: torch.Tensor,
@@ -267,10 +282,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
              tensors separately.
 
         """
-        KORNIA_CHECK(
-            len(data_keys) == len(input),
-            f"Length of keys ({len(data_keys)}) does not match number of inputs ({len(input)}).",
-        )
+        self._check_mask_given(input, data_keys)
 
         # The first mask key will be used for the transplantation
         mask: torch.Tensor = input[data_keys.index(DataKey.MASK)]
@@ -383,6 +395,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
             keys = [DataKey.get(inp) for inp in data_keys]
 
         if params is None:
+            self._check_mask_given(input, keys)
             mask: torch.Tensor = input[keys.index(DataKey.MASK)]
             self._params = self.forward_parameters(mask.shape)
         else:
