@@ -363,6 +363,23 @@ class TestQuaternion(BaseTester):
             except Exception:
                 self.assert_close(qq1, -qq2)
 
+    @pytest.mark.parametrize("batch_size", (1, 2))
+    def test_from_matrix_check_rotation(self, device, dtype, batch_size):
+        # kornia#4773: the reflection diag(-1, 1, 1) is orthogonal but has det = -1, and by default
+        # comes back as the non-unit quaternion [0.7071, 0, 0, 0] rather than being rejected.
+        reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
+        reflection = reflection.repeat(batch_size, 1, 1)
+
+        assert Quaternion.from_matrix(reflection).data.shape == (batch_size, 4)
+        with pytest.raises(ValueError, match="reflection"):
+            Quaternion.from_matrix(reflection, check_rotation=True)
+
+        rotation = Quaternion.random(batch_size, device, dtype).matrix()
+        self.assert_close(
+            Quaternion.from_matrix(rotation, check_rotation=True).data,
+            Quaternion.from_matrix(rotation).data,
+        )
+
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_getitem(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)

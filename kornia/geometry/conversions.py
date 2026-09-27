@@ -504,7 +504,7 @@ def angle_axis_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:  # 
     return axis_angle_to_rotation_matrix(axis_angle)
 
 
-def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor:
+def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor, check_rotation: bool = False) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to Rodrigues vector in radians.
 
     Convention:
@@ -520,19 +520,24 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor
           is accurate to roundoff, except that the low-angle Taylor branch
           (``theta <= 1e-3``) leaves a truncation error of up to about
           ``2e-10``
-        - the input is **not** checked for being a rotation matrix:
+        - by default the input is **not** checked for being a rotation matrix:
           ``zeros(3, 3)`` returns ``[0., 0., 3.1416]`` and ``2 * eye(3)``
-          returns ``[0., 0., 0.]``
+          returns ``[0., 0., 0.]``. Pass ``check_rotation=True`` to reject
+          such an input instead
         - ``rotation_matrix_to_angle_axis`` is the deprecated alias of this
           function since 0.7.0
 
     .. warning::
-        A reflection (``det = -1``) is returned as a rotation:
-        ``diag(-1, 1, 1)`` gives ``[0., 0., 0.]``, the identity. Tracked in
-        `#4773 <https://github.com/kornia/kornia/issues/4773>`_.
+        By default a reflection (``det = -1``) is returned as a rotation:
+        ``diag(-1, 1, 1)`` gives ``[0., 0., 0.]``, the identity. Pass
+        ``check_rotation=True`` to raise a ``ValueError`` instead.
 
     Args:
         rotation_matrix: rotation matrix of shape :math:`(*, 3, 3)`.
+        check_rotation: if ``True``, raise ``ValueError`` unless every input
+            is a rotation: ``max|R @ R^T - I|`` within 100 eps of the dtype of
+            ``rotation_matrix`` (16 eps for float16 and bfloat16) and
+            ``det(R) > 0``. Defaults to ``False`` (unchecked).
 
     Returns:
         Rodrigues vector transformation of shape :math:`(*, 3)`.
@@ -556,6 +561,10 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor
 
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
+
+    if check_rotation:
+        _check_is_rotation(rotation_matrix, "rotation_matrix_to_axis_angle")
+
     quaternion: torch.Tensor = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_axis_angle(quaternion)
 
@@ -565,7 +574,9 @@ def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor) -> torch.Tensor
     return rotation_matrix_to_axis_angle(rotation_matrix)
 
 
-def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
+def rotation_matrix_to_quaternion(
+    rotation_matrix: torch.Tensor, eps: float = 1.0e-8, check_rotation: bool = False
+) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to 4d quaternion vector.
 
     The quaternion vector has components in (w, x, y, z) format.
@@ -580,9 +591,10 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
           non-negative and ``w`` may be negative: 170 degrees about
           ``(1, 2, -3)/sqrt(14)`` (``trace = -0.9696``) returns
           ``[-0.0872, -0.2662, -0.5325, 0.7987]``
-        - the input is **not** checked for being a rotation matrix; see the
-          degenerate inputs listed on
-          :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
+        - by default the input is **not** checked for being a rotation matrix;
+          see the degenerate inputs listed on
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`.
+          Pass ``check_rotation=True`` to reject such an input instead
 
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
@@ -593,6 +605,10 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
             zero gradient. For an exact rotation matrix the selected radicand is
             at least ``1``, so ``eps`` does not change the result. The divisions
             are separately guarded against a zero denominator.
+        check_rotation: if ``True``, raise ``ValueError`` unless every input
+            is a rotation: ``max|R @ R^T - I|`` within 100 eps of the dtype of
+            ``rotation_matrix`` (16 eps for float16 and bfloat16) and
+            ``det(R) > 0``. Defaults to ``False`` (unchecked).
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -610,6 +626,9 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
+
+    if check_rotation:
+        _check_is_rotation(rotation_matrix, "rotation_matrix_to_quaternion")
 
     def safe_zero_division(numerator: torch.Tensor, denominator: torch.Tensor) -> torch.Tensor:
         eps: float = torch.finfo(numerator.dtype).tiny

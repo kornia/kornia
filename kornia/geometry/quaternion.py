@@ -447,11 +447,16 @@ class Quaternion(nn.Module):
         return quaternion_to_rotation_matrix(self.data)
 
     @classmethod
-    def from_matrix(cls, matrix: torch.Tensor) -> "Quaternion":
+    def from_matrix(cls, matrix: torch.Tensor, check_rotation: bool = False) -> "Quaternion":
         """Create a quaternion from a rotation matrix.
 
         Args:
             matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+            check_rotation: if ``True``, raise ``ValueError`` unless every input
+                is a rotation matrix. The default ``False`` keeps the unchecked
+                behaviour, under which a reflection such as
+                ``diag(-1, 1, 1)`` returns a non-unit quaternion rather than
+                being reported as invalid.
 
         Example:
             >>> m = torch.eye(3)[None]
@@ -460,7 +465,7 @@ class Quaternion(nn.Module):
             tensor([[1., 0., 0., 0.]])
 
         """
-        return cls(rotation_matrix_to_quaternion(matrix))
+        return cls(rotation_matrix_to_quaternion(matrix, check_rotation=check_rotation))
 
     @classmethod
     def from_euler(cls, roll: torch.Tensor, pitch: torch.Tensor, yaw: torch.Tensor) -> "Quaternion":
