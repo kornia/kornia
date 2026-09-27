@@ -23,7 +23,7 @@ import torch
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestSe2(BaseTester):
@@ -282,26 +282,19 @@ class TestSe2(BaseTester):
         self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_hat(self, device, dtype, batch_size):
+    def test_wart_se2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
+        # https://github.com/kornia/kornia/issues/4929: hat places translation in the bottom row and has a symmetric
+        # rotation block; vee reads that same non-generator layout, so vee(hat(v)) conceals the defect.
         v = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         s_hat = Se2.hat(torch.cat((v, theta), -1))
         self.assert_close(v, s_hat[..., 2, 0:2])
         self.assert_close(s_hat[..., 0:2, 0:2].squeeze(), So2.hat(theta).squeeze())
-
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_vee(self, device, dtype, batch_size):
         omega = self._make_rand_data(device, dtype, input_shape=(batch_size, 3, 3))
-        v = Se2.vee(omega)
-        self.assert_close(torch.stack((v[..., 0], v[..., 1]), -1), omega[..., 2, :2])
-        self.assert_close(v[..., -1], omega[..., 0, 1])
-
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_hat_vee(self, device, dtype, batch_size):
-        a = self._make_rand_data(device, dtype, (batch_size, 3))
-        omega_hat = Se2.hat(a)
-        b = Se2.vee(omega_hat)
-        self.assert_close(b, a)
+        recovered = Se2.vee(omega)
+        self.assert_close(torch.stack((recovered[..., 0], recovered[..., 1]), -1), omega[..., 2, :2])
+        self.assert_close(recovered[..., -1], omega[..., 0, 1])
+        self.assert_close(Se2.vee(s_hat), torch.cat((v, theta), -1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_identity(self, device, dtype, batch_size):
@@ -351,6 +344,16 @@ class TestSe2(BaseTester):
         self.assert_close(se2_in_se2.so2.z.real, i.so2.z.real)
         self.assert_close(se2_in_se2.so2.z.imag, i.so2.z.imag)
         self.assert_close(se2_in_se2.t, i.t)
+
+    def test_random_rotation_is_a_uniform_unit_rotation_4930(self, device, dtype):
+        # #4930: Se2.random takes its rotation from So2.random, which was neither unit nor uniform in angle.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("torch.complex has no bfloat16 overload and ComplexHalf support is experimental")
+        torch.manual_seed(0)
+        z = Se2.random(1000, device=device, dtype=dtype).so2.z
+        self.assert_close(z.abs(), torch.ones(1000, device=device, dtype=dtype))
+        theta = z.imag.atan2(z.real)
+        assert theta.min() < -math.pi / 2 and theta.max() > math.pi / 2, (theta.min(), theta.max())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_trans(self, device, dtype, batch_size):
@@ -411,3 +414,133 @@ class TestSe2(BaseTester):
         assert converted.t.grad_fn is not None
         converted.t.sum().backward()
         assert v.grad is not None
+
+    def test_wart_se2_vector2_translation_is_not_registered_or_moved_4923(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # https://github.com/kornia/kornia/issues/4923: identity and random keep their Vector2 translation outside
+        # module state, so it is absent from state_dict() and .to() leaves it at its original dtype. Cast to a
+        # complex dtype so this pin does not depend on So2's separate real-cast defect under the same issue.
+        for pose in (Se2.identity(1, device, dtype), Se2.random(1, device, dtype)):
+            assert "_translation" not in pose.state_dict()
+            pose.to(torch.complex64)
+            assert pose.r.z.dtype == torch.complex64
+            assert pose.t.data.dtype == dtype
+
+    def test_convention_se2_tangent_is_vx_vy_theta_with_V(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # The tangent is (vx, vy, theta), angle last, and exp translates by V(theta) (vx, vy), V = [[a, -b], [b, a]]
+        # with a = sin(theta) / theta and b = (1 - cos(theta)) / theta. Reference, float64:
+        # a, b = math.sin(0.3) / 0.3, (1 - math.cos(0.3)) / 0.3; (a - 2 * b, b + 2 * a) and (2 * a - b, 2 * b + a).
+        v = torch.tensor([1.0, 2.0, 0.3], device=device, dtype=dtype)
+        g = Se2.exp(v)
+        self.assert_close(g.so2.log(), v[2])
+        t_expected = torch.tensor([0.6873106163751718, 2.1190130806569103], device=device, dtype=dtype)
+        assert (t_expected - v[:2]).abs().max() > 0.1  # V is not the identity at this angle
+        self.assert_close(g.t, t_expected)
+        # V couples the two slots: swapping vx and vy does not swap the translation
+        swapped = Se2.exp(v[[1, 0, 2]]).t
+        self.assert_close(swapped, torch.tensor([1.8212563414942837, 1.2828240947004255], device=device, dtype=dtype))
+
+    def test_convention_se2_adjoint_conjugates_the_tangent(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # g exp(v) = exp(Ad(g) v) g, with Ad(g) = [[R, (ty, -tx)], [0, 0, 1]] for the (vx, vy, theta) tangent.
+        g = Se2.exp(torch.tensor([0.5, -1.0, 0.7], device=device, dtype=dtype))
+        v = torch.tensor([0.3, 0.2, -0.4], device=device, dtype=dtype)
+        ad_v = (g.adjoint() @ v[:, None])[:, 0]
+        assert (ad_v - v).abs().max() > 0.1  # g does not commute with exp(v)
+        self.assert_close((g * Se2.exp(v)).matrix(), (Se2.exp(ad_v) * g).matrix())
+
+    def test_convention_se2_composition_is_left_matrix_product(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # a * b is the matrix product a b: b acts first on a point.
+        a = Se2.exp(torch.tensor([1.0, -0.5, 0.9], device=device, dtype=dtype))
+        b = Se2.exp(torch.tensor([-0.3, 2.0, -0.4], device=device, dtype=dtype))
+        ab, ba = a.matrix() @ b.matrix(), b.matrix() @ a.matrix()
+        assert (ab - ba).abs().max() > 0.1  # a non-commuting pair
+        self.assert_close((a * b).matrix(), ab)
+        p = torch.tensor([0.7, -1.3], device=device, dtype=dtype)
+        self.assert_close((a * b) * p, a * (b * p))
+
+    def test_convention_se2_point_action_broadcasts_the_pose(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # Unlike Se3, an unbatched pose transforms (N, 2) points and a batched pose a single (2,) point.
+        v = torch.tensor([[1.0, -0.5, 0.9], [-0.3, 2.0, -0.4]], device=device, dtype=dtype)
+        p = torch.tensor([[0.7, -1.3], [2.0, 0.5], [-1.0, 1.0]], device=device, dtype=dtype)
+        g0 = Se2.exp(v[0])
+        self.assert_close(g0 * p, p @ g0.so2.matrix().mT + g0.t)
+        g = Se2.exp(v)
+        self.assert_close(g * p[0], torch.stack([Se2.exp(v[i]) * p[0] for i in range(2)]))
+
+    def test_convention_se2_log_is_principal(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # The angle of log is in [-pi, pi], and the translation part is taken with that angle, so exp(log(g)) = g.
+        # Reference, float64: scipy.linalg.logm(scipy.linalg.expm([[0, -3.5, 1], [3.5, 0, 2], [0, 0, 0]])), whose
+        # entries (0, 2), (1, 2), (1, 0) are vx, vy, theta.
+        g = Se2.exp(torch.tensor([1.0, 2.0, 3.5], device=device, dtype=dtype))
+        expected = torch.tensor(
+            [-0.7951958020513128, -1.5903916041026287, -2.7831853071795862], device=device, dtype=dtype
+        )
+        self.assert_close(g.log(), expected)
+        self.assert_close(Se2.exp(g.log()).matrix(), g.matrix())
+
+    def test_convention_se2_from_matrix_ignores_the_bottom_row(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # from_matrix reads the rotation block, validated by So2.from_matrix, and the last column; it does not
+        # check the bottom row.
+        v = torch.tensor([1.0, 2.0, 0.3], device=device, dtype=dtype)
+        clean = Se2.exp(v).matrix().detach()
+        junk = clean.clone()
+        junk[2] = torch.tensor([0.5, -4.0, 7.0], device=device, dtype=dtype)
+        self.assert_close(Se2.from_matrix(junk).matrix(), clean)
+        # A scaled rotation block is accepted and its scale kept in z, which log drops.
+        scaled = clean.clone()
+        scaled[:2, :2] *= 2.0
+        g = Se2.from_matrix(scaled)
+        self.assert_close(g.matrix(), scaled)
+        self.assert_close(g.log()[2], v[2])
+        reflection = clean.clone()
+        reflection[:2, :2] = torch.tensor([[1.0, 0.0], [0.0, -1.0]], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
+            Se2.from_matrix(reflection)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_convention_se2_from_matrix_omits_rotation_value_validation_during_export(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # Graph export cannot read rotation values, so from_matrix keeps m00 + i m10 and omits eager validation.
+        reflection = torch.tensor([[1.0, 0.0], [0.0, -1.0]], device=device, dtype=dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)
+        matrix[:2, :2] = reflection
+        with pytest.raises(ValueError):
+            Se2.from_matrix(matrix)
+
+        class FromMatrix(torch.nn.Module):
+            def forward(self, input):
+                return Se2.from_matrix(input).matrix()
+
+        expected = torch.eye(3, device=device, dtype=dtype)
+        exported = torch.export.export(FromMatrix(), (matrix,)).module()
+        self.assert_close(exported(matrix), expected)
+
+    def test_wart_se2_identity_point_action_returns_a_vector2_4931(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        p = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype)
+        from_exp = Se2.exp(torch.zeros(1, 3, device=device, dtype=dtype))
+        identity = Se2.identity(1, device, dtype)
+        self.assert_close(identity.matrix(), from_exp.matrix())  # the same group element
+        assert isinstance(from_exp * p, torch.Tensor)
+        # https://github.com/kornia/kornia/issues/4931: identity stores its translation as a Vector2 and __mul__ adds
+        # it without unwrapping, so the point action of the identity returns a Vector2, not a tensor.
+        out = identity * p
+        assert isinstance(out, Vector2)
+        assert not isinstance(out, torch.Tensor)
+        self.assert_close(out.data, p)
+        assert isinstance((from_exp * identity) * p, Vector2)  # a product with the identity inherits it
