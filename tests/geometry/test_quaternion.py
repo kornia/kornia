@@ -414,6 +414,23 @@ class TestQuaternion(BaseTester):
         assert torch.isfinite(q0.grad).all()
         assert torch.isfinite(q1.grad).all()
 
+    @pytest.mark.parametrize("batch_size", [1, 2, 3, 4])
+    def test_slerp_per_batch_ratio_4991(self, device, dtype, batch_size):
+        # #4991: a (B,) ratio is one ratio per quaternion, like a (B, 1) one. With B == 3 it used to scale the
+        # x, y and z components of every rotation vector instead, and other B > 1 raised.
+        torch.manual_seed(0)
+        q0 = Quaternion(torch.nn.functional.normalize(torch.randn(batch_size, 4, device=device, dtype=dtype), dim=-1))
+        q1 = Quaternion(torch.nn.functional.normalize(torch.randn(batch_size, 4, device=device, dtype=dtype), dim=-1))
+        t = torch.linspace(0.1, 0.9, batch_size, device=device, dtype=dtype)
+        expected = torch.cat([q0[i : i + 1].slerp(q1[i : i + 1], float(t[i])).data for i in range(batch_size)])
+        self.assert_close(q0.slerp(q1, t).data, expected)
+        self.assert_close(q0.slerp(q1, t[:, None]).data, expected)
+
+    def test_slerp_scalar_tensor_ratio(self, device, dtype):
+        q0 = Quaternion.identity(device=device, dtype=dtype)
+        q1 = Quaternion(torch.tensor([1.0, 0.5, 0.0, 0.0], device=device, dtype=dtype))
+        self.assert_close(q0.slerp(q1, torch.tensor(0.3, device=device, dtype=dtype)).data, q0.slerp(q1, 0.3).data)
+
     def test_slerp_gradcheck(self, device):
         q0 = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=torch.float64)).data
         q1 = Quaternion.from_axis_angle(torch.tensor([[0.5, 0.1, 0.15]], device=device, dtype=torch.float64)).data
