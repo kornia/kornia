@@ -100,8 +100,10 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
 
     batch_size, channels, height, width = input.shape
 
-    # Create coordinates grid.
-    grid = create_meshgrid(height, width, normalized_coordinates, input.device)
+    # Create coordinates grid. As in render_gaussian2d, float16 and bfloat16 build it in float32 so that
+    # distinct pixel coordinates do not collapse; other dtypes keep their own precision.
+    grid_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
+    grid = create_meshgrid(height, width, normalized_coordinates, input.device, grid_dtype)
     grid = grid.to(input.dtype)
 
     pos_x = grid[..., 0].reshape(-1)

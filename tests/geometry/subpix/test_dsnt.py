@@ -167,6 +167,23 @@ class TestSpatialExpectation2d(BaseTester):
 
         self.assert_close(actual, expected)
 
+    def test_float64_normalized_grid_is_exact_5019(self, device):
+        # #5019: the normalised grid was built in float32 and cast afterwards, so float64 coordinates carried
+        # float32 rounding error (4e-8 here). A width of 7 has spacing 1/3, which float32 cannot represent.
+        heatmap = torch.zeros(1, 1, 4, 7, device=device, dtype=torch.float64)
+        heatmap[0, 0, 1, 5] = 1.0
+        out = kornia.geometry.subpix.spatial_expectation2d(heatmap, True)
+        assert out.dtype == torch.float64
+        expected = torch.tensor([[[2 / 3, -1 / 3]]], device=device, dtype=torch.float64)
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+        probs = torch.softmax(torch.randn(1, 1, 48, 64, device=device, dtype=torch.float64).flatten(-2), -1)
+        probs = probs.view(1, 1, 48, 64)
+        xs = torch.linspace(-1, 1, 64, device=device, dtype=torch.float64)
+        ys = torch.linspace(-1, 1, 48, device=device, dtype=torch.float64)
+        reference = torch.stack([(probs.sum(-2) * xs).sum(-1), (probs.sum(-1) * ys).sum(-1)], -1)
+        self.assert_close(kornia.geometry.subpix.spatial_expectation2d(probs, True), reference, rtol=0.0, atol=1e-14)
+
     @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):
         data = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
