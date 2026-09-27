@@ -370,6 +370,7 @@ class TestSo2(BaseTester):
         assert s.z.shape == (3,)
         assert [(name, t is param) for name, t in s.named_parameters()] == [("_z", True)]
         assert s.state_dict()["_z"].shape == (3, 1)
+        assert s[1].z.shape == ()  # indexing reads the (B,) view, as for a (B,) z
         before = param.detach().clone()
         s.log().sum().backward()
         torch.optim.SGD(s.parameters(), lr=0.1).step()
