@@ -252,7 +252,9 @@ class TestCubicSolver(BaseTester):
                 [1.0, 0.0, 1.0, 0.0],  # x (x^2 + 1): one real root at 0, D > 0
                 [1.0, 0.0, 0.0, -1.0],  # x^3 - 1: Q == 0
                 [1.0, 3.0, 3.0, 1.0],  # (x + 1)^3: Q == R == 0
+                [1.0, -2.0, 1.0, 0.0],  # x (x - 1)^2: D == 0, the double root counts twice
                 [0.0, 1.0, -3.0, 2.0],  # (x - 1)(x - 2)
+                [0.0, 1.0, -2.0, 1.0],  # (x - 1)^2: zero discriminant, the double root counts twice
                 [0.0, 1.0, 0.0, 1.0],  # x^2 + 1
                 [0.0, 0.0, 2.0, -1.0],  # 2x - 1
                 [0.0, 0.0, 0.0, 1.0],  # a nonzero constant
@@ -262,7 +264,7 @@ class TestCubicSolver(BaseTester):
         )
         roots, num_real = _solve_cubic_with_count(coeffs)
         self.assert_close(roots, solver.solve_cubic(coeffs), rtol=0.0, atol=0.0)
-        assert num_real.tolist() == [3, 1, 1, 3, 2, 0, 1, 0]
+        assert num_real.tolist() == [3, 1, 1, 3, 3, 2, 2, 0, 1, 0]
 
 
 class TestMultiplyDegOnePoly(BaseTester):

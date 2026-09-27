@@ -152,9 +152,9 @@ def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.T
     """Solve a cubic as :func:`solve_cubic` does and also count its real roots.
 
     Returns:
-        The roots of :func:`solve_cubic`, shape `(B, 3)`, and the number of real roots per row, shape `(B,)`.
-        The real roots fill the first slots and the rest are the ``0.0`` padding, which the count tells apart
-        from a root at 0.
+        The roots of :func:`solve_cubic`, shape `(B, 3)`, and the number of real roots per row counted with
+        multiplicity, shape `(B,)`. The real roots fill the first slots and the rest are the ``0.0`` padding,
+        which the count tells apart from a root at 0.
 
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
