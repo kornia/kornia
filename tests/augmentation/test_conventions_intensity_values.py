@@ -944,14 +944,22 @@ class TestIntensityColourConventions(BaseTester):
             assert float(out.abs().max()) == 0.0, seed
             assert not caught
 
-    # Issue #4782: a tuple limit is neither read as a range nor rejected by name; it dies on the unary
-    # minus that builds `(-limit, limit)`.  A fix that accepts the tuple, or raises a kornia error, flips it.
+    # A (low, high) limit is the sampling range itself, as in albumentations' RGBShift (#4782); a number stays
+    # a half-width, and a malformed pair is rejected by name.
     @pytest.mark.device_agnostic
-    def test_wart_random_rgb_shift_tuple_limit_raises_a_raw_type_error_4782(self):
-        with pytest.raises(TypeError) as info:
-            K.RandomRGBShift((0.1, 0.5), p=1.0)
-        # A kornia rejection would name the argument; the raw error from the unary minus does not.
-        assert not any(word in str(info.value) for word in ("limit", "shift"))
+    def test_convention_random_rgb_shift_tuple_limit_is_a_range_4782(self):
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomRGBShift((0.1, 0.2), [-0.3, -0.1], 0.05, p=1.0)
+        aug(torch.rand(64, 3, 2, 2))
+        for name, (low, high) in {"r_shift": (0.1, 0.2), "g_shift": (-0.3, -0.1), "b_shift": (-0.05, 0.05)}.items():
+            drawn = aug._params[name]
+            assert bool((drawn >= low).all()) and bool((drawn <= high).all()), name
+        # A 1-D tensor is a pair too, and a pair's domain is as unbounded as a number's.
+        K.RandomRGBShift(torch.tensor([0.1, 0.2]), (-2.0, 2.0), 2.0)
+        with pytest.raises(ValueError, match=r"r_shift\[0\] should be smaller than r_shift\[1\]"):
+            K.RandomRGBShift((0.2, 0.1))
+        with pytest.raises(ValueError, match="If g_shift is a range, it must be finite"):
+            K.RandomRGBShift(g_shift_limit=(0.0, float("inf")))
 
     # `pl` is a persistent buffer holding the table the mode selects -- 25 rows for blackbody, 23 for CIED --
     # and `select_from` narrows it.
