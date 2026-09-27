@@ -309,14 +309,19 @@ class Quaternion(nn.Module):
         """Right division (left / self) where left is a scalar or torch.Tensor."""
         return self.__rtruediv__(left)
 
-    def __pow__(self, t: float) -> "Quaternion":
+    def __pow__(self, t: Union[float, torch.Tensor]) -> "Quaternion":
         r"""Return the power of a quaternion raised to exponent t.
 
         For :math:`q = \|q\| (\cos\theta + n \sin\theta)` this is
         :math:`q^t = \|q\|^t (\cos t\theta + n \sin t\theta)`, so ``q**2 == q * q`` and ``q**-1 == q.inv()``.
 
+        On the negative real axis (``w < 0`` and a zero vector part) :math:`\theta = \pi` and the axis :math:`n` is
+        undefined: for a non-integer ``t`` every unit vector gives a valid power. This method takes :math:`n = e_x`
+        there, so ``q**t`` has norm :math:`\|q\|^t` and angle :math:`t\pi`, ``(q**0.5)**2 == q``, and the result is
+        the limit from the ``+x`` side of the axis. An integer ``t`` keeps a zero vector part.
+
         Args:
-            t: raised exponent.
+            t: raised exponent, a float or a tensor that broadcasts against ``(..., 1)``.
 
         Example:
             >>> q = Quaternion(torch.tensor([1., .5, 0., 0.]))
@@ -333,7 +338,19 @@ class Quaternion(nn.Module):
         safe_w = torch.where(w == 0, torch.ones_like(w), w)
         sin_ratio = torch.where(is_real, t * (t * theta).cos() / safe_w, (t * theta).sin() / safe_vec_norm)
         scale = self.norm(keepdim=True) ** t
-        return Quaternion(torch.cat((scale * (t * theta).cos(), scale * sin_ratio * self.vec), -1))
+        vec = scale * sin_ratio * self.vec
+        # The negative real axis is the branch cut of the power: theta = pi and n = v / |v| is undefined, so the arm
+        # above leaves the vector part at 0 and only an integer t gives a valid result there (#4955). Take n = e_x on
+        # the cut: add |q|^t sin(t pi) to x, which is 0 there. sin(t pi) is reduced by the nearest integer k so that it
+        # is exactly 0 for an integer t, and only the cut is touched, so every other value and an integer t keep the
+        # arm above bit for bit. The reduction stays in torch so that a tensor t (0-d or batched) keeps its gradient.
+        t_ = torch.as_tensor(t, dtype=scale.dtype, device=scale.device)
+        k = t_.detach().round()
+        sin_t_pi = (1.0 - 2.0 * k.remainder(2.0)) * torch.sin(pi * (t_ - k))
+        on_cut = is_real & (w < 0) & (sin_t_pi != 0)
+        vec_x = vec[..., :1]
+        vec = torch.cat((torch.where(on_cut, vec_x + scale * sin_t_pi, vec_x), vec[..., 1:]), -1)
+        return Quaternion(torch.cat((scale * (t * theta).cos(), vec), -1))
 
     @property
     def data(self) -> torch.Tensor:
@@ -584,7 +601,7 @@ class Quaternion(nn.Module):
         q4 = r1.sqrt() * (2 * pi * r3).cos()
         return cls(torch.stack((q1, q2, q3, q4), -1))
 
-    def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
+    def slerp(self, q1: "Quaternion", t: Union[float, torch.Tensor]) -> "Quaternion":
         """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
 
         The interpolation follows the shorter arc between the two rotations, whatever the signs of the stored
@@ -599,7 +616,8 @@ class Quaternion(nn.Module):
         Args:
             q1: second quaternion to be interpolated between.
             t: interpolation ratio, ``0`` at ``self`` and ``1`` at ``q1``. It is not validated: values outside
-                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B, 1)`.
+                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B,)`, like
+                ``self.w``, or :math:`(B, 1)`.
 
         Example:
             >>> q0 = Quaternion.identity()
@@ -613,6 +631,10 @@ class Quaternion(nn.Module):
         # q0 * exp(t * log(q0^-1 q1)): the principal log of the relative rotation selects the shorter arc, and both
         # conversions keep a finite gradient at the identity (q0 == q1).
         rel = quaternion_to_axis_angle((q0.inv() * q1).data)
+        if isinstance(t, torch.Tensor) and t.dim() > 0 and t.dim() == rel.dim() - 1:
+            # One ratio per quaternion, of the shape of ``w``: scale each rotation vector, not its components. A 0-d
+            # ratio is left alone: it multiplies as a scalar, whatever its device and dtype, and would not with an axis.
+            t = t[..., None]
         return q0 * Quaternion(axis_angle_to_quaternion(t * rel))
 
     def norm(self, keepdim: bool = False) -> torch.Tensor:

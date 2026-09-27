@@ -965,17 +965,22 @@ class TestConventionEssential(BaseTester):
 
         assert best(E_ones) > 1e3 * best(E_clean)
 
-    def test_wart_decompose_unbatched_t_shape_4878(self, device, dtype):
+    def test_decompose_unbatched_keeps_input_dims_4878(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
-        # #4878: an unbatched (3, 3) input gains a batch dim on the rotations but not on t.
-        E = _gt_essential(two_view)[0]
-        R1, R2, t = epi.decompose_essential_matrix(E)
-        assert R1.shape == (1, 3, 3) and R2.shape == (1, 3, 3)
-        assert t.shape == (3, 1)
-        Rs, ts = epi.motion_from_essential(E)
-        assert Rs.shape == (1, 4, 3, 3)
-        assert ts.shape == (4, 3, 1)
+        # #4878 (fixed): the constant W was built with a batch dim, so a (3, 3) input returned rotations of shape
+        # (1, 3, 3) next to t of shape (3, 1). All outputs now keep the leading dims of the input.
+        E = _gt_essential(two_view)
+        R1, R2, t = epi.decompose_essential_matrix(E[0])
+        assert R1.shape == (3, 3) and R2.shape == (3, 3) and t.shape == (3, 1)
+        Rs, ts = epi.motion_from_essential(E[0])
+        assert Rs.shape == (4, 3, 3) and ts.shape == (4, 3, 1)
+        R1b, R2b, tb = epi.decompose_essential_matrix(E)
+        self.assert_close(R1, R1b[0])
+        self.assert_close(R2, R2b[0])
+        self.assert_close(t, tb[0])
+        Rsb, tsb = epi.motion_from_essential(E.expand(2, 1, 3, 3))
+        assert Rsb.shape == (2, 1, 4, 3, 3) and tsb.shape == (2, 1, 4, 3, 1)
 
     def test_wart_choose_solution_all_masked_returns_candidate0_4879(self, device, dtype):
         two_view = two_view_scene(device, dtype)

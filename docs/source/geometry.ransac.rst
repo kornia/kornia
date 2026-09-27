@@ -34,9 +34,10 @@ hypotheses for homographies and 128 to 512 for the epipolar models, fewer for
 more correspondences, which lets early stopping pay off. An integer
 ``batch_size`` fixes the batch on every device.
 
-``score_type="msac"`` minimizes the sum of squared residuals truncated at
-``inl_th ** 2``. The returned internal score is normalized to increase with
-quality. Confidence stopping always uses the number of inliers, not this score.
+The default ``score_type="msac"`` minimizes the sum of squared residuals
+truncated at ``inl_th ** 2``; ``"ransac"`` counts inliers instead. The returned
+internal score is normalized to increase with quality. Confidence stopping
+always uses the number of inliers, not this score.
 Fundamental and essential models use Sampson residuals. Essential estimation
 expects camera-normalized coordinates, so its threshold is not in pixels.
 Line-segment homographies use the squared mean distance from the transferred
@@ -83,7 +84,7 @@ model PROSAC certifies first may fit them well and the pose poorly. Prefer
 uniform sampling there, or run PROSAC with ``confidence=1`` when the extra
 draws are affordable.
 
-By default, local optimization repeatedly refits all current inliers. For the
+Local optimization refits the incumbent on its inliers. For the
 homography models the refit is the iteratively re-weighted least squares of
 :func:`~kornia.geometry.homography.find_homography_dlt_iterated`, whose Gaussian
 weights use ``inl_th`` as their standard deviation, so a correspondence at the
@@ -92,15 +93,17 @@ replaces the model when it raises the score, or when it ties it: a least-squares
 fit on the same support is more precise than the minimal-sample model. A refit
 that does not raise the score ends the refinement. This is iterative refitting,
 not the full LO-RANSAC algorithm with inner resampling and a threshold schedule.
-Set ``max_lo_iters=0`` to disable it. Optionally, ``lo_sample_size`` caps each
-randomized non-minimal refit: ``max_lo_iters`` independent subsets are fit in one
-solver batch, then the best accepted consensus gets a full-inlier refit.
-Consensus sets no larger than the cap use ordinary iterative full-inlier
-refitting. This bounded variant is inspired by
+Set ``max_lo_iters=0`` to disable it. By default, ``lo_sample_size=32`` caps each
+randomized non-minimal refit: ``max_lo_iters`` independent 32-inlier subsets are
+fit in one solver batch, then the best accepted consensus gets a full-inlier
+refit. Consensus sets no larger than the cap use ordinary iterative full-inlier
+refitting, which ``lo_sample_size=None`` selects for every consensus set. This
+bounded variant is inspired by
 `Lebeda et al. (BMVC 2012) <https://cmp.felk.cvut.cz/software/LO-RANSAC/Lebeda-2012-Fixing_LORANSAC-BMVC_abstract.pdf>`_;
 it does not implement the complete LO+ algorithm. The cap must be at least the
 non-minimal solver's sample size (eight for fundamental/essential matrices).
-Evaluate the accuracy/runtime trade-off on your data before enabling it.
+On PhotoTourism fundamental matrices the subset refits match or beat full-inlier
+refitting at a lower cost on both CPU and CUDA.
 
 .. autoclass:: RANSAC
    :members: forward, resolve_batch_size

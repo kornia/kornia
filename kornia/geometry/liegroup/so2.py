@@ -38,21 +38,18 @@ class So2(nn.Module):
     See more: https://en.wikipedia.org/wiki/Orthogonal_group#Special_orthogonal_group
 
     Convention:
-        - Stores the rotation as a complex number ``z`` of shape :math:`()`, :math:`(B,)`, or :math:`(B, 1)`.
-          For unit :math:`z = \cos\theta + i \sin\theta`, ``matrix()`` is
-          :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b`` is accepted
-          and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex storage rules
-          out bfloat16.
+        - Represents the rotation as a complex number ``z`` of shape :math:`()` or :math:`(B,)`; a :math:`(B, 1)`
+          ``z`` or angle is accepted and read as :math:`(B,)`. For unit :math:`z = \cos\theta + i \sin\theta`,
+          ``matrix()`` is :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b``
+          is accepted and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex
+          storage rules out bfloat16.
         - A positive angle rotates the x axis toward the y axis: counter-clockwise in a y-up frame, clockwise as
           displayed on y-down image axes. For a unit rotation, ``matrix()`` is the transpose of
           :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`, which takes degrees.
           ``log`` returns the angle in :math:`[-\pi, \pi]`, and ``adjoint()`` is the 2x2 identity.
         - Known defects: ``hat`` returns the symmetric :math:`[[0, \theta], [\theta, 0]]` instead of the generator
           :math:`[[0, -\theta], [\theta, 0]]`, and ``vee`` reads its ``[0, 1]`` entry
-          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); an accepted :math:`(B, 1)` ``z`` or angle
-          yields :math:`(B, 1, 2, 2)` from ``matrix()`` or ``hat()``, which ``vee()`` rejects, and times
-          :math:`(B, 2)` points returns :math:`(B, B, 2)`, every rotation applied to every point
-          (`#4932 <https://github.com/kornia/kornia/issues/4932>`_); ``.to()`` a real dtype keeps the real part of
+          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); ``.to()`` a real dtype keeps the real part of
           ``z``, drops its imaginary part and makes ``matrix()`` raise
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
@@ -71,7 +68,7 @@ class So2(nn.Module):
         Internally represented by torch.complex number `z`.
 
         Args:
-            z: Complex number with the shape of :math:`(B,)`, :math:`(B, 1)`, or :math:`()`.
+            z: Complex number with the shape of :math:`(B,)` or :math:`()`; :math:`(B, 1)` is read as :math:`(B,)`.
 
         Example:
             >>> real = torch.tensor(0.6)
@@ -90,13 +87,16 @@ class So2(nn.Module):
 
         if not (is_scalar or is_flat or is_column):
             raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {z.shape}")
+        # A (B, 1) z is stored as given, so a caller's nn.Parameter stays the module's own parameter, and the ``z``
+        # property reads it as (B,): kept as a column, it broadcast against the (B,) coordinates of __mul__ as an
+        # outer product (#4932).
         register_module_state(self, "_z", z)
 
     def __repr__(self) -> str:
         return f"{self.z}"
 
     def __getitem__(self, idx: int | slice) -> So2:
-        return So2(self._z[idx])
+        return So2(self.z[idx])
 
     @overload
     def __mul__(self, right: So2) -> So2: ...
@@ -138,15 +138,19 @@ class So2(nn.Module):
 
     @property
     def z(self) -> torch.Tensor:
-        """Return the underlying complex number, with the shape it was constructed with."""
-        return self._z
+        """Return the underlying complex number of shape :math:`()` or :math:`(B,)`.
+
+        A :math:`(B, 1)` ``z`` given to the constructor stays stored, and registered, as it was given, and is read
+        here as a :math:`(B,)` view.
+        """
+        return self._z.squeeze(-1) if self._z.dim() == 2 else self._z
 
     @staticmethod
     def exp(theta: torch.Tensor) -> So2:
         """Convert elements of lie algebra to elements of lie group.
 
         Args:
-            theta: angle in radians of shape :math:`(B,)`, :math:`(B, 1)`, or :math:`()`.
+            theta: angle in radians of shape :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
 
         Example:
             >>> v = torch.tensor([3.1415/2])
@@ -178,14 +182,14 @@ class So2(nn.Module):
 
     @staticmethod
     def hat(theta: torch.Tensor) -> torch.Tensor:
-        """Convert an angle to the matrix that :meth:`vee` inverts for scalar or :math:`(B,)` input.
+        """Convert an angle to the matrix that :meth:`vee` inverts.
 
-        The output has shape ``theta.shape + (2, 2)``; see the class convention for :math:`(B, 1)`.
+        The output has shape :math:`(2, 2)` or :math:`(B, 2, 2)`; a :math:`(B, 1)` angle is squeezed to :math:`(B,)`.
 
         The matrix is not the so(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            theta: angle in radians of shape :math:`(B,)`, :math:`(B, 1)`, or :math:`()`.
+            theta: angle in radians of shape :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
 
         Example:
             >>> theta = torch.tensor(3.1415/2)
@@ -200,6 +204,8 @@ class So2(nn.Module):
         is_column = KORNIA_CHECK_SHAPE(theta, ["B", "1"], raises=False)
         if not (is_scalar or is_flat or is_column):
             raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {theta.shape}")
+        if is_column:
+            theta = theta.squeeze(-1)  # (B, 1) would give (B, 1, 2, 2), which vee() rejects (#4932)
         z = torch.zeros_like(theta)
         row0 = torch.stack((z, theta), -1)
         row1 = torch.stack((theta, z), -1)

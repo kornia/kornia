@@ -187,6 +187,53 @@ class TestQuaternion(BaseTester):
         expected = torch.tensor([2.0**0.5, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         self.assert_close((q**0.5).data[0], expected)
 
+    def test_pow_negative_real_axis_4955(self, device, dtype):
+        # #4955 (fixed): on the negative real axis theta = pi and the axis n = v / |v| is undefined, so q**t returned
+        # |q|**t cos(t pi) in the scalar and zeros elsewhere: [-2, 0, 0, 0]**0.5 was the zero quaternion. n = e_x is
+        # taken there, so |q**t| == |q|**t, (q**0.5)**2 == q and the value is the limit from the +x side of the axis.
+        eps = torch.finfo(dtype).eps
+        q = Quaternion(torch.tensor([[-2.0, 0.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+        root = q**0.5
+        expected = torch.tensor([[0.0, 2.0**0.5, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(root.data, expected, rtol=4 * eps, atol=4 * eps)
+        self.assert_close(root * root, q, rtol=4 * eps, atol=8 * eps)
+        quarter = q**0.25
+        self.assert_close(quarter.norm(), q.norm() ** 0.25)
+        self.assert_close(quarter.polar_angle, torch.full((2,), math.pi / 4, device=device, dtype=dtype))
+        self.assert_close(quarter * quarter, root, rtol=4 * eps, atol=8 * eps)
+        self.assert_close((q**-0.5) * root, Quaternion.identity(2, device, dtype), rtol=4 * eps, atol=8 * eps)
+        # Just off the axis on the +x side the power is continuous with the value on it.
+        delta = math.sqrt(eps)
+        near = Quaternion(torch.tensor([-2.0, delta, 0.0, 0.0], device=device, dtype=dtype)) ** 0.5
+        self.assert_close(near.data, root.data[0], rtol=0.0, atol=delta)
+        # An integer t is not on a branch cut: the vector part stays exactly zero and * and inv() agree, as before.
+        for t in (-1.0, 2, 3.0):
+            assert torch.equal((q**t).vec, torch.zeros_like(q.vec))
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        # For an odd nearest integer k (t = 1.25, -0.75) sin(t pi) = -sin(pi (t - k)): x follows sin(t pi).
+        for t in (1.25, -0.75):
+            norm_t = torch.tensor([[2.0**t], [1.0]], device=device, dtype=dtype)
+            unit = torch.tensor([[math.cos(t * math.pi), math.sin(t * math.pi), 0.0, 0.0]], device=device, dtype=dtype)
+            self.assert_close((q**t).data, norm_t * unit, rtol=4 * eps, atol=4 * eps)
+
+    def test_pow_negative_real_axis_gradient_is_finite_4955(self, device, dtype):
+        # The output jumps across the cut, so the gradient there has no defined value; it is finite, not nan.
+        data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        (Quaternion(data) ** 0.5).data.sum().backward()
+        assert torch.isfinite(data.grad).all()
+
+    def test_pow_tensor_exponent(self, device, dtype):
+        # A tensor t, 0-d or one exponent per quaternion, gives the power of the float t and keeps its gradient.
+        q = Quaternion(torch.tensor([[-2.0, 0.0, 0.0, 0.0], [0.5, 0.3, -0.2, 0.1]], device=device, dtype=dtype))
+        t = torch.tensor(0.5, device=device, dtype=dtype, requires_grad=True)
+        self.assert_close((q**t).data, (q**0.5).data)
+        ts = torch.tensor([[1.25], [-0.75]], device=device, dtype=dtype)
+        self.assert_close((q**ts).data, torch.stack(((q**1.25).data[0], (q**-0.75).data[1])))
+        # x = |q|^t sin(t pi) on the cut: dx/dt = |q|^t (log|q| sin(t pi) + pi cos(t pi)) = sqrt(2) log(2) at 0.5.
+        (q**t).data[0, 1].backward()
+        self.assert_close(t.grad, torch.tensor(2.0**0.5 * math.log(2.0), device=device, dtype=dtype))
+
     @pytest.mark.parametrize("t", (-1.0, 0.5, 2.0))
     def test_pow_gradcheck(self, device, t):
         # the first quaternion lies on the real axis, where the vector part has zero norm; the last is pure imaginary
@@ -413,6 +460,32 @@ class TestQuaternion(BaseTester):
         Quaternion(q0).slerp(Quaternion(q1), 0.3).data.sum().backward()
         assert torch.isfinite(q0.grad).all()
         assert torch.isfinite(q1.grad).all()
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 3, 4])
+    def test_slerp_per_batch_ratio_4991(self, device, dtype, batch_size):
+        # #4991: a (B,) ratio is one ratio per quaternion, like a (B, 1) one. With B == 3 it used to scale the
+        # x, y and z components of every rotation vector instead, and other B > 1 raised.
+        torch.manual_seed(0)
+        q0 = Quaternion(torch.nn.functional.normalize(torch.randn(batch_size, 4, device=device, dtype=dtype), dim=-1))
+        q1 = Quaternion(torch.nn.functional.normalize(torch.randn(batch_size, 4, device=device, dtype=dtype), dim=-1))
+        t = torch.linspace(0.1, 0.9, batch_size, device=device, dtype=dtype)
+        expected = torch.cat([q0[i : i + 1].slerp(q1[i : i + 1], float(t[i])).data for i in range(batch_size)])
+        self.assert_close(q0.slerp(q1, t).data, expected)
+        self.assert_close(q0.slerp(q1, t[:, None]).data, expected)
+
+    @pytest.mark.parametrize("batch_size", [None, 2])
+    def test_slerp_scalar_tensor_ratio(self, device, dtype, batch_size):
+        # A 0-d tensor ratio is a scalar, like a float, also on another device or in another dtype: giving it a
+        # trailing axis for #4991 made it a (1,) tensor, which an unbatched quaternion then refused.
+        q0 = Quaternion.identity(batch_size, device=device, dtype=dtype)
+        q1 = Quaternion(torch.tensor([1.0, 0.5, 0.0, 0.0], device=device, dtype=dtype))
+        if batch_size is not None:
+            q1 = Quaternion(q1.data.repeat(batch_size, 1))
+        expected = q0.slerp(q1, 0.3).data
+        for t in (torch.tensor(0.3, device=device, dtype=dtype), torch.tensor(0.3, dtype=torch.float64)):
+            out = q0.slerp(q1, t).data
+            assert out.dtype == dtype
+            self.assert_close(out, expected)
 
     def test_slerp_gradcheck(self, device):
         q0 = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=torch.float64)).data
