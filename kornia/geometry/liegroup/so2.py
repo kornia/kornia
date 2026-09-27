@@ -38,8 +38,8 @@ class So2(nn.Module):
     See more: https://en.wikipedia.org/wiki/Orthogonal_group#Special_orthogonal_group
 
     Convention:
-        - Stores the rotation as a complex number ``z`` of shape :math:`()`, :math:`(B)`, or :math:`(B, 1)`.
-          For unit ``z = \cos\theta + i \sin\theta`, ``matrix()`` is
+        - Stores the rotation as a complex number ``z`` of shape :math:`()`, :math:`(B,)`, or :math:`(B, 1)`.
+          For unit :math:`z = \cos\theta + i \sin\theta`, ``matrix()`` is
           :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b`` is accepted
           and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex storage rules
           out bfloat16.

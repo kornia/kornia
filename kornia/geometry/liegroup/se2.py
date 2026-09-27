@@ -253,12 +253,12 @@ class Se2(nn.Module):
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
-        """Convert a tangent vector to the matrix that :meth:`vee` inverts. Returns matrix of shape :math:`(B, 3, 3)`.
+        """Convert a tangent vector to the matrix that :meth:`vee` inverts. Returns ``v.shape[:-1] + (3, 3)``.
 
         The matrix is not the se(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            v: vector of shape :math:`(B, 3)`.
+            v: vector of shape :math:`(B, 3)` or :math:`(3,)`.
 
         Example:
             >>> v = torch.tensor([1.0, 2.0, 0.5])
@@ -285,10 +285,10 @@ class Se2(nn.Module):
         It reads kornia's layout, not the se(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            omega: 3x3-matrix built by :meth:`hat`, of shape :math:`(B, 3, 3)`.
+            omega: 3x3-matrix built by :meth:`hat`, of shape :math:`(B, 3, 3)` or :math:`(3, 3)`.
 
         Returns:
-            vector of shape :math:`(B, 3)`.
+            vector of shape :math:`(B, 3)` or :math:`(3,)`.
 
         Example:
             >>> v = torch.ones(3)

@@ -23,7 +23,7 @@ import torch
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestSe2(BaseTester):
@@ -510,6 +510,7 @@ class TestSe2(BaseTester):
         with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
             Se2.from_matrix(reflection)
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_convention_se2_from_matrix_omits_rotation_value_validation_during_export(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
