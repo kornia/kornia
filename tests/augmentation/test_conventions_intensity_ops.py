@@ -1219,18 +1219,26 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         flat = per_sample._params["gradient"].flatten(1).float().abs()
         assert len(set(flat.argmax(1).tolist())) > 1, "the strongest-gradient location is not drawn per sample"
 
-    # Issue #4811: ``center`` is rounded to a whole pixel, half to even, so ``center=0.5`` peaks one column
-    # past the middle of a 7-wide image but on it for a 9-wide one.  A fix that maps ``center`` to the pixel
-    # centre flips the 7-wide leg.
-    # Snippet used to generate expected:
-    #   a = K.RandomGaussianIllumination(gain=(0.5, 0.5), sigma=(0.2, 0.2), center=(0.5, 0.5), sign=(1., 1.), p=1.)
-    #   torch.manual_seed(0); a(torch.zeros(1, 1, w, w)); print(int(a._params["gradient"][0, 0].sum(0).argmax()))
-    @pytest.mark.parametrize(("width", "peak"), [(7, 4), (9, 4)])
-    def test_wart_random_gaussian_illumination_center_rounds_half_to_even_4811(self, device, dtype, width, peak):
-        aug = K.RandomGaussianIllumination(gain=(0.5, 0.5), sigma=(0.2, 0.2), center=(0.5, 0.5), sign=(1.0, 1.0), p=1.0)
+    # Issue #4811: ``center`` maps to the pixel-centre position ``center * L - 0.5`` without rounding, so the
+    # column and row profiles are symmetric about it: the listed pair of indices sits the same distance on either
+    # side.
+    # Before the fix ``center=0.5`` peaked one column past the middle of a 3-, 7- or 11-wide image (rounding
+    # half to even), and ``center=0.25`` sat half a pixel off on a 6-wide axis. The 9- and 8-wide legs held before.
+    @pytest.mark.parametrize(
+        ("width", "center", "pair"),
+        [(3, 0.5, (0, 2)), (7, 0.5, (2, 4)), (9, 0.5, (3, 5)), (8, 0.5, (3, 4)), (8, 0.25, (1, 2)), (6, 0.25, (0, 2))],
+    )
+    def test_convention_random_gaussian_illumination_center_is_pixel_centre_4811(
+        self, device, dtype, width, center, pair
+    ):
+        aug = K.RandomGaussianIllumination(
+            gain=(0.5, 0.5), sigma=(0.2, 0.2), center=(center, center), sign=(1.0, 1.0), p=1.0
+        )
         torch.manual_seed(_FORWARD_SEED)
         aug(torch.zeros(1, 1, width, width, device=device, dtype=dtype))
-        assert int(aug._params["gradient"][0, 0].float().sum(0).argmax()) == peak
+        field = aug._params["gradient"][0, 0].float()
+        for profile in (field.sum(0), field.sum(1)):
+            self.assert_close(profile[pair[0]], profile[pair[1]])
 
     # The three classes round-trip through pickle, deepcopy and torch.save (#4435), and the copy
     # reproduces the original's output under the same seed.
