@@ -271,15 +271,17 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
             return _fit_line_weighted_ols_2d(points, weights)
         return _fit_line_ols_2d(points)
 
-    mean = points.mean(-2, True)
-    A = points - mean
-
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         KORNIA_CHECK(points.shape[0] == weights.shape[0])
+        # Weighted total least squares: centre on the weighted centroid, as the D = 2 branch does.
+        mean = (weights[..., None] * points).sum(-2, keepdim=True) / weights.sum(-1)[..., None, None]
+        A = points - mean
         A = A.transpose(-2, -1) @ torch.diag_embed(weights) @ A
     else:
+        mean = points.mean(-2, True)
+        A = points - mean
         A = A.transpose(-2, -1) @ A
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions

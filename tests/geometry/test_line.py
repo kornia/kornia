@@ -264,6 +264,39 @@ class TestFitLine(BaseTester):
 
         assert angle_est.abs() > 0.998
 
+    def test_fit_line_weighted_3d_ignores_a_zero_weight_point_5014(self, device):
+        # #5014: for D >= 3 the points were centred on the unweighted mean, so a point with weight 0 still moved
+        # the origin and tilted the direction (by 16 degrees here).
+        d = torch.float64
+        t = torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0, 3.0], device=device, dtype=d)
+        u = torch.tensor([2.0, 1.0, -2.0], device=device, dtype=d) / 3
+        noise = torch.tensor(
+            [
+                [0.02, -0.01, 0.0],
+                [-0.01, 0.02, 0.01],
+                [0.0, 0.0, -0.02],
+                [0.01, -0.02, 0.0],
+                [-0.02, 0.01, 0.02],
+                [0.0, 0.01, -0.01],
+            ],
+            device=device,
+            dtype=d,
+        )
+        inliers = torch.tensor([1.0, 0.5, -1.0], device=device, dtype=d) + t[:, None] * u + noise
+        outlier = torch.tensor([[6.0, -4.0, 5.0]], device=device, dtype=d)
+        points = torch.cat([inliers, outlier])[None]
+        weights = torch.tensor([[1.0] * 6 + [0.0]], device=device, dtype=d)
+
+        expected = fit_line(inliers[None])
+        actual = fit_line(points, weights)
+        self.assert_close(actual.origin, expected.origin)
+        # The direction is defined up to sign.
+        self.assert_close((actual.direction * expected.direction).sum(-1).abs(), torch.ones(1, device=device, dtype=d))
+
+        # Uniform weights give the unweighted fit.
+        uniform = fit_line(points, torch.full((1, 7), 2.0, device=device, dtype=d))
+        self.assert_close(uniform.origin, fit_line(points).origin)
+
     @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):
         def proxy_func(pts, weights):
