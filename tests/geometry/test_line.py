@@ -92,6 +92,24 @@ class TestParametrizedLine(BaseTester):
         distance_expected = torch.tensor(16.0, device=device, dtype=dtype)
         self.assert_close(l1.squared_distance(point), distance_expected)
 
+    def test_distance_near_the_line_does_not_cancel_5016(self, device):
+        # #5016: ||d||^2 - (d . u)^2 cancelled for points near a tilted line, so squared_distance went negative
+        # and distance returned NaN, with a NaN gradient.
+        o = torch.tensor([0.3, 0.7], device=device)
+        line = ParametrizedLine(o, torch.tensor([0.28, 0.96], device=device))
+        u = line.direction.detach()
+        on_line = o + torch.linspace(-50.0, 50.0, 200, device=device)[:, None] * u
+        assert (line.squared_distance(on_line) >= 0).all()
+        assert torch.isfinite(line.distance(on_line)).all()
+        assert line.distance(on_line).max() < 1e-4
+
+        off_line = o + 40.0 * u + 1e-3 * torch.stack([-u[1], u[0]])
+        self.assert_close(line.distance(off_line), torch.tensor(1e-3, device=device), rtol=1e-2, atol=0.0)
+
+        p = on_line[7].clone().requires_grad_(True)
+        line.distance(p).backward()
+        assert torch.isfinite(p.grad).all()
+
     def test_instersect_plane(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
