@@ -56,6 +56,40 @@ class TestRenderGaussian2d(BaseTester):
 
         self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
 
+    @pytest.mark.parametrize("normalized", [False, True])
+    def test_in_image_sums_to_one(self, device, dtype, normalized):
+        # An off-centre, anisotropic Gaussian well inside a 9 x 11 grid: the per-axis renormalisation makes it sum to
+        # one up to roundoff (a bias in the denominators showed up as a 1.1e-8 deficit, visible only in float64).
+        size = (9, 11)
+        mean_px, std_px = [4.3, 3.7], [1.2, 0.8]
+        if normalized:
+            mean = [2 * mean_px[0] / (size[1] - 1) - 1, 2 * mean_px[1] / (size[0] - 1) - 1]
+            std = [2 * std_px[0] / (size[1] - 1), 2 * std_px[1] / (size[0] - 1)]
+        else:
+            mean, std = mean_px, std_px
+        mean_t = torch.tensor([mean], device=device, dtype=dtype)
+        std_t = torch.tensor([std], device=device, dtype=dtype)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean_t, std_t, size, normalized)
+
+        total = heatmap.double().sum().item()
+        tol = 1e-12 if dtype == torch.float64 else 4 * torch.finfo(dtype).eps
+        assert abs(total - 1.0) < tol, f"sum {total!r} is not 1 within {tol}"
+
+    def test_all_samples_underflow_stays_finite(self, device, dtype):
+        # With the mean 60 px left of the grid and std 0.5, exp(-(x - mu)^2 / (2 std^2)) underflows at every x column
+        # (exp(-7200) is 0 even in float64), so the x-axis normaliser is 0. The heatmap is defined as 0 there.
+        mean = torch.tensor([[-60.0, 2.0]], device=device, dtype=dtype, requires_grad=True)
+        std = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype, requires_grad=True)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), False)
+
+        assert torch.isfinite(heatmap).all()
+        self.assert_close(heatmap, torch.zeros_like(heatmap))
+        (heatmap * torch.arange(25, device=device, dtype=dtype).view(1, 5, 5)).sum().backward()
+        assert mean.grad is not None and std.grad is not None
+        assert torch.isfinite(mean.grad).all() and torch.isfinite(std.grad).all()
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
         std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)

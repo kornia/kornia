@@ -174,9 +174,12 @@ def render_gaussian2d(
     gauss_x = torch.exp(dist_x_sq * k_x)
     gauss_y = torch.exp(dist_y_sq * k_y)
 
-    # Rescale so that values sum to one.
-    gauss_x = gauss_x / (gauss_x.sum(dim=-1, keepdim=True) + 1e-8)
-    gauss_y = gauss_y / (gauss_y.sum(dim=-1, keepdim=True) + 1e-8)
+    # Rescale so that values sum to one. A sum is zero only when every sample on that axis underflows (the mean lies
+    # far off the grid); dividing that all-zero axis by a safe 1 keeps the output 0 and its gradient finite.
+    sum_x = gauss_x.sum(dim=-1, keepdim=True)
+    sum_y = gauss_y.sum(dim=-1, keepdim=True)
+    gauss_x = gauss_x / torch.where(sum_x > 0, sum_x, torch.ones_like(sum_x))
+    gauss_y = gauss_y / torch.where(sum_y > 0, sum_y, torch.ones_like(sum_y))
 
     # Cast the 1-D vectors, not the (*, H, W) outer product, to avoid a full-size float32 intermediate.
     return gauss_y.to(dtype).unsqueeze(-1) * gauss_x.to(dtype).unsqueeze(-2)
