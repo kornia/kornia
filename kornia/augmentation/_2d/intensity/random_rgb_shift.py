@@ -24,9 +24,10 @@ from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import shift_rgb
 
 
-def _shift_bounds(limit: Union[float, Tuple[float, float], List[float]]) -> Tuple[float, float]:
-    # A number is a half-width, bounded by itself; a (low, high) pair is the range and only needs to be ordered.
-    if isinstance(limit, (tuple, list)):
+def _shift_bounds(limit: Union[torch.Tensor, float, Tuple[float, float], List[float]]) -> Tuple[Any, Any]:
+    # A number (or 0-d tensor) is a half-width, bounded by itself; a (low, high) pair -- a tuple, a list or a 1-D
+    # tensor -- is the range and only needs to be finite and ordered.
+    if isinstance(limit, (tuple, list)) or (isinstance(limit, torch.Tensor) and limit.dim() > 0):
         return (-float("inf"), float("inf"))
     return (-limit, limit)
 
@@ -113,9 +114,9 @@ class RandomRGBShift(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        r_shift_limit: Union[float, Tuple[float, float], List[float]] = 0.5,
-        g_shift_limit: Union[float, Tuple[float, float], List[float]] = 0.5,
-        b_shift_limit: Union[float, Tuple[float, float], List[float]] = 0.5,
+        r_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
+        g_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
+        b_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,

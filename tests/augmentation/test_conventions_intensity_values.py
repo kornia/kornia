@@ -954,6 +954,8 @@ class TestIntensityColourConventions(BaseTester):
         for name, (low, high) in {"r_shift": (0.1, 0.2), "g_shift": (-0.3, -0.1), "b_shift": (-0.05, 0.05)}.items():
             drawn = aug._params[name]
             assert bool((drawn >= low).all()) and bool((drawn <= high).all()), name
+        # A 1-D tensor is a pair too, and a pair's domain is as unbounded as a number's.
+        K.RandomRGBShift(torch.tensor([0.1, 0.2]), (-2.0, 2.0), 2.0)
         with pytest.raises(ValueError, match=r"r_shift\[0\] should be smaller than r_shift\[1\]"):
             K.RandomRGBShift((0.2, 0.1))
         with pytest.raises(ValueError, match="If g_shift is a range, it must be finite"):
