@@ -36,7 +36,8 @@ more correspondences, which lets early stopping pay off. An integer
 
 The default ``score_type="msac"`` minimizes the sum of squared residuals
 truncated at ``inl_th ** 2``; ``"ransac"`` counts inliers instead. The returned
-internal score is normalized to increase with quality. Confidence stopping always uses the number of inliers, not this score.
+internal score is normalized to increase with quality. Confidence stopping
+always uses the number of inliers, not this score.
 Fundamental and essential models use Sampson residuals. Essential estimation
 expects camera-normalized coordinates, so its threshold is not in pixels.
 Line-segment homographies use the squared mean distance from the transferred

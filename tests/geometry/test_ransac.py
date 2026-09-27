@@ -1193,6 +1193,20 @@ class TestRANSACSampling(BaseTester):
         assert calls[1] > 1
 
 
+class TestRANSACDefaults(BaseTester):
+    def test_defaults_are_msac_and_bounded_lo(self):
+        ransac = RANSAC("fundamental")
+        assert ransac.score_type == "msac"
+        assert ransac.lo_sample_size == 32
+        assert ransac.max_lo_iters == 5
+        assert not ransac.prosac_sampling
+
+    def test_legacy_configuration_is_still_available(self):
+        ransac = RANSAC("fundamental", score_type="ransac", lo_sample_size=None)
+        assert ransac.score_type == "ransac"
+        assert ransac.lo_sample_size is None
+
+
 class TestRANSACAutoBatch(BaseTester):
     def test_default_is_auto_with_the_historical_budget(self):
         ransac = RANSAC("homography")
