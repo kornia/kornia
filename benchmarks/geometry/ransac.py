@@ -412,8 +412,18 @@ def load_ransac_module(path: Path) -> Any:
 SWEEP_KORNIA: dict[str, dict[str, Any]] = {"default": {}, "prosac": {"prosac_sampling": True}}
 SWEEP_OPENCV = {"usac_magsac": "USAC_MAGSAC", "usac_accurate": "USAC_ACCURATE", "ransac": "FM_RANSAC"}
 SWEEP_POSELIB = {"poselib": False, "poselib-prosac": True}  # progressive_sampling
-# Another revision runs at its own defaults; older revisions ignore prosac_sampling.
-SWEEP_BASE_KORNIA = ("default",)
+# PoseLib's default success probability, kept as in imc2021-simple; kornia and OpenCV use --confidence.
+POSELIB_SUCCESS_PROB = 0.9999
+
+
+def base_methods(module: Any, methods: list[str]) -> list[str]:
+    """The requested kornia configurations another revision implements, at its own defaults.
+
+    Revisions before #4902 accept ``prosac_sampling`` but ignore it; the PROSAC growth schedule
+    (``_prosac_growth``) arrived with the sampler, so its presence tells real support apart.
+    """
+    prosac = hasattr(module, "_prosac_growth")
+    return [m for m in methods if prosac or not SWEEP_KORNIA[m].get("prosac_sampling")]
 
 
 def reference_calls(
@@ -462,9 +472,9 @@ def reference_calls(
             # PoseLib's own stopping rule: ``max_iterations`` is the budget, the default
             # ``min_iterations`` (1000) and ``success_prob`` 0.9999 as in imc2021-simple.
             options = {"max_epipolar_error": th, "progressive_sampling": prosac, "max_iterations": iters}
-            options.update(success_prob=0.9999, seed=args.seed)
+            options.update(success_prob=POSELIB_SUCCESS_PROB, seed=args.seed)
             matrix, info = poselib.estimate_fundamental(p1, p2, options, {})
-            return matrix, np.asarray(info["inliers"], dtype=bool)
+            return matrix, info["inliers"]  # a Python list; converted after the timer stops
 
         config = {"method": f"poselib {name}", "device": "cpu", "batch": None}
         config.update(sample_budget=iters, threshold_px=threshold)
@@ -502,10 +512,11 @@ def sweep(args: argparse.Namespace) -> None:
     estimators: list[tuple[str, Any, list[str]]] = [("kornia", RANSAC, kornia_methods)]
     if args.base_source is not None:
         # Another revision's RANSAC next to this one, interleaved per pair in the same process.
-        base_methods = [m for m in kornia_methods if m in SWEEP_BASE_KORNIA]
-        if skipped := [m for m in kornia_methods if m not in base_methods]:
+        base = load_ransac_module(args.base_source)
+        supported = base_methods(base, kornia_methods)
+        if skipped := [m for m in kornia_methods if m not in supported]:
             print(f"# NOTE: kornia-base skips {','.join(skipped)}: not implemented by the base revision")
-        estimators.append(("kornia-base", load_ransac_module(args.base_source).RANSAC, base_methods))
+        estimators.append(("kornia-base", base.RANSAC, supported))
     sync = torch.cuda.synchronize if device.type == "cuda" else (lambda: None)
     thresholds = [float(x) for x in args.thresholds.split(",")]
     meta = start_run(
@@ -521,11 +532,14 @@ def sweep(args: argparse.Namespace) -> None:
         base_ransac_source_sha256=digest(args.base_source) if args.base_source is not None else None,
         thresholds_px=thresholds,
         confidence=args.confidence,
+        stopping_probability={"kornia": args.confidence, "opencv": args.confidence, "poselib": POSELIB_SUCCESS_PROB},
+        poselib=getattr(backends.get("poselib"), "__version__", None),
         seed=args.seed,
     )
     rows = []
+    warmed: set[tuple[Any, ...]] = set()
     with np.load(args.npz, allow_pickle=False) as data, torch.inference_mode():
-        for pair_index, key in enumerate(pair_keys(data, args)):
+        for key in pair_keys(data, args):
             scene, feature, _ = key.split("__")
             a, b = data[key + "__mkp_a"], data[key + "__mkp_b"]
             field = key + "__score" if key + "__score" in data else key + "__ratio"
@@ -557,11 +571,12 @@ def sweep(args: argparse.Namespace) -> None:
                     config.update(sample_budget=budget, threshold_px=threshold)
                     calls.append((config, partial(estimator, kp1, kp2)))
             calls.extend(reference_calls(args, backends, thresholds, points1, points2, ranked))
-            if pair_index == 0:
-                for _, call in calls:  # lazy initialization and solver handles stay out of the timings
-                    with contextlib.suppress(Exception):
-                        call()
             for config, call in calls:
+                signature = (config["method"], config["sample_budget"], config["threshold_px"])
+                if signature not in warmed:  # first call per configuration: lazy initialization and
+                    with contextlib.suppress(Exception):  # solver handles stay out of the timings
+                        call()
+                    warmed.add(signature)
                 error = None
                 sync()
                 start = time.perf_counter()
