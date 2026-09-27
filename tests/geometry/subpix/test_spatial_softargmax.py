@@ -469,7 +469,8 @@ class TestConvSoftArgmax3d(BaseTester):
                 x, (3, 3, 3), (1, 1, 1), padding, strict_maxima_bonus=bonus
             )[1]
 
-        x = torch.full((1, 1, 3, 7, 9), background, device=device, dtype=torch.float64)
+        dtype = torch.float32 if device.type == "mps" else torch.float64  # MPS has no float64
+        x = torch.full((1, 1, 3, 7, 9), background, device=device, dtype=dtype)
         x[0, 0, 1, 3, 4] = peak
         base = value(x, 0.0)
         for bonus in (1.0, 2.0):
@@ -482,7 +483,8 @@ class TestConvSoftArgmax3d(BaseTester):
     @pytest.mark.parametrize("level", [1, 2, 3])
     def test_strict_maxima_bonus_depth_padding_0_hits_the_maximum_level_5018(self, device, level):
         # #5018: with depth padding 0 the mask slice kept one input level and broadcast it over every output level.
-        x = torch.zeros(1, 1, 5, 7, 9, device=device, dtype=torch.float64)
+        dtype = torch.float32 if device.type == "mps" else torch.float64  # MPS has no float64
+        x = torch.zeros(1, 1, 5, 7, 9, device=device, dtype=dtype)
         x[0, 0, level, 3, 4] = 1.0
         op = kornia.geometry.subpix.conv_soft_argmax3d
         base = op(x, (3, 3, 3), (1, 1, 1), (0, 1, 1), strict_maxima_bonus=0.0)[1][0, 0, :, 3, 4]
