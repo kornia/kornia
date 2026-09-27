@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Optional
 
 import torch
@@ -46,6 +47,17 @@ _PATCH_DW = torch.tensor(
     [-1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1],
     dtype=torch.long,
 )
+
+
+def _warn_strict_maxima_bonus() -> None:
+    # stacklevel 3 names the caller of the public function or module constructor that received the argument.
+    warnings.warn(
+        "`strict_maxima_bonus` is deprecated since kornia 0.9.0 and is ignored: no bonus is added to the returned "
+        "values. The argument will be removed in a future release. To keep only strict maxima, select them with a "
+        "`kornia.geometry.subpix.nms3d` mask.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> torch.Tensor:
@@ -247,9 +259,11 @@ class ConvSoftArgmax3d(nn.Module):
         normalized_coordinates: bool = False,
         eps: float = 1e-8,
         output_value: bool = True,
-        strict_maxima_bonus: float = 0.0,
+        strict_maxima_bonus: Optional[float] = None,
     ) -> None:
         super().__init__()
+        if strict_maxima_bonus is not None:
+            _warn_strict_maxima_bonus()
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
@@ -257,7 +271,6 @@ class ConvSoftArgmax3d(nn.Module):
         self.normalized_coordinates = normalized_coordinates
         self.eps = eps
         self.output_value = output_value
-        self.strict_maxima_bonus = strict_maxima_bonus
 
     def __repr__(self) -> str:
         return (
@@ -268,7 +281,6 @@ class ConvSoftArgmax3d(nn.Module):
             f"temperature={self.temperature}, "
             f"normalized_coordinates={self.normalized_coordinates}, "
             f"eps={self.eps}, "
-            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"output_value={self.output_value})"
         )
 
@@ -295,7 +307,6 @@ class ConvSoftArgmax3d(nn.Module):
             self.normalized_coordinates,
             self.eps,
             self.output_value,
-            self.strict_maxima_bonus,
         )
 
 
@@ -423,7 +434,7 @@ def conv_soft_argmax3d(
     normalized_coordinates: bool = False,
     eps: float = 1e-8,
     output_value: bool = True,
-    strict_maxima_bonus: float = 0.0,
+    strict_maxima_bonus: Optional[float] = None,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
@@ -445,8 +456,8 @@ def conv_soft_argmax3d(
             Otherwise, it will return the coordinates in the range of the input shape.
         eps: small value to avoid zero division.
         output_value: if True, val is output, if False, only ij.
-        strict_maxima_bonus: pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
-          This is needed for mimic behavior of strict NMS in classic local features
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+          :class:`DeprecationWarning`. Select strict maxima with :func:`~kornia.geometry.subpix.nms3d` instead.
 
     Returns:
         Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
@@ -472,6 +483,9 @@ def conv_soft_argmax3d(
         >>> nms_coords, nms_val = conv_soft_argmax3d(input, (3, 3, 3), (1, 2, 2), (0, 1, 1))
 
     """
+    if strict_maxima_bonus is not None:
+        _warn_strict_maxima_bonus()
+
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -533,13 +547,6 @@ def conv_soft_argmax3d(
     x_softmaxpool = (
         pool_coef * F.avg_pool3d(x_exp.view(input.size()) * input, kernel_size, stride=stride, padding=padding) / den
     )
-    if strict_maxima_bonus > 0:
-        in_levels: int = input.size(2)
-        out_levels: int = x_softmaxpool.size(2)
-        skip_levels: int = (in_levels - out_levels) // 2
-        strict_maxima: torch.Tensor = F.avg_pool3d(nms3d(input, kernel_size), 1, stride, 0)
-        strict_maxima = strict_maxima[:, :, skip_levels : out_levels - skip_levels]
-        x_softmaxpool *= 1.0 + strict_maxima_bonus * strict_maxima
     x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3), x_softmaxpool.size(4))
     return coords_max, x_softmaxpool
 
@@ -744,7 +751,7 @@ def _solve_cramer_sym3x3(
 def conv_quad_interp3d(
     input: torch.Tensor,
     n_iters: int = 5,
-    strict_maxima_bonus: float = 10.0,
+    strict_maxima_bonus: Optional[float] = None,
     max_subpixel_shift: float = 0.6,
     precomputed_nms_mask: Optional[torch.Tensor] = None,
     dilation_radius: int = 1,
@@ -776,8 +783,9 @@ def conv_quad_interp3d(
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
         n_iters: maximum number of localization iterations per keypoint.
-        strict_maxima_bonus: value added to ``y_max`` at NMS-maximum positions
-            so that strict maxima are preferred during top-K selection.
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+            :class:`DeprecationWarning`. Select strict maxima with ``precomputed_nms_mask`` or
+            :func:`~kornia.geometry.subpix.nms3d` instead.
         max_subpixel_shift: threshold above which the integer centre is
             moved one step and another iteration is run.
         precomputed_nms_mask: optional bool tensor of shape
@@ -797,7 +805,7 @@ def conv_quad_interp3d(
           ``[scale, x(width), y(height)]`` coordinates for each NMS maximum;
           non-maximum positions keep their grid coordinates.
         * ``y_max`` — shape :math:`(B, C, D, H, W)`, quadratically corrected
-          response with optional strict-maxima bonus.
+          response at each NMS maximum; other positions keep the input value.
 
     Example:
         >>> input = torch.randn(2, 3, 5, 64, 64)
@@ -808,6 +816,8 @@ def conv_quad_interp3d(
         torch.Size([2, 3, 5, 64, 64])
 
     """
+    if strict_maxima_bonus is not None:
+        _warn_strict_maxima_bonus()
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     if input.ndim != 5:
@@ -998,8 +1008,6 @@ def conv_quad_interp3d(
     # Use the final recentered position for val_center (h_cur/w_cur may have moved during iteration)
     val_center = input.view(BC, D, H, W)[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
-    if strict_maxima_bonus > 0:
-        y_max[b_idx, c_idx, d_idx, h_idx, w_idx] += strict_maxima_bonus * valid.to(dtype)
 
     return coords_max, y_max
 
@@ -1015,21 +1023,23 @@ class ConvQuadInterp3d(nn.Module):
 
     Args:
         n_iters: maximum localization iterations per keypoint.
-        strict_maxima_bonus: score bonus at NMS-maximum positions.
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+            :class:`DeprecationWarning`.
         max_subpixel_shift: shift threshold that triggers integer centre move.
     """
 
     def __init__(
         self,
         n_iters: int = 5,
-        strict_maxima_bonus: float = 10.0,
+        strict_maxima_bonus: Optional[float] = None,
         max_subpixel_shift: float = 0.6,
         dilation_radius: int = 1,
         allow_scale_steps: bool = True,
     ) -> None:
         super().__init__()
+        if strict_maxima_bonus is not None:
+            _warn_strict_maxima_bonus()
         self.n_iters = n_iters
-        self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.dilation_radius = dilation_radius
         self.allow_scale_steps = allow_scale_steps
@@ -1038,7 +1048,6 @@ class ConvQuadInterp3d(nn.Module):
         return (
             f"{self.__class__.__name__}("
             f"n_iters={self.n_iters}, "
-            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
             f"dilation_radius={self.dilation_radius}, "
             f"allow_scale_steps={self.allow_scale_steps})"
@@ -1067,18 +1076,17 @@ class ConvQuadInterp3d(nn.Module):
         return conv_quad_interp3d(
             x,
             self.n_iters,
-            self.strict_maxima_bonus,
-            self.max_subpixel_shift,
-            precomputed_nms_mask,
-            self.dilation_radius,
-            self.allow_scale_steps,
+            max_subpixel_shift=self.max_subpixel_shift,
+            precomputed_nms_mask=precomputed_nms_mask,
+            dilation_radius=self.dilation_radius,
+            allow_scale_steps=self.allow_scale_steps,
         )
 
 
 def iterative_quad_interp3d(
     input: torch.Tensor,
     n_iters: int = 5,
-    strict_maxima_bonus: float = 10.0,
+    strict_maxima_bonus: Optional[float] = None,
     max_subpixel_shift: float = 0.6,
     allow_scale_steps: bool = True,
     precomputed_nms_mask: Optional[torch.Tensor] = None,
@@ -1097,8 +1105,9 @@ def iterative_quad_interp3d(
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
         n_iters: maximum number of localization iterations per keypoint.
-        strict_maxima_bonus: value added to ``y_max`` at NMS-maximum positions so
-            that strict maxima are preferred when selecting the top-K keypoints.
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+            :class:`DeprecationWarning`. Select strict maxima with ``precomputed_nms_mask`` or
+            :func:`~kornia.geometry.subpix.nms3d` instead.
         max_subpixel_shift: if the estimated shift along any axis is larger than this
             threshold the integer center is displaced and another iteration is run.
         allow_scale_steps: if ``True`` (default), the iterative shift is also
@@ -1123,7 +1132,7 @@ def iterative_quad_interp3d(
           coordinates ``[scale, x, y]`` for every position in the input.
           Non-NMS positions keep their original grid coordinates.
         * ``y_max`` has shape :math:`(B, C, D, H, W)` and stores the quadratically
-          corrected response values (with the optional strict-maxima bonus added).
+          corrected response values.
 
     Example:
         >>> input = torch.randn(2, 3, 3, 8, 8)
@@ -1134,6 +1143,8 @@ def iterative_quad_interp3d(
         torch.Size([2, 3, 3, 8, 8])
 
     """
+    if strict_maxima_bonus is not None:
+        _warn_strict_maxima_bonus()
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     if input.ndim != 5:
@@ -1301,9 +1312,6 @@ def iterative_quad_interp3d(
     val_center = inp[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
 
-    if strict_maxima_bonus > 0:
-        y_max[b_idx, c_idx, d_idx, h_idx, w_idx] += strict_maxima_bonus * valid.to(dtype)
-
     return coords_max, y_max
 
 
@@ -1316,14 +1324,15 @@ class IterativeQuadInterp3d(nn.Module):
     def __init__(
         self,
         n_iters: int = 5,
-        strict_maxima_bonus: float = 10.0,
+        strict_maxima_bonus: Optional[float] = None,
         max_subpixel_shift: float = 0.6,
         allow_scale_steps: bool = True,
         max_candidates: Optional[int] = None,
     ) -> None:
         super().__init__()
+        if strict_maxima_bonus is not None:
+            _warn_strict_maxima_bonus()
         self.n_iters = n_iters
-        self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.allow_scale_steps = allow_scale_steps
         self.max_candidates = max_candidates
@@ -1332,7 +1341,6 @@ class IterativeQuadInterp3d(nn.Module):
         return (
             f"{self.__class__.__name__}("
             f"n_iters={self.n_iters}, "
-            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
             f"allow_scale_steps={self.allow_scale_steps}, "
             f"max_candidates={self.max_candidates})"
@@ -1358,9 +1366,8 @@ class IterativeQuadInterp3d(nn.Module):
         return iterative_quad_interp3d(
             x,
             self.n_iters,
-            self.strict_maxima_bonus,
-            self.max_subpixel_shift,
-            self.allow_scale_steps,
+            max_subpixel_shift=self.max_subpixel_shift,
+            allow_scale_steps=self.allow_scale_steps,
             precomputed_nms_mask=precomputed_nms_mask,
             max_candidates=self.max_candidates,
         )
@@ -1389,7 +1396,8 @@ class AdaptiveQuadInterp3d(nn.Module):
               ``"patch"`` otherwise.
 
         n_iters: maximum localization iterations per keypoint.
-        strict_maxima_bonus: score bonus added at NMS-maximum positions.
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+            :class:`DeprecationWarning`.
         max_subpixel_shift: integer-centre move threshold.
         dilation_radius: L\ :math:`\infty` precompute radius for ``"conv"`` mode
             (ignored in ``"patch"`` mode).
@@ -1415,18 +1423,19 @@ class AdaptiveQuadInterp3d(nn.Module):
         self,
         mode: str = "auto",
         n_iters: int = 5,
-        strict_maxima_bonus: float = 10.0,
+        strict_maxima_bonus: Optional[float] = None,
         max_subpixel_shift: float = 0.6,
         dilation_radius: int = 1,
         allow_scale_steps: bool = True,
         max_candidates: Optional[int] = None,
     ) -> None:
         super().__init__()
+        if strict_maxima_bonus is not None:
+            _warn_strict_maxima_bonus()
         if mode not in self.MODES:
             raise ValueError(f"mode must be one of {self.MODES}, got '{mode}'")
         self.mode = mode
         self.n_iters = n_iters
-        self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.dilation_radius = dilation_radius
         self.allow_scale_steps = allow_scale_steps
@@ -1437,7 +1446,6 @@ class AdaptiveQuadInterp3d(nn.Module):
             f"{self.__class__.__name__}("
             f"mode='{self.mode}', "
             f"n_iters={self.n_iters}, "
-            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
             f"dilation_radius={self.dilation_radius}, "
             f"allow_scale_steps={self.allow_scale_steps}, "
@@ -1469,18 +1477,16 @@ class AdaptiveQuadInterp3d(nn.Module):
             return conv_quad_interp3d(
                 x,
                 self.n_iters,
-                self.strict_maxima_bonus,
-                self.max_subpixel_shift,
-                precomputed_nms_mask,
-                self.dilation_radius,
-                self.allow_scale_steps,
+                max_subpixel_shift=self.max_subpixel_shift,
+                precomputed_nms_mask=precomputed_nms_mask,
+                dilation_radius=self.dilation_radius,
+                allow_scale_steps=self.allow_scale_steps,
             )
         return iterative_quad_interp3d(
             x,
             self.n_iters,
-            self.strict_maxima_bonus,
-            self.max_subpixel_shift,
-            self.allow_scale_steps,
+            max_subpixel_shift=self.max_subpixel_shift,
+            allow_scale_steps=self.allow_scale_steps,
             precomputed_nms_mask=precomputed_nms_mask,
             max_candidates=self.max_candidates,
         )

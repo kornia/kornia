@@ -937,11 +937,11 @@ CASES += [
     ),
     case("subpix.conv_soft_argmax3d", G, conv_soft_argmax3d, [heat3d], tags=("3d",)),
     case(
-        "subpix.conv_soft_argmax3d[normalized,bonus]",
+        "subpix.conv_soft_argmax3d[normalized]",
         G,
         conv_soft_argmax3d,
         [heat3d],
-        {"normalized_coordinates": True, "strict_maxima_bonus": 10.0},
+        {"normalized_coordinates": True},
         tags=("3d",),
     ),
     case("subpix.conv_quad_interp3d", G, conv_quad_interp3d, [heat3d], tags=("3d",)),

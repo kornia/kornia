@@ -7622,7 +7622,7 @@
       "export": "ok",
       "export_detail": "",
       "graph_breaks": 0,
-      "name": "subpix.conv_soft_argmax3d[normalized,bonus]",
+      "name": "subpix.conv_soft_argmax3d[normalized]",
       "note": "",
       "onnx": "ok",
       "onnx_detail": "",
@@ -7630,7 +7630,7 @@
       "package": "kornia.geometry",
       "ref": "kornia.geometry.subpix.conv_soft_argmax3d",
       "section": "subpix",
-      "variant": "normalized,bonus",
+      "variant": "normalized",
       "where": ""
     },
     {
