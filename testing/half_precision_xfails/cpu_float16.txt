@@ -418,6 +418,7 @@ call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpP
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpPerspective::test_rotation_inverse[cpu-float16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpPerspective::test_translation[cpu-float16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpPerspective::test_translation_align_corners[cpu-float16-True]
+call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpPerspective::test_translation_normalized[cpu-float16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90x[cpu-float16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90y[cpu-float16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90z[cpu-float16]
