@@ -463,11 +463,11 @@ class TestRANSACSeed:
 
         # Every point is an inlier at this threshold, so local optimization would return the same
         # least-squares fit for any seed; compare the seed-dependent minimal-sample models instead.
-        # A few draws out of the 4845 possible samples: an exhaustive draw would find the same MSAC
-        # optimum for any seed.
-        ransac_a = RANSAC("homography", inl_th=2.0, batch_size=8, max_iter=1, max_lo_iters=0, seed=1)
-        ransac_b = RANSAC("homography", inl_th=2.0, batch_size=8, max_iter=1, max_lo_iters=0, seed=2)
-        ransac_a, ransac_b = ransac_a.to(device=device, dtype=dtype), ransac_b.to(device=device, dtype=dtype)
+        # Under RANSAC scoring every all-inlier sample ties and the first one drawn wins, so the
+        # result follows the seed; the MSAC optimum over an exhaustive draw is the same for any seed.
+        common = {"inl_th": 2.0, "max_iter": 5, "max_lo_iters": 0, "score_type": "ransac"}
+        ransac_a = RANSAC("homography", seed=1, **common).to(device=device, dtype=dtype)
+        ransac_b = RANSAC("homography", seed=2, **common).to(device=device, dtype=dtype)
 
         H_a, _ = ransac_a(points1, points2)
         H_b, _ = ransac_b(points1, points2)
