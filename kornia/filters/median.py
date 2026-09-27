@@ -99,7 +99,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
 
     Args:
         input: the input image with shape :math:`(B,C,H,W)`.
-        kernel_size: the blurring kernel size.
+        kernel_size: the blurring kernel size. Each entry must be a positive odd integer.
 
     Returns:
         the blurred input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -116,9 +116,8 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
-    _check_kernel_size(kernel_size, min_value=0)
-
     ky, kx = _unpack_2d_ks(kernel_size)
+    _check_kernel_size((ky, kx), min_value=0)
     # ATen's per-pixel median reduction dominates inference for small windows.
     # A fixed selection network avoids it. Inductor fuses the network into one
     # CUDA kernel; eager CUDA launches one kernel per comparator, which only pays
