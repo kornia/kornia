@@ -187,6 +187,37 @@ class TestQuaternion(BaseTester):
         expected = torch.tensor([2.0**0.5, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         self.assert_close((q**0.5).data[0], expected)
 
+    def test_pow_negative_real_axis_4955(self, device, dtype):
+        # #4955 (fixed): on the negative real axis theta = pi and the axis n = v / |v| is undefined, so q**t returned
+        # |q|**t cos(t pi) in the scalar and zeros elsewhere: [-2, 0, 0, 0]**0.5 was the zero quaternion. n = e_x is
+        # taken there, so |q**t| == |q|**t, (q**0.5)**2 == q and the value is the limit from the +x side of the axis.
+        eps = torch.finfo(dtype).eps
+        q = Quaternion(torch.tensor([[-2.0, 0.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+        root = q**0.5
+        expected = torch.tensor([[0.0, 2.0**0.5, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(root.data, expected, rtol=4 * eps, atol=4 * eps)
+        self.assert_close(root * root, q, rtol=4 * eps, atol=8 * eps)
+        quarter = q**0.25
+        self.assert_close(quarter.norm(), q.norm() ** 0.25)
+        self.assert_close(quarter.polar_angle, torch.full((2,), math.pi / 4, device=device, dtype=dtype))
+        self.assert_close(quarter * quarter, root, rtol=4 * eps, atol=8 * eps)
+        self.assert_close((q**-0.5) * root, Quaternion.identity(2, device, dtype), rtol=4 * eps, atol=8 * eps)
+        # Just off the axis on the +x side the power is continuous with the value on it.
+        delta = math.sqrt(eps)
+        near = Quaternion(torch.tensor([-2.0, delta, 0.0, 0.0], device=device, dtype=dtype)) ** 0.5
+        self.assert_close(near.data, root.data[0], rtol=0.0, atol=delta)
+        # An integer t is not on a branch cut: the vector part stays exactly zero and * and inv() agree, as before.
+        for t in (-1.0, 2, 3.0):
+            assert torch.equal((q**t).vec, torch.zeros_like(q.vec))
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+
+    def test_pow_negative_real_axis_gradient_is_finite_4955(self, device):
+        # The output jumps across the cut, so the gradient there has no defined value; it is finite, not nan.
+        data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64, requires_grad=True)
+        (Quaternion(data) ** 0.5).data.sum().backward()
+        assert torch.isfinite(data.grad).all()
+
     @pytest.mark.parametrize("t", (-1.0, 0.5, 2.0))
     def test_pow_gradcheck(self, device, t):
         # the first quaternion lies on the real axis, where the vector part has zero norm; the last is pure imaginary

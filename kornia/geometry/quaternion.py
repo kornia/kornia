@@ -19,7 +19,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/quaternion.py
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
-from math import pi
+from math import pi, sin
 from typing import Any, Optional, Tuple, Union
 
 import torch
@@ -315,6 +315,11 @@ class Quaternion(nn.Module):
         For :math:`q = \|q\| (\cos\theta + n \sin\theta)` this is
         :math:`q^t = \|q\|^t (\cos t\theta + n \sin t\theta)`, so ``q**2 == q * q`` and ``q**-1 == q.inv()``.
 
+        On the negative real axis (``w < 0`` and a zero vector part) :math:`\theta = \pi` and the axis :math:`n` is
+        undefined: for a non-integer ``t`` every unit vector gives a valid power. This method takes :math:`n = e_x`
+        there, so ``q**t`` has norm :math:`\|q\|^t` and angle :math:`t\pi`, ``(q**0.5)**2 == q``, and the result is
+        the limit from the ``+x`` side of the axis. An integer ``t`` keeps a zero vector part.
+
         Args:
             t: raised exponent.
 
@@ -333,7 +338,15 @@ class Quaternion(nn.Module):
         safe_w = torch.where(w == 0, torch.ones_like(w), w)
         sin_ratio = torch.where(is_real, t * (t * theta).cos() / safe_w, (t * theta).sin() / safe_vec_norm)
         scale = self.norm(keepdim=True) ** t
-        return Quaternion(torch.cat((scale * (t * theta).cos(), scale * sin_ratio * self.vec), -1))
+        vec = scale * sin_ratio * self.vec
+        # The negative real axis is the branch cut of the power: theta = pi and n = v / |v| is undefined, so the arm
+        # above leaves the vector part at 0 and only an integer t gives a valid result there (#4955). Take n = e_x on
+        # the cut: add |q|^t sin(t pi) to x. sin(t pi) is reduced in Python so that it is exactly 0 for an integer t.
+        k = round(t)
+        sin_t_pi = (-1.0) ** k * sin(pi * (t - k))
+        on_cut = torch.where(is_real & (w < 0), scale * sin_t_pi, torch.zeros_like(scale))
+        vec = torch.cat((vec[..., :1] + on_cut, vec[..., 1:]), -1)
+        return Quaternion(torch.cat((scale * (t * theta).cos(), vec), -1))
 
     @property
     def data(self) -> torch.Tensor:
