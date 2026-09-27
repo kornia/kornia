@@ -17,9 +17,15 @@
 
 """Batched kernels of RANSAC's Levenberg-Marquardt pipeline for fundamental matrices and homographies.
 
-The minimal solvers work on correspondences normalized once per call and take their null spaces from a
-partial-pivoted LU factorization, which is batched on every backend (``eigh`` and ``svd`` loop over the batch on
-CPU, and the batched CUDA SVD is slow for 3x3 matrices). Residuals are scored from one matrix product with
+The minimal solvers share their building blocks with the public estimators: the partial-pivoted LU null space
+(:func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, also behind :func:`~kornia.geometry.epipolar.run_7point`,
+the eight-point case of :func:`~kornia.geometry.epipolar.run_8point` and the minimal case of
+:func:`~kornia.geometry.homography.find_homography_dlt`), the epipolar design rows and the seven-point cubic. What
+stays here is what the public functions' contracts rule out in a sampling loop: correspondences are normalized once
+per call rather than per sample, models stay in that normalized frame at unit Frobenius norm instead of being scaled
+to ``F[2, 2] = 1``, absent candidates are NaN rather than padded, and everything runs under ``torch.no_grad`` with
+closed forms (the rank-2 projection, the cubic) whose ``clamp``-guarded ``sqrt``/``acos`` would not give portable
+gradients (#4229). Residuals of many models on one set of correspondences are scored from one matrix product with
 per-correspondence monomials. The refiners are Levenberg-Marquardt iterations batched over models, in the spirit of
 PoseLib's (Larsson and contributors, https://github.com/PoseLib/PoseLib) ``refine_fundamental`` and
 ``refine_homography``: fundamental matrices are parametrized by the SVD-based factorization of Bartoli and Sturm,
@@ -33,6 +39,10 @@ import math
 from typing import Tuple
 
 import torch
+
+from kornia.geometry.epipolar.fundamental import _det_pencil_coefficients, _epipolar_design_rows, _seven_point_basis
+from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
+from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
 
 __all__: list[str] = []
 
@@ -85,26 +95,6 @@ def normalize_correspondences(
     return x1, x2, t1, t2, s1, s2
 
 
-def null_space_lu(A: torch.Tensor) -> torch.Tensor:
-    """Right null spaces of a batch of full-row-rank ``(B, m, n)`` matrices, ``m < n``, as ``(B, n, n - m)``.
-
-    With ``A^T = P L U`` from a partial-pivoted LU factorization, ``f^T A^T = 0`` exactly when ``y = P^T f`` solves
-    ``y^T L = 0``. Splitting the unit lower trapezoidal ``L`` into its square top ``L_1`` and bottom ``L_2`` rows
-    gives the basis ``y = [-(L_2 L_1^{-1})^T; I]``. The pivoting chooses the gauge, so no coordinate of the null
-    vector is assumed non-zero. A rank-deficient ``A`` gives non-finite vectors, which the callers discard.
-    """
-    batch, m, n = A.shape
-    lu, pivots, _ = torch.linalg.lu_factor_ex(A.mT)
-    lower = torch.linalg.solve_triangular(lu[:, :m, :m], lu[:, m:, :m], upper=False, left=False, unitriangular=True)
-    eye = torch.eye(n - m, dtype=A.dtype, device=A.device).expand(batch, -1, -1)
-    permutation, _, _ = torch.lu_unpack(lu, pivots, unpack_data=False)
-    return permutation @ torch.cat([-lower.mT, eye], 1)
-
-
-def _det3(M: torch.Tensor) -> torch.Tensor:
-    return (M[..., 0, :] * torch.linalg.cross(M[..., 1, :], M[..., 2, :])).sum(-1)
-
-
 def rank2_projection(F: torch.Tensor) -> torch.Tensor:
     r"""The nearest rank-2 matrices in Frobenius norm, ``F (I - v v^T)`` with ``v`` the smallest right singular vector.
 
@@ -118,7 +108,7 @@ def rank2_projection(F: torch.Tensor) -> torch.Tensor:
     shifted = M - q[:, None, None] * eye
     p = (shifted.square().sum((-2, -1)) / 6).sqrt()
     safe_p = torch.where(p > 0, p, torch.ones_like(p))
-    r = (_det3(shifted / safe_p[:, None, None]) / 2).clamp(-1, 1)
+    r = (_det3(*(shifted / safe_p[:, None, None]).flatten(-2).unbind(-1)) / 2).clamp(-1, 1)
     smallest = q + 2 * p * torch.cos(torch.acos(r) / 3 + 2 * math.pi / 3)
     rows = M - smallest[:, None, None] * eye
     crosses = torch.linalg.cross(rows[:, [0, 0, 1]], rows[:, [1, 2, 2]])
@@ -129,44 +119,11 @@ def rank2_projection(F: torch.Tensor) -> torch.Tensor:
     return F - (F @ v[:, :, None]) @ v[:, None, :]
 
 
-def _epipolar_rows(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    """Rows ``vec(x2 x1^T)`` of the epipolar constraint, so that ``row . vec(F) = x2^T F x1`` (``F`` row-major)."""
-    return (x2[..., :, None] * x1[..., None, :]).flatten(-2)
-
-
 def fundamental_8pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     """Rank-2 fundamental matrices ``(B, 3, 3)`` from eight homogeneous normalized correspondences ``(B, 8, 3)``."""
-    f = null_space_lu(_epipolar_rows(x1, x2))[..., 0]
+    f = _null_space_lu(_epipolar_design_rows(x1, x2))[..., 0]
     F = (f * f.square().sum(1, keepdim=True).rsqrt()).reshape(-1, 3, 3)
     return rank2_projection(F.to(_solve_dtype(F.device))).to(x1.dtype)
-
-
-def _cubic_real_roots(c3: torch.Tensor, c2: torch.Tensor, c1: torch.Tensor, c0: torch.Tensor) -> torch.Tensor:
-    """Real roots ``(B, 3)`` of ``c3 x^3 + c2 x^2 + c1 x + c0``, NaN where a cubic has only one.
-
-    Cardano's formula for one real root, the trigonometric one for three, each followed by a Newton step. The caller
-    arranges ``|c3| >= |c0|`` so that the leading coefficient is not the vanishing one.
-    """
-    a, b, c = c2 / c3, c1 / c3, c0 / c3
-    a3 = a / 3
-    p = b - a * a3
-    q = (2 * a3 * a3 - b) * a3 + c
-    discriminant = 0.25 * q * q + p * p * p / 27
-    three = discriminant <= 0
-    root = discriminant.clamp(min=0).sqrt()
-    u, w = root - 0.5 * q, -root - 0.5 * q
-    single = torch.copysign(u.abs().pow(1 / 3), u) + torch.copysign(w.abs().pow(1 / 3), w)
-    radius = (-p / 3).clamp(min=0).sqrt()
-    safe_radius = torch.where(radius > 0, radius, torch.ones_like(radius))
-    angle = torch.acos((-0.5 * q / safe_radius.pow(3)).clamp(-1, 1)) / 3
-    offsets = torch.tensor([0.0, 2 * math.pi / 3, 4 * math.pi / 3], dtype=c3.dtype, device=c3.device)
-    triple = 2 * radius[:, None] * torch.cos(angle[:, None] - offsets)
-    x = torch.where(three[:, None], triple, single[:, None].expand(-1, 3)) - a3[:, None]
-    value = ((x + a[:, None]) * x + b[:, None]) * x + c[:, None]
-    slope = (3 * x + 2 * a[:, None]) * x + b[:, None]
-    x = x - value / torch.where(slope == 0, torch.ones_like(slope), slope)
-    only_one = torch.stack([torch.zeros_like(three), ~three, ~three], 1)
-    return x.masked_fill(only_one, float("nan"))
 
 
 def fundamental_7pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
@@ -175,19 +132,13 @@ def fundamental_7pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     The two-dimensional null space ``F(x) = x f_1 + f_2`` of the epipolar constraints is completed by the real roots
     of the cubic ``det F(x) = 0`` (Hartley and Zisserman, section 11.1.2), so every candidate has rank two.
     """
-    basis = null_space_lu(_epipolar_rows(x1, x2)).mT.reshape(-1, 2, 3, 3).to(_solve_dtype(x1.device))
-    f1, f2 = basis[:, 0], basis[:, 1]
-    # det(x f1 + f2) by multilinearity in the rows: c3 = det f1, c0 = det f2.
-    a2, a3, b2, b3 = f1[:, 1], f1[:, 2], f2[:, 1], f2[:, 2]
-    crosses = torch.linalg.cross(torch.stack([a2, b2, a2, b2], 1), torch.stack([a3, b3, b3, a3], 1))
-    x_aa, x_bb, x_ab = crosses[:, 0], crosses[:, 1], crosses[:, 2] + crosses[:, 3]
-    a1, b1 = f1[:, 0], f2[:, 0]
-    dots = (torch.stack([a1, b1, a1, a1, b1, b1], 1) * torch.stack([x_aa, x_aa, x_ab, x_bb, x_ab, x_bb], 1)).sum(-1)
-    coefficients = torch.stack([dots[:, 0], dots[:, 1] + dots[:, 2], dots[:, 3] + dots[:, 4], dots[:, 5]], 1)
+    solve_dtype = _solve_dtype(x1.device)
+    f1, f2 = (f.to(solve_dtype) for f in _seven_point_basis(_epipolar_design_rows(x1, x2)))
+    coefficients = _det_pencil_coefficients(f1, f2)
     # Parametrize by the better-conditioned end: F = x f1 + f2, or F = f1 + y f2 with the coefficients reversed.
     swap = coefficients[:, 0].abs() < coefficients[:, 3].abs()
     coefficients = torch.where(swap[:, None], coefficients.flip(1), coefficients)
-    roots = _cubic_real_roots(*coefficients.unbind(1))
+    roots = _solve_cubic_real(coefficients)
     lead = torch.where(swap[:, None, None], f2, f1)
     rest = torch.where(swap[:, None, None], f1, f2)
     F = roots[:, :, None, None] * lead[:, None] + rest[:, None]
@@ -199,7 +150,7 @@ def homography_4pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     zero = torch.zeros_like(x1)
     rows_u = torch.cat([x1, zero, -x2[..., 0:1] * x1], -1)
     rows_v = torch.cat([zero, x1, -x2[..., 1:2] * x1], -1)
-    h = null_space_lu(torch.stack([rows_u, rows_v], 2).flatten(1, 2))[..., 0]
+    h = _null_space_lu(torch.stack([rows_u, rows_v], 2).flatten(1, 2))[..., 0]
     return (h * h.square().sum(1, keepdim=True).rsqrt()).reshape(-1, 3, 3)
 
 
@@ -213,9 +164,9 @@ def sampson_basis(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     """
     n = x1.shape[0]
     basis = x1.new_zeros(27, 2 * n)
-    basis[:9, :n] = _epipolar_rows(x1, x2).T
-    basis[9:18, n:] = _epipolar_rows(x1, x1).T
-    basis[18:, n:] = _epipolar_rows(x2, x2).T
+    basis[:9, :n] = _epipolar_design_rows(x1, x2).T
+    basis[9:18, n:] = _epipolar_design_rows(x1, x1).T
+    basis[18:, n:] = _epipolar_design_rows(x2, x2).T
     return basis
 
 
@@ -281,8 +232,8 @@ def refine_fundamental(
     E = _hat_basis(dtype, device)
     eye3 = torch.eye(3, dtype=dtype, device=device)
     eye7 = torch.eye(7, dtype=dtype, device=device)
-    algebraic = _epipolar_rows(x1, x2).T  # (9, N)
-    quadratic = torch.cat([_epipolar_rows(x1, x1), _epipolar_rows(x2, x2)], 1).T  # (18, N)
+    algebraic = _epipolar_design_rows(x1, x2).T  # (9, N)
+    quadratic = torch.cat([_epipolar_design_rows(x1, x1), _epipolar_design_rows(x2, x2)], 1).T  # (18, N)
     U, S, Vh = torch.linalg.svd(F)
     V = Vh.mT
     # Proper rotations: the third singular vectors do not enter F, so their signs are free.

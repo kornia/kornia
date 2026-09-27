@@ -1848,19 +1848,6 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the kernels run in float32 or float64")
 
-    @pytest.mark.parametrize("rows", [7, 8])
-    def test_null_space_lu(self, device, dtype, rows):
-        self._skip_half(dtype)
-        A = torch.randn(64, rows, 9, device=device, dtype=dtype)
-        basis = _ransac_lm.null_space_lu(A)
-        assert basis.shape == (64, 9, 9 - rows)
-        basis = basis / basis.norm(dim=1, keepdim=True)
-        self.assert_close((A @ basis).abs().amax(), torch.zeros((), device=device, dtype=dtype), atol=1e-5, rtol=0)
-        # The same subspace as the SVD's null space: projecting onto it keeps the basis.
-        null = torch.linalg.svd(A.double(), full_matrices=True)[2][:, rows:].mT
-        projected = null @ (null.mT @ basis.double())
-        self.assert_close(projected, basis.double(), atol=1e-5, rtol=0)
-
     def test_rank2_projection_matches_svd(self, device, dtype):
         self._skip_half(dtype)
         F = torch.randn(128, 3, 3, device=device, dtype=torch.float64)

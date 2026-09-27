@@ -25,6 +25,7 @@ from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inver
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.linalg import transform_points
+from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 __all__ = [
     "find_homography_dlt",
@@ -334,10 +335,11 @@ def _homography_from_dlt_system(
         else:
             # A four-point sample gives eight equations for nine unknowns, so the normal matrix
             # is singular and LU-factoring it is what produced all-NaN homographies. Work from
-            # the design matrix instead: its null vector comes from a complete QR, the largest
-            # component of that vector fixes the homogeneous gauge, and the retained 8x8 system
-            # is solved for the rest. A fixed h33=1 gauge is invalid whenever the bottom-right
-            # entry is zero. Five or more points keep the normal-equation formulation above.
+            # the design matrix instead: its null vector comes from a pivoted LU factorization of
+            # it, the largest component of that vector fixes the homogeneous gauge, and the
+            # retained 8x8 system is solved for the rest. A fixed h33=1 gauge is invalid whenever
+            # the bottom-right entry is zero. Five or more points keep the normal-equation
+            # formulation above.
             Aw = A if w_full is None else A * w_full.transpose(-2, -1)
             # torch.linalg.qr on CUDA can spin forever on a design matrix that mixes NaN with the
             # structured zeros of the DLT rows (#4770). Hand QR and the solve finite entries only,
@@ -347,14 +349,12 @@ def _homography_from_dlt_system(
             Aw = torch.where(finite_entries, Aw, torch.zeros_like(Aw))
             gauge_dtype = torch.float64 if dtype == torch.float64 else torch.float32
             design = Aw.detach().to(gauge_dtype)
-            if device.type == "cuda":
-                # torch.linalg.qr has no batched CUDA kernel: it factors the B matrices one cusolver call at a
-                # time (~0.1 ms each), so a 2048-sample RANSAC batch spent ~250 ms here. The batched Jacobi
-                # SVD is one kernel (~1 ms for 2048) and its null vector agrees with the QR one to roundoff.
-                null = torch.linalg.svd(design)[2][..., -1, :]
-            else:
-                Q, _ = torch.linalg.qr(design.transpose(-2, -1), mode="complete")
-                null = Q[..., -1]
+            # One batched LU factorization on every backend: torch.linalg.qr has no batched CUDA kernel
+            # (one cusolver call per matrix, ~250 ms for a 2048-sample RANSAC batch), and a batched SVD or
+            # QR costs about three times the LU on CPU. A zero-weight correspondence leaves the null vector
+            # finite, since the unit triangular factor the basis is solved from is never singular.
+            null = _null_space_lu(design)[..., 0]
+            null = null / null.norm(dim=-1, keepdim=True)
             gauge = null.abs().argmax(dim=-1)
             retained = torch.arange(8, device=device).expand(A.shape[0], -1)
             retained = retained + (retained >= gauge[:, None]).to(retained.dtype)

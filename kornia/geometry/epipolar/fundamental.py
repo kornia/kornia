@@ -26,6 +26,7 @@ from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _torch_svd_cast, safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers import solve_cubic
+from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 
 def normalize_points(
@@ -128,33 +129,43 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     return torch.where(mask, M / divisor, M)
 
 
-def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
-    """Compute the nullspace of a matrix A using the eigh method.
+def _epipolar_design_rows(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """Rows ``vec(x2 x1^T)`` of the epipolar constraint, so that ``row . vec(F) = x2^T F x1`` with ``F`` row-major.
 
     Args:
-        A: (..., 7, 9)
+        x1: homogeneous points of the first image, ``(..., N, 3)``.
+        x2: homogeneous points of the second image, ``(..., N, 3)``.
 
     Returns:
-        N: (..., 9, 2) where columns span the right nullspace of A
+        the design matrix ``(..., N, 9)``: ``[x2 x1, x2 y1, x2, y2 x1, y2 y1, y2, x1, y1, 1]`` for inhomogeneous
+        points.
     """
-    AT = A.transpose(-2, -1)  # (..., 9, 7)
-    G = AT @ A  # (..., 9, 9) SPD
-    _evals, evecs = torch.linalg.eigh(G)  # ascending eigenvalues
-    return evecs[..., :, :2]  # eigenvectors for 2 smallest evals
+    return (x2[..., :, None] * x1[..., None, :]).flatten(-2)
 
 
-def _F1F2_from_nullspace(N: torch.Tensor):
-    """Compute the F1 and F2 matrices from the nullspace of a matrix A.
+def _seven_point_basis(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """The two-dimensional null space of seven epipolar constraints ``(B, 7, 9)`` as two ``(B, 3, 3)`` matrices.
 
-    Args:
-        N: (..., 9, 2) where columns span the right nullspace of A
-    Returns:
-        F1: (..., 3, 3)
-        F2: (..., 3, 3)
+    The null space comes from :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, in at least float32 since
+    no backend factorizes half precision.
     """
-    F1 = N[..., 0].view(-1, 3, 3)
-    F2 = N[..., 1].view(-1, 3, 3)
-    return F1, F2
+    solve_dtype = torch.promote_types(A.dtype, torch.float32)
+    basis = _null_space_lu(A.to(solve_dtype)).mT.reshape(-1, 2, 3, 3).to(A.dtype)
+    return basis[:, 0], basis[:, 1]
+
+
+def _det_pencil_coefficients(f1: torch.Tensor, f2: torch.Tensor) -> torch.Tensor:
+    r"""Coefficients ``(B, 4)`` of the cubic :math:`\det(x f_1 + f_2)`, highest degree first.
+
+    Expanded by multilinearity in the rows, so neither matrix needs to be invertible: the leading coefficient is
+    :math:`\det f_1` and the constant one :math:`\det f_2`.
+    """
+    a1, a2, a3 = f1[:, 0], f1[:, 1], f1[:, 2]
+    b1, b2, b3 = f2[:, 0], f2[:, 1], f2[:, 2]
+    crosses = torch.linalg.cross(torch.stack([a2, b2, a2, b2], 1), torch.stack([a3, b3, b3, a3], 1))
+    x_aa, x_bb, x_ab = crosses[:, 0], crosses[:, 1], crosses[:, 2] + crosses[:, 3]
+    dots = (torch.stack([a1, b1, a1, a1, b1, b1], 1) * torch.stack([x_aa, x_aa, x_ab, x_bb, x_ab, x_bb], 1)).sum(-1)
+    return torch.stack([dots[:, 0], dots[:, 1] + dots[:, 2], dots[:, 3] + dots[:, 4], dots[:, 5]], 1)
 
 
 def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -201,36 +212,21 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
 
     B = points1.shape[0]
-    device = points1.device
     dtype = points1.dtype
 
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
 
-    x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # (B,7,1)
-    x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # (B,7,1)
-    ones = torch.ones_like(x1)
-
     # (B,7,9)
-    X = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1)
+    X = _epipolar_design_rows(convert_points_to_homogeneous(points1_norm), convert_points_to_homogeneous(points2_norm))
 
     # nullspace basis -> (B,3,3)
-    f1, f2 = _F1F2_from_nullspace(_nullspace_via_eigh(X))
+    f1, f2 = _seven_point_basis(X)
     f1 = _normalize_F(f1)
     f2 = _normalize_F(f2)
 
-    # --- cubic coeffs (keep your known-good inverse-based formula) ---
-    coeffs = torch.zeros((B, 4), device=device, dtype=dtype)
-    f1_det = torch.linalg.det(f1)
-    f2_det = torch.linalg.det(f2)
-
-    inv_f1, _ = safe_inverse_with_mask(f1)
-    inv_f2, _ = safe_inverse_with_mask(f2)
-
-    coeffs[:, 0] = f1_det
-    coeffs[:, 1] = torch.einsum("bii->b", f2 @ inv_f1) * f1_det
-    coeffs[:, 2] = torch.einsum("bii->b", f1 @ inv_f2) * f2_det
-    coeffs[:, 3] = f2_det
+    # cubic det(x f1 + f2) = 0
+    coeffs = _det_pencil_coefficients(f1, f2)
 
     roots = solve_cubic(coeffs)  # (B,3)
 
@@ -311,42 +307,46 @@ def run_8point(
     pts1n, T1 = normalize_points(points1, weights=weights)
     pts2n, T2 = normalize_points(points2, weights=weights)
 
-    x1, y1 = torch.chunk(pts1n, dim=-1, chunks=2)  # (B,N,1)
-    x2, y2 = torch.chunk(pts2n, dim=-1, chunks=2)  # (B,N,1)
-    ones = torch.ones_like(x1)
-
     # Design matrix rows A_i = [x2*x1, x2*y1, x2, y2*x1, y2*y1, y2, x1, y1, 1]
     # Shape: A ∈ (B, N, 9)
-    A = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1).squeeze(-2)
+    A = _epipolar_design_rows(convert_points_to_homogeneous(pts1n), convert_points_to_homogeneous(pts2n))
 
     B, N, _ = A.shape
 
-    # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
-    if weights is None:
-        if N < use_einsum_at_more_than_points:
-            # Use GEMM on tall A: (B,9,N) @ (B,N,9)
-            M = A.transpose(-2, -1).contiguous() @ A
-        else:
-            # Accumulate via einsum (saves bandwidth for huge N)
-            M = torch.einsum("bni,bnj->bij", A, A)
+    if weights is None and N == 8:
+        # A minimal sample has an exact null vector. One batched LU factorization of A finds it much faster than
+        # ``eigh`` of A^T A, which loops over the batch on CPU and squares the condition number; no backend
+        # factorizes half precision. The unit norm keeps the scale ``eigh`` gives.
+        h = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
+        h = (h / h.norm(dim=-1, keepdim=True)).to(A.dtype)
     else:
-        # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence, and
-        # its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient through
-        # at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on every version.
-        w = torch.where(weights < 0, 0.0, weights)
-        if N < use_einsum_at_more_than_points:
-            # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the derivative
-            # of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in w, like the
-            # einsum branch below.
-            Aw = A * w.unsqueeze(-1)
-            M = Aw.transpose(-2, -1).contiguous() @ A
+        # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
+        if weights is None:
+            if N < use_einsum_at_more_than_points:
+                # Use GEMM on tall A: (B,9,N) @ (B,N,9)
+                M = A.transpose(-2, -1).contiguous() @ A
+            else:
+                # Accumulate via einsum (saves bandwidth for huge N)
+                M = torch.einsum("bni,bnj->bij", A, A)
         else:
-            # Weighted einsum
-            M = torch.einsum("bni,bnj,bn->bij", A, A, w)
+            # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence,
+            # and its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient
+            # through at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on
+            # every version.
+            w = torch.where(weights < 0, 0.0, weights)
+            if N < use_einsum_at_more_than_points:
+                # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the
+                # derivative of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in
+                # w, like the einsum branch below.
+                Aw = A * w.unsqueeze(-1)
+                M = Aw.transpose(-2, -1).contiguous() @ A
+            else:
+                # Weighted einsum
+                M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
-    _evals, evecs = torch.linalg.eigh(M)  # ascending order
-    h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
-    F_hat = h.view(B, 3, 3)
+        _evals, evecs = torch.linalg.eigh(M)  # ascending order
+        h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
+    F_hat = h.reshape(B, 3, 3)
 
     # Enforce rank-2 with a 3x3 SVD
     U, S, V = _torch_svd_cast(F_hat)
