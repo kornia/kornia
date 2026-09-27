@@ -309,14 +309,19 @@ class Quaternion(nn.Module):
         """Right division (left / self) where left is a scalar or torch.Tensor."""
         return self.__rtruediv__(left)
 
-    def __pow__(self, t: float) -> "Quaternion":
+    def __pow__(self, t: Union[float, torch.Tensor]) -> "Quaternion":
         r"""Return the power of a quaternion raised to exponent t.
 
         For :math:`q = \|q\| (\cos\theta + n \sin\theta)` this is
         :math:`q^t = \|q\|^t (\cos t\theta + n \sin t\theta)`, so ``q**2 == q * q`` and ``q**-1 == q.inv()``.
 
+        On the negative real axis (``w < 0`` and a zero vector part) :math:`\theta = \pi` and the axis :math:`n` is
+        undefined: for a non-integer ``t`` every unit vector gives a valid power. This method takes :math:`n = e_x`
+        there, so ``q**t`` has norm :math:`\|q\|^t` and angle :math:`t\pi`, ``(q**0.5)**2 == q``, and the result is
+        the limit from the ``+x`` side of the axis. An integer ``t`` keeps a zero vector part.
+
         Args:
-            t: raised exponent.
+            t: raised exponent, a float or a tensor that broadcasts against ``(..., 1)``.
 
         Example:
             >>> q = Quaternion(torch.tensor([1., .5, 0., 0.]))
@@ -333,7 +338,19 @@ class Quaternion(nn.Module):
         safe_w = torch.where(w == 0, torch.ones_like(w), w)
         sin_ratio = torch.where(is_real, t * (t * theta).cos() / safe_w, (t * theta).sin() / safe_vec_norm)
         scale = self.norm(keepdim=True) ** t
-        return Quaternion(torch.cat((scale * (t * theta).cos(), scale * sin_ratio * self.vec), -1))
+        vec = scale * sin_ratio * self.vec
+        # The negative real axis is the branch cut of the power: theta = pi and n = v / |v| is undefined, so the arm
+        # above leaves the vector part at 0 and only an integer t gives a valid result there (#4955). Take n = e_x on
+        # the cut: add |q|^t sin(t pi) to x, which is 0 there. sin(t pi) is reduced by the nearest integer k so that it
+        # is exactly 0 for an integer t, and only the cut is touched, so every other value and an integer t keep the
+        # arm above bit for bit. The reduction stays in torch so that a tensor t (0-d or batched) keeps its gradient.
+        t_ = torch.as_tensor(t, dtype=scale.dtype, device=scale.device)
+        k = t_.detach().round()
+        sin_t_pi = (1.0 - 2.0 * k.remainder(2.0)) * torch.sin(pi * (t_ - k))
+        on_cut = is_real & (w < 0) & (sin_t_pi != 0)
+        vec_x = vec[..., :1]
+        vec = torch.cat((torch.where(on_cut, vec_x + scale * sin_t_pi, vec_x), vec[..., 1:]), -1)
+        return Quaternion(torch.cat((scale * (t * theta).cos(), vec), -1))
 
     @property
     def data(self) -> torch.Tensor:
