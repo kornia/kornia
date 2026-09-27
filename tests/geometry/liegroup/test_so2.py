@@ -365,16 +365,16 @@ class TestSo2(BaseTester):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = torch.tensor([0.3, 0.5, 0.7], device=device, dtype=dtype)
-        param = torch.nn.Parameter(torch.polar(torch.ones_like(theta), theta)[:, None])
+        param = torch.nn.Parameter(torch.complex(theta.cos(), theta.sin())[:, None])
         s = So2(param)
         assert s.z.shape == (3,)
         assert [(name, t is param) for name, t in s.named_parameters()] == [("_z", True)]
         assert s.state_dict()["_z"].shape == (3, 1)
         assert s[1].z.shape == ()  # indexing reads the (B,) view, as for a (B,) z
-        before = param.detach().clone()
+        before = torch.view_as_real(param.detach()).clone()  # torch.equal has no complex float16 kernel
         s.log().sum().backward()
         torch.optim.SGD(s.parameters(), lr=0.1).step()
-        assert not torch.equal(param.detach(), before)
+        assert not torch.equal(torch.view_as_real(param.detach()), before)
 
     def test_wart_so2_real_dtype_cast_drops_the_imaginary_part_4923(self, device, dtype):
         if dtype == torch.bfloat16:
