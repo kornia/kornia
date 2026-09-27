@@ -359,6 +359,22 @@ class TestSo2(BaseTester):
         (So2.exp(column) * p).sum().backward()
         assert column.grad.shape == (3, 1) and torch.isfinite(column.grad).all()
 
+    def test_so2_column_parameter_stays_the_module_parameter_4932(self, device, dtype):
+        # Reading a (B, 1) z as (B,) must not take a caller's nn.Parameter away from the module: it stays its own
+        # parameter under the same state_dict key and shape, so an optimizer over So2.parameters() trains it.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        theta = torch.tensor([0.3, 0.5, 0.7], device=device, dtype=dtype)
+        param = torch.nn.Parameter(torch.polar(torch.ones_like(theta), theta)[:, None])
+        s = So2(param)
+        assert s.z.shape == (3,)
+        assert [(name, t is param) for name, t in s.named_parameters()] == [("_z", True)]
+        assert s.state_dict()["_z"].shape == (3, 1)
+        before = param.detach().clone()
+        s.log().sum().backward()
+        torch.optim.SGD(s.parameters(), lr=0.1).step()
+        assert not torch.equal(param.detach(), before)
+
     def test_wart_so2_real_dtype_cast_drops_the_imaginary_part_4923(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")

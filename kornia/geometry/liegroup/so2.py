@@ -87,16 +87,16 @@ class So2(nn.Module):
 
         if not (is_scalar or is_flat or is_column):
             raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {z.shape}")
-        if is_column:
-            # a (B, 1) z broadcast against the (B,) coordinates of __mul__ as an outer product (#4932)
-            z = z.squeeze(-1)
+        # A (B, 1) z is stored as given, so a caller's nn.Parameter stays the module's own parameter, and the ``z``
+        # property reads it as (B,): kept as a column, it broadcast against the (B,) coordinates of __mul__ as an
+        # outer product (#4932).
         register_module_state(self, "_z", z)
 
     def __repr__(self) -> str:
         return f"{self.z}"
 
     def __getitem__(self, idx: int | slice) -> So2:
-        return So2(self._z[idx])
+        return So2(self.z[idx])
 
     @overload
     def __mul__(self, right: So2) -> So2: ...
@@ -138,8 +138,12 @@ class So2(nn.Module):
 
     @property
     def z(self) -> torch.Tensor:
-        """Return the underlying complex number of shape :math:`()` or :math:`(B,)`."""
-        return self._z
+        """Return the underlying complex number of shape :math:`()` or :math:`(B,)`.
+
+        A :math:`(B, 1)` ``z`` given to the constructor stays stored, and registered, as it was given, and is read
+        here as a :math:`(B,)` view.
+        """
+        return self._z.squeeze(-1) if self._z.dim() == 2 else self._z
 
     @staticmethod
     def exp(theta: torch.Tensor) -> So2:
