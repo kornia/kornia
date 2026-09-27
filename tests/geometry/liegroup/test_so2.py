@@ -22,7 +22,7 @@ import pytest
 import torch
 
 from kornia.geometry.conversions import angle_to_rotation_matrix
-from kornia.geometry.liegroup import So2
+from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
 from testing.base import BaseTester
@@ -39,7 +39,8 @@ class TestSo2(BaseTester):
         z = torch.randn(2, 1, dtype=cdtype, device=device)
         s = So2(z)
         assert isinstance(s, So2)
-        self.assert_close(s.z.data, z.data)
+        assert s.z.shape == (2,)  # a (B, 1) z is squeezed to (B,) (#4932)
+        self.assert_close(s.z.data, z.data[:, 0])
 
     @pytest.mark.parametrize("input_shape", [(1,), (2,), (5,), ()])
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
@@ -114,7 +115,7 @@ class TestSo2(BaseTester):
         assert isinstance(s2, So2)
         self.assert_close(s1.z, s2.z)
         self.assert_close(So2(z1).z, z1)
-        self.assert_close(So2(z2).z, z2)
+        self.assert_close(So2(z2).z, z2.flatten())  # (B, 1) is squeezed to (B,); (1,) for batch_size None stays
         self.assert_close(So2(z3).z, z3)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
@@ -164,8 +165,8 @@ class TestSo2(BaseTester):
     def test_exp(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         s = So2.exp(theta)
-        self.assert_close(s.z.real, theta.cos())
-        self.assert_close(s.z.imag, theta.sin())
+        self.assert_close(s.z.real, theta.flatten().cos())
+        self.assert_close(s.z.imag, theta.flatten().sin())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
@@ -177,7 +178,7 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
-        self.assert_close(So2.exp(theta).log(), theta)
+        self.assert_close(So2.exp(theta).log(), theta.flatten())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_wart_so2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
@@ -326,26 +327,37 @@ class TestSo2(BaseTester):
         rotation = So2.exp(torch.tensor(0.3, device=device, dtype=dtype)).matrix().detach()
         self.assert_close(So2.from_matrix(rotation).log(), torch.tensor(0.3, device=device, dtype=dtype))
 
-    def test_wart_so2_column_angle_outer_broadcasts_4932(self, device, dtype):
+    def test_so2_column_angle_is_squeezed_4932(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = torch.tensor([0.3, 0.5, 0.7], device=device, dtype=dtype)
         p = torch.tensor([[1.0, 0.0], [0.0, 1.0], [2.0, 3.0]], device=device, dtype=dtype)
         paired = So2.exp(theta) * p  # the (B,) layout rotates point i by angle i
         assert paired.shape == (3, 2)
-        # https://github.com/kornia/kornia/issues/4932: the accepted (B, 1) layout keeps its singleton axis in
-        # matrix() and hat(), but vee() rejects the latter. Multiplication broadcasts z against (B,) coordinates,
-        # so entry [i, j] is R(theta_i) p_j: every rotation applied to every point.
+        # https://github.com/kornia/kornia/issues/4932 (fixed): a (B, 1) z or angle used to keep its singleton axis, so
+        # matrix() and hat() returned (B, 1, 2, 2), vee() rejected the latter and `*` broadcast z against the (B,)
+        # point coordinates into (B, B, 2), every rotation applied to every point. It is squeezed to (B,) on entry.
         column = theta[:, None]
-        assert So2.exp(column).matrix().shape == (3, 1, 2, 2)
+        col = So2.exp(column)
+        assert col.z.shape == (3,)
+        self.assert_close(col.z, So2.exp(theta).z)
+        assert So2(col.z[:, None]).z.shape == (3,)
+        assert col.matrix().shape == (3, 2, 2)
         column_hat = So2.hat(column)
-        assert column_hat.shape == (3, 1, 2, 2)
-        with pytest.raises(ValueError):
-            So2.vee(column_hat)
-        out = So2.exp(column) * p
-        assert out.shape == (3, 3, 2)
-        self.assert_close(out.diagonal(dim1=0, dim2=1).mT, paired)
-        self.assert_close(out[0, 2], So2.exp(theta[0]) * p[2])
+        assert column_hat.shape == (3, 2, 2)
+        self.assert_close(So2.vee(column_hat), theta)
+        out = col * p
+        assert out.shape == (3, 2)
+        self.assert_close(out, paired)
+        moved = Se2(col, torch.zeros(3, 2, device=device, dtype=dtype)) * p  # used to raise on the (3, 1) z
+        self.assert_close(moved, paired)
+        # (1, 1) becomes (1,), while (1,) and () are unchanged
+        assert So2.exp(theta[:1, None]).z.shape == (1,)
+        assert So2.exp(theta[:1]).z.shape == (1,) and So2.exp(theta[0]).z.shape == ()
+        # the squeeze is a view, so the gradient reaches the (B, 1) angle
+        column = column.clone().requires_grad_()
+        (So2.exp(column) * p).sum().backward()
+        assert column.grad.shape == (3, 1) and torch.isfinite(column.grad).all()
 
     def test_wart_so2_real_dtype_cast_drops_the_imaginary_part_4923(self, device, dtype):
         if dtype == torch.bfloat16:
