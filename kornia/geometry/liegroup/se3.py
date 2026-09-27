@@ -26,7 +26,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
-from kornia.core.tensor_wrapper import _unwrap
 from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so3 import So3, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
@@ -52,11 +51,10 @@ class Se3(nn.Module):
         - The rotation is an :class:`~kornia.geometry.liegroup.So3`, whose storage and point-shape conventions
           apply, including its non-unit quaternion defect (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
           ``from_matrix`` ignores the bottom row.
-        - Known defects: for ``identity``, ``random``, ``from_qxyz`` and any pose composed with or inverted from one,
-          ``t`` is a ``Vector3``, which rejects tensor indexing such as ``t[..., 0]``
-          (`#4931 <https://github.com/kornia/kornia/issues/4931>`_); ``state_dict`` and ``.to()`` skip such a
-          translation, and skip the rotation unless its quaternion is an ``nn.Parameter``, so ``load_state_dict`` can
-          restore one pose's translation next to another pose's rotation
+        - ``t`` is always a tensor registered as module state, whichever constructor built the pose; a ``Vector3``
+          passed to the constructor is unwrapped. ``g * p`` returns a ``Vector3`` only when ``p`` is one.
+        - Known defect: ``state_dict`` and ``.to()`` skip the rotation unless its quaternion is an ``nn.Parameter``, so
+          ``load_state_dict`` can restore one pose's translation next to another pose's rotation
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
@@ -78,7 +76,8 @@ class Se3(nn.Module):
         Args:
             rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is not normalised
                 (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
-            translation: Vector3 or translation torch.Tensor with the shape of :math:`(B, 3)`.
+            translation: translation torch.Tensor with the shape of :math:`(B, 3)`, or a Vector3 wrapping one; the
+                tensor is what gets stored.
 
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
@@ -100,12 +99,9 @@ class Se3(nn.Module):
             raise TypeError(f"translation type is {type(translation)}")
         _t_data = translation.data if isinstance(translation, Vector3) else translation
         KORNIA_CHECK_SHAPE(_t_data, ["*", "3"])
-        self._translation: Vector3 | torch.Tensor
+        self._translation: torch.Tensor
         self._rotation: So3
-        if isinstance(translation, torch.Tensor):
-            register_module_state(self, "_translation", translation)
-        else:
-            self._translation = translation
+        register_module_state(self, "_translation", _t_data)
         if isinstance(rotation, Quaternion):
             self._rotation = So3(rotation)
         else:
@@ -141,7 +137,7 @@ class Se3(nn.Module):
         if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
-            return so3 * right + _unwrap(t)
+            return so3 * right + t
         raise TypeError(f"Unsupported type: {type(right)}")
 
     @property
@@ -160,7 +156,7 @@ class Se3(nn.Module):
         return self._rotation
 
     @property
-    def t(self) -> Vector3 | torch.Tensor:
+    def t(self) -> torch.Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -170,7 +166,7 @@ class Se3(nn.Module):
         return self._rotation
 
     @property
-    def translation(self) -> Vector3 | torch.Tensor:
+    def translation(self) -> torch.Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -233,7 +229,7 @@ class Se3(nn.Module):
         # and take the exact zero elsewhere, where V_inv is the identity.
         safe_theta_sq = torch.where(nonzero, theta_sq.clamp_min(1e-12), torch.ones_like(theta_sq))
         theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
-        t = _unwrap(self.t)
+        t = self.t
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
         # c is finite at theta = 0 (1/12), so V^-1 @ t is taken for every element, which keeps
@@ -310,16 +306,15 @@ class Se3(nn.Module):
             >>> s.r
             tensor([1., 0., 0., 0.])
             >>> s.t
-            x: 0.0
-            y: 0.0
-            z: 0.0
+            Parameter containing:
+            tensor([0., 0., 0.], requires_grad=True)
 
         """
         t = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             t = t.repeat(batch_size, 1)
 
-        return cls(So3.identity(batch_size, device, dtype), Vector3(t))
+        return cls(So3.identity(batch_size, device, dtype), t)
 
     def matrix(self) -> torch.Tensor:
         """Return the matrix representation of shape :math:`(B, 4, 4)`.
@@ -333,21 +328,17 @@ class Se3(nn.Module):
                     [0., 0., 0., 1.]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), _unwrap(self.t)[..., None]), -1)
+        rt = torch.cat((self.r.matrix(), self.t[..., None]), -1)
         rt_4x4 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
 
     @classmethod
-    def from_matrix(cls, matrix: torch.Tensor, check_rotation: bool = False) -> Se3:
+    def from_matrix(cls, matrix: torch.Tensor) -> Se3:
         """Create a Se3 group from a matrix.
 
         Args:
             matrix: torch.Tensor of shape :math:`(B, 4, 4)`.
-            check_rotation: if ``True``, raise ``ValueError`` unless the rotation
-                block of every input is a rotation matrix. The default ``False``
-                keeps the unchecked behaviour, under which a reflection block
-                such as ``diag(-1, 1, 1)`` yields a non-unit quaternion.
 
         Example:
             >>> s = Se3.from_matrix(torch.eye(4))
@@ -359,7 +350,7 @@ class Se3(nn.Module):
 
         """
         KORNIA_CHECK_SHAPE(matrix, ["*", "4", "4"])
-        r = So3.from_matrix(matrix[..., :3, :3], check_rotation=check_rotation)
+        r = So3.from_matrix(matrix[..., :3, :3])
         t = matrix[..., :3, -1]
         return cls(r, t)
 
@@ -377,14 +368,13 @@ class Se3(nn.Module):
             >>> s.r
             tensor([0., 0., 0., 1.])
             >>> s.t
-            x: 0.0
-            y: 0.0
-            z: 1.0
+            Parameter containing:
+            tensor([0., 0., 1.], requires_grad=True)
 
         """
         KORNIA_CHECK_SHAPE(qxyz, ["*", "7"])
         q, xyz = qxyz[..., :4], qxyz[..., 4:]
-        return cls(So3.from_wxyz(q), Vector3(xyz))
+        return cls(So3.from_wxyz(q), xyz)
 
     def inverse(self) -> Se3:
         """Return the inverse transformation.
@@ -399,11 +389,7 @@ class Se3(nn.Module):
 
         """
         r_inv = self.r.inverse()
-        _t = -1 * self.t
-        if isinstance(_t, int):
-            raise TypeError("Unexpected integer from `-1 * translation`")
-
-        return Se3(r_inv, r_inv * _t)
+        return Se3(r_inv, r_inv * (-1 * self.t))
 
     @classmethod
     def random(
@@ -431,7 +417,7 @@ class Se3(nn.Module):
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             shape = (batch_size,)
         r = So3.random(batch_size, device, dtype)
-        t = Vector3.random(shape, device, dtype)
+        t = torch.rand((*shape, 3), device=device, dtype=dtype)
         return cls(r, t)
 
     @classmethod
@@ -528,7 +514,7 @@ class Se3(nn.Module):
                     [0., 0., 1., 0., 0., 0.],
                     [0., 0., 0., 1., 0., 0.],
                     [0., 0., 0., 0., 1., 0.],
-                    [0., 0., 0., 0., 0., 1.]])
+                    [0., 0., 0., 0., 0., 1.]], grad_fn=<CatBackward0>)
 
         """
         R = self.so3.matrix()

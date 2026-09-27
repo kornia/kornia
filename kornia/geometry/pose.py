@@ -63,9 +63,8 @@ class NamedPose:
         >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
         >>> b_from_a
         NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
-        translation: x: 0.0
-        y: 0.0
-        z: 0.0,
+        translation: Parameter containing:
+        tensor([0., 0., 0.], requires_grad=True),
         frame_src: frame_a -> frame_dst: frame_b)
 
     """
@@ -103,9 +102,7 @@ class NamedPose:
             >>> c_from_b = NamedPose(Se3.identity(), frame_src="frame_b", frame_dst="frame_c")
             >>> c_from_b * b_from_a
             NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
-            translation: x: 0.0
-            y: 0.0
-            z: 0.0,
+            translation: tensor([0., 0., 0.], grad_fn=<AddBackward0>),
             frame_src: frame_a -> frame_dst: frame_c)
 
         """
@@ -212,7 +209,7 @@ class NamedPose:
             NamedPose constructed from a matrix.
 
         Example:
-            >>> b_from_a_matrix = Se3.identity().matrix()
+            >>> b_from_a_matrix = torch.eye(4)
             >>> b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a
             NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
@@ -239,9 +236,7 @@ class NamedPose:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.inverse()
             NamedPose(dst_from_src=rotation: tensor([1., -0., -0., -0.])
-            translation: x: 0.0
-            y: 0.0
-            z: 0.0,
+            translation: tensor([0., 0., 0.], grad_fn=<SliceBackward0>),
             frame_src: frame_b -> frame_dst: frame_a)
 
         """
@@ -259,7 +254,7 @@ class NamedPose:
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.transform_points(torch.tensor([1., 2., 3.]))
-            tensor([1., 2., 3.])
+            tensor([1., 2., 3.], grad_fn=<AddBackward0>)
 
         """
         return self._dst_from_src * points_in_src
