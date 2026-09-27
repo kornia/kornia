@@ -510,6 +510,24 @@ class TestSe2(BaseTester):
         with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
             Se2.from_matrix(reflection)
 
+    def test_convention_se2_from_matrix_omits_rotation_value_validation_during_export(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # Graph export cannot read rotation values, so from_matrix keeps m00 + i m10 and omits eager validation.
+        reflection = torch.tensor([[1.0, 0.0], [0.0, -1.0]], device=device, dtype=dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)
+        matrix[:2, :2] = reflection
+        with pytest.raises(ValueError):
+            Se2.from_matrix(matrix)
+
+        class FromMatrix(torch.nn.Module):
+            def forward(self, input):
+                return Se2.from_matrix(input).matrix()
+
+        expected = torch.eye(3, device=device, dtype=dtype)
+        exported = torch.export.export(FromMatrix(), (matrix,)).module()
+        self.assert_close(exported(matrix), expected)
+
     def test_wart_se2_identity_point_action_returns_a_vector2_4931(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
