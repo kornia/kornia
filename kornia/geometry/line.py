@@ -120,7 +120,7 @@ class ParametrizedLine(nn.Module):
         """
         if isinstance(t, Scalar):
             t = t.data
-        if isinstance(t, torch.Tensor) and t.ndim == self.direction.ndim - 1:
+        if isinstance(t, torch.Tensor) and t.ndim > 0 and t.ndim == self.direction.ndim - 1:
             t = t[..., None]
         return self.origin + self.direction * t
 

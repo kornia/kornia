@@ -59,6 +59,14 @@ class TestParametrizedLine(BaseTester):
         expected = torch.stack([ParametrizedLine(origin[i], direction[i]).point_at(steps[i]) for i in range(2)])
         self.assert_close(line.point_at(steps), expected)
 
+    def test_scalar_point_at_preserves_line_dtype(self, device, dtype):
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0], device=device, dtype=dtype),
+        )
+        point = line.point_at(torch.tensor(2.0, device=device, dtype=torch.float32))
+        self.assert_close(point, torch.tensor([3.0, 2.0], device=device, dtype=dtype))
+
     def test_projection1(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
