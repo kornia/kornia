@@ -79,8 +79,7 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
-        # `engine="convolution"` feeds the geodesic `+max_val` pad through `F.conv2d`, so its error scales with
-        # `max_val` (about one float32 ULP of the default 1e4 on CPU); `engine="unfold"` is exact. Tracked in #4734.
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_structural_element(self, device, dtype):
@@ -99,7 +98,7 @@ class TestErode(BaseTester):
             atol=1e-4,
             rtol=1e-4,
         )
-        # See test_kernel: the convolution engine's error scales with `max_val` (#4734).
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(
             erosion(
                 tensor,
@@ -121,7 +120,7 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        # See test_kernel: the convolution engine's error scales with `max_val` (#4734).
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_exception(self, device, dtype):
@@ -168,6 +167,18 @@ class TestErode(BaseTester):
         actual = erosion(tensor, kernel)
         assert actual.dtype == torch.int64
         assert actual.flatten().tolist() == [3, 0, 0, 0, 0]
+
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_integer_image_keeps_max_val_arithmetic(self, device, engine):
+        # A non-float image keeps the finite `max_val` pad and exclusion until #4735 rejects it. The int64
+        # maximum is not representable as a float, so a pad at the dtype maximum cannot be written.
+        if engine == "convolution" and device.type == "mps":
+            pytest.skip("MPS has no integer convolution")
+        tensor = torch.tensor([[[[1, 5, 2, 7]]]], dtype=torch.int64, device=device)
+        kernel = torch.tensor([[1, 0, 1]], dtype=torch.int64, device=device)
+        actual = erosion(tensor, kernel, engine=engine)
+        assert actual.dtype == torch.int64
+        assert actual.flatten().tolist() == [5, 1, 5, 2]
 
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
     def test_accepted_border_types(self, device, dtype, border_type):
@@ -425,6 +436,34 @@ class TestErode(BaseTester):
 
         self.assert_close(erosion(tensor, kernel), op_optimized(tensor, kernel))
 
+    def test_shift_engine_flat_kernel_matches_zero_structuring_element(self, device, dtype):
+        # Without a structuring element the shift engine skips the offset addition and reads each cell straight
+        # from the image or identity plane. That path has to agree bitwise with an explicit all-zero structuring
+        # element, nan and infinite pixels and excluded cells included (a sign of zero may differ, values not).
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.rand(2, 3, 9, 11, device=device, dtype=dtype)
+        tensor[0, 0, 2, 3] = nan
+        tensor[0, 1, 4, 5] = inf
+        tensor[1, 2, 0, 0] = -inf
+        kernel = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        flat = erosion(tensor, kernel, engine="shift")
+        explicit = erosion(tensor, kernel, structuring_element=torch.zeros_like(kernel), engine="shift")
+        torch.testing.assert_close(flat, explicit, rtol=0.0, atol=0.0, equal_nan=True)
+        assert flat.dtype == explicit.dtype
+
+    def test_shift_engine_excluded_cell_ignores_infinite_structuring_element(self, device, dtype):
+        # An excluded cell contributes the reduction identity whatever its structuring element entry: an
+        # infinite entry there must not turn the identity into nan. Only the included cells' entries matter.
+        tensor = torch.rand(1, 1, 6, 7, device=device, dtype=dtype)
+        kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        finite = torch.tensor([[0.5, 0.0, -0.25]], device=device, dtype=dtype)
+        spiked = torch.tensor([[0.5, float("inf"), -0.25]], device=device, dtype=dtype)
+        for engine in ("shift", "unfold"):
+            expected = erosion(tensor, kernel, structuring_element=finite, engine=engine)
+            actual = erosion(tensor, kernel, structuring_element=spiked, engine=engine)
+            assert torch.equal(actual, expected), engine
+            assert bool(torch.isfinite(actual).all()), engine
+
     def test_shift_engine_forward_only_matches_autograd_safe(self, device, dtype):
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.randn(3, 3, device=device, dtype=dtype)
@@ -508,7 +547,7 @@ class TestErode(BaseTester):
         original = morphology_module._shift_reduce
 
         def wrapped(*args, **kwargs):
-            calls.append(args[-1])
+            calls.append(args[-2])
             return original(*args, **kwargs)
 
         monkeypatch.setattr(morphology_module, "_shift_reduce", wrapped)
@@ -570,7 +609,8 @@ class TestErode(BaseTester):
         # origin are an adjoint pair, `dilation(x) <= y` everywhere exactly when `x <= erosion(y)`
         # everywhere, while no window is empty. The kernel changes under a 180-degree flip, so a reflection
         # mismatch between the two would break the pair, and it holds its default origin cell [1, 1], so no
-        # window is empty. The empty-window counterexample is test_wart_dilation_max_val_sentinel_leaks_4734.
+        # window is empty. Empty windows use the reduction identity; see
+        # test_convention_dilation_ignores_finite_max_val_sentinel_4734.
         x = torch.tensor(
             [[3.0, 0.0, 5.0, 1.0, 2.0, 7.0], [0.0, 4.0, 1.0, 6.0, 0.0, 2.0], [2.0, 1.0, 0.0, 3.0, 5.0, 1.0]],
             device=device,
@@ -696,7 +736,7 @@ class TestErode(BaseTester):
         # when its origin cell is a member (`[[1, 0, 1, 0, 1]]`); they agree for a rectangle of ones, where
         # every pixel the replicate pad duplicates is already inside the window.
         # With a single-cell kernel that reads `x(p - 2)`, the two leftmost `geodesic` windows are empty (what
-        # they return is the #4734 wart, pinned in test_dilation.py), while `replicate` returns `x(0)`.
+        # they return is the reduction identity, while `replicate` returns `x(0)`.
         ramp = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0]], device=device, dtype=dtype)[None, None]
         side_kernel = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
 

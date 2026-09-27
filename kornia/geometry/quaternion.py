@@ -73,9 +73,7 @@ class Quaternion(nn.Module):
           (`#3953 <https://github.com/kornia/kornia/issues/3953>`_) and for most rotations at a pitch of
           :math:`\pm\pi/2` (`#3950 <https://github.com/kornia/kornia/issues/3950>`_); below a norm of ``1e-12``,
           ``matrix()`` and ``slerp`` give wrong results, and the zero quaternion's ``matrix()`` is the identity
-          (`#3952 <https://github.com/kornia/kornia/issues/3952>`_); ``polar_angle`` gives a non-finite gradient at
-          the identity and near it, wherever ``w / |q|`` rounds to 1
-          (`#4927 <https://github.com/kornia/kornia/issues/4927>`_); data given as a plain tensor is not
+          (`#3952 <https://github.com/kornia/kornia/issues/3952>`_); data given as a plain tensor is not
           registered with ``nn.Module``, so an enclosing module's ``state_dict()``, ``load_state_dict()`` and
           ``.to()`` skip it, while an ``nn.Parameter`` is saved, restored and moved
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
@@ -413,7 +411,9 @@ class Quaternion(nn.Module):
             tensor(0.)
 
         """
-        return (self.scalar / self.norm()).acos()
+        # atan2(|v|, w) is the same angle, but it keeps the digits of an angle below sqrt(eps) that acos(w / |q|)
+        # rounds to zero, and its gradient on the real axis (v = 0, the identity included) is zero instead of nan.
+        return torch.atan2(self.vec.norm(dim=-1), self.scalar)
 
     def matrix(self) -> torch.Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
@@ -589,7 +589,7 @@ class Quaternion(nn.Module):
         q4 = r1.sqrt() * (2 * pi * r3).cos()
         return cls(torch.stack((q1, q2, q3, q4), -1))
 
-    def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
+    def slerp(self, q1: "Quaternion", t: Union[float, torch.Tensor]) -> "Quaternion":
         """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
 
         The interpolation follows the shorter arc between the two rotations, whatever the signs of the stored
@@ -604,7 +604,8 @@ class Quaternion(nn.Module):
         Args:
             q1: second quaternion to be interpolated between.
             t: interpolation ratio, ``0`` at ``self`` and ``1`` at ``q1``. It is not validated: values outside
-                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B, 1)`.
+                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B,)`, like
+                ``self.w``, or :math:`(B, 1)`.
 
         Example:
             >>> q0 = Quaternion.identity()
@@ -618,6 +619,10 @@ class Quaternion(nn.Module):
         # q0 * exp(t * log(q0^-1 q1)): the principal log of the relative rotation selects the shorter arc, and both
         # conversions keep a finite gradient at the identity (q0 == q1).
         rel = quaternion_to_axis_angle((q0.inv() * q1).data)
+        if isinstance(t, torch.Tensor) and t.dim() > 0 and t.dim() == rel.dim() - 1:
+            # One ratio per quaternion, of the shape of ``w``: scale each rotation vector, not its components. A 0-d
+            # ratio is left alone: it multiplies as a scalar, whatever its device and dtype, and would not with an axis.
+            t = t[..., None]
         return q0 * Quaternion(axis_angle_to_quaternion(t * rel))
 
     def norm(self, keepdim: bool = False) -> torch.Tensor:
@@ -699,10 +704,10 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         - The chordal mean of scipy's ``Rotation.mean``: the eigenvector of
           :math:`\sum_i w_i q_i q_i^\top / \sum_i w_i` with the largest eigenvalue. ``q_i`` and ``-q_i`` count the
           same, and the sign of the result is arbitrary.
-        - ``w`` need not sum to one: scaling it by a positive factor does not change the result.
-        - Known defect: the members are not normalised, so a member of norm ``n`` counts with an extra weight
-          ``n**2``, and negative weights are not rejected
-          (`#4974 <https://github.com/kornia/kornia/issues/4974>`_).
+        - ``w`` need not sum to one: scaling it by a positive factor does not change the result. A negative weight,
+          or weights that are all zero, raise ``ValueError``.
+        - The members are normalised first, so only their directions count: a member stored as ``3 * q`` weighs
+          the same as ``q``.
 
     Args:
         Q (Quaternion): quaternion object containing data of shape (M, 4).
@@ -712,8 +717,11 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     Returns:
         Quaternion: averaged quaternion of shape (1, 4), wrapped back in the Quaternion class.
     """
-    data = Q.data
     KORNIA_CHECK_TYPE(Q, Quaternion)
+    # the chordal mean is the top eigenvector of sum_i w_i q_i q_i^T, which is sign invariant but weights each member
+    # by its squared norm: a member stored as 3 q counted 9 times (#4974). Every other rotation-valued method depends
+    # only on the direction of q, so normalise the members first.
+    data = Q.normalize().data
 
     M = data.shape[0]
     if w is None:
@@ -722,7 +730,12 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         w = w.to(data.device, dtype=data.dtype)
         if w.numel() != M:
             raise ValueError(f"weights length {w.numel()} must match number of quaternions {M}")
-        w = w / w.sum()
+        if bool((w < 0).any()):
+            raise ValueError("weights must be non-negative")
+        w_sum = w.sum()
+        if bool(w_sum == 0):
+            raise ValueError("weights must not all be zero")
+        w = w / w_sum
         A = data.T @ torch.diag(w) @ data
 
     orig_dtype = A.dtype

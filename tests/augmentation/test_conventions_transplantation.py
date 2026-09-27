@@ -24,6 +24,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.constants import DataKey
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -366,13 +367,20 @@ class TestTransplantationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("cls", [K.RandomTransplantation, K.RandomTransplantation3D])
-    def test_wart_a_missing_mask_raises_a_python_lookup_error_4777(self, cls):
-        # #4777: flips when kornia checks for the mask itself instead of failing in tuple / list lookups.
+    def test_convention_a_missing_mask_raises_a_kornia_error_naming_it_4777(self, cls):
         image = torch.rand(2, 1, 4, 5)
-        with pytest.raises(IndexError):
-            cls(p=1.0)(image)  # the default data_keys name a mask that was not passed
-        with pytest.raises(ValueError, match="not in list"):  # Python 3.14 reworded list.index's message
+        # the default data_keys name a mask that was not passed: the error gives the key count and names the mask
+        with pytest.raises(
+            BaseError,
+            match=rf"Length of keys \(2\) does not match number of inputs \(1\)\. {cls.__name__} needs a mask to draw "
+            r"its parameters: .* Got data_keys=\['image', 'mask'\]\.",
+        ):
+            cls(p=1.0)(image)
+        with pytest.raises(BaseError, match=rf"{cls.__name__} needs a mask to draw its parameters"):
             cls(p=1.0)(image, data_keys=["input"])
+        # params_from_input, the entry AugmentationSequential uses, raises the same error
+        with pytest.raises(BaseError, match=rf"{cls.__name__} needs a mask to draw its parameters"):
+            cls(p=1.0).params_from_input(image, data_keys=[DataKey.INPUT], params={})
 
     @pytest.mark.device_agnostic
     def test_convention_a_mask_is_required_only_to_derive_the_parameters(self):

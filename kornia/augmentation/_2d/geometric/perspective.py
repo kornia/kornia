@@ -54,8 +54,10 @@ class RandomPerspective(GeometricAugmentationBase2D):
         - ``basic`` samples each corner inward by at most ``distortion_scale * (W, H) / 2``. ``area_preserving``
           samples each coordinate in both directions over the same extent.
         - with ``distortion_scale=0`` and ``H > 1``, ``W > 1``, the warp is an identity up to numerical precision
-          for either ``align_corners``. If either spatial dimension is 1, the coincident source corners give a NaN
-          matrix and output even at zero distortion (`#4787 <https://github.com/kornia/kornia/issues/4787>`_).
+          for either ``align_corners``.
+        - a spatial dimension of 1 is not distorted: its source corners span a unit extent instead of ``0`` and
+          its offsets are zero, so the single row or column maps onto itself and only the other axis is warped.
+          At ``distortion_scale=0`` this is the identity.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_perspective`.

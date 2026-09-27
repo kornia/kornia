@@ -941,7 +941,10 @@ class Boxes:
                 "`Boxes.translate(method='fast')` is not implemented; use `method='warp'` instead."
             )
         if method != "warp":
-            raise NotImplementedError
+            raise NotImplementedError(
+                "`Boxes.translate` accepts `method='warp'` or `method='fast'` (not implemented); "
+                f"got method={method!r}."
+            )
 
         M: torch.Tensor = eye_like(3, size)
         M[:, :2, 2] = size

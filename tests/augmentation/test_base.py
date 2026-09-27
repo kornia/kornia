@@ -640,8 +640,8 @@ class TestConventionAugmentationBase2D(BaseTester):
         ],
     )
     def test_convention_transplantation_supports_a_mask_only_call(self, augmentation_cls, spatial_shape, device):
-        # Images are optional (a missing mask is #4777). Three donors make the cyclic donor direction observable:
-        # p=1 replaces every acceptor with its preceding donor.
+        # Images are optional; a missing mask raises a named error (#4777). Three donors make the cyclic donor
+        # direction observable: p=1 replaces every acceptor with its preceding donor.
         mask = torch.arange(3, device=device, dtype=torch.int64).reshape(3, *((1,) * len(spatial_shape)))
         mask = mask.expand(3, *spatial_shape)
         augmentation = augmentation_cls(p=1.0)

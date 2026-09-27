@@ -203,6 +203,53 @@ class TestQuaternion(BaseTester):
         data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
         self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
 
+    def test_polar_angle(self, device, dtype):
+        # polar_angle is acos(w / |q|), half the rotation angle, in [0, pi], and the same for every positive scale of q
+        angles = torch.tensor([0.0, 0.3, 1.2, math.pi / 2, math.pi - 0.1, math.pi], dtype=torch.float64)
+        axis = torch.tensor(
+            [[0.0, 0.0, 1.0], [0.6, 0.0, 0.8], [-0.36, 0.48, 0.8], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]]
+        )
+        data = torch.cat((angles.cos()[:, None], angles.sin()[:, None] * axis.double()), -1)
+        q = Quaternion(data.to(device=device, dtype=dtype))
+        expected = angles.to(device=device, dtype=dtype)
+        self.assert_close(q.polar_angle, expected)
+        self.assert_close((q * 3.0).polar_angle, expected)
+        self.assert_close(Quaternion(q.data[1]).polar_angle, expected[1])
+
+    def test_polar_angle_small_angle(self, device, dtype):
+        # below sqrt(eps) the norm of q rounds to |w|, so acos(w / |q|) returned exactly 0 for an angle that is not
+        # zero (#4927); q = (1, tan(theta) n) has polar angle theta whatever the formula
+        eps = torch.finfo(dtype).eps
+        theta = math.sqrt(eps) / 8
+        data = torch.tensor([[1.0, math.tan(theta) * 0.6, 0.0, math.tan(theta) * 0.8]], device=device, dtype=dtype)
+        expected = torch.tensor([theta], device=device, dtype=dtype)
+        # no absolute tolerance, the old result 0 is within the default one
+        self.assert_close(Quaternion(data).polar_angle, expected, rtol=8 * eps, atol=0.0)
+
+    def test_polar_angle_gradient_is_zero_on_the_real_axis(self, device, dtype):
+        # acos has an infinite derivative at 1, so the gradient of polar_angle used to be nan at the identity and at
+        # every other quaternion with a zero vector part (#4927); atan2(|v|, w) gives the zero subgradient there
+        data = torch.tensor(
+            [[1.0, 0.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0], [2.0, 0.0, 0.0, 0.0], [0.8, 0.0, 0.6, 0.0]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        Quaternion(data).polar_angle.sum().backward()
+        self.assert_close(data.grad[:3], torch.zeros_like(data.grad[:3]), rtol=0.0, atol=0.0)
+        # d acos(w / |q|) / d(w, x, y, z) at (0.8, 0, 0.6, 0) is (-0.6, 0, 0.8, 0)
+        expected = torch.tensor([-0.6, 0.0, 0.8, 0.0], device=device, dtype=dtype)
+        self.assert_close(data.grad[3], expected)
+
+    def test_polar_angle_gradcheck(self, device):
+        # identity, negative real axis, generic, and pure imaginary (w = 0)
+        data = torch.tensor(
+            [[1.0, 0.0, 0.0, 0.0], [-2.0, 0.0, 0.0, 0.0], [1.0, 0.5, -0.3, 0.2], [0.0, 0.3, -0.4, 0.5]],
+            device=device,
+            dtype=torch.float64,
+        )
+        self.gradcheck(lambda x: Quaternion(x).polar_angle, (data,))
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
         """Test scalar multiplication for issue #3101."""
@@ -384,6 +431,32 @@ class TestQuaternion(BaseTester):
         assert torch.isfinite(q0.grad).all()
         assert torch.isfinite(q1.grad).all()
 
+    @pytest.mark.parametrize("batch_size", [1, 2, 3, 4])
+    def test_slerp_per_batch_ratio_4991(self, device, dtype, batch_size):
+        # #4991: a (B,) ratio is one ratio per quaternion, like a (B, 1) one. With B == 3 it used to scale the
+        # x, y and z components of every rotation vector instead, and other B > 1 raised.
+        torch.manual_seed(0)
+        q0 = Quaternion(torch.nn.functional.normalize(torch.randn(batch_size, 4, device=device, dtype=dtype), dim=-1))
+        q1 = Quaternion(torch.nn.functional.normalize(torch.randn(batch_size, 4, device=device, dtype=dtype), dim=-1))
+        t = torch.linspace(0.1, 0.9, batch_size, device=device, dtype=dtype)
+        expected = torch.cat([q0[i : i + 1].slerp(q1[i : i + 1], float(t[i])).data for i in range(batch_size)])
+        self.assert_close(q0.slerp(q1, t).data, expected)
+        self.assert_close(q0.slerp(q1, t[:, None]).data, expected)
+
+    @pytest.mark.parametrize("batch_size", [None, 2])
+    def test_slerp_scalar_tensor_ratio(self, device, dtype, batch_size):
+        # A 0-d tensor ratio is a scalar, like a float, also on another device or in another dtype: giving it a
+        # trailing axis for #4991 made it a (1,) tensor, which an unbatched quaternion then refused.
+        q0 = Quaternion.identity(batch_size, device=device, dtype=dtype)
+        q1 = Quaternion(torch.tensor([1.0, 0.5, 0.0, 0.0], device=device, dtype=dtype))
+        if batch_size is not None:
+            q1 = Quaternion(q1.data.repeat(batch_size, 1))
+        expected = q0.slerp(q1, 0.3).data
+        for t in (torch.tensor(0.3, device=device, dtype=dtype), torch.tensor(0.3, dtype=torch.float64)):
+            out = q0.slerp(q1, t).data
+            assert out.dtype == dtype
+            self.assert_close(out, expected)
+
     def test_slerp_gradcheck(self, device):
         q0 = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=torch.float64)).data
         q1 = Quaternion.from_axis_angle(torch.tensor([[0.5, 0.1, 0.15]], device=device, dtype=torch.float64)).data
@@ -507,6 +580,22 @@ class TestQuaternionAverage(BaseTester):
         w = torch.tensor([0.5, 0.5], device=device, dtype=dtype)  # wrong length
         with pytest.raises(ValueError):
             average_quaternions(Q, w=w)
+        # #4974: a negative weight extrapolated past a member, and an all-zero weight divided by zero
+        with pytest.raises(ValueError, match="non-negative"):
+            average_quaternions(Q, w=torch.tensor([1.0, -0.5, 0.5], device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="zero"):
+            average_quaternions(Q, w=torch.zeros(3, device=device, dtype=dtype))
+
+    def test_member_norm_is_not_a_weight_4974(self, device, dtype):
+        # #4974: the members were used as stored, so a member stored as 3 q counted 9 times (the result was scipy's
+        # Rotation.mean with weights [9, 1]). Reference: scipy 1.18.1 Rotation.from_rotvec(rv).mean().as_rotvec().
+        rv = torch.tensor([[0.9, -0.3, 0.2], [-0.2, 1.1, 0.5]], dtype=torch.float64)
+        q = Quaternion.from_axis_angle(rv).data
+        expected = torch.tensor([0.3823365186803238, 0.41998759136458697, 0.3733961630971692], dtype=torch.float64)
+        scaled = torch.stack((3.0 * q[0], q[1])).to(device=device, dtype=dtype)
+        for members in (q.to(device=device, dtype=dtype), scaled):
+            out = average_quaternions(Quaternion(members))
+            self.assert_close(out.to_axis_angle()[0], expected.to(device=device, dtype=dtype))
 
 
 class TestQuaternionConventions(BaseTester):
@@ -632,40 +721,3 @@ class TestQuaternionConventions(BaseTester):
                 assert out.shape == (1, 4)
                 # to_axis_angle is the principal log, so the arbitrary sign of the eigenvector does not matter
                 self.assert_close(out.to_axis_angle(), expected.to(device=device, dtype=dtype), rtol=0.0, atol=tol)
-
-    def test_wart_quaternion_polar_angle_gradient_nonfinite_at_identity_4927(self, device, dtype):
-        # #4927 https://github.com/kornia/kornia/issues/4927: polar_angle gives a non-finite gradient at the identity,
-        # the usual initialisation, and near it. This test turns red when the gradient becomes finite at either.
-        identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
-        Quaternion(identity).polar_angle.sum().backward()
-        assert not bool(torch.isfinite(identity.grad).all()), identity.grad
-        # a half-angle of sqrt(eps) / 2 is small enough that w / |q| rounds to 1, so a fix that guards only the exact
-        # identity leaves this row non-finite
-        h = 0.5 * math.sqrt(torch.finfo(dtype).eps)
-        near = torch.tensor(
-            [[math.cos(h), 0.6 * math.sin(h), 0.0, 0.8 * math.sin(h)]], device=device, dtype=dtype, requires_grad=True
-        )
-        # precondition: the vector part survives the rounding, so this is not the identity again
-        assert bool((near[:, 1:] != 0).any())
-        Quaternion(near).polar_angle.sum().backward()
-        assert not bool(torch.isfinite(near.grad).all()), near.grad
-        # control: away from the identity the same expression has a finite gradient
-        q = self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype).requires_grad_(True)
-        Quaternion(q).polar_angle.sum().backward()
-        assert bool(torch.isfinite(q.grad).all()), q.grad
-
-    def test_wart_average_quaternions_weights_by_member_norm_4974(self, device, dtype):
-        # https://github.com/kornia/kornia/issues/4974: average_quaternions uses stored q_i q_i^T, so rescaling a
-        # member by 3 weights it by 9, while matrix(), to_axis_angle(), polar_angle and slerp ignore a positive scale.
-        # Negative weights are accepted where scipy's Rotation.mean rejects them. This turns red when members are
-        # normalised or negative weights are rejected.
-        rotvecs = torch.tensor([[0.9, -0.3, 0.2], [-0.2, 1.1, 0.5]], dtype=torch.float64)
-        data = Quaternion.from_axis_angle(rotvecs).data.to(device=device, dtype=dtype)
-        unit = average_quaternions(Quaternion(data)).to_axis_angle()
-        scaled = average_quaternions(Quaternion(torch.stack((3.0 * data[0], data[1])))).to_axis_angle()
-        # the same rotations, one stored at norm 3: scipy's mean with weights [9, 1] is [0.839, -0.208, 0.224], the
-        # unweighted mean [0.382, 0.420, 0.373]
-        assert (scaled - unit).abs().max() > 0.3
-        weights = torch.tensor([1.0, -0.5], device=device, dtype=dtype)
-        out = average_quaternions(Quaternion(data), w=weights)
-        assert bool(torch.isfinite(out.data).all())
