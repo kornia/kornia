@@ -21,6 +21,7 @@ from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.filters import median_blur
+from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 
 
 class RandomMedianBlur(IntensityAugmentationBase2D):
@@ -38,15 +39,12 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.median_blur`.
+        - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.median_blur`. An
+          even entry is rejected at construction with that function's odd-size error.
         - the output is not clamped. The window is zero-padded, so a border median is taken over zeros as well
           as image values, and a border pixel can come back as ``0`` even when no input value is near it.
         - this class has no ``border_type``, and with an odd ``kernel_size`` an image smaller than the kernel is
           accepted, down to ``1 x 1``.
-
-    .. warning::
-        An even entry in ``kernel_size`` is accepted at construction and then fails on the forward pass with a raw
-        torch error rather than a named one. Tracked in `#4781 <https://github.com/kornia/kornia/issues/4781>`_.
 
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.
@@ -74,6 +72,7 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
         self, kernel_size: Tuple[int, int] = (3, 3), same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        _check_kernel_size(_unpack_2d_ks(kernel_size), 0)
         self.flags = {"kernel_size": kernel_size}
 
     def apply_transform(
