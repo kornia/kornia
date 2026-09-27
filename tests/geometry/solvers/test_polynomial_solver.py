@@ -1237,6 +1237,20 @@ class TestConventionPolynomialSolvers(BaseTester):
         for root in (1e-3, 2e-3):
             assert (out - root).abs().min() > 1e-2 * root
 
+    def test_wart_solve_quartic_scaled_large_roots_fall_back_to_cubic_4954(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip(
+                "pinned in float32, where this row's 6e-8 ratio of leading to largest coefficient is below 1e-6"
+            )
+        # #4954: (x - 50)(x - 60)(x - 70)(x - 80) times 2^-21 (exact in float32) has a leading coefficient 4.8e-7 and
+        # a largest coefficient 8.01. The fallback tolerance is only relative below unit scale, so the row is solved
+        # as the cubic of its last four coefficients: one real root near 31.5 and none of 50, 60, 70, 80.
+        row = torch.tensor([[1.0, -260.0, 25100.0, -1066000.0, 16800000.0]], device=device, dtype=dtype)
+        out = solver.solve_quartic(row * 2.0**-21)
+        self.assert_close(out[:, 1:], torch.zeros(1, 3, device=device, dtype=dtype))
+        for root in (50.0, 60.0, 70.0, 80.0):
+            assert (out - root).abs().min() > 1.0
+
     def test_convention_solve_quartic_relative_leading_tolerance_4905(self, device, dtype):
         # (x - 1)(x - 2)(x - 3)(x - 4), and the same row times a power of two (exact in every dtype) that brings the
         # leading coefficient below the fallback tolerance (1e-6, or 1e-12 in float64).
