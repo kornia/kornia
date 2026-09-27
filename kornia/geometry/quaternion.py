@@ -73,9 +73,7 @@ class Quaternion(nn.Module):
           (`#3953 <https://github.com/kornia/kornia/issues/3953>`_) and for most rotations at a pitch of
           :math:`\pm\pi/2` (`#3950 <https://github.com/kornia/kornia/issues/3950>`_); below a norm of ``1e-12``,
           ``matrix()`` and ``slerp`` give wrong results, and the zero quaternion's ``matrix()`` is the identity
-          (`#3952 <https://github.com/kornia/kornia/issues/3952>`_); ``polar_angle`` gives a non-finite gradient at
-          the identity and near it, wherever ``w / |q|`` rounds to 1
-          (`#4927 <https://github.com/kornia/kornia/issues/4927>`_); data given as a plain tensor is not
+          (`#3952 <https://github.com/kornia/kornia/issues/3952>`_); data given as a plain tensor is not
           registered with ``nn.Module``, so an enclosing module's ``state_dict()``, ``load_state_dict()`` and
           ``.to()`` skip it, while an ``nn.Parameter`` is saved, restored and moved
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
@@ -413,7 +411,9 @@ class Quaternion(nn.Module):
             tensor(0.)
 
         """
-        return (self.scalar / self.norm()).acos()
+        # atan2(|v|, w) is the same angle, but it keeps the digits of an angle below sqrt(eps) that acos(w / |q|)
+        # rounds to zero, and its gradient on the real axis (v = 0, the identity included) is zero instead of nan.
+        return torch.atan2(self.vec.norm(dim=-1), self.scalar)
 
     def matrix(self) -> torch.Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
