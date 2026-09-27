@@ -811,6 +811,12 @@ class TestBoxes2D(BaseTester):
         self.assert_close(translated.data, expected, atol=0.0, rtol=0.0)
         assert translated is not boxes
 
+    def test_translate_unknown_method_raises(self, device, dtype):
+        # The message names the accepted methods and repeats the rejected one, so a typo is visible.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        with pytest.raises(NotImplementedError, match=r"method='warp'.*method='fast'.*got method='wrap'"):
+            boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="wrap")
+
     def test_wart_filter_boxes_by_area_zeroes_small_boxes_4010(self, device, dtype):
         # Wart pin for kornia#4010: filtering acts on compute_area, so the
         # valid two-by-one box with shoelace area zero is zeroed, not removed.
