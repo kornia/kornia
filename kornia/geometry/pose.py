@@ -24,8 +24,10 @@ import torch
 from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
+__all__ = ["NamedPose"]
 
-def check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
+
+def _check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
     """Verify matrix shape based on type."""
     target_shapes = []
     if matrix_type == "R":
@@ -175,7 +177,7 @@ class NamedPose:
         if isinstance(rotation, So2):
             return cls(Se2(rotation, translation), frame_src, frame_dst)
         if isinstance(rotation, torch.Tensor):
-            check_matrix_shape(rotation)
+            _check_matrix_shape(rotation)
             dim = rotation.shape[-1]
             batch_shape = rotation.shape[:-2]
             if translation.shape != rotation.shape[:-1]:
@@ -219,7 +221,7 @@ class NamedPose:
             frame_src: frame_a -> frame_dst: frame_b)
 
         """
-        check_matrix_shape(matrix, matrix_type="RT")
+        _check_matrix_shape(matrix, matrix_type="RT")
         dim = matrix.shape[-1]
         if dim == 3:
             return cls(Se2.from_matrix(matrix), frame_src, frame_dst)
