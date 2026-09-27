@@ -584,7 +584,7 @@ class Quaternion(nn.Module):
         q4 = r1.sqrt() * (2 * pi * r3).cos()
         return cls(torch.stack((q1, q2, q3, q4), -1))
 
-    def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
+    def slerp(self, q1: "Quaternion", t: Union[float, torch.Tensor]) -> "Quaternion":
         """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
 
         The interpolation follows the shorter arc between the two rotations, whatever the signs of the stored
@@ -599,7 +599,8 @@ class Quaternion(nn.Module):
         Args:
             q1: second quaternion to be interpolated between.
             t: interpolation ratio, ``0`` at ``self`` and ``1`` at ``q1``. It is not validated: values outside
-                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B, 1)`.
+                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B,)`, like
+                ``self.w``, or :math:`(B, 1)`.
 
         Example:
             >>> q0 = Quaternion.identity()
@@ -613,6 +614,10 @@ class Quaternion(nn.Module):
         # q0 * exp(t * log(q0^-1 q1)): the principal log of the relative rotation selects the shorter arc, and both
         # conversions keep a finite gradient at the identity (q0 == q1).
         rel = quaternion_to_axis_angle((q0.inv() * q1).data)
+        if isinstance(t, torch.Tensor) and t.dim() > 0 and t.dim() == rel.dim() - 1:
+            # One ratio per quaternion, of the shape of ``w``: scale each rotation vector, not its components. A 0-d
+            # ratio is left alone: it multiplies as a scalar, whatever its device and dtype, and would not with an axis.
+            t = t[..., None]
         return q0 * Quaternion(axis_angle_to_quaternion(t * rel))
 
     def norm(self, keepdim: bool = False) -> torch.Tensor:
