@@ -461,6 +461,36 @@ class TestConvSoftArgmax3d(BaseTester):
         self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("peak, background", [(3.0, 0.0), (-1.0, -5.0)])
+    def test_strict_maxima_bonus_scales_by_one_plus_bonus_5018(self, device, peak, background):
+        # #5018: the bonus used the maximum's value instead of a 0/1 mask, so it scaled by (1 + bonus * value).
+        def value(x, bonus, padding=(1, 1, 1)):
+            return kornia.geometry.subpix.conv_soft_argmax3d(
+                x, (3, 3, 3), (1, 1, 1), padding, strict_maxima_bonus=bonus
+            )[1]
+
+        x = torch.full((1, 1, 3, 7, 9), background, device=device, dtype=torch.float64)
+        x[0, 0, 1, 3, 4] = peak
+        base = value(x, 0.0)
+        for bonus in (1.0, 2.0):
+            boosted = value(x, bonus)
+            self.assert_close(boosted[0, 0, 1, 3, 4], (1.0 + bonus) * base[0, 0, 1, 3, 4])
+            # Only the strict maximum gets the bonus.
+            boosted[0, 0, 1, 3, 4] = base[0, 0, 1, 3, 4]
+            self.assert_close(boosted, base)
+
+    @pytest.mark.parametrize("level", [1, 2, 3])
+    def test_strict_maxima_bonus_depth_padding_0_hits_the_maximum_level_5018(self, device, level):
+        # #5018: with depth padding 0 the mask slice kept one input level and broadcast it over every output level.
+        x = torch.zeros(1, 1, 5, 7, 9, device=device, dtype=torch.float64)
+        x[0, 0, level, 3, 4] = 1.0
+        op = kornia.geometry.subpix.conv_soft_argmax3d
+        base = op(x, (3, 3, 3), (1, 1, 1), (0, 1, 1), strict_maxima_bonus=0.0)[1][0, 0, :, 3, 4]
+        boosted = op(x, (3, 3, 3), (1, 1, 1), (0, 1, 1), strict_maxima_bonus=2.0)[1][0, 0, :, 3, 4]
+        expected = base.clone()
+        expected[level - 1] *= 3.0  # output level k is centred on input level k + 1
+        self.assert_close(boosted, expected)
+
 
 class TestConvQuadInterp3dModule(BaseTester):
     def test_smoke(self, device, dtype):
