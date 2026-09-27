@@ -66,11 +66,12 @@ class Quaternion(nn.Module):
           ``+``, ``-``, ``*`` or ``/`` is the real quaternion ``[s, 0, 0, 0]``, and a tensor holds one such scalar per
           quaternion of the batch.
         - Nothing normalises the stored data or the results of ``*``, ``**`` and ``inv()``. ``matrix()``,
-          ``to_axis_angle()``, ``polar_angle`` and ``slerp`` read only the direction of ``q``, so any positive scale
-          gives the same result.
+          ``to_axis_angle()``, ``polar_angle`` and ``slerp`` read only the direction of ``q``. A positive rescaling
+          preserves their result to roundoff while norms stay above normalization floors and intermediate calculations
+          avoid underflow and overflow.
         - Known defects: ``to_euler()`` of a non-unit ``q`` returns wrong angles
-          (`#3953 <https://github.com/kornia/kornia/issues/3953>`_); the gradient of ``polar_angle`` is NaN at the
-          identity (`#4927 <https://github.com/kornia/kornia/issues/4927>`_); data given as a plain tensor is not
+          (`#3953 <https://github.com/kornia/kornia/issues/3953>`_); ``polar_angle`` gives a non-finite gradient at
+          the identity (`#4927 <https://github.com/kornia/kornia/issues/4927>`_); data given as a plain tensor is not
           registered with ``nn.Module``, so an enclosing module's ``state_dict()``, ``load_state_dict()`` and
           ``.to()`` skip it, while an ``nn.Parameter`` is saved, restored and moved
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).

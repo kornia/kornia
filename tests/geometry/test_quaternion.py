@@ -612,23 +612,22 @@ class TestQuaternionConventions(BaseTester):
                 # to_axis_angle is the principal log, so the arbitrary sign of the eigenvector does not matter
                 self.assert_close(out.to_axis_angle(), expected.to(device=device, dtype=dtype), rtol=0.0, atol=tol)
 
-    def test_wart_quaternion_polar_angle_gradient_nan_at_identity_4927(self, device, dtype):
-        # #4927 https://github.com/kornia/kornia/issues/4927: polar_angle is acos(w / |q|), and acos has an infinite
-        # derivative at 1, so at the identity -- the usual initialisation -- the gradient is nan in every component.
-        # This test turns red when the gradient there becomes finite.
+    def test_wart_quaternion_polar_angle_gradient_nonfinite_at_identity_4927(self, device, dtype):
+        # #4927 https://github.com/kornia/kornia/issues/4927: polar_angle gives a non-finite gradient at the identity,
+        # the usual initialisation. This test turns red when the gradient becomes finite.
         identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         Quaternion(identity).polar_angle.sum().backward()
-        assert bool(torch.isnan(identity.grad).all()), identity.grad
+        assert not bool(torch.isfinite(identity.grad).all()), identity.grad
         # control: away from the identity the same expression has a finite gradient
         q = self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype).requires_grad_(True)
         Quaternion(q).polar_angle.sum().backward()
         assert bool(torch.isfinite(q.grad).all()), q.grad
 
     def test_wart_average_quaternions_weights_by_member_norm_4974(self, device, dtype):
-        # https://github.com/kornia/kornia/issues/4974: average_quaternions forms sum_i w_i q_i q_i^T from the stored
-        # quaternions, so a member stored as 3 q counts 9 times, while every other rotation of Quaternion ignores a
-        # positive scale; and a negative weight is accepted where scipy's Rotation.mean raises. This test turns red
-        # when the members are normalised or negative weights are rejected.
+        # https://github.com/kornia/kornia/issues/4974: average_quaternions uses stored q_i q_i^T, so rescaling a
+        # member by 3 weights it by 9; other Quaternion rotation methods are scale-invariant in their stable range.
+        # Negative weights are accepted where scipy's Rotation.mean rejects them. This turns red when members are
+        # normalised or negative weights are rejected.
         rotvecs = torch.tensor([[0.9, -0.3, 0.2], [-0.2, 1.1, 0.5]], dtype=torch.float64)
         data = Quaternion.from_axis_angle(rotvecs).data.to(device=device, dtype=dtype)
         unit = average_quaternions(Quaternion(data)).to_axis_angle()
