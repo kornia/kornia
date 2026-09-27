@@ -259,6 +259,47 @@ class TestNamedPoseConventions(BaseTester):
         low = dtype in (torch.float16, torch.bfloat16)
         self.assert_close(a_from_b.pose.matrix(), expected, low_tolerance=low)
 
+    def test_convention_named_pose_se2_composition_and_inverse(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip(
+                "torch.complex has no bfloat16 overload, and So2.inverse needs a ComplexHalf reciprocal the CPU lacks"
+            )
+        # The Se2 half of the block: two non-commuting planar poses (M1 M2 != M2 M1 by 0.611), neither the identity.
+        g1 = Se2.exp(torch.tensor([0.5, -1.0, 0.3], device=device, dtype=dtype))
+        g2 = Se2.exp(torch.tensor([-0.2, 0.4, -0.7], device=device, dtype=dtype))
+        m1, m2 = g1.matrix(), g2.matrix()
+        assert (m1 @ m2 - m2 @ m1).abs().max() > 0.5
+        b_from_a = NamedPose(g1, frame_src="a", frame_dst="b")
+        c_from_b = NamedPose(g2, frame_src="b", frame_dst="c")
+        c_from_a = c_from_b * b_from_a
+        assert (c_from_a.frame_src, c_from_a.frame_dst) == ("a", "c")
+        # generated in float64 as Se2.exp([-0.2, 0.4, -0.7]).matrix() @ Se2.exp([0.5, -1.0, 0.3]).matrix()
+        expected = torch.tensor(
+            [
+                [0.9210609940028851, 0.3894183423086504, -0.14575008421958802],
+                [-0.3894183423086504, 0.9210609940028851, -0.6743834884300649],
+                [0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(c_from_a.pose.matrix(), expected)
+        with pytest.raises(ValueError, match="Cannot compose"):
+            b_from_a * c_from_b
+        a_from_b = b_from_a.inverse()
+        assert (a_from_b.frame_src, a_from_b.frame_dst) == ("b", "a")
+        # generated in float64 as torch.linalg.inv(Se2.exp([0.5, -1.0, 0.3]).matrix())
+        expected_inv = torch.tensor(
+            [
+                [0.955336489125606, 0.29552020666133955, -0.34365530818758616],
+                [-0.29552020666133955, 0.9553364891256061, 1.0595065403284554],
+                [0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(a_from_b.pose.matrix(), expected_inv)
+
     def test_wart_named_pose_mixed_groups_4937(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch.complex has no bfloat16 overload, so So2 (and an Se2 pose) cannot be built at all")

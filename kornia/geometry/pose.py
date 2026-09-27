@@ -153,8 +153,8 @@ class NamedPose:
         Args:
             rotation: Rotation part of the pose.
             translation: Translation part of the pose.
-            frame_src: Name of the source frame.
-            frame_dst: Name of the destination frame.
+            frame_src: Name of the source frame; a random unique name when omitted or empty.
+            frame_dst: Name of the destination frame; a random unique name when omitted or empty.
 
         Returns:
             NamedPose constructed from rotation and translation.
@@ -203,8 +203,8 @@ class NamedPose:
 
         Args:
             matrix: Matrix representation of the pose.
-            frame_src: Name of the source frame.
-            frame_dst: Name of the destination frame.
+            frame_src: Name of the source frame; a random unique name when omitted or empty.
+            frame_dst: Name of the destination frame; a random unique name when omitted or empty.
 
         Returns:
             NamedPose constructed from a matrix.

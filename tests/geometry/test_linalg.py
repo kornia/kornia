@@ -579,7 +579,7 @@ class TestLinalgConventions(BaseTester):
         self.assert_close(kgl.transform_points(trans, points), expected)
 
     def test_convention_inverse_transformation_assumes_rigid(self, device, dtype):
-        t01, _ = self._fixture(device, dtype)
+        t01, t02 = self._fixture(device, dtype)
         # A non-rigid matrix: the rotation block of T01 scaled by 2.
         m = t01.clone()
         m[:3, :3] = 2.0 * m[:3, :3]
@@ -596,6 +596,8 @@ class TestLinalgConventions(BaseTester):
         )
         self.assert_close(inv[:3, 3], expected_t)
         assert (inv @ m - torch.eye(4, device=device, dtype=dtype)).abs().max() > 1.0
+        # relative_transformation inverts its first argument the same way, without validation.
+        self.assert_close(kgl.relative_transformation(m, t02), inv @ t02)
 
     def test_convention_transform_helpers_read_the_top_three_rows(self, device, dtype):
         t01, t02 = self._fixture(device, dtype)
@@ -609,10 +611,6 @@ class TestLinalgConventions(BaseTester):
         self.assert_close(kgl.compose_transformations(t01, p02), t01 @ t02)
         self.assert_close(kgl.relative_transformation(t01, p02), kgl.inverse_transformation(t01) @ t02)
         self.assert_close(kgl.inverse_transformation(p01), kgl.inverse_transformation(t01))
-        # The first argument of relative_transformation is inverted by transposition, as in inverse_transformation.
-        m = t01.clone()
-        m[:3, :3] = 2.0 * m[:3, :3]
-        self.assert_close(kgl.relative_transformation(m, t02), kgl.inverse_transformation(m) @ t02)
 
     def test_convention_relative_transformation_vs_relative_camera_motion(self, device, dtype):
         # Read as world-to-camera extrinsics E1 = T01, E2 = T02, relative_camera_motion returns E2 E1^-1, which is
@@ -647,12 +645,15 @@ class TestLinalgConventions(BaseTester):
         exact = torch.tensor([2.34], device=device, dtype=dtype)
         self.assert_close(kgl.point_line_distance(point, line), exact)
         degenerate = kgl.point_line_distance(point, torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype))
+        zero_line = kgl.point_line_distance(point, torch.zeros(1, 3, device=device, dtype=dtype))
         if dtype == torch.float16:
             # The default eps=1e-9 rounds to zero in float16 (and a 1e-9-scaled line underflows), so the degenerate
-            # line gives inf.
-            assert torch.isinf(degenerate).all()
+            # line gives inf and the all-zero line 0 / 0 = nan.
+            assert torch.isinf(degenerate).all() and torch.isnan(zero_line).all()
             return
         scaled = kgl.point_line_distance(point, 1e-9 * line)
         assert ((scaled - exact) / exact).max() < -0.1
-        # A degenerate line (0, 0, 1) returns |c| / eps = 1e9 instead of flagging the singular case.
+        # A degenerate line (0, 0, 1) returns |c| / eps = 1e9 instead of flagging the singular case, and the all-zero
+        # line returns 0 / eps = 0.
         assert torch.isfinite(degenerate).all() and (degenerate > 1e8).all()
+        assert torch.equal(zero_line, torch.zeros_like(zero_line))

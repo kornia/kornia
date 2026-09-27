@@ -168,7 +168,7 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
         - ``trans_ab`` (:math:`T_a^{b}`) maps points in frame ``b`` to frame ``a``, :math:`p_a = T_a^{b} p_b`:
           ``transform_points(trans_01, points_1)`` returns ``points_0``, and
           ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``.
-          :doc:`Conventions </get-started/conventions>` maps this onto other libraries.
+          :ref:`Rotations and rigid motions <rotation-conventions>` maps this onto other libraries.
         - ``trans_01`` must be a rigid :math:`[R|t]`, as for :func:`inverse_transformation`, and the last row of
           ``trans_02`` is read as :math:`[0, 0, 0, 1]`, as in :func:`compose_transformations`. Neither is validated:
           a scaled, sheared or projective ``trans_01``, or a projective ``trans_02``, gives a wrong result silently.
@@ -289,8 +289,9 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
         - ``line`` need not be normalised. The geometric distance is :math:`|ax + by + c| / \|(a, b)\|` for
           :math:`(a, b) \ne (0, 0)`; kornia instead divides by :math:`\|(a, b)\| + \epsilon`.
         - Known defect: this ``eps`` biases the distance when the line coefficients are small and returns
-          :math:`|c| / \epsilon` for a line with :math:`a = b = 0`, or ``inf`` in ``float16``, where the default
-          ``eps`` rounds to zero (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+          :math:`|c| / \epsilon` for a line with :math:`a = b = 0`; in ``float16`` the default ``eps`` rounds to
+          zero, so that line gives ``inf``, or ``nan`` when :math:`c = 0` as well
+          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
 
     Args:
        point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the
