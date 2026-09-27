@@ -614,8 +614,9 @@ class Quaternion(nn.Module):
         # q0 * exp(t * log(q0^-1 q1)): the principal log of the relative rotation selects the shorter arc, and both
         # conversions keep a finite gradient at the identity (q0 == q1).
         rel = quaternion_to_axis_angle((q0.inv() * q1).data)
-        if isinstance(t, torch.Tensor) and t.dim() == rel.dim() - 1:
-            # One ratio per quaternion, of the shape of ``w``: scale each rotation vector, not its components.
+        if isinstance(t, torch.Tensor) and t.dim() > 0 and t.dim() == rel.dim() - 1:
+            # One ratio per quaternion, of the shape of ``w``: scale each rotation vector, not its components. A 0-d
+            # ratio is left alone: it multiplies as a scalar, whatever its device and dtype, and would not with an axis.
             t = t[..., None]
         return q0 * Quaternion(axis_angle_to_quaternion(t * rel))
 

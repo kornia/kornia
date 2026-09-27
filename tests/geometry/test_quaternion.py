@@ -426,10 +426,19 @@ class TestQuaternion(BaseTester):
         self.assert_close(q0.slerp(q1, t).data, expected)
         self.assert_close(q0.slerp(q1, t[:, None]).data, expected)
 
-    def test_slerp_scalar_tensor_ratio(self, device, dtype):
-        q0 = Quaternion.identity(device=device, dtype=dtype)
+    @pytest.mark.parametrize("batch_size", [None, 2])
+    def test_slerp_scalar_tensor_ratio(self, device, dtype, batch_size):
+        # A 0-d tensor ratio is a scalar, like a float, also on another device or in another dtype: giving it a
+        # trailing axis for #4991 made it a (1,) tensor, which an unbatched quaternion then refused.
+        q0 = Quaternion.identity(batch_size, device=device, dtype=dtype)
         q1 = Quaternion(torch.tensor([1.0, 0.5, 0.0, 0.0], device=device, dtype=dtype))
-        self.assert_close(q0.slerp(q1, torch.tensor(0.3, device=device, dtype=dtype)).data, q0.slerp(q1, 0.3).data)
+        if batch_size is not None:
+            q1 = Quaternion(q1.data.repeat(batch_size, 1))
+        expected = q0.slerp(q1, 0.3).data
+        for t in (torch.tensor(0.3, device=device, dtype=dtype), torch.tensor(0.3, dtype=torch.float64)):
+            out = q0.slerp(q1, t).data
+            assert out.dtype == dtype
+            self.assert_close(out, expected)
 
     def test_slerp_gradcheck(self, device):
         q0 = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=torch.float64)).data
