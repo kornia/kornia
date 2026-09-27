@@ -385,6 +385,31 @@ class TestSo3(BaseTester):
             self.assert_close(rp_, qp_.vec)  # p_ = R*p = q*p*q_inv
             self.assert_close(rp_.norm(), pvec.norm())
 
+    @pytest.mark.parametrize("batch_size", (None, 1, 2))
+    def test_from_matrix_check_rotation(self, device, dtype, batch_size):
+        # kornia#4773: from_matrix delegates to rotation_matrix_to_quaternion, so by default the
+        # reflection diag(-1, 1, 1) becomes the identity instead of being rejected. So2.from_matrix
+        # rejects the 2D reflection regardless, which is the inconsistency this closes.
+        reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
+        if batch_size is not None:
+            reflection = reflection.repeat(batch_size, 1, 1)
+
+        self.assert_close(
+            So3.from_matrix(reflection).matrix(),
+            torch.eye(3, device=device, dtype=dtype).expand_as(reflection),
+        )
+        with pytest.raises(ValueError, match="reflection"):
+            So3.from_matrix(reflection, check_rotation=True)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_matrix_check_rotation_accepts_rotation(self, device, dtype, batch_size):
+        # A genuine rotation passes the check, and the flag does not alter the result. Comparing
+        # the two calls rather than the matrix round trip keeps this about the check itself: the
+        # round trip loses too much in float16 and bfloat16 to say anything there.
+        q = Quaternion.random(batch_size, device, dtype)
+        matrix = So3(q).matrix()
+        self.assert_close(So3.from_matrix(matrix, check_rotation=True).q.data, So3.from_matrix(matrix).q.data)
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_from_wxyz(self, device, dtype, batch_size):
         wxyz = self._make_rand_data(device, dtype, batch_size, dims=4)

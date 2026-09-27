@@ -278,11 +278,17 @@ class So3(nn.Module):
         return torch.stack((row0, row1, row2), -2)
 
     @classmethod
-    def from_matrix(cls, matrix: torch.Tensor) -> So3:
+    def from_matrix(cls, matrix: torch.Tensor, check_rotation: bool = False) -> So3:
         """Create So3 from a rotation matrix.
 
         Args:
             matrix: the rotation matrix to convert of shape :math:`(B,3,3)`.
+            check_rotation: if ``True``, raise ``ValueError`` unless every input
+                is a rotation matrix. The default ``False`` keeps the unchecked
+                behaviour, under which a reflection such as ``diag(-1, 1, 1)``
+                is silently turned into the identity. Note that
+                ``So2.from_matrix`` rejects the 2D reflection ``diag(1, -1)``
+                regardless.
 
         Example:
             >>> m = torch.eye(3)
@@ -291,7 +297,7 @@ class So3(nn.Module):
             tensor([1., 0., 0., 0.])
 
         """
-        return cls(Quaternion.from_matrix(matrix))
+        return cls(Quaternion.from_matrix(matrix, check_rotation=check_rotation))
 
     @classmethod
     def from_wxyz(cls, wxyz: torch.Tensor) -> So3:

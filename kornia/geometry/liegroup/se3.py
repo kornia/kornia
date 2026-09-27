@@ -320,11 +320,15 @@ class Se3(nn.Module):
         return rt_4x4
 
     @classmethod
-    def from_matrix(cls, matrix: torch.Tensor) -> Se3:
+    def from_matrix(cls, matrix: torch.Tensor, check_rotation: bool = False) -> Se3:
         """Create a Se3 group from a matrix.
 
         Args:
             matrix: torch.Tensor of shape :math:`(B, 4, 4)`.
+            check_rotation: if ``True``, raise ``ValueError`` unless the rotation
+                block of every input is a rotation matrix. The default ``False``
+                keeps the unchecked behaviour, under which a reflection block
+                such as ``diag(-1, 1, 1)`` yields a non-unit quaternion.
 
         Example:
             >>> s = Se3.from_matrix(torch.eye(4))
@@ -336,7 +340,7 @@ class Se3(nn.Module):
 
         """
         KORNIA_CHECK_SHAPE(matrix, ["*", "4", "4"])
-        r = So3.from_matrix(matrix[..., :3, :3])
+        r = So3.from_matrix(matrix[..., :3, :3], check_rotation=check_rotation)
         t = matrix[..., :3, -1]
         return cls(r, t)
 
