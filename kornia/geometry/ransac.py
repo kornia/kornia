@@ -81,9 +81,6 @@ class RANSAC(nn.Module):
           termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
           draws from the global generator.
-        - Known defects: for ``"homography_from_linesegments"``, the endpoint pairing of
-          :func:`~kornia.geometry.homography.find_homography_lines_dlt` applies
-          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_).
 
     Args:
         model_type: "homography", "fundamental", "fundamental_7pt", "essential", or

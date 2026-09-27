@@ -473,10 +473,8 @@ def find_homography_lines_dlt(
     Convention:
         - ``H`` maps image-1 points to image-2 points, as in :func:`find_homography_dlt`. Each segment is a
           ``[start, end]`` pair of ``(x, y)`` points, and ``weights`` has one entry per segment.
-        - Known defect: each segment's equations are built from endpoints of two different segments, not from
-          its own start and end, so the estimate is correct only when the endpoints are themselves point
-          correspondences, and a zero weight does not remove its segment
-          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_).
+        - Both endpoints of image-1 segment ``i`` are constrained to lie, after mapping by ``H``, on the line
+          through image-2 segment ``i``, so the endpoints need not be point correspondences.
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
@@ -507,8 +505,11 @@ def find_homography_lines_dlt(
     endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
     points1_norm, transform1 = normalize_points(points1, weights=endpoint_weights)
     points2_norm, transform2 = normalize_points(points2, weights=endpoint_weights)
-    lst1, le1 = torch.chunk(points1_norm, dim=1, chunks=2)
-    lst2, le2 = torch.chunk(points2_norm, dim=1, chunks=2)
+    # Pair each segment's own endpoints: the flattened points are [start_0, end_0, start_1, end_1, ...].
+    segments1_norm = points1_norm.reshape(BS, N, 2, 2)
+    segments2_norm = points2_norm.reshape(BS, N, 2, 2)
+    lst1, le1 = segments1_norm[:, :, 0], segments1_norm[:, :, 1]
+    lst2, le2 = segments2_norm[:, :, 0], segments2_norm[:, :, 1]
 
     xs1, ys1 = torch.chunk(lst1, dim=-1, chunks=2)  # BxNx1
     xs2, ys2 = torch.chunk(lst2, dim=-1, chunks=2)  # BxNx1
@@ -557,10 +558,8 @@ def find_homography_lines_dlt_iterated(
           ``e`` in the Gaussian kernel, the perpendicular distance in pixels of the mapped image-1 endpoints from
           the image-2 line: the residual of :func:`line_segment_transfer_error_one_way` divided by the image-2
           segment length it carries. A zero-length image-2 segment gets weight zero.
-        - Known defects: the endpoint pairing of :func:`find_homography_lines_dlt` and the length-scaled
-          residual of :func:`line_segment_transfer_error_one_way` still apply
-          (`#4866 <https://github.com/kornia/kornia/issues/4866>`_,
-          `#4867 <https://github.com/kornia/kornia/issues/4867>`_).
+        - Known defect: the length-scaled residual of :func:`line_segment_transfer_error_one_way` still applies
+          (`#4867 <https://github.com/kornia/kornia/issues/4867>`_).
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
