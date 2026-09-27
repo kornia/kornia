@@ -27,6 +27,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.utils import _torch_svd_cast, register_module_state
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
+from kornia.geometry.vector import Scalar
 
 __all__ = ["ParametrizedLine", "fit_line"]
 
@@ -101,7 +102,7 @@ class ParametrizedLine(nn.Module):
         """
         return ParametrizedLine(p0, F.normalize((p1 - p0), p=2, dim=-1))
 
-    def point_at(self, t: Union[float, torch.Tensor]) -> torch.Tensor:
+    def point_at(self, t: Union[float, torch.Tensor, Scalar]) -> torch.Tensor:
         """Get the point at :math:`t` along this line.
 
         Args:
@@ -117,6 +118,10 @@ class ParametrizedLine(nn.Module):
             >>> p2 = l.point_at(0.1)
 
         """
+        if isinstance(t, Scalar):
+            t = t.data
+        if isinstance(t, torch.Tensor) and t.ndim == self.direction.ndim - 1:
+            t = t[..., None]
         return self.origin + self.direction * t
 
     def projection(self, point: torch.Tensor) -> torch.Tensor:
@@ -126,7 +131,7 @@ class ParametrizedLine(nn.Module):
             point: the point to be projected.
 
         """
-        return self.origin + (self.direction @ (point - self.origin)) * self.direction
+        return self.origin + batched_dot_product(self.direction, point - self.origin)[..., None] * self.direction
 
     def squared_distance(self, point: torch.Tensor) -> torch.Tensor:
         """Return the squared distance of a point to its projection onte the line.

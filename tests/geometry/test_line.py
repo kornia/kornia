@@ -21,6 +21,7 @@ from torch.autograd import gradcheck
 
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
+from kornia.geometry.vector import Vector3
 
 from testing.base import BaseTester, assert_close
 
@@ -50,6 +51,14 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(l1.point_at(0.5), torch.tensor([0.5, 0.0], device=device, dtype=dtype))
         self.assert_close(l1.point_at(1.0), torch.tensor([1.0, 0.0], device=device, dtype=dtype))
 
+    def test_batched_point_at(self, device, dtype):
+        origin = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        direction = torch.tensor([[1.0, 0.0], [1.0, 0.0]], device=device, dtype=dtype)
+        steps = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
+        line = ParametrizedLine(origin, direction)
+        expected = torch.stack([ParametrizedLine(origin[i], direction[i]).point_at(steps[i]) for i in range(2)])
+        self.assert_close(line.point_at(steps), expected)
+
     def test_projection1(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
@@ -75,6 +84,16 @@ class TestParametrizedLine(BaseTester):
         point = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         point_projection = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         self.assert_close(l1.projection(point), point_projection)
+
+    @pytest.mark.parametrize("batch_size", (2, 3))
+    def test_batched_projection(self, device, dtype, batch_size):
+        origin = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], device=device, dtype=dtype)[:batch_size]
+        direction = torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]], device=device, dtype=dtype)[:batch_size]
+        point = torch.tensor([[2.0, 4.0], [6.0, 7.0], [8.0, 9.0]], device=device, dtype=dtype)[:batch_size]
+        expected = torch.stack(
+            [ParametrizedLine(origin[i], direction[i]).projection(point[i]) for i in range(batch_size)]
+        )
+        self.assert_close(ParametrizedLine(origin, direction).projection(point), expected)
 
     def test_distance(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -109,6 +128,18 @@ class TestParametrizedLine(BaseTester):
 
         self.assert_close(lmbda, expected_lambda)
         self.assert_close(point, expected_point)
+
+    def test_batched_intersect_plane(self, device, dtype):
+        origin = torch.tensor([[0.0, 1.0, 2.0], [1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        direction = torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        normal = Vector3(torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype))
+        plane = Hyperplane.from_vector(normal, Vector3(torch.tensor([3.0, 0.0, 0.0], device=device, dtype=dtype)))
+        steps, points = ParametrizedLine(origin, direction).intersect(plane)
+        expected_steps, expected_points = zip(
+            *(ParametrizedLine(origin[i], direction[i]).intersect(plane) for i in range(2))
+        )
+        self.assert_close(steps, torch.stack(expected_steps))
+        self.assert_close(points, torch.stack(expected_points))
 
     def test_intersect_plane_parallel(self, device, dtype):
         # the degenerate branch must return deterministic values, not uninitialized memory

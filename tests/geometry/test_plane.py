@@ -116,7 +116,9 @@ class TestHyperplane(BaseTester):
         expected = torch.ones(shape or (), device=device, dtype=dtype)
         self.assert_close(pl1.signed_distance(p1 + n1 * s0[..., None]), s0)
         assert (pl0.abs_distance(p0) < expected).all()
-        assert (pl1.signed_distance(pl1.projection(p0)) < expected).all()
+        projected_distance = pl1.signed_distance(pl1.projection(p0)).data
+        assert projected_distance.shape == (shape or ())
+        self.assert_close(projected_distance, torch.zeros_like(projected_distance))
         assert (pl1.abs_distance(p1 + pl1.normal * s1) < expected).all()
 
     def test_projection(self, device, dtype):
@@ -128,6 +130,24 @@ class TestHyperplane(BaseTester):
         p_in_plane = plane_in_world.projection(p_in_world)
         p_in_plane_expected = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
         self.assert_close(p_in_plane, p_in_plane_expected)
+
+    def test_batched_projection_preserves_shape_and_values(self, device, dtype):
+        normal = Vector3(torch.tensor([[[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]]], device=device, dtype=dtype))
+        anchor = Vector3(torch.tensor([[[2.0, 0.0, 0.0]], [[0.0, 3.0, 0.0]]], device=device, dtype=dtype))
+        point = Vector3(torch.tensor([[[5.0, 4.0, 1.0]], [[6.0, 7.0, 2.0]]], device=device, dtype=dtype))
+        plane = Hyperplane.from_vector(normal, anchor)
+        projected = plane.projection(point)
+        expected = torch.stack(
+            [
+                Hyperplane.from_vector(Vector3(normal.data[i, 0]), Vector3(anchor.data[i, 0]))
+                .projection(Vector3(point.data[i, 0]))
+                .data
+                for i in range(2)
+            ]
+        )[:, None, :]
+        assert projected.data.shape == point.data.shape
+        self.assert_close(projected.data, expected)
+        self.assert_close(plane.signed_distance(projected).data, torch.zeros(2, 1, device=device, dtype=dtype))
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
