@@ -172,6 +172,11 @@ class TestConventionGeometricMatrices(BaseTester):
         output = augmentation(image)
 
         assert torch.isfinite(output).all()
+        # The singleton axis spans a unit source extent (the other axis keeps its inclusive corners).
+        start = augmentation._params["start_points"]
+        x_end, y_end = (width - 1, 1) if height == 1 else (1, height - 1)
+        expected = torch.tensor([[0, 0], [x_end, 0], [x_end, y_end], [0, y_end]]).to(start).expand_as(start)
+        assert torch.equal(start, expected)
         matrix = augmentation.transform_matrix.to(torch.float32)
         assert torch.isfinite(matrix).all()
         # The singleton row (or column) maps onto itself, while the other axis is still warped.
