@@ -73,8 +73,10 @@ class RANSAC(nn.Module):
           for ``"fundamental"``, ``"fundamental_7pt"`` and ``"essential"``, or the mean distance of its transferred
           endpoints from the image-2 segment's line for ``"homography_from_linesegments"`` is at most ``inl_th``.
           :ref:`two-view-conventions` compares this with OpenCV.
-        - ``score_type="msac"`` ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the squared errors
-          ``e``; acceptance and early stopping count inliers for either score.
+        - ``score_type="msac"`` (the default) ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the
+          squared errors ``e``; acceptance and early stopping count inliers for either score.
+        - Local optimization defaults to ``lo_sample_size=32``: ``max_lo_iters`` randomized refits on 32-inlier
+          subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers iteratively.
         - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
           termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
@@ -94,13 +96,16 @@ class RANSAC(nn.Module):
             seven- and five-point solvers can return multiple models per sample.
         confidence: stopping confidence in ``(0, 1]``; 1 disables early stopping.
         max_lo_iters: maximum local refitting iterations; zero disables polishing.
-        score_type: "ransac" for support count, or "msac" for truncated squared residuals.
+        score_type: "msac" (default) for truncated squared residuals, or "ransac" for support count.
         prosac_sampling: use PROSAC sampling on best-first ordered correspondences. The growth schedule
             advances per sampled set within each batch; stopping tests the incumbent's support within ranked
-            prefixes (Chum and Matas, 2005, section 2.2) as well as within the whole set.
+            prefixes (Chum and Matas, 2005, section 2.2) as well as within the whole set. It pays off when the
+            ranking tracks inlier-ness and the inlier ratio is low (ratio-tested SIFT). On learned matches with
+            85% or more inliers it can certify a model fitted to a spatially clustered top-ranked prefix after
+            one batch and score below uniform sampling; use uniform sampling or ``confidence=1`` there.
         seed: optional seed, reset on each call for reproducible estimation on the same device.
-        lo_sample_size: optional inlier-subset size for a batch of ``max_lo_iters`` randomized local
-            refits followed by a full-inlier refit. None uses iterative full-inlier refitting.
+        lo_sample_size: inlier-subset size for a batch of ``max_lo_iters`` randomized local refits followed
+            by a full-inlier refit (default 32). None uses iterative full-inlier refitting.
         max_samples: optional budget of minimal samples that overrides the one implied by ``batch_size`` and
             ``max_iter``; the last batch is truncated to it.
 
@@ -114,10 +119,10 @@ class RANSAC(nn.Module):
         max_iter: int = 10,
         confidence: float = 0.99,
         max_lo_iters: int = 5,
-        score_type: str = "ransac",
+        score_type: str = "msac",
         prosac_sampling: bool = False,
         seed: Optional[int] = None,
-        lo_sample_size: Optional[int] = None,
+        lo_sample_size: Optional[int] = 32,
         max_samples: Optional[int] = None,
     ) -> None:
         """Initialize the RANSAC estimator.
@@ -134,12 +139,12 @@ class RANSAC(nn.Module):
                 (``2048 * max_iter`` with ``batch_size="auto"``) unless ``max_samples`` is given.
             confidence: desired confidence of the result, used for the early stopping. 1 runs the full budget.
             max_lo_iters: number of local optimization (polishing) iterations.
-            score_type: scoring method to use: "ransac" or "msac".
+            score_type: scoring method to use: "msac" (default) or "ransac".
             prosac_sampling: use PROSAC's progressive sampling schedule. Inputs must be sorted best-first
                 by match quality. The schedule advances for every sampled set, including within batches.
                 Stops when a ranked prefix, or the whole set, certifies the incumbent with ``confidence``.
             seed: optional random seed for reproducible results. If None, uses global random state.
-            lo_sample_size: optional cap on the number of inliers used by each randomized local refit.
+            lo_sample_size: cap on the number of inliers used by each randomized local refit (default 32).
                 Fits ``max_lo_iters`` independent subsets in one batch, followed by one full-inlier refit.
                 None uses iterative full-inlier refitting. Subset refits must raise the score; a full-inlier
                 refit may also tie it, since it is more precise than the minimal-sample model.
