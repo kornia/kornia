@@ -39,7 +39,7 @@ class TestSo2(BaseTester):
         z = torch.randn(2, 1, dtype=cdtype, device=device)
         s = So2(z)
         assert isinstance(s, So2)
-        assert s.z.shape == (2,)  # a (B, 1) z is squeezed to (B,) (#4932)
+        assert s.z.shape == (2,)  # a (B, 1) z is read as (B,) (#4932)
         self.assert_close(s.z.data, z.data[:, 0])
 
     @pytest.mark.parametrize("input_shape", [(1,), (2,), (5,), ()])
@@ -336,7 +336,7 @@ class TestSo2(BaseTester):
         assert paired.shape == (3, 2)
         # https://github.com/kornia/kornia/issues/4932 (fixed): a (B, 1) z or angle used to keep its singleton axis, so
         # matrix() and hat() returned (B, 1, 2, 2), vee() rejected the latter and `*` broadcast z against the (B,)
-        # point coordinates into (B, B, 2), every rotation applied to every point. It is squeezed to (B,) on entry.
+        # point coordinates into (B, B, 2), every rotation applied to every point. It is read as (B,).
         column = theta[:, None]
         col = So2.exp(column)
         assert col.z.shape == (3,)
@@ -354,7 +354,7 @@ class TestSo2(BaseTester):
         # (1, 1) becomes (1,), while (1,) and () are unchanged
         assert So2.exp(theta[:1, None]).z.shape == (1,)
         assert So2.exp(theta[:1]).z.shape == (1,) and So2.exp(theta[0]).z.shape == ()
-        # the squeeze is a view, so the gradient reaches the (B, 1) angle
+        # the (B,) reading is a view, so the gradient reaches the (B, 1) angle
         column = column.clone().requires_grad_()
         (So2.exp(column) * p).sum().backward()
         assert column.grad.shape == (3, 1) and torch.isfinite(column.grad).all()
