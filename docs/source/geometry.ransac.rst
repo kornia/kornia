@@ -121,10 +121,11 @@ device. The refinements are a few dozen small operations per iteration and run
 on the CPU in float64 for every device, where launch latency would dominate.
 Early stopping follows the support of the best minimal model.
 
-On PhotoTourism pairs this raises the pose mAA of fundamental matrices by 0.05
-(SIFT) to 0.07 (ALIKED with LightGlue) over the subset refits below, at a lower
-cost per pair on CPU and CUDA; on the HEB homographies it adds 0.03 to 0.05 mAA
-at a fraction of the cost.
+On PhotoTourism pairs this raises the pose mAA of fundamental matrices by 0.04
+to 0.1 over the subset refits below at the same sample budget. SIFT matches take
+a third of the time on CPU and half on CUDA; ALIKED matches with LightGlue, on
+which both stop early, take about 0.5 ms longer on CPU. On the HEB homographies
+it adds about 0.04 mAA at a quarter to a half of the time.
 
 ``local_optimization="dlt"``, the only choice for essential matrices and
 line-segment homographies, refits the incumbent on its inliers. For the
