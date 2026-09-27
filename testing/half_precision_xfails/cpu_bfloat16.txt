@@ -365,7 +365,6 @@ call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomograp
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyFromLinesDLT::test_clean_points_iter[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyFromLinesDLT::test_clean_points_iter[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyFromLinesDLT::test_clean_points_iter[cpu-bfloat16-5]
-call	builtins.AssertionError	tests/geometry/test_line.py::TestFitLine::test_fit_line2[cpu-bfloat16]
 call	builtins.RuntimeError	tests/geometry/test_pose.py::TestNamedPose::test_from_matrix[cpu-bfloat16]
 call	builtins.RuntimeError	tests/geometry/test_pose.py::TestNamedPose::test_from_rt[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternion::test_from_to_euler_values[cpu-bfloat16]
