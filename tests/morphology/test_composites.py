@@ -37,8 +37,8 @@ class TestComposites(BaseTester):
     @pytest.mark.parametrize("name", list(COMPOSITES))
     def test_convention_composite_is_its_definition(self, device, dtype, monkeypatch, name):
         # Each composite evaluates its defining expression with the same kernel and options in every half,
-        # so the two sides are bitwise equal in every dtype. `max_val=0.1` is inside the data range, so a
-        # half that fell back to the default `1e4` would show; the engine is checked by recording it.
+        # so the two sides are bitwise equal in every dtype. A non-default `border_value` and `origin` would
+        # show a half that fell back to its default; the engine is checked by recording it.
         op, definition, non_negative = COMPOSITES[name]
         l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
         tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
@@ -46,7 +46,7 @@ class TestComposites(BaseTester):
         assert torch.equal(op(tensor, l_kernel), definition(tensor, l_kernel))
         if non_negative:
             assert (op(tensor, l_kernel) >= 0).all()
-        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0], "max_val": 0.1}
+        options = {"border_type": "constant", "border_value": 0.5, "origin": [0, 0]}
         assert torch.equal(op(tensor, l_kernel, **options), definition(tensor, l_kernel, **options))
 
         seen = []
@@ -59,3 +59,18 @@ class TestComposites(BaseTester):
         monkeypatch.setattr(morphology_module, "_resolve_engine", record)
         op(tensor, l_kernel, engine="unfold")
         assert seen == ["unfold", "unfold"]
+
+    @pytest.mark.parametrize("name", ["opening", "closing", "top_hat", "bottom_hat"])
+    def test_convention_composite_convolution_handles_infinite_intermediates_4734(self, device, dtype, name):
+        if not dtype.is_floating_point:
+            pytest.skip("Infinity regression requires a floating-point dtype.")
+
+        op = COMPOSITES[name][0]
+        kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.tensor([[[[0.2, 0.5, 0.9, 0.4]]]], device=device, dtype=dtype)
+
+        convolved = op(tensor, kernel, engine="convolution")
+        unfolded = op(tensor, kernel, engine="unfold")
+
+        assert not torch.isnan(convolved).any()
+        self.assert_close(convolved, unfolded)

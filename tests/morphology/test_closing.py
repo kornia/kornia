@@ -174,25 +174,19 @@ class TestClosing(BaseTester):
             assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
         assert torch.equal(closing(tensor, side_kernel, border_type="circular"), tensor)
 
-    def test_wart_closing_sentinel_round_trip_4734(self, device, dtype):
-        # Under `geodesic` the dilation window of `[[1, 0, 0]]` leaves the image on the right, so it can emit
-        # `x - max_val`, and the erosion's `+ max_val` returns `x` quantised to `max_val`'s spacing:
-        # extensivity, and on negative data idempotence, miss by less than one ULP of `max_val` in the
-        # image's dtype, in the columns next to the empty window. A true infinity would miss by exactly 0.
-        # Tracked in #4734. `torch.finfo(dtype).eps * 8192` is that ULP for the default `max_val=1e4`.
-        one_ulp = torch.finfo(dtype).eps * 8192.0
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_closing_empty_geodesic_window_is_infinite_4734(self, device, dtype, engine):
+        # Under `geodesic` the dilation window of `[[1, 0, 0]]` is empty in the first column, which becomes
+        # `+inf`; every other column round-trips exactly, so closing is extensive and idempotent on data of
+        # either sign. Before #4734 the finite `max_val` sentinel made both miss by up to one ULP of `max_val`.
         side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
-        # A float64 frame drawn in float32 has no bits below float64's ULP of `max_val`, so draw it natively.
-        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
-        tensor = tensor.to(device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(
+            device=device, dtype=dtype
+        )
 
-        closed = closing(tensor, side_kernel)
-        shortfall = (tensor - closed).clamp(min=0)
-        assert 0.0 < shortfall.max() < one_ulp
-        assert not bool(shortfall[..., :-2].any())
-        assert torch.equal(closing(closed, side_kernel), closed)
-
-        negative = -tensor
-        negative_closed = closing(negative, side_kernel)
-        drift = (closing(negative_closed, side_kernel) - negative_closed).abs()
-        assert 0.0 < drift.max() < one_ulp
+        for data in (tensor, -tensor):
+            closed = closing(data, side_kernel, engine=engine)
+            expected = torch.cat((torch.full_like(data[..., :1], float("inf")), data[..., 1:]), dim=-1)
+            assert torch.equal(closed, expected)
+            assert (closed >= data).all()
+            assert torch.equal(closing(closed, side_kernel, engine=engine), closed)

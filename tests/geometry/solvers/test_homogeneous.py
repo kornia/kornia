@@ -37,7 +37,8 @@ def _make_rank3_matrix(null_vec: torch.Tensor, device, dtype) -> torch.Tensor:
     """
     # Build the 4x4 matrix whose columns span the orthogonal complement of null_vec.
     # We use a Gram-Schmidt orthonormalisation relative to null_vec.
-    n = null_vec.to(device="cpu", dtype=torch.float64)
+    # move, then cast: a single .to("cpu", torch.float64) from MPS returns zeros on torch 2.14
+    n = null_vec.cpu().double()
     n = n / n.norm()
 
     # Start from the standard basis and remove the component along n.

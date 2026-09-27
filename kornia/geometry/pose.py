@@ -24,8 +24,10 @@ import torch
 from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
+__all__ = ["NamedPose"]
 
-def check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
+
+def _check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
     """Verify matrix shape based on type."""
     target_shapes = []
     if matrix_type == "R":
@@ -44,6 +46,19 @@ class NamedPose:
 
     Internally represented by either Se2 or Se3.
 
+    Convention:
+        - ``NamedPose(pose, frame_src="a", frame_dst="b")`` is ``b_from_a``: :meth:`transform_points` maps points in
+          frame ``a`` to frame ``b``, so ``NamedPose(pose, frame_src="1", frame_dst="0")`` is ``trans_01`` in the
+          notation of :func:`~kornia.geometry.linalg.relative_transformation`, for an ``Se2`` and an ``Se3`` pose alike.
+        - ``c_from_b * b_from_a`` is ``c_from_a``. For valid rigid poses, its matrix is
+          ``c_from_b.pose.matrix() @ b_from_a.pose.matrix()``; an ``Se3`` pose with a non-unit quaternion is not
+          guaranteed to satisfy this identity (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
+          The left operand's ``frame_src`` must equal the right operand's ``frame_dst``, otherwise ``*`` raises
+          ``ValueError``; :meth:`inverse` inverts the pose and swaps the frame names.
+        - Known defect: the pose type is not validated, so an ``So3``, ``So2``, ``Quaternion`` or tensor is accepted
+          and :attr:`rotation` then raises ``AttributeError``; a product of an ``Se3`` pose and an ``Se2`` pose also
+          raises ``AttributeError`` instead of ``ValueError`` (`#4937 <https://github.com/kornia/kornia/issues/4937>`_).
+
     Example:
         >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
         >>> b_from_a
@@ -60,8 +75,8 @@ class NamedPose:
 
         Args:
             dst_from_src: Pose from source frame to destination frame.
-            frame_src: Name of frame a.
-            frame_dst: Name of frame b.
+            frame_src: Name of the source frame; a random unique name when omitted or empty.
+            frame_dst: Name of the destination frame; a random unique name when omitted or empty.
 
         """
         self._dst_from_src = dst_from_src
@@ -140,8 +155,8 @@ class NamedPose:
         Args:
             rotation: Rotation part of the pose.
             translation: Translation part of the pose.
-            frame_src: Name of the source frame.
-            frame_dst: Name of the destination frame.
+            frame_src: Name of the source frame; a random unique name when omitted or empty.
+            frame_dst: Name of the destination frame; a random unique name when omitted or empty.
 
         Returns:
             NamedPose constructed from rotation and translation.
@@ -162,7 +177,7 @@ class NamedPose:
         if isinstance(rotation, So2):
             return cls(Se2(rotation, translation), frame_src, frame_dst)
         if isinstance(rotation, torch.Tensor):
-            check_matrix_shape(rotation)
+            _check_matrix_shape(rotation)
             dim = rotation.shape[-1]
             batch_shape = rotation.shape[:-2]
             if translation.shape != rotation.shape[:-1]:
@@ -190,8 +205,8 @@ class NamedPose:
 
         Args:
             matrix: Matrix representation of the pose.
-            frame_src: Name of the source frame.
-            frame_dst: Name of the destination frame.
+            frame_src: Name of the source frame; a random unique name when omitted or empty.
+            frame_dst: Name of the destination frame; a random unique name when omitted or empty.
 
         Returns:
             NamedPose constructed from a matrix.
@@ -206,7 +221,7 @@ class NamedPose:
             frame_src: frame_a -> frame_dst: frame_b)
 
         """
-        check_matrix_shape(matrix, matrix_type="RT")
+        _check_matrix_shape(matrix, matrix_type="RT")
         dim = matrix.shape[-1]
         if dim == 3:
             return cls(Se2.from_matrix(matrix), frame_src, frame_dst)

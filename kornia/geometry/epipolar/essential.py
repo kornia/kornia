@@ -390,7 +390,14 @@ def _null_to_Nister_solution_script(
     if no_roots.any():
         C = torch.where(no_roots.view(B, 1, 1), eye10, C)
 
-    roots_eig = torch.linalg.eigvals(C)  # (B,10), complex
+    if C.device.type == "cuda":
+        # torch.linalg.eigvals has no batched CUDA kernel: it hands the companion matrices to cusolver one
+        # at a time with a synchronization each, about 3.6 ms per 10x10 matrix, so a RANSAC batch of 2048
+        # five-point samples spent 6.4 s here. LAPACK on the host takes about 15 ms for the same batch,
+        # transfers included, and the transfers are differentiable.
+        roots_eig = torch.linalg.eigvals(C.cpu()).to(C.device)  # (B,10), complex
+    else:
+        roots_eig = torch.linalg.eigvals(C)  # (B,10), complex
     roots = torch.real(roots_eig)
     is_real = torch.abs(torch.imag(roots_eig)) < 1e-10
 
@@ -872,7 +879,9 @@ def relative_camera_motion(
     Convention:
         - Inputs are world-to-camera extrinsics, :math:`x_{cam} = R X + t` (see :doc:`camera and world
           conventions </get-started/camera-conventions>`); the result is :math:`R = R_2 R_1^\top` and
-          :math:`t = t_2 - R_2 R_1^\top t_1`, the motion from camera 1 to camera 2.
+          :math:`t = t_2 - R_2 R_1^\top t_1`, the motion from camera 1 to camera 2. As 4x4 matrices this is
+          :math:`E_2 E_1^{-1}`, whereas :func:`~kornia.geometry.linalg.relative_transformation` of :math:`E_1` and
+          :math:`E_2` returns :math:`E_1^{-1} E_2`.
 
     Args:
         R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.

@@ -75,11 +75,10 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
         - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
           multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
           narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel, ``0`` included.
-
-    .. warning::
-        The drawn ``center`` is rounded to a whole pixel, half to even, so on an odd-length axis the peak can sit
-        a pixel past the pixel-centre position ``center * L - 0.5``: ``center=0.5`` lands on column ``4`` of a
-        7-pixel-wide image. Tracked in `#4811 <https://github.com/kornia/kornia/issues/4811>`_.
+        - ``center`` is a fraction of the axis length too, and the peak sits at the pixel-centre position
+          ``center * L - 0.5`` without rounding to a whole pixel: ``center=0.5`` is the middle of any axis, ``0``
+          and ``1`` are the outer edges of the first and last pixel. At ``sigma=0`` the field is an impulse on the
+          pixel nearest that position, split between two pixels when it falls halfway.
 
     .. warning::
         An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in

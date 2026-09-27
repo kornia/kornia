@@ -100,6 +100,64 @@ Angles and rotations
     q = Quaternion.identity()
     assert q.data.tolist() == [1.0, 0.0, 0.0, 0.0]  # w, x, y, z
 
+.. _rotation-conventions:
+
+Rotations and rigid motions
+---------------------------
+
+:class:`~kornia.geometry.quaternion.Quaternion` multiplies by the Hamilton product, so ``(q1 * q2).matrix()`` is
+``q1.matrix() @ q2.matrix()``: the right operand acts first. The Lie groups :class:`~kornia.geometry.liegroup.So3`,
+:class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
+:class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``, with ``R`` the
+``matrix()`` of the rotation part. ``So2`` and ``Se2`` do so for any complex number, and a non-unit one also scales by
+its modulus; ``So3`` and ``Se3`` need a unit quaternion
+(`#4942 <https://github.com/kornia/kornia/issues/4942>`_). The tangent vectors of ``Se3`` and ``Se2`` put the
+rotation part, in radians, last: ``[υ, ω]`` and ``[vx, vy, θ]``. ``log`` is principal: its rotation angle is at most
+:math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
+:math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
+``trans_01`` maps frame-1 coordinates into frame 0, and
+:func:`~kornia.geometry.linalg.relative_transformation` of ``trans_01`` and ``trans_02`` is ``trans_12``;
+:class:`~kornia.geometry.pose.NamedPose` names the same transform ``dst_from_src``.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - scipy
+     - Sophus
+     - Eigen
+   * - quaternion storage
+     - ``(w, x, y, z)``
+     - ``Rotation.from_quat`` reads ``(x, y, z, w)`` unless ``scalar_first=True``
+     - ``SO3::data()`` exposes Eigen's ``coeffs()`` order: ``(x, y, z, w)``
+     - the ``Quaternion(w, x, y, z)`` constructor is scalar first, ``coeffs()`` is ``(x, y, z, w)``
+   * - composition
+     - ``a * b``, ``b`` acts first
+     - ``r1 * r2``, the same
+     - ``a * b``, the same
+     - ``q1 * q2``, the same
+   * - SE(3) tangent
+     - ``[υ, ω]``, translation first
+     - ``RigidTransform.as_exp_coords`` returns ``[ω, υ]``, rotation first
+     - ``SE3::log`` returns ``[υ, ω]``, the same (GTSAM's ``Pose3`` is ``[ω, υ]``)
+     - ``Isometry3d`` has no tangent or ``log``
+   * - rotation ``log``
+     - principal
+     - ``as_rotvec``, principal
+     - ``SO3::log``, principal
+     - ``AngleAxis(q)``, angle in :math:`[0, \pi]`
+   * - ``slerp``
+     - the short arc
+     - ``Slerp``, the short arc
+     - ``interpolate``, the short arc
+     - ``Quaternion::slerp``, the short arc
+   * - frame naming
+     - ``trans_01`` and ``dst_from_src`` map frame 1 (``src``) into frame 0 (``dst``)
+     - ``tf_A_B`` maps ``B`` into ``A``
+     - ``foo_T_bar`` maps ``bar`` into ``foo``
+     - no frames
+
 Transformation matrices and homographies
 ----------------------------------------
 
@@ -463,9 +521,8 @@ is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``
      - ``wrap``
      - rejected (``BORDER_WRAP``)
 
-The equivalences hold on every window that holds an in-image kernel cell while :math:`|x|` stays well below
-``max_val``: an empty ``geodesic`` window returns an infinity in scipy and scikit-image and a finite value built
-from ``max_val`` in kornia (`#4734 <https://github.com/kornia/kornia/issues/4734>`_).
+The equivalences cover empty ``geodesic`` windows too: scipy, scikit-image and kornia all return ``-inf`` from
+such a window in a dilation and ``+inf`` in an erosion, whatever the data range.
 
 .. _two-view-conventions:
 
@@ -525,8 +582,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
      - ``sampsonDistance(pt1, pt2, F)``, the same argument order, independent of the scale of ``F``
    * - RANSAC threshold
      - ``inl_th`` is a point distance in the keypoints' units, calibrated units for ``model_type="essential"``;
-       for line segments, the mean distance of the transferred endpoints from the target segment's line, though
-       local optimization still weights segments by length (`#4867 <https://github.com/kornia/kornia/issues/4867>`_)
+       for line segments, the mean distance of the transferred endpoints from the target segment's line, which
+       local optimization re-weights by as well
      - ``ransacReprojThreshold`` of ``findHomography``, the same unit for points
    * - polynomial roots
      - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
