@@ -379,7 +379,6 @@ call	builtins.AssertionError	tests/geometry/test_quaternion.py::TestQuaternionAv
 call	builtins.NotImplementedError	tests/geometry/test_ransac.py::TestRANSACEssential::test_forward_enforces_essential_constraint[cpu-bfloat16]
 call	builtins.NotImplementedError	tests/geometry/test_ransac.py::TestRANSACEssential::test_polish_enforces_essential_constraint[cpu-bfloat16]
 call	builtins.NotImplementedError	tests/geometry/test_ransac.py::TestRANSACEssential::test_smoke[cpu-bfloat16]
-call	builtins.NotImplementedError	tests/geometry/test_ransac.py::TestRANSACFundamental::test_smoke[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_affine.py::TestAffine2d::test_affine_rotate_translate[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_affine.py::TestRescale::test_downscale_values[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_affine.py::TestRescale::test_downscale_values_AA[cpu-bfloat16]

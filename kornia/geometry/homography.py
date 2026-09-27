@@ -440,14 +440,15 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
     """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
-    # Triples to test: (0,1,2), (0,1,3), (0,2,3), (1,2,3)
-    idx_i = torch.tensor([0, 0, 0, 1], device=points1.device)
-    J = torch.tensor([1, 1, 2, 2], device=points1.device)
-    K = torch.tensor([2, 3, 3, 3], device=points1.device)
 
-    # Gather the triples for both sets: shape (B, 4, 2)
-    p1_i, p1_j, p1_k = points1[:, idx_i], points1[:, J], points1[:, K]
-    p2_i, p2_j, p2_k = points2[:, idx_i], points2[:, J], points2[:, K]
+    # Triples to test: (0,1,2), (0,1,3), (0,2,3), (1,2,3), gathered by slicing, shape (B, 4, 2). Index tensors
+    # would be copied to the device on every call.
+    def _triples(points: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        p0, p1, p2, p3 = points[:, 0], points[:, 1], points[:, 2], points[:, 3]
+        return torch.stack([p0, p0, p0, p1], 1), torch.stack([p1, p1, p2, p2], 1), torch.stack([p2, p3, p3, p3], 1)
+
+    p1_i, p1_j, p1_k = _triples(points1)
+    p2_i, p2_j, p2_k = _triples(points2)
 
     # 2D orientation (signed area) for each triple:
     # orient(a,b,c) = cross2d(b-a, c-a) = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax)

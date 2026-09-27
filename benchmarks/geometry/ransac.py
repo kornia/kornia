@@ -501,10 +501,9 @@ def sweep(args: argparse.Namespace) -> None:
     Every configuration runs once per pair, all configurations of one pair back to back, so slow
     drift affects every method alike. Each call is timed on its own with device synchronization,
     as in the IMC time-mAA protocol; the curve averages the times over pairs (see the module
-    docstring for why this is not ``time_us``). Kornia's budget is
-    ``batch_size * max_iter`` minimal sets (a budget below ``--batch`` runs as one batch of that
-    size); OpenCV's is ``maxIters``. Predictions are stored with bit-packed inlier masks and scored
-    by ``evaluate``.
+    docstring for why this is not ``time_us``). Kornia's budget is ``max_samples`` minimal sets,
+    drawn in the estimator's own ``"auto"`` batches unless ``--batch`` fixes them; OpenCV's is
+    ``maxIters``. Predictions are stored with bit-packed inlier masks and scored by ``evaluate``.
     """
     kornia_methods = [m for m in args.kornia.split(",") if m]
     device, _, _ = setup_run(args, opencv=any(args.opencv.split(",")))
@@ -556,12 +555,13 @@ def sweep(args: argparse.Namespace) -> None:
                 for name, budget, threshold in itertools.product(methods, budgets, thresholds):
                     if SWEEP_KORNIA[name].get("prosac_sampling") and not ranked:
                         continue
-                    batch = min(args.batch, budget)
+                    # "auto" leaves the batches to the estimator, as a caller would; the budget is max_samples.
+                    batch = args.batch if args.batch == "auto" else min(int(args.batch), budget)
                     estimator = ransac_class(
                         model_type="fundamental",
                         inl_th=threshold,
                         batch_size=batch,
-                        max_iter=budget // batch,
+                        max_samples=budget,
                         confidence=args.confidence,
                         max_lo_iters=args.lo_iters,
                         seed=args.seed,
@@ -933,7 +933,7 @@ def main() -> None:
     sw.add_argument("--poselib", default=",".join(SWEEP_POSELIB), help=f"subset of {','.join(SWEEP_POSELIB)}")
     sw.add_argument("--base-source", type=Path, help="also sweep another revision's ransac.py as 'kornia-base'")
     sw.add_argument("--budgets", default="256,512,1024,2048,4096,8192,16384", help="kornia minimal-sample budgets")
-    sw.add_argument("--batch", type=int, default=256, help="kornia batch size (smaller budgets use one batch)")
+    sw.add_argument("--batch", default="auto", help='kornia batch size, or "auto" (the default) for the estimator\'s')
     sw.add_argument("--opencv-iters", default="10,25,100,400,1600,6400,25600")
     sw.add_argument("--poselib-iters", default="10,25,100,400,1600,6400,25600", help="PoseLib max_iterations")
     sw.add_argument("--thresholds", default="0.25,0.5,0.75,1,1.5,2")
@@ -1007,8 +1007,8 @@ def main() -> None:
         unknown |= set(args.poselib.split(",")) - set(SWEEP_POSELIB)
         if unknown - {""}:
             parser.error(f"unknown --kornia, --opencv or --poselib method: {sorted(unknown - {''})}")
-        if args.batch <= 0 or any(b % min(b, args.batch) for b in (int(x) for x in args.budgets.split(","))):
-            parser.error("every --budgets entry must be a multiple of --batch or smaller than it")
+        if args.batch != "auto" and (not args.batch.isdigit() or int(args.batch) <= 0):
+            parser.error('--batch must be a positive integer or "auto"')
     commands_by_name = {"prepare": prepare, "run": run, "sweep": sweep, "plot": plot}
     commands_by_name.update(compare=compare, evaluate=evaluate)
     commands_by_name[args.command](args)
