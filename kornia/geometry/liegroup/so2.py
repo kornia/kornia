@@ -38,8 +38,8 @@ class So2(nn.Module):
     See more: https://en.wikipedia.org/wiki/Orthogonal_group#Special_orthogonal_group
 
     Convention:
-        - Stores the rotation as a complex number ``z`` of shape :math:`()` or :math:`(B,)`; a :math:`(B, 1)` ``z``
-          or angle is accepted and squeezed to :math:`(B,)`. For unit :math:`z = \cos\theta + i \sin\theta`,
+        - Represents the rotation as a complex number ``z`` of shape :math:`()` or :math:`(B,)`; a :math:`(B, 1)`
+          ``z`` or angle is accepted and read as :math:`(B,)`. For unit :math:`z = \cos\theta + i \sin\theta`,
           ``matrix()`` is :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b``
           is accepted and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex
           storage rules out bfloat16.
@@ -68,7 +68,7 @@ class So2(nn.Module):
         Internally represented by torch.complex number `z`.
 
         Args:
-            z: Complex number with the shape of :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
+            z: Complex number with the shape of :math:`(B,)` or :math:`()`; :math:`(B, 1)` is read as :math:`(B,)`.
 
         Example:
             >>> real = torch.tensor(0.6)
