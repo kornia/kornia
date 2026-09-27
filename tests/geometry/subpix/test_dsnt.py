@@ -143,16 +143,20 @@ class TestSpatialSoftmax2d(BaseTester):
 
         actual = kornia.geometry.subpix.spatial_softmax2d(input, t)
 
-        expected = torch.softmax(input.double().reshape(1, 1, -1) / temperature, dim=-1).view(1, 1, 2, 3)
-        self.assert_close(actual, expected.to(dtype))
-        wrong = torch.softmax(input.double().reshape(1, 1, -1) * temperature, dim=-1).view(1, 1, 2, 3)
-        assert not torch.allclose(actual.double(), wrong, atol=1e-2)
+        # The float64 reference is computed on CPU: MPS has no float64.
+        reference = input.cpu().double().reshape(1, 1, -1)
+        expected = torch.softmax(reference / temperature, dim=-1).view(1, 1, 2, 3)
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
+        wrong = torch.softmax(reference * temperature, dim=-1).view(1, 1, 2, 3)
+        assert not torch.allclose(actual.cpu().double(), wrong, atol=1e-2)
 
-    @pytest.mark.parametrize("temperature", [0.0, -1.0, "tensor"])
+    @pytest.mark.parametrize("temperature", [0.0, -1.0, float("nan"), "tensor", "nan_tensor"])
     def test_nonpositive_temperature_raises(self, device, dtype, temperature):
         input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         if temperature == "tensor":
             temperature = torch.tensor(0.0, device=device, dtype=dtype)
+        elif temperature == "nan_tensor":
+            temperature = torch.tensor(float("nan"), device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Temperature should be positive"):
             kornia.geometry.subpix.spatial_softmax2d(input, temperature)
 

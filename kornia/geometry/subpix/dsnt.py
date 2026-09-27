@@ -37,6 +37,20 @@ def _validate_batched_image_tensor_input(tensor: torch.Tensor) -> None:
     KORNIA_CHECK_SHAPE(tensor, ["B", "C", "H", "W"])
 
 
+def _check_positive_temperature(temperature: torch.Tensor | float) -> None:
+    """Raise ``ValueError`` unless ``temperature`` is positive; ``NaN`` is rejected as well.
+
+    A tensor is read only outside graph capture: under ``torch.compile`` or export, reading its value would be a
+    data-dependent branch, so a tensor temperature is not checked there.
+    """
+    if isinstance(temperature, torch.Tensor):
+        if is_compiling() or bool((temperature > 0).all()):
+            return
+    elif temperature > 0:
+        return
+    raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+
+
 def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None) -> torch.Tensor:
     r"""Apply the Softmax function over features in each image channel.
 
@@ -46,7 +60,7 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     Args:
         input: the input torch.Tensor with shape :math:`(B, N, H, W)`.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
-          ``None`` means ``1.0``.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
 
     Returns:
        a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
@@ -67,13 +81,9 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     batch_size, channels, height, width = input.shape
     if temperature is None:
         temperature = 1.0
+    _check_positive_temperature(temperature)
     if isinstance(temperature, torch.Tensor):
-        # Reading a tensor's value is a data-dependent branch that graph capture cannot trace; check it eagerly only.
-        if not is_compiling() and bool((temperature <= 0).any()):
-            raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
         temperature = temperature.to(device=input.device, dtype=input.dtype)
-    elif temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
     x = input.reshape(batch_size, channels, -1)
 
     x_soft = F.softmax(x / temperature, dim=-1)

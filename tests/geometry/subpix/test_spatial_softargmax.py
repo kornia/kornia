@@ -145,8 +145,10 @@ class TestSpatialSoftArgmax2d(BaseTester):
     def test_temperature_divides_input(self, device, dtype):
         # An asymmetric map: a soft-argmax at T = 0.5 must equal the expectation of softmax(x / 0.5).
         sample = torch.tensor([[[[0.0, 1.0, 3.0], [2.0, -1.0, 0.5]]]], device=device, dtype=dtype)
-        probs = torch.softmax(sample.double().reshape(1, 1, -1) / 0.5, dim=-1).view(1, 1, 2, 3)
-        expected = kornia.geometry.subpix.spatial_expectation2d(probs, normalized_coordinates=False).to(dtype)
+        # The float64 reference is computed on CPU: MPS has no float64.
+        probs = torch.softmax(sample.cpu().double().reshape(1, 1, -1) / 0.5, dim=-1).view(1, 1, 2, 3)
+        expected = kornia.geometry.subpix.spatial_expectation2d(probs, normalized_coordinates=False)
+        expected = expected.to(device=device, dtype=dtype)
 
         actual = kornia.geometry.subpix.spatial_soft_argmax2d(sample, 0.5, normalized_coordinates=False)
         self.assert_close(actual, expected)
@@ -345,6 +347,17 @@ class TestConvSoftArgmax2d(BaseTester):
         op = kornia.geometry.subpix.conv_soft_argmax2d
         op_opt = torch_optimizer(op, fullgraph=True)
         self.assert_close(op(data, temperature=temperature), op_opt(data, temperature=temperature))
+
+    @pytest.mark.parametrize("temperature", [0.0, float("nan"), "tensor"])
+    @pytest.mark.parametrize(
+        "op, shape", [("conv_soft_argmax2d", (1, 1, 3, 3)), ("conv_soft_argmax3d", (1, 1, 3, 3, 3))]
+    )
+    def test_nonpositive_temperature_raises(self, device, dtype, temperature, op, shape):
+        data = torch.zeros(shape, device=device, dtype=dtype)
+        if temperature == "tensor":
+            temperature = torch.tensor([0.5, -1.0], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            getattr(kornia.geometry.subpix, op)(data, temperature=temperature)
 
 
 class TestConvSoftArgmax3d(BaseTester):

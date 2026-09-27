@@ -23,11 +23,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.utils import is_compiling
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
-from .dsnt import spatial_expectation2d, spatial_softmax2d
+from .dsnt import _check_positive_temperature, spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
 # Flat offsets for gathering the full 3x3x3 neighbourhood of a voxel.
@@ -324,7 +323,8 @@ def conv_soft_argmax2d(
         kernel_size: the size of the window.
         stride: the stride of the window.
         padding: input zero padding.
-        temperature: softmax temperature: the input is divided by it; smaller is sharper.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
         eps: small value to avoid zero division.
@@ -356,13 +356,7 @@ def conv_soft_argmax2d(
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
-    # Reading a tensor's value is a data-dependent branch that graph capture cannot trace; check it eagerly only.
-    # ``is_compiling`` covers torch.compile as well as export, which ``is_exporting`` does not on recent torch.
-    if isinstance(temperature, torch.Tensor):
-        if not is_compiling() and bool((temperature <= 0).any()):
-            raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
-    elif temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+    _check_positive_temperature(temperature)
 
     b, c, h, w = input.shape
     ky, kx = kernel_size
@@ -444,7 +438,8 @@ def conv_soft_argmax3d(
         kernel_size:  size of the window.
         stride: stride of the window.
         padding: input zero padding.
-        temperature: softmax temperature: the input is divided by it; smaller is sharper.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
         eps: small value to avoid zero division.
@@ -482,13 +477,7 @@ def conv_soft_argmax3d(
     if not len(input.shape) == 5:
         raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
-    # Reading a tensor's value is a data-dependent branch that graph capture cannot trace; check it eagerly only.
-    # ``is_compiling`` covers torch.compile as well as export, which ``is_exporting`` does not on recent torch.
-    if isinstance(temperature, torch.Tensor):
-        if not is_compiling() and bool((temperature <= 0).any()):
-            raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
-    elif temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+    _check_positive_temperature(temperature)
 
     b, c, d, h, w = input.shape
     kz, ky, kx = kernel_size
@@ -560,7 +549,7 @@ def spatial_soft_argmax2d(
     Args:
         input: the given heatmap with shape :math:`(B, N, H, W)`.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
-          ``None`` means ``1.0``.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
 
