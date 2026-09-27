@@ -111,6 +111,23 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     return torch.stack([root_0, root_1], dim=-1)
 
 
+# Bit layout of the float dtypes solve_cubic scales in: the integer dtype of the same width, the exponent bias and the
+# number of mantissa bits. A float with a zero mantissa is 2 ** (stored exponent - bias).
+_FLOAT_LAYOUT = {torch.float32: (torch.int32, 127, 23), torch.float64: (torch.int64, 1023, 52)}
+
+
+def _exact_power_of_two(exponent: torch.Tensor) -> torch.Tensor:
+    """Return ``2 ** exponent`` for an integer-valued float tensor, exact on every backend.
+
+    ``torch.exp2`` and ``torch.pow`` are not exact for integer arguments on every backend (MPS), and a scale that is
+    not a power of two changes the bits of the scaled row. The exponent is clamped so that both ``2 ** exponent`` and
+    ``2 ** -exponent`` are normal floats, and is written into the exponent field of the float.
+    """
+    int_dtype, bias, mantissa_bits = _FLOAT_LAYOUT[exponent.dtype]
+    biased = exponent.clamp(1 - bias, bias - 1).to(int_dtype) + bias
+    return (biased * 2**mantissa_bits).view(exponent.dtype)
+
+
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     r"""Solve given cubic equation.
 
@@ -197,16 +214,18 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     # Solve for y = x / s, with s the power of two just above max(|b/a|, |c/a|^(1/2), |d/a|^(1/3)), which bounds the
     # root magnitude. The scaled coefficients b/(a s), c/(a s^2) and d/(a s^3) are below 1 in magnitude, so Q^3 and
     # R^2 below neither overflow when a tiny leading coefficient makes b/a, c/a and d/a huge (#4914) nor underflow for
-    # tiny roots. Scaling by a power of two is exact, so a row that neither overflowed nor underflowed takes the same
-    # branch as before and its D <= 0 roots are the same bits. s is a step function of the coefficients, so it is a
-    # constant for autograd.
+    # tiny roots. Multiplying by a power of two is exact, so a row that neither overflowed nor underflowed takes the
+    # same branch as before and its D <= 0 roots are the same bits. s is a step function of the coefficients, so it is
+    # a constant for autograd. A row with b == c == d == 0 has bound 0 and keeps s = 1.
     bound = torch.maximum(torch.maximum(b_a.abs(), c_a.abs().sqrt()), d_a.abs().pow(1.0 / 3.0)).detach()
     positive_bound = bound > 0
     exponent = torch.floor(torch.log2(torch.where(positive_bound, bound, torch.ones_like(bound)))) + 1
-    s = torch.where(positive_bound, torch.exp2(exponent), torch.ones_like(bound))
-    b_a = b_a / s
-    c_a = c_a / s / s
-    d_a = d_a / s / s / s
+    exponent = torch.where(positive_bound, exponent, torch.zeros_like(exponent))
+    s = _exact_power_of_two(exponent)
+    inv_s = _exact_power_of_two(-exponent)
+    b_a = b_a * inv_s
+    c_a = c_a * inv_s * inv_s
+    d_a = d_a * inv_s * inv_s * inv_s
     b_a2 = b_a * b_a
     scale = torch.ones_like(a)
     scale[~mask_a_zero] = s

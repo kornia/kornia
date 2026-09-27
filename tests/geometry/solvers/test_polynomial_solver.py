@@ -21,6 +21,7 @@ import torch
 
 import kornia.geometry.solvers as solver
 from kornia.core.exceptions import ShapeError
+from kornia.geometry.solvers.polynomial_solver import _exact_power_of_two
 
 from testing.base import BaseTester
 
@@ -281,6 +282,12 @@ class TestCubicSolver(BaseTester):
     def test_scaled_row_has_scaled_roots_4914(self, device, dtype):
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("Half-precision rows are solved in float32, and 2^40 is beyond float16.")
+        # The row scale has to be an exact power of two on every backend: torch.exp2 is not, for integer arguments
+        # on MPS, and the triple root below then left its Q == R == 0 branch.
+        exponents = torch.tensor([-120.0, -38.0, 0.0, 2.0, 120.0], device=device, dtype=dtype)
+        expected = torch.tensor([2.0**-120, 2.0**-38, 1.0, 4.0, 2.0**120], device=device, dtype=dtype)
+        assert torch.equal(_exact_power_of_two(exponents), expected), _exact_power_of_two(exponents)
+
         # Coefficient i divided by s^i moves every root by 1 / s. With s an exact power of two the scaled row reaches
         # the closed form as the same numbers, so its roots are the original ones times 1 / s. One row per branch:
         # three real roots, one real root with Q > 0 and with Q < 0, Q == 0, and a triple root. Before the fix,
