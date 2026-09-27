@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
@@ -356,8 +356,12 @@ def conv_soft_argmax2d(
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
-    # A tensor temperature is read here, which graph capture cannot do; skip the value check under export.
-    if not is_exporting() and temperature <= 0:
+    # Reading a tensor's value is a data-dependent branch that graph capture cannot trace; check it eagerly only.
+    # ``is_compiling`` covers torch.compile as well as export, which ``is_exporting`` does not on recent torch.
+    if isinstance(temperature, torch.Tensor):
+        if not is_compiling() and bool((temperature <= 0).any()):
+            raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+    elif temperature <= 0:
         raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
 
     b, c, h, w = input.shape
@@ -478,8 +482,12 @@ def conv_soft_argmax3d(
     if not len(input.shape) == 5:
         raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
-    # A tensor temperature is read here, which graph capture cannot do; skip the value check under export.
-    if not is_exporting() and temperature <= 0:
+    # Reading a tensor's value is a data-dependent branch that graph capture cannot trace; check it eagerly only.
+    # ``is_compiling`` covers torch.compile as well as export, which ``is_exporting`` does not on recent torch.
+    if isinstance(temperature, torch.Tensor):
+        if not is_compiling() and bool((temperature <= 0).any()):
+            raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+    elif temperature <= 0:
         raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
 
     b, c, d, h, w = input.shape

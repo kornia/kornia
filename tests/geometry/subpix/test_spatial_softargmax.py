@@ -337,6 +337,15 @@ class TestConvSoftArgmax2d(BaseTester):
         self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
+    def test_dynamo_tensor_temperature(self, device, dtype, torch_optimizer):
+        # The positivity check reads a tensor temperature; it must not break graph capture.
+        data = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        data[..., 2, 4] = 1.0
+        temperature = torch.tensor(0.5, device=device, dtype=dtype)
+        op = kornia.geometry.subpix.conv_soft_argmax2d
+        op_opt = torch_optimizer(op, fullgraph=True)
+        self.assert_close(op(data, temperature=temperature), op_opt(data, temperature=temperature))
+
 
 class TestConvSoftArgmax3d(BaseTester):
     def test_smoke(self, device, dtype):
@@ -478,6 +487,16 @@ class TestConvSoftArgmax3d(BaseTester):
         coords, val = softargmax(sample)
         self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+
+    def test_dynamo_tensor_temperature(self, device, dtype, torch_optimizer):
+        # The positivity check reads a tensor temperature; it must not break graph capture.
+        data = torch.zeros(1, 1, 3, 5, 7, device=device, dtype=dtype)
+        data[..., 1, 2, 4] = 1.0
+        temperature = torch.tensor(0.5, device=device, dtype=dtype)
+        op = kornia.geometry.subpix.conv_soft_argmax3d
+        op_opt = torch_optimizer(op, fullgraph=True)
+        for expected, actual in zip(op(data, temperature=temperature), op_opt(data, temperature=temperature)):
+            self.assert_close(expected, actual)
 
 
 class TestConvQuadInterp3dModule(BaseTester):
