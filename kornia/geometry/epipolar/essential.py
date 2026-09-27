@@ -578,15 +578,13 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
           pose is not fixed: it can change when ``E_mat`` is negated or rescaled. Select by cheirality with
           :func:`motion_from_essential_choose_solution`; :ref:`two-view geometry <two-view-conventions>`
           compares OpenCV's labels.
-        - Known defects: a ``(3, 3)`` input returns rotations of shape ``(1, 3, 3)`` but ``t`` of shape
-          ``(3, 1)`` (`#4878 <https://github.com/kornia/kornia/issues/4878>`_).
 
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
     Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector,
-       with shapes :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]` for an input with a batch dimension.
+       with shapes :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`: the same leading dims as the input.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -604,8 +602,8 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     U = torch.where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
     Vt = torch.where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
 
-    W = cross_product_matrix(torch.tensor([[0.0, 0.0, 1.0]]).type_as(E_mat))
-    W[..., 2, 2] += 1.0
+    # W = [e_z]_x + diag(0, 0, 1), built unbatched so that it does not add a batch dim to an unbatched U.
+    W = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=E_mat.device, dtype=E_mat.dtype)
 
     # reconstruct rotations and retrieve translation vector
     U_W_Vt = U @ W @ Vt
@@ -733,8 +731,6 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     Convention:
         - The candidates of :func:`decompose_essential_matrix` are stacked on dim ``-3`` in that order; which
           index is the true pose is not fixed.
-        - Known defects: a ``(3, 3)`` input returns rotations of shape ``(1, 4, 3, 3)`` but translations of
-          shape ``(4, 3, 1)`` (`#4878 <https://github.com/kornia/kornia/issues/4878>`_).
 
     Args:
         E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
