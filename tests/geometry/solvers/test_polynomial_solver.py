@@ -306,8 +306,10 @@ class TestCubicSolver(BaseTester):
         base = solver.solve_cubic(rows)
         exponent = 40 if dtype == torch.float32 else 200
         for s in (2.0**exponent, 2.0**-exponent):
-            scaled = rows / s ** torch.arange(4, device=device, dtype=dtype)
-            self.assert_close(solver.solve_cubic(scaled) * s, base, rtol=8 * torch.finfo(dtype).eps, atol=0.0)
+            # Python computes the powers of two exactly, and multiplying by them is exact on every backend, where
+            # `s ** torch.arange(4)` and a division are not (MPS).
+            powers = torch.tensor([1.0, 1.0 / s, 1.0 / s**2, 1.0 / s**3], device=device, dtype=dtype)
+            self.assert_close(solver.solve_cubic(rows * powers) * s, base, rtol=8 * torch.finfo(dtype).eps, atol=0.0)
 
     def test_small_r_keeps_the_root_4914(self, device, dtype):
         if dtype not in (torch.float32, torch.float64):
