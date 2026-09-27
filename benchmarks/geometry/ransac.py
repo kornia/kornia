@@ -217,6 +217,19 @@ def run(args: argparse.Namespace) -> None:
             # Both samplers see identical order; PROSAC assumes best matches come first.
             kp1 = torch.as_tensor(a[order], device=device, dtype=dtype)
             kp2 = torch.as_tensor(b[order], device=device, dtype=dtype)
+            threshold = args.threshold
+            if args.model == "essential":
+                # Calibrated coordinates; the pixel threshold is divided by the mean focal length, and the
+                # estimate is converted back to a fundamental matrix for the evaluator.
+                calibration = [np.linalg.inv(data[f"{key}__{side}_K"]) for side in ("a", "b")]
+                kp1, kp2 = (
+                    torch.as_tensor(
+                        np.column_stack((points, np.ones(len(points)))) @ inverse.T, device=device, dtype=dtype
+                    )[:, :2]
+                    for points, inverse in zip((a[order], b[order]), calibration)
+                )
+                focal = np.mean([data[f"{key}__{side}_K"][[0, 1], [0, 1]].mean() for side in ("a", "b")])
+                threshold = args.threshold / focal
             for batch, score, prosac, lo, seed in configs:
                 row: dict[str, Any] = {
                     "op": "RANSAC",
@@ -244,7 +257,7 @@ def run(args: argparse.Namespace) -> None:
                 else:
                     estimator = RANSAC(
                         model_type=args.model,
-                        inl_th=args.threshold,
+                        inl_th=threshold,
                         batch_size=batch,
                         max_iter=args.sample_budget // batch,
                         confidence=args.confidence,
@@ -278,8 +291,11 @@ def run(args: argparse.Namespace) -> None:
                             row.update(median_us=median, iqr_us=iqr, throughput_per_s=1e6 / median)
                         original_mask = np.zeros(len(a), dtype=bool)
                         original_mask[order] = mask.detach().cpu().numpy().reshape(-1)
+                        matrix = matrix.detach().cpu().to(torch.float64).numpy()
+                        if args.model == "essential":
+                            matrix = calibration[1].T @ matrix @ calibration[0]
                         row.update(
-                            matrix=matrix.detach().cpu().tolist(),
+                            matrix=matrix.tolist(),
                             inlier_indices=np.flatnonzero(original_mask).tolist(),
                         )
                     except (RuntimeError, ValueError) as exc:
@@ -830,7 +846,7 @@ def main() -> None:
         "--lo-sample-size", type=int, help="optional bounded LO subset; omitted for base compatibility"
     )
     measure.add_argument("--seeds", default="0,1,2")
-    measure.add_argument("--model", choices=("fundamental", "fundamental_7pt"), default="fundamental")
+    measure.add_argument("--model", choices=("fundamental", "fundamental_7pt", "essential"), default="fundamental")
     measure.add_argument("--threshold", type=float, default=1.0)
     measure.add_argument("--confidence", type=float, default=0.999)
     measure.add_argument("--min-run-time", type=float, default=0.2)
