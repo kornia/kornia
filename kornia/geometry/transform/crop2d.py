@@ -522,10 +522,16 @@ def crop_by_indices(
                 "Please pass `size` explicitly when box dimensions vary across the batch."
             )
         size = (int(h[0].item()), int(w[0].item())) if B > 0 else (0, 0)
+    crops = [input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]] for i in range(B)]
+    # When every row's slice already has the requested size (always the case for RandomCrop and
+    # CenterCrop2D), join the views with one ``cat``: one copy kernel for the batch instead of a
+    # ``copy_`` per row (#4531). ``contiguous`` keeps the result in the default memory format, as
+    # the ``torch.empty`` below does, when the input is channels-last.
+    if B > 0 and all(crop.shape[-2:] == size for crop in crops):
+        return torch.cat(crops).contiguous()
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype)
     # Find out the cropped shapes that need to be resized.
-    for i in range(B):
-        _out = input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
+    for i, _out in enumerate(crops):
         if _out.shape[-2:] != size:
             if shape_compensation == "resize":
                 out[i] = resize(
