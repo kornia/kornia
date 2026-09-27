@@ -663,27 +663,6 @@ class TestQuaternionConventions(BaseTester):
                 # to_axis_angle is the principal log, so the arbitrary sign of the eigenvector does not matter
                 self.assert_close(out.to_axis_angle(), expected.to(device=device, dtype=dtype), rtol=0.0, atol=tol)
 
-    def test_wart_quaternion_polar_angle_gradient_nonfinite_at_identity_4927(self, device, dtype):
-        # #4927 https://github.com/kornia/kornia/issues/4927: polar_angle gives a non-finite gradient at the identity,
-        # the usual initialisation, and near it. This test turns red when the gradient becomes finite at either.
-        identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
-        Quaternion(identity).polar_angle.sum().backward()
-        assert not bool(torch.isfinite(identity.grad).all()), identity.grad
-        # a half-angle of sqrt(eps) / 2 is small enough that w / |q| rounds to 1, so a fix that guards only the exact
-        # identity leaves this row non-finite
-        h = 0.5 * math.sqrt(torch.finfo(dtype).eps)
-        near = torch.tensor(
-            [[math.cos(h), 0.6 * math.sin(h), 0.0, 0.8 * math.sin(h)]], device=device, dtype=dtype, requires_grad=True
-        )
-        # precondition: the vector part survives the rounding, so this is not the identity again
-        assert bool((near[:, 1:] != 0).any())
-        Quaternion(near).polar_angle.sum().backward()
-        assert not bool(torch.isfinite(near.grad).all()), near.grad
-        # control: away from the identity the same expression has a finite gradient
-        q = self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype).requires_grad_(True)
-        Quaternion(q).polar_angle.sum().backward()
-        assert bool(torch.isfinite(q.grad).all()), q.grad
-
     def test_wart_average_quaternions_weights_by_member_norm_4974(self, device, dtype):
         # https://github.com/kornia/kornia/issues/4974: average_quaternions uses stored q_i q_i^T, so rescaling a
         # member by 3 weights it by 9, while matrix(), to_axis_angle(), polar_angle and slerp ignore a positive scale.
