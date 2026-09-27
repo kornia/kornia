@@ -469,7 +469,6 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         segments2 = segments1 * torch.tensor([1.1, 0.9], device=device, dtype=dtype) + 7.0
         segments2 = segments2 + torch.arange(32, device=device, dtype=dtype).reshape(1, 8, 2, 2) * 0.03
         weights = torch.tensor([[0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]], device=device, dtype=dtype)
-        # #4866 pairs endpoints incorrectly; these two zero weights isolate the normalization defect here.
         outlier1, outlier2 = segments1.clone(), segments2.clone()
         outlier1[:, 0] += torch.tensor([5000.0, -3000.0], device=device, dtype=dtype)
         outlier2[:, 0] += torch.tensor([-4000.0, 6000.0], device=device, dtype=dtype)
@@ -1006,25 +1005,26 @@ class TestConventionHomography(BaseTester):
             assert _transfer_max(H, p1, p2) < 1e-2
             assert _transfer_max(H, p2, p1) > 100.0
 
-    def test_wart_find_homography_lines_dlt_endpoint_pairing_4866(self, device, dtype):
+    def test_convention_find_homography_lines_dlt_endpoint_pairing_4866(self, device, dtype):
         _skip_half(dtype, _HALF_LINES)
         p1, p2, H_true = _planar(device, dtype)
         ls1, ls2 = p1.reshape(1, 6, 2, 2), p2.reshape(1, 6, 2, 2)
+        tol = 1e-6 if dtype == torch.float64 else 5e-2
         # Slide every image-2 endpoint along its segment's true line: H_true still maps each image-1 segment onto its
         # image-2 line, but the endpoints are no longer point correspondences.
         d = ls2[:, :, 1] - ls2[:, :, 0]
         slid = torch.stack([ls2[:, :, 0] + 0.3 * d, ls2[:, :, 1] + 0.25 * d], dim=2)
         assert line_segment_transfer_error_one_way(ls1, slid, H_true).max() < 1e-2
-        # #4866: the equations of segment i use flattened points i and N + i, so the estimate misses by thousands
-        # of pixels here. Once the endpoints are paired per segment it recovers H_true.
-        assert _transfer_max(find_homography_lines_dlt(ls1, slid), p1, p2) > 100.0
-        # For the same reason a zero weight does not remove its segment: the outlier still moves the estimate.
+        # The equations of segment i come from its own start and end (#4866 paired flattened points i and N + i and
+        # missed by thousands of pixels here), so the lines alone recover H_true.
+        assert _transfer_max(find_homography_lines_dlt(ls1, slid), p1, p2) < tol
+        # A zero weight removes its segment: the outlier no longer moves the estimate.
         ls2_out = ls2.clone()
         ls2_out[0, 3] += torch.tensor([[35.0, -20.0], [-15.0, 30.0]], device=device, dtype=dtype)
         weights = torch.ones(1, 6, device=device, dtype=dtype)
+        assert _transfer_max(find_homography_lines_dlt(ls1, ls2_out), p1, p2) > 1.0
         weights[0, 3] = 0.0
-        clean = (torch.arange(12, device=device) != 6) & (torch.arange(12, device=device) != 7)
-        assert _transfer_max(find_homography_lines_dlt(ls1, ls2_out, weights), p1[:, clean], p2[:, clean]) > 10.0
+        assert _transfer_max(find_homography_lines_dlt(ls1, ls2_out, weights), p1, p2) < tol
 
     def test_wart_line_segment_error_scales_with_length_4867(self, device, dtype):
         _skip_half(dtype, _HALF_LINES)
