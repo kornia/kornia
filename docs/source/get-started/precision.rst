@@ -116,7 +116,7 @@ precision, so the table says nothing about those backends.
      - ⚠️ Partial
      - ⚠️ Partial
      - 8 / 17
-     - Accuracy in boxes, depth and line utilities; bfloat16 ``NamedPose`` construction raises.
+     - Accuracy in boxes, depth and line utilities; a bfloat16 ``NamedPose`` of an ``Se2`` pose cannot be built (``So2`` stores a complex number).
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -166,7 +166,7 @@ Test Results
 ------------
 
 Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed); skipped tests and tests marked ``xfail`` in
-the source are excluded. The CPU rows come from the nightly ``main`` CI jobs at commit ``ca5021eb``
+the source are excluded. The CPU rows come from the scheduled ``main`` CI jobs at commit ``ca5021eb``
 (2026-09-14; Linux x86_64, Python 3.11, PyTorch 2.9.1). In the half-precision jobs, *Failed* is the manifest's entry
 count: CI reports those tests as strict xfails and turns red if any of them passes or fails differently. The CUDA
 rows are a local run at commit ``f8449854`` (2026-09-23; RTX 4090, Python 3.11, PyTorch 2.14.0+cu130), not CI. Every

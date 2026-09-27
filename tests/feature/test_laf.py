@@ -264,31 +264,87 @@ class TestELL2LAF(BaseTester):
         # assure it is positive definite
         self.gradcheck(kornia.feature.ellipse_to_laf, (img,))
 
-    def test_small_root_sum_is_not_clamped(self, device):
-        # The root sum is finite and nonzero, so clamping it changes a valid inverse by orders of magnitude.
-        tiny = torch.finfo(torch.float32).tiny
-        inp = torch.tensor([[[0.0, 0.0, tiny, tiny, tiny]]], device=device, dtype=torch.float32)
-        expected = torch.tensor(-0.5 / math.sqrt(tiny), device=device, dtype=torch.float32)
+    def test_boundary_lies_on_the_ellipse(self, device, dtype):
+        # The LAF maps the unit circle onto the region it describes, so every boundary point has to
+        # satisfy the Oxford quadratic form a x^2 + 2 b x y + c y^2 = 1 of the input ellipse.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the quadratic form check is meaningful only in full precision")
+        ells = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 1.0, 0.0, 1.0],
+                    [3.0, -2.0, 1.0, 0.5, 1.0],
+                    [10.0, 20.0, 0.04, 0.01, 0.09],
+                    [0.0, 0.0, 2.0, -0.9, 0.5],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        laf = kornia.feature.ellipse_to_laf(ells)
+        angles = torch.linspace(0.0, 2.0 * math.pi, 9, device=device, dtype=dtype)[:-1]
+        circle = torch.stack([angles.cos(), angles.sin()])  # (2, 8)
+        boundary = laf[..., :2] @ circle  # (1, 4, 2, 8), relative to the centre
+        a, b, c = ells[..., 2:3], ells[..., 3:4], ells[..., 4:5]
+        x, y = boundary[..., 0, :], boundary[..., 1, :]
+        self.assert_close(a * x * x + 2.0 * b * x * y + c * y * y, torch.ones_like(x))
+
+    def test_roundtrip_is_make_upright(self, device, dtype):
+        # The ellipse implied by a LAF A is [[a, b], [b, c]] = inverse(A A^T); converting it back must
+        # give the upright LAF of the same region.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("torch.inverse does not support half precision and the check needs full precision")
+        torch.manual_seed(0)
+        A = torch.randn(2, 5, 2, 2, device=device, dtype=dtype) + 3.0 * torch.eye(2, device=device, dtype=dtype)
+        det = A[..., 0, 0] * A[..., 1, 1] - A[..., 0, 1] * A[..., 1, 0]
+        A = torch.where(det[..., None, None] < 0, A.flip(-1), A)  # keep every LAF right-handed
+        laf = torch.cat([A, torch.rand(2, 5, 2, 1, device=device, dtype=dtype) * 100.0], dim=-1)
+        S = torch.inverse(A @ A.transpose(-1, -2))
+        ells = torch.cat([laf[..., 2], S[..., 0, 0:1], S[..., 0, 1:2], S[..., 1, 1:2]], dim=-1)
+        self.assert_close(kornia.feature.ellipse_to_laf(ells), kornia.feature.make_upright(laf))
+
+    def test_tiny_valid_ellipse_is_finite(self, device, dtype):
+        # a == c == 16 tiny with b == 8 tiny is a valid, strongly tilted ellipse (b / a == 0.5) at the bottom
+        # of the normal range: its determinant 192 tiny^2 is subnormal or zero in every dtype and any eps a
+        # clamp would use is orders of magnitude above the inputs, yet every intermediate of the correct
+        # formula (b / sqrt(c), the Schur complement 12 tiny, sqrt(det) formed as sqrt(c) * sqrt(schur)) is a
+        # normal number, so this also runs on backends that flush subnormals. The LAF must be finite and
+        # match the closed form, evaluated in double so that the check does not depend on the implementation.
+        tiny = torch.finfo(dtype).tiny
+        inp = torch.tensor([[[0.0, 0.0, 16.0 * tiny, 8.0 * tiny, 16.0 * tiny]]], device=device, dtype=dtype)
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
-        self.assert_close(laf[0, 0, 1, 0], expected)
+        expected = torch.tensor(
+            [[1.0 / math.sqrt(12.0 * tiny), 0.0], [-0.5 / math.sqrt(12.0 * tiny), 1.0 / math.sqrt(16.0 * tiny)]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(laf[0, 0, :, :2], expected)
 
-    def test_no_overflow_asymmetric_diag(self, device, dtype):
-        # Regression test: the closed-form inverse's off-diagonal must divide by the root product,
-        # not multiply reciprocals. `a` is the dtype's smallest normal and `c` is picked so that
-        # (sqrt(a) + sqrt(c)) * sqrt(a) == 0.5, which makes the intermediate of the fixed order
-        # `-a21 * (1 / a11) * (1 / a22)` twice b -- inf for a b above half the dtype's maximum,
-        # although the result itself is well inside range. https://github.com/kornia/kornia/pull/4122
+    def test_no_overflow_large_ellipse(self, device, dtype):
+        # b is above sqrt(max), so b^2 (and a * c) overflow in this dtype although the ellipse is valid
+        # and its LAF is well inside range: the Schur complement has to be formed from b / sqrt(c), never b^2.
         finfo = torch.finfo(dtype)
-        a11 = math.sqrt(finfo.tiny)
-        a22 = 0.5 / a11
-        inp = torch.tensor([[[0.0, 0.0, finfo.tiny, finfo.max * 0.75, a22 * a22]]], device=device, dtype=dtype)
+        b = 2.0 * math.sqrt(finfo.max)
+        inp = torch.tensor([[[0.0, 0.0, b, b, 4.0 * b]]], device=device, dtype=dtype)
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
         # Reference in float64, from the inputs as the dtype actually rounded them. Via CPU:
         # MPS tensors cannot be converted to float64 (TESTING.md, "Writing new tests that work on MPS").
-        expected = kornia.feature.ellipse_to_laf(inp.cpu().double())[0, 0, 1, 0]
+        expected = kornia.feature.ellipse_to_laf(inp.cpu().double())
+        self.assert_close(laf, expected.to(device=device, dtype=dtype))
+
+    def test_no_overflow_asymmetric_diag(self, device, dtype):
+        # c * sqrt(a) is above max, so an off-diagonal formed as -b / (c * sqrt(a - b^2 / c)) would
+        # overflow the denominator and return a false zero, although the true value is representable.
+        finfo = torch.finfo(dtype)
+        a, b, c = finfo.max / 8.0, math.sqrt(finfo.max) / 2.0, 4.0 * math.sqrt(finfo.max)
+        inp = torch.tensor([[[0.0, 0.0, a, b, c]]], device=device, dtype=dtype)
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
-        self.assert_close(laf[0, 0, 1, 0], expected.to(device=device, dtype=dtype))
+        assert laf[0, 0, 1, 0] != 0
+        expected = kornia.feature.ellipse_to_laf(inp.cpu().double())
+        self.assert_close(laf, expected.to(device=device, dtype=dtype))
 
     def test_no_overflow_subnormal_diag(self, device, dtype):
         # The mirror case: a subnormal but nondegenerate diagonal makes 1 / (a11 * a22) overflow, so
@@ -307,24 +363,20 @@ class TestELL2LAF(BaseTester):
         self.assert_close(laf[0, 0, 1, 0], torch.zeros_like(laf[0, 0, 1, 0]))
 
     def test_no_underflow_asymmetric_diag(self, device, dtype):
-        # Regression test for the ordering the two tests above do not cover: multiplying by the
-        # smaller reciprocal first (f7b573a3, since replaced by the division form) passes both of
-        # them but silently flushes a representable off-diagonal to a false zero. `a` is the
-        # dtype's smallest normal and `c` its reciprocal squared, so a11 * a22 == 1 and
-        # inv22 == a11 is itself tiny; `b` is picked so a21 * inv22 -- the min/max order's first
-        # product -- underflows to zero while the true off-diagonal, a21 / (a11 * a22), stays
-        # representable. https://github.com/kornia/kornia/pull/4122
+        # A valid ellipse with an extreme aspect ratio: `a` is the dtype's smallest normal, `c` its
+        # reciprocal, and `b` is picked so that the off-diagonal -b / (c * sqrt(a - b^2 / c)) is
+        # representable while b / c is not. Forming the off-diagonal from b / c (as in the issue's first
+        # draft) or multiplying b / sqrt(c) by 1 / sqrt(c) before dividing by sqrt(a - b^2 / c) flushes it to
+        # a false zero. https://github.com/kornia/kornia/pull/4122
         finfo = torch.finfo(dtype)
         a11 = math.sqrt(finfo.tiny)
         a22 = 1.0 / a11
         b = finfo.eps * math.sqrt(a11)
         inp = torch.tensor([[[0.0, 0.0, finfo.tiny, b, a22 * a22]]], device=device, dtype=dtype)
-        # Guard on the arithmetic, not just the storage: a21 is shared by every ordering, so if a
-        # backend's division already flushes it to zero, no ordering has anything left to get wrong.
-        a11_t, a22_t = inp[..., 2:3].abs().sqrt(), inp[..., 4:5].abs().sqrt()
-        a21_t = inp[..., 3:4] / (a11_t + a22_t)
-        if (a21_t == 0).any():
-            pytest.skip("backend flushes this off-diagonal's shared numerator to zero regardless of ordering")
+        # Guard on the arithmetic, not just the storage: b / sqrt(c) is the numerator of the off-diagonal,
+        # so if a backend's division already flushes it to zero, there is nothing left to get wrong.
+        if (inp[..., 3:4] / inp[..., 4:5].sqrt() == 0).any():
+            pytest.skip("backend flushes this off-diagonal's numerator to zero regardless of ordering")
         expected = kornia.feature.ellipse_to_laf(inp.cpu().double())[0, 0, 1, 0]
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
@@ -341,6 +393,17 @@ class TestELL2LAF(BaseTester):
         laf = kornia.feature.ellipse_to_laf(inp)
         assert not torch.isfinite(laf[0, 0, :, :2]).all()
         self.assert_close(laf[0, 0, :, 2], inp[0, 0, :2])  # the centre is untouched
+
+    @pytest.mark.parametrize(
+        "abc", [(-1.0, 0.0, 4.0), (3.0, 0.0, -4.0), (-3.0, 0.5, -4.0), (3.0, 4.0, 4.0), (3.0, -4.0, 4.0)]
+    )
+    def test_not_positive_definite_ellipse_is_non_finite(self, device, dtype, abc):
+        # A negative a or c, or b * b > a * c, is not an ellipse; the old formula took abs(a) and abs(c) and
+        # ignored b on the diagonal, so it returned a finite LAF for all of these.
+        inp = torch.tensor([[[1.0, 2.0, *abc]]], device=device, dtype=dtype)
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert not torch.isfinite(laf[0, 0, :, :2]).all()
+        self.assert_close(laf[0, 0, :, 2], inp[0, 0, :2])
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         inp = self._well_conditioned_ellipses(device, dtype)
@@ -363,7 +426,7 @@ class TestELL2LAF(BaseTester):
         inp[..., 4] += 1.0
         return inp
 
-    @pytest.mark.jit()
+    @pytest.mark.jit
     def test_jit(self, device, dtype):
         batch_size, channels, height = 1, 2, 5
         img = torch.rand(batch_size, channels, height, device=device).abs()

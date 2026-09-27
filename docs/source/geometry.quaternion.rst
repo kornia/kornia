@@ -9,3 +9,5 @@ kornia.geometry.quaternion
 .. autoclass:: Quaternion
    :members:
    :special-members:
+
+.. autofunction:: average_quaternions

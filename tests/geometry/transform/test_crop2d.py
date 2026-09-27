@@ -383,6 +383,86 @@ class TestCropByBoxes(BaseTester):
         patches = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
         self.assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize("size", [(1, 3), (3, 1), (1, 1)])
+    def test_convention_size_one_axis_4747(self, size, device, dtype):
+        # A size-1 axis makes the box vertices collinear, and solving the perspective system from them returned
+        # a matrix of NaNs. crop_and_resize takes the same path.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        h, w = size
+        src = torch.tensor([[[1.0, 1.0], [w, 1.0], [w, h], [1.0, h]]], device=device, dtype=dtype)
+        dst = torch.tensor([[[0.0, 0.0], [w - 1, 0.0], [w - 1, h - 1], [0.0, h - 1]]], device=device, dtype=dtype)
+        expected = inp[..., 1 : 1 + h, 1 : 1 + w]
+
+        self.assert_close(kornia.geometry.transform.crop_by_boxes(inp, src, dst), expected)
+        self.assert_close(kornia.geometry.transform.crop_and_resize(inp, src, size), expected)
+
+    def test_crop_and_resize_scales_the_other_axis_of_a_size_one_box_4747(self, device, dtype):
+        # The size-1 row keeps its place and the 3-pixel width is stretched to 5, as for a 2-row box.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        row = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
+        two_rows = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        expected = kornia.geometry.transform.crop_and_resize(inp, two_rows, (2, 5))[..., :1, :]
+
+        self.assert_close(kornia.geometry.transform.crop_and_resize(inp, row, (1, 5)), expected, atol=1e-4, rtol=1e-4)
+
+    def test_crop_and_resize_scales_the_other_axis_of_a_size_one_column_4747(self, device, dtype):
+        # The transpose of the test above: the size-1 column keeps its place and the 3-pixel height is stretched to 5.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        column = torch.tensor([[[1.0, 1.0], [1.0, 1.0], [1.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        # rows 1, 1.5, ..., 3 of column 1, where the image is 5 * y + 1
+        expected = torch.tensor([6.0, 8.5, 11.0, 13.5, 16.0], device=device, dtype=dtype).view(1, 1, 5, 1)
+
+        self.assert_close(kornia.geometry.transform.crop_and_resize(inp, column, (5, 1)), expected)
+
+    @pytest.mark.parametrize(
+        "src, size",
+        [
+            ([[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]], (3, 3)),  # a size-1 row resized to 3 rows
+            ([[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]], (1, 3)),  # 2 rows resized to 1
+            ([[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [3.0, 3.0]], (3, 3)),  # a triangle: vertex 3 repeats vertex 2
+        ],
+    )
+    def test_wart_box_without_an_invertible_matrix_gives_nan_4747(self, src, size, device, dtype):
+        # No invertible source-to-destination matrix exists for these boxes, and the crop stays NaN rather than
+        # returning a window that was not asked for. A size-1 axis takes the matrix built from the box extents only
+        # when it is size 1 in the output too, and a quad that is not a size-1 box keeps the solver's NaN.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        boxes = torch.tensor([src], device=device, dtype=dtype)
+
+        assert kornia.geometry.transform.crop_and_resize(inp, boxes, size).isnan().all()
+
+    def test_box_with_vertices_0_and_2_on_one_axis_keeps_the_solved_matrix_4747(self, device, dtype):
+        # Vertices 0 and 2 of a square turned by 45 degrees share an x coordinate, but the square has a
+        # perspective matrix, so its crop does not come from the box extents.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(25.0, device=device, dtype=dtype).view(1, 1, 5, 5)
+        diamond = torch.tensor([[[2.0, 0.0], [4.0, 2.0], [2.0, 4.0], [0.0, 2.0]]], device=device, dtype=dtype)
+        # output pixel (u, v) samples the image at (x, y) = (2 + u - v, u + v), where the image is 5 * y + x
+        expected = torch.tensor(
+            [[[[2.0, 8.0, 14.0], [6.0, 12.0, 18.0], [10.0, 16.0, 22.0]]]], device=device, dtype=dtype
+        )
+
+        self.assert_close(kornia.geometry.transform.crop_and_resize(inp, diamond, (3, 3)), expected)
+
+    def test_gradcheck_box_with_vertices_0_and_2_on_one_axis_4747(self, device):
+        # The extent matrix is discarded for this box, and its zero x extent must not turn the box gradient NaN.
+        dtype = torch.float64
+        inp = (torch.arange(49.0, device=device, dtype=dtype) * 0.37).sin().view(1, 1, 7, 7)
+        diamond = torch.tensor([[[3.13, 0.21], [5.31, 2.39], [3.13, 4.57], [0.95, 2.39]]], device=device, dtype=dtype)
+
+        self.gradcheck(
+            kornia.geometry.transform.crop_and_resize, (inp, diamond, (3, 3)), requires_grad=(False, True, False)
+        )
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         inp = torch.randn((1, 1, 3, 3), device=device, dtype=dtype)

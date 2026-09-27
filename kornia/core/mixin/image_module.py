@@ -53,8 +53,7 @@ class ImageModuleMixIn:
 
         """
         # Validate output_type at the start
-        if output_type not in ("pt", "numpy", "pil"):
-            raise ValueError(f"Invalid output_type '{output_type}'. Must be one of 'pt', 'numpy', or 'pil'.")
+        self._check_output_type(output_type)
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
@@ -76,29 +75,44 @@ class ImageModuleMixIn:
                         if name in input_names_to_handle:
                             kwargs[name] = self.to_tensor(value)
 
-                # Call the actual forward method
-                tensor_outputs = func(*args, **kwargs)
-
-                if not isinstance(tensor_outputs, tuple):
-                    tensor_outputs = (tensor_outputs,)
-
-                # Convert outputs to the desired type
-                outputs = []
-                for output in tensor_outputs:
-                    if output_type == "pt":
-                        outputs.append(output)
-                    elif output_type == "numpy":
-                        outputs.append(self.to_numpy(output))
-                    elif output_type == "pil":
-                        outputs.append(self.to_pil(output))
-                    else:
-                        raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
-
-                return outputs if len(outputs) > 1 else outputs[0]
+                # Call the actual forward method and convert its outputs to the desired type
+                return self._convert_output(func(*args, **kwargs), output_type)
 
             return wrapper
 
         return decorator
+
+    @staticmethod
+    def _check_output_type(output_type: str) -> None:
+        if output_type not in ("pt", "numpy", "pil"):
+            raise ValueError(f"Invalid output_type '{output_type}'. Must be one of 'pt', 'numpy', or 'pil'.")
+
+    def _convert_output(self, tensor_outputs: Any, output_type: str) -> Any:
+        """Convert a forward output to ``output_type`` the way :meth:`convert_input_output` does.
+
+        Args:
+            tensor_outputs: The forward output: a tensor, or a tuple whose elements are converted one by one.
+            output_type: Desired output type ('pt', 'numpy', or 'pil').
+
+        Returns:
+            The converted output, or a list of converted outputs for a tuple of several.
+
+        """
+        if not isinstance(tensor_outputs, tuple):
+            tensor_outputs = (tensor_outputs,)
+
+        outputs = []
+        for output in tensor_outputs:
+            if output_type == "pt":
+                outputs.append(output)
+            elif output_type == "numpy":
+                outputs.append(self.to_numpy(output))
+            elif output_type == "pil":
+                outputs.append(self.to_pil(output))
+            else:
+                raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
+
+        return outputs if len(outputs) > 1 else outputs[0]
 
     def _is_valid_arg(self, arg: Any) -> bool:
         """Check if the argument is a valid type for conversion.
@@ -220,15 +234,18 @@ class ImageModuleMixIn:
         """
         if self._output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
+        output_image = self._output_image
+        if isinstance(output_image, torch.Tensor):
+            output_image = output_image.detach().cpu()
 
-        if len(self._output_image.shape) == 3:
-            out_image = self._output_image
-        elif len(self._output_image.shape) == 4:
+        if len(output_image.shape) == 3:
+            out_image = output_image
+        elif len(output_image.shape) == 4:
             from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
-                n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = make_grid(self._output_image, n_row, padding=2)
+                n_row = math.ceil(output_image.shape[0] ** 0.5)
+            out_image = make_grid(output_image, n_row, padding=2)
         else:
             raise ValueError
 
@@ -250,12 +267,18 @@ class ImageModuleMixIn:
         from kornia.image.utils import make_grid  # pylint: disable=C0415
         from kornia.io import write_image  # pylint: disable=C0415
 
+        if self._output_image is None:
+            raise ValueError("No pre-computed images found. Needs to execute first.")
+        output_image = self._output_image
+        if isinstance(output_image, torch.Tensor):
+            output_image = output_image.detach().cpu()
+
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"
-        if len(self._output_image.shape) == 3:
-            out_image = self._output_image
-        if len(self._output_image.shape) == 4:
+        if len(output_image.shape) == 3:
+            out_image = output_image
+        if len(output_image.shape) == 4:
             if n_row is None:
-                n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = make_grid(self._output_image, n_row, padding=2)
+                n_row = math.ceil(output_image.shape[0] ** 0.5)
+            out_image = make_grid(output_image, n_row, padding=2)
         write_image(name, out_image.mul(255.0).byte())

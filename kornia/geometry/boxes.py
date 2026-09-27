@@ -629,16 +629,15 @@ class Boxes:
         return area.view(self._data.shape[:2]) if self._data.ndim == 4 else area
 
     @classmethod
-    def from_tensor(
-        cls, boxes: torch.Tensor | list[torch.Tensor], mode: str = "xyxy", validate_boxes: bool = True
-    ) -> Boxes:
+    def from_tensor(cls, boxes: torch.Tensor | list, mode: str = "xyxy", validate_boxes: bool = True) -> Boxes:
         r"""Create :class:`Boxes` from boxes stored in another format.
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Args:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or
-                :math:`(B, N, 4, 2)`, or a list of :math:`(N, 4)` or :math:`(N, 4, 2)` tensors matching ``mode``.
+                :math:`(B, N, 4, 2)`, a nested numeric list with one of those shapes, or a list of
+                :math:`(N, 4)` or :math:`(N, 4, 2)` tensors matching ``mode``.
             mode: The format in which the boxes are provided:
 
                 * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent. With shape :math:`(N, 4)`,
@@ -678,8 +677,15 @@ class Boxes:
         quadrilaterals: torch.Tensor | list[torch.Tensor]
         if isinstance(boxes, torch.Tensor):
             quadrilaterals = _boxes_to_quadrilaterals(boxes, mode=mode, validate_boxes=validate_boxes)
-        else:
+        elif len(boxes) == 0:
+            # An empty list holds no boxes, like an empty (0, 4) or (0, 4, 2) tensor; converting one checks ``mode``.
+            empty = torch.zeros(0, 4, 2) if mode.lower().startswith("vertices") else torch.zeros(0, 4)
+            quadrilaterals = _boxes_to_quadrilaterals(empty, mode=mode, validate_boxes=validate_boxes)
+        elif isinstance(boxes[0], torch.Tensor):
             quadrilaterals = [_boxes_to_quadrilaterals(box, mode, validate_boxes) for box in boxes]
+        else:
+            # A nested numeric list converts as the tensor it spells.
+            quadrilaterals = _boxes_to_quadrilaterals(torch.as_tensor(boxes), mode=mode, validate_boxes=validate_boxes)
 
         return cls(quadrilaterals, False, mode)
 

@@ -159,30 +159,20 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         Note:
             Uses ``flags["resample"]`` as given; :meth:`transform_masks` supplies "nearest" when the caller
             did not choose one.
-            Normalize "align_corners" from None to False to match PyTorch's default behavior.
+            Treats ``align_corners=None`` as the module's own ``align_corners``, so a mask is resampled on the
+            same grid as its input.
 
         """
         align_corners_was_none: bool = False
         original_align_corners: Optional[bool] = None
 
-        # When align_corners=None is in flags (from extra_args), use the module's default
-        # This ensures masks use the same align_corners value as inputs for consistency
-        # However, for 'slice' cropping_mode with 'nearest' mode, align_corners must be None
-        # because crop_by_indices -> resize -> interpolate doesn't accept align_corners with nearest
-        # For 'resample' cropping_mode, warp_affine/grid_sample accepts align_corners with nearest
+        # When align_corners=None is in flags (from extra_args), use the module's default, so masks use the
+        # same align_corners as inputs. This holds in 'slice' cropping_mode too: RandomResizedCrop drops
+        # align_corners for nearest itself (#4852), and RandomCrop's slice resize does not read it.
         if "align_corners" in flags and flags["align_corners"] is None:
             align_corners_was_none = True
             original_align_corners = None
-            # Check if we're using 'slice' cropping_mode which uses interpolate
-            # interpolate doesn't accept align_corners with nearest mode
-            if flags.get("cropping_mode") == "slice":
-                # Keep align_corners=None for slice mode with nearest (interpolate requirement)
-                pass
-            else:
-                # Use the module's default align_corners value from self.flags
-                # This ensures masks use the same align_corners as inputs
-                # For 'resample' mode, warp_affine/grid_sample accepts align_corners with nearest
-                flags["align_corners"] = self.flags.get("align_corners", False)
+            flags["align_corners"] = self.flags.get("align_corners", False)
 
         output = self.apply_transform(input, params, flags, transform)
 
@@ -288,29 +278,15 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         # This ensures masks use the same align_corners setting in inverse as in forward
         if "align_corners" in kwargs:
             align_corners_value = flags.get("align_corners")
-            # When align_corners=None is in kwargs, use the module's default
-            # This ensures masks use the same align_corners value as inputs for consistency
-            # However, for 'slice' cropping_mode with 'nearest' mode, align_corners must be None
-            # because crop_by_indices -> resize -> interpolate doesn't accept align_corners with nearest
-            # For 'resample' cropping_mode, warp_affine/grid_sample accepts align_corners with nearest
+            # When align_corners=None is in kwargs, use the module's default, as apply_transform_mask does.
             # We need to normalize it in kwargs too, because inverse_inputs will call
             # _process_kwargs_to_params_and_flags which merges kwargs into flags
             if kwargs["align_corners"] is None:
                 align_corners_was_none_in_kwargs = True
-                # Check if we're using 'slice' cropping_mode which uses interpolate
-                # interpolate doesn't accept align_corners with nearest mode
-                if flags.get("cropping_mode") == "slice":
-                    # Keep align_corners=None for slice mode with nearest (interpolate requirement)
-                    # Don't modify flags or kwargs
-                    pass
-                else:
-                    # Use the module's default align_corners value
-                    # This ensures masks use the same align_corners as inputs
-                    # For 'resample' mode, warp_affine/grid_sample accepts align_corners with nearest
-                    normalized_align_corners = self.flags.get("align_corners", False)
-                    flags["align_corners"] = normalized_align_corners
-                    # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
-                    kwargs["align_corners"] = normalized_align_corners
+                normalized_align_corners = self.flags.get("align_corners", False)
+                flags["align_corners"] = normalized_align_corners
+                # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
+                kwargs["align_corners"] = normalized_align_corners
             else:
                 flags["align_corners"] = kwargs["align_corners"]
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)

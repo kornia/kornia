@@ -29,6 +29,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CH
 from kornia.core.tensor_wrapper import _unwrap
 from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so2 import So2
+from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
 from kornia.geometry.vector import Vector2
 
 
@@ -51,7 +52,25 @@ class Se2(nn.Module):
 
     The SE(2) is the group of rigid body transformations about the origin of two-dimensional Euclidean
     space :math:`R^2` under the operation of composition.
-    See more:
+
+    Convention:
+        - ``matrix()`` is the 3x3 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()`` and ``g * p`` is
+          :math:`R p + t`, as in :class:`~kornia.geometry.liegroup.Se3`, but an unbatched pose also transforms
+          :math:`(N, 2)` points and a batched one a single :math:`(2,)` point. The rotation is an
+          :class:`~kornia.geometry.liegroup.So2`, whose storage and direction conventions apply.
+        - The tangent vector is :math:`(v_x, v_y, \theta)`, angle last: ``exp`` rotates by :math:`\theta` and
+          translates by :math:`V(\theta) (v_x, v_y)`, and ``log`` returns :math:`\theta` in :math:`[-\pi, \pi]`.
+          ``adjoint()`` is :math:`[[R, (t_y, -t_x)^\top], [0, 1]]`.
+        - ``from_matrix`` ignores the bottom row. In eager execution, it checks approximately that the rotation block
+          has the form :math:`[[a, -b], [b, a]]`, a rotation scaled by :math:`\sqrt{a^2 + b^2}`, and keeps the scale
+          as a non-unit ``z`` that ``log`` drops; it rejects a reflection. Graph export omits the value check and
+          interprets the block as ``z = m00 + i m10``.
+        - Known defects: ``hat`` and ``vee`` put the translation in the bottom row and the angle in a symmetric block
+          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); for ``identity``, ``random`` and any pose
+          composed with or inverted from one, ``t`` and ``g * points`` are a ``Vector2`` instead of a tensor
+          (`#4931 <https://github.com/kornia/kornia/issues/4931>`_), and ``state_dict`` and ``.to()`` skip that
+          translation, while ``.to()`` a real dtype breaks the ``So2`` rotation
+          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
         >>> so2 = So2.identity(1)
@@ -117,13 +136,13 @@ class Se2(nn.Module):
     def __mul__(self, right: torch.Tensor) -> torch.Tensor: ...
 
     def __mul__(self, right: Se2 | torch.Tensor) -> Se2 | torch.Tensor:
-        """Compose two Se2 transformations.
+        """Compose two Se2 transformations, or transform points.
 
         Args:
-            right: the other Se2 transformation.
+            right: the other Se2 transformation, or points of shape :math:`(B, 2)` or :math:`(2,)`.
 
         Return:
-            The resulting Se2 transformation.
+            The resulting Se2 transformation, or the transformed points.
 
         """
         so2 = self.so2
@@ -175,7 +194,8 @@ class Se2(nn.Module):
             Parameter containing:
             tensor([0.5403+0.8415j], requires_grad=True)
             >>> s.t
-            tensor([[0.3818, 1.3012]], grad_fn=<StackBackward0>)
+            Parameter containing:
+            tensor([[0.3818, 1.3012]], requires_grad=True)
 
         """
         # check_v_shape
@@ -185,14 +205,20 @@ class Se2(nn.Module):
             raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v.shape}")
         theta = v[..., 2]
         so2 = So2.exp(theta)
-        z = torch.tensor(0.0, device=v.device, dtype=v.dtype)
-        theta_nonzeros = theta != 0.0
-        # both quotients are 0/0 at theta = 0, and torch.where differentiates the branch it does
-        # not select, so 0 * nan = nan used to reach v.grad at the identity. Divide by a
-        # substituted 1.0 there; the where discards that value.
-        safe_theta = torch.where(theta_nonzeros, theta, torch.ones_like(theta))
-        a = torch.where(theta_nonzeros, so2.z.imag / safe_theta, z)
-        b = torch.where(theta_nonzeros, (1.0 - so2.z.real) / safe_theta, z)
+        # V = [[a, -b], [b, a]] with a = sin(theta) / theta and b = (1 - cos(theta)) / theta. Both are
+        # 0/0 at theta = 0, 1 - cos(theta) cancels just above it, and so does the autograd derivative of
+        # sin(theta) / theta, so below 0.5 rad write them through the cancellation-free So3 coefficients:
+        # a = 1 - theta^2 (theta - sin(theta)) / theta^3 and
+        # b = theta (1 - cos(theta)) / theta^2 (kornia#4924), evaluated at |theta| because both are even.
+        # Above it take sin(theta) / theta and 2 sin(theta / 2)^2 / theta directly: 1 - theta^2 (...)
+        # cancels where sin(theta) / theta is small, and theta^3 overflows float16 above 40.3 rad. Each
+        # branch sees a substituted angle where it is not selected, since torch.where differentiates both.
+        small = theta.abs() < 0.5
+        theta_s = torch.where(small, theta, torch.zeros_like(theta))
+        theta_l = torch.where(small, torch.ones_like(theta), theta)
+        coef_a, coef_b, _ = _so3_small_angle_coefficients(theta_s.abs())
+        a = torch.where(small, 1.0 - theta_s * theta_s * coef_b, torch.sin(theta_l) / theta_l)
+        b = torch.where(small, theta_s * coef_a, 2.0 * torch.sin(0.5 * theta_l) ** 2 / theta_l)
         x = v[..., 0]
         y = v[..., 1]
         t = torch.stack((a * x - b * y, b * x + a * y), -1)
@@ -214,12 +240,11 @@ class Se2(nn.Module):
         """
         theta = self.so2.log()
         half_theta = 0.5 * theta
-        denom = self.so2.z.real - 1
-        a = torch.where(
-            denom != 0,
-            -(half_theta * self.so2.z.imag) / denom,
-            torch.tensor(0.0, device=theta.device, dtype=theta.dtype),
-        )
+        # V^-1 = [[a, theta / 2], [-theta / 2, a]] with a = (theta / 2) cot(theta / 2), a 0/0 at
+        # theta = 0 that cancels just above it: a = 1 - theta^2 (1 - (theta / 2) cot(theta / 2)) / theta^2
+        # through the cancellation-free So3 coefficient (kornia#4924).
+        _, _, coef_c = _so3_small_angle_coefficients(theta.abs())
+        a = 1.0 - theta * theta * coef_c
         row0 = torch.stack((a, half_theta), -1)
         row1 = torch.stack((-half_theta, a), -1)
         V_inv = torch.stack((row0, row1), -2)
@@ -228,16 +253,19 @@ class Se2(nn.Module):
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
-        """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 3, 3)`.
+        """Convert a tangent vector to the matrix that :meth:`vee` inverts. Returns ``v.shape[:-1] + (3, 3)``.
+
+        The matrix is not the se(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            v: vector of shape:math:`(B, 3)`.
+            v: vector of shape :math:`(B, 3)` or :math:`(3,)`.
 
         Example:
-            >>> theta = torch.tensor(3.1415/2)
-            >>> So2.hat(theta)
-            tensor([[0.0000, 1.5707],
-                    [1.5707, 0.0000]])
+            >>> v = torch.tensor([1.0, 2.0, 0.5])
+            >>> Se2.hat(v)
+            tensor([[0.0000, 0.5000, 0.0000],
+                    [0.5000, 0.0000, 0.0000],
+                    [1.0000, 2.0000, 0.0000]])
 
         """
         # check_v_shape
@@ -252,13 +280,15 @@ class Se2(nn.Module):
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
-        """Convert elements from lie algebra to vector space.
+        """Read the tangent vector back from a :meth:`hat` matrix.
+
+        It reads kornia's layout, not the se(2) generator (`#4929 <https://github.com/kornia/kornia/issues/4929>`_).
 
         Args:
-            omega: 3x3-matrix representing lie algebra of shape :math:`(B, 3, 3)`.
+            omega: 3x3-matrix built by :meth:`hat`, of shape :math:`(B, 3, 3)` or :math:`(3, 3)`.
 
         Returns:
-            vector of shape :math:`(B, 3)`.
+            vector of shape :math:`(B, 3)` or :math:`(3,)`.
 
         Example:
             >>> v = torch.ones(3)
@@ -371,7 +401,7 @@ class Se2(nn.Module):
         device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
-        """Create a Se2 group representing a random transformation.
+        """Create a Se2 group from ``So2.random`` and a translation drawn from :math:`U[0, 1)`.
 
         Args:
             batch_size: the batch size of the underlying data.

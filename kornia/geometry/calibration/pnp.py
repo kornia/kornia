@@ -27,12 +27,16 @@ from kornia.geometry.conversions import convert_points_to_homogeneous, normalize
 from kornia.geometry.linalg import transform_points
 
 
-def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def _mean_isotropic_scale_normalize(
+    points: torch.Tensor, eps: float = 1e-8, weights: Optional[torch.Tensor] = None
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Normalize points.
 
     Args:
        points : torch.Tensor containing the points to be normalized with shape :math:`(B, N, D)`.
        eps : Small value to avoid division by zero error.
+       weights : Optional non-negative per-point weights with shape :math:`(B, N)` for the mean and the scale.
+          A point with weight zero does not affect the normalization.
 
     Returns:
        Tuple containing the normalized points in the shape :math:`(B, N, D)` and the transformation matrix
@@ -40,8 +44,13 @@ def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> 
 
     """
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
-    x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1xD
-    scale = (points - x_mean).norm(dim=-1, p=2).mean(dim=-1)  # B
+    if weights is None:
+        x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1xD
+        scale = (points - x_mean).norm(dim=-1, p=2).mean(dim=-1)  # B
+    else:
+        w = weights / weights.sum(dim=1, keepdim=True)  # BxN
+        x_mean = (w[..., None] * points).sum(dim=1, keepdim=True)  # Bx1xD
+        scale = (w * (points - x_mean).norm(dim=-1, p=2)).sum(dim=-1)  # B
 
     D_int = points.shape[-1]
     scale = (D_int**0.5) / (scale + eps)  # B
@@ -89,16 +98,12 @@ def solve_pnp_dlt(
           camera-to-world pose.
         - ``intrinsics`` is the :math:`(B, 3, 3)` ``K``; the :math:`(B, 4, 4)` matrix that a
           ``PinholeCamera`` stores is rejected.
-        - ``weights`` scales the two rows each point contributes to the homogeneous linear system, so a uniform
-          ``weights`` leaves the answer unchanged up to rounding.
-        - fewer than 6 points, or a ``world_points``, ``img_points`` or ``intrinsics`` in a dtype other than
-          float32/float64, raise :class:`~kornia.core.exceptions.BaseError` naming the argument; a degenerate
-          ``world_points`` raises :class:`AssertionError` from the check above.
-
-    .. warning::
-        A zero weight removes a point's rows but not the point: it still enters the normalization and the
-        degeneracy check, so coplanar points plus zero-weight points off the plane pass the check and return a
-        wrong pose: `#4799 <https://github.com/kornia/kornia/issues/4799>`_.
+        - ``weights`` scales the two rows each point contributes to the homogeneous linear system, and the
+          normalization and the degeneracy check use the same weighting. A uniform ``weights`` leaves the answer
+          unchanged up to rounding, and a zero weight is the same as removing the point.
+        - fewer than 6 points or 6 nonzero ``weights``, or a ``world_points``, ``img_points`` or ``intrinsics``
+          in a dtype other than float32/float64, raise :class:`~kornia.core.exceptions.BaseError` naming the
+          argument; a degenerate ``world_points`` raises :class:`AssertionError` from the check above.
 
     Args:
         world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
@@ -180,13 +185,34 @@ def solve_pnp_dlt(
 
     B, N = world_points.shape[:2]
 
+    # The weights scale each point's rows of the linear system, so the normalization and the
+    # degeneracy check below use the same weighting: a point with weight zero drops out of all three.
+    point_weights = None
+    check_scale = None
+    if weights is not None:
+        if weights.shape != (B, N):
+            raise AssertionError(f"Weights should have shape (B, N). Got {weights.shape}.")
+        num_used = (weights != 0).sum(dim=1, keepdim=True)
+        KORNIA_CHECK(
+            bool((num_used >= 6).all()),
+            "weights must hold at least 6 nonzero entries in every batch element, as world_points must hold 6 points.",
+        )
+        # Only the weights relative to the largest one matter below; dividing by it first keeps the squares
+        # from overflowing or underflowing.
+        rel_weights = weights / weights.abs().amax(dim=1, keepdim=True)
+        point_weights = rel_weights**2
+        # Rescale so that the squared weights sum to the number of nonzero-weight points: uniform weights
+        # leave the check unchanged, and zero weights check the same as the remaining points alone.
+        num_used = num_used.to(point_weights.dtype)
+        check_scale = (rel_weights * torch.sqrt(num_used / point_weights.sum(dim=1, keepdim=True)))[..., None]
+
     # Getting normalized world points.
-    world_points_norm, world_transform_norm = _mean_isotropic_scale_normalize(world_points)
+    world_points_norm, world_transform_norm = _mean_isotropic_scale_normalize(world_points, weights=point_weights)
 
     # Checking if world_points_norm (of any element of the batch) has rank = 3. This
     # function cannot be used if all world points (of any element of the batch) lie
     # on a line or if all world points (of any element of the batch) lie on a plane.
-    s = _torch_linalg_svdvals(world_points_norm)
+    s = _torch_linalg_svdvals(world_points_norm if check_scale is None else check_scale * world_points_norm)
     if torch.any(s[:, -1] < svd_eps):
         raise AssertionError(
             "The last singular value of one/more of the elements of the batch is smaller "
@@ -198,7 +224,7 @@ def solve_pnp_dlt(
 
     # Normalizing img_points_inv
     img_points_inv = normalize_points_with_intrinsics(img_points, intrinsics)
-    img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_inv)
+    img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_inv, weights=point_weights)
     inv_img_transform_norm = torch.inverse(img_transform_norm)
 
     # Setting up the system (the matrix A in Ax=0)
@@ -210,8 +236,6 @@ def solve_pnp_dlt(
 
     # Apply weights to the system if provided
     if weights is not None:
-        if weights.shape != (B, N):
-            raise AssertionError(f"Weights should have shape (B, N). Got {weights.shape}.")
         weights_expanded = weights.unsqueeze(-1).repeat(1, 1, 2).view(B, 2 * N, 1)
         # Multiply the system matrix by the expanded weights
         system = weights_expanded * system

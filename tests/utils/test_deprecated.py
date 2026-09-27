@@ -210,7 +210,7 @@ class TestRestoredWrappers:
 
         assert isinstance(utils.ImageToTensor, type)
         assert issubclass(utils.ImageToTensor, NewImageToTensor)
-        with pytest.warns(DeprecationWarning):
+        with pytest.warns(DeprecationWarning, match=r"kornia\.image\.ImageToTensor"):
             inst = utils.ImageToTensor()
         assert isinstance(inst, NewImageToTensor)
 

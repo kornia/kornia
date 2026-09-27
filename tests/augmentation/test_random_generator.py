@@ -33,6 +33,7 @@ from kornia.augmentation.random_generator import (
     MotionBlurGenerator,
     PerspectiveGenerator,
     PlainUniformGenerator,
+    PlanckianJitterGenerator,
     PosterizeGenerator,
     ProbabilityGenerator,
     RandomGaussianBlurGenerator,
@@ -1865,3 +1866,36 @@ class TestGaussianBlurGenBufferHygiene:
         gen = RandomGaussianBlurGenerator(sigma=(0.1, 2.0))
         assert "sigma" not in dict(gen.named_buffers())
         assert gen.sigma == (0.1, 2.0)
+
+
+class TestPlanckianJitterGenerator:
+    # The half dtypes are named rather than taken from the fixture so the pins run on the default float32
+    # legs too; the device comes from the fixture so the MPS leg draws on MPS.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_index_sampler_stays_float32_for_half_precision(self, device, half_dtype):
+        # The draw is truncated to a table index. Half-precision torch.rand on MPS
+        # can return exactly 1.0, which gave an index one past the end (#4553).
+        generator = PlanckianJitterGenerator([0, 25])
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        assert generator.pl_idx_dist.low.dtype == torch.float32
+        assert generator.pl_idx_dist.high.dtype == torch.float32
+        assert generator.pl_idx_dist.low.device.type == device.type
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_index_sampler_follows_full_precision_dtype(self, dtype):
+        generator = PlanckianJitterGenerator([0, 25])
+        generator.set_rng_device_and_dtype(torch.device("cpu"), dtype)
+        assert generator.pl_idx_dist.low.dtype == dtype
+
+    # CPU half torch.rand never returns 1.0, so this only discriminates on the MPS leg: there, with a
+    # half-precision sampler, 2**16 draws give about 16 (float16) and 128 (bfloat16) indices equal to 25.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_indices_in_range(self, device, half_dtype):
+        generator = PlanckianJitterGenerator([0, 25])
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        torch.manual_seed(0)
+        idx = generator(torch.Size([1 << 16, 3, 4, 4]))["idx"]
+        assert idx.dtype == torch.long
+        assert idx.device.type == device.type
+        assert int(idx.min()) >= 0
+        assert int(idx.max()) < 25

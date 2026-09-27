@@ -218,8 +218,10 @@ def main() -> None:
         device,
         units="img/s",
         regimes=[
-            "kornia/torchvision: batched float BCHW (torchvision equalize: uint8 BCHW); "
-            "albumentations/opencv/PIL: uint8 HWC per-image loop (CPU); scikit-image: normalized float HWC loop",
+            (
+                "kornia/torchvision: batched float BCHW (torchvision equalize: uint8 BCHW); "
+                "albumentations/opencv/PIL: uint8 HWC per-image loop (CPU); scikit-image: normalized float HWC loop"
+            ),
             "PIL: prebuilt Image objects; albumentations CLAHE equalizes only L in Lab, the others all 3 channels",
         ],
         missing=[(label, imported[key][1]) for key, label in labels.items() if libs[key] is None],

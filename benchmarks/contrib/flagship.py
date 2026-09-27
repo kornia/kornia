@@ -149,8 +149,10 @@ def main() -> None:
         device,
         units="img/s",
         regimes=[
-            "kornia: batched float B1HW mask; opencv/scikit-image/SciPy: per-image loop (CPU), "
-            "uint8 masks except bool for scikit-image and SciPy labeling"
+            (
+                "kornia: batched float B1HW mask; opencv/scikit-image/SciPy: per-image loop (CPU), "
+                "uint8 masks except bool for scikit-image and SciPy labeling"
+            )
         ],
         missing=[(name, err) for lib, name, err in libs if lib is None],
     )

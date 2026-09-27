@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.constants import DataKey, Resample
 
 from testing.base import BaseTester, supports_2d_border_padding, supports_bilinear_2d_grid_sample
 
@@ -299,13 +300,45 @@ class TestGeometricCropConventions(BaseTester):
         self.assert_close(nearest(x, params=params), x)
 
     @pytest.mark.device_agnostic
-    def test_wart_random_resized_crop_fallback_leaves_scale_and_ratio_4814(self):
-        # #4814: no candidate may equal the input and the fallback compares H / W with min(ratio), so scale=(1, 1)
-        # crops a portrait or square image; torchvision's get_params keeps 8 x 6 and 8 x 8. Flips on either fix.
+    @pytest.mark.parametrize(
+        "shape,crops",
+        [
+            ((8, 8), {(8, 8)}),
+            ((8, 6), {(8, 6), (7, 6)}),
+            ((6, 8), {(6, 8), (6, 7)}),
+            ((7, 8), {(7, 8), (7, 7)}),
+        ],
+        ids=["square", "portrait", "landscape_at_max_ratio", "landscape"],
+    )
+    def test_convention_random_resized_crop_full_scale_keeps_the_whole_image_4814(self, shape, crops):
+        # #4814: a candidate used to have to be strictly smaller than the input, and the fallback compared
+        # H / W with min(ratio), so scale=(1, 1) cropped square, portrait and most landscape inputs
+        # (8 x 6 -> 4 x 6, 7 x 8 -> 6 x 8). As in torchvision's get_params, a candidate may equal the input, and
+        # one that rounds a pixel short on the longer side (7 x 6 for 8 x 6, in 18% of draws) also fits.
         torch.manual_seed(0)
-        for shape, crop in (((8, 6), (4, 6)), ((8, 8), (6, 8))):
-            src = K.RandomResizedCrop((4, 4), scale=(1.0, 1.0), p=1.0).forward_parameters((1, 1, *shape))["src"]
-            assert ((src[0, 2, 1] - src[0, 1, 1]).item() + 1, (src[0, 1, 0] - src[0, 0, 0]).item() + 1) == crop
+        src = K.RandomResizedCrop((4, 4), scale=(1.0, 1.0), p=1.0).forward_parameters((256, 1, *shape))["src"]
+        heights = (src[:, 2, 1] - src[:, 1, 1] + 1).long().tolist()
+        widths = (src[:, 1, 0] - src[:, 0, 0] + 1).long().tolist()
+        assert set(zip(heights, widths)) == crops
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "shape,ratio,crop",
+        [
+            ((224, 224), (1.5, 2.0), (149, 224)),
+            ((100, 60), (3.0 / 4.0, 4.0 / 3.0), (80, 60)),
+            ((60, 100), (0.5, 0.75), (60, 45)),
+            ((60, 100), torch.tensor([0.5, 0.75]), (60, 45)),
+        ],
+        ids=["narrower_than_min_ratio", "portrait_narrower_than_min_ratio", "wider_than_max_ratio", "tensor_ratio"],
+    )
+    def test_convention_random_resized_crop_fallback_follows_torchvision_4814(self, shape, ratio, crop):
+        # #4814: when no candidate fits, the crop size matches torchvision's get_params. ``ratio`` is width / height:
+        # an input narrower than min(ratio) keeps its width, one wider than max(ratio) keeps its height.
+        torch.manual_seed(0)
+        aug = K.RandomResizedCrop((4, 4), scale=(1.0, 1.0), ratio=ratio, p=1.0)
+        src = aug.forward_parameters((1, 1, *shape))["src"]
+        assert ((src[0, 2, 1] - src[0, 1, 1]).item() + 1, (src[0, 1, 0] - src[0, 0, 0]).item() + 1) == crop
 
     @pytest.mark.device_agnostic
     def test_wart_crop_siblings_disagree_on_integer_size_4417(self):
@@ -364,13 +397,41 @@ class TestGeometricCropConventions(BaseTester):
             assert bool((first - resampled(image, params=sliced._params)).abs().max() > 0.1) == disagree
 
     @pytest.mark.device_agnostic
-    def test_wart_random_resized_crop_slice_mode_rejects_nearest_4802(self):
-        # #4802: flips when slice mode drops the default align_corners for nearest resampling.
+    def test_random_resized_crop_slice_mode_accepts_nearest_4802(self):
+        # #4802: slice mode drops the default align_corners for nearest resampling.
         image = torch.rand(1, 1, 8, 8)
-        for kwargs in ({"cropping_mode": "resample"}, {"align_corners": None}):
-            assert K.RandomResizedCrop((4, 4), resample="nearest", p=1.0, **kwargs)(image).shape == (1, 1, 4, 4)
-        with pytest.raises(ValueError):
-            K.RandomResizedCrop((4, 4), resample="nearest", p=1.0)(image)
+        for kwargs in ({"cropping_mode": "resample"}, {"align_corners": None}, {}, {"align_corners": False}):
+            aug = K.RandomResizedCrop((4, 4), resample="nearest", p=1.0, **kwargs)
+            assert aug(image).shape == (1, 1, 4, 4)
+        # Slice mode matches the result of passing align_corners=None explicitly.
+        params = aug.forward_parameters(image.shape)
+        default = K.RandomResizedCrop((4, 4), resample="nearest", p=1.0)(image, params=params)
+        explicit = K.RandomResizedCrop((4, 4), resample="nearest", align_corners=None, p=1.0)(image, params=params)
+        assert torch.equal(default, explicit)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("resample", ["nearest", "bilinear", "bicubic"])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_convention_random_resized_crop_mask_override_none_follows_module_4854(
+        self, cropping_mode, resample, align_corners, nested
+    ):
+        # #4854: a mask override with align_corners=None means the module's align_corners in both cropping modes.
+        # Slice mode used to leave it None, which interpolate reads as False, so with the default
+        # align_corners=True a bilinear or bicubic mask no longer lined up with the image.
+        image = torch.rand(2, 1, 16, 16)
+        aug = K.RandomResizedCrop(
+            (11, 11), resample=resample, align_corners=align_corners, cropping_mode=cropping_mode, p=1.0
+        )
+        inner = K.AugmentationSequential(aug, data_keys=["input", "mask"]) if nested else aug
+        seq = K.AugmentationSequential(
+            inner,
+            data_keys=["input", "mask"],
+            extra_args={DataKey.MASK: {"resample": Resample.get(resample), "align_corners": None}},
+        )
+        output, mask = seq(image, image.clone())
+        self.assert_close(mask, output)
 
     def test_convention_resize_side_policies_and_inverse(self, device, dtype):
         x = torch.arange(70, device=device, dtype=dtype).reshape(1, 1, 7, 10)

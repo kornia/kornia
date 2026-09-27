@@ -26,10 +26,49 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.tensor_wrapper import _unwrap
-from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
-from kornia.geometry.linalg import batched_dot_product
+from kornia.geometry.conversions import quaternion_to_axis_angle, vector_to_skew_symmetric_matrix
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
+
+
+def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    r"""Evaluate the three angle coefficients of the SO(3) and SE(3) closed forms without cancellation.
+
+    Returns :math:`(1 - \cos\theta) / \theta^2`, :math:`(\theta - \sin\theta) / \theta^3` and
+    :math:`(1 - \tfrac{\theta}{2}\cot\tfrac{\theta}{2}) / \theta^2`, the coefficients of :math:`[\omega]_\times`
+    and :math:`[\omega]_\times^2` in the SO(3) Jacobians, in the SE(3) :math:`V` matrix and in its inverse.
+
+    Each closed form is a 0/0 at :math:`\theta = 0` and keeps only about :math:`\epsilon / \theta^2` of its
+    relative accuracy near it: all three evaluate to exactly 0 in float32 for :math:`\theta \le 10^{-4}` and in
+    float64 for :math:`\theta \le 10^{-8}`. Below ``theta_small`` the Taylor series through :math:`\theta^{10}`
+    is used instead. At the switch point the series is accurate to a fraction of an ulp and the closed forms to a
+    few hundred ulps, so the two branches agree there. The closed forms divide by :math:`\theta` one factor at a
+    time: :math:`\theta^3` overflows float16 above 40.3 rad and :math:`\theta^2` above 256 rad.
+
+    Args:
+        theta: rotation angles of any shape, non-negative.
+
+    Returns:
+        the three coefficients, each with the shape of ``theta``.
+    """
+    theta_small = 0.2 if theta.dtype == torch.float64 else 0.5
+    small = theta < theta_small
+    # torch.where differentiates the branch it does not select, so each branch gets a substituted argument
+    # where the other is used: 1 for the closed forms (0/0 at theta = 0) and 0 for the series, whose Horner
+    # terms overflow float16 from about 50 rad and would put 0 * inf = nan into the gradient (kornia#4965).
+    safe_theta = torch.where(small, torch.ones_like(theta), theta)
+    series_theta = torch.where(small, theta, torch.zeros_like(theta))
+    t2 = series_theta * series_theta
+    a_series = 0.5 + t2 * (-1 / 24 + t2 * (1 / 720 + t2 * (-1 / 40320 + t2 * (1 / 3628800 - t2 / 479001600))))
+    b_series = 1 / 6 + t2 * (-1 / 120 + t2 * (1 / 5040 + t2 * (-1 / 362880 + t2 * (1 / 39916800 - t2 / 6227020800))))
+    c_series = 1 / 12 + t2 * (
+        1 / 720 + t2 * (1 / 30240 + t2 * (1 / 1209600 + t2 * (1 / 47900160 + t2 * (691 / 1307674368000))))
+    )
+    half = 0.5 * safe_theta
+    a = torch.where(small, a_series, (1 - torch.cos(safe_theta)) / safe_theta / safe_theta)
+    b = torch.where(small, b_series, (1 - torch.sin(safe_theta) / safe_theta) / safe_theta / safe_theta)
+    c = torch.where(small, c_series, (1 - half * torch.cos(half) / torch.sin(half)) / safe_theta / safe_theta)
+    return a, b, c
 
 
 class So3(nn.Module):
@@ -39,7 +78,30 @@ class So3(nn.Module):
     :math:`R^3` under the operation of composition.
     See more: https://en.wikipedia.org/wiki/3D_rotation_group
 
-    We internally represent the rotation by a unit quaternion.
+    We internally represent the rotation by a :class:`~kornia.geometry.quaternion.Quaternion`.
+
+    Convention:
+        - The tangent vector is the rotation vector, the axis times the angle in radians, and ``hat(v)`` is its
+          cross-product matrix: ``hat(v) @ p`` equals ``torch.linalg.cross(v, p)``. ``log()`` is
+          ``q.to_axis_angle()``: it reads only the direction of ``q``, within the range limits stated on
+          :class:`~kornia.geometry.quaternion.Quaternion`, and returns the principal vector, of norm at most
+          :math:`\pi`, the same for ``q`` and ``-q`` below a half turn.
+        - For a unit quaternion, ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p``
+          rotates points ``p`` of shape :math:`(B, 3)`, a tensor or a ``Vector3``, as :math:`R p`; and ``adjoint()``
+          is :math:`R` itself.
+          :ref:`Rotations and rigid motions <rotation-conventions>` compares these with scipy, Sophus and Eigen.
+        - For a small :math:`\delta`,
+          :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`,
+          with :math:`J_r` = ``right_jacobian(omega)`` and :math:`J_l` = ``left_jacobian(omega)`` =
+          ``right_jacobian(-omega)``.
+        - Known defects: the quaternion is stored as given, so with a non-unit ``q`` the ``matrix()`` is not a
+          rotation and ``s * p`` scales ``p`` by :math:`|q|^2`
+          (`#4942 <https://github.com/kornia/kornia/issues/4942>`_); ``from_matrix`` accepts a reflection
+          (det :math:`-1`) without error and returns an ``So3`` whose ``matrix()`` is not the input
+          (`#4773 <https://github.com/kornia/kornia/issues/4773>`_); ``exp``, ``identity``, ``random``,
+          ``from_matrix`` and every operation store the quaternion as a plain tensor, which has no ``state_dict()``
+          entry and which ``.to()`` leaves unchanged; only a quaternion built on an ``nn.Parameter`` is saved and moved
+          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
         >>> q = Quaternion.identity()
@@ -52,17 +114,15 @@ class So3(nn.Module):
     def __init__(self, q: Quaternion) -> None:
         """Construct the base class.
 
-        Internally represented by a unit quaternion `q`.
-
         Args:
             q: Quaternion with the shape of :math:`(B, 4)`.
 
         Example:
-            >>> data = torch.ones((2, 4))
+            >>> data = torch.tensor([[1., 0., 0., 0.], [0., 1., 0., 0.]])
             >>> q = Quaternion(data)
             >>> So3(q)
-            tensor([[1., 1., 1., 1.],
-                    [1., 1., 1., 1.]])
+            tensor([[1., 0., 0., 0.],
+                    [0., 1., 0., 0.]])
 
         """
         super().__init__()
@@ -76,13 +136,13 @@ class So3(nn.Module):
         return So3(self._q[idx])
 
     def __mul__(self, right: So3) -> So3:
-        """Compose two So3 transformations.
+        """Compose two So3 transformations, or rotate points.
 
         Args:
-            right: the other So3 transformation.
+            right: the other So3 transformation, or points of shape :math:`(B, 3)` as a tensor or a ``Vector3``.
 
         Return:
-            The resulting So3 transformation.
+            The resulting So3 transformation, or the rotated points of the type of ``right``.
 
         """
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
@@ -121,54 +181,37 @@ class So3(nn.Module):
         """
         KORNIA_CHECK_SHAPE(v, ["*", "3"])
         theta = v.norm(dim=-1, keepdim=True)
-        theta_half = 0.5 * theta
-        w = torch.cos(theta_half)
-        eps = torch.finfo(v.dtype).eps * 1e3
-        small_mask = theta <= eps
-        # theta = 0 (the identity, and the standard initialisation for pose optimisation) makes
-        # b_large a 0/0. torch.where differentiates the branch it does not select, so 0 * nan =
-        # nan used to reach every component of v.grad even though the value came from b_small.
-        # Divide by a substituted 1.0 there: the where discards that value, only the gradient
-        # changes.
-        safe_theta = torch.where(small_mask, torch.ones_like(theta), theta)
-        b_large = torch.sin(theta_half) / safe_theta
-        b_small = 0.5 - (theta * theta) / 48.0
-        b = torch.where(small_mask, b_small, b_large)
-        xyz = b * v
-        q = torch.cat((w, xyz), dim=-1)
-        return So3(Quaternion(q))
+        w = torch.cos(0.5 * theta)
+        # sin(theta / 2) / theta is a 0/0 at theta = 0 (the identity, and the standard initialisation
+        # for pose optimisation), so below 0.5 rad its series through theta**10 is used instead; the
+        # truncation error there is under 1e-17, below the resolution of every dtype. torch.where
+        # differentiates the branch it does not select, so each branch is evaluated on an input that
+        # keeps it finite: the closed form on 1.0 below the switch, and the series on 0.0 above it
+        # (on theta itself its powers overflow float16 above about 90 rad and 0 * inf = nan).
+        small = theta < 0.5
+        safe_theta = torch.where(small, torch.ones_like(theta), theta)
+        series_theta = torch.where(small, theta, torch.zeros_like(theta))
+        t2 = series_theta * series_theta
+        b_series = 0.5 + t2 * (-1 / 48 + t2 * (1 / 3840 + t2 * (-1 / 645120 + t2 * (1 / 185794560 - t2 / 81749606400))))
+        b = torch.where(small, b_series, torch.sin(0.5 * safe_theta) / safe_theta)
+        return So3(Quaternion(torch.cat((w, b * v), dim=-1)))
 
     def log(self) -> torch.Tensor:
         """Convert elements of lie group  to elements of lie algebra.
 
         Example:
-            >>> data = torch.ones((2, 4))
-            >>> q = Quaternion(data)
-            >>> So3(q).log()
+            >>> So3.identity(batch_size=2).log()
             tensor([[0., 0., 0.],
                     [0., 0., 0.]])
 
         """
-        vec, real = self.q.vec, self.q.real
-        vec_sq = batched_dot_product(vec, vec)
-        nonzero = vec_sq > 0
-        # Each branch below is singular exactly where the other one is selected, and torch.where
-        # differentiates both: at the identity (vec = 0) sqrt and the division by theta diverge,
-        # and at a half turn (real = 0) the small-angle branch divides by zero. Either way
-        # 0 * inf = nan used to reach every coefficient of a gradient whose value was finite.
-        # Substitute a safe argument into each branch -- the where discards those values, so only
-        # the gradients change.
-        safe_vec_sq = torch.where(nonzero, vec_sq, torch.ones_like(vec_sq))
-        theta = torch.where(nonzero, safe_vec_sq.sqrt(), torch.zeros_like(vec_sq))
-        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
-        safe_real = torch.where(nonzero, real, torch.zeros_like(real))
-        safe_real_recip = torch.where(nonzero, torch.ones_like(real), real)
-        # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
-        return torch.where(
-            nonzero[..., None],
-            2 * safe_real[..., None].acos() * vec / safe_theta[..., None],
-            2 * vec / safe_real_recip[..., None],
-        )
+        # quaternion_to_axis_angle is the principal logarithm and it measures the angle with atan2: q and -q, the
+        # same rotation, give the same vector with |theta| <= pi (#4925), a rotation below 1e-4 rad in float32 keeps
+        # its digits instead of collapsing to 0 through 2 * acos(real) (#4897), and the identity keeps the finite
+        # gradient 2 * vec / real of #4404.
+        # It agrees with Sophus's 2 * atan(|vec| / real) / |vec| * vec away from real = 0:
+        # https://github.com/strasdat/Sophus/blob/main/sympy/sophus/so3.py
+        return quaternion_to_axis_angle(_unwrap(self.q.data))
 
     @staticmethod
     def hat(v: Vector3 | torch.Tensor) -> torch.Tensor:
@@ -227,7 +270,7 @@ class So3(nn.Module):
         The matrix is of the form:
 
         .. math::
-            \begin{bmatrix} 1-2y^2-2z^2 & 2xy-2zw & 2xy+2yw \\
+            \begin{bmatrix} 1-2y^2-2z^2 & 2xy-2zw & 2xz+2yw \\
             2xy+2zw & 1-2x^2-2z^2 & 2yz-2xw \\
             2xz-2yw & 2yz+2xw & 1-2x^2-2y^2\end{bmatrix}
 
@@ -361,7 +404,7 @@ class So3(nn.Module):
 
     @classmethod
     def rot_y(cls, y: torch.Tensor) -> So3:
-        """Construct a z-axis rotation.
+        """Construct a y-axis rotation.
 
         Args:
             y: the y-axis rotation angle.
@@ -399,7 +442,7 @@ class So3(nn.Module):
         """Compute the right Jacobian of So3.
 
         Args:
-            vec: the input point of shape :math:`(B, 3)`.
+            vec: the tangent vector of shape :math:`(B, 3)`.
 
         Example:
             >>> vec = torch.tensor([1., 2., 3.])
@@ -412,19 +455,16 @@ class So3(nn.Module):
         KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
+        a, b, _ = _so3_small_angle_coefficients(theta)
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
-        return (
-            I
-            - ((1 - torch.cos(theta)) / theta**2) * R_skew
-            + ((theta - torch.sin(theta)) / theta**3) * (R_skew @ R_skew)
-        )
+        return I - a * R_skew + b * (R_skew @ R_skew)
 
     @staticmethod
     def Jr(vec: torch.Tensor) -> torch.Tensor:
         """Alias for right jacobian.
 
         Args:
-            vec: the input point of shape :math:`(B, 3)`.
+            vec: the tangent vector of shape :math:`(B, 3)`.
 
         """
         return So3.right_jacobian(vec)
@@ -434,7 +474,7 @@ class So3(nn.Module):
         """Compute the left Jacobian of So3.
 
         Args:
-            vec: the input point of shape :math:`(B, 3)`.
+            vec: the tangent vector of shape :math:`(B, 3)`.
 
         Example:
             >>> vec = torch.tensor([1., 2., 3.])
@@ -447,19 +487,16 @@ class So3(nn.Module):
         KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
+        a, b, _ = _so3_small_angle_coefficients(theta)
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
-        return (
-            I
-            + ((1 - torch.cos(theta)) / theta**2) * R_skew
-            + ((theta - torch.sin(theta)) / theta**3) * (R_skew @ R_skew)
-        )
+        return I + a * R_skew + b * (R_skew @ R_skew)
 
     @staticmethod
     def Jl(vec: torch.Tensor) -> torch.Tensor:
         """Alias for left jacobian.
 
         Args:
-            vec: the input point of shape :math:`(B, 3)`.
+            vec: the tangent vector of shape :math:`(B, 3)`.
 
         """
         return So3.left_jacobian(vec)

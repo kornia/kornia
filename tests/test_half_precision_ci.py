@@ -267,8 +267,10 @@ def test_describe_audit_drift_reports_moves_stales_missings_and_count_drift() ->
     )
 
     assert _describe_audit_drift(audited, discovered) == [
-        "audited entry tests/a.py:10 torch.rand has no call site; "
-        "tests/a.py:11 torch.rand is not audited (the same call moved?)",
+        (
+            "audited entry tests/a.py:10 torch.rand has no call site; "
+            "tests/a.py:11 torch.rand is not audited (the same call moved?)"
+        ),
         "audited entry tests/a.py:20 torch.randperm has no matching call site (stale entry)",
         "audited entry tests/c.py:49 torch.randn is audited 2x but found 1x at that line",
         "eager RNG call site tests/a.py:9 torch.randn is missing from the audit",
@@ -956,7 +958,8 @@ def test_pinned_runner_images_have_availability_guards() -> None:
     assert separator, "missing tests-mps job"
     tests_mps = re.split(r"\n(?=  [\w-]+:\n)", tests_mps_tail, maxsplit=1)[0]
     assert "\n      os: macos-15\n" in tests_mps
-    assert "          - os: windows-2022\n" in pr_workflow
+    # torch 2.5.1 on Windows runs only in the scheduled matrix, so windows-2022 is pinned in the
+    # scheduled workflow alone.
     assert "          - os: windows-2022\n" in scheduled_workflow
 
     for label in ("macos-15", "windows-2022"):

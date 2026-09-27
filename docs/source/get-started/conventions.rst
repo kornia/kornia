@@ -100,6 +100,64 @@ Angles and rotations
     q = Quaternion.identity()
     assert q.data.tolist() == [1.0, 0.0, 0.0, 0.0]  # w, x, y, z
 
+.. _rotation-conventions:
+
+Rotations and rigid motions
+---------------------------
+
+:class:`~kornia.geometry.quaternion.Quaternion` multiplies by the Hamilton product, so ``(q1 * q2).matrix()`` is
+``q1.matrix() @ q2.matrix()``: the right operand acts first. The Lie groups :class:`~kornia.geometry.liegroup.So3`,
+:class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
+:class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``, with ``R`` the
+``matrix()`` of the rotation part. ``So2`` and ``Se2`` do so for any complex number, and a non-unit one also scales by
+its modulus; ``So3`` and ``Se3`` need a unit quaternion
+(`#4942 <https://github.com/kornia/kornia/issues/4942>`_). The tangent vectors of ``Se3`` and ``Se2`` put the
+rotation part, in radians, last: ``[υ, ω]`` and ``[vx, vy, θ]``. ``log`` is principal: its rotation angle is at most
+:math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
+:math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
+``trans_01`` maps frame-1 coordinates into frame 0, and
+:func:`~kornia.geometry.linalg.relative_transformation` of ``trans_01`` and ``trans_02`` is ``trans_12``;
+:class:`~kornia.geometry.pose.NamedPose` names the same transform ``dst_from_src``.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - scipy
+     - Sophus
+     - Eigen
+   * - quaternion storage
+     - ``(w, x, y, z)``
+     - ``Rotation.from_quat`` reads ``(x, y, z, w)`` unless ``scalar_first=True``
+     - ``SO3::data()`` exposes Eigen's ``coeffs()`` order: ``(x, y, z, w)``
+     - the ``Quaternion(w, x, y, z)`` constructor is scalar first, ``coeffs()`` is ``(x, y, z, w)``
+   * - composition
+     - ``a * b``, ``b`` acts first
+     - ``r1 * r2``, the same
+     - ``a * b``, the same
+     - ``q1 * q2``, the same
+   * - SE(3) tangent
+     - ``[υ, ω]``, translation first
+     - ``RigidTransform.as_exp_coords`` returns ``[ω, υ]``, rotation first
+     - ``SE3::log`` returns ``[υ, ω]``, the same (GTSAM's ``Pose3`` is ``[ω, υ]``)
+     - ``Isometry3d`` has no tangent or ``log``
+   * - rotation ``log``
+     - principal
+     - ``as_rotvec``, principal
+     - ``SO3::log``, principal
+     - ``AngleAxis(q)``, angle in :math:`[0, \pi]`
+   * - ``slerp``
+     - the short arc
+     - ``Slerp``, the short arc
+     - ``interpolate``, the short arc
+     - ``Quaternion::slerp``, the short arc
+   * - frame naming
+     - ``trans_01`` and ``dst_from_src`` map frame 1 (``src``) into frame 0 (``dst``)
+     - ``tf_A_B`` maps ``B`` into ``A``
+     - ``foo_T_bar`` maps ``bar`` into ``foo``
+     - no frames
+
 Transformation matrices and homographies
 ----------------------------------------
 
@@ -465,6 +523,73 @@ is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``
 
 The equivalences cover empty ``geodesic`` windows too: scipy, scikit-image and kornia all return ``-inf`` from
 such a window in a dilation and ``+inf`` in an erosion, whatever the data range.
+
+.. _two-view-conventions:
+
+Two-view geometry
+-----------------
+
+The two-view estimators take the first image's points first and follow OpenCV's order:
+:func:`~kornia.geometry.epipolar.find_fundamental` returns an ``F`` with :math:`x_2^\top F x_1 = 0` in image
+coordinates and :func:`~kornia.geometry.epipolar.find_essential` an ``E`` with :math:`x_2^\top E x_1 = 0` in
+normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homography_dlt` and
+:class:`~kornia.geometry.ransac.RANSAC` with ``model_type="homography"`` return an ``H`` that maps ``points1`` to
+``points2``. Extrinsics are world-to-camera, as in :doc:`/get-started/camera-conventions`. Side by side:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - OpenCV
+   * - fundamental matrix
+     - ``find_fundamental(points1, points2)``, scaled to ``F[2, 2] = 1`` unless that entry is numerically zero;
+       ``method="7POINT"`` returns three candidates ``(B, 3, 3, 3)`` in no particular order, padded when the cubic
+       has one real root (`#4862 <https://github.com/kornia/kornia/issues/4862>`_)
+     - ``findFundamentalMat(points1, points2)``, the same ``F``; ``FM_7POINT`` stacks only the real solutions as
+       ``(3k, 3)``
+   * - essential matrix
+     - ``find_essential`` takes normalised camera coordinates :math:`K^{-1} [u, v, 1]^\top` and returns ten
+       slots, ``NaN`` for complex roots (all ten for a sample with no real solution)
+     - ``findEssentialMat`` takes pixels and ``cameraMatrix`` (or one matrix per camera); with exactly 5 points it
+       stacks the real solutions as ``(3k, 3)``, with more it returns the single ``E`` its RANSAC or LMedS selects
+   * - homography
+     - ``find_homography_dlt(points1, points2)`` maps ``points1`` to ``points2``
+     - ``findHomography(src, dst)``, the same direction
+   * - pose from ``E``
+     - ``decompose_essential_matrix`` returns ``R1``, ``R2`` and a unit ``t``; which candidate is the true pose is
+       not fixed.
+       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates, and returns
+       candidate 0 when no point passes (`#4879 <https://github.com/kornia/kornia/issues/4879>`_)
+     - ``decomposeEssentialMat`` returns the same candidate set, whose labels are not fixed either and differ from
+       kornia's, so a candidate index does not port; ``recoverPose`` selects the same pose and also returns the
+       inlier count
+   * - projection matrix
+     - ``KRt_from_projection`` returns the translation ``t`` of ``P = K [R | t]``; ``P`` and ``-P`` give the same
+       positive-diagonal ``K``, rotation ``R`` and ``t``
+     - ``decomposeProjectionMatrix`` returns the homogeneous camera centre :math:`C = -R^\top t`; for
+       ``det P[:, :3] < 0`` it keeps ``det R = 1`` and returns ``K[2, 2] < 0``
+   * - triangulation
+     - ``triangulate_points`` returns Euclidean points ``(*, N, 3)``
+     - ``triangulatePoints`` returns homogeneous points ``(4, N)``
+   * - epipolar lines
+     - ``compute_correspond_epilines(x1, F)`` for first-image points; pass ``F.transpose(-2, -1)`` for
+       second-image points
+     - ``computeCorrespondEpilines(x1, 1, F)``; ``whichImage=2`` for second-image points
+   * - Sampson distance
+     - ``sampson_epipolar_distance(pts1, pts2, F)``, squared by default; the value depends on the scale of ``F``
+       (`#4881 <https://github.com/kornia/kornia/issues/4881>`_)
+     - ``sampsonDistance(pt1, pt2, F)``, the same argument order, independent of the scale of ``F``
+   * - RANSAC threshold
+     - ``inl_th`` is a point distance in the keypoints' units, calibrated units for ``model_type="essential"``;
+       for line segments, the mean distance of the transferred endpoints from the target segment's line, which
+       local optimization re-weights by as well
+     - ``ransacReprojThreshold`` of ``findHomography``, the same unit for points
+   * - polynomial roots
+     - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
+       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic``'s order is unspecified;
+       a zero leading coefficient lowers the degree
+     - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
 
 Pitfall checklist
 -----------------

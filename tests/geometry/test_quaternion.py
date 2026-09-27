@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Union
 
 import pytest
@@ -166,6 +167,42 @@ class TestQuaternion(BaseTester):
         self.assert_close((q1**1), q1)
         self.assert_close((q1**2), q1)
 
+    def test_pow_non_unit(self, device, dtype):
+        # issue #4926: q**t keeps the norm, |q**t| == |q|**t, so it agrees with * and inv() for non-unit q
+        data = [[1.0, 0.5, 0.0, 0.0], [0.5, -0.25, 0.5, 0.25], [1.5, 0.0, 0.5, -0.5], [0.0, 0.0, 0.75, 0.0]]
+        q = Quaternion(torch.tensor(data, device=device, dtype=dtype))
+        self.assert_close(q**0, Quaternion.identity(4, device, dtype))
+        self.assert_close(q**1, q)
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        self.assert_close((q**0.5) * (q**0.5), q)
+        self.assert_close((q**0.5).norm(), q.norm() ** 0.5)
+        # the direction is the power of the unit quaternion, as before
+        self.assert_close((q**0.5).normalize(), q.normalize() ** 0.5)
+
+    def test_pow_real_axis(self, device, dtype):
+        q = Quaternion(torch.tensor([[2.0, 0.0, 0.0, 0.0], [-2.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        expected = torch.tensor([2.0**0.5, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close((q**0.5).data[0], expected)
+
+    @pytest.mark.parametrize("t", (-1.0, 0.5, 2.0))
+    def test_pow_gradcheck(self, device, t):
+        # the first quaternion lies on the real axis, where the vector part has zero norm; the last is pure imaginary
+        # (w = 0), where the unselected real-axis arm divides by w
+        data = torch.tensor(
+            [[2.0, 0.0, 0.0, 0.0], [1.0, 0.5, -0.3, 0.2], [0.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64
+        )
+        self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
+
+    @pytest.mark.parametrize("t", (-1.0, 2.0, 3.0))
+    def test_pow_gradcheck_negative_real_axis(self, device, t):
+        # q = -2 has theta = pi, where the real-axis limit t * cos(t * theta) / w carries the signs of cos(t * pi) and
+        # of w. Only integer t: for a non-integer t the negative real axis is a branch cut with no derivative.
+        data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
         """Test scalar multiplication for issue #3101."""
@@ -297,6 +334,45 @@ class TestQuaternion(BaseTester):
                 q4 = Quaternion.from_axis_angle(axis * t * 3.14159)
                 self.assert_close(q3, q4)
 
+    def test_slerp_takes_the_short_arc(self, device, dtype):
+        # q and -q are the same rotation; the interpolation must not depend on the stored sign (#4944).
+        # a and b are 0.33 rad apart with dot(a, b) = 0.986, so dot(a, -b) < 0.
+        a = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=dtype))
+        b = Quaternion.from_axis_angle(torch.tensor([[0.5, 0.1, 0.15]], device=device, dtype=dtype))
+        rel_angle = (a.inv() * b).to_axis_angle().norm()
+        for t in (0.25, 0.5, 0.75):
+            short = a.slerp(b, t).matrix()
+            self.assert_close(a.slerp(-b, t).matrix(), short)
+            # the interpolant sits at t times the relative angle from a
+            self.assert_close((a.inv() * a.slerp(-b, t)).to_axis_angle().norm(), t * rel_angle)
+
+    def test_slerp_exact_half_turn_follows_the_stored_sign(self, device, dtype):
+        # At an exact half turn both arcs are equally short. The arc follows the sign of the vector part of
+        # q0^-1 q1, so q1 and -q1 take opposite arcs, each of length t * pi from q0 (see the slerp docstring).
+        # Every product below is exact, so the real part of q0^-1 q1 is exactly zero in every dtype.
+        q0 = Quaternion(torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype))
+        q1 = q0 * Quaternion(torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype))
+        for t in (0.25, 0.5):
+            for sign in (1.0, -1.0):
+                rel = (q0.inv() * q0.slerp(q1 * sign, t)).to_axis_angle()
+                expected = torch.tensor([[sign * t * math.pi, 0.0, 0.0]], device=device, dtype=dtype)
+                self.assert_close(rel, expected)
+
+    def test_slerp_gradient_is_finite_at_equal_endpoints(self, device, dtype):
+        # slerp(q, q, t) = q is smooth in both endpoints; its gradient must not be nan (#4927).
+        q = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=dtype)).data
+        q0 = q.clone().requires_grad_(True)
+        q1 = q.clone().requires_grad_(True)
+        Quaternion(q0).slerp(Quaternion(q1), 0.3).data.sum().backward()
+        assert torch.isfinite(q0.grad).all()
+        assert torch.isfinite(q1.grad).all()
+
+    def test_slerp_gradcheck(self, device):
+        q0 = Quaternion.from_axis_angle(torch.tensor([[0.3, 0.2, -0.1]], device=device, dtype=torch.float64)).data
+        q1 = Quaternion.from_axis_angle(torch.tensor([[0.5, 0.1, 0.15]], device=device, dtype=torch.float64)).data
+        self.gradcheck(lambda a, b: Quaternion(a).slerp(Quaternion(b), 0.3).data, (q0, q1))
+        self.gradcheck(lambda a, b: Quaternion(a).slerp(Quaternion(b), 0.3).data, (q0, q0.detach().clone()))
+
     def test_from_to_euler_values(self, device, dtype):
         # num_samples = 5
         # data = 2 * torch.rand(3, num_samples, device=device, dtype=dtype) - 1
@@ -414,3 +490,165 @@ class TestQuaternionAverage(BaseTester):
         w = torch.tensor([0.5, 0.5], device=device, dtype=dtype)  # wrong length
         with pytest.raises(ValueError):
             average_quaternions(Q, w=w)
+
+
+class TestQuaternionConventions(BaseTester):
+    def _unit(self, data, device, dtype):
+        # normalised in float64 and rounded once, so the fixture is unit to the working dtype's resolution
+        q = torch.tensor(data, dtype=torch.float64)
+        return (q / q.norm(dim=-1, keepdim=True)).to(device=device, dtype=dtype)
+
+    def test_convention_quaternion_storage_is_wxyz(self, device, dtype):
+        # The data is (w, x, y, z), real part first. Expected matrix from scipy:
+        #   Rotation.from_quat([0.8, 0.2, -0.4, 0.4], scalar_first=True).as_matrix()
+        data = torch.tensor([[0.8, 0.2, -0.4, 0.4]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[[0.36, -0.8, -0.48], [0.48, 0.6, -0.64], [0.8, 0.0, 0.6]]], device=device, dtype=dtype
+        )
+        q = Quaternion(data)
+        self.assert_close(q.w, data[:, 0])
+        self.assert_close(q.vec, data[:, 1:])
+        self.assert_close(q.matrix(), expected)
+        # the same four numbers read as (x, y, z, w) are another rotation, far from this one
+        assert (Quaternion(data[:, [1, 2, 3, 0]]).matrix() - expected).abs().max() > 1.0
+
+    def test_convention_quaternion_mul_is_hamilton_matrix_product(self, device, dtype):
+        q1 = Quaternion(self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype))
+        q2 = Quaternion(self._unit([[0.7, -0.4, 0.2, 0.5]], device, dtype))
+        # precondition: the pair does not commute (|q1 q2 - q2 q1| = 2 |v1 x v2| = 0.53)
+        assert ((q1 * q2).data - (q2 * q1).data).norm() > 0.1
+        # q1 * q2 is the Hamilton product, the rotation "q2 first, then q1": its matrix is R1 @ R2
+        self.assert_close((q1 * q2).matrix(), q1.matrix() @ q2.matrix())
+        # q1 / q2 divides on the right, q1 * q2^-1; the left quotient q2^-1 * q1 differs by 0.40 for this pair
+        self.assert_close((q1 / q2).data, (q1 * q2.inv()).data)
+        assert ((q1 / q2).data - (q2.inv() * q1).data).abs().max() > 0.1
+
+    def test_convention_quaternion_scalar_operand_is_real_part(self, device, dtype):
+        # A Python number or a tensor operand is the real quaternion (s, 0, 0, 0): + and - move only w, and * and /
+        # scale all four components.
+        data = torch.tensor([[0.75, 0.125, -0.375, 0.25]], device=device, dtype=dtype)
+        q = Quaternion(data)
+        real = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close((q + 1.0).data, data + real)
+        self.assert_close((1.0 + q).data, data + real)
+        self.assert_close((q - 0.5).data, data - 0.5 * real)
+        self.assert_close((q + torch.tensor([2.0], device=device, dtype=dtype)).data, data + 2.0 * real)
+        self.assert_close((q * 2.0).data, 2.0 * data)
+        self.assert_close((2.0 * q).data, 2.0 * data)
+        self.assert_close((q * torch.tensor([2.0], device=device, dtype=dtype)).data, 2.0 * data)
+        self.assert_close((q / 2.0).data, 0.5 * data)
+        # a tensor holds one scalar per quaternion of the batch
+        batch = torch.cat((data, 2.0 * data))
+        per_item = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
+        self.assert_close((Quaternion(batch) + per_item).data, batch + per_item[:, None] * real)
+        self.assert_close((Quaternion(batch) * per_item).data, batch * per_item[:, None])
+        self.assert_close((Quaternion(batch) / per_item).data, batch / per_item[:, None])
+
+    def test_convention_quaternion_matrix_normalises(self, device, dtype):
+        data = torch.tensor([[2.0, 0.2, -0.6, 0.4]], device=device, dtype=dtype)
+        q = Quaternion(data)
+        # precondition: |q| = sqrt(4.56) = 2.14, far from unit
+        assert (q.norm() - 1.0).abs().max() > 1.0
+        # matrix() is the rotation of q / |q|, a proper rotation (So3.matrix() is not, #4942)
+        rotation = q.matrix()
+        self.assert_close(rotation, q.normalize().matrix())
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        self.assert_close(rotation @ rotation.transpose(-2, -1), eye)
+
+    def test_convention_quaternion_polar_angle_is_half_rotation_angle(self, device, dtype):
+        # polar_angle is the angle a of q = |q| (cos a + n sin a), half the rotation angle, whatever |q|.
+        # The rotation is 0.788 rad about an off-axis unit vector, built in float64 and rounded once.
+        axis_angle = 0.788 * torch.tensor([[0.48, 0.6, 0.64]], dtype=torch.float64)
+        data = Quaternion.from_axis_angle(axis_angle).data.to(device=device, dtype=dtype)
+        expected = torch.tensor([0.394], device=device, dtype=dtype)
+        angle = Quaternion(data).polar_angle
+        assert angle.shape == (1,)
+        self.assert_close(angle, expected)
+        self.assert_close(Quaternion(3.0 * data).polar_angle, expected)
+        # the range is [0, pi]: -q, the same rotation, has the supplementary angle
+        self.assert_close(Quaternion(-data).polar_angle, math.pi - expected)
+
+    def test_convention_quaternion_slerp_normalises_inputs(self, device, dtype):
+        q1 = self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype)
+        q2 = self._unit([[0.7, -0.4, 0.2, 0.5]], device, dtype)
+        # precondition: dot(q1, q2) = 0.67 > 0, so the short arc ends at q2 itself and not at -q2
+        assert (q1 * q2).sum() > 0.5
+        a, b = Quaternion(2.0 * q1), Quaternion(3.0 * q2)
+        # both endpoints are normalised first, and the result is a unit quaternion
+        self.assert_close(a.slerp(b, 0.0).data, q1)
+        self.assert_close(a.slerp(b, 1.0).data, q2)
+        # Expected value from scipy, whose Slerp also normalises:
+        #   Slerp([0, 1], Rotation.from_quat([q1, q2], scalar_first=True))([0.3]).as_quat(scalar_first=True)
+        expected = torch.tensor(
+            [[0.9297807322749576, -0.06174707057580068, -0.1602249202393802, 0.3256118304052157]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(a.slerp(b, 0.3).data, expected)
+
+    def test_convention_quaternion_slerp_extrapolates_outside_unit_interval(self, device, dtype):
+        q1 = Quaternion(self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype))
+        q2 = Quaternion(self._unit([[0.7, -0.4, 0.2, 0.5]], device, dtype))
+        # t is not validated or clamped: t = 2 continues the arc by one more step, q1 (q1^-1 q2)^2 = q2 q1^-1 q2,
+        # and t = -1 steps back from q1, q1 (q1^-1 q2)^-1 = q1 q2^-1 q1
+        self.assert_close(q1.slerp(q2, 2.0).data, (q2 * q1.conj() * q2).data)
+        self.assert_close(q1.slerp(q2, -1.0).data, (q1 * q2.conj() * q1).data)
+
+    def test_convention_average_quaternions_is_the_chordal_mean(self, device, dtype):
+        # The weighted chordal (eigenvector) mean of Markley et al., "Averaging Quaternions" (2007), the same as
+        # scipy's Rotation.mean. Expected rotation vectors from scipy:
+        #   A, B = Rotation.from_rotvec([0.9, -0.3, 0.2]), Rotation.from_rotvec([-0.2, 1.1, 0.5])
+        #   Rotation.concatenate([A, B]).mean(weights=w).as_rotvec()  for w = [1, 1] and w = [1, 3]
+        # A normalised linear mean of the quaternions gives [0.084, 0.783, 0.446] for w = [1, 3].
+        rotvecs = torch.tensor([[0.9, -0.3, 0.2], [-0.2, 1.1, 0.5]], dtype=torch.float64)
+        data = Quaternion.from_axis_angle(rotvecs).data.to(device=device, dtype=dtype)
+        uniform = torch.tensor([[0.3823365186803237, 0.41998759136458735, 0.37339616309716916]], dtype=torch.float64)
+        weighted = torch.tensor([[0.02860900532725633, 0.8470541010728433, 0.4576793994589019]], dtype=torch.float64)
+        # a half-precision fixture is off by one rounding of the quaternions, under 1e-2 rad in bfloat16
+        tol = {torch.bfloat16: 2e-2, torch.float16: 3e-3}.get(dtype, 1e-5)
+        # the weights are relative ([1, 3] and [2, 6] agree), and the sign of a member does not matter (-A is A)
+        cases = [(None, uniform), ([1.0, 3.0], weighted), ([2.0, 6.0], weighted)]
+        for members in (data, torch.stack((-data[0], data[1]))):
+            for w, expected in cases:
+                weights = None if w is None else torch.tensor(w, device=device, dtype=dtype)
+                out = average_quaternions(Quaternion(members), w=weights)
+                assert out.shape == (1, 4)
+                # to_axis_angle is the principal log, so the arbitrary sign of the eigenvector does not matter
+                self.assert_close(out.to_axis_angle(), expected.to(device=device, dtype=dtype), rtol=0.0, atol=tol)
+
+    def test_wart_quaternion_polar_angle_gradient_nonfinite_at_identity_4927(self, device, dtype):
+        # #4927 https://github.com/kornia/kornia/issues/4927: polar_angle gives a non-finite gradient at the identity,
+        # the usual initialisation, and near it. This test turns red when the gradient becomes finite at either.
+        identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        Quaternion(identity).polar_angle.sum().backward()
+        assert not bool(torch.isfinite(identity.grad).all()), identity.grad
+        # a half-angle of sqrt(eps) / 2 is small enough that w / |q| rounds to 1, so a fix that guards only the exact
+        # identity leaves this row non-finite
+        h = 0.5 * math.sqrt(torch.finfo(dtype).eps)
+        near = torch.tensor(
+            [[math.cos(h), 0.6 * math.sin(h), 0.0, 0.8 * math.sin(h)]], device=device, dtype=dtype, requires_grad=True
+        )
+        # precondition: the vector part survives the rounding, so this is not the identity again
+        assert bool((near[:, 1:] != 0).any())
+        Quaternion(near).polar_angle.sum().backward()
+        assert not bool(torch.isfinite(near.grad).all()), near.grad
+        # control: away from the identity the same expression has a finite gradient
+        q = self._unit([[0.9, 0.1, -0.3, 0.2]], device, dtype).requires_grad_(True)
+        Quaternion(q).polar_angle.sum().backward()
+        assert bool(torch.isfinite(q.grad).all()), q.grad
+
+    def test_wart_average_quaternions_weights_by_member_norm_4974(self, device, dtype):
+        # https://github.com/kornia/kornia/issues/4974: average_quaternions uses stored q_i q_i^T, so rescaling a
+        # member by 3 weights it by 9, while matrix(), to_axis_angle(), polar_angle and slerp ignore a positive scale.
+        # Negative weights are accepted where scipy's Rotation.mean rejects them. This turns red when members are
+        # normalised or negative weights are rejected.
+        rotvecs = torch.tensor([[0.9, -0.3, 0.2], [-0.2, 1.1, 0.5]], dtype=torch.float64)
+        data = Quaternion.from_axis_angle(rotvecs).data.to(device=device, dtype=dtype)
+        unit = average_quaternions(Quaternion(data)).to_axis_angle()
+        scaled = average_quaternions(Quaternion(torch.stack((3.0 * data[0], data[1])))).to_axis_angle()
+        # the same rotations, one stored at norm 3: scipy's mean with weights [9, 1] is [0.839, -0.208, 0.224], the
+        # unweighted mean [0.382, 0.420, 0.373]
+        assert (scaled - unit).abs().max() > 0.3
+        weights = torch.tensor([1.0, -0.5], device=device, dtype=dtype)
+        out = average_quaternions(Quaternion(data), w=weights)
+        assert bool(torch.isfinite(out.data).all())

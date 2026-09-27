@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-# kornia.geometry.so3 module inspired by Sophus-sympy.
+# kornia.geometry.se3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.tensor_wrapper import _unwrap
 from kornia.core.utils import register_module_state
-from kornia.geometry.liegroup.so3 import So3
+from kornia.geometry.liegroup.so3 import So3, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
@@ -40,6 +40,24 @@ class Se3(nn.Module):
     The SE(3) is the group of rigid body transformations about the origin of three-dimensional Euclidean
     space :math:`R^3` under the operation of composition.
     See more: https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
+
+    Convention:
+        - The tangent vector is :math:`[\upsilon, \omega]`, translation first
+          (:ref:`Rotations and rigid motions <rotation-conventions>` maps it onto Sophus and GTSAM): ``exp`` rotates by
+          ``So3.exp(omega)`` and translates by :math:`V(\omega) \upsilon`, ``hat`` is
+          :math:`[[\hat\omega, \upsilon], [0, 0]]`, and ``log`` is principal, with :math:`|\omega| \le \pi`.
+        - ``matrix()`` is the 4x4 :math:`[[R, t], [0, 1]]`. When both rotations are unit, ``a * b`` is
+          ``a.matrix() @ b.matrix()``, so ``b`` acts first, and ``g * p`` is :math:`R p + t`. ``adjoint()`` is
+          :math:`[[R, \hat t R], [0, R]]`.
+        - The rotation is an :class:`~kornia.geometry.liegroup.So3`, whose storage and point-shape conventions
+          apply, including its non-unit quaternion defect (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
+          ``from_matrix`` ignores the bottom row.
+        - Known defects: for ``identity``, ``random``, ``from_qxyz`` and any pose composed with or inverted from one,
+          ``t`` is a ``Vector3``, which rejects tensor indexing such as ``t[..., 0]``
+          (`#4931 <https://github.com/kornia/kornia/issues/4931>`_); ``state_dict`` and ``.to()`` skip such a
+          translation, and skip the rotation unless its quaternion is an ``nn.Parameter``, so ``load_state_dict`` can
+          restore one pose's translation next to another pose's rotation
+          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
         >>> q = Quaternion.identity()
@@ -55,10 +73,11 @@ class Se3(nn.Module):
     def __init__(self, rotation: Quaternion | So3, translation: Vector3 | torch.Tensor) -> None:
         """Construct the base class.
 
-        Internally represented by a unit quaternion `q` and a translation 3-vector.
+        Internally represented by an So3 rotation and a translation 3-vector.
 
         Args:
-            rotation: So3 group encompassing a rotation.
+            rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is not normalised
+                (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
             translation: Vector3 or translation torch.Tensor with the shape of :math:`(B, 3)`.
 
         Example:
@@ -104,13 +123,14 @@ class Se3(nn.Module):
         return Se3(_r, _t)
 
     def __mul__(self, right: Se3) -> Se3 | Vector3 | torch.Tensor:
-        """Compose two Se3 transformations.
+        """Compose two Se3 transformations, or transform points.
 
         Args:
-            right: the other Se3 transformation.
+            right: the other Se3 transformation, or points as a tensor or ``Vector3`` with the batch shape of the
+                pose and a last dimension of 3.
 
         Return:
-            The resulting Se3 transformation.
+            The resulting Se3 transformation, or the transformed points.
 
         """
         so3 = self.so3
@@ -178,21 +198,20 @@ class Se3(nn.Module):
         omega_hat_sq = omega_hat @ omega_hat
         theta_sq = batched_dot_product(omega, omega)
         nonzero = theta_sq > 0
-        # V is a 0/0 at omega = 0 and its sqrt has an unbounded derivative there, so although the
-        # where below already returns upsilon at the identity, autograd walked V anyway and
-        # 0 * nan = nan reached v.grad. Evaluate both on a substituted theta of 1 there; the
-        # where discards the value, only the gradient changes (kornia#4229's shape).
+        # sqrt has an unbounded derivative at 0, so it is taken on a substituted 1 at omega = 0 and
+        # the where selects the exact 0 (kornia#4229's shape). The coefficients of V are finite there
+        # (1/2 and 1/6) and even in theta, so V @ upsilon is taken for every element, which keeps
+        # d t / d omega = -0.5 [upsilon]_x at the identity (kornia#4953); V(0) = I exactly.
         safe_theta_sq = torch.where(nonzero, theta_sq, torch.ones_like(theta_sq))
         theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
-        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
         R = So3.exp(omega)
+        a, b, _ = _so3_small_angle_coefficients(theta)
         V = (
             torch.eye(3, device=v.device, dtype=v.dtype)
-            + ((1 - torch.cos(theta)) / (safe_theta**2))[..., None, None] * omega_hat
-            + ((theta - torch.sin(theta)) / (safe_theta**3))[..., None, None] * omega_hat_sq
+            + a[..., None, None] * omega_hat
+            + b[..., None, None] * omega_hat_sq
         )
-        U = torch.where(nonzero[..., None], (upsilon[..., None, :] * V).sum(-1), upsilon)
-        return Se3(R, U)
+        return Se3(R, (upsilon[..., None, :] * V).sum(-1))
 
     def log(self) -> torch.Tensor:
         """Convert elements of lie group  to elements of lie algebra.
@@ -211,24 +230,19 @@ class Se3(nn.Module):
         # incoming gradient straight through at its bound, and 1e-12 underflows to 0 in float16
         # anyway, so sqrt's unbounded derivative at 0 reached v.grad as nan (kornia#4229). Keep
         # the floor on the branch that is selected -- byte-identical for every theta_sq > 0 --
-        # and take the exact zero elsewhere, where V_inv is the identity and both branches of
-        # the where below agree.
+        # and take the exact zero elsewhere, where V_inv is the identity.
         safe_theta_sq = torch.where(nonzero, theta_sq.clamp_min(1e-12), torch.ones_like(theta_sq))
         theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
-        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
         t = _unwrap(self.t)
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
+        # c is finite at theta = 0 (1/12), so V^-1 @ t is taken for every element, which keeps
+        # d upsilon / d q_vec = [t]_x at the identity (kornia#4953).
+        _, _, c = _so3_small_angle_coefficients(theta)
         V_inv = (
-            torch.eye(3, device=omega.device, dtype=omega.dtype)
-            - 0.5 * omega_hat
-            + ((1 - safe_theta * torch.cos(safe_theta / 2) / (2 * torch.sin(safe_theta / 2))) / safe_theta.pow(2))[
-                ..., None, None
-            ]
-            * omega_hat_sq
+            torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
         )
-        t = torch.where(nonzero[..., None], (t[..., None, :] * V_inv).sum(-1), t)
-        return torch.cat((t, omega), -1)
+        return torch.cat(((t[..., None, :] * V_inv).sum(-1), omega), -1)
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
@@ -347,16 +361,17 @@ class Se3(nn.Module):
 
     @classmethod
     def from_qxyz(cls, qxyz: torch.Tensor) -> Se3:
-        """Create a Se3 group a quaternion and translation vector.
+        """Create a Se3 group from a quaternion and a translation vector.
 
         Args:
-            qxyz: torch.Tensor of shape :math:`(B, 7)`.
+            qxyz: torch.Tensor of shape :math:`(B, 7)` laid out as ``[qw, qx, qy, qz, x, y, z]``, scalar first; the
+                quaternion is not normalised (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
 
         Example:
-            >>> qxyz = torch.tensor([1., 2., 3., 0., 0., 0., 1.])
+            >>> qxyz = torch.tensor([0., 0., 0., 1., 0., 0., 1.])
             >>> s = Se3.from_qxyz(qxyz)
             >>> s.r
-            tensor([1., 2., 3., 0.])
+            tensor([0., 0., 0., 1.])
             >>> s.t
             x: 0.0
             y: 0.0

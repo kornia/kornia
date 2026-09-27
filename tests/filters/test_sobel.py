@@ -477,7 +477,7 @@ class TestSpatialGradient3d(BaseTester):
         z, y, x = torch.meshgrid(coords, coords, coords, indexing="ij")
         # one volume per quadratic surface, in the order of the output channels (dxx, dyy, dzz, dxy, dyz, dxz)
         inp = torch.stack([x * x, y * y, z * z, x * y, y * z, x * z])[:, None]
-        expected = torch.diag(torch.tensor([2.0, 2.0, 2.0, 4.0, 4.0, 4.0], device=device, dtype=dtype))
+        expected = torch.diag(torch.tensor([2.0, 2.0, 2.0, 1.0, 1.0, 1.0], device=device, dtype=dtype))
 
         actual = spatial_gradient3d(inp, "diff", order=2)[:, 0, :, 1:-1, 1:-1, 1:-1]
         self.assert_close(actual, expected[..., None, None, None].expand_as(actual))

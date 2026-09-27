@@ -196,10 +196,7 @@ def dilation(
           identity, ``-inf`` here and ``+inf`` in :func:`erosion`, as scipy and scikit-image do; so does every
           window of a kernel with no non-zero cell. The composite operations inherit these infinities.
         - Known defects: a non-float image is not rejected
-          (`#4735 <https://github.com/kornia/kornia/issues/4735>`_); and
-          ``engine="convolution"`` returns the image dtype where ``unfold`` and ``shift`` return the dtype
-          promoted with ``structuring_element``, or with ``kernel`` when none is given
-          (`#4762 <https://github.com/kornia/kornia/issues/4762>`_).
+          (`#4735 <https://github.com/kornia/kornia/issues/4735>`_).
 
     Args:
         tensor: Image with shape :math:`(B, C, H, W)`.
@@ -309,7 +306,8 @@ def dilation(
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         h_pad, w_pad = output.shape[-2:]
-        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
+        output = output.to(dtype=compute_dtype)
+        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=compute_dtype)
         conv_neighborhood = neighborhood.masked_fill(kernel == 0, 0.0) if float_image else neighborhood
 
         # ``conv2d`` multiplies every window cell by the one-hot weight, and ``inf * 0`` or ``nan * 0`` would
@@ -326,7 +324,7 @@ def dilation(
             output.view(B * C, 1, h_pad, w_pad),
             reshape_kernel,
             padding=0,
-            bias=conv_neighborhood.view(-1).flip(0).to(dtype=output.dtype),
+            bias=conv_neighborhood.view(-1).flip(0).to(dtype=compute_dtype),
         )
 
         if output.is_floating_point():
@@ -497,7 +495,8 @@ def erosion(
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         Hpad, Wpad = output.shape[-2:]
-        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=output.dtype)
+        output = output.to(dtype=compute_dtype)
+        reshape_kernel = _neight2channels_like_kernel(kernel).to(dtype=compute_dtype)
         conv_neighborhood = neighborhood.masked_fill(kernel == 0, 0.0) if float_image else neighborhood
 
         # ``conv2d`` multiplies every window cell by the one-hot weight, and ``inf * 0`` or ``nan * 0`` would
@@ -514,7 +513,7 @@ def erosion(
             output.view(B * C, 1, Hpad, Wpad),
             reshape_kernel,
             padding=0,
-            bias=-conv_neighborhood.view(-1).to(dtype=output.dtype),
+            bias=-conv_neighborhood.view(-1).to(dtype=compute_dtype),
         )
 
         if output.is_floating_point():
