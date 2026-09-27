@@ -123,6 +123,9 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
           and a single real root is in slot 0.
         - A zero leading coefficient lowers the degree, and the roots of the remaining polynomial come first.
+        - The closed form is evaluated on the row scaled by an exact power of two to a unit root bound, and the
+          roots are scaled back, so its intermediates neither overflow nor underflow for a tiny leading coefficient
+          or for roots far from unit scale (#4914).
 
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
@@ -188,10 +191,25 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
     inv_a = 1.0 / a[~mask_a_zero]
     b_a = inv_a * b[~mask_a_zero]
-    b_a2 = b_a * b_a
-
     c_a = inv_a * c[~mask_a_zero]
     d_a = inv_a * d[~mask_a_zero]
+
+    # Solve for y = x / s, with s the power of two just above max(|b/a|, |c/a|^(1/2), |d/a|^(1/3)), which bounds the
+    # root magnitude. The scaled coefficients b/(a s), c/(a s^2) and d/(a s^3) are below 1 in magnitude, so Q^3 and
+    # R^2 below neither overflow when a tiny leading coefficient makes b/a, c/a and d/a huge (#4914) nor underflow for
+    # tiny roots. Scaling by a power of two is exact, so a row that neither overflowed nor underflowed takes the same
+    # branch as before and its D <= 0 roots are the same bits. s is a step function of the coefficients, so it is a
+    # constant for autograd.
+    bound = torch.maximum(torch.maximum(b_a.abs(), c_a.abs().sqrt()), d_a.abs().pow(1.0 / 3.0)).detach()
+    positive_bound = bound > 0
+    exponent = torch.floor(torch.log2(torch.where(positive_bound, bound, torch.ones_like(bound)))) + 1
+    s = torch.where(positive_bound, torch.exp2(exponent), torch.ones_like(bound))
+    b_a = b_a / s
+    c_a = c_a / s / s
+    d_a = d_a / s / s / s
+    b_a2 = b_a * b_a
+    scale = torch.ones_like(a)
+    scale[~mask_a_zero] = s
 
     # Solve the cubic equation
     Q = (3 * c_a - b_a2) / 9
@@ -260,25 +278,25 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_D_positive_solution = (a_D_positive > 0) & (a_Q_zero != 0)
     mask_D_positive = (D > 0) & (Q != 0)
     if torch.any(mask_D_positive):
-        AD = torch.zeros_like(R)
-        BD = torch.zeros_like(R)
-        R_abs = torch.abs(R)
-        # Intersect with mask_D_positive: sqrt(D) on a D <= 0 row is nan, and
-        # although such a row is never read out of AD/BD, `-Q / nan` stays in
-        # the graph and its backward poisons every coefficient's gradient.
-        mask_R_positive = (R_abs > 1e-16) & mask_D_positive
-        if torch.any(mask_R_positive):
-            AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
-            mask_R_positive_ = R < 0
-
-            if torch.any(mask_R_positive_):
-                AD[mask_R_positive_] = -AD[mask_R_positive_]
-
-            BD[mask_R_positive] = -Q[mask_R_positive] / AD[mask_R_positive]
-        x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
+        # Cardano: the real root is A + B with A = cbrt(R + sqrt(D)) and B = cbrt(R - sqrt(D)) = -Q / A. Take the cube
+        # root of the larger magnitude, |R| + sqrt(D), and restore the sign of R, so A is never 0 and no floor on |R|
+        # is needed. Only the mask_D_positive rows enter: sqrt(D) on a D <= 0 row is nan, and although such a row
+        # would never be read out, `-Q / nan` would stay in the graph and its backward poison every coefficient's
+        # gradient.
+        Q_pos, R_pos, D_pos = Q[mask_D_positive], R[mask_D_positive], D[mask_D_positive]
+        AD = torch.pow(R_pos.abs() + torch.sqrt(D_pos), 1 / 3)
+        AD = torch.where(R_pos < 0, -AD, AD)
+        BD = -Q_pos / AD
+        # When Q > 0, A and B have opposite signs and A + B cancels once the root is small next to sqrt(Q), the case
+        # of a tiny leading coefficient (#4914): the finite root of 1e-30 x^3 + 2 x - 6 came out as 0 in float64.
+        # A^3 + B^3 = 2 R and A B = -Q, so A + B = 2 R / (A^2 - A B + B^2) = 2 R / (A^2 + B^2 + Q), a quotient of
+        # same-sign sums when Q > 0. When Q < 0, A and B have the same sign, A + B does not cancel and stays the more
+        # accurate form.
+        sum_AB = torch.where(Q_pos > 0, 2 * R_pos / (AD * AD + BD * BD + Q_pos), AD + BD)
+        x0_D_positive = sum_AB - b_a_3[mask_D_positive]
         solutions[mask_D_positive_solution, 0] = x0_D_positive
 
-    return solutions
+    return solutions * scale[:, None]
 
 
 def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
