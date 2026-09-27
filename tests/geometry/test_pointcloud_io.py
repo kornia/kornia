@@ -51,8 +51,9 @@ class TestSaveLoadPointCloud(BaseTester):
         filename = str(tmp_path / "pointcloud_inf.ply")
         kornia.geometry.save_pointcloud_ply(filename, xyz_save)
 
-        with open(filename, "rb") as f:
-            assert b"element vertex 80\n" in f.read()
+        # Text mode: the ASCII writer writes platform line endings (``\r\n`` on Windows).
+        with open(filename, encoding="utf-8") as f:
+            assert "element vertex 80\n" in f.read()
         xyz_load = kornia.geometry.load_pointcloud_ply(filename)
         assert xyz_load.shape == (height * width, 3)
         self.assert_close(xyz_load, xyz_save.reshape(-1, 3))
@@ -83,8 +84,9 @@ class TestSaveLoadPointCloud(BaseTester):
         filename = str(tmp_path / "pointcloud_nan.ply")
         kornia.geometry.save_pointcloud_ply(filename, xyz_save)
 
-        with open(filename, "rb") as f:
-            assert b"element vertex 5\n" in f.read()
+        # Text mode: the ASCII writer writes platform line endings (``\r\n`` on Windows).
+        with open(filename, encoding="utf-8") as f:
+            assert "element vertex 5\n" in f.read()
         xyz_load = kornia.geometry.load_pointcloud_ply(filename)
         assert xyz_load.shape == (5, 3)
         torch.testing.assert_close(xyz_load, xyz_save, equal_nan=True)
