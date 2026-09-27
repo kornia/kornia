@@ -20,6 +20,8 @@
 Run from the checkout being measured (copy this harness to older checkouts).
 Preparation/evaluation require optional h5py and the imc2021-simple package;
 measurement needs only the normal Kornia environment and NumPy. No downloads.
+``sweep`` runs kornia at its class defaults with and without PROSAC, and the optional
+OpenCV (``cv2``) and PoseLib (``poselib``) reference estimators when installed.
 
     python benchmarks/geometry/ransac.py prepare --data-root ../imc2021-simple/data/phototourism \
         --scenes sacre_coeur,reichstag --cache sift=raw_matches.h5 \
@@ -406,16 +408,81 @@ def load_ransac_module(path: Path) -> Any:
     return module
 
 
-SWEEP_KORNIA = {
-    "msac": {"score_type": "msac"},
-    "msac-lo32": {"score_type": "msac", "lo_sample_size": 32},
-    "msac-prosac": {"score_type": "msac", "prosac_sampling": True},
-    "ransac": {"score_type": "ransac"},
-}
+# Kornia runs at the class defaults, with and without PROSAC: the defaults are the benchmark's subject.
+SWEEP_KORNIA: dict[str, dict[str, Any]] = {"default": {}, "prosac": {"prosac_sampling": True}}
 SWEEP_OPENCV = {"usac_magsac": "USAC_MAGSAC", "usac_accurate": "USAC_ACCURATE", "ransac": "FM_RANSAC"}
-# The revision before PROSAC and bounded LO has no lo_sample_size and ignores prosac_sampling, so
-# --base-source runs only the configurations it implements.
-SWEEP_BASE_KORNIA = ("msac", "ransac")
+SWEEP_POSELIB = {"poselib": False, "poselib-prosac": True}  # progressive_sampling
+# Another revision runs at its own defaults; older revisions ignore prosac_sampling.
+SWEEP_BASE_KORNIA = ("default",)
+
+
+def reference_calls(
+    args: argparse.Namespace,
+    backends: dict[str, Any],
+    thresholds: list[float],
+    points1: Any,
+    points2: Any,
+    ranked: bool,
+) -> list[tuple[dict[str, Any], Any]]:
+    """One timed call per OpenCV/PoseLib method, iteration budget and threshold for a pair."""
+    cv2, poselib = backends.get("cv2"), backends.get("poselib")
+    opencv_methods = [m for m in args.opencv.split(",") if m] if cv2 is not None else []
+    poselib_methods = [m for m in args.poselib.split(",") if m] if poselib is not None else []
+    calls: list[tuple[dict[str, Any], Any]] = []
+    for name, iters, threshold in itertools.product(
+        opencv_methods, [int(x) for x in args.opencv_iters.split(",")], thresholds
+    ):
+
+        def estimate(
+            flag: int = getattr(cv2, SWEEP_OPENCV[name]),
+            iters: int = iters,
+            th: float = threshold,
+            p1: Any = points1,
+            p2: Any = points2,
+        ) -> Any:
+            cv2.setRNGSeed(args.seed)
+            return cv2.findFundamentalMat(p1, p2, flag, th, args.confidence, iters)
+
+        config = {"method": f"opencv {name}", "device": "cpu", "batch": None}
+        config.update(sample_budget=iters, threshold_px=threshold)
+        calls.append((config, estimate))
+    for name, iters, threshold in itertools.product(
+        poselib_methods, [int(x) for x in args.poselib_iters.split(",")], thresholds
+    ):
+        if SWEEP_POSELIB[name] and not ranked:
+            continue
+
+        def estimate_poselib(
+            prosac: bool = SWEEP_POSELIB[name],
+            iters: int = iters,
+            th: float = threshold,
+            p1: Any = points1,
+            p2: Any = points2,
+        ) -> Any:
+            # PoseLib's own stopping rule: ``max_iterations`` is the budget, the default
+            # ``min_iterations`` (1000) and ``success_prob`` 0.9999 as in imc2021-simple.
+            options = {"max_epipolar_error": th, "progressive_sampling": prosac, "max_iterations": iters}
+            options.update(success_prob=0.9999, seed=args.seed)
+            matrix, info = poselib.estimate_fundamental(p1, p2, options, {})
+            return matrix, np.asarray(info["inliers"], dtype=bool)
+
+        config = {"method": f"poselib {name}", "device": "cpu", "batch": None}
+        config.update(sample_budget=iters, threshold_px=threshold)
+        calls.append((config, estimate_poselib))
+    return calls
+
+
+def optional_backends(args: argparse.Namespace) -> dict[str, Any]:
+    """Import the reference libraries whose methods were requested; a missing one is reported and skipped."""
+    backends: dict[str, Any] = {}
+    for module, requested, label in (("cv2", args.opencv, "OpenCV"), ("poselib", args.poselib, "PoseLib")):
+        if any(requested.split(",")):
+            backend, reason = optional_import(module)
+            if backend is None:
+                print(f"# NOTE: skipping {label} methods ({reason})")
+            else:
+                backends[module] = backend
+    return backends
 
 
 def sweep(args: argparse.Namespace) -> None:
@@ -430,8 +497,8 @@ def sweep(args: argparse.Namespace) -> None:
     by ``evaluate``.
     """
     kornia_methods = [m for m in args.kornia.split(",") if m]
-    opencv_methods = [m for m in args.opencv.split(",") if m]
-    device, _, _ = setup_run(args, opencv=bool(opencv_methods))
+    device, _, _ = setup_run(args, opencv=any(args.opencv.split(",")))
+    backends = optional_backends(args)
     estimators: list[tuple[str, Any, list[str]]] = [("kornia", RANSAC, kornia_methods)]
     if args.base_source is not None:
         # Another revision's RANSAC next to this one, interleaved per pair in the same process.
@@ -439,12 +506,6 @@ def sweep(args: argparse.Namespace) -> None:
         if skipped := [m for m in kornia_methods if m not in base_methods]:
             print(f"# NOTE: kornia-base skips {','.join(skipped)}: not implemented by the base revision")
         estimators.append(("kornia-base", load_ransac_module(args.base_source).RANSAC, base_methods))
-    cv2 = None
-    if opencv_methods:
-        cv2, reason = optional_import("cv2")
-        if cv2 is None:
-            print(f"# NOTE: skipping OpenCV methods ({reason})")
-            opencv_methods = []
     sync = torch.cuda.synchronize if device.type == "cuda" else (lambda: None)
     thresholds = [float(x) for x in args.thresholds.split(",")]
     meta = start_run(
@@ -468,7 +529,10 @@ def sweep(args: argparse.Namespace) -> None:
             scene, feature, _ = key.split("__")
             a, b = data[key + "__mkp_a"], data[key + "__mkp_b"]
             field = key + "__score" if key + "__score" in data else key + "__ratio"
-            order = np.argsort(data[field].reshape(-1), kind="stable") if field in data else np.arange(len(a))
+            ranked = field in data
+            if not ranked:  # PROSAC needs a best-first order; the export order is not one
+                print(f"# NOTE: {key} has no match score or ratio: PROSAC configurations are skipped")
+            order = np.argsort(data[field].reshape(-1), kind="stable") if ranked else np.arange(len(a))
             kp1 = torch.as_tensor(a[order], device=device, dtype=torch.float32)
             kp2 = torch.as_tensor(b[order], device=device, dtype=torch.float32)
             points1, points2 = a[order].astype(np.float64), b[order].astype(np.float64)
@@ -476,6 +540,8 @@ def sweep(args: argparse.Namespace) -> None:
             budgets = [int(x) for x in args.budgets.split(",")]
             for prefix, ransac_class, methods in estimators:
                 for name, budget, threshold in itertools.product(methods, budgets, thresholds):
+                    if SWEEP_KORNIA[name].get("prosac_sampling") and not ranked:
+                        continue
                     batch = min(args.batch, budget)
                     estimator = ransac_class(
                         model_type="fundamental",
@@ -490,23 +556,7 @@ def sweep(args: argparse.Namespace) -> None:
                     config = {"method": f"{prefix} {name}", "device": device.type, "batch": batch}
                     config.update(sample_budget=budget, threshold_px=threshold)
                     calls.append((config, partial(estimator, kp1, kp2)))
-            for name, iters, threshold in itertools.product(
-                opencv_methods, [int(x) for x in args.opencv_iters.split(",")], thresholds
-            ):
-
-                def estimate(
-                    flag: int = getattr(cv2, SWEEP_OPENCV[name]),
-                    iters: int = iters,
-                    th: float = threshold,
-                    p1: Any = points1,
-                    p2: Any = points2,
-                ) -> Any:
-                    cv2.setRNGSeed(args.seed)
-                    return cv2.findFundamentalMat(p1, p2, flag, th, args.confidence, iters)
-
-                config = {"method": f"opencv {name}", "device": "cpu", "batch": None}
-                config.update(sample_budget=iters, threshold_px=threshold)
-                calls.append((config, estimate))
+            calls.extend(reference_calls(args, backends, thresholds, points1, points2, ranked))
             if pair_index == 0:
                 for _, call in calls:  # lazy initialization and solver handles stay out of the timings
                     with contextlib.suppress(Exception):
@@ -552,17 +602,22 @@ def sweep(args: argparse.Namespace) -> None:
 # hue, OpenCV in neutral greys with its own dash patterns. Markers differ within each family too,
 # so identity never rests on color alone.
 PLOT_SERIES = {  # method: (label, group, color, linestyle, marker, filled)
-    "kornia msac": ("MSAC", "kornia", "#2a78d6", "-", "o", True),
-    "kornia ransac": ("RANSAC score", "kornia", "#eb6834", "-", "s", True),
-    "kornia msac-lo32": ("MSAC + subset LO (32)", "kornia", "#1baf7a", "-", "D", True),
-    "kornia msac-prosac": ("MSAC + PROSAC", "kornia", "#4a3aa7", "-", "^", True),
-    "kornia-base msac": ("MSAC", "kornia-base", "#2a78d6", "--", "o", False),
-    "kornia-base ransac": ("RANSAC score", "kornia-base", "#eb6834", "--", "s", False),
+    "kornia default": ("defaults", "kornia", "#2a78d6", "-", "o", True),
+    "kornia prosac": ("defaults + PROSAC", "kornia", "#4a3aa7", "-", "^", True),
+    "kornia-base default": ("defaults", "kornia-base", "#2a78d6", "--", "o", False),
+    "kornia-base prosac": ("defaults + PROSAC", "kornia-base", "#4a3aa7", "--", "^", False),
+    "poselib poselib": ("PoseLib", "poselib", "#1f1f1e", ":", "s", True),
+    "poselib poselib-prosac": ("PoseLib + PROSAC", "poselib", "#5f5e5a", "-.", "D", True),
     "opencv usac_magsac": ("USAC_MAGSAC (MAGSAC++)", "opencv", "#1f1f1e", ":", "s", True),
     "opencv usac_accurate": ("USAC_ACCURATE", "opencv", "#5f5e5a", "-.", "D", True),
     "opencv ransac": ("FM_RANSAC", "opencv", "#8f8e89", "--", "v", True),
 }
-PLOT_GROUPS = {"kornia": "kornia, this PR", "kornia-base": "kornia, main before this PR", "opencv": "OpenCV (CPU)"}
+PLOT_GROUPS = {
+    "kornia": "kornia, this PR",
+    "kornia-base": "kornia, main before this PR",
+    "poselib": "PoseLib (CPU)",
+    "opencv": "OpenCV (CPU)",
+}
 PAGE, INK, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 
 
@@ -684,9 +739,7 @@ def plot(args: argparse.Namespace) -> None:
     devices = [
         d
         for d in ("cpu", "cuda")
-        if any(
-            device == d and any(not m.startswith("opencv") for m in methods) for (_, device), methods in curves.items()
-        )
+        if any(device == d and any(m.startswith("kornia") for m in methods) for (_, device), methods in curves.items())
     ]
     figure, axes = plt.subplots(
         len(devices),
@@ -700,8 +753,8 @@ def plot(args: argparse.Namespace) -> None:
         for column, feature in enumerate(features):
             axis = axes[row][column]
             lines = dict(curves[feature, device])
-            if device != "cpu":  # OpenCV runs on the CPU; repeat it as the reference in every row
-                lines.update({m: p for m, p in curves.get((feature, "cpu"), {}).items() if m.startswith("opencv")})
+            if device != "cpu":  # the reference libraries run on the CPU; repeat them in every row
+                lines.update({m: p for m, p in curves.get((feature, "cpu"), {}).items() if not m.startswith("kornia")})
             for method in PLOT_SERIES:
                 if method in lines:
                     points = sorted(lines[method], key=lambda p: p["mean_time_ms"])
@@ -718,8 +771,8 @@ def plot(args: argparse.Namespace) -> None:
         "Each point is one budget at its best inlier threshold from the sweep; "
         "mean over pairs of single synchronized calls."
     )
-    if "opencv" in handles:
-        note += " OpenCV (maxIters budget) runs on the CPU and is repeated in the CUDA row."
+    if "opencv" in handles or "poselib" in handles:
+        note += " OpenCV and PoseLib (iteration budgets) run on the CPU and are repeated in the CUDA row."
     figure.text(0.5, 0.004, note, ha="center", fontsize=8, color=MUTED)
     figure.tight_layout(rect=(0, legend_space, 1, 1))
     figure.savefig(args.out, dpi=args.dpi, facecolor=PAGE)
@@ -862,10 +915,12 @@ def main() -> None:
     sw.add_argument("--threads", type=int, default=4)
     sw.add_argument("--kornia", default=",".join(SWEEP_KORNIA), help=f"subset of {','.join(SWEEP_KORNIA)}")
     sw.add_argument("--opencv", default=",".join(SWEEP_OPENCV), help=f"subset of {','.join(SWEEP_OPENCV)}")
+    sw.add_argument("--poselib", default=",".join(SWEEP_POSELIB), help=f"subset of {','.join(SWEEP_POSELIB)}")
     sw.add_argument("--base-source", type=Path, help="also sweep another revision's ransac.py as 'kornia-base'")
     sw.add_argument("--budgets", default="256,512,1024,2048,4096,8192,16384", help="kornia minimal-sample budgets")
     sw.add_argument("--batch", type=int, default=256, help="kornia batch size (smaller budgets use one batch)")
     sw.add_argument("--opencv-iters", default="10,25,100,400,1600,6400,25600")
+    sw.add_argument("--poselib-iters", default="10,25,100,400,1600,6400,25600", help="PoseLib max_iterations")
     sw.add_argument("--thresholds", default="0.25,0.5,0.75,1,1.5,2")
     sw.add_argument("--confidence", type=float, default=0.999)
     sw.add_argument("--lo-iters", type=int, default=5)
@@ -934,8 +989,9 @@ def main() -> None:
         parser.error("--pairs must be positive")
     if args.command == "sweep":
         unknown = set(args.kornia.split(",")) - set(SWEEP_KORNIA) | set(args.opencv.split(",")) - set(SWEEP_OPENCV)
+        unknown |= set(args.poselib.split(",")) - set(SWEEP_POSELIB)
         if unknown - {""}:
-            parser.error(f"unknown --kornia or --opencv method: {sorted(unknown - {''})}")
+            parser.error(f"unknown --kornia, --opencv or --poselib method: {sorted(unknown - {''})}")
         if args.batch <= 0 or any(b % min(b, args.batch) for b in (int(x) for x in args.budgets.split(","))):
             parser.error("every --budgets entry must be a multiple of --batch or smaller than it")
     commands_by_name = {"prepare": prepare, "run": run, "sweep": sweep, "plot": plot}
