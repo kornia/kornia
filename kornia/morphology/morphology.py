@@ -55,12 +55,31 @@ def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
     return all(torch.autograd.forward_ad.unpack_dual(t).tangent is None for t in (padded, offsets))
 
 
+def _shift_cell(
+    planes: torch.Tensor,
+    plane: torch.Tensor,
+    offsets: torch.Tensor,
+    i: int,
+    j: int,
+    height: int,
+    width: int,
+    flat: bool,
+) -> torch.Tensor:
+    """One shifted view of the ``shift`` engine, read from the identity or the image plane of ``planes``."""
+    source = planes[..., i : i + height, j : j + width].index_select(0, plane[i, j].view(1))[0]
+    if flat:
+        return source
+    # Two-dimensional offset so PyTorch applies tensor-tensor dtype promotion.
+    return source + offsets[i : i + 1, j : j + 1]
+
+
 def _shift_reduce(
     padded: torch.Tensor,
     offsets: torch.Tensor,
     kernel: torch.Tensor,
     height: int,
     width: int,
+    flat: bool,
     dilate: bool,
     inplace: bool,
     reduction_value: Optional[float],
@@ -71,34 +90,70 @@ def _shift_reduce(
     kernel positions, the same max-plus expression ``unfold`` evaluates, without materialising the window
     tensor. ``torch.compile`` fuses the loop. A cell where ``kernel`` is zero takes ``reduction_value``, the
     reduction identity; ``None``, for a non-float image, leaves the ``max_val`` already folded into ``offsets``.
+    ``flat`` says that every offset is zero (a floating-point image and no ``structuring_element``), so the
+    addition is skipped; a ``-0.0`` pixel then stays ``-0.0``, where adding a ``+0.0`` offset made it ``+0.0``.
 
-    Forward-only this holds one output-sized intermediate whatever the kernel area, so peak memory is flat
-    in ``k_h k_w`` where ``unfold`` and ``convolution`` grow with it (24 MiB against 1627 MiB at 15 x 15,
-    B=8 x 3 x 256^2 float32 on CUDA). Under autograd the opposite is true: every ``torch.maximum`` saves
-    both operands, so ``2 (k_h k_w - 1)`` output-sized tensors stay alive until backward (2717 MiB
-    against 1627 MiB in that same cell). :func:`_resolve_engine` accounts for both regimes.
+    Forward-only, a floating-point image reads each cell from a two-plane buffer, plane 0 filled with the
+    identity and plane 1 holding ``padded`` in the compute dtype, through ``index_select`` on
+    ``kernel[i, j] != 0``. That is a plain copy per cell, where a ``masked_fill_`` or ``where`` with a
+    broadcast scalar mask is not vectorised on CPU and cost three adds per cell; the select is exact for
+    every input, ``nan`` and infinities included, and stays data-independent, so the loop compiles and
+    exports as before. Under autograd the excluded cells are masked instead (see the note in the body).
+
+    Forward-only this holds that buffer, one output-sized intermediate and one shifted view whatever the
+    kernel area, so peak memory is flat in ``k_h k_w`` where ``unfold`` and ``convolution`` grow with it (at
+    15 x 15, B=8 x 3 x 256^2 float32 on CPU, 69 MiB of peak RSS growth against 1380 MiB for ``unfold``).
+    Under autograd the opposite is true: every ``torch.maximum`` saves both operands, so ``2 (k_h k_w - 1)``
+    output-sized tensors stay alive until backward (2717 MiB against 1627 MiB for ``unfold`` in that cell on
+    CUDA). :func:`_resolve_engine` accounts for both regimes.
     """
     kh, kw = offsets.shape
-    # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
-    # down to a scalar would instead apply wrapped-scalar rules and silently keep ``padded.dtype``.
-    output = padded[..., 0:height, 0:width] + offsets[0:1, 0:1]
-    if reduction_value is not None:
-        output = torch.where(
-            kernel[0, 0] != 0,
-            output,
-            torch.full_like(output, reduction_value),
-        )
-    # ``unfold`` reduces the kernel-height dimension first and then kernel width; keep that traversal so
-    # tied values are met in the same order. Which of two tied operands a backend's ``max``/``min``
-    # returns is its own choice (CPU keeps the first, MPS the second), so the sign of a zero result is
-    # not preserved between engines or devices; the value is.
+    # The two-plane select is a forward-only device: ``index_select`` backpropagates by zero-filling the
+    # whole buffer and scattering into it once per cell, which made forward + backward 1.2 to 1.4x slower
+    # than masking (CPU float32, 3 x 3 and 7 x 7). While a backward graph is being recorded, or for a
+    # non-float image, the masked form is kept.
+    recording = torch.is_grad_enabled() and (padded.requires_grad or offsets.requires_grad)
+    if reduction_value is None or recording:
+        # Keep each offset two-dimensional so PyTorch applies tensor-tensor dtype promotion. Indexing
+        # down to a scalar would instead apply wrapped-scalar rules and silently keep ``padded.dtype``.
+        output = padded[..., 0:height, 0:width] + offsets[0:1, 0:1]
+        if reduction_value is not None:
+            output = torch.where(kernel[0, 0] != 0, output, torch.full_like(output, reduction_value))
+        # ``unfold`` reduces the kernel-height dimension first and then kernel width; keep that traversal so
+        # tied values are met in the same order. Which of two tied operands a backend's ``max``/``min``
+        # returns is its own choice (CPU keeps the first, MPS the second), so the sign of a zero result is
+        # not preserved between engines or devices; the value is.
+        for j in range(kw):
+            for i in range(kh):
+                if i == 0 and j == 0:
+                    continue
+                shifted = padded[..., i : i + height, j : j + width] + offsets[i : i + 1, j : j + 1]
+                if reduction_value is not None:
+                    shifted.masked_fill_(kernel[i, j] == 0, reduction_value)
+                if inplace:
+                    torch.maximum(output, shifted, out=output) if dilate else torch.minimum(output, shifted, out=output)
+                else:
+                    output = torch.maximum(output, shifted) if dilate else torch.minimum(output, shifted)
+        return output
+
+    # Out-of-place on purpose: ``vmap`` and forward-mode AD batch or dualise ``padded``, which an in-place
+    # copy into a fresh buffer could not receive.
+    compute_dtype = torch.promote_types(padded.dtype, offsets.dtype)
+    padded = padded.to(dtype=compute_dtype)
+    planes = torch.stack((torch.full_like(padded, reduction_value), padded))
+    # 1 selects the image plane, 0 the identity plane. An excluded cell then adds its offset to the identity,
+    # so zero it there: an infinite structuring element entry would otherwise turn the identity into nan.
+    included = kernel != 0
+    plane = included.to(torch.long)
+    offsets = torch.where(included, offsets, torch.zeros_like(offsets))
+
+    output = _shift_cell(planes, plane, offsets, 0, 0, height, width, flat)
+    # Same traversal order as the masked loop above and as ``unfold``.
     for j in range(kw):
         for i in range(kh):
             if i == 0 and j == 0:
                 continue
-            shifted = padded[..., i : i + height, j : j + width] + offsets[i : i + 1, j : j + 1]
-            if reduction_value is not None:
-                shifted.masked_fill_(kernel[i, j] == 0, reduction_value)
+            shifted = _shift_cell(planes, plane, offsets, i, j, height, width, flat)
             if inplace:
                 torch.maximum(output, shifted, out=output) if dilate else torch.minimum(output, shifted, out=output)
             else:
@@ -116,7 +171,9 @@ def _resolve_engine(
     wider when the kernel or the structuring element promotes the computation, which is what the
     dtype rule below has to see. For finite inputs, the two engines selected by ``auto`` (``unfold``
     and ``shift``) return equal forward output, so switching between them never changes a value; only
-    the sign of a zero can differ, because a backend's ``max``/``min`` may return either tied operand.
+    the sign of a zero can differ, because a backend's ``max``/``min`` may return either tied operand, and
+    because forward-only ``shift`` skips adding the zero offsets of a call without ``structuring_element``,
+    which turn a ``-0.0`` pixel into ``+0.0`` in the ``unfold`` dilation.
 
     Benchmarks in :mod:`benchmarks.morphology.engines` (x86 CPU, an RTX 4090 and an Apple M1,
     ``dilation``, B x 3 x 256 x 256) give three CPU/CUDA regimes:
@@ -225,7 +282,8 @@ def dilation(
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
-            tied operand.
+            tied operand, and because without a ``structuring_element`` forward-only ``"shift"`` skips adding the
+            zero offsets, which turn a ``-0.0`` pixel into ``+0.0`` in :func:`dilation` with ``"unfold"``.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
             else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
@@ -357,6 +415,7 @@ def dilation(
             kernel.flip((0, 1)),
             tensor.shape[-2],
             tensor.shape[-1],
+            structuring_element is None and float_image,
             True,
             inplace,
             reduction_min if float_image else None,
@@ -415,7 +474,8 @@ def erosion(
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
-            tied operand.
+            tied operand, and because without a ``structuring_element`` forward-only ``"shift"`` skips adding the
+            zero offsets, which turn a ``-0.0`` pixel into ``+0.0`` in :func:`dilation` with ``"unfold"``.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
             else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
@@ -546,6 +606,7 @@ def erosion(
             kernel,
             tensor.shape[-2],
             tensor.shape[-1],
+            structuring_element is None and float_image,
             False,
             inplace,
             reduction_max if float_image else None,
@@ -606,7 +667,8 @@ def opening(
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
-            tied operand.
+            tied operand, and because without a ``structuring_element`` forward-only ``"shift"`` skips adding the
+            zero offsets, which turn a ``-0.0`` pixel into ``+0.0`` in :func:`dilation` with ``"unfold"``.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
             else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
@@ -712,7 +774,8 @@ def closing(
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
-            tied operand.
+            tied operand, and because without a ``structuring_element`` forward-only ``"shift"`` skips adding the
+            zero offsets, which turn a ``-0.0`` pixel into ``+0.0`` in :func:`dilation` with ``"unfold"``.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
             else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
@@ -816,7 +879,8 @@ def gradient(
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
-            tied operand.
+            tied operand, and because without a ``structuring_element`` forward-only ``"shift"`` skips adding the
+            zero offsets, which turn a ``-0.0`` pixel into ``+0.0`` in :func:`dilation` with ``"unfold"``.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
             else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
@@ -909,7 +973,8 @@ def top_hat(
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
-            tied operand.
+            tied operand, and because without a ``structuring_element`` forward-only ``"shift"`` skips adding the
+            zero offsets, which turn a ``-0.0`` pixel into ``+0.0`` in :func:`dilation` with ``"unfold"``.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
             else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
@@ -1005,7 +1070,8 @@ def bottom_hat(
         engine: ``"unfold"``, ``"convolution"``, ``"shift"`` or ``"auto"`` (default). The ``"unfold"``
             and ``"shift"`` engines compute the same max-plus expression and, for finite inputs, return equal
             output; only the sign of a zero can differ, because a backend's ``max``/``min`` may return either
-            tied operand.
+            tied operand, and because without a ``structuring_element`` forward-only ``"shift"`` skips adding the
+            zero offsets, which turn a ``-0.0`` pixel into ``+0.0`` in :func:`dilation` with ``"unfold"``.
             ``"auto"`` picks ``"unfold"`` on CUDA, and off CUDA the exact ``"shift"`` engine, except that a CPU call
             which computes in float32 or float64 (the image dtype, or the wider dtype of ``structuring_element``,
             else of ``kernel``) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.

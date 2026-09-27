@@ -453,6 +453,34 @@ class TestDilate(BaseTester):
 
         self.assert_close(dilation(tensor, kernel), op_optimized(tensor, kernel))
 
+    def test_shift_engine_flat_kernel_matches_zero_structuring_element(self, device, dtype):
+        # Without a structuring element the shift engine skips the offset addition and reads each cell straight
+        # from the image or identity plane. That path has to agree bitwise with an explicit all-zero structuring
+        # element, nan and infinite pixels and excluded cells included (a sign of zero may differ, values not).
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.rand(2, 3, 9, 11, device=device, dtype=dtype)
+        tensor[0, 0, 2, 3] = nan
+        tensor[0, 1, 4, 5] = inf
+        tensor[1, 2, 0, 0] = -inf
+        kernel = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        flat = dilation(tensor, kernel, engine="shift")
+        explicit = dilation(tensor, kernel, structuring_element=torch.zeros_like(kernel), engine="shift")
+        torch.testing.assert_close(flat, explicit, rtol=0.0, atol=0.0, equal_nan=True)
+        assert flat.dtype == explicit.dtype
+
+    def test_shift_engine_excluded_cell_ignores_infinite_structuring_element(self, device, dtype):
+        # An excluded cell contributes the reduction identity whatever its structuring element entry: a +inf
+        # entry there, added to the -inf identity, must not give nan. Only the included cells' entries matter.
+        tensor = torch.rand(1, 1, 6, 7, device=device, dtype=dtype)
+        kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        finite = torch.tensor([[0.5, 0.0, -0.25]], device=device, dtype=dtype)
+        spiked = torch.tensor([[0.5, float("inf"), -0.25]], device=device, dtype=dtype)
+        for engine in ("shift", "unfold"):
+            expected = dilation(tensor, kernel, structuring_element=finite, engine=engine)
+            actual = dilation(tensor, kernel, structuring_element=spiked, engine=engine)
+            assert torch.equal(actual, expected), engine
+            assert bool(torch.isfinite(actual).all()), engine
+
     def test_shift_engine_forward_only_matches_autograd_safe(self, device, dtype):
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.randn(3, 3, device=device, dtype=dtype)
