@@ -102,8 +102,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
         - images are ``float16``, ``bfloat16``, ``float32`` or ``float64``; a mask keeps its own dtype (``bool``,
           integer or floating). Only ``"input"`` / ``"image"`` and ``"mask"`` keys are implemented; any other key
           raises ``NotImplementedError``. A mask is needed only to draw the parameters; a call that draws them
-          without one, or whose inputs do not match ``data_keys``, raises a kornia error naming the mask or the
-          key count before any input is read. With a complete
+          without one, or whose inputs do not match ``data_keys``, raises a kornia error that names the mask (and
+          the key count, on a mismatch) before any input is read. With a complete
           ``params`` any subset of the inputs is accepted, which is how
           :class:`~kornia.augmentation.container.AugmentationSequential` applies the transplant, one input at a
           time. Outputs come back in input order, a single one as a bare
@@ -245,14 +245,17 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def _check_mask_given(self, input: Sequence[torch.Tensor], data_keys: list[DataKey]) -> None:
         # The parameters are drawn from the mask, so name it before any lookup fails on its absence.
+        names = [k.name.lower() for k in data_keys]
         KORNIA_CHECK(
             len(data_keys) == len(input),
-            f"Length of keys ({len(data_keys)}) does not match number of inputs ({len(input)}).",
+            f"Length of keys ({len(data_keys)}) does not match number of inputs ({len(input)}). "
+            f"{type(self).__name__} needs a mask to draw its parameters: pass one tensor per data_keys entry, "
+            f"the mask included, or pass complete params. Got data_keys={names}.",
         )
         KORNIA_CHECK(
             DataKey.MASK in data_keys,
             f"{type(self).__name__} needs a mask to draw its parameters: pass one and name it with a 'mask' "
-            f"entry in data_keys, or pass complete params. Got data_keys={[k.name.lower() for k in data_keys]}.",
+            f"entry in data_keys, or pass complete params. Got data_keys={names}.",
         )
 
     def params_from_input(

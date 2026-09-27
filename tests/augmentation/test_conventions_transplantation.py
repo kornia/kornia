@@ -369,8 +369,12 @@ class TestTransplantationConventions(BaseTester):
     @pytest.mark.parametrize("cls", [K.RandomTransplantation, K.RandomTransplantation3D])
     def test_convention_a_missing_mask_raises_a_kornia_error_naming_it_4777(self, cls):
         image = torch.rand(2, 1, 4, 5)
-        # the default data_keys name a mask that was not passed
-        with pytest.raises(BaseError, match=r"Length of keys \(2\) does not match number of inputs \(1\)"):
+        # the default data_keys name a mask that was not passed: the error gives the key count and names the mask
+        with pytest.raises(
+            BaseError,
+            match=rf"Length of keys \(2\) does not match number of inputs \(1\)\. {cls.__name__} needs a mask to draw "
+            r"its parameters: .* Got data_keys=\['image', 'mask'\]\.",
+        ):
             cls(p=1.0)(image)
         with pytest.raises(BaseError, match=rf"{cls.__name__} needs a mask to draw its parameters"):
             cls(p=1.0)(image, data_keys=["input"])
