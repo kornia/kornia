@@ -134,6 +134,28 @@ class TestSpatialSoftmax2d(BaseTester):
 
         self.assert_close(op(input), op_optimized(input))
 
+    @pytest.mark.parametrize("as_tensor", [False, True])
+    @pytest.mark.parametrize("temperature", [0.5, 2.0])
+    def test_temperature_divides_input(self, device, dtype, temperature, as_tensor):
+        # An asymmetric map, so dividing by T and multiplying by T give different distributions for T != 1.
+        input = torch.tensor([[[[0.0, 1.0, 3.0], [2.0, -1.0, 0.5]]]], device=device, dtype=dtype)
+        t = torch.tensor(temperature, device=device, dtype=dtype) if as_tensor else temperature
+
+        actual = kornia.geometry.subpix.spatial_softmax2d(input, t)
+
+        expected = torch.softmax(input.double().reshape(1, 1, -1) / temperature, dim=-1).view(1, 1, 2, 3)
+        self.assert_close(actual, expected.to(dtype))
+        wrong = torch.softmax(input.double().reshape(1, 1, -1) * temperature, dim=-1).view(1, 1, 2, 3)
+        assert not torch.allclose(actual.double(), wrong, atol=1e-2)
+
+    @pytest.mark.parametrize("temperature", [0.0, -1.0, "tensor"])
+    def test_nonpositive_temperature_raises(self, device, dtype, temperature):
+        input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
+        if temperature == "tensor":
+            temperature = torch.tensor(0.0, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            kornia.geometry.subpix.spatial_softmax2d(input, temperature)
+
 
 class TestSpatialExpectation2d(BaseTester):
     @pytest.fixture(

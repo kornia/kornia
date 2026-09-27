@@ -142,6 +142,24 @@ class TestSpatialSoftArgmax2d(BaseTester):
         self.assert_close(coord[1, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # bottom-right
         self.assert_close(coord[1, 1, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
 
+    def test_temperature_divides_input(self, device, dtype):
+        # An asymmetric map: a soft-argmax at T = 0.5 must equal the expectation of softmax(x / 0.5).
+        sample = torch.tensor([[[[0.0, 1.0, 3.0], [2.0, -1.0, 0.5]]]], device=device, dtype=dtype)
+        probs = torch.softmax(sample.double().reshape(1, 1, -1) / 0.5, dim=-1).view(1, 1, 2, 3)
+        expected = kornia.geometry.subpix.spatial_expectation2d(probs, normalized_coordinates=False).to(dtype)
+
+        actual = kornia.geometry.subpix.spatial_soft_argmax2d(sample, 0.5, normalized_coordinates=False)
+        self.assert_close(actual, expected)
+        module = kornia.geometry.subpix.SpatialSoftArgmax2d(temperature=0.5, normalized_coordinates=False)
+        self.assert_close(module(sample), expected)
+
+    def test_nonpositive_temperature_raises(self, device, dtype):
+        sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            kornia.geometry.subpix.spatial_soft_argmax2d(sample, 0.0)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            kornia.geometry.subpix.SpatialSoftArgmax2d(temperature=-1.0)(sample)
+
     def test_gradcheck(self, device):
         sample = torch.rand(2, 3, 3, 2, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.subpix.spatial_soft_argmax2d, (sample))
