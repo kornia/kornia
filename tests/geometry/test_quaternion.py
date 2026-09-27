@@ -211,12 +211,28 @@ class TestQuaternion(BaseTester):
             assert torch.equal((q**t).vec, torch.zeros_like(q.vec))
         self.assert_close(q**2, q * q)
         self.assert_close(q**-1, q.inv())
+        # For an odd nearest integer k (t = 1.25, -0.75) sin(t pi) = -sin(pi (t - k)): x follows sin(t pi).
+        for t in (1.25, -0.75):
+            norm_t = torch.tensor([[2.0**t], [1.0]], device=device, dtype=dtype)
+            unit = torch.tensor([[math.cos(t * math.pi), math.sin(t * math.pi), 0.0, 0.0]], device=device, dtype=dtype)
+            self.assert_close((q**t).data, norm_t * unit, rtol=4 * eps, atol=4 * eps)
 
     def test_pow_negative_real_axis_gradient_is_finite_4955(self, device, dtype):
         # The output jumps across the cut, so the gradient there has no defined value; it is finite, not nan.
         data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         (Quaternion(data) ** 0.5).data.sum().backward()
         assert torch.isfinite(data.grad).all()
+
+    def test_pow_tensor_exponent(self, device, dtype):
+        # A tensor t, 0-d or one exponent per quaternion, gives the power of the float t and keeps its gradient.
+        q = Quaternion(torch.tensor([[-2.0, 0.0, 0.0, 0.0], [0.5, 0.3, -0.2, 0.1]], device=device, dtype=dtype))
+        t = torch.tensor(0.5, device=device, dtype=dtype, requires_grad=True)
+        self.assert_close((q**t).data, (q**0.5).data)
+        ts = torch.tensor([[1.25], [-0.75]], device=device, dtype=dtype)
+        self.assert_close((q**ts).data, torch.stack(((q**1.25).data[0], (q**-0.75).data[1])))
+        # x = |q|^t sin(t pi) on the cut: dx/dt = |q|^t (log|q| sin(t pi) + pi cos(t pi)) = sqrt(2) log(2) at 0.5.
+        (q**t).data[0, 1].backward()
+        self.assert_close(t.grad, torch.tensor(2.0**0.5 * math.log(2.0), device=device, dtype=dtype))
 
     @pytest.mark.parametrize("t", (-1.0, 0.5, 2.0))
     def test_pow_gradcheck(self, device, t):
