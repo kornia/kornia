@@ -469,12 +469,12 @@ class TestDilate(BaseTester):
         assert flat.dtype == explicit.dtype
 
     def test_shift_engine_excluded_cell_ignores_infinite_structuring_element(self, device, dtype):
-        # An excluded cell contributes the reduction identity whatever its structuring element entry: an
-        # infinite entry there must not turn the identity into nan. Only the included cells' entries matter.
+        # An excluded cell contributes the reduction identity whatever its structuring element entry: a +inf
+        # entry there, added to the -inf identity, must not give nan. Only the included cells' entries matter.
         tensor = torch.rand(1, 1, 6, 7, device=device, dtype=dtype)
         kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)
         finite = torch.tensor([[0.5, 0.0, -0.25]], device=device, dtype=dtype)
-        spiked = torch.tensor([[0.5, -float("inf"), -0.25]], device=device, dtype=dtype)
+        spiked = torch.tensor([[0.5, float("inf"), -0.25]], device=device, dtype=dtype)
         for engine in ("shift", "unfold"):
             expected = dilation(tensor, kernel, structuring_element=finite, engine=engine)
             actual = dilation(tensor, kernel, structuring_element=spiked, engine=engine)
