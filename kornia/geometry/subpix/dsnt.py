@@ -28,6 +28,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_compiling
 from kornia.geometry.grid import create_meshgrid
 
 
@@ -36,7 +37,21 @@ def _validate_batched_image_tensor_input(tensor: torch.Tensor) -> None:
     KORNIA_CHECK_SHAPE(tensor, ["B", "C", "H", "W"])
 
 
-def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] = None) -> torch.Tensor:
+def _check_positive_temperature(temperature: torch.Tensor | float) -> None:
+    """Raise ``ValueError`` unless ``temperature`` is positive; ``NaN`` is rejected as well.
+
+    A tensor is read only outside graph capture: under ``torch.compile`` or export, reading its value would be a
+    data-dependent branch, so a tensor temperature is not checked there.
+    """
+    if isinstance(temperature, torch.Tensor):
+        if is_compiling() or bool((temperature > 0).all()):
+            return
+    elif temperature > 0:
+        return
+    raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+
+
+def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None) -> torch.Tensor:
     r"""Apply the Softmax function over features in each image channel.
 
     Note that this function behaves differently to :py:class:`torch.nn.Softmax2d`, which
@@ -44,7 +59,8 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
 
     Args:
         input: the input torch.Tensor with shape :math:`(B, N, H, W)`.
-        temperature: factor to apply to input, adjusting the "smoothness" of the output distribution.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
 
     Returns:
        a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
@@ -64,11 +80,13 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
 
     batch_size, channels, height, width = input.shape
     if temperature is None:
-        temperature = torch.tensor(1.0)
-    temperature = temperature.to(device=input.device, dtype=input.dtype)
+        temperature = 1.0
+    _check_positive_temperature(temperature)
+    if isinstance(temperature, torch.Tensor):
+        temperature = temperature.to(device=input.device, dtype=input.dtype)
     x = input.reshape(batch_size, channels, -1)
 
-    x_soft = F.softmax(x * temperature, dim=-1)
+    x_soft = F.softmax(x / temperature, dim=-1)
 
     return x_soft.view(batch_size, channels, height, width)
 

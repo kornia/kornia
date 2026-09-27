@@ -142,6 +142,26 @@ class TestSpatialSoftArgmax2d(BaseTester):
         self.assert_close(coord[1, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # bottom-right
         self.assert_close(coord[1, 1, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
 
+    def test_temperature_divides_input(self, device, dtype):
+        # An asymmetric map: a soft-argmax at T = 0.5 must equal the expectation of softmax(x / 0.5).
+        sample = torch.tensor([[[[0.0, 1.0, 3.0], [2.0, -1.0, 0.5]]]], device=device, dtype=dtype)
+        # The float64 reference is computed on CPU: MPS has no float64.
+        probs = torch.softmax(sample.cpu().double().reshape(1, 1, -1) / 0.5, dim=-1).view(1, 1, 2, 3)
+        expected = kornia.geometry.subpix.spatial_expectation2d(probs, normalized_coordinates=False)
+        expected = expected.to(device=device, dtype=dtype)
+
+        actual = kornia.geometry.subpix.spatial_soft_argmax2d(sample, 0.5, normalized_coordinates=False)
+        self.assert_close(actual, expected)
+        module = kornia.geometry.subpix.SpatialSoftArgmax2d(temperature=0.5, normalized_coordinates=False)
+        self.assert_close(module(sample), expected)
+
+    def test_nonpositive_temperature_raises(self, device, dtype):
+        sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            kornia.geometry.subpix.spatial_soft_argmax2d(sample, 0.0)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            kornia.geometry.subpix.SpatialSoftArgmax2d(temperature=-1.0)(sample)
+
     def test_gradcheck(self, device):
         sample = torch.rand(2, 3, 3, 2, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.subpix.spatial_soft_argmax2d, (sample))
@@ -319,6 +339,26 @@ class TestConvSoftArgmax2d(BaseTester):
         self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
+    def test_dynamo_tensor_temperature(self, device, dtype, torch_optimizer):
+        # The positivity check reads a tensor temperature; it must not break graph capture.
+        data = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        data[..., 2, 4] = 1.0
+        temperature = torch.tensor(0.5, device=device, dtype=dtype)
+        op = kornia.geometry.subpix.conv_soft_argmax2d
+        op_opt = torch_optimizer(op, fullgraph=True)
+        self.assert_close(op(data, temperature=temperature), op_opt(data, temperature=temperature))
+
+    @pytest.mark.parametrize("temperature", [0.0, float("nan"), "tensor"])
+    @pytest.mark.parametrize(
+        "op, shape", [("conv_soft_argmax2d", (1, 1, 3, 3)), ("conv_soft_argmax3d", (1, 1, 3, 3, 3))]
+    )
+    def test_nonpositive_temperature_raises(self, device, dtype, temperature, op, shape):
+        data = torch.zeros(shape, device=device, dtype=dtype)
+        if temperature == "tensor":
+            temperature = torch.tensor([0.5, -1.0], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Temperature should be positive"):
+            getattr(kornia.geometry.subpix, op)(data, temperature=temperature)
+
 
 class TestConvSoftArgmax3d(BaseTester):
     def test_smoke(self, device, dtype):
@@ -460,6 +500,16 @@ class TestConvSoftArgmax3d(BaseTester):
         coords, val = softargmax(sample)
         self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+
+    def test_dynamo_tensor_temperature(self, device, dtype, torch_optimizer):
+        # The positivity check reads a tensor temperature; it must not break graph capture.
+        data = torch.zeros(1, 1, 3, 5, 7, device=device, dtype=dtype)
+        data[..., 1, 2, 4] = 1.0
+        temperature = torch.tensor(0.5, device=device, dtype=dtype)
+        op = kornia.geometry.subpix.conv_soft_argmax3d
+        op_opt = torch_optimizer(op, fullgraph=True)
+        for expected, actual in zip(op(data, temperature=temperature), op_opt(data, temperature=temperature)):
+            self.assert_close(expected, actual)
 
 
 class TestConvQuadInterp3dModule(BaseTester):

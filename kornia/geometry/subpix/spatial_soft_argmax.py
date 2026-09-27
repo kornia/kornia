@@ -23,11 +23,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.utils import is_exporting
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
-from .dsnt import spatial_expectation2d, spatial_softmax2d
+from .dsnt import _check_positive_temperature, spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
 # Flat offsets for gathering the full 3x3x3 neighbourhood of a voxel.
@@ -324,7 +323,8 @@ def conv_soft_argmax2d(
         kernel_size: the size of the window.
         stride: the stride of the window.
         padding: input zero padding.
-        temperature: factor to apply to input.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
         eps: small value to avoid zero division.
@@ -356,9 +356,7 @@ def conv_soft_argmax2d(
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
-    # A tensor temperature is read here, which graph capture cannot do; skip the value check under export.
-    if not is_exporting() and temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+    _check_positive_temperature(temperature)
 
     b, c, h, w = input.shape
     ky, kx = kernel_size
@@ -440,7 +438,8 @@ def conv_soft_argmax3d(
         kernel_size:  size of the window.
         stride: stride of the window.
         padding: input zero padding.
-        temperature: factor to apply to input.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
         eps: small value to avoid zero division.
@@ -478,9 +477,7 @@ def conv_soft_argmax3d(
     if not len(input.shape) == 5:
         raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
-    # A tensor temperature is read here, which graph capture cannot do; skip the value check under export.
-    if not is_exporting() and temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+    _check_positive_temperature(temperature)
 
     b, c, d, h, w = input.shape
     kz, ky, kx = kernel_size
@@ -545,13 +542,14 @@ def conv_soft_argmax3d(
 
 
 def spatial_soft_argmax2d(
-    input: torch.Tensor, temperature: Optional[torch.Tensor] = None, normalized_coordinates: bool = True
+    input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None, normalized_coordinates: bool = True
 ) -> torch.Tensor:
     r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
 
     Args:
         input: the given heatmap with shape :math:`(B, N, H, W)`.
-        temperature: factor to apply to input.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
 
@@ -568,8 +566,6 @@ def spatial_soft_argmax2d(
         tensor([[[1.0000, 1.0000]]])
 
     """
-    if temperature is None:
-        temperature = torch.tensor(1.0)
     input_soft: torch.Tensor = spatial_softmax2d(input, temperature)
     output: torch.Tensor = spatial_expectation2d(input_soft, normalized_coordinates)
     return output
@@ -581,11 +577,11 @@ class SpatialSoftArgmax2d(nn.Module):
     See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
     """
 
-    def __init__(self, temperature: Optional[torch.Tensor] = None, normalized_coordinates: bool = True) -> None:
+    def __init__(self, temperature: Optional[torch.Tensor | float] = None, normalized_coordinates: bool = True) -> None:
         super().__init__()
         if temperature is None:
             temperature = torch.tensor(1.0)
-        self.temperature: torch.Tensor = temperature
+        self.temperature: torch.Tensor | float = temperature
         self.normalized_coordinates: bool = normalized_coordinates
 
     def __repr__(self) -> str:
