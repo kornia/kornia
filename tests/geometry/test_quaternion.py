@@ -212,9 +212,9 @@ class TestQuaternion(BaseTester):
         self.assert_close(q**2, q * q)
         self.assert_close(q**-1, q.inv())
 
-    def test_pow_negative_real_axis_gradient_is_finite_4955(self, device):
+    def test_pow_negative_real_axis_gradient_is_finite_4955(self, device, dtype):
         # The output jumps across the cut, so the gradient there has no defined value; it is finite, not nan.
-        data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64, requires_grad=True)
+        data = torch.tensor([[-2.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         (Quaternion(data) ** 0.5).data.sum().backward()
         assert torch.isfinite(data.grad).all()
 
