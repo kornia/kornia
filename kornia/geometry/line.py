@@ -175,7 +175,7 @@ class ParametrizedLine(nn.Module):
         # TODO: add check for dot product
         res_lambda = torch.where(
             dot_prod_mask,
-            -(plane.offset + batched_dot_product(plane.normal.data, self.origin)) / dot_prod,
+            -(plane.offset.data + batched_dot_product(plane.normal.data, self.origin)) / dot_prod,
             torch.zeros_like(dot_prod),
         )
 
