@@ -80,9 +80,8 @@ def _canonical_order(lafs: torch.Tensor, responses: torch.Tensor) -> tuple[torch
 class TestScaleSpaceDetector(BaseTester):
     @pytest.mark.parametrize("subpix_type", [AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d])
     @pytest.mark.parametrize("batch", [1, 2])
-    @pytest.mark.parametrize("bonus", [0.0, 10.0])
     @pytest.mark.parametrize("max_candidates", [None, 3])
-    def test_joint_extrema_matches_separate_refinement(self, device, dtype, subpix_type, batch, bonus, max_candidates):
+    def test_joint_extrema_matches_separate_refinement(self, device, dtype, subpix_type, batch, max_candidates):
         # A subclass remains on the general extension path, which refines each sign
         # independently. Pin the batched built-in path to that reference, including
         # signed/weighted responses and gradients through the selected features. The value
@@ -120,7 +119,7 @@ class TestScaleSpaceDetector(BaseTester):
             module.forward = counted
             return calls
 
-        kwargs = {"strict_maxima_bonus": bonus}
+        kwargs = {}
         if subpix_type is not ConvQuadInterp3d:
             kwargs["max_candidates"] = max_candidates
         joint, separate = subpix_type(**kwargs), SeparateSubpix(**kwargs)

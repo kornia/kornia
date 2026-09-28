@@ -25,7 +25,7 @@ import torch
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _torch_svd_cast, safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from kornia.geometry.solvers import solve_cubic
+from kornia.geometry.solvers.polynomial_solver import _solve_cubic_with_count
 
 
 def normalize_points(
@@ -193,8 +193,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
 
     Returns:
         The computed fundamental matrices with shape :math:`(B, 3, 3, 3)`, always 3 candidates per batch
-        element. A cubic with a single real root still gives 3: the two extra candidates are one rank-3 matrix
-        repeated, not zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_).
+        element. A cubic with a single real root gives one candidate followed by two zero matrices.
 
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
@@ -232,11 +231,10 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     coeffs[:, 2] = torch.einsum("bii->b", f1 @ inv_f2) * f2_det
     coeffs[:, 3] = f2_det
 
-    roots = solve_cubic(coeffs)  # (B,3)
+    roots, num_real = _solve_cubic_with_count(coeffs)  # (B,3), (B,)
 
-    # same "valid_root_mask" logic as your working version
-    cnz = torch.count_nonzero(roots, dim=1)  # (B,)
-    valid_root_mask = (cnz < 3) | (cnz > 1)  # (B,) bool
+    # The real roots fill the first num_real slots; the rest are solve_cubic's 0.0 padding, not roots.
+    valid_root_mask = torch.arange(3, device=device) < num_real.unsqueeze(1)  # (B,3) bool
 
     # --- compute lambda/mu for ALL batches (no compaction) ---
     _lambda = roots.clone()
@@ -269,9 +267,8 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     f22 = torch.where(_s_non_zero_mask, torch.ones_like(_s, dtype=dtype), torch.zeros_like(_s, dtype=dtype))
     fmatrix[:, :, 2, 2] = f22  # (B,3)
 
-    # --- apply batch validity mask (no compaction) ---
-    # If batch invalid -> zero all 3 candidates
-    fmatrix = torch.where(valid_root_mask.view(B, 1, 1, 1), fmatrix, torch.zeros_like(fmatrix))
+    # --- zero the candidates of padded roots (no compaction) ---
+    fmatrix = torch.where(valid_root_mask.view(B, 3, 1, 1), fmatrix, torch.zeros_like(fmatrix))
 
     # --- denormalize for ALL batches ---
     # F = T2^T * F * T1
@@ -375,8 +372,7 @@ def find_fundamental(
           ``method="7POINT"`` returns three candidates in no particular order.
         - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
           negative weight counts as zero, and ``method="7POINT"`` ignores them.
-        - Known defect: when the 7-point cubic has one real root, the two extra candidates are one rank-3
-          matrix repeated instead of zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_).
+        - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`: :math:`N \ge 8` for

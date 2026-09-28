@@ -525,19 +525,38 @@ class TestSe3(BaseTester):
         junk[3] = torch.tensor([0.5, -4.0, 7.0, 2.0], device=device, dtype=dtype)
         self.assert_close(Se3.from_matrix(junk).matrix(), clean)
 
-    def test_wart_se3_translation_type_depends_on_constructor_4931(self, device, dtype):
+    def test_se3_translation_is_a_tensor_for_every_constructor_4931(self, device, dtype):
+        # https://github.com/kornia/kornia/issues/4931: every constructor registers the translation as a tensor, so
+        # tensor indexing, state_dict and dtype casts work the same for identity, random, from_qxyz, a Vector3 input
+        # and the poses derived from them.
         from_exp = Se3.exp(torch.zeros(1, 6, device=device, dtype=dtype))
         identity = Se3.identity(1, device, dtype)
         self.assert_close(identity.matrix(), from_exp.matrix())  # the same group element
-        assert isinstance(from_exp.t, torch.Tensor)
-        # https://github.com/kornia/kornia/issues/4931: identity stores its translation as a Vector3, which is not a
-        # tensor, so tensor indexing of the translation fails for it and works for the exp-built element.
-        assert isinstance(identity.t, Vector3)
-        assert not isinstance(identity.t, torch.Tensor)
-        self.assert_close(from_exp.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
-        with pytest.raises(RuntimeError):
-            identity.t[..., 0]
-        assert isinstance((from_exp * identity).t, Vector3)  # a product with the identity inherits it
+        qxyz = torch.tensor([[1.0, 0.0, 0.0, 0.0, 5.0, 6.0, 7.0]], device=device, dtype=dtype)
+        p = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        poses = (
+            identity,
+            Se3.random(1, device, dtype),
+            Se3.from_qxyz(qxyz),
+            Se3(Quaternion.identity(1, device, dtype), Vector3(p)),
+            from_exp * identity,
+            identity.inverse(),
+        )
+        for pose in poses:
+            assert isinstance(pose.t, torch.Tensor) and pose.t.shape == (1, 3)
+            assert "_translation" in pose.state_dict()
+        self.assert_close(identity.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
+        self.assert_close(Se3.from_qxyz(qxyz).t, qxyz[..., 4:])
+        # ``.half()`` / ``.float()`` reach the identity's translation (float64 is unavailable on MPS, so convert
+        # towards float16 from float32)
+        fresh = Se3.identity(1, device, dtype)
+        converted = fresh.half() if dtype == torch.float32 else fresh.float()
+        assert converted.t.dtype == (torch.float16 if dtype == torch.float32 else torch.float32)
+        # g * p is a tensor for a tensor p and a Vector3 for a Vector3 p, whichever constructor built g.
+        assert type(identity * p) is torch.Tensor
+        self.assert_close(identity * p, p)
+        assert isinstance(identity * Vector3(p), Vector3)
+        self.assert_close((identity * Vector3(p)).data, p)
 
     def test_wart_se3_load_state_dict_restores_translation_not_rotation_4923(self, device, dtype):
         src = Se3.exp(torch.tensor([[1.0, -2.0, 3.0, 0.4, 0.2, -0.3]], device=device, dtype=dtype))
@@ -548,8 +567,16 @@ class TestSe3(BaseTester):
         # only the translation; loading reports every key matched, restores the translation and keeps the old
         # rotation.
         assert list(src.state_dict()) == ["_translation"]
-        assert list(Se3.identity(1, device, dtype).state_dict()) == []  # a Vector3 translation is not saved either
+        assert list(Se3.identity(1, device, dtype).state_dict()) == ["_translation"]  # the identity saves t alone too
         result = dst.load_state_dict(src.state_dict())
         assert not result.missing_keys and not result.unexpected_keys
         self.assert_close(dst.t, src.t.detach())
         self.assert_close(dst.r.matrix(), eye)
+
+    def test_random_translation_is_uniform_in_the_unit_interval(self, device, dtype):
+        # random draws its translation with torch.rand, which the Vector3 it used to build drew as well (#4931).
+        torch.manual_seed(0)
+        t = Se3.random(1000, device=device, dtype=dtype).t
+        assert t.shape == (1000, 3)
+        assert t.min() >= 0 and t.max() <= 1, (t.min(), t.max())
+        assert 0.45 < t.mean() < 0.55, t.mean()
