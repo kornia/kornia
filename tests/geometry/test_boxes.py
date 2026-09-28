@@ -223,14 +223,28 @@ class TestBoxes2D(BaseTester):
     def test_getitem_preserves_list_padding_metadata(self, device, dtype):
         # #4179: slicing a list-backed Boxes must keep _N so pad rows stay trimmed.
         first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
-        lb = Boxes([first, torch.cat([first, first])])
-        assert lb._N == [1, 0]
+        lb = Boxes([first, torch.cat([first, first]), torch.cat([first, first, first])])
+        assert lb._N == [2, 1, 0]
         sliced = lb[0:1]
-        assert sliced._N == [1]
+        assert sliced._N == [2]
         exported = sliced.to_tensor("xyxy")
         assert isinstance(exported, list)
         assert len(exported) == 1
         assert exported[0].shape == (1, 4)
+
+        mask = torch.tensor([True, False, True], device=device)
+        indices = torch.tensor([0, 2], device=device)
+        masked, indexed = lb[mask], lb[indices]
+        assert masked._N == indexed._N == [2, 0]
+        masked_boxes, indexed_boxes = masked.to_tensor("xyxy"), indexed.to_tensor("xyxy")
+        assert isinstance(masked_boxes, list) and isinstance(indexed_boxes, list)
+        for actual, expected in zip(masked_boxes, indexed_boxes):
+            self.assert_close(actual, expected)
+        assert [boxes.shape[0] for boxes in masked_boxes] == [1, 3]
+
+        scalar = lb[torch.tensor(1, device=device)]
+        assert scalar._N is None
+        assert isinstance(scalar.to_tensor("xyxy"), torch.Tensor)
 
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
