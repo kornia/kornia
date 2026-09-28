@@ -258,8 +258,9 @@ def fit_plane(points: Vector3) -> Hyperplane:
             )
         # The plane is determined when the centred points have rank 2: the two largest
         # singular values must both be nonzero relative to each other, a scale-invariant
-        # test that keeps a small but valid set working.
-        sv = torch.linalg.svdvals(centered)
+        # test that keeps a small but valid set working. svdvals is fp32/64 only, so the
+        # points are cast for the check, like the SVD that fits the plane itself.
+        sv = torch.linalg.svdvals(centered.to(torch.float32))
         if not bool((sv[..., 1] > sv[..., 0] * 1e-6).all()):
             raise ValueCheckError(
                 "fit_plane requires points that are not collinear; the given points do not determine a plane."
