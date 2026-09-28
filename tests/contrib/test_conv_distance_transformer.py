@@ -62,8 +62,7 @@ class TestConvDistanceTransform(BaseTester):
 
         # Non-odd kernel size -> BaseError from KORNIA_CHECK
         with pytest.raises(BaseError) as excinfo:
-            ConvDT = kornia.contrib.DistanceTransform(6)
-            ConvDT.forward(sample2d)
+            kornia.contrib.DistanceTransform(6).forward(sample2d)
         assert "kernel_size must be an odd integer >= 3" in str(excinfo.value)
 
         with pytest.raises(BaseError):

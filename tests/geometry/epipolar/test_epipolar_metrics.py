@@ -435,6 +435,8 @@ class TestSampsonSharedPoints(BaseTester):
         self.assert_close(out, expected.to(dtype))
 
     def test_non_contiguous_and_mixed_dtype_models(self, device, dtype):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         pts1 = torch.rand(1, 11, 2, device=device, dtype=torch.float64)
         pts2 = torch.rand(1, 11, 2, device=device, dtype=torch.float64)
         Fm = create_random_fundamental_matrix(4, dtype=dtype, device=device)
@@ -458,9 +460,11 @@ class TestSampsonSharedPoints(BaseTester):
         x1 = torch.tensor([[[1000.1, 1000.2]]], device=device, dtype=dtype)
         x2 = torch.tensor([[[1000.3, 1000.4]]], device=device, dtype=dtype)
         models = F.expand(64, 3, 3)
-        shared = _sampson_epipolar_distance_shared_impl_(x1, x2, models, True, 0.0, 0.0)[:, 0].double().cpu()
-        manual = _sampson_epipolar_distance_manual_impl_(x1, x2, F[None], True, 0.0)[0, 0].double().cpu()
-        reference = _sampson_epipolar_distance_manual_impl_(x1.double(), x2.double(), F[None].double(), True, 0.0)
+        shared = _sampson_epipolar_distance_shared_impl_(x1, x2, models, True, 0.0, 0.0)[:, 0].cpu().double()
+        manual = _sampson_epipolar_distance_manual_impl_(x1, x2, F[None], True, 0.0)[0, 0].cpu().double()
+        reference = _sampson_epipolar_distance_manual_impl_(
+            x1.cpu().double(), x2.cpu().double(), F[None].cpu().double(), True, 0.0
+        )
         reference = reference[0, 0].cpu()
         self.assert_close(shared, manual.expand_as(shared), rtol=1e-4, atol=0.0)
         assert (shared - reference).abs().max() <= 2 * (manual - reference).abs()
@@ -476,7 +480,7 @@ class TestSampsonSharedPoints(BaseTester):
         cast = lambda t: t.to(device, dtype)  # noqa: E731
         shared = _sampson_epipolar_distance_shared_impl_(cast(x1[None]), cast(x2[None]), cast(models), True, 0.0, 0.0)
         manual = _sampson_epipolar_distance_manual_impl_(cast(x1[None]), cast(x2[None]), cast(models), True, 0.0)
-        shared, manual = shared.double().cpu(), manual.double().cpu()
+        shared, manual = shared.cpu().double(), manual.cpu().double()
         assert torch.isfinite(shared).all()
         assert (shared >= 0).all()
         # Within 0.1 px of an epipole both float32 computations are rounding noise (the maximum error of either is
@@ -504,7 +508,7 @@ class TestSampsonSharedPoints(BaseTester):
         reference = _sampson_errors(models, h1, h2, 0.0)
         cast = lambda t: t.to(device, torch.float32)  # noqa: E731
         errors = _sampson_from_quadratic_basis(cast(models), _sampson_quadratic_basis(cast(h1), cast(h2)))
-        errors = errors.double().cpu()
+        errors = errors.cpu().double()
         assert not errors.isnan().any()
         assert (errors >= 0).all()
         scale = float(t2[0, 0, 0])

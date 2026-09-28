@@ -66,33 +66,34 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exception(self, device, dtype, batch_size):
+        r = So2.random(batch_size)
+        t1 = torch.randn((batch_size, 1), dtype=dtype, device=device)
+        t2 = torch.randn((batch_size, 3), dtype=dtype, device=device)
         with pytest.raises(ValueError):
-            r = So2.random(batch_size)
-            t1 = torch.randn((batch_size, 1), dtype=dtype, device=device)
-            t2 = torch.randn((batch_size, 3), dtype=dtype, device=device)
             Se2(r, t1)
+        with pytest.raises(ValueError):
             Se2(r, t2)
+        theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
         with pytest.raises(ValueError):
-            theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
             Se2.exp(theta)
+        v = torch.rand((batch_size, 2), dtype=dtype, device=device)
         with pytest.raises(ValueError):
-            v = torch.rand((batch_size, 2), dtype=dtype, device=device)
             Se2.hat(v)
+        omega = torch.rand((4, 4), dtype=dtype, device=device)
         with pytest.raises(ValueError):
-            omega = torch.rand((4, 4), dtype=dtype, device=device)
             Se2.vee(omega)
         with pytest.raises(TypeError):
             Se2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
+        theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
         with pytest.raises(ValueError):
-            theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
             Se2.hat(theta)
         with pytest.raises(Exception):
             Se2.identity(batch_size=0)
         with pytest.raises(Exception):
             Se2.random(batch_size=0)
+        x = torch.rand(5, dtype=dtype, device=device)
+        y = torch.rand(3, dtype=dtype, device=device)
         with pytest.raises(Exception):
-            x = torch.rand(5, dtype=dtype, device=device)
-            y = torch.rand(3, dtype=dtype, device=device)
             Se2.trans(x, y)
 
     def test_gradcheck(self, device):

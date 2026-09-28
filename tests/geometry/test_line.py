@@ -18,6 +18,8 @@
 import pytest
 import torch
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import TypeCheckError, ValueCheckError
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector3
@@ -143,6 +145,12 @@ class TestParametrizedLine(BaseTester):
         p = on_line[7].clone().requires_grad_(True)
         line.distance(p).backward()
         assert torch.isfinite(p.grad).all()
+
+    def test_through_coincident_points_raises_5041(self, device, dtype):
+        # #5041: through(p, p) used to return a line with direction (0, 0).
+        p = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="two distinct points"):
+            ParametrizedLine.through(p, p.clone())
 
     def test_instersect_plane(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
@@ -278,7 +286,9 @@ class TestFitLine(BaseTester):
     @pytest.mark.parametrize("D", (2, 3, 4))
     def test_smoke(self, device, dtype, B, D):
         N: int = 10  # num points
-        points = torch.ones(B, N, D, device=device, dtype=dtype)
+        # A line needs distinct points: ones() is a set of identical points, rejected since #5041.
+        t = torch.linspace(-1.0, 1.0, N, device=device, dtype=dtype)
+        points = torch.stack([t] + [t * (i + 1) for i in range(D - 1)], dim=-1)[None].expand(B, N, D)
         line = fit_line(points)
         assert isinstance(line, ParametrizedLine)
         assert line.origin.shape == (B, D)
@@ -394,8 +404,18 @@ class TestFitLine(BaseTester):
         batch = fit_line(torch.cat([points, points]), torch.cat([weights, 3.0 * weights]))
         self.assert_close(batch.origin, expected.origin.expand(2, 3))
 
-        # A row whose weights are all 0 keeps the unweighted mean and does not break the other rows.
-        zero = fit_line(torch.cat([points, points]), torch.cat([weights, torch.zeros_like(weights)]))
+        # A row whose weights are all 0 is rejected (#5041). With checks disabled, as under torch.compile, it keeps
+        # the unweighted mean and does not break the other rows.
+        zero_weights = torch.cat([weights, torch.zeros_like(weights)])
+        with pytest.raises(ValueCheckError, match="positive sum of weights"):
+            fit_line(torch.cat([points, points]), zero_weights)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            zero = fit_line(torch.cat([points, points]), zero_weights)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
         self.assert_close(zero.origin, torch.cat([expected.origin, points.mean(-2)]))
 
     def test_fit_line_vertical_dtype(self, device, dtype):
@@ -404,6 +424,71 @@ class TestFitLine(BaseTester):
         assert line.origin.dtype == dtype
         assert line.direction.dtype == dtype
         self.assert_close(line.direction, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
+
+    def test_fit_line_degenerate_raises_5041(self, device, dtype):
+        # #5041: a single point, identical points, or all-zero weights used to return an
+        # arbitrary-looking line ((0, 1) / (1, 0, 0) directions, a NaN origin for zero weights).
+        one_point = torch.tensor([[[1.0, 2.0]]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="at least two points"):
+            fit_line(one_point)
+
+        identical = torch.tensor([[[1.0, 2.0, 3.0]] * 5], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="two distinct points"):
+            fit_line(identical)
+
+        # Identical points whose mean rounds: three copies of 0.1 sum to 0.30000000000000004, so centring on the
+        # mean leaves a residual of about 1e-17 and a mean-based test would accept them.
+        identical_rounding = torch.tensor([[[0.1, 0.7]] * 3], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="two distinct points"):
+            fit_line(identical_rounding)
+
+        # A batch is rejected as a whole when one of its rows is degenerate.
+        batch = torch.tensor([[[0.0, 0.0], [1.0, 3.0]], [[1.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="two distinct points"):
+            fit_line(batch)
+
+        # #5041: all-zero weights used to return an arbitrary line — a NaN origin and (1, 0) in 2-D,
+        # the unweighted mean and the first singular vector of a zero matrix in 3-D. The row is rejected
+        # like any other degenerate one, so a batch with one all-zero-weights row is rejected as a whole.
+        points_3d = torch.tensor([[[0.0, 0.0, 0.3], [1.0, 3.0, -0.2], [2.0, 5.0, 0.1]]], device=device, dtype=dtype)
+        zero_weights = torch.zeros(1, 3, device=device, dtype=dtype)
+        mixed = torch.cat([torch.ones_like(zero_weights), zero_weights])
+        for points in (points_3d[..., :2], points_3d):
+            with pytest.raises(ValueCheckError, match="positive sum of weights"):
+                fit_line(points, zero_weights)
+            with pytest.raises(ValueCheckError, match="positive sum of weights"):
+                fit_line(torch.cat([points, points]), mixed)
+
+        # Weights that are not a tensor still fail the type check, not the weight-sum check.
+        with pytest.raises(TypeCheckError, match="weights must be a tensor"):
+            fit_line(points_3d, [[1.0, 1.0, 1.0]])
+
+    def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
+        # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
+        # on identical points returns what an eager call returns with checks disabled.
+        p = torch.tensor([[[1.0, 2.0, 3.0]] * 4], device=device, dtype=dtype)
+
+        def op(points):
+            return ParametrizedLine.through(points[0, 0], points[0, 1]).direction, fit_line(points).direction
+
+        actual = torch_optimizer(op)(p)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            expected = op(p)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
+
+    def test_fit_line_small_valid_set_still_fits(self, device, dtype):
+        # The degeneracy test is relative, not absolute: a small-but-distinct set still fits.
+        points = torch.tensor([[[1e-6, 2e-6], [3e-6, 7e-6]]], device=device, dtype=dtype)
+        line = fit_line(points)
+        assert line.direction.shape == (1, 2)
+        assert torch.isfinite(line.direction).all()
+        assert torch.isfinite(line.origin).all()
 
     @pytest.mark.parametrize("dim", (2, 3))
     def test_gradcheck(self, device, dim):

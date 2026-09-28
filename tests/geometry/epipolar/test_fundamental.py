@@ -23,12 +23,13 @@ import torch
 import kornia.geometry.epipolar as epi
 import kornia.geometry.epipolar.fundamental as fundamental_module
 from kornia.core.utils import _torch_svd_cast
-from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_to_homogeneous
 from kornia.geometry.epipolar.fundamental import (
     _eight_point_fundamental,
     _enforce_rank2,
     _epipolar_design_rows,
     _rank2_projection,
+    _refine_fundamental_lm,
     _seven_point_candidates,
 )
 from kornia.geometry.solvers.homogeneous import _null_space_lu
@@ -901,6 +902,8 @@ class TestEpipolarDesignRows(BaseTester):
 
 class TestRankTwoProjection(BaseTester):
     def test_matches_svd(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         F = torch.randn(128, 3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
         U, S, Vh = torch.linalg.svd(F)
         expected = U @ torch.diag_embed(S * torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64)) @ Vh
@@ -923,6 +926,8 @@ class TestRankTwoProjection(BaseTester):
     def test_repeated_singular_values(self, device, values, rotate):
         # At a repeated smallest singular value the nearest rank-2 matrix is not unique, so compare what every one of
         # them shares with the SVD's: the two largest singular values, a zero third one, and the distance sigma_3.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         F = _with_singular_values(values, rotate).to(device)[None]
         P = _rank2_projection(F)
         s = torch.linalg.svdvals(F)[0]
@@ -945,6 +950,8 @@ class TestRankTwoProjection(BaseTester):
         assert (P - expected).abs().max() < 1e-5
 
     def test_backward_is_finite_at_a_repeated_spectrum(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         F = torch.eye(3, device=device, dtype=torch.float64)[None].requires_grad_()
         _rank2_projection(F).sum().backward()
         assert torch.isfinite(F.grad).all()
@@ -1071,6 +1078,8 @@ class TestSevenPoint(BaseTester):
     def test_backward_is_finite(self, device, idx):
         # The second sample has one real root (#4862): masking candidates built from NaN roots used to leave NaN in
         # the backward pass although the output was finite.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         two_view = two_view_scene(device, torch.float64)
         x1 = two_view["x1"][:, idx].clone().requires_grad_()
         F = epi.find_fundamental(x1, two_view["x2"][:, idx], method="7POINT")
@@ -1082,3 +1091,49 @@ class TestSevenPoint(BaseTester):
         two_view = two_view_scene(device, torch.float64)
         x2 = two_view["x2"][:, idx]
         self.gradcheck(lambda p1: epi.find_fundamental(p1, x2, method="7POINT"), (two_view["x1"][:, idx],))
+
+
+class TestRefineFundamentalLM(BaseTester):
+    @staticmethod
+    def _problem(seed):
+        generator = torch.Generator().manual_seed(seed)
+        x1 = torch.rand(30, 2, generator=generator, dtype=torch.float64) * 2 - 1
+        x2 = x1 + 0.1 * torch.rand(30, 2, generator=generator, dtype=torch.float64)
+        F = torch.randn(2, 3, 3, generator=generator, dtype=torch.float64)
+        mask = (torch.rand(2, 30, generator=generator, dtype=torch.float64) > 0.3).to(torch.float64)
+        return F, convert_points_to_homogeneous(x1), convert_points_to_homogeneous(x2), mask
+
+    def test_matches_recorded_outputs(self):
+        # Recorded at c27b2dac, before the normal equations were shared with the essential refiner, on x86-64 with
+        # MKL: sharing them changed no bit there. Other BLAS builds round differently and five LM iterations amplify
+        # it (MKL restricted to SSE4.2 moves the result by up to 3.8e-11), so the pin allows 1e-9.
+        F, h1, h2, _ = self._problem(0)
+        truncated = _refine_fundamental_lm(F, h1, h2, None, "truncated", 0.01, 5)
+        expected = [
+            [
+                [0.006098700800078563, -0.5116733906310833, -0.4728232264343061],
+                [0.5402957876915827, 0.026014512989784022, -0.7119944428694382],
+                [0.4517012115690219, 0.719917958973044, 0.03858329173804309],
+            ],
+            [
+                [0.030697813957637547, 0.6162157569540634, 0.3919058257981223],
+                [-0.09984663113859049, -0.6936885856570343, 0.38216094006781043],
+                [0.016680785956596982, -0.28587426648587977, -0.5717588387569966],
+            ],
+        ]
+        self.assert_close(truncated, torch.tensor(expected, dtype=torch.float64), atol=1e-9, rtol=0)
+        F, h1, h2, mask = self._problem(1)
+        cauchy = _refine_fundamental_lm(F, h1, h2, mask, "cauchy", 0.001, 5)
+        expected = [
+            [
+                [0.004714855956989089, -0.09624554989117944, 0.5789110476966798],
+                [0.09642747178202637, -0.004227697559524207, -0.8101614368196856],
+                [-0.5879441787194538, 0.793171411548398, -0.0025179985239673804],
+            ],
+            [
+                [-0.01217626570990575, 0.8162523711647025, 0.0863979715658775],
+                [-0.792854504738295, -0.01999050672309971, 0.6096130586816405],
+                [-0.041273601467539764, -0.660172201639381, -0.0304491757491199],
+            ],
+        ]
+        self.assert_close(cauchy, torch.tensor(expected, dtype=torch.float64), atol=1e-9, rtol=0)
