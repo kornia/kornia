@@ -20,12 +20,12 @@
 from typing import Iterator, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, are_checks_enabled
 from kornia.core.exceptions import ValueCheckError
 from kornia.core.utils import _torch_svd_cast, is_compiling, register_module_state
+from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar
@@ -108,7 +108,7 @@ class ParametrizedLine(nn.Module):
         if not torch.jit.is_scripting() and are_checks_enabled() and not is_compiling():
             if not bool((direction.abs().amax(dim=-1) > 0).all()):
                 raise ValueCheckError("ParametrizedLine.through requires two distinct points; p0 and p1 coincide.")
-        return ParametrizedLine(p0, F.normalize(direction, p=2, dim=-1))
+        return ParametrizedLine(p0, _normalize_last_dim(direction, 1e-12))
 
     def point_at(self, t: Union[float, torch.Tensor, Scalar]) -> torch.Tensor:
         """Get the point at :math:`t` along this line.

@@ -44,6 +44,21 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(l1.origin, p0)
         self.assert_close(l1.direction, direction_expected)
 
+    def test_through_coincident_points_direction_is_zero_5062(self, device, dtype):
+        # #5062: through(p, p) normalizes the zero vector p1 - p0, which gave a NaN direction in float16 and zeros in
+        # every other dtype. Coincident points are degenerate input that a value check may reject (#5041), so this
+        # pins the arithmetic with the checks disabled: zeros in every dtype.
+        p = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            line = ParametrizedLine.through(p, p.clone())
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        assert line.direction.dtype == dtype
+        assert torch.equal(line.direction, torch.zeros(2, device=device, dtype=dtype))
+
     def test_point_at(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
