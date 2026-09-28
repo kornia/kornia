@@ -266,10 +266,7 @@ def sampson_epipolar_distance(
         the computed Sampson distance with shape :math:`(*, N)`.
 
     """
-    if not isinstance(Fm, Tensor):
-        raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
-    if (len(Fm.shape) < 3) or Fm.shape[-2:] != (3, 3):
-        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
+    # Shapes are validated by the implementations, as before; a single (3, 3) Fm never counts as several models.
     num_points = pts1.shape[-2]
     matmul = Fm.device.type == "cuda" and num_points < use_matmul_at_less_than_points
     num_models = math.prod(Fm.shape[:-2])

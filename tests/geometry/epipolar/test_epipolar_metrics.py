@@ -364,6 +364,18 @@ def _near_epipole_scene(n: int, seed: int):
 class TestSampsonSharedPoints(BaseTester):
     """One point set scored against many fundamental matrices: two matrix products instead of per-model broadcasting."""
 
+    def test_single_matrix_without_batch_dimension(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("the manual implementation, used on CPU, has always required a batch dimension on Fm")
+        # The CUDA matmul implementation broadcasts a single (3, 3) matrix; the shared-point dispatch must not reject
+        # it.
+        pts1 = torch.rand(1, 9, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 9, 2, device=device, dtype=dtype)
+        Fm = create_random_fundamental_matrix(1, dtype=dtype, device=device)
+        out = epi.sampson_epipolar_distance(pts1, pts2, Fm[0])
+        assert out.shape == (1, 9)
+        self.assert_close(out, epi.sampson_epipolar_distance(pts1, pts2, Fm))
+
     @pytest.mark.parametrize("squared", [True, False])
     def test_matches_the_other_paths(self, device, dtype, squared):
         pts1 = torch.rand(1, 20, 2, device=device, dtype=dtype)
