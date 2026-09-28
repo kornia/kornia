@@ -68,6 +68,15 @@ class TestFindEssential(BaseTester):
         E_mat = epi.essential.find_essential(points1, points2, weights)
         assert E_mat.shape == (B, 10, 3, 3)
 
+    def test_repeated_calls_are_bitwise_equal(self, device, dtype):
+        _skip_find_essential(device, dtype)
+        # No atomic accumulation: CUDA's scatter_add_ summed the determinant polynomial in a varying order.
+        generator = torch.Generator().manual_seed(0)
+        points1 = torch.randn(512, 5, 2, generator=generator, dtype=torch.float64).to(device, dtype)
+        points2 = torch.randn(512, 5, 2, generator=generator, dtype=torch.float64).to(device, dtype)
+        first, second = epi.find_essential(points1, points2), epi.find_essential(points1, points2)
+        assert torch.equal(first.nan_to_num(7.0), second.nan_to_num(7.0))
+
     def test_epipolar_constraint(self, device, dtype):
         calibrated_x1 = torch.tensor(
             [[[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]]],

@@ -103,12 +103,12 @@ def _determinant_to_polynomial_jit(
 
     gathered_values = A_flat[:, multiplication_indices]  # (B, 486, 3)
     products = torch.prod(gathered_values, dim=-1)  # (B, 486)
-    signed_products = products * signs  # (B, 486)
 
-    cs = torch.zeros(B, 11, device=A.device, dtype=A.dtype)
-    batch_coefficient_map = coefficient_map.unsqueeze(0).expand(B, -1)  # (B, 486)
-    cs.scatter_add_(1, batch_coefficient_map, signed_products)
-    return cs
+    # A matrix product with the signed one-hot map of each product to its coefficient, rather than scatter_add_,
+    # whose atomic accumulation on CUDA sums in a varying order and changes the result from call to call.
+    to_coefficients = torch.zeros(products.shape[1], 11, device=A.device, dtype=A.dtype)
+    to_coefficients[torch.arange(products.shape[1], device=A.device), coefficient_map] = signs
+    return products @ to_coefficients
 
 
 def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
