@@ -43,9 +43,9 @@ class ParametrizedLine(nn.Module):
         l(t) = o + t * d
 
     Convention:
-        - The constructor stores ``direction`` as given, without normalising or checking it, so :meth:`point_at`
-          steps ``t`` in units of its length. :meth:`through` and :func:`fit_line` return a unit direction; after
-          :meth:`through`, ``t`` is the Euclidean distance from ``p0``.
+        - The constructor does not normalise or check ``direction``, so :meth:`point_at` steps ``t`` in units of its
+          length. :meth:`through` and :func:`fit_line` return a unit direction; after :meth:`through`, ``t`` is the
+          Euclidean distance from ``p0``.
         - :meth:`projection`, :meth:`squared_distance` and :meth:`distance` require a unit ``direction``.
         - :meth:`intersect` returns ``(lambda, point)`` with ``point = point_at(lambda)``: ``lambda`` is in units of
           the stored direction, and the plane's normal need not be unit.

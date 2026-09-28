@@ -26,7 +26,7 @@ import kornia
 from kornia.core._compat import torch_version
 from kornia.geometry import transform_points
 from kornia.geometry.conversions import denormalize_homography
-from kornia.geometry.transform import ImageRegistrator, Similarity, homography_warp
+from kornia.geometry.transform import Homography, ImageRegistrator, Similarity, homography_warp
 
 from testing.base import BaseTester, supports_bilinear_2d_grid_sample_backward, supports_reflect_padding
 from testing.casts import dict_to
@@ -215,7 +215,7 @@ class TestConventionsImageRegistrator(BaseTester):
         _, model, _, _ = self._register(device, dtype, num_iterations=60, pyramid_levels=2)
         size = (self.height, self.width)
         shift = denormalize_homography(model.float(), size, size, align_corners=False)[0, :2, 2]
-        # Measured: (-3.003, 1.503) in float32, (-3.14, 1.48) in bfloat16 on the CPU.
+        # Measured about (-3.0, 1.5); the 0.5 px margins absorb the half-precision error.
         assert -3.5 < shift[0].item() < -2.5
         assert 1.0 < shift[1].item() < 2.0
 
@@ -228,7 +228,7 @@ class TestConventionsImageRegistrator(BaseTester):
         size = (self.height, self.width)
         warped = ir.warp_src_into_dst(src).detach()
         self.assert_close(warped, homography_warp(src, model, size, align_corners=False))
-        # The other align_corners convention samples elsewhere under this model (0.013 in float32).
+        # The other align_corners convention samples elsewhere under this model (0.015 in float32).
         assert (warped - homography_warp(src, model, size, align_corners=True)).abs().max().item() > 5e-3
 
     def test_convention_image_registrator_register_resets_model(self, device, dtype):
@@ -255,3 +255,38 @@ class TestConventionsImageRegistrator(BaseTester):
         c, s = 1.5 * math.cos(math.radians(30.0)), 1.5 * math.sin(math.radians(30.0))  # 1.299, 0.75
         expected = torch.tensor([[[c, s, 0.2], [-s, c, -0.1], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(sim().detach(), expected)
+
+    @pytest.mark.parametrize(
+        ("model_type", "optimized"),
+        [
+            ("homography", ["model"]),
+            ("similarity", ["rot", "scale", "shift"]),
+            ("translation", ["shift"]),
+            ("rotation", ["rot"]),
+            ("scale", ["scale"]),
+        ],
+    )
+    def test_convention_image_registrator_model_type_parameters(self, model_type, optimized):
+        # 'homography' optimizes a Homography; the other strings a Similarity that optimizes only the named parameters.
+        ir = ImageRegistrator(model_type)
+        assert isinstance(ir.model, Homography if model_type == "homography" else Similarity)
+        assert sorted(name for name, _ in ir.model.named_parameters()) == optimized
+
+    def test_convention_image_registrator_shape_mismatch_resizes_src(self, device, dtype):
+        # allow_shape_mismatch=True resizes src_img to the height and width of dst_img before the loss, and a
+        # different channel count still raises.
+        self._skip_without_kernels(device, dtype)
+        seen = []
+
+        def l1(a: torch.Tensor, b: torch.Tensor, reduction: str = "none") -> torch.Tensor:
+            seen.append((tuple(a.shape), tuple(b.shape)))
+            return torch.nn.functional.l1_loss(a, b, reduction=reduction)
+
+        ir = ImageRegistrator(
+            "translation", num_iterations=1, pyramid_levels=1, loss_fn=l1, allow_shape_mismatch=True
+        ).to(device, dtype)
+        dst = self._scene(0.0, 0.0, device, dtype)
+        ir.register(dst[..., ::2, ::2], dst)
+        assert set(seen) == {((1, 1, self.height, self.width), (1, 1, self.height, self.width))}
+        with pytest.raises(ValueError):
+            ir.register(dst.expand(1, 3, -1, -1), dst)

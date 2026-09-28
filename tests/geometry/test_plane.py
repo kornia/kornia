@@ -273,7 +273,8 @@ class TestConventionsHyperplane(BaseTester):
     def test_convention_hyperplane_offset_sign(self, device, dtype):
         # The plane is n . x + d = 0: from_vector(n, e) sets d = -n . e, and signed_distance(x) = n . x + d is positive
         # on the side the normal points to, negative on the other side, and equals d at the origin. With a unit
-        # normal it is the Euclidean distance.
+        # normal it is the Euclidean distance. Neither the constructor nor from_vector normalises the normal, so a
+        # normal of length 3 triples the offset and signed_distance.
         normal = torch.tensor([2.0, 1.0, -2.0], device=device, dtype=dtype) / 3
         assert (normal.abs() >= 0.1).all()  # a tilted plane: no normal component near 0
         e = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype)
@@ -286,10 +287,17 @@ class TestConventionsHyperplane(BaseTester):
         self.assert_close(plane.abs_distance(e - 0.4 * normal).data, torch.tensor(0.4, device=device, dtype=dtype))
         self.assert_close(plane.signed_distance(torch.zeros(3, device=device, dtype=dtype)).data, plane.offset.data)
 
+        scaled = Hyperplane.from_vector(Vector3(3 * normal), Vector3(e))
+        built = Hyperplane(Vector3(3 * normal), scaled.offset)
+        for p in (scaled, built):
+            self.assert_close(p.normal.data, 3 * normal)
+            self.assert_close(p.offset.data, torch.tensor(-3.0, device=device, dtype=dtype))
+            self.assert_close(p.signed_distance(e + 0.7 * normal).data, torch.tensor(2.1, device=device, dtype=dtype))
+
     def test_convention_hyperplane_through_normal_orientation(self, device, dtype):
         # through(p0, p1, p2) takes its normal along c = (p2 - p0) x (p1 - p0), Eigen's order: the opposite of the
         # right-hand normal of the loop p0 -> p1 -> p2. Swapping two points flips the normal and a cyclic shift keeps
-        # it. Only the direction is compared: the length of the returned normal is not part of this claim (#5012).
+        # it. Only the direction is compared; the length of the returned normal is not part of this convention.
         p0 = torch.tensor([1.0, 0.0, 0.2], device=device, dtype=dtype)
         p1 = torch.tensor([0.1, 1.2, 0.0], device=device, dtype=dtype)
         p2 = torch.tensor([0.3, 0.0, 1.5], device=device, dtype=dtype)

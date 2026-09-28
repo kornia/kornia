@@ -101,9 +101,9 @@ class Similarity(BaseModel):
     """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
 
     Convention:
-        ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]``, where ``R`` is
-        :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` of ``rot`` in degrees and ``shift`` is in the
-        normalized coordinates of :class:`ImageRegistrator`.
+        ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]`` in the normalized coordinates of
+        :class:`ImageRegistrator`, where ``R`` is :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` of
+        ``rot`` in degrees.
 
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
@@ -140,7 +140,7 @@ class Similarity(BaseModel):
         torch.nn.init.ones_(self.scale)
 
     def forward(self) -> torch.Tensor:
-        r"""Single-batch similarity transform".
+        r"""Single-batch similarity transform.
 
         Returns:
             Similarity with shape :math:`(1, 3, 3)`
@@ -150,7 +150,7 @@ class Similarity(BaseModel):
         return convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
 
     def forward_inverse(self) -> torch.Tensor:
-        r"""Single-batch inverse similarity transform".
+        r"""Single-batch inverse similarity transform.
 
         Returns:
             Similarity with shape :math:`(1, 3, 3)`
@@ -186,7 +186,8 @@ class ImageRegistrator(nn.Module):
         warper: the warper class, called as ``warper(height, width)``. Required when ``model_type`` is a module;
             a string ``model_type`` uses :class:`~kornia.geometry.transform.HomographyWarper`.
         allow_shape_mismatch: if True, :meth:`register` resizes ``src_img`` bilinearly to the height and width of
-            ``dst_img``; if False, images of different shapes raise ``ValueError``.
+            ``dst_img``, and a different batch or channel size still raises ``ValueError``; if False, images of
+            different shapes raise ``ValueError``.
 
     Example:
         >>> from kornia.geometry import ImageRegistrator

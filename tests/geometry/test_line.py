@@ -434,7 +434,7 @@ class TestFitLine(BaseTester):
 
 class TestConventionsParametrizedLine(BaseTester):
     def test_convention_parametrized_line_direction_is_not_normalized(self, device, dtype):
-        # The constructor stores the direction as given, so point_at(t) = origin + t * direction steps in units of
+        # The constructor does not normalise the direction, so point_at(t) = origin + t * direction steps in units of
         # ||direction||. through(p0, p1) normalises p1 - p0, so there t is the Euclidean distance from p0. The
         # distance methods assume a unit direction, which the constructor does not enforce.
         origin = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
@@ -452,8 +452,9 @@ class TestConventionsParametrizedLine(BaseTester):
 
     def test_convention_parametrized_line_intersect_lambda_units(self, device, dtype):
         # intersect returns (lambda, point) with point = point_at(lambda), so lambda is in units of the stored
-        # direction: a unit direction gives the Euclidean distance from the origin, and a non-unit direction a
-        # different lambda for the same point. lambda = -(offset + n . origin) / (n . direction).
+        # direction: a unit direction gives the Euclidean distance from the origin, a non-unit direction a different
+        # lambda for the same point, and the reversed direction a negative one. lambda = -(offset + n . origin) /
+        # (n . direction).
         normal = torch.tensor([1.0, 2.0, 2.0], device=device, dtype=dtype) / 3
         assert (normal.abs() >= 0.1).all()  # a tilted plane: no normal component near 0
         plane = Hyperplane.from_vector(Vector3(normal), Vector3(torch.ones(3, device=device, dtype=dtype)))
@@ -471,8 +472,36 @@ class TestConventionsParametrizedLine(BaseTester):
         self.assert_close(lmbda, torch.tensor(5 / 6, device=device, dtype=dtype))  # 0.8333
         self.assert_close(point, expected_point)
 
+        lmbda, point = ParametrizedLine(origin, -direction).intersect(plane)
+        self.assert_close(lmbda, torch.tensor(-5 / 6, device=device, dtype=dtype))
+        self.assert_close(point, expected_point)
+
 
 class TestConventionsFitLine(BaseTester):
+    @pytest.mark.parametrize("dim", [2, 3])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_convention_fit_line_centroid_and_unit_direction(self, device, dtype, dim, weighted):
+        # fit_line returns, for each batch row on its own, a line through the centroid of that row's points (the
+        # weighted centroid sum(w p) / sum(w) with weights) and a unit direction, for D = 2 and D >= 3 alike. The
+        # weights are uneven, so the two centroids differ, and the points are off any single line. Each row's direction
+        # is compared with the fit of that row alone, up to its unspecified sign.
+        points = torch.tensor(
+            [[0.0, 0.0, 0.3], [1.0, 0.4, -0.2], [2.5, 0.9, 0.1], [3.0, 1.6, 0.4], [4.2, 1.7, -0.3]],
+            device=device,
+            dtype=dtype,
+        )[:, :dim]
+        rows = torch.stack([points, 2.0 * points.flip(-1) + 1.0])  # the second row: another line elsewhere
+        w = torch.tensor([[3.0, 0.5, 1.0, 0.25, 2.0], [0.5, 2.0, 1.0, 4.0, 0.25]], device=device, dtype=dtype)
+
+        line = fit_line(rows, w if weighted else None)
+        for i in range(2):
+            centroid = (w[i, :, None] * rows[i]).sum(0) / w[i].sum() if weighted else rows[i].mean(0)
+            self.assert_close(line.origin[i], centroid)
+            one = torch.ones((), device=device, dtype=dtype)
+            self.assert_close(torch.linalg.vector_norm(line.direction[i]), one)
+            single = fit_line(rows[i : i + 1], w[i : i + 1] if weighted else None).direction[0]
+            self.assert_close(line.direction[i], torch.sign((line.direction[i] * single).sum()) * single)
+
     def test_wart_fit_line_2d_is_ols_5040(self, device, dtype):
         # fit_line fits 2-D points by ordinary least squares of y on x, but D >= 3 points by total least squares
         # (#5040). On this near-vertical set the 2-D fit is 8.3 degrees off the true direction, while the same points
