@@ -29,7 +29,10 @@ The default ``batch_size="auto"`` picks the batches per call. With the default
 for homographies, and doubles the batch after each one up to 2048, 4096 for
 homographies: inputs with many inliers stop after a small first batch, and the
 others pay the per-batch overhead only a few times. On CUDA and MPS the batch
-is the whole budget up to 8192 samples. Both shrink for many correspondences, so
+is the whole budget up to 8192 samples. Essential matrices start smaller on
+every device, with 64 samples up to 1024 on CPU and 256 up to 8192 on CUDA and
+MPS: a five-point sample needs few draws at high inlier ratios, and its
+eigenvalue solve runs on the host. All shrink for many correspondences, so
 that a batch scores at most ``2**22`` (CPU) or ``2**25`` residuals. The rest of
 this paragraph describes ``local_optimization="dlt"``: on CUDA and MPS a
 homography batch costs about the same from a few hundred up to 8192 hypotheses,
@@ -100,9 +103,9 @@ draws are affordable.
 Local optimization
 ------------------
 
-Homographies and fundamental matrices default to ``local_optimization="lm"``.
-The sampling loop keeps the eight best-scoring minimal models of the whole run,
-normalized once per call. After sampling, all eight are refined together with
+Homographies, fundamental and essential matrices default to
+``local_optimization="lm"``. The sampling loop keeps the eight best-scoring
+minimal models of the whole run, normalized once per call. After sampling, all eight are refined together with
 ``max_lo_iters`` Levenberg-Marquardt iterations that minimize the squared
 Sampson distance or one-way transfer error of every correspondence, truncated
 at ``inl_th``. The best-scoring model among the refits and the minimal models
@@ -129,8 +132,21 @@ a third of the time on CPU and half on CUDA; ALIKED matches with LightGlue, on
 which both stop early, take about 0.5 ms longer on CPU. On the HEB homographies
 it adds about 0.04 mAA at a quarter to a half of the time.
 
-``local_optimization="dlt"``, the only choice for essential matrices and
-line-segment homographies, refits the incumbent on its inliers. For the
+Essential matrices are estimated in the caller's calibrated coordinates, without
+the normalization, which would take them off the essential manifold, and are
+returned with unit Frobenius norm and their largest entry positive. They are
+refined as ``E = U diag(1, 1, 0) V^T`` with five parameters, as many as the
+rotation and translation direction of PoseLib's ``refine_relpose``: rotations
+of ``U`` about three axes and of ``V`` about its first two, which leaves out
+the rotation of both about their third axes that does not change ``E``. The
+five-point samples are solved with Nister's method in float64: an LU null space,
+the degree-ten polynomial from polynomial products, and its real roots from the
+eigenvalues of its companion matrix on the host. On PhotoTourism pairs this
+raises the pose mAA of essential matrices by 0.04 to 0.08 over the subset refits
+below, at a half to a third of the time on CPU.
+
+``local_optimization="dlt"``, the only choice for line-segment homographies,
+refits the incumbent on its inliers. For the
 homography models the refit is the iteratively re-weighted least squares of
 :func:`~kornia.geometry.homography.find_homography_dlt_iterated`, whose Gaussian
 weights use ``inl_th`` as their standard deviation, so a correspondence at the

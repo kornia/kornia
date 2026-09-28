@@ -250,7 +250,7 @@ def _five_point_candidates(design: torch.Tensor) -> Tuple[torch.Tensor, torch.Te
     The four-dimensional null space comes from
     :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, one batched LU factorization, and everything up to
     the roots is computed in :func:`~kornia.geometry.epipolar.fundamental._solve_dtype`, so a float32 sample does
-    not lose its true solution to rounding (#4884).
+    not lose its true solution to rounding.
 
     A sample whose design rows are rank deficient, such as one with a repeated correspondence, has a null space of
     more than four dimensions and no unique solution: all ten of its slots are NaN. It is swapped for a constant
@@ -285,7 +285,7 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
     back-substitution.
 
     The roots are the eigenvalues of the polynomial's companion matrix, from LAPACK on the host in float64 for every
-    device: ``torch.linalg.eigvals`` has no batched CUDA kernel and none at all on MPS (#4528), and it is faster in
+    device: ``torch.linalg.eigvals`` has no batched CUDA kernel and none at all on MPS, and it is faster in
     float64 than in float32. They carry no gradient themselves: one Newton step on the differentiable polynomial
     polishes each root and supplies its derivative by the implicit function theorem, and is skipped at a multiple
     root, where the derivative does not exist.
