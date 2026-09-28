@@ -74,10 +74,12 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.epipolar``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 58 / 56
-     - ``find_fundamental``, ``find_essential``, ``decompose_essential_matrix``, ``motion_from_essential*``
-       and ``KRt_from_projection`` raise ``NotImplementedError``: they call ``lu``, ``eigh`` or QR, which have
-       no CPU half-precision kernels.
+     - 42 / 40
+     - ``decompose_essential_matrix``, ``motion_from_essential*``, ``KRt_from_projection`` and the weighted
+       eight-point ``find_fundamental`` raise ``NotImplementedError``: they call ``lu``, ``eigh`` or QR, which have
+       no CPU half-precision kernels. ``find_essential`` solves in float64, and the unweighted eight-point and the
+       seven-point ``find_fundamental`` factorize in float32 or float64; they return half-precision results, whose
+       accuracy the half-precision inputs limit.
    * - ``kornia.geometry.homography``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -110,8 +112,8 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.ransac``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 4 / 4
-     - The essential and fundamental models raise through the epipolar solvers.
+     - 2 / 2
+     - Essential matrices with ``local_optimization="dlt"`` raise in its eight-point refits, which call ``eigh``.
    * - ``kornia.geometry`` (other)
      - ⚠️ Partial
      - ⚠️ Partial
