@@ -103,7 +103,8 @@ def _neighbourhood_max3d(x: torch.Tensor, kd: int, ky: int, kx: int) -> torch.Te
 class NonMaximaSuppression2d(nn.Module):
     r"""Apply non maxima suppression to filter.
 
-    Flag `minima_are_also_good` is useful, when you want to detect both maxima and minima, e.g. for DoG
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
     """
 
     def __init__(self, kernel_size: tuple[int, int]) -> None:
@@ -140,8 +141,8 @@ class NonMaximaSuppression2d(nn.Module):
         neighbors are suppressed. This is commonly used to turn dense corner or
         keypoint response maps into sparse candidate locations.
 
-        A location within ``(k - 1) // 2`` of an edge is never a maximum: its window does not fit
-        inside the input, so the comparisons that would decide it cannot be made.
+        The first ``(k - 1) // 2`` and last ``k // 2`` rows and columns are never maxima: their window
+        does not fit inside the input, so the comparisons that would decide them cannot be made.
 
         Args:
             x: Response tensor with shape :math:`(B, C, H, W)`, where
@@ -293,7 +294,11 @@ class NonMaximaSuppression2d(nn.Module):
 
 
 class NonMaximaSuppression3d(nn.Module):
-    r"""Apply non maxima suppression to filter."""
+    r"""Apply non maxima suppression to filter.
+
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
+    """
 
     def __init__(self, kernel_size: tuple[int, int, int]) -> None:
         super().__init__()
@@ -310,8 +315,8 @@ class NonMaximaSuppression3d(nn.Module):
         width. This is used by scale-space detectors to keep responses that are
         locally maximal both in image position and in scale/depth.
 
-        As in :meth:`NonMaximaSuppression2d.forward`, a voxel within ``(k - 1) // 2`` of a boundary
-        in any axis is never a maximum: its window does not fit inside the input.
+        As in :meth:`NonMaximaSuppression2d.forward`, the first ``(k - 1) // 2`` and last ``k // 2``
+        positions of each axis are never maxima: their window does not fit inside the input.
 
         Args:
             x: Response tensor with shape :math:`(B, C, D, H, W)`, where
@@ -390,7 +395,15 @@ class NonMaximaSuppression3d(nn.Module):
 def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> torch.Tensor:
     r"""Apply non maxima suppression to filter.
 
-    See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.
+    Convention:
+        - Only strict maxima survive: a position must be greater than every other value in its ``kernel_size``
+          window, so every pixel of a plateau is suppressed, even a plateau at the top of the map.
+          :ref:`Coordinates and sizes <coordinate-conventions>` compares this with scikit-image, scipy and OpenCV.
+        - The window spans ``(k - 1) // 2`` positions before the centre and ``k // 2`` after it on each axis, so an
+          even ``k`` reaches one further forward, and the first ``(k - 1) // 2`` and last ``k // 2`` positions of
+          each axis are never maxima.
+        - The default output is ``input * mask``: suppressed positions are ``0``, which is larger than a negative
+          maximum, so use ``mask_only=True`` for a signed response.
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
@@ -398,8 +411,8 @@ def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = F
 def nms3d(input: torch.Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> torch.Tensor:
     r"""Apply non maxima suppression to filter.
 
-    See
-    :class: `~kornia.feature.NonMaximaSuppression3d` for details.
+    Convention:
+        - See the convention block of :func:`nms2d`, applied over depth, height and width.
     """
     return NonMaximaSuppression3d(kernel_size)(input, mask_only)
 
@@ -414,6 +427,9 @@ def nms3d_minmax(input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     Uses integer slice literals (not Python loops or slice objects) so the 52
     comparison-and-reduction ops are visible to the compiler at trace time,
     allowing full fusion into a minimal number of kernels.
+
+    Convention:
+        - See the convention block of :func:`nms2d`.
 
     Args:
         input: 5-D tensor of shape :math:`(B, C, D, H, W)`.

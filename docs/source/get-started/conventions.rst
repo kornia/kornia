@@ -30,6 +30,8 @@ Image tensors
     np_img = (np.random.rand(48, 64, 3) * 255).astype(np.uint8)  # (H, W, C) uint8
     t = kornia.image.image_to_tensor(np_img)[None].float() / 255.0  # (1, 3, 48, 64) in [0, 1]
 
+.. _coordinate-conventions:
+
 Coordinates and sizes
 ---------------------
 
@@ -49,6 +51,21 @@ Coordinates and sizes
 - 3D grids and 3D pixel coordinates are ``(d, x, y)`` — depth first, not
   ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
   order and the ``*_pixel_coordinates3d`` conversions consume it.
+  :func:`torch.nn.functional.grid_sample` reads a 3D grid as ``(x, y, z)``:
+  pass ``grid[..., [1, 2, 0]]`` and ``align_corners=True``, because the
+  normalized 3D grid is corner-aligned and has no ``align_corners`` argument
+  (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+- Sub-pixel outputs follow the same orders: the soft-argmax functions of
+  :doc:`kornia.geometry.subpix </geometry.subpix>` return ``(x, y)`` in 2D
+  and ``(d, x, y)`` in 3D, and the quadratic refiners
+  (``conv_quad_interp3d``, ``iterative_quad_interp3d``) return ``(d, x, y)``
+  voxel indices of their input. Normalized outputs are corner-aligned, as
+  above.
+- Non-maximum suppression (:func:`kornia.geometry.subpix.nms2d`, ``nms3d``
+  and the detectors built on them) keeps **strict** maxima only: every pixel
+  of a plateau is suppressed. ``skimage.feature.peak_local_max``,
+  ``scipy.ndimage.maximum_filter(x) == x`` and OpenCV's ``dilate(x) == x``
+  keep every pixel of the plateau instead.
 - Pixel ``(0, 0)`` is centred at ``(0, 0)`` — the OpenCV "integer" convention,
   not COLMAP's half-pixel one. :doc:`camera-conventions` catalogues the
   pixel-centre and camera-frame conventions of the surrounding ecosystem and
