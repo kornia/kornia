@@ -73,8 +73,9 @@ def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = N
     """
     if device is None:
         device = torch.device("cpu")
+    # pixel offsets from the window center, (k - 1) / 2 per axis, as _get_center_kernel2d averages to
     window_grid2d = create_meshgrid(h, w, False, device=device)
-    window_grid2d = normalize_pixel_coordinates(window_grid2d, h, w)
+    window_grid2d = window_grid2d - torch.tensor([(w - 1) / 2, (h - 1) / 2], device=device, dtype=window_grid2d.dtype)
     return window_grid2d.permute(3, 0, 1, 2)
 
 
@@ -166,11 +167,10 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.dev
     """
     if device is None:
         device = torch.device("cpu")
-    grid2d = create_meshgrid(h, w, True, device=device)
-    if d > 1:
-        z = torch.linspace(-1, 1, d, device=device).view(d, 1, 1, 1)
-    else:  # only onr channel with index == 0
-        z = torch.zeros(1, 1, 1, 1, device=device)
+    # voxel offsets from the window center, (k - 1) / 2 per axis, as _get_center_kernel3d averages to
+    grid2d = create_meshgrid(h, w, False, device=device)
+    grid2d = grid2d - torch.tensor([(w - 1) / 2, (h - 1) / 2], device=device, dtype=grid2d.dtype)
+    z = (torch.arange(d, device=device, dtype=grid2d.dtype) - (d - 1) / 2).view(d, 1, 1, 1)
     grid3d = torch.cat([z.repeat(1, h, w, 1).contiguous(), grid2d.repeat(d, 1, 1, 1)], 3)
     return grid3d.permute(3, 0, 1, 2).unsqueeze(1)
 

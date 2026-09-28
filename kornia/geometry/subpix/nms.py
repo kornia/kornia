@@ -287,7 +287,7 @@ class NonMaximaSuppression2d(nn.Module):
 
         if mask_only:
             return mask
-        return x * (mask.to(x.dtype))
+        return torch.where(mask, x, 0)
 
 
 class NonMaximaSuppression3d(nn.Module):
@@ -380,7 +380,7 @@ class NonMaximaSuppression3d(nn.Module):
                 mask[..., cd : D - bd, cy : H - by, cx : W - bx] = centre > _neighbourhood_max3d(x, kd, ky, kx)
         if mask_only:
             return mask
-        return x * (mask.to(x.dtype))
+        return torch.where(mask, x, 0)
 
 
 # functional api
