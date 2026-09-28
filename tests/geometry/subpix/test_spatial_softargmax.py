@@ -28,7 +28,7 @@ from kornia.geometry.subpix.spatial_soft_argmax import (
     conv_quad_interp3d,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_avg_pool3d
 
 
 class TestCenterKernel2d(BaseTester):
@@ -1038,19 +1038,8 @@ class TestStrictMaximaBonusDeprecated(BaseTester):
             self.assert_close(got, want, atol=0, rtol=0)
 
 
-def _has_avg_pool3d_kernel(device: torch.device, dtype: torch.dtype) -> bool:
-    # conv_soft_argmax3d pools with avg_pool3d, which torch lacks on CPU for float16/bfloat16.
-    try:
-        torch.nn.functional.avg_pool3d(torch.zeros(1, 1, 1, 1, 1, device=device, dtype=dtype), 1)
-    except (NotImplementedError, RuntimeError) as e:
-        if "not implemented for" in str(e):
-            return False
-        raise
-    return True
-
-
 class TestConventionsConvSoftArgmax(BaseTester):
-    # 3 x 3 windows only: a larger window scales its in-window offsets by 2 / (k - 1) (#5017).
+    # 3 x 3 windows only; #5017 concerns the in-window offsets of larger windows.
 
     def test_convention_conv_soft_argmax2d_is_xy(self, device, dtype):
         # Every window returns (x, y) = (column, row) of the input grid: pixel coordinates, or normalized
@@ -1076,7 +1065,7 @@ class TestConventionsConvSoftArgmax(BaseTester):
     def test_convention_conv_soft_argmax3d_is_dxy(self, device, dtype):
         # The 3-D windows return (d, x, y) = (depth, column, row). D != H != W, one hot voxel at (d 2, row 1, col 6):
         # the window on it and the six beside it return (2, 6, 1). Swapping D and W is the relabel control.
-        if not _has_avg_pool3d_kernel(device, dtype):
+        if not supports_avg_pool3d(device, dtype):
             pytest.skip(f"torch has no avg_pool3d kernel for {device.type} {dtype}")
         volume = torch.zeros(1, 1, 4, 5, 8, device=device, dtype=dtype)
         volume[0, 0, 2, 1, 6] = 30.0
@@ -1118,6 +1107,21 @@ class TestConventionsConvSoftArgmax(BaseTester):
             )
             assert float(coords[0, 0, 0, 3, 10]) > 10.05
             assert float(values[0, 0, 3, 10]) > 0.3
+
+    def test_wart_conv_soft_argmax2d_even_window_border_centre_5066(self, device, dtype):
+        # Wart pin (#5066): each window's centre is the average of a coordinate grid convolved with the call's own
+        # zero padding. With an odd kernel_size the centre pixel is always inside the image; with an even one and
+        # padding = k / 2 the last window's centre averages a padded 0, so a window holding the hot pixel at x = 8
+        # reports a coordinate near the middle of the row. The odd window is the control. A fix that builds the
+        # centres without zero padding flips the even case to 8.
+        heatmap = torch.zeros(1, 1, 5, 9, device=device, dtype=dtype)
+        heatmap[0, 0, 2, 8] = 50.0
+        odd = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (3, 3), (1, 1), (1, 1), normalized_coordinates=False)
+        self.assert_close(odd[0, 0, 0, 2, -1], torch.tensor(8.0, device=device, dtype=dtype))
+        even = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (4, 4), (1, 1), (2, 2), normalized_coordinates=False)
+        assert even.shape[-1] == 10
+        # The last window holds the hot pixel; measured 3.67 (3.5 once #5017 is fixed).
+        assert float(even[0, 0, 0, 2, -1]) < 5.0
 
 
 class TestConventionsQuadInterp3d(BaseTester):
@@ -1199,3 +1203,15 @@ class TestConventionsQuadInterp3d(BaseTester):
         else:
             coords, _ = fn(volume, precomputed_nms_mask=mask)
         self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(7.4, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("fn", _FUNCTIONS, ids=["conv", "iterative"])
+    def test_wart_quad_interp3d_absolute_determinant_floor_5065(self, device, dtype, fn):
+        # Wart pin (#5065): a fit is rejected when |det H| <= 1e-7, an absolute floor on a quantity cubic in the
+        # response amplitude, so the same parabola refines at amplitude 1 and is left at its grid index at amplitude
+        # 1e-3. A scale-invariant test refines both, which flips the second assertion.
+        for amplitude, expected_x in ((1.0, 5 + 1 / 6), (1e-3, 5.0)):
+            volume = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=dtype)
+            volume[0, 0, 1, 2, 5] = amplitude
+            volume[0, 0, 1, 2, 6] = 0.5 * amplitude
+            coords, _ = fn(volume)
+            self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(expected_x, device=device, dtype=dtype))

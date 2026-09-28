@@ -405,6 +405,8 @@ def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = F
           each axis are never maxima.
         - The default output is ``input * mask``: a suppressed finite value becomes ``0``, which is larger than a
           negative maximum, so use ``mask_only=True`` for a signed response.
+        - Known defect: a suppressed ``±inf`` becomes ``NaN``, which ``topk`` ranks above every maximum
+          (`#5067 <https://github.com/kornia/kornia/issues/5067>`_).
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 

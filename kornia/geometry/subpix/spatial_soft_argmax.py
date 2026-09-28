@@ -336,10 +336,12 @@ def conv_soft_argmax2d(
           :func:`conv_soft_argmax3d` defaults to pixel coordinates and ``output_value=True`` instead.
         - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: with an odd
           ``kernel_size``, a window that overhangs the border averages over its in-image pixels only.
-        - Known defect: the exponent is shifted by the maximum of the whole map and ``eps`` is added to each
+        - Known defects: the exponent is shifted by the maximum of the whole map and ``eps`` is added to each
           window's denominator, so a window whose values sit far below that maximum, in units of ``temperature``, is
           pulled toward its centre with a value near ``0``, or is ``NaN`` in float16
-          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_).
+          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_); with an even ``kernel_size`` and
+          ``padding = k // 2`` the border windows average a zero-padded coordinate into their centre and report a
+          point far inside the image (`#5066 <https://github.com/kornia/kornia/issues/5066>`_).
 
     Args:
         input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
@@ -458,8 +460,9 @@ def conv_soft_argmax3d(
     :math:`v_p` the heatmap value there and :math:`T` the temperature.
 
     Convention:
-        - See the convention block of :func:`conv_soft_argmax2d`, including its ``eps`` defect
-          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_). ``coords`` are ``(d, x, y)``, depth first as in
+        - See the convention block of :func:`conv_soft_argmax2d`, including its known defects
+          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_,
+          `#5066 <https://github.com/kornia/kornia/issues/5066>`_). ``coords`` are ``(d, x, y)``, depth first as in
           :func:`~kornia.geometry.grid.create_meshgrid3d`.
 
     Args:
@@ -811,6 +814,9 @@ def conv_quad_interp3d(
           most ``1e-7`` in magnitude, when a move would reach the border voxels, when its centre leaves the voxels
           precomputed for ``dilation_radius``, or when the final shift exceeds ``1.5`` voxels on any axis. A volume
           with a side shorter than 3 is returned unrefined.
+        - Known defect: the ``1e-7`` determinant floor is absolute while the determinant is cubic in the response
+          amplitude, so the maxima of a response computed from a ``[0, 1]`` image mostly stay at their grid index
+          (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
