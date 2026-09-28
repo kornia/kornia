@@ -2002,6 +2002,22 @@ class TestHalfPrecisionPositionSamplers:
         assert int(src.min()) >= 0
         assert int(src.max()) < 8
 
+    # With ``same_on_batch`` the batch shares one draw, so a large batch never reaches the rare draw above. Pin the
+    # draw to the largest float32 below 1 instead: rounded to half precision it is 1.0, and the start was 5, not 4.
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_draw_below_one_keeps_the_last_start(self, device, half_dtype, same_on_batch, ndim):
+        if ndim == 2:
+            generator = CropGenerator(torch.full((2, 2), 4.0, device=device, dtype=half_dtype))
+        else:
+            generator = CropGenerator3D(torch.full((2, 3), 4.0, device=device, dtype=half_dtype))
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        draw = torch.tensor(1.0 - 2.0**-24, device=device, dtype=torch.float32)
+        generator.rand_sampler = torch.distributions.Uniform(draw, draw, validate_args=False)
+        src = generator(torch.Size([2, 1, *([8] * ndim)]), same_on_batch)["src"]
+        assert src[:, 0].tolist() == [[4.0] * ndim] * 2
+
 
 class TestTruncateToStart:
     # The largest float32 below 1 rounds to 1.0 in float16 and in bfloat16, the largest float64 below 1 rounds to
