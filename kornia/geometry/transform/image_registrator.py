@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 
+from kornia.core._compat import deprecated
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
 
@@ -316,8 +317,13 @@ class ImageRegistrator(nn.Module):
         warper = self.warper(_height, _width)
         return warper(src_img, self.model())
 
-    def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
-        r"""Warp src_img with inverted estimated model."""
+    def warp_dst_into_src(self, dst_img: torch.Tensor) -> torch.Tensor:
+        r"""Warp dst_img with inverted estimated model."""
         _height, _width = dst_img.shape[-2:]
         warper = self.warper(_height, _width)
         return warper(dst_img, self.model.forward_inverse())
+
+    @deprecated(replace_with="ImageRegistrator.warp_dst_into_src", version="0.9.0")
+    def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
+        r"""Deprecated alias for :meth:`warp_dst_into_src`."""
+        return self.warp_dst_into_src(dst_img)
