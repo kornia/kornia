@@ -753,22 +753,25 @@ class TestWarpPerspective(BaseTester):
         hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 5), align_corners=True)
         self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
 
-    def test_wart_homography_warp_pixel_path_ignores_mode_and_align_corners_4772(self, device, dtype):
-        # With normalized_homography=False, homography_warp calls warp_perspective with mode="bilinear"
-        # and align_corners=True whatever it was given (#4772). Reflection padding makes align_corners
-        # visible; a 1.5-pixel shift makes nearest differ from bilinear. Flips once both are forwarded.
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_homography_warp_pixel_path_respects_mode_and_align_corners_4772(self, device, dtype, mode, align_corners):
+        # Reflection padding exposes align_corners; a 1.5-pixel shift distinguishes nearest from bilinear.
         img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
         H = torch.tensor([[[1.0, 0.0, 1.5], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
-        warp = kornia.geometry.transform.warp_perspective
-        hw = kornia.geometry.transform.homography_warp(
-            img, H, (4, 4), padding_mode="reflection", align_corners=False, normalized_homography=False
+        actual = kornia.geometry.transform.homography_warp(
+            img,
+            H,
+            (4, 4),
+            mode=mode,
+            padding_mode="reflection",
+            align_corners=align_corners,
+            normalized_homography=False,
         )
-        self.assert_close(hw, warp(img, H, (4, 4), padding_mode="reflection", align_corners=True))
-        assert not torch.allclose(hw, warp(img, H, (4, 4), padding_mode="reflection", align_corners=False), atol=0.1)
-
-        hn = kornia.geometry.transform.homography_warp(img, H, (4, 4), mode="nearest", normalized_homography=False)
-        self.assert_close(hn, warp(img, H, (4, 4), mode="bilinear"))
-        assert not torch.allclose(hn, warp(img, H, (4, 4), mode="nearest"), atol=0.1)
+        expected = kornia.geometry.transform.warp_perspective(
+            img, H, (4, 4), mode=mode, padding_mode="reflection", align_corners=align_corners
+        )
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_convention_identity_agrees_with_warp_affine(self, align_corners, device, dtype):

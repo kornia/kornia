@@ -24,17 +24,13 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.exceptions import BaseError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
 from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
 
 __all__ = ["Hyperplane", "fit_plane"]
-
-
-def normalized(v: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    norm_sq = (v * v).sum(dim=-1, keepdim=True) + eps
-    return v * norm_sq.rsqrt()
 
 
 class Hyperplane(nn.Module):
@@ -134,11 +130,7 @@ class Hyperplane(nn.Module):
             batch dimensions.
         """
         dist = self.signed_distance(p)
-        if len(dist.shape) != len(self.normal):
-            # non batched plane project a batch of points
-            dist = dist[..., None]  # Nx1
-        # TODO: TypeError: bad operand type for unary -: 'Scalar'
-        return p - dist.data * self.normal
+        return p - dist.data[..., None] * self.normal
         # TODO: make that Vector can subtract Scalar
         # return p - self.signed_distance(p) * self.normal
 
@@ -160,47 +152,58 @@ class Hyperplane(nn.Module):
 
     @classmethod
     def through(cls, p0: torch.Tensor, p1: torch.Tensor, p2: Optional[torch.Tensor] = None) -> "Hyperplane":
-        """Construct a line-like 2D hyperplane or a 3D plane through points.
+        """Construct the 3D plane through three points.
+
+        Only the three-point form is supported: :class:`Hyperplane` stores its normal as a
+        :class:`~kornia.geometry.vector.Vector3`, so it cannot represent a 2D line, and calling
+        ``through`` with two points raises.
 
         Args:
-            p0: First point tensor, shaped ``(..., 2)`` for the 2D case or
-                ``(..., 3)`` for the 3D case.
+            p0: First point tensor, shaped ``(..., 3)``.
             p1: Second point tensor with the same shape as ``p0``.
-            p2: Optional third point tensor. If omitted, the method builds the
-                2D line representation from ``p0`` and ``p1``. If provided, it
-                builds the 3D plane passing through all three points.
+            p2: Third point tensor with the same shape as ``p0``. It is required; the default of
+                ``None`` only exists so that a two-point call fails with a clear error.
 
         Returns:
-            :class:`Hyperplane` with a normal and offset determined by the
-            provided point set.
+            :class:`Hyperplane` passing through the three points.
+
+        Raises:
+            BaseError: if ``p2`` is omitted, or if the points are not ``(..., 3)`` tensors of the
+                same shape.
         """
-        # 2d case
         if p2 is None:
-            # TODO: improve tests
-            KORNIA_CHECK_SHAPE(p0, ["*", "2"])
-            KORNIA_CHECK(p0.shape == p1.shape)
-            # TODO: implement `.unitOrthonormal`
-            normal2d = normalized(p1 - p0)
-            offset2d = -batched_dot_product(p0, normal2d)
-            return Hyperplane(_wrap(normal2d, Vector3), _wrap(offset2d, Scalar))
-        # 3d case
-        KORNIA_CHECK_SHAPE(p0, ["*", "3"])
-        KORNIA_CHECK(p0.shape == p1.shape)
-        KORNIA_CHECK(p1.shape == p2.shape)
-        v0, v1 = (p2 - p0), (p1 - p0)
+            # Raised directly rather than through KORNIA_CHECK, so it still fires with checks disabled.
+            raise BaseError(
+                "Hyperplane.through requires three points p0, p1 and p2 of shape (..., 3); "
+                "the two-point (2D line) form is not supported."
+            )
+
+        p0_data = _unwrap(p0)
+        p1_data = _unwrap(p1)
+        p2_data = _unwrap(p2)
+
+        KORNIA_CHECK_SHAPE(p0_data, ["*", "3"])
+        KORNIA_CHECK(p0_data.shape == p1_data.shape)
+        KORNIA_CHECK(p1_data.shape == p2_data.shape)
+
+        v0, v1 = (p2_data - p0_data), (p1_data - p0_data)
         normal = torch.linalg.cross(v0, v1, dim=-1)
-        norm = normal.norm(-1)
+
+        norm = torch.linalg.vector_norm(normal, dim=-1, keepdim=True)
+        v0_norm = torch.linalg.vector_norm(v0, dim=-1, keepdim=True)
+        v1_norm = torch.linalg.vector_norm(v1, dim=-1, keepdim=True)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
-        def compute_normal_svd(v0: torch.Tensor, v1: torch.Tensor) -> "Vector3":
-            # NOTE: for reason torch.TensorWrapper does not stack well
-            m = torch.stack((_unwrap(v0), _unwrap(v1)), -2)  # Bx2x3
+        def compute_normal_svd(v0: torch.Tensor, v1: torch.Tensor) -> torch.Tensor:
+            m = torch.stack((v0, v1), -2)  # Bx2x3
             _, _, V = _torch_svd_cast(m)  # kornia solution lies in the last row
-            return _wrap(V[..., :, -1], Vector3)  # Bx3
+            return V[..., :, -1]  # Bx3
 
-        normal_mask = norm <= v0.norm(-1) * v1.norm(-1) * 1e-6
-        normal = torch.where(normal_mask, compute_normal_svd(v0, v1).data, normal / (norm + 1e-6))
-        offset = -batched_dot_product(p0, normal)
+        eps = torch.finfo(p0_data.dtype).eps if p0_data.is_floating_point() else 1e-6
+        normal_mask = norm <= v0_norm * v1_norm * eps
+        norm_safe = torch.where(normal_mask, torch.ones_like(norm), norm)
+        normal = torch.where(normal_mask, compute_normal_svd(v0, v1), normal / norm_safe)
+        offset = -batched_dot_product(p0_data, normal)
 
         return Hyperplane(_wrap(normal, Vector3), _wrap(offset, Scalar))
 
@@ -211,7 +214,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
     """Fit a plane from a set of points using SVD.
 
     Args:
-        points: tensor containing a batch of sets of n-dimensional points. The  expected
+        points: tensor containing a batch of sets of n-dimensional points. The expected
             shape of the tensor is :math:`(N, D)`.
 
     Return:

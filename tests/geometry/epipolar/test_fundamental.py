@@ -804,17 +804,23 @@ class TestConventionFundamental(BaseTester):
         swapped = epi.get_closest_point_on_epipolar_line(x2, x1, F)
         assert (_hom(swapped) * lines).sum(-1).abs().max() > 1.0
 
-    def test_run_7point_missing_roots_are_zero_4862(self, device, dtype):
+    def test_run_7point_zeroes_padded_roots_4862(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_EIGH)
-        # #4862: a 7-point sample whose cubic has one real root. The two missing roots used to be padded with 0.0 and
-        # returned as the same rank-3 matrix; they are now zero candidates.
+        # #4862: a 7-point sample whose cubic has one real root. The candidates of its two missing roots used to be one
+        # rank-3 matrix repeated, and are now zero matrices.
         idx = [0, 1, 2, 3, 4, 6, 10]
         F = epi.find_fundamental(two_view["x1"][:, idx], two_view["x2"][:, idx], method="7POINT")
         assert F.shape == (1, 3, 3, 3)
         assert (F[:, 1:] == 0).all()
-        sv = torch.linalg.svdvals(F[0, :1].cpu().double())
-        assert sv[0, 2] < 1e-8 * sv[0, 0]  # candidate 0 is a genuine rank-2 solution
+        sv = torch.linalg.svdvals(F[0, 0].cpu().double())
+        assert sv[2] < 1e-8 * sv[0]  # candidate 0 is a genuine rank-2 solution
+        # Control: a sample whose cubic has three real roots keeps three rank-2 candidates.
+        idx = [0, 1, 2, 3, 4, 5, 6]
+        F = epi.find_fundamental(two_view["x1"][:, idx], two_view["x2"][:, idx], method="7POINT")
+        sv = torch.linalg.svdvals(F[0].cpu().double())
+        assert (sv[:, 0] > 0).all()
+        assert (sv[:, 2] < 1e-8 * sv[:, 0]).all()
 
     def test_convention_normalize_transformation_eps_divisor_4874(self, device, dtype):
         # #4874: eps guards the divisor without biasing the normalized matrix.

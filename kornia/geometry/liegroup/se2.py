@@ -26,7 +26,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
-from kornia.core.tensor_wrapper import _unwrap
 from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
@@ -65,12 +64,11 @@ class Se2(nn.Module):
           has the form :math:`[[a, -b], [b, a]]`, a rotation scaled by :math:`\sqrt{a^2 + b^2}`, and keeps the scale
           as a non-unit ``z`` that ``log`` drops; it rejects a reflection. Graph export omits the value check and
           interprets the block as ``z = m00 + i m10``.
+        - ``t`` is always a tensor registered as module state, whichever constructor built the pose; a ``Vector2``
+          passed to the constructor is unwrapped. ``g * p`` returns a ``Vector2`` only when ``p`` is one.
         - Known defects: ``hat`` and ``vee`` put the translation in the bottom row and the angle in a symmetric block
-          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_); for ``identity``, ``random`` and any pose
-          composed with or inverted from one, ``t`` and ``g * points`` are a ``Vector2`` instead of a tensor
-          (`#4931 <https://github.com/kornia/kornia/issues/4931>`_), and ``state_dict`` and ``.to()`` skip that
-          translation, while ``.to()`` a real dtype breaks the ``So2`` rotation
-          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+          (`#4929 <https://github.com/kornia/kornia/issues/4929>`_), and ``.to()`` a real dtype breaks the ``So2``
+          rotation (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Example:
         >>> so2 = So2.identity(1)
@@ -91,7 +89,8 @@ class Se2(nn.Module):
 
         Args:
             rotation: So2 group encompassing a rotation.
-            translation: translation vector with the shape of :math:`(B, 2)`.
+            translation: translation torch.Tensor with the shape of :math:`(B, 2)`, or a Vector2 wrapping one; the
+                tensor is what gets stored.
 
         Example:
             >>> so2 = So2.identity(1)
@@ -108,13 +107,11 @@ class Se2(nn.Module):
         KORNIA_CHECK_TYPE(rotation, So2)
         if not isinstance(translation, (Vector2, torch.Tensor)):
             raise TypeError(f"translation type is {type(translation)}")
-        self._translation: Vector2 | torch.Tensor
+        _t_data = translation.data if isinstance(translation, Vector2) else translation
+        _check_se2_r_t_shape(rotation, _t_data)  # TODO remove
+        self._translation: torch.Tensor
         self._rotation: So2 = rotation
-        if isinstance(translation, torch.Tensor):
-            _check_se2_r_t_shape(rotation, translation)  # TODO remove
-            register_module_state(self, "_translation", translation)
-        else:
-            self._translation = translation
+        register_module_state(self, "_translation", _t_data)
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
@@ -166,7 +163,7 @@ class Se2(nn.Module):
         return self._rotation
 
     @property
-    def t(self) -> Vector2 | torch.Tensor:
+    def t(self) -> torch.Tensor:
         """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
@@ -176,7 +173,7 @@ class Se2(nn.Module):
         return self._rotation
 
     @property
-    def translation(self) -> Vector2 | torch.Tensor:
+    def translation(self) -> torch.Tensor:
         """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
@@ -248,7 +245,7 @@ class Se2(nn.Module):
         row0 = torch.stack((a, half_theta), -1)
         row1 = torch.stack((-half_theta, a), -1)
         V_inv = torch.stack((row0, row1), -2)
-        upsilon = V_inv @ _unwrap(self.t)[..., None]
+        upsilon = V_inv @ self.t[..., None]
         return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
@@ -326,15 +323,15 @@ class Se2(nn.Module):
             Parameter containing:
             tensor([1.+0.j], requires_grad=True)
             >>> s.t
-            x: tensor([0.])
-            y: tensor([0.])
+            Parameter containing:
+            tensor([[0., 0.]], requires_grad=True)
 
         """
         t: torch.Tensor = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             t = t.repeat(batch_size, 1)
-        return cls(So2.identity(batch_size, device, dtype), Vector2(t))
+        return cls(So2.identity(batch_size, device, dtype), t)
 
     def matrix(self) -> torch.Tensor:
         """Return the matrix representation of shape :math:`(B, 3, 3)`.
@@ -347,7 +344,7 @@ class Se2(nn.Module):
                      [0., 0., 1.]]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), _unwrap(self.t)[..., None]), -1)
+        rt = torch.cat((self.r.matrix(), self.t[..., None]), -1)
         rt_3x3 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
@@ -388,11 +385,7 @@ class Se2(nn.Module):
 
         """
         r_inv: So2 = self.r.inverse()
-        _t = -1 * self.t
-        if isinstance(_t, int):
-            raise TypeError("Unexpected integer from `-1 * translation`")
-
-        return Se2(r_inv, r_inv * _t)
+        return Se2(r_inv, r_inv * (-1 * self.t))
 
     @classmethod
     def random(
@@ -420,7 +413,7 @@ class Se2(nn.Module):
         else:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             shape = (batch_size, 2)
-        return cls(r, Vector2(torch.rand(shape, device=device, dtype=dtype)))
+        return cls(r, torch.rand(shape, device=device, dtype=dtype))
 
     @classmethod
     def trans(cls, x: torch.Tensor, y: torch.Tensor) -> Se2:
@@ -471,6 +464,6 @@ class Se2(nn.Module):
 
         """
         rt = self.matrix()
-        t = _unwrap(self.t)
+        t = self.t
         rt[..., 0:2, 2] = torch.stack((t[..., 1], -t[..., 0]), -1)
         return rt

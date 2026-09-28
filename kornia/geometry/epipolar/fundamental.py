@@ -410,7 +410,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
 
     Returns:
         The computed fundamental matrices with shape :math:`(B, 3, 3, 3)`, always 3 candidates per batch
-        element. A cubic with a single real root gives one candidate and two zero matrices.
+        element. A cubic with a single real root gives one candidate followed by two zero matrices.
 
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
@@ -514,10 +514,10 @@ def find_fundamental(
           :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
         - The result is scaled so that ``F[2, 2] = 1`` by :func:`normalize_transformation`, which leaves it at its
           unnormalised scale when ``F[2, 2]`` is numerically zero, as for exactly rectified stereo.
-          ``method="7POINT"`` returns three candidates in no particular order, zero where the cubic has fewer
-          real roots.
+          ``method="7POINT"`` returns three candidates in no particular order.
         - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
           negative weight counts as zero, and ``method="7POINT"`` ignores them.
+        - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`: :math:`N \ge 8` for

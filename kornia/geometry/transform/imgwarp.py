@@ -1703,8 +1703,6 @@ def homography_warp(
           :func:`warp_perspective`
         - ``dsize`` is ``(h, w)``
         - align_corners: ``False`` by default (differs from :func:`warp_perspective`)
-        - with ``normalized_homography=False``, ``mode`` and ``align_corners`` are ignored and
-          ``'bilinear'``/``True`` are used (`#4772 <https://github.com/kornia/kornia/issues/4772>`_)
         - negative output dimensions raise ``ValueError``
 
     Args:
@@ -1759,7 +1757,7 @@ def homography_warp(
 
         return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
     return warp_perspective(
-        patch_src, src_homo_dst, dsize, mode="bilinear", padding_mode=padding_mode, align_corners=True
+        patch_src, src_homo_dst, dsize, mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )
 
 
