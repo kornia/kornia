@@ -20,11 +20,11 @@
 from typing import Iterator, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _torch_svd_cast, register_module_state
+from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar
@@ -100,7 +100,7 @@ class ParametrizedLine(nn.Module):
             >>> l = ParametrizedLine.through(p0, p1)
 
         """
-        return ParametrizedLine(p0, F.normalize((p1 - p0), p=2, dim=-1))
+        return ParametrizedLine(p0, _normalize_last_dim(p1 - p0, 1e-12))
 
     def point_at(self, t: Union[float, torch.Tensor, Scalar]) -> torch.Tensor:
         """Get the point at :math:`t` along this line.
