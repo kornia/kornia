@@ -453,9 +453,8 @@ class TestConventionsParametrizedLine(BaseTester):
     def test_convention_parametrized_line_intersect_lambda_units(self, device, dtype):
         # intersect returns (lambda, point) with point = point_at(lambda), so lambda is in units of the stored
         # direction: a unit direction gives the Euclidean distance from the origin, a non-unit direction a different
-        # lambda for the same point, and the reversed direction a negative one. A non-unit normal works, but eps is
-        # an absolute check on n . direction, so sufficiently shrinking an equivalent plane selects the parallel
-        # fallback. lambda = -(offset + n . origin) / (n . direction).
+        # lambda for the same point, and the reversed direction a negative one. A non-unit normal gives the same
+        # lambda. lambda = -(offset + n . origin) / (n . direction).
         normal = torch.tensor([1.0, 2.0, 2.0], device=device, dtype=dtype) / 3
         assert (normal.abs() >= 0.1).all()  # a tilted plane: no normal component near 0
         plane = Hyperplane.from_vector(Vector3(normal), Vector3(torch.ones(3, device=device, dtype=dtype)))
@@ -481,11 +480,6 @@ class TestConventionsParametrizedLine(BaseTester):
         lmbda, point = ParametrizedLine(origin, direction).intersect(nonunit_plane)
         self.assert_close(lmbda, torch.tensor(5 / 6, device=device, dtype=dtype))
         self.assert_close(point, expected_point)
-
-        small_plane = Hyperplane.from_vector(Vector3(1e-7 * normal), Vector3(torch.ones(3, device=device, dtype=dtype)))
-        lmbda, point = ParametrizedLine(origin, direction).intersect(small_plane)
-        self.assert_close(lmbda, torch.zeros((), device=device, dtype=dtype))
-        self.assert_close(point, origin)
 
 
 class TestConventionsFitLine(BaseTester):

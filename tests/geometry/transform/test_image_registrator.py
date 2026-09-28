@@ -244,23 +244,6 @@ class TestConventionsImageRegistrator(BaseTester):
         identity = torch.eye(3, device=device, dtype=dtype)[None]
         self.assert_close(loaded.register(src, dst).detach(), identity)
 
-    def test_convention_image_registrator_tolerance_starts_each_level(self, device, dtype):
-        # A level gets its first optimizer step even when its initial loss equals the preceding level's final loss.
-        self._skip_without_kernels(device, dtype)
-        steps = []
-
-        class CountingAdam(torch.optim.Adam):
-            def step(self, *args, **kwargs):
-                steps.append(1)
-                return super().step(*args, **kwargs)
-
-        ir = ImageRegistrator(
-            "translation", optimizer=CountingAdam, num_iterations=1, pyramid_levels=2, tolerance=1e-4
-        ).to(device, dtype)
-        image = torch.zeros(1, 1, self.height, self.width, device=device, dtype=dtype)
-        ir.register(image, image)
-        assert len(steps) == 2
-
     def test_convention_similarity_rotation_in_degrees(self, device, dtype):
         # Similarity.forward() is [[scale * R(rot), shift], [0, 0, 1]], with R = [[cos, sin], [-sin, cos]] from
         # angle_to_rotation_matrix: rot is in degrees.

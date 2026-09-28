@@ -48,9 +48,7 @@ class ParametrizedLine(nn.Module):
           Euclidean distance from ``p0``.
         - :meth:`projection`, :meth:`squared_distance` and :meth:`distance` require a unit ``direction``.
         - :meth:`intersect` returns ``(lambda, point)`` with ``point = point_at(lambda)``: ``lambda`` is in units of
-          the stored direction, and the plane's normal need not be unit. Its ``eps`` parallel threshold remains
-          fixed, while scaling an equivalent plane equation scales the normal--direction dot product and can select
-          the parallel fallback.
+          the stored direction, and the plane's normal need not be unit.
     """
 
     def __init__(self, origin: torch.Tensor, direction: torch.Tensor) -> None:
@@ -179,8 +177,6 @@ class ParametrizedLine(nn.Module):
         Args:
             plane: the plane to compute the intersection point.
             eps: absolute threshold on ``|normal . direction|`` below which the line counts as parallel to the plane.
-                The threshold remains fixed when the plane normal is scaled, so equivalent plane equations may take
-                different branches.
 
         Return:
             - the lambda value used to compute the look at point.
