@@ -157,20 +157,18 @@ class TestHyperplane(BaseTester):
 
         plane = Hyperplane.through(p0, p1, p2)
 
+        # Half precision (float16 / bfloat16) requires relaxed tolerance
+        rtol, atol = (1e-2, 1e-2) if dtype in (torch.float16, torch.bfloat16) else (1e-4, 1e-4)
+
         # 1. Normal must be strictly unit length (L2 norm == 1.0)
         normal_norm = torch.linalg.vector_norm(plane.normal.data, dim=-1)
-        assert torch.allclose(normal_norm, torch.tensor(1.0, device=device, dtype=dtype))
+        assert torch.allclose(normal_norm, torch.tensor(1.0, device=device, dtype=dtype), rtol=rtol, atol=atol)
 
         # 2. Point x = (1, 2, 3) must have true signed distance -12/7 ≈ -1.7142857
         x = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
         expected_distance = torch.tensor(-12.0 / 7.0, device=device, dtype=dtype)
-        assert torch.allclose(plane.signed_distance(x).data.squeeze(), expected_distance, atol=1e-5, rtol=1e-5)
+        assert torch.allclose(plane.signed_distance(x).data.squeeze(), expected_distance, rtol=rtol, atol=atol)
 
         # 3. Projection of x onto the plane must lie on the plane (signed distance == 0)
         proj = plane.projection(x)
-        assert torch.allclose(
-            plane.signed_distance(proj).data.squeeze(),
-            torch.tensor(0.0, device=device, dtype=dtype),
-            atol=1e-5,
-            rtol=1e-5,
-        )
+        assert torch.allclose(plane.signed_distance(proj).data.squeeze(), torch.tensor(0.0, device=device, dtype=dtype), rtol=rtol, atol=atol)
