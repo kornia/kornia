@@ -130,11 +130,7 @@ class Hyperplane(nn.Module):
             batch dimensions.
         """
         dist = self.signed_distance(p)
-        if len(dist.shape) != len(self.normal):
-            # non batched plane project a batch of points
-            dist = dist[..., None]  # Nx1
-        # TODO: TypeError: bad operand type for unary -: 'Scalar'
-        return p - dist.data * self.normal
+        return p - dist.data[..., None] * self.normal
         # TODO: make that Vector can subtract Scalar
         # return p - self.signed_distance(p) * self.normal
 
