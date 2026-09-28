@@ -334,14 +334,12 @@ def conv_soft_argmax2d(
         - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. This function defaults to
           normalized, corner-aligned coordinates.
           :func:`conv_soft_argmax3d` defaults to pixel coordinates and ``output_value=True`` instead.
-        - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: with an odd
-          ``kernel_size``, a window that overhangs the border averages over its in-image pixels only.
-        - Known defects: the exponent is shifted by the maximum of the whole map and ``eps`` is added to each
+        - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: a window that
+          overhangs the border averages over its in-image pixels only.
+        - Known defect: the exponent is shifted by the maximum of the whole map and ``eps`` is added to each
           window's denominator, so a window whose values sit far below that maximum, in units of ``temperature``, is
           pulled toward its centre with a value near ``0``, or is ``NaN`` in float16
-          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_); with an even ``kernel_size`` and
-          ``padding = k // 2`` the border windows average a zero-padded coordinate into their centre and report a
-          point far inside the image (`#5066 <https://github.com/kornia/kornia/issues/5066>`_).
+          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_).
 
     Args:
         input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
@@ -411,10 +409,14 @@ def conv_soft_argmax2d(
     x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3))
 
     # We need to output also coordinates
-    # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid(h, w, False, device).to(dtype).permute(0, 3, 1, 2)
+    # Pooled window center coordinates. The grid covers the padded input and carries the coordinates on into the
+    # padding: with an even kernel_size and padding = k / 2, a border window's centre straddles a padded pixel,
+    # and a zero-padded grid would average 0 into it instead of -1 or W.
+    py, px = (padding, padding) if isinstance(padding, int) else padding
+    grid_global: torch.Tensor = create_meshgrid(h + 2 * py, w + 2 * px, False, device).to(dtype)
+    grid_global = (grid_global - torch.tensor([px, py], device=device, dtype=dtype)).permute(0, 3, 1, 2)
 
-    grid_global_pooled = F.conv2d(grid_global, center_kernel, stride=stride, padding=padding)
+    grid_global_pooled = F.conv2d(grid_global, center_kernel, stride=stride)
 
     # Coordinates of maxima residual to window center
     # prepare kernel
@@ -460,9 +462,8 @@ def conv_soft_argmax3d(
     :math:`v_p` the heatmap value there and :math:`T` the temperature.
 
     Convention:
-        - See the convention block of :func:`conv_soft_argmax2d`, including its known defects
-          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_,
-          `#5066 <https://github.com/kornia/kornia/issues/5066>`_). Coordinates follow
+        - See the convention block of :func:`conv_soft_argmax2d`, including its known defect
+          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_). Coordinates follow
           :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to pixel coordinates.
 
     Args:
@@ -537,10 +538,13 @@ def conv_soft_argmax3d(
     den = pool_coef * F.avg_pool3d(x_exp.view_as(input), kernel_size, stride=stride, padding=padding) + eps
 
     # We need to output also coordinates
-    # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid3d(d, h, w, False, device=device).to(dtype).permute(0, 4, 1, 2, 3)
+    # Pooled window center coordinates, over the padded input as in conv_soft_argmax2d
+    pz, py, px = (padding, padding, padding) if isinstance(padding, int) else padding
+    grid_global: torch.Tensor = create_meshgrid3d(d + 2 * pz, h + 2 * py, w + 2 * px, False, device=device).to(dtype)
+    # channels are (depth, x, y)
+    grid_global = (grid_global - torch.tensor([pz, px, py], device=device, dtype=dtype)).permute(0, 4, 1, 2, 3)
 
-    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride, padding=padding)
+    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride)
 
     # Coordinates of maxima residual to window center
     # prepare kernel
