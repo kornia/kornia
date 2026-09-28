@@ -21,6 +21,8 @@ import pytest
 import torch
 
 import kornia.geometry.epipolar as epi
+from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+from kornia.geometry.epipolar.fundamental import _eight_point_fundamental, _epipolar_design_rows, _rank2_projection
 
 from testing.base import BaseTester
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
@@ -854,3 +856,83 @@ class TestConventionFundamental(BaseTester):
         F = epi.fundamental_from_projections(two_view["P1"], two_view["P2"])
         assert F.dtype == torch.float16
         assert torch.isinf(F).any()
+
+
+def _rotation(axis_angle):
+    return axis_angle_to_rotation_matrix(torch.tensor([axis_angle], dtype=torch.float64))[0]
+
+
+def _with_singular_values(values, rotate: bool) -> torch.Tensor:
+    S = torch.diag(torch.tensor(values, dtype=torch.float64))
+    if not rotate:
+        return S
+    return _rotation([0.3, -0.2, 0.5]) @ S @ _rotation([-0.4, 0.1, 0.2]).T
+
+
+class TestRankTwoProjection(BaseTester):
+    def test_matches_svd(self, device):
+        F = torch.randn(128, 3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
+        U, S, Vh = torch.linalg.svd(F)
+        expected = U @ torch.diag_embed(S * torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64)) @ Vh
+        self.assert_close(_rank2_projection(F), expected, atol=1e-9, rtol=0)
+
+    @pytest.mark.parametrize(
+        "values, rotate",
+        [
+            ([1.0, 1.0, 1.0], False),
+            ([2.0, 2.0, 2.0], True),
+            ([3.0, 1.0, 1.0], False),
+            ([3.0, 1.0, 1.0], True),
+            ([3.0, 1.0, 1.0 - 1e-12], True),
+            ([3.0, 1.0, 1.0 - 1e-8], True),
+            ([3.0, 1.0, 1.0 - 1e-4], True),
+            ([1.0, 0.0, 0.0], True),
+            ([0.0, 0.0, 0.0], False),
+        ],
+    )
+    def test_repeated_singular_values(self, device, values, rotate):
+        # At a repeated smallest singular value the nearest rank-2 matrix is not unique, so compare what every one of
+        # them shares with the SVD's: the two largest singular values, a zero third one, and the distance sigma_3.
+        F = _with_singular_values(values, rotate).to(device)[None]
+        P = _rank2_projection(F)
+        s = torch.linalg.svdvals(F)[0]
+        sp = torch.linalg.svdvals(P)[0]
+        tol = 1e-9 * max(float(s[0]), 1.0)
+        self.assert_close(sp[:2], s[:2], atol=tol, rtol=0)
+        assert float(sp[2]) <= tol
+        self.assert_close((F - P).norm(), s[2], atol=tol, rtol=0)
+
+    def test_backward_is_finite_at_a_repeated_spectrum(self, device):
+        F = torch.eye(3, device=device, dtype=torch.float64)[None].requires_grad_()
+        _rank2_projection(F).sum().backward()
+        assert torch.isfinite(F.grad).all()
+
+    def test_gradcheck(self, device):
+        F = torch.randn(4, 3, 3, generator=torch.Generator().manual_seed(1), dtype=torch.float64).to(device)
+        self.gradcheck(_rank2_projection, (F,))
+
+    def test_keeps_dtype(self, device, dtype):
+        F = torch.randn(2, 3, 3, generator=torch.Generator().manual_seed(2)).to(device, dtype)
+        assert _rank2_projection(F).dtype == dtype
+
+    def test_eight_point_fundamental_is_exact(self, device, dtype):
+        _skip_half(dtype, "the eight-point kernel is compared at float32 and float64 accuracy")
+        two_view = two_view_scene(torch.device("cpu"), torch.float64)
+        x1, x2 = two_view["x1"][:, :8], two_view["x2"][:, :8]
+        n1, t1 = epi.normalize_points(x1)
+        n2, t2 = epi.normalize_points(x2)
+        A = _epipolar_design_rows(_hom(n1), _hom(n2)).to(device, dtype)
+        F = t2.mT @ _eight_point_fundamental(A).cpu().double() @ t1
+        F = F / F.norm()
+        truth = _pixel_F(two_view)
+        truth = truth / truth.norm()
+        tolerance = 1e-6 if dtype == torch.float64 else 1e-2
+        assert torch.linalg.det(F).abs().max() < tolerance
+        assert min((F - truth).norm(), (F + truth).norm()) < tolerance
+
+    @pytest.mark.parametrize("num_points", [8, 12])
+    def test_gradcheck_run_8point_unweighted(self, device, num_points):
+        generator = torch.Generator().manual_seed(num_points)
+        points1 = torch.rand(1, num_points, 2, generator=generator, dtype=torch.float64).to(device)
+        points2 = torch.rand(1, num_points, 2, generator=generator, dtype=torch.float64).to(device)
+        self.gradcheck(lambda p1: epi.find_fundamental(p1, points2), (points1,))

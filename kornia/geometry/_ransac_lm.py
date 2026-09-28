@@ -40,16 +40,18 @@ from typing import Tuple
 
 import torch
 
-from kornia.geometry.epipolar.fundamental import _det_pencil_coefficients, _epipolar_design_rows, _seven_point_basis
-from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
+from kornia.geometry.epipolar.fundamental import (
+    _det_pencil_coefficients,
+    _eight_point_fundamental,
+    _epipolar_design_rows,
+    _rank2_projection,
+    _seven_point_basis,
+    _solve_dtype,
+)
+from kornia.geometry.solvers.homogeneous import _null_space_lu
 from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
 
 __all__: list[str] = []
-
-
-def _solve_dtype(device: torch.device) -> torch.dtype:
-    """The dtype of the small closed-form steps: float64, except on MPS, which has none."""
-    return torch.float32 if device.type == "mps" else torch.float64
 
 
 def normalize_correspondences(
@@ -95,35 +97,12 @@ def normalize_correspondences(
     return x1, x2, t1, t2, s1, s2
 
 
-def rank2_projection(F: torch.Tensor) -> torch.Tensor:
-    r"""The nearest rank-2 matrices in Frobenius norm, ``F (I - v v^T)`` with ``v`` the smallest right singular vector.
-
-    ``v`` is the eigenvector of ``F^T F`` for its smallest eigenvalue, from the trigonometric solution of the 3x3
-    characteristic polynomial and a cross product of two rows of ``F^T F - \lambda I``; unlike a batched SVD this is
-    a few elementwise operations on every backend.
-    """
-    M = F.mT @ F
-    q = M.diagonal(dim1=-2, dim2=-1).sum(-1) / 3
-    eye = torch.eye(3, dtype=F.dtype, device=F.device)
-    shifted = M - q[:, None, None] * eye
-    p = (shifted.square().sum((-2, -1)) / 6).sqrt()
-    safe_p = torch.where(p > 0, p, torch.ones_like(p))
-    r = (_det3(*(shifted / safe_p[:, None, None]).flatten(-2).unbind(-1)) / 2).clamp(-1, 1)
-    smallest = q + 2 * p * torch.cos(torch.acos(r) / 3 + 2 * math.pi / 3)
-    rows = M - smallest[:, None, None] * eye
-    crosses = torch.linalg.cross(rows[:, [0, 0, 1]], rows[:, [1, 2, 2]])
-    norms = crosses.square().sum(-1)
-    best = norms.argmax(1)
-    v = crosses.gather(1, best[:, None, None].expand(-1, 1, 3))[:, 0]
-    v = v * norms.gather(1, best[:, None]).clamp(min=torch.finfo(F.dtype).tiny).rsqrt()
-    return F - (F @ v[:, :, None]) @ v[:, None, :]
+rank2_projection = _rank2_projection
 
 
 def fundamental_8pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     """Rank-2 fundamental matrices ``(B, 3, 3)`` from eight homogeneous normalized correspondences ``(B, 8, 3)``."""
-    f = _null_space_lu(_epipolar_design_rows(x1, x2))[..., 0]
-    F = (f * f.square().sum(1, keepdim=True).rsqrt()).reshape(-1, 3, 3)
-    return rank2_projection(F.to(_solve_dtype(F.device))).to(x1.dtype)
+    return _eight_point_fundamental(_epipolar_design_rows(x1, x2))
 
 
 def fundamental_7pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:

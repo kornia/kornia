@@ -23,10 +23,10 @@ from typing import Literal, Optional, Tuple
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_svd_cast, safe_inverse_with_mask
+from kornia.core.utils import safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers import solve_cubic
-from kornia.geometry.solvers.homogeneous import _null_space_lu
+from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
 
 
 def normalize_points(
@@ -166,6 +166,75 @@ def _det_pencil_coefficients(f1: torch.Tensor, f2: torch.Tensor) -> torch.Tensor
     x_aa, x_bb, x_ab = crosses[:, 0], crosses[:, 1], crosses[:, 2] + crosses[:, 3]
     dots = (torch.stack([a1, b1, a1, a1, b1, b1], 1) * torch.stack([x_aa, x_aa, x_ab, x_bb, x_ab, x_bb], 1)).sum(-1)
     return torch.stack([dots[:, 0], dots[:, 1] + dots[:, 2], dots[:, 3] + dots[:, 4], dots[:, 5]], 1)
+
+
+def _solve_dtype(device: torch.device) -> torch.dtype:
+    """The dtype of the small closed-form steps: float64, except on MPS, which has none."""
+    return torch.float32 if device.type == "mps" else torch.float64
+
+
+def _rank2_projection(F: torch.Tensor) -> torch.Tensor:
+    r"""The nearest rank-2 matrices ``(B, 3, 3)`` in Frobenius norm, ``F (I - v v^T)`` for a smallest singular vector.
+
+    ``v`` is an eigenvector of ``F^T F`` for its smallest eigenvalue :math:`\lambda_3`, found without an SVD: the
+    eigenvalue from the trigonometric solution of the characteristic polynomial, the vector from the best cross
+    product of two rows of ``F^T F - \lambda_3 I``. When :math:`\lambda_3` is repeated those rows span one direction or
+    none and every cross product vanishes; any unit vector orthogonal to the rows is then a smallest singular vector:
+    the cross product of the largest row with the coordinate axis least aligned to it, or ``e_3`` when every row
+    vanishes. The nearest rank-2 matrix is not unique there, and this returns one of them.
+
+    Runs in :func:`_solve_dtype` and returns ``F``'s dtype. ``sqrt``, ``acos`` and the normalizations take safe
+    substitutes where their derivative is unbounded (#4229), so gradients stay finite.
+    """
+    dtype = F.dtype
+    F = F.to(_solve_dtype(F.device))
+    eye = torch.eye(3, dtype=F.dtype, device=F.device)
+    M = F.mT @ F
+    trace = M.diagonal(dim1=-2, dim2=-1).sum(-1)
+    q = trace / 3
+    shifted = M - q[:, None, None] * eye
+    p2 = shifted.square().sum((-2, -1)) / 6
+    spread = p2 > 0
+    p = torch.where(spread, p2, torch.ones_like(p2)).sqrt()
+    r = _det3(*(shifted / p[:, None, None]).flatten(-2).unbind(-1)) / 2
+    inside = r.abs() < 1
+    boundary = torch.where(r > 0, torch.zeros_like(r), torch.full_like(r, math.pi))
+    angle = torch.where(inside, torch.acos(torch.where(inside, r, torch.zeros_like(r))), boundary) / 3
+    smallest = q + torch.where(spread, 2 * p * torch.cos(angle + 2 * math.pi / 3), torch.zeros_like(p))
+    rows = M - smallest[:, None, None] * eye
+    crosses = torch.linalg.cross(rows[:, [0, 0, 1]], rows[:, [1, 2, 2]])
+    cross_norms = crosses.square().sum(-1)
+    best = cross_norms.argmax(1, keepdim=True)
+    cross = crosses.gather(1, best[..., None].expand(-1, 1, 3))[:, 0]
+    cross_norm = cross_norms.gather(1, best)[:, 0]
+    row_norms = rows.square().sum(-1)
+    top = row_norms.argmax(1, keepdim=True)
+    row = rows.gather(1, top[..., None].expand(-1, 1, 3))[:, 0]
+    row_norm = row_norms.gather(1, top)[:, 0]
+    perpendicular = torch.linalg.cross(row, eye[row.abs().argmin(1)])
+    # Rows are rounded at about eps * trace(F^T F); cross products and rows below that carry no direction.
+    noise = (8 * torch.finfo(F.dtype).eps * trace).square()
+    two_rows = cross_norm > noise * row_norm
+    one_row = row_norm > noise
+    v = torch.where(
+        two_rows[:, None], cross, torch.where(one_row[:, None], perpendicular, eye[2].expand_as(cross))
+    )
+    norm = v.square().sum(-1)
+    v = v * torch.where(norm > 0, norm, torch.ones_like(norm)).rsqrt()[:, None]
+    return (F - (F @ v[:, :, None]) @ v[:, None, :]).to(dtype)
+
+
+def _eight_point_fundamental(A: torch.Tensor) -> torch.Tensor:
+    """Rank-2 fundamental matrices ``(B, 3, 3)`` from eight epipolar constraints ``A`` ``(B, 8, 9)``, in ``A``'s dtype.
+
+    The null vector comes from :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, in at least float32 since
+    no backend factorizes half precision, at unit norm; :func:`_rank2_projection` then removes the smallest singular
+    value. Used by :func:`run_8point` for an unweighted eight-point sample and by RANSAC's eight-point sampler, which
+    passes rows of points it normalized once per call.
+    """
+    f = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
+    f = f * f.square().sum(-1, keepdim=True).rsqrt()
+    return _rank2_projection(f.reshape(-1, 3, 3)).to(A.dtype)
 
 
 def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -315,10 +384,8 @@ def run_8point(
 
     if weights is None and N == 8:
         # A minimal sample has an exact null vector. One batched LU factorization of A finds it much faster than
-        # ``eigh`` of A^T A, which loops over the batch on CPU and squares the condition number; no backend
-        # factorizes half precision. The unit norm keeps the scale ``eigh`` gives.
-        h = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
-        h = (h / h.norm(dim=-1, keepdim=True)).to(A.dtype)
+        # ``eigh`` of A^T A, which loops over the batch on CPU and squares the condition number.
+        F_rank2 = _eight_point_fundamental(A)
     else:
         # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
         if weights is None:
@@ -345,14 +412,8 @@ def run_8point(
                 M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
         _evals, evecs = torch.linalg.eigh(M)  # ascending order
-        h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
-    F_hat = h.reshape(B, 3, 3)
-
-    # Enforce rank-2 with a 3x3 SVD
-    U, S, V = _torch_svd_cast(F_hat)
-    S_new = torch.zeros_like(S)
-    S_new[..., :-1] = S[..., :-1]
-    F_rank2 = U @ torch.diag_embed(S_new) @ V.mH
+        # Enforce rank 2 on the eigenvector of the smallest eigenvalue.
+        F_rank2 = _rank2_projection(evecs[..., 0].reshape(B, 3, 3))
     F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
 
     return normalize_transformation(F)
