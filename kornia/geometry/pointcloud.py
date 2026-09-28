@@ -42,8 +42,10 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         - ``pointcloud`` is channels-last. Apply ``permute(0, 2, 3, 1)`` to a
           :func:`~kornia.geometry.depth.depth_to_3d` result or use :func:`~kornia.geometry.depth.depth_to_3d_v2`:
           a channels-first tensor whose width is 3 passes the shape check and is written scrambled.
-        - The PLY writers and loaders take ``filename`` as a ``str`` ending in ``.ply`` (any case); anything else,
-          a :class:`pathlib.Path` included, raises ``TypeError``.
+        - The PLY writers and loaders take ``filename`` as a ``str`` ending in ``.ply`` (any case); another suffix
+          raises ``TypeError``.
+        - Known defect: a :class:`pathlib.Path` also raises ``TypeError``
+          (`#5072 <https://github.com/kornia/kornia/issues/5072>`_).
 
     Args:
         filename: path of the ``.ply`` file to write.

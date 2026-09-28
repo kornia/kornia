@@ -454,8 +454,8 @@ class TestConventionsPointCloudPly(BaseTester):
         ["save_pointcloud_ply", "save_pointcloud_ply_binary", "load_pointcloud_ply", "load_pointcloud_ply_binary"],
     )
     def test_convention_ply_filename_is_str_ending_in_ply_any_case(self, tmp_path, function):
-        # The writers and loaders take filename as a str ending in .ply, in any case. A pathlib.Path or a str
-        # with another suffix raises TypeError even when it names a valid PLY file.
+        # The writers and loaders take filename as a str ending in .ply, in any case. A str with another suffix
+        # raises TypeError even when it names a valid PLY file.
         points = torch.tensor([[1.0, 2.0, 3.0]])
         path = tmp_path / "upper_case.PLY"
         saver = "save_pointcloud_ply_binary" if function.endswith("_binary") else "save_pointcloud_ply"
@@ -466,12 +466,23 @@ class TestConventionsPointCloudPly(BaseTester):
         if function.startswith("save"):
             getattr(kornia.geometry, function)(str(path), points)
             with pytest.raises(TypeError):
-                getattr(kornia.geometry, function)(path, points)
-            with pytest.raises(TypeError):
                 getattr(kornia.geometry, function)(str(wrong_suffix), points)
         else:
             self.assert_close(getattr(kornia.geometry, function)(str(path)), points)
             with pytest.raises(TypeError):
-                getattr(kornia.geometry, function)(path)
-            with pytest.raises(TypeError):
                 getattr(kornia.geometry, function)(str(wrong_suffix))
+
+    @pytest.mark.parametrize(
+        "function",
+        ["save_pointcloud_ply", "save_pointcloud_ply_binary", "load_pointcloud_ply", "load_pointcloud_ply_binary"],
+    )
+    def test_wart_ply_filename_rejects_pathlib_path_5072(self, tmp_path, function):
+        # Wart pin (#5072): a pathlib.Path naming a valid .ply file raises TypeError, while kornia.io takes str | Path.
+        # Accepting os.PathLike flips every case.
+        points = torch.tensor([[1.0, 2.0, 3.0]])
+        path = tmp_path / "valid.ply"
+        saver = "save_pointcloud_ply_binary" if function.endswith("_binary") else "save_pointcloud_ply"
+        getattr(kornia.geometry, saver)(str(path), points)
+        args = (path, points) if function.startswith("save") else (path,)
+        with pytest.raises(TypeError):
+            getattr(kornia.geometry, function)(*args)

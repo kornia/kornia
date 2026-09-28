@@ -43,8 +43,8 @@ class Keypoints:
           frame of the :class:`~kornia.geometry.boxes.Boxes` vertices.
         - :meth:`transform_keypoints` maps a point to :math:`M [x, y, 1]^\top` and converts it back with
           :func:`~kornia.geometry.conversions.convert_points_from_homogeneous`. ``inplace=False`` returns a new
-          :class:`Keypoints` on new storage; ``inplace=True`` and :meth:`transform_keypoints_` rebind ``self`` to
-          that new tensor and return ``self``.
+          :class:`Keypoints`; ``inplace=True`` and :meth:`transform_keypoints_` rebind ``self`` to the transformed
+          tensor and return ``self``. Neither writes into the tensor that ``self`` wrapped.
         - The constructor and :meth:`from_tensor` wrap a floating-point tensor without copying it. :meth:`pad`,
           :meth:`unpad`, item assignment and ``index_put(inplace=True)`` write into the stored tensor, so they
           change the caller's tensor; call :meth:`clone` first to keep it.
@@ -232,15 +232,12 @@ class Keypoints:
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (3, 3):
             raise ValueError(f"The transformation matrix shape must be (3, 3) or (B, 3, 3). Got {M.shape}.")
 
-        transformed_keypoints = transform_points(M, self._data)
-        # transform_points returns empty inputs unchanged; keep the storage contract for both inplace modes.
-        if transformed_keypoints is self._data:
-            transformed_keypoints = transformed_keypoints.clone()
+        transformed_boxes = transform_points(M, self._data)
         if inplace:
-            self._data = transformed_keypoints
+            self._data = transformed_boxes
             return self
 
-        return Keypoints(transformed_keypoints, False)
+        return Keypoints(transformed_boxes, False)
 
     def transform_keypoints_(self, M: torch.torch.Tensor) -> "Keypoints":
         """Inplace version of :func:`Keypoints.transform_keypoints`."""
