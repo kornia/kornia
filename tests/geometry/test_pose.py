@@ -326,6 +326,15 @@ class TestNamedPoseConventions(BaseTester):
             _ = c_from_b * g1
         with pytest.raises(TypeError, match=r"got <class 'torch.Tensor'>"):
             _ = c_from_b * torch.ones(1, 3, device=device, dtype=dtype)
+
+        # A subclass of the group composes with the group, on either side.
+        class _Se3(Se3):
+            pass
+
+        sub_c_from_b = NamedPose(_Se3(g1.r, g1.t), frame_src="b", frame_dst="c")
+        sub_b_from_a = NamedPose(_Se3(g1.r, g1.t), frame_src="a", frame_dst="b")
+        self.assert_close((c_from_b * sub_b_from_a).pose.matrix(), g1.matrix() @ g1.matrix())
+        self.assert_close((sub_c_from_b * NamedPose(g1, "a", "b")).pose.matrix(), g1.matrix() @ g1.matrix())
         # Two NamedPoses with mismatched frames still fail on the frames first.
         with pytest.raises(ValueError, match="Cannot compose"):
             _ = c_from_b * NamedPose(se2, frame_src="a", frame_dst="x")

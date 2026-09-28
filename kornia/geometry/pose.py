@@ -122,13 +122,11 @@ class NamedPose:
             raise TypeError(f"NamedPose can only be composed with a NamedPose, got {type(other)}")
         if self._frame_src != other._frame_dst:
             raise ValueError(f"Cannot compose {self} with {other}")
-        if type(other.pose) is not type(self.pose):
-            raise TypeError(
-                f"Cannot compose an {type(self.pose).__name__} pose with an {type(other.pose).__name__} pose"
-            )
-        if isinstance(other.pose, Se2):
+        if isinstance(self.pose, Se2) and isinstance(other.pose, Se2):
             return NamedPose(self._dst_from_src._mul_se2(other.pose), other._frame_src, self._frame_dst)
-        return NamedPose(self._dst_from_src._mul_se3(other.pose), other._frame_src, self._frame_dst)
+        if isinstance(self.pose, Se3) and isinstance(other.pose, Se3):
+            return NamedPose(self._dst_from_src._mul_se3(other.pose), other._frame_src, self._frame_dst)
+        raise TypeError(f"Cannot compose an {type(self.pose).__name__} pose with an {type(other.pose).__name__} pose")
 
     @property
     def pose(self) -> Se2 | Se3:
