@@ -106,7 +106,8 @@ class ParametrizedLine(nn.Module):
         """Get the point at :math:`t` along this line.
 
         Args:
-            t: step along the line.
+            t: step along the line: a number or a 0-d tensor for every row, or one step per row of shape
+                :math:`(B,)` or :math:`(B, 1)` for a line of shape :math:`(B, D)`.
 
         Return:
             tensor with the point.
