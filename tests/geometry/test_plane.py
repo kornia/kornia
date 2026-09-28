@@ -114,7 +114,10 @@ class TestHyperplane(BaseTester):
         plane = Hyperplane.through(p0, p1, p2)
         expected = torch.tensor([[4.0, -4.0, 2.0], [0.0, 0.0, -1.0]], device=device, dtype=dtype)
         self.assert_close(plane.normal.data[:2], expected / expected.norm(dim=-1, keepdim=True))
-        (plane.normal.data.sum() + plane.offset.data.sum()).backward()
+        # detect_anomaly also rejects a nan inside the backward that torch.where would discard, so this pins the
+        # distinct singular values of the substituted matrix and not only the final gradient.
+        with torch.autograd.detect_anomaly():
+            (plane.normal.data.sum() + plane.offset.data.sum()).backward()
         for p in (p0, p1, p2):
             assert torch.isfinite(p.grad).all(), p.grad
 
@@ -285,6 +288,12 @@ class TestHyperplane(BaseTester):
                 plane = Hyperplane.through(*points)
                 norm = torch.linalg.vector_norm(plane.normal.data, dim=-1)
                 self.assert_close(norm, torch.tensor(1.0, device=device, dtype=dtype))
+
+            # The fallback normal is the SVD null vector of the edges, so it is orthogonal to the line through the
+            # collinear points. A unit norm alone does not pin that: (0, 0, 1) has one and is 3 off here.
+            normal = Hyperplane.through(*collinear).normal.data
+            zero = torch.tensor(0.0, device=device, dtype=dtype)
+            self.assert_close((normal * (b - a)).sum(-1), zero, rtol=0.0, atol=0.1)
 
             # A degenerate row does not send the other rows of its batch to the fallback.
             tilted = [
