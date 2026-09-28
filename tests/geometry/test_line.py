@@ -285,6 +285,13 @@ class TestFitLine(BaseTester):
 
         assert angle_est.abs() > 0.998
 
+    def test_fit_line_vertical_dtype(self, device, dtype):
+        pts = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype)
+        line = fit_line(pts)
+        assert line.origin.dtype == dtype
+        assert line.direction.dtype == dtype
+        self.assert_close(line.direction, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
+
     @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):
         def proxy_func(pts, weights):
