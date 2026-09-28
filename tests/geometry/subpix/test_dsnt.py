@@ -56,6 +56,43 @@ class TestRenderGaussian2d(BaseTester):
 
         self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
 
+    @pytest.mark.parametrize("normalized", [False, True])
+    def test_in_image_sums_to_one(self, device, dtype, normalized):
+        # An off-centre, anisotropic Gaussian well inside a 9 x 11 grid: the per-axis renormalisation makes it sum to
+        # one up to roundoff (a +1e-8 bias in the denominators left this one 8.3e-9 short, visible only in float64).
+        size = (9, 11)
+        mean_px, std_px = [4.3, 3.7], [1.2, 0.8]
+        if normalized:
+            mean = [2 * mean_px[0] / (size[1] - 1) - 1, 2 * mean_px[1] / (size[0] - 1) - 1]
+            std = [2 * std_px[0] / (size[1] - 1), 2 * std_px[1] / (size[0] - 1)]
+        else:
+            mean, std = mean_px, std_px
+        mean_t = torch.tensor([mean], device=device, dtype=dtype)
+        std_t = torch.tensor([std], device=device, dtype=dtype)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean_t, std_t, size, normalized)
+
+        total = heatmap.cpu().double().sum().item()  # on CPU: MPS has no float64
+        tol = 1e-12 if dtype == torch.float64 else 4 * torch.finfo(dtype).eps
+        assert abs(total - 1.0) < tol, f"sum {total!r} is not 1 within {tol}"
+
+    @pytest.mark.parametrize("mean_x", [-14.0, -60.0])
+    def test_mean_far_off_grid_renders_on_border(self, device, dtype, mean_x):
+        # With std 1, the nearest x sample of a mean at -14 has exp(-98) = 2.7e-43, subnormal in float32; at -60,
+        # exp(-1800) is 0 in every dtype. Either way the heatmap is the grid part of the Gaussian rescaled to one:
+        # all of the x mass on column 0, and there the y profile of a mean at y = 2. The gradient stays finite.
+        mean = torch.tensor([[mean_x, 2.0]], device=device, dtype=dtype, requires_grad=True)
+        std = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), False)
+
+        y_profile = torch.softmax(-0.5 * (torch.arange(5, dtype=torch.float64) - 2.0) ** 2, dim=-1)
+        self.assert_close(heatmap[0, :, 0], y_profile.to(device=device, dtype=dtype))
+        self.assert_close(heatmap[..., 1:], torch.zeros_like(heatmap[..., 1:]))
+        (heatmap * torch.arange(25, device=device, dtype=dtype).view(1, 5, 5)).sum().backward()
+        assert mean.grad is not None and std.grad is not None
+        assert torch.isfinite(mean.grad).all() and torch.isfinite(std.grad).all()
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
         std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
