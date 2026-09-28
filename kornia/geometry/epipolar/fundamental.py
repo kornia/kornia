@@ -25,8 +25,8 @@ import torch
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from kornia.geometry.solvers import solve_cubic
 from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
+from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
 
 
 def normalize_points(
@@ -237,33 +237,38 @@ def _eight_point_fundamental(A: torch.Tensor) -> torch.Tensor:
     return _rank2_projection(f.reshape(-1, 3, 3)).to(A.dtype)
 
 
-def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    """Frobenius-normalize each 3x3 (keeps cubic coefficients well-scaled).
+def _seven_point_candidates(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Fundamental matrices through seven correspondences, one per real root of ``det(x f_1 + f_2) = 0``.
 
-    Args:
-        F: (..., 3, 3)
-        eps: small value to avoid unstabilities.
+    The two-dimensional null space ``x f_1 + f_2`` of the constraints ``A`` ``(B, 7, 9)`` (:func:`_epipolar_design_rows`
+    of normalized points) is completed by the real roots of its determinant (Hartley and Zisserman, section 11.1.2), so
+    every candidate has rank two. The cubic is solved in :func:`_solve_dtype` and parametrized by its
+    better-conditioned end: ``x f_1 + f_2``, or ``f_1 + y f_2`` with the coefficients reversed.
 
     Returns:
-        F: (..., 3, 3)
+        Candidates ``(B, 3, 3, 3)`` of unit Frobenius norm in ``A``'s dtype, and a mask ``(B, 3)`` of the real roots
+        with finite candidates. A cubic with one real root repeats its candidate in the two masked slots rather than
+        producing NaN, so that masking them afterwards leaves finite gradients.
     """
-    nrm = F.norm(dim=(-2, -1), p=1, keepdim=True).clamp_min(eps)
-    return F / nrm
-
-
-# Reference: Adapted from the 'run_7point' function in opencv
-# https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
-def _isclose0(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    # torch.isclose(x, 0) but TorchScript/GPU-friendly (no scalar tensor creation)
-    return x.abs() <= eps
+    solve_dtype = _solve_dtype(A.device)
+    f1, f2 = (f.to(solve_dtype) for f in _seven_point_basis(A))
+    coefficients = _det_pencil_coefficients(f1, f2)
+    swap = coefficients[:, 0].abs() < coefficients[:, 3].abs()
+    coefficients = torch.where(swap[:, None], coefficients.flip(1), coefficients)
+    roots, valid = _solve_cubic_real(coefficients)
+    lead = torch.where(swap[:, None, None], f2, f1)
+    rest = torch.where(swap[:, None, None], f1, f2)
+    F = roots[:, :, None, None] * lead[:, None] + rest[:, None]
+    F = F * F.square().sum((-2, -1), keepdim=True).rsqrt()
+    return F.to(A.dtype), valid & torch.isfinite(F).flatten(-2).all(-1)
 
 
 def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     r"""Compute the fundamental matrix using the 7-point algorithm.
 
     The 7-point algorithm computes the fundamental matrix from exactly 7 point correspondences.
-    Unlike the 8-point algorithm, this method returns 3 candidate fundamental matrices, one per root of the
-    cubic that formulates the rank-2 constraint, padded to three.
+    Unlike the 8-point algorithm, this method returns 3 candidate fundamental matrices, one per real root of the
+    cubic that formulates the rank-2 constraint, padded to three with zero matrices.
 
     Reference: Hartley/Zisserman 11.1.2 pag.281
 
@@ -273,76 +278,21 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
 
     Returns:
         The computed fundamental matrices with shape :math:`(B, 3, 3, 3)`, always 3 candidates per batch
-        element. A cubic with a single real root still gives 3: the two extra candidates are one rank-3 matrix
-        repeated, not zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_).
+        element. A cubic with a single real root gives one candidate and two zero matrices.
 
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
 
-    B = points1.shape[0]
-    dtype = points1.dtype
-
+    # Reference: Hartley and Zisserman, section 11.1.2; the cubic follows OpenCV's run7Point
+    # (https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp).
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
-
-    # (B,7,9)
-    X = _epipolar_design_rows(convert_points_to_homogeneous(points1_norm), convert_points_to_homogeneous(points2_norm))
-
-    # nullspace basis -> (B,3,3)
-    f1, f2 = _seven_point_basis(X)
-    f1 = _normalize_F(f1)
-    f2 = _normalize_F(f2)
-
-    # cubic det(x f1 + f2) = 0
-    coeffs = _det_pencil_coefficients(f1, f2)
-
-    roots = solve_cubic(coeffs)  # (B,3)
-
-    # same "valid_root_mask" logic as your working version
-    cnz = torch.count_nonzero(roots, dim=1)  # (B,)
-    valid_root_mask = (cnz < 3) | (cnz > 1)  # (B,) bool
-
-    # --- compute lambda/mu for ALL batches (no compaction) ---
-    _lambda = roots.clone()
-    _mu = torch.ones_like(_lambda)
-
-    # _s = f1[2,2] * root + f2[2,2]   for each of 3 roots
-    f1_22 = f1[:, 2, 2].unsqueeze(1)  # (B,1)
-    f2_22 = f2[:, 2, 2].unsqueeze(1)  # (B,1)
-    _s = f1_22 * roots + f2_22  # (B,3)
-
-    # avoid torch.isclose with scalar tensor creation
-    _s_non_zero_mask = ~_isclose0(_s, 1e-12)  # (B,3) bool
-
-    # mu = 1/s where s != 0, else mu stays 1
-    mu_new = torch.where(_s_non_zero_mask, 1.0 / _s, _mu)
-    lam_new = torch.where(_s_non_zero_mask, _lambda * mu_new, _lambda)
-
-    _mu = mu_new
-    _lambda = lam_new
-
-    # --- form candidates for ALL batches: F = f1*lambda + f2*mu ---
-    f1_expanded = f1.unsqueeze(1).expand(B, 3, 3, 3)
-    f2_expanded = f2.unsqueeze(1).expand(B, 3, 3, 3)
-
-    fmatrix = f1_expanded * _lambda[:, :, None, None] + f2_expanded * _mu[:, :, None, None]  # (B,3,3,3)
-
-    # --- enforce last element handling like your original ---
-    # If s != 0 set F[2,2]=1 else set to 0 (per-candidate)
-    # This is exactly what your boolean-indexing version did, but without advanced indexing.
-    f22 = torch.where(_s_non_zero_mask, torch.ones_like(_s, dtype=dtype), torch.zeros_like(_s, dtype=dtype))
-    fmatrix[:, :, 2, 2] = f22  # (B,3)
-
-    # --- apply batch validity mask (no compaction) ---
-    # If batch invalid -> zero all 3 candidates
-    fmatrix = torch.where(valid_root_mask.view(B, 1, 1, 1), fmatrix, torch.zeros_like(fmatrix))
-
-    # --- denormalize for ALL batches ---
-    # F = T2^T * F * T1
-    fmatrix = (transform2.unsqueeze(1).transpose(-2, -1) @ fmatrix) @ transform1.unsqueeze(1)
-
-    return normalize_transformation(fmatrix)
+    A = _epipolar_design_rows(convert_points_to_homogeneous(points1_norm), convert_points_to_homogeneous(points2_norm))
+    candidates, valid = _seven_point_candidates(A)
+    # F = T2^T F T1
+    fmatrix = normalize_transformation(transform2[:, None].mT @ candidates @ transform1[:, None])
+    return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix))
 
 
 def run_8point(
@@ -433,11 +383,10 @@ def find_fundamental(
           :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
         - The result is scaled so that ``F[2, 2] = 1`` by :func:`normalize_transformation`, which leaves it at its
           unnormalised scale when ``F[2, 2]`` is numerically zero, as for exactly rectified stereo.
-          ``method="7POINT"`` returns three candidates in no particular order.
+          ``method="7POINT"`` returns three candidates in no particular order, zero where the cubic has fewer
+          real roots.
         - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
           negative weight counts as zero, and ``method="7POINT"`` ignores them.
-        - Known defect: when the 7-point cubic has one real root, the two extra candidates are one rank-3
-          matrix repeated instead of zeros (`#4862 <https://github.com/kornia/kornia/issues/4862>`_).
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`: :math:`N \ge 8` for

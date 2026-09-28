@@ -41,15 +41,12 @@ from typing import Tuple
 import torch
 
 from kornia.geometry.epipolar.fundamental import (
-    _det_pencil_coefficients,
     _eight_point_fundamental,
     _epipolar_design_rows,
     _rank2_projection,
-    _seven_point_basis,
-    _solve_dtype,
+    _seven_point_candidates,
 )
 from kornia.geometry.solvers.homogeneous import _null_space_lu
-from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
 
 __all__: list[str] = []
 
@@ -106,23 +103,9 @@ def fundamental_8pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
 
 
 def fundamental_7pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    """Up to three fundamental matrices ``(B, 3, 3, 3)`` per seven correspondences ``(B, 7, 3)``; NaN where fewer.
-
-    The two-dimensional null space ``F(x) = x f_1 + f_2`` of the epipolar constraints is completed by the real roots
-    of the cubic ``det F(x) = 0`` (Hartley and Zisserman, section 11.1.2), so every candidate has rank two.
-    """
-    solve_dtype = _solve_dtype(x1.device)
-    f1, f2 = (f.to(solve_dtype) for f in _seven_point_basis(_epipolar_design_rows(x1, x2)))
-    coefficients = _det_pencil_coefficients(f1, f2)
-    # Parametrize by the better-conditioned end: F = x f1 + f2, or F = f1 + y f2 with the coefficients reversed.
-    swap = coefficients[:, 0].abs() < coefficients[:, 3].abs()
-    coefficients = torch.where(swap[:, None], coefficients.flip(1), coefficients)
-    roots, valid = _solve_cubic_real(coefficients)
-    roots = roots.masked_fill(~valid, float("nan"))
-    lead = torch.where(swap[:, None, None], f2, f1)
-    rest = torch.where(swap[:, None, None], f1, f2)
-    F = roots[:, :, None, None] * lead[:, None] + rest[:, None]
-    return (F * F.square().sum((-2, -1), keepdim=True).rsqrt()).to(x1.dtype)
+    """Up to three fundamental matrices ``(B, 3, 3, 3)`` per seven correspondences ``(B, 7, 3)``; NaN where fewer."""
+    candidates, valid = _seven_point_candidates(_epipolar_design_rows(x1, x2))
+    return candidates.masked_fill(~valid[..., None, None], float("nan"))
 
 
 def homography_4pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:

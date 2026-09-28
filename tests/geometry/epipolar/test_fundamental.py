@@ -22,7 +22,12 @@ import torch
 
 import kornia.geometry.epipolar as epi
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
-from kornia.geometry.epipolar.fundamental import _eight_point_fundamental, _epipolar_design_rows, _rank2_projection
+from kornia.geometry.epipolar.fundamental import (
+    _eight_point_fundamental,
+    _epipolar_design_rows,
+    _rank2_projection,
+    _seven_point_candidates,
+)
 
 from testing.base import BaseTester
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
@@ -795,19 +800,17 @@ class TestConventionFundamental(BaseTester):
         swapped = epi.get_closest_point_on_epipolar_line(x2, x1, F)
         assert (_hom(swapped) * lines).sum(-1).abs().max() > 1.0
 
-    def test_wart_run_7point_padded_roots_returned_4862(self, device, dtype):
+    def test_run_7point_missing_roots_are_zero_4862(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_EIGH)
-        # #4862: a 7-point sample whose cubic has one real root. The solver pads the two missing roots with 0.0 and the
-        # validity mask never fires, so candidates 1 and 2 are the same rank-3 matrix instead of being zeroed.
-        # Any fix (zeros, NaN, or fewer candidates) makes these assertions fail.
+        # #4862: a 7-point sample whose cubic has one real root. The two missing roots used to be padded with 0.0 and
+        # returned as the same rank-3 matrix; they are now zero candidates.
         idx = [0, 1, 2, 3, 4, 6, 10]
         F = epi.find_fundamental(two_view["x1"][:, idx], two_view["x2"][:, idx], method="7POINT")
         assert F.shape == (1, 3, 3, 3)
-        assert torch.equal(F[:, 1], F[:, 2])
-        sv = torch.linalg.svdvals(F[0].cpu().double())
+        assert (F[:, 1:] == 0).all()
+        sv = torch.linalg.svdvals(F[0, :1].cpu().double())
         assert sv[0, 2] < 1e-8 * sv[0, 0]  # candidate 0 is a genuine rank-2 solution
-        assert (sv[1:, 2] > 1e-7 * sv[1:, 0]).all()  # the padded candidates are rank 3
 
     def test_convention_normalize_transformation_eps_divisor_4874(self, device, dtype):
         # #4874: eps guards the divisor without biasing the normalized matrix.
@@ -936,3 +939,38 @@ class TestRankTwoProjection(BaseTester):
         points1 = torch.rand(1, num_points, 2, generator=generator, dtype=torch.float64).to(device)
         points2 = torch.rand(1, num_points, 2, generator=generator, dtype=torch.float64).to(device)
         self.gradcheck(lambda p1: epi.find_fundamental(p1, points2), (points1,))
+
+
+class TestSevenPoint(BaseTester):
+    def test_candidates_are_exact(self, device, dtype):
+        _skip_half(dtype, "the seven-point kernel is compared at float32 and float64 accuracy")
+        two_view = two_view_scene(torch.device("cpu"), torch.float64)
+        x1, x2 = two_view["x1"][:, :7], two_view["x2"][:, :7]
+        n1, t1 = epi.normalize_points(x1)
+        n2, t2 = epi.normalize_points(x2)
+        candidates, valid = _seven_point_candidates(_epipolar_design_rows(_hom(n1), _hom(n2)).to(device, dtype))
+        assert valid.any()
+        F = t2[:, None].mT @ candidates.cpu().double() @ t1[:, None]
+        F = (F / F.flatten(-2).norm(dim=-1)[..., None, None])[valid.cpu()]
+        truth = _pixel_F(two_view)[0]
+        truth = truth / truth.norm()
+        tolerance = 1e-6 if dtype == torch.float64 else 1e-2
+        assert torch.linalg.det(F).abs().max() < tolerance
+        distance = torch.minimum((F - truth).flatten(1).norm(dim=1), (F + truth).flatten(1).norm(dim=1))
+        assert distance.min() < tolerance
+
+    @pytest.mark.parametrize("idx", [[0, 1, 2, 3, 4, 5, 6], [0, 1, 2, 3, 4, 6, 10]])
+    def test_backward_is_finite(self, device, idx):
+        # The second sample has one real root (#4862): masking candidates built from NaN roots used to leave NaN in
+        # the backward pass although the output was finite.
+        two_view = two_view_scene(device, torch.float64)
+        x1 = two_view["x1"][:, idx].clone().requires_grad_()
+        F = epi.find_fundamental(x1, two_view["x2"][:, idx], method="7POINT")
+        F.sum().backward()
+        assert torch.isfinite(x1.grad).all()
+
+    @pytest.mark.parametrize("idx", [[0, 1, 2, 3, 4, 5, 6], [0, 1, 2, 3, 4, 6, 10]])
+    def test_gradcheck(self, device, idx):
+        two_view = two_view_scene(device, torch.float64)
+        x2 = two_view["x2"][:, idx]
+        self.gradcheck(lambda p1: epi.find_fundamental(p1, x2, method="7POINT"), (two_view["x1"][:, idx],))
