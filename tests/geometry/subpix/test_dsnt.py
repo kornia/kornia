@@ -265,3 +265,55 @@ class TestSpatialExpectation2d(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data, True), op_optimized(data, True))
+
+
+class TestConventionsDsnt(BaseTester):
+    def test_convention_spatial_soft_argmax2d_is_xy_corner_aligned(self, device, dtype):
+        # The output is (x, y) = (column, row): pixel coordinates of the input grid, or normalized corner-aligned
+        # ones (pixel centres 0 and W - 1 at -1 and +1). H != W and an off-centre peak, so neither a (y, x) output
+        # nor a half-pixel grid can pass; the transposed map is the relabel control. A logit of 30 makes the softmax
+        # one-hot at every dtype.
+        heatmap = torch.zeros(1, 1, 4, 7, device=device, dtype=dtype)
+        heatmap[0, 0, 1, 5] = 30.0
+        pixel = kornia.geometry.subpix.spatial_soft_argmax2d(heatmap, normalized_coordinates=False)
+        self.assert_close(pixel, torch.tensor([[[5.0, 1.0]]], device=device, dtype=dtype))
+        transposed = heatmap.transpose(-2, -1).contiguous()
+        pixel = kornia.geometry.subpix.spatial_soft_argmax2d(transposed, normalized_coordinates=False)
+        self.assert_close(pixel, torch.tensor([[[1.0, 5.0]]], device=device, dtype=dtype))
+
+        normalized = kornia.geometry.subpix.spatial_soft_argmax2d(heatmap)
+        self.assert_close(normalized, torch.tensor([[[2 / 3, -1 / 3]]], device=device, dtype=dtype))
+        corner = torch.zeros(1, 1, 4, 7, device=device, dtype=dtype)
+        corner[0, 0, 0, 6] = 30.0
+        # corner-aligned: the last column is +1 and the first row -1; a half-pixel grid gives (6/7, -3/4)
+        normalized = kornia.geometry.subpix.spatial_soft_argmax2d(corner)
+        self.assert_close(normalized, torch.tensor([[[1.0, -1.0]]], device=device, dtype=dtype))
+
+    def test_convention_render_gaussian2d_mean_std_are_xy(self, device, dtype):
+        # mean and std are (x, y) = (column, row) and size is (H, W): an anisotropic Gaussian off the centre of a
+        # 25 x 21 canvas has a column marginal with mean 10 and std 2 and a row marginal with mean 12 and std 1.
+        mean = torch.tensor([[10.0, 12.0]], device=device, dtype=dtype)
+        std = torch.tensor([[2.0, 1.0]], device=device, dtype=dtype)
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (25, 21), False)
+        assert heatmap.shape == (1, 25, 21)
+
+        # Moments in float64 on CPU (MPS has no float64), normalized by the total so rounding of the sum cancels.
+        h = heatmap[0].cpu().double()
+        total = h.sum()
+        cols = torch.arange(21, dtype=torch.float64)
+        rows = torch.arange(25, dtype=torch.float64)
+        mean_x = float((h.sum(0) * cols).sum() / total)
+        mean_y = float((h.sum(1) * rows).sum() / total)
+        std_x = float(((h.sum(0) * (cols - mean_x) ** 2).sum() / total).sqrt())
+        std_y = float(((h.sum(1) * (rows - mean_y) ** 2).sum() / total).sqrt())
+        # float32/float64 measured 10, 12, 1.9999966 (the sampled Gaussian, cut at 5 sigma) and 0.9999999;
+        # bfloat16 is furthest off, with std_x 2.0017.
+        tol = 5e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        assert abs(mean_x - 10.0) < tol, mean_x
+        assert abs(mean_y - 12.0) < tol, mean_y
+        assert abs(std_x - 2.0) < tol, std_x
+        assert abs(std_y - 1.0) < tol, std_y
+
+        # relabel: swapping the (x, y) components and the (H, W) size renders the transpose
+        swapped = kornia.geometry.subpix.render_gaussian2d(mean.flip(-1), std.flip(-1), (21, 25), False)
+        self.assert_close(swapped[0], heatmap[0].T)

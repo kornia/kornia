@@ -26,6 +26,8 @@ from testing.base import (
     assert_close,
     dynamic_export_is_available,
     dynamo_is_available,
+    supports_bilinear_2d_grid_sample,
+    supports_bilinear_3d_grid_sample,
 )
 
 
@@ -409,3 +411,45 @@ def test_normalized_meshgrid3d_trace_crosses_singleton_boundary(trace_depth, run
     runtime = torch.zeros(1, 1, runtime_depth, 3, 4, device=device, dtype=dtype)
     traced = torch.jit.trace(MeshGrid3d(), example)
     assert_close(traced(runtime), MeshGrid3d()(runtime), atol=0.0, rtol=0.0)
+
+
+def test_convention_create_meshgrid_align_corners_matches_grid_sample(device, dtype):
+    # A normalized grid samples an image as the identity only under grid_sample's own align_corners flag: True puts
+    # pixel centres 0 and W - 1 at -1 and +1, False puts the outer pixel edges there. Crossing the flags shifts every
+    # sample. H != W, so neither axis can stand in for the other.
+    if not supports_bilinear_2d_grid_sample(device, dtype):
+        pytest.skip(f"torch has no bilinear 2D grid_sample kernel for {device.type} {dtype}")
+    generator = torch.Generator(device="cpu").manual_seed(0)
+    image = torch.rand(1, 1, 3, 5, generator=generator).to(device, dtype)
+
+    for align_corners in (True, False):
+        grid = kornia.geometry.create_meshgrid(3, 5, device=device, dtype=dtype, align_corners=align_corners)
+        same = torch.nn.functional.grid_sample(image, grid, align_corners=align_corners)
+        crossed = torch.nn.functional.grid_sample(image, grid, align_corners=not align_corners)
+        assert_close(same, image)
+        assert (crossed - image).abs().max() > 0.1  # measured 0.42 and 0.29 at every dtype
+
+
+def test_convention_create_meshgrid3d_reorder_for_grid_sample(device, dtype):
+    # The last axis of create_meshgrid3d is (d, x, y) -- depth, column, row -- while grid_sample reads (x, y, z), so
+    # the grid samples a volume as the identity only after the [1, 2, 0] reorder, and only with align_corners=True
+    # (the grid is corner-aligned). D != H != W; the permuted volume is the relabel control.
+    if not supports_bilinear_3d_grid_sample(device, dtype):
+        pytest.skip(f"torch has no bilinear 3D grid_sample kernel for {device.type} {dtype}")
+    pixel = kornia.geometry.create_meshgrid3d(2, 3, 4, normalized_coordinates=False, device=device, dtype=dtype)
+    # (d, h, w) = (1, 2, 3) holds (d, x, y) = (1, 3, 2)
+    assert_close(pixel[0, 1, 2, 3], torch.tensor([1.0, 3.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    generator = torch.Generator(device="cpu").manual_seed(0)
+    volume = torch.rand(1, 1, 2, 3, 4, generator=generator).to(device, dtype)
+    grid = kornia.geometry.create_meshgrid3d(2, 3, 4, device=device, dtype=dtype)
+    reordered = torch.nn.functional.grid_sample(volume, grid[..., [1, 2, 0]], align_corners=True)
+    as_is = torch.nn.functional.grid_sample(volume, grid, align_corners=True)
+    half_pixel = torch.nn.functional.grid_sample(volume, grid[..., [1, 2, 0]], align_corners=False)
+    assert_close(reordered, volume)
+    assert (as_is - volume).abs().max() > 0.1  # measured 0.55 at every dtype
+    assert (half_pixel - volume).abs().max() > 0.1  # measured 0.77 at every dtype
+
+    permuted = volume.permute(0, 1, 4, 2, 3).contiguous()  # (D, H, W) = (4, 2, 3)
+    grid = kornia.geometry.create_meshgrid3d(4, 2, 3, device=device, dtype=dtype)
+    assert_close(torch.nn.functional.grid_sample(permuted, grid[..., [1, 2, 0]], align_corners=True), permuted)

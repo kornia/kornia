@@ -1036,3 +1036,159 @@ class TestStrictMaximaBonusDeprecated(BaseTester):
         new = kornia.feature.ScaleSpaceDetector(16).to(device)
         for got, want in zip(old(img), new(img)):
             self.assert_close(got, want, atol=0, rtol=0)
+
+
+def _has_avg_pool3d_kernel(device: torch.device, dtype: torch.dtype) -> bool:
+    # conv_soft_argmax3d pools with avg_pool3d, which torch lacks on CPU for float16/bfloat16 (2.5.1 and 2.14).
+    try:
+        torch.nn.functional.avg_pool3d(torch.zeros(1, 1, 1, 1, 1, device=device, dtype=dtype), 1)
+    except (NotImplementedError, RuntimeError) as e:
+        if "not implemented for" in str(e):
+            return False
+        raise
+    return True
+
+
+class TestConventionsConvSoftArgmax(BaseTester):
+    # 3 x 3 windows only: a larger window scales its in-window offsets by 2 / (k - 1) (#5017).
+
+    def test_convention_conv_soft_argmax2d_is_xy(self, device, dtype):
+        # Every window returns (x, y) = (column, row) of the input grid: pixel coordinates, or normalized
+        # corner-aligned ones (the default). One hot pixel at (row 1, col 6) of a 5 x 8 map: the window on it and the
+        # four windows beside it, which see it one step off their centre along one axis, all return (6, 1), so neither
+        # the window centres nor the in-window offsets may swap the axes. The transposed map is the relabel control.
+        heatmap = torch.zeros(1, 1, 5, 8, device=device, dtype=dtype)
+        heatmap[0, 0, 1, 6] = 30.0
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (3, 3), normalized_coordinates=False)
+        assert coords.shape == (1, 1, 2, 5, 8)
+        expected = torch.tensor([6.0, 1.0], device=device, dtype=dtype)
+        for row, col in ((1, 6), (1, 5), (1, 7), (0, 6), (2, 6)):
+            self.assert_close(coords[0, 0, :, row, col], expected)
+
+        transposed = heatmap.transpose(-2, -1).contiguous()
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(transposed, (3, 3), normalized_coordinates=False)
+        self.assert_close(coords[0, 0, :, 6, 1], torch.tensor([1.0, 6.0], device=device, dtype=dtype))
+
+        # corner-aligned: (2 * 6 / 7 - 1, 2 * 1 / 4 - 1); a half-pixel normalization gives (0.625, -0.4)
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (3, 3))
+        self.assert_close(coords[0, 0, :, 1, 6], torch.tensor([5 / 7, -0.5], device=device, dtype=dtype))
+
+    def test_convention_conv_soft_argmax3d_is_dxy(self, device, dtype):
+        # The 3-D windows return (d, x, y) = (depth, column, row). D != H != W, one hot voxel at (d 2, row 1, col 6):
+        # the window on it and the six beside it return (2, 6, 1). Swapping D and W is the relabel control.
+        if not _has_avg_pool3d_kernel(device, dtype):
+            pytest.skip(f"torch has no avg_pool3d kernel for {device.type} {dtype}")
+        volume = torch.zeros(1, 1, 4, 5, 8, device=device, dtype=dtype)
+        volume[0, 0, 2, 1, 6] = 30.0
+        coords, _ = kornia.geometry.subpix.conv_soft_argmax3d(volume, (3, 3, 3))
+        assert coords.shape == (1, 1, 3, 4, 5, 8)
+        expected = torch.tensor([2.0, 6.0, 1.0], device=device, dtype=dtype)
+        for d, row, col in ((2, 1, 6), (1, 1, 6), (3, 1, 6), (2, 0, 6), (2, 2, 6), (2, 1, 5), (2, 1, 7)):
+            self.assert_close(coords[0, 0, :, d, row, col], expected)
+
+        permuted = volume.permute(0, 1, 4, 3, 2).contiguous()  # (D, H, W) = (8, 5, 4), hot at (6, 1, 2)
+        coords, _ = kornia.geometry.subpix.conv_soft_argmax3d(permuted, (3, 3, 3))
+        self.assert_close(coords[0, 0, :, 6, 1, 2], torch.tensor([6.0, 2.0, 1.0], device=device, dtype=dtype))
+
+        coords, _ = kornia.geometry.subpix.conv_soft_argmax3d(volume, (3, 3, 3), normalized_coordinates=True)
+        expected = torch.tensor([1 / 3, 5 / 7, -0.5], device=device, dtype=dtype)
+        self.assert_close(coords[0, 0, :, 2, 1, 6], expected)
+
+    def test_wart_conv_soft_argmax_eps_erases_far_windows_5020(self, device, dtype):
+        # exp() is stabilised with the maximum of the whole map and eps = 1e-8 is added to each window's denominator.
+        # The window centred on (3, 10) sits 39 below the map maximum, so its exp-sum (about 5e-17) is swamped by eps:
+        # it reports its centre and a value near 0. With eps=0 it reports its own soft-argmax, x 10.1026 and value
+        # 0.3767. A per-window stabilisation, or dropping eps, flips this pin (#5020).
+        heatmap = torch.zeros(1, 1, 7, 15, device=device, dtype=dtype)
+        heatmap[0, 0, 3, 2] = 40.0  # the map maximum, eight columns from the window under test
+        heatmap[0, 0, 3, 10] = 1.0
+        heatmap[0, 0, 3, 11] = 0.8  # pulls the window's soft-argmax right of its centre
+        coords, values = kornia.geometry.subpix.conv_soft_argmax2d(
+            heatmap, (3, 3), normalized_coordinates=False, output_value=True
+        )
+        x, value = coords[0, 0, 0, 3, 10], values[0, 0, 3, 10]
+        if dtype == torch.float16:
+            # float16 flushes both eps and every exp() of the window to zero: the window is 0 / 0 (#5020).
+            assert bool(x.isnan()) and bool(value.isnan())
+        else:
+            assert abs(float(x) - 10.0) < 1e-6
+            assert abs(float(value)) < 1e-6
+            coords, values = kornia.geometry.subpix.conv_soft_argmax2d(
+                heatmap, (3, 3), normalized_coordinates=False, output_value=True, eps=0.0
+            )
+            assert float(coords[0, 0, 0, 3, 10]) > 10.05
+            assert float(values[0, 0, 3, 10]) > 0.3
+
+
+class TestConventionsQuadInterp3d(BaseTester):
+    _FUNCTIONS = (kornia.geometry.subpix.conv_quad_interp3d, kornia.geometry.subpix.iterative_quad_interp3d)
+
+    @staticmethod
+    def _separable(device, dtype, profile_w, depth_peak=1.0):
+        # f(d, h, w) = profile_w[w] - (h - 2) ** 2 - (d - depth_peak) ** 2 on a 4 x 6 x 9 volume: no mixed terms, so
+        # the quadratic fit at a voxel solves each axis on its own from the samples either side of it.
+        d = torch.arange(4, dtype=torch.float64).view(4, 1, 1)
+        h = torch.arange(6, dtype=torch.float64).view(1, 6, 1)
+        w = torch.tensor(profile_w, dtype=torch.float64).view(1, 1, 9)
+        return (w - (h - 2) ** 2 - (d - depth_peak) ** 2)[None, None].to(device, dtype)
+
+    @pytest.mark.parametrize("fn", _FUNCTIONS, ids=["conv", "iterative"])
+    def test_convention_quad_interp3d_coords_are_dxy_voxel_indices(self, device, dtype, fn):
+        # The refined coordinates are (d, x, y) = (depth, column, row) absolute voxel indices of the input, not
+        # offsets. A 1.0 peak at (d 1, row 2, col 5) with one 0.5 neighbour on one axis at a time moves 1/6 toward
+        # it along that axis only; other voxels keep their grid index. The transposed volume is the relabel control.
+        cases = (
+            ((1, 2, 6), [1.0, 5 + 1 / 6, 2.0]),  # right neighbour: x grows
+            ((1, 2, 4), [1.0, 5 - 1 / 6, 2.0]),  # left neighbour: x shrinks
+            ((1, 3, 5), [1.0, 5.0, 2 + 1 / 6]),  # neighbour one row down: y grows
+            ((2, 2, 5), [1 + 1 / 6, 5.0, 2.0]),  # neighbour one level deeper: d grows
+        )
+        for neighbour, expected in cases:
+            volume = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=dtype)
+            volume[0, 0, 1, 2, 5] = 1.0
+            volume[(0, 0, *neighbour)] = 0.5
+            coords, _ = fn(volume)
+            self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor(expected, device=device, dtype=dtype))
+            self.assert_close(coords[0, 0, :, 3, 4, 7], torch.tensor([3.0, 7.0, 4.0], device=device, dtype=dtype))
+
+        volume = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=dtype)
+        volume[0, 0, 1, 2, 5] = 1.0
+        volume[0, 0, 1, 2, 6] = 0.5
+        coords, _ = fn(volume.transpose(-2, -1).contiguous())  # peak at (1, 5, 2), neighbour one row down
+        self.assert_close(coords[0, 0, :, 1, 5, 2], torch.tensor([1.0, 2.0, 5 + 1 / 6], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("fn", _FUNCTIONS, ids=["conv", "iterative"])
+    def test_convention_quad_interp3d_move_and_reject_thresholds(self, device, dtype, fn):
+        # A shift above max_subpixel_shift (0.6) on an axis moves the integer centre one voxel and the fit is solved
+        # again there; a final shift above 1.5 on any axis rejects the point, which then keeps its grid coordinates.
+        # The candidate is forced at (d 1, row 2, col 5) and only the x profile varies. The x samples are not one
+        # parabola, so the fit at col 6 disagrees with the fit at col 5 and the reported x shows whether it moved.
+        mask = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=torch.bool)
+        mask[0, 0, 1, 2, 5] = True
+        low = -6.0
+        # fit at col 5: shift 0.55, no move -> 5.55 (a move would land on the fit at col 6: 6 - 1/3)
+        stays = [low, low, low, low, -2.1, 0.0, 0.1, -0.4, low]
+        # fit at col 5: shift 0.65, move; fit at col 6: shift -0.2, stay -> 5.8 (without the move: 5.65)
+        moves = [low, low, low, low, -2.3, 0.0, 0.3, -0.4, low]
+        for profile, expected in ((stays, 5.55), (moves, 5.8)):
+            coords, _ = fn(self._separable(device, dtype, profile), n_iters=2, precomputed_nms_mask=mask)
+            self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor([1.0, expected, 2.0], device=device, dtype=dtype))
+
+        # allow_scale_steps=False never moves the level, so the depth shift itself meets the 1.5 bound: 1.4 is kept,
+        # 1.6 rejects the point. Coordinates only: a fix of #5038 changes the value a rejected point reports.
+        parabola = [-((w - 5.0) ** 2) for w in range(9)]
+        for depth_peak, expected in ((2.4, [2.4, 5.0, 2.0]), (2.6, [1.0, 5.0, 2.0])):
+            volume = self._separable(device, dtype, parabola, depth_peak)
+            coords, _ = fn(volume, precomputed_nms_mask=mask, allow_scale_steps=False)
+            self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor(expected, device=device, dtype=dtype))
+
+        # x peak at 7.4: two moves (col 5 -> 6 -> 7), then the shift 0.4 stays. The conv backend has solved only
+        # the voxels within dilation_radius of the candidate, so radius 1 rejects the point and radius 2 keeps it.
+        volume = self._separable(device, dtype, [-((w - 7.4) ** 2) for w in range(9)])
+        if fn is kornia.geometry.subpix.conv_quad_interp3d:
+            coords, _ = fn(volume, precomputed_nms_mask=mask, dilation_radius=1)
+            self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(5.0, device=device, dtype=dtype))
+            coords, _ = fn(volume, precomputed_nms_mask=mask, dilation_radius=2)
+        else:
+            coords, _ = fn(volume, precomputed_nms_mask=mask)
+        self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(7.4, device=device, dtype=dtype))
