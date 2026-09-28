@@ -198,10 +198,10 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     # adjugate. NOTE the original rationale here -- "whereas ``cross`` may not [lower]" -- does not
     # hold on the torch versions CI runs: measured, ``torch.linalg.cross`` lowers on 2.5.1 (legacy
     # exporter) and 2.9.1 and 2.14.0 (both exporters). The legacy exporter emits
-    # ``Slice``/``Mul``/``Sub``/``Concat``; the 2.14.0 dynamo exporter emits ``Split`` in place of
-    # ``Slice``. The split is kept because it is still the safer capture path (scalar arithmetic
-    # needs no per-dtype kernel at all, and ``cross`` has real kernel gaps -- no bfloat16 on MPS in
-    # torch 2.5.1), not because ``cross`` fails to export.
+    # ``Slice``/``Mul``/``Sub``/``Concat``; the dynamo exporter emits ``Split`` in place of ``Slice``,
+    # on 2.9.1 as on 2.14.0. The split is kept because it is still the safer capture path (scalar
+    # arithmetic needs no per-dtype kernel at all, and ``cross`` has real kernel gaps -- no bfloat16
+    # on MPS in torch 2.5.1), not because ``cross`` fails to export.
     # Collapsing the two branches is a behavior change and belongs in its own PR.
     return _inverse_3x3_scalar(input)
 

@@ -175,8 +175,8 @@ def _inverse_3x3_cross(input: torch.Tensor) -> torch.Tensor:
 
     ONNX lowering is *not* a reason, measured: ``torch.linalg.cross`` lowers on the torch versions
     kornia's CI runs -- 2.5.1 (legacy exporter), 2.9.1 (legacy and dynamo), and 2.14.0 (legacy
-    and dynamo). The legacy exporter emits ``Slice``/``Mul``/``Sub``/``Concat``; the 2.14.0 dynamo
-    exporter emits ``Split`` in place of ``Slice``. What neither exporter lowers is
+    and dynamo). The legacy exporter emits ``Slice``/``Mul``/``Sub``/``Concat``; the dynamo exporter
+    emits ``Split`` in place of ``Slice``, on 2.9.1 as on 2.14.0. What neither exporter lowers is
     ``aten::linalg_inv``, which is what :func:`kornia.core.utils._torch_inverse_cast` avoids by
     reaching for a closed form in the first place. torch 2.0-2.4 is below the declared floor; CI
     does not run it either.
