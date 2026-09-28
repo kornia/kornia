@@ -92,6 +92,26 @@ class TestParametrizedLine(BaseTester):
         distance_expected = torch.tensor(16.0, device=device, dtype=dtype)
         self.assert_close(l1.squared_distance(point), distance_expected)
 
+    def test_distance_on_line_stability(self, device, dtype):
+        o = torch.tensor([0.3, 0.7], device=device, dtype=dtype)
+        direction = torch.tensor([0.28, 0.96], device=device, dtype=dtype)
+        line = ParametrizedLine(o, direction)
+        t = torch.linspace(-50.0, 50.0, 200, device=device, dtype=dtype)
+        pts = o + t[:, None] * line.direction
+
+        sq_dist = line.squared_distance(pts)
+        dist = line.distance(pts)
+
+        assert (sq_dist < 0.0).sum() == 0
+        assert dist.isnan().sum() == 0
+        self.assert_close(dist, torch.zeros_like(dist), atol=1e-4, rtol=1e-4)
+
+        # Off-line point at large parameter t
+        q = o + 40.0 * line.direction + 1e-3 * torch.stack([-line.direction[1], line.direction[0]])
+        dist_q = line.distance(q)
+        assert not dist_q.isnan()
+        self.assert_close(dist_q, torch.tensor(1e-3, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
     def test_instersect_plane(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)

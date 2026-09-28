@@ -129,23 +129,26 @@ class ParametrizedLine(nn.Module):
         return self.origin + (self.direction @ (point - self.origin)) * self.direction
 
     def squared_distance(self, point: torch.Tensor) -> torch.Tensor:
-        """Return the squared distance of a point to its projection onte the line.
+        """Return the squared distance of a point to its projection onto the line.
 
         Args:
             point: the point to calculate the distance onto the line.
         """
         d = point - self.origin
-        proj = torch.sum(d * self.direction, dim=-1)
-        sq_norm_d = torch.sum(d * d, dim=-1)
-        return sq_norm_d - proj * proj
+        proj = torch.sum(d * self.direction, dim=-1, keepdim=True)
+        perp = d - proj * self.direction
+        return torch.sum(perp * perp, dim=-1)
 
     def distance(self, point: torch.Tensor) -> torch.Tensor:
         """Return the distance of a point to its projections onto the line.
 
         Args:
-            point: the point to calculate the distance into the line.
+            point: the point to calculate the distance onto the line.
         """
-        return self.squared_distance(point).sqrt()
+        d = point - self.origin
+        proj = torch.sum(d * self.direction, dim=-1, keepdim=True)
+        perp = d - proj * self.direction
+        return torch.linalg.vector_norm(perp, dim=-1)
 
     # TODO(edgar) implement the following:
     # - intersection
