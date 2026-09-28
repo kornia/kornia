@@ -274,7 +274,8 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
         raise ValueCheckError(f"fit_line requires at least two points to determine a line; got a set of {n} point(s).")
     if not bool((points != points[..., :1, :]).flatten(-2).any(-1).all()):
         raise ValueCheckError("fit_line requires at least two distinct points; the given points are all identical.")
-    if weights is not None and weights.shape == points.shape[:2]:
+    # Weights of the wrong type or shape are left to the type and shape checks in fit_line.
+    if isinstance(weights, torch.Tensor) and weights.shape == points.shape[:2]:
         if not bool((weights.sum(-1) > 0).all()):
             raise ValueCheckError(
                 "fit_line requires a positive sum of weights; the given weights do not sum to a positive value."

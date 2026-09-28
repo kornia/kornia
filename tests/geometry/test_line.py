@@ -19,7 +19,7 @@ import pytest
 import torch
 
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import ValueCheckError
+from kornia.core.exceptions import TypeCheckError, ValueCheckError
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector3
@@ -404,10 +404,19 @@ class TestFitLine(BaseTester):
         batch = fit_line(torch.cat([points, points]), torch.cat([weights, 3.0 * weights]))
         self.assert_close(batch.origin, expected.origin.expand(2, 3))
 
-        # A row whose weights are all 0 does not silently fall back to the unweighted mean: after #5041
-        # the weighted fit is only defined for a positive weight sum, so the batch is rejected as a whole.
+        # A row whose weights are all 0 is rejected (#5041). With checks disabled, as under torch.compile, it keeps
+        # the unweighted mean and does not break the other rows.
+        zero_weights = torch.cat([weights, torch.zeros_like(weights)])
         with pytest.raises(ValueCheckError, match="positive sum of weights"):
-            fit_line(torch.cat([points, points]), torch.cat([weights, torch.zeros_like(weights)]))
+            fit_line(torch.cat([points, points]), zero_weights)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            zero = fit_line(torch.cat([points, points]), zero_weights)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        self.assert_close(zero.origin, torch.cat([expected.origin, points.mean(-2)]))
 
     def test_fit_line_vertical_dtype(self, device, dtype):
         pts = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype)
@@ -441,16 +450,18 @@ class TestFitLine(BaseTester):
         # #5041: all-zero weights used to return an arbitrary line — a NaN origin and (1, 0) in 2-D,
         # the unweighted mean and the first singular vector of a zero matrix in 3-D. The row is rejected
         # like any other degenerate one, so a batch with one all-zero-weights row is rejected as a whole.
-        points = torch.tensor([[[0.0, 0.0], [1.0, 3.0], [2.0, 5.0]]], device=device, dtype=dtype)
-        if points.shape[-1] >= 3:
-            points = torch.cat([points, torch.zeros(1, 3, 1, device=device, dtype=dtype)], dim=-1)
+        points_3d = torch.tensor([[[0.0, 0.0, 0.3], [1.0, 3.0, -0.2], [2.0, 5.0, 0.1]]], device=device, dtype=dtype)
         zero_weights = torch.zeros(1, 3, device=device, dtype=dtype)
-        with pytest.raises(ValueCheckError, match="positive sum of weights"):
-            fit_line(points, zero_weights)
-        if points.shape[-1] >= 3:
-            mixed = torch.cat([zero_weights, torch.ones(1, 3, device=device, dtype=dtype)])
+        mixed = torch.cat([torch.ones_like(zero_weights), zero_weights])
+        for points in (points_3d[..., :2], points_3d):
+            with pytest.raises(ValueCheckError, match="positive sum of weights"):
+                fit_line(points, zero_weights)
             with pytest.raises(ValueCheckError, match="positive sum of weights"):
                 fit_line(torch.cat([points, points]), mixed)
+
+        # Weights that are not a tensor still fail the type check, not the weight-sum check.
+        with pytest.raises(TypeCheckError, match="weights must be a tensor"):
+            fit_line(points_3d, [[1.0, 1.0, 1.0]])
 
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
