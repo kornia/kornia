@@ -159,27 +159,6 @@ class TestErode(BaseTester):
         assert actual.dtype == expected.dtype
         assert torch.equal(actual, expected)
 
-    def test_integer_image_keeps_the_kernel_dtype(self, device):
-        # Only a floating-point image lends its dtype to a non-float kernel (#4736). An integer image
-        # keeps the kernel's own dtype, as before: int32 with int64 computes and returns int64.
-        tensor = torch.tensor([[0, 3, 0, 0, 7]], dtype=torch.int32, device=device)[None, None]
-        kernel = torch.tensor([[1, 0, 1]], dtype=torch.int64, device=device)
-        actual = erosion(tensor, kernel)
-        assert actual.dtype == torch.int64
-        assert actual.flatten().tolist() == [3, 0, 0, 0, 0]
-
-    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
-    def test_integer_image_keeps_max_val_arithmetic(self, device, engine):
-        # A non-float image keeps the finite `max_val` pad and exclusion until #4735 rejects it. The int64
-        # maximum is not representable as a float, so a pad at the dtype maximum cannot be written.
-        if engine == "convolution" and device.type == "mps":
-            pytest.skip("MPS has no integer convolution")
-        tensor = torch.tensor([[[[1, 5, 2, 7]]]], dtype=torch.int64, device=device)
-        kernel = torch.tensor([[1, 0, 1]], dtype=torch.int64, device=device)
-        actual = erosion(tensor, kernel, engine=engine)
-        assert actual.dtype == torch.int64
-        assert actual.flatten().tolist() == [5, 1, 5, 2]
-
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
     def test_accepted_border_types(self, device, dtype, border_type):
         # Every documented border_type must pass the validation (#4736).
