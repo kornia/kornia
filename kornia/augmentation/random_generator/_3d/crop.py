@@ -63,8 +63,12 @@ class CropGenerator3D(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # The draw is truncated to a start position, so keep it in float32: half-precision
+        # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
+        sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
+            torch.tensor(0.0, device=device, dtype=sampler_dtype),
+            torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
