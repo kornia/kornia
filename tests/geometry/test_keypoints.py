@@ -132,6 +132,33 @@ class TestKeypoints(BaseTester):
         self.assert_close(kp.data[0, :, 0], torch.full((4,), 4.0, device=device, dtype=dtype))
         self.assert_close(kp.data[0, :, 1], torch.full((4,), 3.0, device=device, dtype=dtype))
 
+    def test_pad_unpad_unbatched_5021(self, device, dtype):
+        # kornia#5021: an unbatched (N, 2) container indexes as (N,), so the (1, 1) padding column
+        # broadcast the in-place update to (1, N) and raised "output with shape [2] doesn't match the
+        # broadcast shape [1, 2]". The result must match the singleton-batch container.
+        data = torch.tensor([[8.0, 2.0], [3.0, 5.0]], device=device, dtype=dtype)
+        padding = torch.tensor([[3.0, 100.0, 7.0, 1000.0]], device=device, dtype=dtype)
+
+        padded = Keypoints(data.clone()).pad(padding)
+        self.assert_close(padded.data, torch.tensor([[11.0, 9.0], [6.0, 12.0]], device=device, dtype=dtype))
+        self.assert_close(padded.data, Keypoints(data[None].clone()).pad(padding).data[0])
+
+        unpadded = Keypoints(data.clone()).unpad(padding)
+        self.assert_close(unpadded.data, torch.tensor([[5.0, -5.0], [0.0, -2.0]], device=device, dtype=dtype))
+        self.assert_close(unpadded.data, Keypoints(data[None].clone()).unpad(padding).data[0])
+
+        self.assert_close(Keypoints(data.clone()).pad(padding).unpad(padding).data, data)
+
+    def test_pad_padding_on_cpu(self, device, dtype):
+        # kornia#5021: like Boxes.pad, the padding is moved to the keypoints' device, so a CPU
+        # padding_size works for keypoints on an accelerator.
+        padding = torch.tensor([[1.0, 0.0, 2.0, 0.0]], dtype=dtype)
+        for data in (torch.zeros(3, 2, device=device, dtype=dtype), torch.zeros(1, 3, 2, device=device, dtype=dtype)):
+            kp = Keypoints(data.clone()).pad(padding)
+            assert kp.device == device
+            self.assert_close(kp.data[..., 0], torch.full(data.shape[:-1], 1.0, device=device, dtype=dtype))
+            self.assert_close(kp.data[..., 1], torch.full(data.shape[:-1], 2.0, device=device, dtype=dtype))
+
     def test_index_put(self, device, dtype):
         data = torch.zeros(10, 2, device=device, dtype=dtype)
         kp = Keypoints(data)
@@ -178,6 +205,13 @@ class TestKeypoints(BaseTester):
         kp = Keypoints(torch.rand(2, 4, 2, device=device, dtype=dtype))
         with pytest.raises(RuntimeError):
             kp.pad(torch.zeros(2, 3, device=device, dtype=dtype))
+
+        # an unbatched container carries a single image, so it takes exactly one padding row
+        unbatched = Keypoints(torch.rand(4, 2, device=device, dtype=dtype))
+        with pytest.raises(RuntimeError, match="one row"):
+            unbatched.pad(torch.zeros(2, 4, device=device, dtype=dtype))
+        with pytest.raises(RuntimeError, match="one row"):
+            unbatched.unpad(torch.zeros(2, 4, device=device, dtype=dtype))
 
     def test_int_input_raises_by_default(self, device, dtype):
         with pytest.raises(ValueError):
