@@ -287,18 +287,19 @@ class ImageRegistrator(nn.Module):
         # [::-1] because we have to register from coarse to fine
         img_src_pyr = build_pyramid(src_img, self.pyramid_levels)[::-1]
         img_dst_pyr = build_pyramid(dst_img, self.pyramid_levels)[::-1]
-        prev_loss = 1e10
         aux_models = []
         if len(img_dst_pyr) != len(img_src_pyr):
             raise ValueError("Cannot register images of different sizes")
         for img_src_level, img_dst_level in zip(img_src_pyr, img_dst_pyr):
+            # tolerance compares successive losses of one level; a loss from the coarser level is not one of them
+            prev_loss: Optional[float] = None
             for i in range(self.num_iterations):
                 # compute gradient and update optimizer parameters
                 opt.zero_grad()
                 loss = self.get_single_level_loss(img_src_level, img_dst_level, self.model())
                 loss += self.get_single_level_loss(img_dst_level, img_src_level, self.model.forward_inverse())
                 current_loss = loss.item()
-                if abs(current_loss - prev_loss) < self.tolerance:
+                if prev_loss is not None and abs(current_loss - prev_loss) < self.tolerance:
                     break
                 prev_loss = current_loss
                 loss.backward()
