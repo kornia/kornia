@@ -31,7 +31,8 @@ __all__ = ["Scalar", "Vector2", "Vector3"]
 class Scalar(TensorWrapper):
     """Wrap a tensor of scalars of any shape, such as the per-vector result of :meth:`Vector3.dot`.
 
-    The tensor is wrapped without a copy, and the call-path type defect of :class:`Vector3` applies to it.
+    The tensor is wrapped without a copy, and the call-path type defect of :class:`Vector3` applies to it
+    (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
     """
 
     def __init__(self, data: torch.Tensor) -> None:
@@ -44,12 +45,12 @@ class Vector3(TensorWrapper):
     Convention:
         - The tensor is wrapped without a copy; any leading shape and dtype are accepted. :attr:`x`, :attr:`y` and
           :attr:`z` are plain tensors of the leading shape :math:`(*)`, and :meth:`dot` and :meth:`squared_norm`
-          return a :class:`Scalar` of that shape.
+          return a :class:`Scalar` of that shape (for :meth:`dot`, the two operands' broadcast leading shape).
         - :meth:`random` draws vectors uniformly in the unit cube from torch's global generator, so every vector
           lies in the first octant: it is not a random direction.
         - Known defect: the returned type depends on the call path (``copy.deepcopy(v)`` and ``v.clone()`` are
           plain tensors, while a torch function rewraps its result as a ``Vector3``, so ``torch.linalg.norm(v,
-          dim=-1)`` raises for most batch sizes), and a tuple index such as ``v[..., 0]`` raises
+          dim=-1)`` raises unless its result happens to end in 3), and a tuple index such as ``v[..., 0]`` raises
           (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
     """
 

@@ -171,22 +171,22 @@ class TestConventionsVector(BaseTester):
     """Pins for the value conventions and known defects of the :class:`Vector3` family."""
 
     def test_convention_vector3_random_is_unit_cube(self, device, dtype):
-        # Vector3.random draws every component uniformly from [0, 1): the points fill the unit cube in the first
-        # octant, so no component is negative and the norms spread over (0, sqrt(3)). It is not a random direction.
+        # Vector3.random draws every component uniformly in the unit cube from torch's global generator: the points
+        # lie in the first octant, so no component is negative and the norms spread over (0, sqrt(3)). It is not a
+        # random direction. torch.manual_seed reproduces a draw and another seed changes it.
         torch.manual_seed(0)
         vectors = Vector3.random((10000,), device=device, dtype=dtype)
         assert isinstance(vectors, Vector3)
         assert vectors.data.shape == (10000, 3)
         assert vectors.data.dtype == dtype
         assert vectors.data.device.type == device.type
+        torch.manual_seed(0)
+        assert torch.equal(Vector3.random((10000,), device=device, dtype=dtype).data, vectors.data)
+        torch.manual_seed(1)
+        assert not torch.equal(Vector3.random((10000,), device=device, dtype=dtype).data, vectors.data)
         values = vectors.data.cpu().double()
         assert float(values.min()) >= 0.0
-        if device.type == "cpu" or dtype in (torch.float32, torch.float64):
-            assert float(values.max()) < 1.0
-        else:
-            # torch's CPU generator draws a float16 / bfloat16 uniform in the target precision, which stays below 1.
-            # The MPS generator can return exactly 1.0 there: on torch 2.14 it rounds a float32 draw to the dtype.
-            assert float(values.max()) <= 1.0
+        assert float(values.max()) <= 1.0
         norms = values.norm(dim=-1)
         assert float(norms.min()) < 0.5
         assert float(norms.max()) > 1.5

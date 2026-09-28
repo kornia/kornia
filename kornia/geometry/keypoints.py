@@ -45,9 +45,9 @@ class Keypoints:
           with :func:`~kornia.geometry.conversions.convert_points_from_homogeneous`. ``inplace=False`` returns a new
           :class:`Keypoints` on new storage; ``inplace=True`` and :meth:`transform_keypoints_` rebind ``self`` to
           that new tensor and return ``self``.
-        - The constructor and :meth:`from_tensor` wrap the tensor without copying it. :meth:`pad`, :meth:`unpad`,
-          item assignment and ``index_put(inplace=True)`` write into the stored tensor, so they change the
-          caller's tensor; call :meth:`clone` first to keep it.
+        - The constructor and :meth:`from_tensor` wrap a floating-point tensor without copying it. :meth:`pad`,
+          :meth:`unpad`, item assignment and ``index_put(inplace=True)`` write into the stored tensor, so they
+          change the caller's tensor; call :meth:`clone` first to keep it.
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
@@ -328,7 +328,7 @@ class VideoKeypoints(Keypoints):
 class Keypoints3D:
     """3D keypoints, stored as an :math:`(N, 3)` or :math:`(B, N, 3)` tensor of ``(x, y, z)`` points.
 
-    The constructor validates and wraps the tensor as :class:`Keypoints` does, without copying it.
+    The constructor validates the tensor as :class:`Keypoints` does and wraps a floating-point one without copying it.
 
     Args:
         keypoints: tensor of :math:`(N, 3)` or :math:`(B, N, 3)` coordinates. A list of tensors is not implemented

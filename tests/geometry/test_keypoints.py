@@ -516,15 +516,22 @@ class TestConventionsKeypoints(BaseTester):
         self.assert_close(kp.data, expected)
         self.assert_close(caller, original)
 
-    @pytest.mark.parametrize("batched", [True, False], ids=["batched", "unbatched"])
-    def test_convention_keypoints_wrap_without_copy_and_pad_writes_through(self, batched, device, dtype):
-        # The constructor wraps the caller's tensor without copying it, and pad / unpad shift that tensor in place
-        # and return self. padding_size rows are (left, right, top, bottom): x += left and y += top. The four
-        # distinct padding values make a slot mix-up visible. clone() gives independent storage.
+    @pytest.mark.parametrize("layout", ["batched", "unbatched", "strided"])
+    def test_convention_keypoints_wrap_without_copy_and_edits_write_through(self, layout, device, dtype):
+        # The constructor wraps the caller's tensor without copying it, a non-contiguous view included, and pad /
+        # unpad shift that tensor in place and return self. padding_size rows are (left, right, top, bottom):
+        # x += left and y += top. The four distinct padding values make a slot mix-up visible. clone() gives
+        # independent storage. Item assignment and index_put(inplace=True) also write into the caller's tensor.
         original = torch.tensor([[8.0, 2.0], [3.0, 5.0]], device=device, dtype=dtype)
         padded = torch.tensor([[11.0, 9.0], [6.0, 12.0]], device=device, dtype=dtype)
         padding = torch.tensor([[3.0, 100.0, 7.0, 1000.0]], device=device, dtype=dtype)
-        caller = original[None].clone() if batched else original.clone()
+        if layout == "batched":
+            caller = original[None].clone()
+        elif layout == "unbatched":
+            caller = original.clone()
+        else:
+            caller = original.t().contiguous().t()
+            assert not caller.is_contiguous()
 
         kp = Keypoints(caller)
         assert kp.pad(padding) is kp
@@ -536,6 +543,14 @@ class TestConventionsKeypoints(BaseTester):
         independent.pad(padding)
         self.assert_close(independent.data.reshape(2, 2), padded)
         self.assert_close(caller.reshape(2, 2), original)
+
+        second_point = (torch.tensor([1], device=device),)
+        if layout == "batched":
+            second_point = (torch.tensor([0], device=device), *second_point)
+        kp.index_put(second_point, torch.tensor([100.0, 200.0], device=device, dtype=dtype), inplace=True)
+        kp[..., :1, :] = Keypoints(torch.tensor([[70.0, 60.0]], device=device, dtype=dtype))
+        edited = torch.tensor([[70.0, 60.0], [100.0, 200.0]], device=device, dtype=dtype)
+        self.assert_close(caller.reshape(2, 2), edited)
 
     @pytest.mark.parametrize(
         "path",

@@ -448,3 +448,24 @@ class TestConventionsPointCloudPly(BaseTester):
         assert loaded.dtype == torch.float32
         assert loaded.device.type == "cpu"
         self.assert_close(loaded, points.cpu().float(), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "function",
+        ["save_pointcloud_ply", "save_pointcloud_ply_binary", "load_pointcloud_ply", "load_pointcloud_ply_binary"],
+    )
+    def test_convention_ply_filename_is_str_ending_in_ply_any_case(self, tmp_path, function):
+        # The writers and loaders take filename as a str ending in .ply, in any case; a pathlib.Path raises
+        # TypeError even when it names a valid PLY file.
+        points = torch.tensor([[1.0, 2.0, 3.0]])
+        path = tmp_path / "upper_case.PLY"
+        saver = "save_pointcloud_ply_binary" if function.endswith("_binary") else "save_pointcloud_ply"
+        getattr(kornia.geometry, saver)(str(path), points)
+
+        if function.startswith("save"):
+            getattr(kornia.geometry, function)(str(path), points)
+            with pytest.raises(TypeError):
+                getattr(kornia.geometry, function)(path, points)
+        else:
+            self.assert_close(getattr(kornia.geometry, function)(str(path)), points)
+            with pytest.raises(TypeError):
+                getattr(kornia.geometry, function)(path)
