@@ -2005,7 +2005,20 @@ def normal_transform_pixel(
             sy = 2.0 / height
             tx = (1.0 - width) / width
             ty = (1.0 - height) / height
-        tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        if torch.jit.is_scripting():
+            # TorchScript builds ``torch.tensor`` from a float list in float32 even when ``dtype`` is
+            # float64, so scale a typed anchor instead to keep the constants in the output dtype.
+            anchor = torch.ones((), device=device, dtype=dtype)
+            zero = anchor * 0.0
+            tr_mat = torch.stack(
+                [
+                    torch.stack([anchor * sx, zero, anchor * tx]),
+                    torch.stack([zero, anchor * sy, anchor * ty]),
+                    torch.stack([zero, zero, anchor]),
+                ]
+            )
+        else:
+            tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
     else:
         # Low-precision floating types cannot represent every practical image size exactly
         # (e.g. bfloat16 rounds 257 to 256). Keep symbolic size arithmetic in at least
@@ -2134,11 +2147,24 @@ def normal_transform_pixel3d(
         tx = 0.0 if width == 1 else -1.0
         ty = 0.0 if height == 1 else -1.0
         tz = 0.0 if depth == 1 else -1.0
-        tr_mat = torch.tensor(
-            [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
-            device=device,
-            dtype=dtype,
-        )
+        if torch.jit.is_scripting():
+            # As in 2-D: a typed anchor keeps float64 constants exact under TorchScript.
+            anchor = torch.ones((), device=device, dtype=dtype)
+            zero = anchor * 0.0
+            tr_mat = torch.stack(
+                [
+                    torch.stack([anchor * sx, zero, zero, anchor * tx]),
+                    torch.stack([zero, anchor * sy, zero, anchor * ty]),
+                    torch.stack([zero, zero, anchor * sz, anchor * tz]),
+                    torch.stack([zero, zero, zero, anchor]),
+                ]
+            )
+        else:
+            tr_mat = torch.tensor(
+                [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
+                device=device,
+                dtype=dtype,
+            )
     else:
         # As in 2-D: keep the symbolic size arithmetic in at least float32, and resolve the
         # output dtype first so a ``dtype=None`` call under a half default dtype is promoted too.

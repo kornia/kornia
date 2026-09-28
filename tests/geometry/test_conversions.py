@@ -3530,7 +3530,8 @@ class TestNormalTransformPixel(BaseTester):
         # from Python floats, so its dtype is torch's AMBIENT default rather than float32
         # unconditionally: changing the process default changes the result. That is the mechanism
         # behind the former float32 constants in float64 homography pipelines: the public
-        # homography functions now pass their input dtype through explicitly.
+        # homography functions now pass a floating or complex input dtype through explicitly
+        # (an integer input still passes None and is cast afterwards, see kornia#3959).
         # The dtype fixture is dropped because the claim is about the *absence* of a dtype
         # argument, and the default is read back through torch.get_default_dtype() rather than
         # hardcoded, so the pin says "follows the ambient default" and not "is always float32".
@@ -4098,8 +4099,8 @@ class TestNormalizeHomography(BaseTester):
         # A float64 homography is normalized with float64 constants, so the entries carry float64
         # accuracy. For sizes (4, 4) -> (6, 6) the (0, 0) entry is mathematically
         # 2/(6 - 1) * (4 - 1)/2 = 0.6 exactly, and any float64-native evaluation lands within an ulp
-        # of it; the tolerance 1e-12 sits four orders above float64 noise and three below the
-        # deviation from float64 arithmetic. Non-dyadic sizes are required here: with 2**k + 1
+        # of it; the tolerance 1e-12 sits four orders above float64 noise and nearly four below the
+        # 8.9e-9 deviation that float32-rounded constants gave. Non-dyadic sizes are required here: with 2**k + 1
         # sizes the constants are exact. float64 is hardcoded and the dtype fixture dropped because
         # the claim is a float64 claim.
         _skip_if_dtype_unavailable(device, torch.float64)
@@ -4111,6 +4112,25 @@ class TestNormalizeHomography(BaseTester):
         assert abs(normalized[0, 0, 0].item() - 0.6) < 1e-12, (
             "normalize_homography did not use float64 normalization constants"
         )
+
+    @pytest.mark.parametrize(
+        ("op_name", "src", "dst"),
+        [
+            ("normalize_homography", (4, 4), (6, 6)),
+            ("denormalize_homography", (4, 4), (6, 6)),
+            ("normalize_homography3d", (4, 4, 7), (6, 6, 9)),
+        ],
+    )
+    def test_scripted_normalization_constants_match_eager(self, device, dtype, op_name, src, dst):
+        # TorchScript builds torch.tensor from a float list in float32 even for dtype=float64, so
+        # the scripted path must not use it: under float64 the scripted result drifted from eager
+        # by the same ~1e-8 as the old float32 constants. Non-dyadic sizes keep that drift visible.
+        _skip_if_dtype_unavailable(device, dtype)
+        op = getattr(kornia.geometry.conversions, op_name)
+        size = 4 if op_name.endswith("3d") else 3
+        homography = torch.eye(size, device=device, dtype=dtype)[None]
+
+        self.assert_close(torch.jit.script(op)(homography, src, dst), op(homography, src, dst), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("op_name", ["normalize_homography", "denormalize_homography"])
     def test_wart_integer_input_raises_or_nans_by_backend_3959(self, device, op_name):
