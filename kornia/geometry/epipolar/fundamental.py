@@ -23,7 +23,7 @@ from typing import Literal, Optional, Tuple
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
-from kornia.core.utils import safe_inverse_with_mask
+from kornia.core.utils import _torch_svd_cast, safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
 from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
@@ -242,17 +242,45 @@ def _rank2_projection(F: torch.Tensor) -> torch.Tensor:
     return (F - (F @ v[:, :, None]) @ v[:, None, :]).to(dtype)
 
 
+# The closed-form rank-2 step costs about 45 small kernels whatever the batch: it is faster than a batched 3x3 SVD
+# from 128 matrices on CPU (2048: 3.2 -> 0.8 ms) and from 512 on CUDA (2048: 3.2 -> 1.2 ms), slower below
+# (i7-14700K / RTX 4090, torch 2.14).
+_RANK2_CLOSED_FORM_MIN_BATCH_CPU = 128
+_RANK2_CLOSED_FORM_MIN_BATCH_ACCELERATOR = 512
+
+
+def _enforce_rank2(F: torch.Tensor) -> torch.Tensor:
+    """Remove the smallest singular value of ``(B, 3, 3)`` matrices.
+
+    :func:`_rank2_projection` for large batches, an SVD for small ones, where it is cheaper.
+    """
+    threshold = _RANK2_CLOSED_FORM_MIN_BATCH_CPU if F.device.type == "cpu" else _RANK2_CLOSED_FORM_MIN_BATCH_ACCELERATOR
+    if F.shape[0] >= threshold:
+        return _rank2_projection(F)
+    U, S, V = _torch_svd_cast(F)
+    S_new = torch.zeros_like(S)
+    S_new[..., :-1] = S[..., :-1]
+    return U @ torch.diag_embed(S_new) @ V.mH
+
+
+def _eight_point_null_vector(A: torch.Tensor) -> torch.Tensor:
+    """The unit null vectors ``(B, 9)`` of eight epipolar constraints ``A`` ``(B, 8, 9)``, in ``A``'s dtype.
+
+    One batched LU factorization (:func:`~kornia.geometry.solvers.homogeneous._null_space_lu`) finds them much faster
+    than ``eigh`` of ``A^T A``, which loops over the batch on CPU and squares the condition number; the factorization
+    runs in at least float32 since no backend factorizes half precision.
+    """
+    h = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
+    return (h / h.norm(dim=-1, keepdim=True)).to(A.dtype)
+
+
 def _eight_point_fundamental(A: torch.Tensor) -> torch.Tensor:
     """Rank-2 fundamental matrices ``(B, 3, 3)`` from eight epipolar constraints ``A`` ``(B, 8, 9)``, in ``A``'s dtype.
 
-    The null vector comes from :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, in at least float32 since
-    no backend factorizes half precision, at unit norm; :func:`_rank2_projection` then removes the smallest singular
-    value. Used by :func:`run_8point` for an unweighted eight-point sample and by RANSAC's eight-point sampler, which
-    passes rows of points it normalized once per call.
+    :func:`_eight_point_null_vector` followed by :func:`_rank2_projection`: RANSAC's eight-point sampler, which passes
+    rows of points it normalized once per call, in batches large enough for the closed form.
     """
-    f = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
-    f = f * f.square().sum(-1, keepdim=True).rsqrt()
-    return _rank2_projection(f.reshape(-1, 3, 3)).to(A.dtype)
+    return _rank2_projection(_eight_point_null_vector(A).reshape(-1, 3, 3))
 
 
 def _seven_point_candidates(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -445,9 +473,8 @@ def run_8point(
     B, N, _ = A.shape
 
     if weights is None and N == 8:
-        # A minimal sample has an exact null vector. One batched LU factorization of A finds it much faster than
-        # ``eigh`` of A^T A, which loops over the batch on CPU and squares the condition number.
-        F_rank2 = _eight_point_fundamental(A)
+        # A minimal sample has an exact null vector.
+        h = _eight_point_null_vector(A)
     else:
         # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
         if weights is None:
@@ -474,8 +501,8 @@ def run_8point(
                 M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
         _evals, evecs = torch.linalg.eigh(M)  # ascending order
-        # Enforce rank 2 on the eigenvector of the smallest eigenvalue.
-        F_rank2 = _rank2_projection(evecs[..., 0].reshape(B, 3, 3))
+        h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
+    F_rank2 = _enforce_rank2(h.reshape(B, 3, 3))
     F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
 
     return normalize_transformation(F)

@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia.geometry.epipolar as epi
+from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.epipolar.fundamental import (
     _eight_point_fundamental,
@@ -28,6 +29,7 @@ from kornia.geometry.epipolar.fundamental import (
     _rank2_projection,
     _seven_point_candidates,
 )
+from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 from testing.base import BaseTester
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
@@ -954,6 +956,40 @@ class TestRankTwoProjection(BaseTester):
         tolerance = 1e-6 if dtype == torch.float64 else 1e-2
         assert torch.linalg.det(F).abs().max() < tolerance
         assert min((F - truth).norm(), (F + truth).norm()) < tolerance
+
+    @pytest.mark.parametrize("num_points", [8, 12])
+    def test_run_8point_small_batches_keep_the_svd(self, device, dtype, num_points):
+        _skip_half(dtype, _NO_HALF_EIGH)
+        # Below a few hundred matrices a batched 3x3 SVD is cheaper than the closed form's fixed cost, so small
+        # batches keep the SVD rank-2 step, and their results, to the bit.
+        generator = torch.Generator().manual_seed(num_points)
+        points1 = torch.rand(4, num_points, 2, generator=generator).to(device, dtype)
+        points2 = torch.rand(4, num_points, 2, generator=generator).to(device, dtype)
+        n1, t1 = epi.normalize_points(points1)
+        n2, t2 = epi.normalize_points(points2)
+        A = _epipolar_design_rows(_hom(n1), _hom(n2))
+        if num_points == 8:
+            h = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
+            h = (h / h.norm(dim=-1, keepdim=True)).to(A.dtype)
+        else:
+            h = torch.linalg.eigh(A.transpose(-2, -1).contiguous() @ A)[1][..., 0]
+        U, S, V = _torch_svd_cast(h.reshape(4, 3, 3))
+        S_new = torch.zeros_like(S)
+        S_new[..., :-1] = S[..., :-1]
+        expected = epi.normalize_transformation(t2.transpose(-2, -1) @ ((U @ torch.diag_embed(S_new) @ V.mH) @ t1))
+        assert torch.equal(epi.find_fundamental(points1, points2), expected)
+
+    def test_run_8point_large_batches_match_small_ones(self, device, dtype):
+        _skip_half(dtype, _NO_HALF_EIGH)
+        generator = torch.Generator().manual_seed(3)
+        points1 = torch.rand(600, 12, 2, generator=generator).to(device, dtype)
+        points2 = torch.rand(600, 12, 2, generator=generator).to(device, dtype)
+        batched = epi.find_fundamental(points1, points2)
+        one_by_one = torch.cat(
+            [epi.find_fundamental(points1[i : i + 1], points2[i : i + 1]) for i in range(0, 600, 60)]
+        )
+        scale = one_by_one.flatten(1).norm(dim=1)[:, None, None]
+        self.assert_close(batched[::60] / scale, one_by_one / scale, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("num_points", [8, 12])
     def test_gradcheck_run_8point_unweighted(self, device, num_points):
