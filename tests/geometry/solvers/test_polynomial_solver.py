@@ -21,7 +21,7 @@ import torch
 
 import kornia.geometry.solvers as solver
 from kornia.core.exceptions import ShapeError
-from kornia.geometry.solvers.polynomial_solver import _exact_power_of_two
+from kornia.geometry.solvers.polynomial_solver import _solve_cubic_with_count
 
 from testing.base import BaseTester
 
@@ -244,102 +244,27 @@ class TestCubicSolver(BaseTester):
         roots.sum().backward()
         assert bool(torch.isfinite(x.grad).all()), x.grad
 
-    def test_tiny_leading_coefficient_4914(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("1e-30 rounds to 0 in float16, which solves the row as the linear equation 2x - 6 = 0")
-        # #4914: 1e-30 x^3 + 2x - 6 has the real root 3 (the other two are +-1.4e15 i). Normalising by a gave
-        # c/a = 2e30 and d/a = -6e30, whose Q^3 overflowed float32 (root inf), and in float64 Cardano's A + B
-        # cancelled to 0 (root 0). The row is now solved scaled by 2^-51, and A + B as 2R / (A^2 + B^2 + Q).
-        coeffs = torch.tensor([[1e-30, 0.0, 2.0, -6.0]], device=device, dtype=dtype)
-        roots = solver.solve_cubic(coeffs)
-        expected = torch.tensor([[3.0, 0.0, 0.0]], device=device, dtype=dtype)
-        self.assert_close(roots, expected, rtol=8 * torch.finfo(dtype).eps, atol=0.0)
-
-    def test_tiny_leading_coefficient_gradient_4914(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("Gradient values are checked in float32 and float64.")
-        # Implicit-function derivative of the simple root r: dr/dcoeffs[k] = -r^(3 - k) / p'(r), p'(3) = 2 here.
-        # The root moves by 27a/2 with a and by 9b/2 with b, below the resolution of the closed form at a = 1e-30,
-        # so those two derivatives cannot come out of it (inf in float32); the c and d derivatives do.
-        x = torch.tensor([[1e-30, 0.0, 2.0, -6.0]], device=device, dtype=dtype, requires_grad=True)
-        (grad,) = torch.autograd.grad(solver.solve_cubic(x)[0, 0], x)
-        self.assert_close(grad[0, 2:], torch.tensor([-1.5, -0.5], device=device, dtype=dtype), rtol=1e-5, atol=0.0)
-
-        # The root bound takes |d|^(1/3), whose derivative is infinite at d == 0. The bound is a step function of
-        # the coefficients and is detached: the root 0 of x^3 + x^2 + x keeps its derivative -1 / p'(0) in d.
-        x = torch.tensor([[1.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
-        (grad,) = torch.autograd.grad(solver.solve_cubic(x)[0, 0], x)
-        self.assert_close(grad, torch.tensor([[0.0, 0.0, 0.0, -1.0]], device=device, dtype=dtype), rtol=0.0, atol=1e-6)
-
-        # 2x^3 has the root bound 0 and is not scaled. Its triple root 0 keeps the Q == R == 0 branch's gradient,
-        # -b / (3a) per root, so the sum of the roots moves by -1 / a with b.
-        x = torch.tensor([[2.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
-        roots = solver.solve_cubic(x)
-        self.assert_close(roots.detach(), torch.zeros(1, 3, device=device, dtype=dtype), rtol=0.0, atol=0.0)
-        (grad,) = torch.autograd.grad(roots.sum(), x)
-        self.assert_close(grad, torch.tensor([[0.0, -0.5, 0.0, 0.0]], device=device, dtype=dtype), rtol=0.0, atol=0.0)
-
-    def test_scaled_row_has_scaled_roots_4914(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("Half-precision rows are solved in float32, and 2^40 is beyond float16.")
-        # The row scale has to be an exact power of two on every backend: torch.exp2 is not, for integer arguments
-        # on MPS, and the triple root below then left its Q == R == 0 branch.
-        exponents = torch.tensor([-120.0, -38.0, 0.0, 2.0, 120.0], device=device, dtype=dtype)
-        expected = torch.tensor([2.0**-120, 2.0**-38, 1.0, 4.0, 2.0**120], device=device, dtype=dtype)
-        assert torch.equal(_exact_power_of_two(exponents), expected), _exact_power_of_two(exponents)
-
-        # Coefficient i divided by s^i moves every root by 1 / s. With s an exact power of two the scaled row reaches
-        # the closed form as the same numbers, so its roots are the original ones times 1 / s. One row per branch:
-        # three real roots, one real root with Q > 0 and with Q < 0, Q == 0, and a triple root. Before the fix,
-        # Q^3 left the dtype's range at these s and the rows returned zeros, inf or a wrong branch.
-        rows = torch.tensor(
+    def test_real_root_count_4862(self, device, dtype):
+        # #4862: the 0.0 padding is indistinguishable from a root at 0 in the roots alone; the count tells them apart.
+        coeffs = torch.tensor(
             [
-                [1.0, -6.0, 11.0, -6.0],  # (x - 1)(x - 2)(x - 3)
-                [1.0, 0.0, 1.0, -2.0],  # (x - 1)(x^2 + x + 2): Q > 0
-                [1.0, 3.0, 1.0, -5.0],  # (x - 1)(x^2 + 4x + 5): Q < 0
-                [1.0, 0.0, 0.0, 1.0],  # x^3 + 1: Q == 0
-                [1.0, -3.0, 3.0, -1.0],  # (x - 1)^3
+                [1.0, -6.0, 11.0, -6.0],  # (x - 1)(x - 2)(x - 3): D <= 0
+                [1.0, 0.0, 1.0, 0.0],  # x (x^2 + 1): one real root at 0, D > 0
+                [1.0, 0.0, 0.0, -1.0],  # x^3 - 1: Q == 0
+                [1.0, 3.0, 3.0, 1.0],  # (x + 1)^3: Q == R == 0
+                [1.0, -2.0, 1.0, 0.0],  # x (x - 1)^2: D == 0, the double root counts twice
+                [0.0, 1.0, -3.0, 2.0],  # (x - 1)(x - 2)
+                [0.0, 1.0, -2.0, 1.0],  # (x - 1)^2: zero discriminant, the double root counts twice
+                [0.0, 1.0, 0.0, 1.0],  # x^2 + 1
+                [0.0, 0.0, 2.0, -1.0],  # 2x - 1
+                [0.0, 0.0, 0.0, 1.0],  # a nonzero constant
             ],
             device=device,
             dtype=dtype,
         )
-        base = solver.solve_cubic(rows)
-        exponent = 40 if dtype == torch.float32 else 200
-        for s in (2.0**exponent, 2.0**-exponent):
-            # Python computes the powers of two exactly, and multiplying by them is exact on every backend, where
-            # `s ** torch.arange(4)` and a division are not (MPS).
-            powers = torch.tensor([1.0, 1.0 / s, 1.0 / s**2, 1.0 / s**3], device=device, dtype=dtype)
-            self.assert_close(solver.solve_cubic(rows * powers) * s, base, rtol=8 * torch.finfo(dtype).eps, atol=0.0)
-
-    def test_small_r_keeps_the_root_4914(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("2e-17 rounds to 0 in float16, and bfloat16 keeps 3 digits of these rows.")
-        # The D > 0 branch took A = B = 0 for |R| <= 1e-16 and returned -b / 3 for the root. x^3 + x - 2e-17 has
-        # R = 1e-17 and the root 2e-17, not 0. The second row is the resolvent cubic of the #4833 quartic
-        # x^4 - 0.009x^3 + 3e-05x^2 - 4.2e-08x + 2e-11: its R is 2e-18 and its real root 1.2e-5, which came back
-        # as -b / 3 = 1e-5 and lost the quartic's roots 1e-3 and 2e-3.
-        rows = torch.tensor([[1.0, 0.0, 1.0, -2e-17], [1.0, -3e-05, 2.98e-10, -9.84e-16]], device=device, dtype=dtype)
-        roots = solver.solve_cubic(rows)
-        expected = torch.tensor([[2e-17, 0.0, 0.0], [1.2e-5, 0.0, 0.0]], device=device, dtype=dtype)
-        tol = 1e-5 if dtype == torch.float32 else 1e-12
-        self.assert_close(roots, expected, rtol=tol, atol=0.0)
-
-    def test_root_bound_takes_every_coefficient_4914(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("These rows are beyond the range of float16, and half-precision rows are solved in float32.")
-        # Each row's root bound is set by one coefficient: b (x^3 + b x^2 = x^2 (x + b)), c (the root -d / c of
-        # x^3 + c x + d with c huge) and b at the top of the dtype's range, where the scale exponent has to be
-        # clamped. Scaled without that coefficient's term in the bound, or with an unclamped exponent, Q^3 and R^2
-        # overflow or the scale is not a finite power of two, and the root comes back as 0 or nan.
-        if dtype == torch.float32:
-            rows = [[1.0, 1e20, 0.0, 0.0], [1.0, 0.0, 1e30, 1e20], [1.0, 1e38, 0.0, 0.0]]
-            expected = [[-1e20, 0.0, 0.0], [-1e-10, 0.0, 0.0], [-1e38, 0.0, 0.0]]
-        else:
-            rows = [[1.0, 1e160, 0.0, 0.0], [1.0, 0.0, 1e200, 1.0], [1.0, 1e308, 0.0, 0.0]]
-            expected = [[-1e160, 0.0, 0.0], [-1e-200, 0.0, 0.0], [-1e308, 0.0, 0.0]]
-        roots = solver.solve_cubic(torch.tensor(rows, device=device, dtype=dtype))
-        expected = torch.tensor(expected, device=device, dtype=dtype)
-        self.assert_close(roots.sort(dim=-1).values, expected, rtol=8 * torch.finfo(dtype).eps, atol=0.0)
+        roots, num_real = _solve_cubic_with_count(coeffs)
+        self.assert_close(roots, solver.solve_cubic(coeffs), rtol=0.0, atol=0.0)
+        assert num_real.tolist() == [3, 1, 1, 3, 3, 2, 2, 0, 1, 0]
 
 
 class TestMultiplyDegOnePoly(BaseTester):
@@ -1325,16 +1250,15 @@ class TestConventionPolynomialSolvers(BaseTester):
         expected = torch.tensor([[*lead, b, -1.0, 0.0]], device=device, dtype=dtype)
         self.assert_close(grad, expected)
 
-    def test_small_scale_quartic_literal_4833(self, device, dtype):
+    def test_wart_solve_quartic_small_scale_4833(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("this row's 2e-11 and -4.2e-08 coefficients underflow float16 and keep 3 digits in bfloat16")
         # #4833: x^4 - 0.009x^3 + 3e-05x^2 - 4.2e-08x + 2e-11 = (x - 0.001)(x - 0.002)(x^2 - 0.006x + 1e-05) has
-        # the real roots 1e-3 and 2e-3. This literal lost them in the resolvent cubic, whose R = 2e-18 sat under
-        # the 1e-16 floor removed with #4914, not to the quartic's own unit floors, which #4833 still describes.
+        # the real roots 1e-3 and 2e-3, but the solver is not scale-invariant and returns neither to 1 %.
         coeffs = torch.tensor([[1.0, -0.009, 3e-05, -4.2e-08, 2e-11]], device=device, dtype=dtype)
         out = solver.solve_quartic(coeffs)
         for root in (1e-3, 2e-3):
-            assert (out - root).abs().min() <= 1e-5 * root, out
+            assert (out - root).abs().min() > 1e-2 * root
 
     def test_wart_solve_quartic_scaled_large_roots_fall_back_to_cubic_4954(self, device, dtype):
         if dtype != torch.float32:

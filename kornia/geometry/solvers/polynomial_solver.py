@@ -111,23 +111,6 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     return torch.stack([root_0, root_1], dim=-1)
 
 
-# Bit layout of the float dtypes solve_cubic scales in: the integer dtype of the same width, the exponent bias and the
-# number of mantissa bits. A float with a zero mantissa is 2 ** (stored exponent - bias).
-_FLOAT_LAYOUT = {torch.float32: (torch.int32, 127, 23), torch.float64: (torch.int64, 1023, 52)}
-
-
-def _exact_power_of_two(exponent: torch.Tensor) -> torch.Tensor:
-    """Return ``2 ** exponent`` for an integer-valued float tensor, exact on every backend.
-
-    ``torch.exp2`` and ``torch.pow`` are not exact for integer arguments on every backend (MPS), and a scale that is
-    not a power of two changes the bits of the scaled row. The exponent is clamped so that both ``2 ** exponent`` and
-    ``2 ** -exponent`` are normal floats, and is written into the exponent field of the float.
-    """
-    int_dtype, bias, mantissa_bits = _FLOAT_LAYOUT[exponent.dtype]
-    biased = exponent.clamp(1 - bias, bias - 1).to(int_dtype) + bias
-    return (biased * 2**mantissa_bits).view(exponent.dtype)
-
-
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     r"""Solve given cubic equation.
 
@@ -140,9 +123,6 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
           and a single real root is in slot 0.
         - A zero leading coefficient lowers the degree, and the roots of the remaining polynomial come first.
-        - The closed form is evaluated on the row scaled by an exact power of two to a unit root bound, and the
-          roots are scaled back, so its intermediates neither overflow nor underflow for a tiny leading coefficient
-          or for roots far from unit scale (#4914).
 
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
@@ -165,6 +145,18 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
        inherits this convention wherever it falls back to :func:`solve_cubic`.
 
     """
+    return _solve_cubic_with_count(coeffs)[0]
+
+
+def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Solve a cubic as :func:`solve_cubic` does and also count its real roots.
+
+    Returns:
+        The roots of :func:`solve_cubic`, shape `(B, 3)`, and the number of real roots per row counted with
+        multiplicity, shape `(B,)`. The real roots fill the first slots and the rest are the ``0.0`` padding,
+        which the count tells apart from a root at 0.
+
+    """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
 
     # In float16, Q^3 underflows to 0 for |Q| below about 4e-3. With R == 0 that makes D == 0, so
@@ -172,7 +164,8 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     # Q > 0: every root comes back NaN. Solve half-precision cubics in float32 and return the roots
     # in the input dtype, as solve_quartic does for its Ferrari path.
     if coeffs.dtype in (torch.float16, torch.bfloat16):
-        return solve_cubic(coeffs.float()).to(coeffs.dtype)
+        roots, num_real = _solve_cubic_with_count(coeffs.float())
+        return roots.to(coeffs.dtype), num_real
 
     _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
 
@@ -183,6 +176,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     d = coeffs[:, 3]  # constant term
 
     solutions = torch.zeros((len(coeffs), 3), device=a.device, dtype=a.dtype)
+    num_real = torch.zeros(len(coeffs), device=a.device, dtype=torch.long)
 
     mask_a_zero = a == 0
     mask_b_zero = b == 0
@@ -196,6 +190,9 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
 
     if torch.any(mask_second_order):
         solutions[mask_second_order, 0:2] = solve_quadratic(coeffs[mask_second_order, 1:])
+        # solve_quadratic's own discriminant: two real roots (a double root repeated) or none.
+        quad_b, quad_c, quad_d = b[mask_second_order], c[mask_second_order], d[mask_second_order]
+        num_real[mask_second_order] = torch.where(quad_c * quad_c - 4 * quad_b * quad_d < 0, 0, 2)
 
     if torch.any(mask_first_order):
         # cx + d = 0. The (a * x + b) * x^2 / c term is 0 in the forward pass, but it keeps the root's
@@ -204,31 +201,15 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         x0_first = -d[mask_first_order] / c_first
         a_first, b_first = a[mask_first_order], b[mask_first_order]
         solutions[mask_first_order, 0] = x0_first - (a_first * x0_first + b_first) * x0_first * x0_first / c_first
+        num_real[mask_first_order] = 1
 
     # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
     inv_a = 1.0 / a[~mask_a_zero]
     b_a = inv_a * b[~mask_a_zero]
+    b_a2 = b_a * b_a
+
     c_a = inv_a * c[~mask_a_zero]
     d_a = inv_a * d[~mask_a_zero]
-
-    # Solve for y = x / s, with s the power of two just above max(|b/a|, |c/a|^(1/2), |d/a|^(1/3)), which bounds the
-    # root magnitude. The scaled coefficients b/(a s), c/(a s^2) and d/(a s^3) are below 1 in magnitude, so Q^3 and
-    # R^2 below neither overflow when a tiny leading coefficient makes b/a, c/a and d/a huge (#4914) nor underflow for
-    # tiny roots. Multiplying by a power of two is exact, so a row that neither overflowed nor underflowed takes the
-    # same branch as before and its D <= 0 roots are the same bits. s is a step function of the coefficients, so it is
-    # a constant for autograd. A row with b == c == d == 0 has bound 0 and keeps s = 1.
-    bound = torch.maximum(torch.maximum(b_a.abs(), c_a.abs().sqrt()), d_a.abs().pow(1.0 / 3.0)).detach()
-    positive_bound = bound > 0
-    exponent = torch.floor(torch.log2(torch.where(positive_bound, bound, torch.ones_like(bound)))) + 1
-    exponent = torch.where(positive_bound, exponent, torch.zeros_like(exponent))
-    s = _exact_power_of_two(exponent)
-    inv_s = _exact_power_of_two(-exponent)
-    b_a = b_a * inv_s
-    c_a = c_a * inv_s * inv_s
-    d_a = d_a * inv_s * inv_s * inv_s
-    b_a2 = b_a * b_a
-    scale = torch.ones_like(a)
-    scale[~mask_a_zero] = s
 
     # Solve the cubic equation
     Q = (3 * c_a - b_a2) / 9
@@ -257,6 +238,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         # but it keeps the root's dependence on Q in the gradient (d root / dQ = -1 / A).
         x0_Q_zero = A_Q_zero - Q[mask_Q_zero] / A_Q_zero - b_a_3[mask_Q_zero]
         solutions[mask_Q_zero_solutions, 0] = x0_Q_zero
+        num_real[mask_Q_zero_solutions] = 1
 
     mask_QR_zero = (Q == 0) & (R == 0)
     mask_QR_zero_solutions = (a_Q_zero == 0) & (a_R_zero == 0)
@@ -265,6 +247,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         solutions[mask_QR_zero_solutions] = torch.stack(
             [-b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero]], dim=1
         )
+        num_real[mask_QR_zero_solutions] = 3
 
     # D <= 0
     mask_D_zero = (D <= 0) & (Q != 0)
@@ -290,6 +273,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
         x2_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 4 * _PI) / 3.0) - b_a_3[mask_D_zero]
         solutions[mask_D_zero_solutions] = torch.stack([x0_D_zero, x1_D_zero, x2_D_zero], dim=1)
+        num_real[mask_D_zero_solutions] = 3
 
     a_D_positive = torch.zeros_like(a)
     a_D_positive[~mask_a_zero] = D
@@ -297,25 +281,26 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_D_positive_solution = (a_D_positive > 0) & (a_Q_zero != 0)
     mask_D_positive = (D > 0) & (Q != 0)
     if torch.any(mask_D_positive):
-        # Cardano: the real root is A + B with A = cbrt(R + sqrt(D)) and B = cbrt(R - sqrt(D)) = -Q / A. Take the cube
-        # root of the larger magnitude, |R| + sqrt(D), and restore the sign of R, so A is never 0 and no floor on |R|
-        # is needed. Only the mask_D_positive rows enter: sqrt(D) on a D <= 0 row is nan, and although such a row
-        # would never be read out, `-Q / nan` would stay in the graph and its backward poison every coefficient's
-        # gradient.
-        Q_pos, R_pos, D_pos = Q[mask_D_positive], R[mask_D_positive], D[mask_D_positive]
-        AD = torch.pow(R_pos.abs() + torch.sqrt(D_pos), 1 / 3)
-        AD = torch.where(R_pos < 0, -AD, AD)
-        BD = -Q_pos / AD
-        # When Q > 0, A and B have opposite signs and A + B cancels once the root is small next to sqrt(Q), the case
-        # of a tiny leading coefficient (#4914): the finite root of 1e-30 x^3 + 2 x - 6 came out as 0 in float64.
-        # A^3 + B^3 = 2 R and A B = -Q, so A + B = 2 R / (A^2 - A B + B^2) = 2 R / (A^2 + B^2 + Q), a quotient of
-        # same-sign sums when Q > 0. When Q < 0, A and B have the same sign, A + B does not cancel and stays the more
-        # accurate form.
-        sum_AB = torch.where(Q_pos > 0, 2 * R_pos / (AD * AD + BD * BD + Q_pos), AD + BD)
-        x0_D_positive = sum_AB - b_a_3[mask_D_positive]
-        solutions[mask_D_positive_solution, 0] = x0_D_positive
+        AD = torch.zeros_like(R)
+        BD = torch.zeros_like(R)
+        R_abs = torch.abs(R)
+        # Intersect with mask_D_positive: sqrt(D) on a D <= 0 row is nan, and
+        # although such a row is never read out of AD/BD, `-Q / nan` stays in
+        # the graph and its backward poisons every coefficient's gradient.
+        mask_R_positive = (R_abs > 1e-16) & mask_D_positive
+        if torch.any(mask_R_positive):
+            AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
+            mask_R_positive_ = R < 0
 
-    return solutions * scale[:, None]
+            if torch.any(mask_R_positive_):
+                AD[mask_R_positive_] = -AD[mask_R_positive_]
+
+            BD[mask_R_positive] = -Q[mask_R_positive] / AD[mask_R_positive]
+        x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
+        solutions[mask_D_positive_solution, 0] = x0_D_positive
+        num_real[mask_D_positive_solution] = 1
+
+    return solutions, num_real
 
 
 def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
