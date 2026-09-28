@@ -324,6 +324,23 @@ class TestCubicSolver(BaseTester):
         tol = 1e-5 if dtype == torch.float32 else 1e-12
         self.assert_close(roots, expected, rtol=tol, atol=0.0)
 
+    def test_root_bound_takes_every_coefficient_4914(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("These rows are beyond the range of float16, and half-precision rows are solved in float32.")
+        # Each row's root bound is set by one coefficient: b (x^3 + b x^2 = x^2 (x + b)), c (the root -d / c of
+        # x^3 + c x + d with c huge) and b at the top of the dtype's range, where the scale exponent has to be
+        # clamped. Scaled without that coefficient's term in the bound, or with an unclamped exponent, Q^3 and R^2
+        # overflow or the scale is not a finite power of two, and the root comes back as 0 or nan.
+        if dtype == torch.float32:
+            rows = [[1.0, 1e20, 0.0, 0.0], [1.0, 0.0, 1e30, 1e20], [1.0, 1e38, 0.0, 0.0]]
+            expected = [[-1e20, 0.0, 0.0], [-1e-10, 0.0, 0.0], [-1e38, 0.0, 0.0]]
+        else:
+            rows = [[1.0, 1e160, 0.0, 0.0], [1.0, 0.0, 1e200, 1.0], [1.0, 1e308, 0.0, 0.0]]
+            expected = [[-1e160, 0.0, 0.0], [-1e-200, 0.0, 0.0], [-1e308, 0.0, 0.0]]
+        roots = solver.solve_cubic(torch.tensor(rows, device=device, dtype=dtype))
+        expected = torch.tensor(expected, device=device, dtype=dtype)
+        self.assert_close(roots.sort(dim=-1).values, expected, rtol=8 * torch.finfo(dtype).eps, atol=0.0)
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):
