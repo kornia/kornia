@@ -176,7 +176,7 @@ class Test3DAugmentationConventions(BaseTester):
 
     @pytest.mark.parametrize("size", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1)])
     @pytest.mark.parametrize("align_corners", [False, True])
-    def test_random_perspective3d_singleton_identity_5001(self, device, dtype, size, align_corners):
+    def test_convention_random_perspective3d_singleton_identity_5001(self, device, dtype, size, align_corners):
         if not supports_bilinear_3d_grid_sample(device, dtype):
             pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
         volume = torch.linspace(0, 1, 2 * size[0] * size[1] * size[2], device=device, dtype=dtype).reshape(2, 1, *size)
@@ -197,7 +197,7 @@ class Test3DAugmentationConventions(BaseTester):
     @pytest.mark.parametrize("size", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1)])
     @pytest.mark.parametrize("align_corners", [False, True])
     @pytest.mark.parametrize("same_on_batch", [False, True])
-    def test_random_perspective3d_singleton_axis_stays_fixed_5001(
+    def test_convention_random_perspective3d_singleton_axis_stays_fixed_5001(
         self, device, dtype, size, align_corners, same_on_batch
     ):
         if not supports_bilinear_3d_grid_sample(device, dtype):
