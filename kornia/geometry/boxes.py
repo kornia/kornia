@@ -267,6 +267,10 @@ class Boxes:
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         new_box = type(self)(self._data[key], False)
         new_box._mode = self._mode
+        # Select padding metadata with the same key as the box batch, including boolean masks.
+        if self._N is not None:
+            selected = torch.as_tensor(self._N, device=self._data.device)[key]
+            new_box._N = None if selected.ndim == 0 else [int(n) for n in selected]
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
@@ -718,8 +722,8 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form.
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
                 of tensors trimmed to their original lengths. The padded values follow the selected output mode.
-                Indexing with ``[]`` drops the list metadata, so a sliced object always returns the padded tensor;
-                see `#4179 <https://github.com/kornia/kornia/issues/4179>`_.
+                Batch slicing, index tensors, and boolean masks preserve the list metadata. Selecting a single
+                batch element with an integer or scalar tensor returns an unbatched object without list metadata.
 
         Returns:
             Boxes tensor in the ``mode`` format, or a list of tensors when the object was created from a list and
