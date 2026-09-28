@@ -1167,7 +1167,9 @@ class TestRefineEssentialLM(BaseTester):
             start, convert_points_to_homogeneous(x1), convert_points_to_homogeneous(x2), None, loss, 3e-3**2, 10
         )
         singular_values = torch.linalg.svdvals(refined[0])
-        self.assert_close(singular_values, torch.tensor([2**-0.5, 2**-0.5, 0.0], dtype=torch.float64), atol=1e-12, rtol=0)
+        self.assert_close(
+            singular_values, torch.tensor([2**-0.5, 2**-0.5, 0.0], dtype=torch.float64), atol=1e-12, rtol=0
+        )
         before = epi.sampson_epipolar_distance(x1[None], x2[None], start).sum()
         after = epi.sampson_epipolar_distance(x1[None], x2[None], refined).sum()
         assert after < 0.5 * before
