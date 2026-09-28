@@ -61,11 +61,12 @@ Coordinates and sizes
   (``conv_quad_interp3d``, ``iterative_quad_interp3d``) return ``(d, x, y)``
   voxel indices of their input. Normalized outputs are corner-aligned, as
   above.
-- Non-maximum suppression (:func:`kornia.geometry.subpix.nms2d`, ``nms3d``
-  and the detectors built on them) keeps **strict** maxima only: every pixel
-  of a plateau is suppressed. ``skimage.feature.peak_local_max``,
-  ``scipy.ndimage.maximum_filter(x) == x`` and OpenCV's ``dilate(x) == x``
-  keep every pixel of the plateau instead.
+- Non-maximum suppression is **strict** in
+  :func:`kornia.geometry.subpix.nms2d`, ``nms3d``, ``nms3d_minmax`` and the
+  detectors built on them: with a window of at least 3 on every axis, every
+  pixel of a plateau is suppressed. ``skimage.feature.peak_local_max`` at its
+  default ``min_distance=1``, ``scipy.ndimage.maximum_filter(x, size=k) == x``
+  and ``cv2.dilate(x, kernel) == x`` keep every pixel of the plateau instead.
 - Pixel ``(0, 0)`` is centred at ``(0, 0)`` — the OpenCV "integer" convention,
   not COLMAP's half-pixel one. :doc:`camera-conventions` catalogues the
   pixel-centre and camera-frame conventions of the surrounding ecosystem and

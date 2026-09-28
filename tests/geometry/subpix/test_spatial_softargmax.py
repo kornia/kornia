@@ -1039,7 +1039,7 @@ class TestStrictMaximaBonusDeprecated(BaseTester):
 
 
 def _has_avg_pool3d_kernel(device: torch.device, dtype: torch.dtype) -> bool:
-    # conv_soft_argmax3d pools with avg_pool3d, which torch lacks on CPU for float16/bfloat16 (2.5.1 and 2.14).
+    # conv_soft_argmax3d pools with avg_pool3d, which torch lacks on CPU for float16/bfloat16.
     try:
         torch.nn.functional.avg_pool3d(torch.zeros(1, 1, 1, 1, 1, device=device, dtype=dtype), 1)
     except (NotImplementedError, RuntimeError) as e:
@@ -1181,6 +1181,13 @@ class TestConventionsQuadInterp3d(BaseTester):
             volume = self._separable(device, dtype, parabola, depth_peak)
             coords, _ = fn(volume, precomputed_nms_mask=mask, allow_scale_steps=False)
             self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor(expected, device=device, dtype=dtype))
+
+        # The same 1.5 bound on x: with max_subpixel_shift=2 an x shift of 1.4 or 1.6 does not move the centre, and
+        # only 1.6 rejects the point.
+        for peak, expected in ((6.4, 6.4), (6.6, 5.0)):
+            volume = self._separable(device, dtype, [-((w - peak) ** 2) for w in range(9)])
+            coords, _ = fn(volume, precomputed_nms_mask=mask, max_subpixel_shift=2.0)
+            self.assert_close(coords[0, 0, 1, 1, 2, 5], torch.tensor(expected, device=device, dtype=dtype))
 
         # x peak at 7.4: two moves (col 5 -> 6 -> 7), then the shift 0.4 stays. The conv backend has solved only
         # the voxels within dilation_radius of the candidate, so radius 1 rejects the point and radius 2 keeps it.

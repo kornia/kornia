@@ -334,8 +334,8 @@ def conv_soft_argmax2d(
         - ``coords`` are ``(x, y)``: pixel coordinates of the input grid, or with ``normalized_coordinates=True``,
           the default here, corner-aligned coordinates as in :func:`spatial_soft_argmax2d`.
           :func:`conv_soft_argmax3d` defaults to pixel coordinates and ``output_value=True`` instead.
-        - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: a window that
-          overhangs the border averages over its in-image pixels only.
+        - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: with an odd
+          ``kernel_size``, a window that overhangs the border averages over its in-image pixels only.
         - Known defect: the exponent is shifted by the maximum of the whole map and ``eps`` is added to each
           window's denominator, so a window whose values sit far below that maximum, in units of ``temperature``, is
           pulled toward its centre with a value near ``0``, or is ``NaN`` in float16
@@ -576,7 +576,8 @@ def spatial_soft_argmax2d(
           ``normalized_coordinates=True`` corner-aligned coordinates, ``-1`` and ``1`` at the centres of the first and
           last pixel (:ref:`Coordinates and sizes <coordinate-conventions>`).
         - It is ``spatial_expectation2d(spatial_softmax2d(input, temperature))``: the expected coordinate under the
-          softmax of each whole :math:`H \times W` map, so two equal peaks give their midpoint, not either peak.
+          softmax of each whole :math:`H \times W` map, so two equal peaks that dominate the map give their midpoint,
+          not either peak.
 
     Args:
         input: the given heatmap with shape :math:`(B, N, H, W)`.
@@ -806,10 +807,10 @@ def conv_quad_interp3d(
           :func:`~kornia.geometry.grid.create_meshgrid3d`: only refined maxima move off their own grid index. At a
           refined maximum ``y_max`` is the quadratic fit's value at the refined point; non-maxima keep their input
           value.
-        - A maximum is not refined, and keeps its grid coordinates, when its fit is singular, when a move would
-          reach the border voxels, when its centre leaves the voxels precomputed for ``dilation_radius``, or when
-          the final shift exceeds ``1.5`` voxels on any axis. A volume with a side shorter than 3 is returned
-          unrefined.
+        - A maximum is not refined, and keeps its grid coordinates, when the determinant of its fit's Hessian is at
+          most ``1e-7`` in magnitude, when a move would reach the border voxels, when its centre leaves the voxels
+          precomputed for ``dilation_radius``, or when the final shift exceeds ``1.5`` voxels on any axis. A volume
+          with a side shorter than 3 is returned unrefined.
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.

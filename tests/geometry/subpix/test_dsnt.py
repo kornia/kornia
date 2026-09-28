@@ -317,3 +317,16 @@ class TestConventionsDsnt(BaseTester):
         # relabel: swapping the (x, y) components and the (H, W) size renders the transpose
         swapped = kornia.geometry.subpix.render_gaussian2d(mean.flip(-1), std.flip(-1), (21, 25), False)
         self.assert_close(swapped[0], heatmap[0].T)
+
+    def test_convention_spatial_expectation2d_uses_the_input_as_given(self, device, dtype):
+        # The heatmap is not renormalized: a map summing to s scales the expected (x, y) by s, in pixels and in
+        # normalized coordinates alike. Mass 0.75 at (row 0, col 4) and 0.25 at (row 2, col 1) of a 3 x 5 map gives
+        # (x, y) = (3.25, 0.5) in pixels and (0.625, -0.5) normalized; doubling the map doubles both.
+        probs = torch.zeros(1, 1, 3, 5, device=device, dtype=dtype)
+        probs[0, 0, 0, 4] = 0.75
+        probs[0, 0, 2, 1] = 0.25
+        for scale in (1.0, 2.0):
+            pixel = kornia.geometry.subpix.spatial_expectation2d(scale * probs, normalized_coordinates=False)
+            self.assert_close(pixel, scale * torch.tensor([[[3.25, 0.5]]], device=device, dtype=dtype))
+            normalized = kornia.geometry.subpix.spatial_expectation2d(scale * probs)
+            self.assert_close(normalized, scale * torch.tensor([[[0.625, -0.5]]], device=device, dtype=dtype))

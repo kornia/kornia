@@ -397,13 +397,14 @@ def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = F
 
     Convention:
         - Only strict maxima survive: a position must be greater than every other value in its ``kernel_size``
-          window, so every pixel of a plateau is suppressed, even a plateau at the top of the map.
-          :ref:`Coordinates and sizes <coordinate-conventions>` compares this with scikit-image, scipy and OpenCV.
+          window, so with ``k >= 3`` on every axis every pixel of a plateau is suppressed, even a plateau at the top
+          of the map. :ref:`Coordinates and sizes <coordinate-conventions>` compares this with scikit-image, scipy
+          and OpenCV.
         - The window spans ``(k - 1) // 2`` positions before the centre and ``k // 2`` after it on each axis, so an
           even ``k`` reaches one further forward, and the first ``(k - 1) // 2`` and last ``k // 2`` positions of
           each axis are never maxima.
-        - The default output is ``input * mask``: suppressed positions are ``0``, which is larger than a negative
-          maximum, so use ``mask_only=True`` for a signed response.
+        - The default output is ``input * mask``: a suppressed finite value becomes ``0``, which is larger than a
+          negative maximum, so use ``mask_only=True`` for a signed response.
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
@@ -429,7 +430,8 @@ def nms3d_minmax(input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     allowing full fusion into a minimal number of kernels.
 
     Convention:
-        - See the convention block of :func:`nms2d`.
+        - The strict and border rules of :func:`nms2d` with a :math:`3 \times 3 \times 3` window, for maxima and
+          minima alike.
 
     Args:
         input: 5-D tensor of shape :math:`(B, C, D, H, W)`.
