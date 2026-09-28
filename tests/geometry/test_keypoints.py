@@ -574,6 +574,18 @@ class TestConventionsKeypoints(BaseTester):
         edited = torch.tensor([[70.0, 60.0], [100.0, 200.0]], device=device, dtype=dtype)
         self.assert_close(caller.reshape(2, 2), edited)
 
+    def test_convention_keypoints_single_padding_row_broadcasts_batch(self, device, dtype):
+        caller = torch.tensor([[[8.0, 2.0], [3.0, 5.0]], [[1.0, 4.0], [6.0, 7.0]]], device=device, dtype=dtype)
+        original = caller.clone()
+        padding = torch.tensor([[3.0, 100.0, 7.0, 1000.0]], device=device, dtype=dtype)
+        keypoints = Keypoints(caller)
+
+        assert keypoints.pad(padding) is keypoints
+        expected = torch.tensor([[[11.0, 9.0], [6.0, 12.0]], [[4.0, 11.0], [9.0, 14.0]]], device=device, dtype=dtype)
+        self.assert_close(caller, expected)
+        assert keypoints.unpad(padding) is keypoints
+        self.assert_close(caller, original)
+
     @pytest.mark.parametrize(
         "path",
         [

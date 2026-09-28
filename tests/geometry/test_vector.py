@@ -169,45 +169,69 @@ class TestVector2(BaseTester):
 
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionsVector(BaseTester):
-    """Pins for the value conventions and known defects of the :class:`Vector3` family."""
+    """Pins for the value conventions and known defects of :class:`Vector2` and :class:`Vector3`."""
 
-    def test_convention_vector3_random_is_unit_cube(self, device, dtype):
-        # Vector3.random draws every component uniformly in the unit cube from torch's global generator: the points
-        # lie in the first octant, so no component is negative and the norms spread over (0, sqrt(3)). It is not a
+    @pytest.mark.parametrize("vector_type, dim", [(Vector2, 2), (Vector3, 3)])
+    def test_convention_vector_random_is_unit_box(self, vector_type, dim, device, dtype):
+        # Vector.random draws every component uniformly in the unit box from torch's global generator. It is not a
         # random direction. torch.manual_seed reproduces a draw and another seed changes it.
         torch.manual_seed(0)
-        vectors = Vector3.random((10000,), device=device, dtype=dtype)
-        assert isinstance(vectors, Vector3)
-        assert vectors.data.shape == (10000, 3)
+        vectors = vector_type.random((10000,), device=device, dtype=dtype)
+        assert isinstance(vectors, vector_type)
+        assert vectors.data.shape == (10000, dim)
         assert vectors.data.dtype == dtype
         assert vectors.data.device.type == device.type
         torch.manual_seed(0)
-        assert torch.equal(Vector3.random((10000,), device=device, dtype=dtype).data, vectors.data)
+        assert torch.equal(vector_type.random((10000,), device=device, dtype=dtype).data, vectors.data)
         torch.manual_seed(1)
-        assert not torch.equal(Vector3.random((10000,), device=device, dtype=dtype).data, vectors.data)
+        assert not torch.equal(vector_type.random((10000,), device=device, dtype=dtype).data, vectors.data)
         values = vectors.data.cpu().double()
         assert float(values.min()) >= 0.0
         assert float(values.max()) <= 1.0
         norms = values.norm(dim=-1)
         assert float(norms.min()) < 0.5
-        assert float(norms.max()) > 1.5
-        self.assert_close(values.mean(0), torch.full((3,), 0.5, dtype=torch.float64), rtol=0.0, atol=0.02)
+        assert float(norms.max()) > 1.1
+        self.assert_close(values.mean(0), torch.full((dim,), 0.5, dtype=torch.float64), rtol=0.0, atol=0.02)
 
-    def test_convention_vector3_dot_returns_scalar_of_leading_shape(self, device, dtype):
+    @pytest.mark.parametrize("vector_type, dim", [(Vector2, 2), (Vector3, 3)])
+    def test_convention_vector_dot_returns_scalar_of_leading_shape(self, vector_type, dim, device, dtype):
         # dot and squared_norm reduce the last axis without keepdim and wrap the result as a Scalar of the leading
-        # shape: two (2, 3) vectors give a (2,) Scalar.
-        a = Vector3(torch.tensor([[0.3, -1.2, 2.5], [4.0, 0.5, -0.7]], device=device, dtype=dtype))
-        b = Vector3(torch.tensor([[1.1, 0.2, -0.4], [-2.0, 3.0, 0.6]], device=device, dtype=dtype))
+        # shape: two (2, dim) vectors give a (2,) Scalar; broadcastable (2, 1, dim) and (1, 4, dim) give (2, 4).
+        a = vector_type(torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], device=device, dtype=dtype)[..., :dim])
+        b = vector_type(torch.tensor([[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], device=device, dtype=dtype)[..., :dim])
 
         dot = a.dot(b)
         assert isinstance(dot, Scalar)
         assert dot.data.shape == (2,)
-        self.assert_close(dot.data, torch.tensor([-0.91, -6.92], device=device, dtype=dtype))
+        expected_dot = [8.0, 50.0] if dim == 2 else [20.0, 92.0]
+        self.assert_close(dot.data, torch.tensor(expected_dot, device=device, dtype=dtype))
+
+        broadcast_a = vector_type(
+            torch.tensor([[[1.0, 2.0, 3.0]], [[4.0, 5.0, 6.0]]], device=device, dtype=dtype)[..., :dim]
+        )
+        broadcast_b = vector_type(
+            torch.tensor(
+                [[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 1.0, 1.0]]], device=device, dtype=dtype
+            )[..., :dim]
+        )
+        broadcast_dot = broadcast_a.dot(broadcast_b)
+        assert isinstance(broadcast_dot, Scalar)
+        assert broadcast_dot.data.shape == (2, 4)
+        expected_broadcast = (
+            [[1.0, 2.0, 0.0, 3.0], [4.0, 5.0, 0.0, 9.0]]
+            if dim == 2
+            else [
+                [1.0, 2.0, 3.0, 6.0],
+                [4.0, 5.0, 6.0, 15.0],
+            ]
+        )
+        self.assert_close(broadcast_dot.data, torch.tensor(expected_broadcast, device=device, dtype=dtype))
 
         squared_norm = a.squared_norm()
         assert isinstance(squared_norm, Scalar)
         assert squared_norm.data.shape == (2,)
-        self.assert_close(squared_norm.data, torch.tensor([7.78, 16.74], device=device, dtype=dtype))
+        expected_squared_norm = [5.0, 41.0] if dim == 2 else [14.0, 77.0]
+        self.assert_close(squared_norm.data, torch.tensor(expected_squared_norm, device=device, dtype=dtype))
 
     def test_wart_vector3_call_path_type_split_5022(self, device, dtype):
         # Wart pin (#5022): deepcopy and tensor methods lose the wrapper, while torch functions rewrap their result.
@@ -270,20 +294,22 @@ class TestConventionsVector(BaseTester):
             else:
                 assert bool((out == 0).all())
 
-    def test_wart_vector3_tuple_index_raises_5022(self, device, dtype):
-        # Wart pin (#5022): Vector3.__getitem__ indexes data[idx, ...], so a tuple key is turned into an index
+    @pytest.mark.parametrize("vector_type, dim", [(Vector2, 2), (Vector3, 3)])
+    def test_wart_vector_tuple_index_raises_5022(self, vector_type, dim, device, dtype):
+        # Wart pin (#5022): Vector.__getitem__ indexes data[idx, ...], so a tuple key is turned into an index
         # tensor and raises RuntimeError (v[..., 0], v[:, 0]), and an int index of an unbatched vector leaves a 0-d
         # tensor that fails the last-dimension check (IndexError). A fix (index data[idx] and return a Tensor when
-        # the result is not (..., 3)) flips all three; indexing the batch, as in a[1], already works.
-        a = Vector3(torch.tensor([[0.3, -1.2, 2.5], [4.0, 0.5, -0.7]], device=device, dtype=dtype))
+        # the result is not (..., dim)) flips all three; indexing the batch, as in a[1], already works.
+        data = torch.tensor([[0.3, -1.2, 2.5], [4.0, 0.5, -0.7]], device=device, dtype=dtype)[..., :dim]
+        a = vector_type(data)
         with pytest.raises(RuntimeError):
             _ = a[..., 0]
         with pytest.raises(RuntimeError):
             _ = a[:, 0]
-        single = Vector3(torch.tensor([0.3, -1.2, 2.5], device=device, dtype=dtype))
+        single = vector_type(data[0])
         with pytest.raises(IndexError):
             _ = single[0]
 
         row = a[1]
-        assert isinstance(row, Vector3)
-        self.assert_close(row.data, torch.tensor([4.0, 0.5, -0.7], device=device, dtype=dtype))
+        assert isinstance(row, vector_type)
+        self.assert_close(row.data, data[1])
