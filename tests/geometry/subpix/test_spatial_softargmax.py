@@ -350,6 +350,24 @@ class TestConvSoftArgmax2d(BaseTester):
         op_opt = torch_optimizer(op, fullgraph=True)
         self.assert_close(op(data, temperature=temperature), op_opt(data, temperature=temperature))
 
+    @pytest.mark.parametrize("kernel_size", [(3, 3), (5, 5), (7, 7), (4, 6)])
+    def test_window_offset_in_pixels_5017(self, device, dtype, kernel_size):
+        # Every window that holds the one hot pixel puts all its softmax weight on it, so it reports that
+        # pixel, whatever the window size. The offset kernel used to span [-1, 1] instead of pixel offsets,
+        # which scaled the offset by 2 / (k - 1): a 5-wide window reported x = 7 for a peak at x = 8.
+        ky, kx = kernel_size
+        data = torch.zeros(1, 1, 15, 17, device=device, dtype=dtype)
+        data[..., 7, 8] = 50.0
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(
+            data, kernel_size, (1, 1), (0, 0), normalized_coordinates=False
+        )
+        rows = torch.arange(coords.shape[-2], device=device)
+        cols = torch.arange(coords.shape[-1], device=device)
+        holds_peak = ((rows <= 7) & (rows > 7 - ky))[:, None] & ((cols <= 8) & (cols > 8 - kx))[None, :]
+        assert holds_peak.sum().item() == kx * ky
+        expected = torch.tensor([8.0, 7.0], device=device, dtype=dtype)[:, None].expand(2, kx * ky)
+        self.assert_close(coords[0, 0][:, holds_peak], expected, atol=1e-4, rtol=1e-4)
+
     @pytest.mark.parametrize("temperature", [0.0, float("nan"), "tensor"])
     @pytest.mark.parametrize(
         "op, shape", [("conv_soft_argmax2d", (1, 1, 3, 3)), ("conv_soft_argmax3d", (1, 1, 3, 3, 3))]
@@ -512,6 +530,31 @@ class TestConvSoftArgmax3d(BaseTester):
         op_opt = torch_optimizer(op, fullgraph=True)
         for expected, actual in zip(op(data, temperature=temperature), op_opt(data, temperature=temperature)):
             self.assert_close(expected, actual)
+
+    @pytest.mark.parametrize("kernel_size", [(3, 3, 3), (5, 5, 5), (5, 3, 4), (4, 4, 2)])
+    def test_window_offset_in_pixels_5017(self, device, dtype, kernel_size):
+        # 3-D counterpart of TestConvSoftArgmax2d::test_window_offset_in_pixels_5017: the depth offset used to
+        # come from linspace(-1, 1, d), so a 5-deep window reported depth 4 for a peak at depth 5.
+        if device.type == "cpu" and dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("conv_soft_argmax3d has no CPU float16/bfloat16 kernel (avg_pool3d)")
+        kz, ky, kx = kernel_size
+        data = torch.zeros(1, 1, 11, 11, 13, device=device, dtype=dtype)
+        data[..., 5, 4, 6] = 50.0
+        coords = kornia.geometry.subpix.conv_soft_argmax3d(
+            data, kernel_size, (1, 1, 1), (0, 0, 0), normalized_coordinates=False, output_value=False
+        )
+        levels = torch.arange(coords.shape[-3], device=device)
+        rows = torch.arange(coords.shape[-2], device=device)
+        cols = torch.arange(coords.shape[-1], device=device)
+        holds_peak = (
+            ((levels <= 5) & (levels > 5 - kz))[:, None, None]
+            & ((rows <= 4) & (rows > 4 - ky))[None, :, None]
+            & ((cols <= 6) & (cols > 6 - kx))[None, None, :]
+        )
+        assert holds_peak.sum().item() == kx * ky * kz
+        # channels are (depth, x, y)
+        expected = torch.tensor([5.0, 6.0, 4.0], device=device, dtype=dtype)[:, None].expand(3, kx * ky * kz)
+        self.assert_close(coords[0, 0][:, holds_peak], expected, atol=1e-4, rtol=1e-4)
 
 
 class TestConvQuadInterp3dModule(BaseTester):
