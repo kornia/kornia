@@ -328,6 +328,38 @@ def _hat_basis(dtype: torch.dtype, device: torch.device) -> torch.Tensor:
     return E
 
 
+def _sampson_normal_equations(
+    F: torch.Tensor,
+    tangent: torch.Tensor,
+    algebraic: torch.Tensor,
+    quadratic: torch.Tensor,
+    mask: Optional[torch.Tensor],
+    loss: str,
+    scale2: float,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Robust Gauss-Newton normal equations ``[J^T W J | J^T W r]`` ``(K, P, P + 1)`` and costs ``(K,)``.
+
+    For the Sampson residuals of ``F`` ``(K, 3, 3)``, whose derivatives along ``P`` parameters are ``tangent``
+    ``(K, P, 3, 3)``. ``algebraic`` ``(9, N)`` and ``quadratic`` ``(18, N)`` are the per-correspondence monomials of
+    the epipolar constraint and of the squared gradient norm, from :func:`_epipolar_design_rows`.
+    """
+    K, P = tangent.shape[:2]
+    stacked = torch.cat([F[:, None], tangent], 1)  # (K, P + 1, 3, 3): F, then the P directions
+    # x1^T (F[:2]^T X[:2]) x1 + x2^T (F[:, :2] X[:, :2]^T) x2 is half the derivative of the squared gradient norm.
+    quad1 = F[:, None, :2, :].mT @ stacked[:, :, :2, :]
+    quad2 = F[:, None, :, :2] @ stacked[:, :, :, :2].mT
+    out_c = stacked.reshape(K, P + 1, 9) @ algebraic
+    out_g = torch.cat([quad1, quad2], 2).reshape(K, P + 1, 18) @ quadratic
+    inv = out_g[:, 0].rsqrt()
+    r = out_c[:, 0] * inv
+    J = (out_c[:, 1:] - (r * inv)[:, None] * out_g[:, 1:]) * inv[:, None]  # (K, P, N)
+    w, rho = _robust_loss(r * r, loss, scale2)
+    if mask is not None:
+        w, rho = w * mask, rho * mask
+    Jw = J * w[:, None]
+    return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1)
+
+
 def _refine_fundamental_lm(
     F: torch.Tensor,
     x1: torch.Tensor,
@@ -372,20 +404,7 @@ def _refine_fundamental_lm(
         tangent = torch.cat(
             [E @ F[:, None], (F[:, None] @ E).neg(), (UV[:, 0, :, 1:2] @ UV[:, 1, :, 1:2].mT)[:, None]], 1
         )
-        stacked = torch.cat([F[:, None], tangent], 1)  # (K, 8, 3, 3): F, then the seven directions
-        # x1^T (F[:2]^T X[:2]) x1 + x2^T (F[:, :2] X[:, :2]^T) x2 is half the derivative of the squared gradient norm.
-        quad1 = F[:, None, :2, :].mT @ stacked[:, :, :2, :]
-        quad2 = F[:, None, :, :2] @ stacked[:, :, :, :2].mT
-        out_c = stacked.reshape(K, 8, 9) @ algebraic
-        out_g = torch.cat([quad1, quad2], 2).reshape(K, 8, 18) @ quadratic
-        inv = out_g[:, 0].rsqrt()
-        r = out_c[:, 0] * inv
-        J = (out_c[:, 1:] - (r * inv)[:, None] * out_g[:, 1:]) * inv[:, None]  # (K, 7, N)
-        w, rho = _robust_loss(r * r, loss, scale2)
-        if mask is not None:
-            w, rho = w * mask, rho * mask
-        Jw = J * w[:, None]
-        return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1)
+        return _sampson_normal_equations(F, tangent, algebraic, quadratic, mask, loss, scale2)
 
     F = compose(UV, sigma)
     system, cost = normal_equations(F, UV)

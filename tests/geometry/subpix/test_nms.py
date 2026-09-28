@@ -55,6 +55,26 @@ def _reference_nms_mask(x: torch.Tensor, kernel_size: tuple[int, ...]) -> torch.
 
 
 class TestNMS2d(BaseTester):
+    @pytest.mark.parametrize("kernel_size", [(3, 3), (4, 4)])
+    def test_suppressed_nonfinite_values(self, device, dtype, kernel_size):
+        inp = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        inp[0, 0, :, 0] = float("-inf")
+        inp[0, 0, 2, 2] = float("-inf")
+        inp[0, 0, 2, 3] = 1.0
+        inp.requires_grad_()
+        expected = torch.zeros_like(inp)
+        expected[0, 0, 2, 3] = 1.0
+
+        mask = kornia.geometry.subpix.nms2d(inp, kernel_size, mask_only=True)
+        self.assert_close(mask, expected.bool())
+        out = kornia.geometry.subpix.nms2d(inp, kernel_size)
+        self.assert_close(out, expected, atol=0, rtol=0)
+        assert not out.isnan().any()
+        assert out.flatten().argmax().item() == 17
+
+        out.sum().backward()
+        self.assert_close(inp.grad, mask.to(dtype), atol=0, rtol=0)
+
     def test_shape(self, device):
         inp = torch.ones(1, 3, 4, 4, device=device)
         nms = kornia.geometry.subpix.NonMaximaSuppression2d((3, 3)).to(device)
@@ -279,6 +299,26 @@ class TestNMS2d(BaseTester):
 
 
 class TestNMS3d(BaseTester):
+    @pytest.mark.parametrize("kernel_size", [(3, 3, 3), (4, 4, 4)])
+    def test_suppressed_nonfinite_values(self, device, dtype, kernel_size):
+        inp = torch.zeros(1, 2, 7, 7, 7, device=device, dtype=dtype)
+        inp[:, :, 0] = float("inf")
+        inp[0, 0, 3, 3, 3] = 2.0
+        inp[0, 1, 3, 3, 3] = float("inf")
+        inp.requires_grad_()
+        expected = torch.zeros_like(inp)
+        expected[0, 0, 3, 3, 3] = 2.0
+        expected[0, 1, 3, 3, 3] = float("inf")
+
+        mask = kornia.geometry.subpix.nms3d(inp, kernel_size, mask_only=True)
+        self.assert_close(mask, expected.bool())
+        out = kornia.geometry.subpix.nms3d(inp, kernel_size)
+        self.assert_close(out, expected, atol=0, rtol=0)
+        assert not out.isnan().any()
+
+        out.sum().backward()
+        self.assert_close(inp.grad, mask.to(dtype), atol=0, rtol=0)
+
     def test_shape(self, device):
         inp = torch.ones(1, 1, 3, 4, 4, device=device)
         nms = kornia.geometry.subpix.NonMaximaSuppression3d((3, 3, 3)).to(device)
@@ -432,3 +472,23 @@ class TestNMS3dMinMax(BaseTester):
         # nms3d_minmax is not differentiable (bool masks), so we just check it runs.
         inp = torch.randn(1, 1, 5, 7, 7, device=device)
         kornia.geometry.subpix.nms3d_minmax(inp)
+
+
+class TestConventionsNMS2d(BaseTester):
+    def test_convention_nms2d_value_output_zeroes_suppressed(self, device, dtype):
+        # The default output keeps the input value at each maximum and is 0 elsewhere, in the input dtype: suppressed
+        # positions are 0, not -inf. On a signed response a suppressed 0 therefore outranks a negative maximum, so
+        # rank with mask_only=True, which returns the boolean mask. H != W and an off-centre maximum.
+        response = torch.full((1, 1, 5, 7), -5.0, device=device, dtype=dtype)
+        response[0, 0, 2, 3] = -1.0
+        expected = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        expected[0, 0, 2, 3] = -1.0
+
+        values = kornia.geometry.subpix.nms2d(response, (3, 3))
+        assert values.dtype == dtype
+        self.assert_close(values, expected, atol=0.0, rtol=0.0)
+        assert float(values.max()) == 0.0 > float(values[0, 0, 2, 3])
+
+        mask = kornia.geometry.subpix.nms2d(response, (3, 3), mask_only=True)
+        assert mask.dtype == torch.bool
+        assert mask.nonzero().tolist() == [[0, 0, 2, 3]]

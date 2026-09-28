@@ -574,7 +574,7 @@ class TestRANSACEssential(BaseTester):
         never beats the minimal-solver model, exactly as with the default sampler settings.
         """
         torch.random.manual_seed(0)
-        ransac = RANSAC("essential", batch_size=32, max_iter=1).to(device=device, dtype=dtype)
+        ransac = RANSAC("essential", batch_size=32, max_iter=1, local_optimization="dlt").to(device=device, dtype=dtype)
         for _ in range(5):
             kp1 = torch.rand(20, 2, device=device, dtype=dtype)
             kp2 = torch.rand(20, 2, device=device, dtype=dtype)
@@ -1283,7 +1283,7 @@ class TestRANSACDefaults(BaseTester):
             ("fundamental", 7, "lm"),
             ("fundamental_7pt", 7, "lm"),
             ("fundamental_8pt", 8, "lm"),
-            ("essential", 5, "dlt"),
+            ("essential", 5, "lm"),
             ("homography_from_linesegments", 4, "dlt"),
         ],
     )
@@ -1535,10 +1535,9 @@ class TestRANSACValidation(BaseTester):
         with pytest.raises(ValueError):
             RANSAC(**kwargs)
 
-    @pytest.mark.parametrize("model_type", ["essential", "homography_from_linesegments"])
-    def test_lm_local_optimization_needs_a_supported_model(self, model_type):
+    def test_lm_local_optimization_needs_a_supported_model(self):
         with pytest.raises(ValueError):
-            RANSAC(model_type, local_optimization="lm")
+            RANSAC("homography_from_linesegments", local_optimization="lm")
 
     @pytest.mark.parametrize("model", ["fundamental_7pt", "essential"])
     def test_mismatched_correspondences(self, device, dtype, model):
@@ -1559,7 +1558,7 @@ class TestRANSACValidation(BaseTester):
         points2 = points1.clone()
         points2[:, 1] *= 2
         candidate = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 2.0, 0.0]], device=device, dtype=dtype)[None]
-        ransac = RANSAC("essential", inl_th=0.01, batch_size=1, max_iter=1, max_lo_iters=0)
+        ransac = RANSAC("essential", inl_th=0.01, batch_size=1, max_iter=1, max_lo_iters=0, local_optimization="dlt")
         ransac.minimal_solver = lambda a, b, w: candidate
         return ransac, points1, points2
 
@@ -1641,7 +1640,15 @@ class TestRANSACEssentialInvalidPolisher(BaseTester):
         points = torch.rand(20, 2, device=device, dtype=dtype)
         valid = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)[None]
         candidates = torch.cat([torch.full_like(valid, float("nan")), valid])
-        estimator = RANSAC("essential", batch_size=1, max_iter=1, max_lo_iters=2, lo_sample_size=lo_sample_size, seed=0)
+        estimator = RANSAC(
+            "essential",
+            batch_size=1,
+            max_iter=1,
+            max_lo_iters=2,
+            lo_sample_size=lo_sample_size,
+            seed=0,
+            local_optimization="dlt",
+        )
         estimator.minimal_solver = lambda a, b, w: valid
         estimator.polisher_solver = lambda a, b, w: candidates
         model, mask = estimator(points, points)
@@ -1694,38 +1701,65 @@ def _model_errors(model_type: str, model: torch.Tensor, kp1: torch.Tensor, kp2: 
     return sampson_epipolar_distance(kp1[None], kp2[None], model[None], squared=False, eps=0.0)[0]
 
 
+_FOCAL, _CENTER = 800.0, (320.0, 240.0)
+
+
+def _px(model_type: str, pixels: float) -> float:
+    """A distance given in pixels, in the input units of ``model_type``: calibrated units for ``"essential"``."""
+    return pixels / _FOCAL if model_type == "essential" else pixels
+
+
+def _to_input_units(model_type: str, kp: torch.Tensor) -> torch.Tensor:
+    """Pixel coordinates of :func:`_two_view_scene`'s camera, as normalized camera coordinates for ``"essential"``."""
+    if model_type != "essential":
+        return kp
+    return (kp - torch.tensor(_CENTER, dtype=kp.dtype, device=kp.device)) / _FOCAL
+
+
 def _scene(model_type: str, n: int, outliers: int, noise: float, seed: int):
-    return (_planar_scene if model_type == "homography" else _two_view_scene)(n, outliers, noise, seed)
+    """``kp1, kp2, clean, model, inliers``; for ``"essential"`` the two-view scene in normalized camera coordinates."""
+    if model_type == "homography":
+        return _planar_scene(n, outliers, noise, seed)
+    kp1, kp2, clean, F, inliers = _two_view_scene(n, outliers, noise, seed)
+    if model_type != "essential":
+        return kp1, kp2, clean, F, inliers
+    K = torch.tensor([[_FOCAL, 0.0, _CENTER[0]], [0.0, _FOCAL, _CENTER[1]], [0.0, 0.0, 1.0]], dtype=F.dtype)
+    E = K.T @ F @ K
+    return (*(_to_input_units(model_type, kp) for kp in (kp1, kp2, clean)), E / E.norm(), inliers)
 
 
-_LM_MODELS = ["homography", "fundamental", "fundamental_8pt"]
+_LM_MODELS = ["homography", "fundamental", "fundamental_8pt", "essential"]
 
 
 class TestRANSACLevenbergMarquardt(BaseTester):
-    """``local_optimization="lm"``, the default for homographies and fundamental matrices."""
+    """``local_optimization="lm"``, the default for homographies, fundamental and essential matrices.
+
+    Essential-matrix cases use the two-view scene in normalized camera coordinates (focal length 800 px), with every
+    pixel threshold and tolerance converted by :func:`_px`.
+    """
 
     @pytest.mark.parametrize("model_type", _LM_MODELS)
     def test_recovers_exact_model_among_outliers(self, device, dtype, model_type):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
         kp1, kp2, _, _, inliers = _scene(model_type, 200, 60, 0.0, seed=0)
-        ransac = RANSAC(model_type, inl_th=1.0, seed=0)
+        ransac = RANSAC(model_type, inl_th=_px(model_type, 1.0), seed=0)
         model, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
-        assert model.shape == (3, 3) and model.dtype == dtype and model.device == kp1.to(device).device
+        assert model.shape == (3, 3) and model.dtype == dtype and model.device == kp1.to(device, dtype).device
         assert mask.shape == (200,) and mask.dtype == torch.bool and mask.device == model.device
         assert torch.equal(mask.cpu(), inliers)
-        tolerance = 1e-4 if dtype == torch.float64 else 5e-2
+        tolerance = _px(model_type, 1e-4 if dtype == torch.float64 else 5e-2)
         assert _model_errors(model_type, model, kp1[inliers], kp2[inliers]).max() < tolerance
 
     @pytest.mark.parametrize("model_type", _LM_MODELS)
     def test_mask_holds_the_inliers_of_the_returned_model(self, device, dtype, model_type):
         kp1, kp2, _, _, _ = _scene(model_type, 300, 120, 0.7, seed=1)
         kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
-        model, mask = RANSAC(model_type, inl_th=1.5, seed=0)(kp1, kp2)
+        model, mask = RANSAC(model_type, inl_th=_px(model_type, 1.5), seed=0)(kp1, kp2)
         errors = _model_errors(model_type, model, kp1, kp2)
         # Classify the returned model on the actual input coordinates, including rounding in half precision.
         assert mask.any()
-        assert torch.equal(mask.cpu(), errors <= 1.5)
+        assert torch.equal(mask.cpu(), errors <= _px(model_type, 1.5))
 
     def test_msac_does_not_discard_supported_candidates(self, device, dtype, monkeypatch):
         if dtype in (torch.float16, torch.bfloat16):
@@ -1759,22 +1793,23 @@ class TestRANSACLevenbergMarquardt(BaseTester):
             pytest.skip("sub-pixel accuracy on 600 px coordinates is below half-precision resolution")
         kp1, kp2, clean, _, inliers = _scene(model_type, 300, 90, 0.5, seed=2)
         args = kp1.to(device, dtype), kp2.to(device, dtype)
-        minimal, _ = RANSAC(model_type, inl_th=1.5, seed=0, max_lo_iters=0, refine_iters=0)(*args)
-        refined, _ = RANSAC(model_type, inl_th=1.5, seed=0)(*args)
+        th = _px(model_type, 1.5)
+        minimal, _ = RANSAC(model_type, inl_th=th, seed=0, max_lo_iters=0, refine_iters=0)(*args)
+        refined, _ = RANSAC(model_type, inl_th=th, seed=0)(*args)
         # The distance of the noise-free matches from each model: the best of the minimal models misses them by 0.2
         # to 0.4 px at 0.5 px of noise, the Levenberg-Marquardt refits on two hundred inliers by about 0.1 px.
         miss_minimal = _model_errors(model_type, minimal, kp1[inliers], clean[inliers]).mean()
         miss_refined = _model_errors(model_type, refined, kp1[inliers], clean[inliers]).mean()
         assert miss_refined < 0.75 * miss_minimal
-        assert miss_refined < 0.15
+        assert miss_refined < _px(model_type, 0.15)
 
     @pytest.mark.parametrize("model_type", _LM_MODELS)
     def test_no_consensus_returns_the_failure_result(self, device, dtype, model_type):
         generator = torch.Generator().manual_seed(0)
-        kp1 = (torch.rand(40, 2, generator=generator) * 600).to(device, dtype)
-        kp2 = (torch.rand(40, 2, generator=generator) * 600).to(device, dtype)
+        kp1 = _to_input_units(model_type, torch.rand(40, 2, generator=generator) * 600).to(device, dtype)
+        kp2 = _to_input_units(model_type, torch.rand(40, 2, generator=generator) * 600).to(device, dtype)
         # A sample's model fits its own points; at 1e-4 px no other random point is expected on an epipolar line.
-        model, mask = RANSAC(model_type, inl_th=1e-4, seed=0, max_samples=512)(kp1, kp2)
+        model, mask = RANSAC(model_type, inl_th=_px(model_type, 1e-4), seed=0, max_samples=512)(kp1, kp2)
         assert bool((model == 0).all()) and model.dtype == dtype
         assert mask.shape == (40,) and mask.dtype == torch.bool and not bool(mask.any())
 
@@ -1785,7 +1820,8 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         kp1, kp2, _, _, _ = _scene(model_type, 150, 0, 0.0, seed=3)
         kp1[:3] = float("nan")
         kp2[3:6, 0] = float("inf")
-        model, mask = RANSAC(model_type, inl_th=1.0, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        ransac = RANSAC(model_type, inl_th=_px(model_type, 1.0), seed=0)
+        model, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
         assert torch.isfinite(model).all()
         assert not bool(mask[:6].any()) and bool(mask[6:].all())
 
@@ -1794,10 +1830,11 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         kp1, kp2, _, _, _ = _scene(model_type, 120, 50, 0.5, seed=4)
         kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
         state = torch.get_rng_state()
-        model_a, mask_a = RANSAC(model_type, inl_th=2.0, seed=11, max_samples=1024)(kp1, kp2)
+        th = _px(model_type, 2.0)
+        model_a, mask_a = RANSAC(model_type, inl_th=th, seed=11, max_samples=1024)(kp1, kp2)
         assert torch.equal(torch.get_rng_state(), state)
         torch.manual_seed(123)
-        model_b, mask_b = RANSAC(model_type, inl_th=2.0, seed=11, max_samples=1024)(kp1, kp2)
+        model_b, mask_b = RANSAC(model_type, inl_th=th, seed=11, max_samples=1024)(kp1, kp2)
         assert torch.equal(model_a, model_b) and torch.equal(mask_a, mask_b)
 
     @pytest.mark.parametrize("score_type", ["msac", "ransac"])
@@ -1823,7 +1860,11 @@ class TestRANSACLevenbergMarquardt(BaseTester):
 
     @pytest.mark.parametrize(
         "model_type, max_samples, expected",
-        [("homography", 2000, [512, 1024, 464]), ("fundamental", 2000, [256, 512, 1024, 208])],
+        [
+            ("homography", 2000, [512, 1024, 464]),
+            ("fundamental", 2000, [256, 512, 1024, 208]),
+            ("essential", 2000, [64, 128, 256, 512, 1024, 16]),
+        ],
     )
     def test_auto_batches_grow_on_cpu_and_cover_the_budget(self, device, model_type, max_samples, expected):
         if device.type != "cpu":
@@ -1836,6 +1877,14 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         ransac.sample = lambda m, n, batch, *a, _s=sample, **k: sizes.append(batch) or _s(m, n, batch, *a, **k)
         ransac(kp1.float(), kp2.float())
         assert sizes == expected
+
+    def test_essential_auto_batches_per_device(self):
+        # A five-point sample needs few draws at high inlier ratios: small first batches on every device, the CPU
+        # one smallest (tuned on PhotoTourism, where a first batch of 256 doubled the time at equal accuracy).
+        ransac = RANSAC("essential", max_samples=100000)
+        assert ransac._lm_batch_range(100, torch.device("cpu")) == (64, 1024)
+        assert ransac._lm_batch_range(100, torch.device("cuda")) == (256, 8192)
+        assert ransac._lm_batch_range(100, torch.device("mps")) == (256, 8192)
 
     def test_explicit_batch_size_is_kept(self, device):
         kp1, kp2, _, _, _ = _planar_scene(100, 30, 0.5, seed=8)
@@ -1866,6 +1915,76 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         _, mask = RANSAC("homography", inl_th=1.0, prosac_sampling=True, seed=0)(
             kp1.to(device, dtype), kp2.to(device, dtype)
         )
+        assert torch.equal(mask.cpu(), inliers)
+
+
+class TestRANSACEssentialLevenbergMarquardt(BaseTester):
+    """What is specific to essential matrices with ``local_optimization="lm"``: no normalization, unit-norm output."""
+
+    def _skip_half(self, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("calibrated thresholds of 1e-3 are below half-precision resolution")
+
+    @pytest.mark.parametrize("seed", [0, 2, 3])
+    def test_returns_a_unit_frobenius_essential_matrix(self, device, dtype, seed):
+        self._skip_half(dtype)
+        kp1, kp2, _, _, _ = _scene("essential", 200, 60, 0.5, seed=seed)
+        E, _ = RANSAC("essential", inl_th=_px("essential", 1.5), seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        singular_values = torch.linalg.svdvals(E.cpu().double())
+        expected = torch.tensor([2**-0.5, 2**-0.5, 0.0], dtype=torch.float64)
+        self.assert_close(singular_values, expected, atol=1e-6 if dtype == torch.float64 else 1e-3, rtol=0)
+        # E and -E are the same model; the sign is fixed so that equal inputs give equal outputs on every backend.
+        # Without the rule, the scene of seed 2 returns a negative largest entry on the CPU in either dtype.
+        assert E.flatten()[E.abs().argmax()] > 0
+
+    @pytest.mark.parametrize("n", [6, 7, 8])
+    def test_small_inputs(self, device, dtype, n):
+        self._skip_half(dtype)
+        kp1, kp2, _, truth, _ = _scene("essential", n, 0, 0.0, seed=3)
+        E, mask = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0)(
+            kp1.to(device, dtype), kp2.to(device, dtype)
+        )
+        assert E.shape == (3, 3) and mask.shape == (n,)
+        # Noise-free: every correspondence is an inlier and E is the true one, up to sign.
+        assert bool(mask.all())
+        E = E.cpu().double()
+        tolerance = 1e-9 if dtype == torch.float64 else 1e-4
+        assert min(float((E - truth).norm()), float((E + truth).norm())) < tolerance
+
+    def test_pixel_coordinates_by_mistake_stay_finite(self, device, dtype):
+        self._skip_half(dtype)
+        # Pixel coordinates are not a valid input for "essential", but must not produce NaN or raise.
+        kp1, kp2, _, _, _ = _two_view_scene(100, 30, 0.0, seed=4)
+        E, mask = RANSAC("essential", inl_th=1.0, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        assert torch.isfinite(E).all() and mask.shape == (100,)
+
+    def test_planar_scene(self, device, dtype):
+        self._skip_half(dtype)
+        # Every scene point on one plane: the five-point solver still determines E (a homography does not), and the
+        # pipeline recovers it among outliers.
+        generator = torch.Generator().manual_seed(12)
+        f64 = torch.float64
+        XY = (torch.rand(120, 2, generator=generator, dtype=f64) - 0.5) * 4
+        X = torch.cat([XY, (4.0 + 0.3 * XY[:, :1] - 0.2 * XY[:, 1:])], 1)
+        R = axis_angle_to_rotation_matrix(torch.tensor([[0.05, -0.1, 0.02]], dtype=f64))[0]
+        t = torch.tensor([1.0, 0.1, 0.2], dtype=f64)
+        Y = X @ R.T + t
+        kp1, kp2 = X[:, :2] / X[:, 2:], Y[:, :2] / Y[:, 2:]
+        kp2[:30] = (torch.rand(30, 2, generator=generator, dtype=f64) - 0.5) * 1.2
+        E_true = _skew(t) @ R
+        E_true = E_true / E_true.norm()
+        E, mask = RANSAC("essential", inl_th=1e-4, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        assert torch.equal(mask.cpu(), torch.arange(120) >= 30)
+        E = E.cpu().double()
+        tolerance = 1e-6 if dtype == torch.float64 else 1e-3
+        assert torch.minimum((E - E_true).norm(), (E + E_true).norm()) < tolerance
+
+    def test_batch_of_one_sample(self, device, dtype):
+        self._skip_half(dtype)
+        kp1, kp2, _, _, inliers = _scene("essential", 60, 10, 0.0, seed=5)
+        ransac = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0, batch_size=1, max_samples=64)
+        _, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
+        assert mask.shape == (60,)
         assert torch.equal(mask.cpu(), inliers)
 
 
@@ -1901,6 +2020,8 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
     @pytest.mark.parametrize("loss", ["cauchy", "truncated"])
     def test_refinement_reaches_a_local_minimum(self, device, dtype, model_type, loss):
         self._skip_half(dtype)
+        if device.type == "mps":
+            pytest.skip("the refinement kernels run in float64, which MPS does not support")
         # Noisy inliers only, refined from a perturbed ground truth: the refit's cost is below the start's and does
         # not drop along small steps in any direction of the model's manifold.
         kp1, kp2, _, truth, _ = _scene(model_type, 80, 0, 1.0, seed=13)
