@@ -68,6 +68,67 @@ class TestFindEssential(BaseTester):
         E_mat = epi.essential.find_essential(points1, points2, weights)
         assert E_mat.shape == (B, 10, 3, 3)
 
+    @staticmethod
+    def _true_e_error(candidates, E):
+        """Smallest distance, up to sign, of the finite candidates ``(10, 3, 3)`` from ``E``; inf if there are none."""
+        candidates = candidates.cpu().double()
+        finite = candidates[torch.isfinite(candidates).flatten(1).all(1)]
+        if len(finite) == 0:
+            return float("inf")
+        E = E.to(finite)
+        return float(torch.minimum((finite - E).flatten(1).norm(dim=1), (finite + E).flatten(1).norm(dim=1)).min())
+
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
+    def test_exact_five_point_sample_recovers_the_true_e_4884(self, device, input_dtype):
+        if device.type == "mps" and input_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # #4884: in float32 an exact five-point sample missed the true E; the solve now runs in float64.
+        misses = 0
+        for seed in range(20):
+            scene = calibrated_two_view_scene(5, 0.0, seed)
+            points1, points2 = scene["x1"][None].to(device, input_dtype), scene["x2"][None].to(device, input_dtype)
+            misses += self._true_e_error(epi.find_essential(points1, points2)[0], scene["E"]) > 1e-4
+        assert misses == 0
+
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
+    def test_no_parallax_backward_is_finite_4903_4952(self, device, input_dtype):
+        if device.type == "mps" and input_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # With p1 == p2 the essential matrix is not determined. About one such sample in 300 has a multiple root at
+        # z = 0, where the backward of torch.linalg.eigvals raised for the whole batch (#4903), and in float32 about
+        # one in ten gave an all-NaN gradient (#4952). The roots now come from a detached solve, differentiated by a
+        # Newton step that is skipped at a multiple root.
+        generator = torch.Generator().manual_seed(0)
+        points = torch.rand(1000, 5, 2, generator=generator, dtype=torch.float64).to(device, input_dtype)
+        points.requires_grad_()
+        epi.find_essential(points, points).nan_to_num().sum().backward()
+        assert torch.isfinite(points.grad).all()
+
+    def test_true_e_is_recovered_on_random_scenes(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        errors = []
+        for seed in range(100, 300):
+            scene = calibrated_two_view_scene(5, 0.0, seed)
+            candidates = epi.find_essential(scene["x1"][None].to(device), scene["x2"][None].to(device))[0]
+            errors.append(self._true_e_error(candidates, scene["E"]))
+        # A missed root is off by more than 0.1; the worst recovered one of these scenes by 6e-8 on CUDA.
+        assert max(errors) < 1e-6
+
+    def test_degenerate_sample_does_not_affect_the_batch(self, device, dtype):
+        _skip_find_essential(device, dtype)
+        scene = calibrated_two_view_scene(5, 0.0, 8)
+        degenerate1, degenerate2 = scene["x1"].clone(), scene["x2"].clone()
+        degenerate1[1], degenerate2[1] = degenerate1[0], degenerate2[0]  # a repeated correspondence
+        points1 = torch.stack([scene["x1"], degenerate1]).to(device, dtype)
+        points2 = torch.stack([scene["x2"], degenerate2]).to(device, dtype)
+        candidates = epi.find_essential(points1, points2)
+        assert candidates.shape == (2, 10, 3, 3) and candidates.device == points1.device
+        assert self._true_e_error(candidates[0], scene["E"]) < 1e-3
+        alone = epi.find_essential(points1[:1], points2[:1])[0]
+        assert torch.equal(torch.isfinite(candidates[0]), torch.isfinite(alone))
+        self.assert_close(candidates[0].nan_to_num(7.0), alone.nan_to_num(7.0), atol=1e-6, rtol=0)
+
     def test_repeated_calls_are_bitwise_equal(self, device, dtype):
         _skip_find_essential(device, dtype)
         # No atomic accumulation: CUDA's scatter_add_ summed the determinant polynomial in a varying order.
@@ -782,7 +843,9 @@ def _skip_half(dtype: torch.dtype, reason: str) -> None:
 def _skip_find_essential(device: torch.device, dtype: torch.dtype) -> None:
     _skip_half(dtype, _NO_HALF_FIND_ESSENTIAL)
     if device.type == "mps":
-        pytest.skip("find_essential calls torch.linalg.eigvals, which has no MPS kernel (#4528)")
+        # The roots now come from torch.linalg.eigvals on the host for every device (#4528); the batched LU kernels
+        # the solver runs on the input's device are not verified on MPS.
+        pytest.skip("find_essential is not verified on MPS (#4528)")
 
 
 def _hom(p: torch.Tensor) -> torch.Tensor:
@@ -828,19 +891,23 @@ class TestConventionEssential(BaseTester):
             real[num_points] = E[0, finite]
             assert real[num_points].shape[0] >= 1
             self.assert_close(real[num_points].norm(dim=(-2, -1)), torch.ones_like(real[num_points][:, 0, 0]))
-        # True-E recovery is checked on all twelve points because the minimal sample can miss it (#4884).
         # Minimal sample: every real candidate satisfies x2^T E x1 = 0 on the normalised coordinates of points1
         # (first image) and points2 (second image); the swapped product is the control.
         p1, p2 = n1[:, :5], n2[:, :5]
         for cand in real[5]:
             assert _epipolar_residual(cand[None], p1, p2).max() < 1e-3 * _epipolar_residual(cand[None], p2, p1).max()
-        # All twelve points: one candidate is the true E up to sign, on the same side.
+        # The minimal sample and all twelve points: one candidate is the true E up to sign, on the same side. The
+        # minimal sample used to miss it in float32 (#4884); the solve now runs in float64.
         E_gt = _gt_essential(two_view)
         E_gt = E_gt / E_gt.norm()
-        dist = torch.minimum((real[12] - E_gt).abs().amax(dim=(-2, -1)), (real[12] + E_gt).abs().amax(dim=(-2, -1)))
-        assert dist.min() < 1e-4
-        best = real[12][dist.argmin()][None]
-        assert _epipolar_residual(best, n1, n2).max() < 1e-3 * _epipolar_residual(best, n2, n1).max()
+        for num_points in (5, 12):
+            candidates = real[num_points]
+            dist = torch.minimum(
+                (candidates - E_gt).abs().amax(dim=(-2, -1)), (candidates + E_gt).abs().amax(dim=(-2, -1))
+            )
+            assert dist.min() < 1e-4
+            best = candidates[dist.argmin()][None]
+            assert _epipolar_residual(best, n1, n2).max() < 1e-3 * _epipolar_residual(best, n2, n1).max()
 
     def test_convention_essential_from_Rt_is_tx_R_of_relative_motion(self, device, dtype):
         two_view = two_view_scene(device, dtype)

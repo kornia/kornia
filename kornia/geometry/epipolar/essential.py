@@ -24,9 +24,10 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import _torch_svd_cast
-from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2, coefficient_map, multiplication_indices, signs
+from kornia.geometry.solvers.homogeneous import _null_space_lu
+from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2
 
-from .fundamental import _epipolar_design_rows, _hat_basis, _sampson_normal_equations
+from .fundamental import _epipolar_design_rows, _hat_basis, _sampson_normal_equations, _solve_dtype
 from .numeric import cross_product_matrix, matrix_cofactor_tensor
 from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
@@ -62,53 +63,47 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
     KORNIA_CHECK(points1.shape[1] >= 5, "Number of points should be >=5")
-
-    batch_size, _, _ = points1.shape
-    x1, y1 = points1[..., 0:1], points1[..., 1:2]
-    x2, y2 = points2[..., 0:1], points2[..., 1:2]
-    ones = torch.ones_like(x1)
-    # build the equation system and find the null space.
-    # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
-    # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
-    # BxNx9
-    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
-    # use Nister's 5PC to solve essential matrix
+    # Rows vec(x2 x1^T), so that a null vector reshapes row-major to E.
+    design = _epipolar_design_rows(points1, points2)
     # A sample without a real root keeps ten NaN slots, like the complex slots of any other sample.
-    return null_to_Nister_solution(X, batch_size)
+    if design.shape[1] == 5:
+        candidates, _ = _five_point_candidates(design)
+    else:
+        candidates, _ = _nister_candidates(_least_squares_basis(design), design.dtype)
+    return candidates
 
 
-def _multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tensor) -> torch.Tensor:
-    # a, b: (..., 4)
-    product_basis = a.unsqueeze(2) * b.unsqueeze(1)  # (..., 4, 4)
-    product_vector = product_basis.flatten(start_dim=-2)  # (..., 16)
-    return product_vector @ T_deg1  # (..., 10)
+def _polynomial_product_table(m: int, n: int, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
+    """``T[i, j, i + j] = 1``: the coefficients of a product of polynomials with ``m`` and ``n`` coefficients."""
+    i, j = torch.meshgrid(torch.arange(m, device=device), torch.arange(n, device=device), indexing="ij")
+    table = torch.zeros(m, n, m + n - 1, dtype=dtype, device=device)
+    table[i, j, i + j] = 1.0
+    return table
 
 
-def _multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg2: torch.Tensor) -> torch.Tensor:
-    # a: (..., 10), b: (..., 4)
-    product_basis = a.unsqueeze(2) * b.unsqueeze(1)  # (..., 10, 4)
-    product_vector = product_basis.flatten(start_dim=-2)  # (..., 40)
-    return product_vector @ T_deg2  # (..., 20)
+def _determinant_to_polynomial_jit(A: torch.Tensor) -> torch.Tensor:
+    """Coefficients ``(B, 11)``, of ``z^0`` first, of the determinant of Nister's hidden-variable matrix ``(B, 3, 13)``.
 
-
-def _determinant_to_polynomial_jit(
-    A: torch.Tensor,
-    multiplication_indices: torch.Tensor,
-    signs: torch.Tensor,
-    coefficient_map: torch.Tensor,
-) -> torch.Tensor:
-    # A: (B, 3, 13) -> (B, 11)
-    B = A.shape[0]
-    A_flat = A.view(B, -1)  # (B, 39)
-
-    gathered_values = A_flat[:, multiplication_indices]  # (B, 486, 3)
-    products = torch.prod(gathered_values, dim=-1)  # (B, 486)
-
-    # A matrix product with the signed one-hot map of each product to its coefficient, rather than scatter_add_,
-    # whose atomic accumulation on CUDA sums in a varying order and changes the result from call to call.
-    to_coefficients = torch.zeros(products.shape[1], 11, device=A.device, dtype=A.dtype)
-    to_coefficients[torch.arange(products.shape[1], device=A.device), coefficient_map] = signs
-    return products @ to_coefficients
+    Each row of ``A`` holds three polynomials in ``z``, highest degree first: two cubics (columns 0-3 and 4-7) and a
+    quartic (8-12). The determinant is the sum over the six permutations of the rows of signed products of one
+    polynomial of each kind, expanded with polynomial product tables: a few matrix products, deterministic on every
+    backend, where the explicit expansion into 486 triple products cost five times as much.
+    """
+    device, dtype = A.device, A.dtype
+    levi_civita = torch.zeros(3, 3, 3, dtype=dtype, device=device)
+    for (a, b, c), sign in (
+        ((0, 1, 2), 1.0),
+        ((1, 2, 0), 1.0),
+        ((2, 0, 1), 1.0),
+        ((0, 2, 1), -1.0),
+        ((2, 1, 0), -1.0),
+        ((1, 0, 2), -1.0),
+    ):
+        levi_civita[a, b, c] = sign
+    cubic1, cubic2, quartic = A[..., 0:4].flip(-1), A[..., 4:8].flip(-1), A[..., 8:13].flip(-1)
+    sextics = torch.einsum("xai,xbj,ijm->xabm", cubic1, cubic2, _polynomial_product_table(4, 4, dtype, device))
+    signed = torch.einsum("xabm,abc->xcm", sextics, levi_civita)
+    return torch.einsum("xcm,xck,mkn->xn", signed, quartic, _polynomial_product_table(7, 5, dtype, device))
 
 
 def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -185,11 +180,6 @@ def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-1
     return x, bad
 
 
-# --- fun_select inline, to keep it JIT-simple ---
-def _fun_select(mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
-    return mat[:, ratio * j + i]
-
-
 class _NullSpaceBasis(torch.autograd.Function):
     r"""The four right singular vectors of ``X`` with the smallest singular values, differentiably.
 
@@ -240,277 +230,174 @@ class _NullSpaceBasis(torch.autograd.Function):
         return (X_ @ (M + M.transpose(-1, -2))).to(X.dtype)
 
 
-def _null_to_Nister_solution_script(
-    X: torch.Tensor,
-    batch_size: int,
-    T_deg1: torch.Tensor,
-    T_deg2: torch.Tensor,
-    multiplication_indices: torch.Tensor,
-    signs: torch.Tensor,
-    coefficient_map: torch.Tensor,
-    idx_ij: torch.Tensor,  # kept for signature compatibility (unused)
-    i_idx: torch.Tensor,
-    j_idx: torch.Tensor,
-    idx3: torch.Tensor,
-    top_idx: torch.Tensor,
-    bot_idx: torch.Tensor,
-) -> torch.Tensor:
-    original_dtype = X.dtype
+def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
+    """Least-squares null space ``(B, 9, 4)`` of design rows ``(B, N, 9)`` with ``N > 5``.
 
-    if X.shape[-2] < 9:
-        null_ = _NullSpaceBasis.apply(X)[0]  # (B, 9, 4)
-        nullSpace = null_.transpose(-1, -2)  # (B, 4, 9)
-    else:
-        # every right singular vector has a gradient in torch.linalg.svd itself
-        _, _, V = _torch_svd_cast(X)  # V: (B, 9, 9)
-        null_ = V[:, :, -4:].contiguous()  # (B, 9, 4)
-        nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
+    The four right singular vectors with the smallest singular values, in
+    :func:`~kornia.geometry.epipolar.fundamental._solve_dtype`.
+    """
+    design = design.to(_solve_dtype(design.device))
+    if design.shape[-2] < 9:
+        return _NullSpaceBasis.apply(design)[0]
+    # every right singular vector has a gradient in torch.linalg.svd itself
+    _, _, V = _torch_svd_cast(design)
+    return V[:, :, -4:]
 
-    B = batch_size
-    device = X.device
-    dtype = X.dtype
 
-    coeffs = torch.zeros(B, 10, 20, device=device, dtype=dtype)
+def _five_point_candidates(design: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Nister's five-point solver on the epipolar design rows ``(B, 5, 9)`` of minimal samples.
 
-    # (B,9,4) -> (B,3,3,4) with column-major fix
-    null_ij = null_.view(B, 3, 3, 4).transpose(1, 2).contiguous()  # (B, 3, 3, 4)
+    The four-dimensional null space comes from
+    :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, one batched LU factorization, and everything up to
+    the roots is computed in :func:`~kornia.geometry.epipolar.fundamental._solve_dtype`, so a float32 sample does
+    not lose its true solution to rounding (#4884).
 
-    # ---- determinant constraint ----
-    n00 = null_ij[:, 0, 0, :]
-    n01 = null_ij[:, 0, 1, :]
-    n02 = null_ij[:, 0, 2, :]
-    n10 = null_ij[:, 1, 0, :]
-    n11 = null_ij[:, 1, 1, :]
-    n12 = null_ij[:, 1, 2, :]
-    n20 = null_ij[:, 2, 0, :]
-    n21 = null_ij[:, 2, 1, :]
-    n22 = null_ij[:, 2, 2, :]
+    A sample whose design rows are rank deficient, such as one with a repeated correspondence, has a null space of
+    more than four dimensions and no unique solution: all ten of its slots are NaN. It is swapped for a constant
+    full-rank design before the null space is taken, because the backward of an LU factorization is not finite at a
+    singular matrix even for a zero incoming gradient, and the sample's gradient must be zero.
 
-    # small reuse to reduce launches
-    p01_12 = _multiply_deg_one_poly(n01, n12, T_deg1)
-    p02_11 = _multiply_deg_one_poly(n02, n11, T_deg1)
-    p02_10 = _multiply_deg_one_poly(n02, n10, T_deg1)
-    p00_12 = _multiply_deg_one_poly(n00, n12, T_deg1)
-    p00_11 = _multiply_deg_one_poly(n00, n11, T_deg1)
-    p01_10 = _multiply_deg_one_poly(n01, n10, T_deg1)
+    Returns:
+        Candidates ``(B, 10, 3, 3)`` of unit Frobenius norm in the design's dtype, NaN where the slot holds no
+        real root, and the ``(B, 10)`` mask of the real ones.
+    """
+    A = design.to(_solve_dtype(design.device))
+    _, _, info = torch.linalg.lu_factor_ex(A.detach().mT)
+    rank_deficient = info > 0
+    A = torch.where(rank_deficient[:, None, None], torch.eye(5, 9, device=A.device, dtype=A.dtype), A)
+    candidates, valid = _nister_candidates(_null_space_lu(A), design.dtype)
+    valid = valid & ~rank_deficient[:, None]
+    return torch.where(valid[..., None, None], candidates, torch.full_like(candidates, float("nan"))), valid
 
-    coeffs[:, 9] = (
-        _multiply_deg_two_one_poly(p01_12 - p02_11, n20, T_deg2)
-        + _multiply_deg_two_one_poly(p02_10 - p00_12, n21, T_deg2)
-        + _multiply_deg_two_one_poly(p00_11 - p01_10, n22, T_deg2)
+
+# Monomial product tables of Nister's constraints: linear x linear -> quadratic (x^2, xy, xz, x, y^2, yz, y, z^2, z,
+# 1), and quadratic x linear -> the twenty cubic monomials, in the order the elimination below expects.
+_LINEAR_PRODUCTS = T_deg1.view(4, 4, 10)
+_CUBIC_PRODUCTS = T_deg2.view(10, 4, 20)
+
+
+def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Essential matrices ``E = x X + y Y + z Z + W`` in the span of ``basis`` ``(B, 9, 4)`` (columns X, Y, Z, W).
+
+    Nister's method: the cubic constraints ``det E = 0`` and ``2 E E^T E - tr(E E^T) E = 0`` as a ``(10, 20)``
+    coefficient matrix, Gauss-Jordan elimination of its first ten monomials, a degree-ten polynomial in ``z`` from
+    the determinant of the ``(3, 13)`` hidden-variable matrix, its real roots, and ``x``, ``y`` by
+    back-substitution.
+
+    The roots are the eigenvalues of the polynomial's companion matrix, from LAPACK on the host in float64 for every
+    device: ``torch.linalg.eigvals`` has no batched CUDA kernel and none at all on MPS (#4528), and it is faster in
+    float64 than in float32. They carry no gradient themselves: one Newton step on the differentiable polynomial
+    polishes each root and supplies its derivative by the implicit function theorem, and is skipped at a multiple
+    root, where the derivative does not exist.
+    """
+    B = basis.shape[0]
+    device, dtype = basis.device, basis.dtype
+    linear = _LINEAR_PRODUCTS.to(device, dtype)
+    cubic = _CUBIC_PRODUCTS.to(device, dtype)
+    N = basis.reshape(B, 3, 3, 4)  # entries of E as linear forms in (x, y, z, 1)
+
+    # ---- constraints ----
+    # det E, expanded along the third row: its cofactors are the cross product of the first two.
+    rows01 = torch.einsum("bja,bkc,acm->bjkm", N[:, 0], N[:, 1], linear)
+    cofactors = torch.stack(
+        [rows01[:, 1, 2] - rows01[:, 2, 1], rows01[:, 2, 0] - rows01[:, 0, 2], rows01[:, 0, 1] - rows01[:, 1, 0]], 1
     )
+    determinant = torch.einsum("bjm,bjc,mcn->bn", cofactors, N[:, 2], cubic)
+    # 2 E E^T E - tr(E E^T) E = 2 (E E^T - tr(E E^T) I / 2) E
+    EEt = torch.einsum("bika,bjkc,acm->bijm", N, N, linear)
+    half_trace = 0.5 * EEt.diagonal(dim1=1, dim2=2).sum(-1)
+    EEt = EEt - torch.eye(3, device=device, dtype=dtype)[None, :, :, None] * half_trace[:, None, None, :]
+    trace_constraints = torch.einsum("bikm,bkjc,mcn->bijn", EEt, N, cubic).reshape(B, 9, 20)
+    coeffs = torch.cat([trace_constraints, determinant[:, None]], 1)  # (B, 10, 20)
 
-    # ---- EE^T constraints ----
-    a_data = null_ij[:, i_idx, :, :]  # (B,9,3,4)
-    b_data = null_ij[:, j_idx, :, :]  # (B,9,3,4)
-    prods = _multiply_deg_one_poly(a_data.reshape(-1, 4), b_data.reshape(-1, 4), T_deg1).view(B, 9, 3, 10)
-    D_blocks = prods.sum(dim=2).view(B, 3, 3, 10).contiguous()
+    # ---- elimination ----
+    # An exactly singular elimination matrix means the sample has no solution. Its elements are factorized against
+    # the identity instead, so that nothing below overflows or raises in the forward pass or gives a NaN gradient
+    # in the backward, and all ten of their slots are NaN.
+    A10, b10 = coeffs[..., :10], coeffs[..., 10:]
+    lu, pivots, info = torch.linalg.lu_factor_ex(A10)
+    singular = info > 0
+    if bool(singular.any()):
+        eye10 = torch.eye(10, device=device, dtype=dtype).expand(B, 10, 10)
+        lu, pivots, _ = torch.linalg.lu_factor_ex(torch.where(singular[:, None, None], eye10, A10))
+    eliminated = torch.linalg.lu_solve(lu, pivots, b10)  # (B, 10, 10)
 
-    # trace removal
-    diag = D_blocks[:, idx3, idx3, :]  # (B,3,10)
-    t = 0.5 * diag.sum(dim=1, keepdim=True)  # (B,1,10)
-    D_blocks[:, idx3, idx3, :] = D_blocks[:, idx3, idx3, :] - t
-
-    # first 9 rows of coeffs
-    D_for_i = D_blocks[:, i_idx, :, :]  # (B,9,3,10)
-    Null_for_j = null_ij[:, :, j_idx, :].permute(0, 2, 1, 3).contiguous()  # (B,9,3,4)
-    prods2 = _multiply_deg_two_one_poly(D_for_i.reshape(-1, 10), Null_for_j.reshape(-1, 4), T_deg2).view(B, 9, 3, 20)
-    coeffs[:, :9, :] = prods2.sum(dim=2)  # (B,9,20)
-
-    # ---- elimination: solve A10 * X = b_poly ----
-    A10 = coeffs[:, :, :10]  # (B, 10, 10)
-    b_poly = coeffs[:, :, 10:]  # (B, 10, 10)
-
-    eye10 = torch.eye(10, device=device, dtype=dtype).unsqueeze(0).expand(B, 10, 10)
-
-    # An exactly singular A10 means the sample has no solution. torch.linalg.solve raises on such an
-    # element rather than returning NaN, so the singular elements are found first with lu_factor_ex,
-    # which reports a zero pivot through ``info`` instead of raising, and are solved against the
-    # identity so that nothing below can raise or overflow on them in the forward pass. Their
-    # candidates are set to NaN at the end, so all ten of their slots are NaN. Every
-    # other element keeps A10: the replacement is made in ``coeffs`` and sliced like A10, because
-    # torch.linalg.solve can round a contiguous copy differently from the strided slice.
-    _, _, info = torch.linalg.lu_factor_ex(A10)
-    singular = info > 0  # (B,)
-    A_solve = A10
-    if singular.any():
-        A_solve = torch.where(singular.view(B, 1, 1), torch.cat((eye10, b_poly), dim=-1), coeffs)[:, :, :10]
-
-    # Try direct solve first
-    eliminated = torch.linalg.solve(A_solve, b_poly)  # (B,10,10)
-
-    # Detect NaN/Inf from an ill-conditioned solve and fix with damping solve
-    bad = torch.isnan(eliminated).flatten(-2).any(-1) | torch.isinf(eliminated).flatten(-2).any(-1)  # (B,)
-    if bad.any():
-        # Damped solve only for bad rows but WITHOUT compaction:
-        # build damped A = A10 + λI, where λ depends on scale
-        # (use per-batch scalar to avoid huge allocations)
-        diagA = torch.diagonal(A10, dim1=-2, dim2=-1).abs().mean(dim=-1)  # (B,)
-        lam = (diagA * 1e-8 + 1e-8).to(dtype)  # (B,)
-        # built from A_solve, not A10, so a singular element in the same batch cannot raise here
-        A_damped = A_solve + eye10 * lam.view(B, 1, 1)
-        eliminated_d = torch.linalg.solve(A_damped, b_poly)
-        eliminated = torch.where(bad.view(B, 1, 1), eliminated_d, eliminated)
-
-    coeffs_ = torch.cat((A10, eliminated), dim=-1)  # (B,10,20)
-
-    # ---- build A (B,3,13) ----
+    # ---- hidden-variable matrix (B, 3, 13) and its determinant, a polynomial of degree ten in z ----
+    top, bottom = eliminated[:, [4, 6, 8]], eliminated[:, [5, 7, 9]]
     A = torch.zeros(B, 3, 13, device=device, dtype=dtype)
+    A[:, :, 1:4] = top[..., 0:3]
+    A[:, :, 0:3] = A[:, :, 0:3] - bottom[..., 0:3]
+    A[:, :, 5:8] = top[..., 3:6]
+    A[:, :, 4:7] = A[:, :, 4:7] - bottom[..., 3:6]
+    A[:, :, 9:13] = top[..., 6:10]
+    A[:, :, 8:12] = A[:, :, 8:12] - bottom[..., 6:10]
+    cs = _determinant_to_polynomial_jit(A)  # (B, 11), z^0 first
 
-    A[:, :, 1:4] = coeffs_[:, top_idx, 10:13]
-    A[:, :, 0:3] = A[:, :, 0:3] - coeffs_[:, bot_idx, 10:13]
+    # ---- real roots ----
+    # A polynomial that is not finite, or whose leading coefficient is exactly zero (its degree is below ten, #4831),
+    # has no usable companion matrix: its sample gets the identity instead and NaN slots.
+    lead = cs[:, -1]
+    usable = ~singular & torch.isfinite(cs).all(1) & (lead != 0)
+    detached = cs.detach().to("cpu", torch.float64)
+    companion = torch.zeros(B, 10, 10, dtype=torch.float64)
+    companion[:, :9, 1:] = torch.eye(9, dtype=torch.float64)
+    companion[:, 9] = -detached[:, :10] / torch.where(detached[:, 10:] == 0, 1.0, detached[:, 10:])
+    host_usable = usable.cpu() & torch.isfinite(companion).flatten(1).all(1)
+    companion = torch.where(host_usable[:, None, None], companion, torch.eye(10, dtype=torch.float64))
+    eigenvalues = torch.linalg.eigvals(companion)
+    real = eigenvalues.imag.abs() <= 1e-10 * eigenvalues.abs().clamp(min=1.0)
+    root0 = torch.where(real, eigenvalues.real, 0.0).to(device, dtype)
+    valid = (real & host_usable[:, None]).to(device)
 
-    A[:, :, 5:8] = coeffs_[:, top_idx, 13:16]
-    A[:, :, 4:7] = A[:, :, 4:7] - coeffs_[:, bot_idx, 13:16]
+    # ---- Newton step: the root's polish and its gradient ----
+    degrees = torch.arange(11, device=device, dtype=dtype)
+    powers = root0[..., None] ** degrees  # (B, 10, 11)
+    value = (powers * cs[:, None]).sum(-1)
+    slope_terms = powers[..., :10] * (degrees[1:] * cs[:, 1:])[:, None]
+    slope = slope_terms.sum(-1)
+    # At a multiple root rounding leaves a tiny slope: dividing two rounding errors would move an accurate root.
+    simple = valid & (slope.abs() > 8 * torch.finfo(dtype).eps * slope_terms.abs().sum(-1))
+    simple = simple & torch.isfinite(value) & torch.isfinite(slope)
+    step = value / torch.where(simple, slope, torch.ones_like(slope))
+    z = root0 - torch.where(simple, step, torch.zeros_like(step))
 
-    A[:, :, 9:13] = coeffs_[:, top_idx, 16:20]
-    A[:, :, 8:12] = A[:, :, 8:12] - coeffs_[:, bot_idx, 16:20]
-
-    # ---- determinant polynomial -> companion ----
-    cs = _determinant_to_polynomial_jit(A, multiplication_indices, signs, coefficient_map)  # (B,11)
-
-    C = torch.zeros(B, 10, 10, device=device, dtype=dtype)
-    C[:, 0:9, 1:10] = torch.eye(9, device=device, dtype=dtype)
-
-    # Guard only an exactly zero leading coefficient. The roots do not depend on the polynomial's sign,
-    # and a floor such as clamp_min would turn a negative coefficient positive and change them. An
-    # element with a zero one is discarded below; the floor only keeps its companion matrix finite.
-    cs_de = torch.where(cs[:, -1] == 0, torch.full_like(cs[:, -1], 1e-8), cs[:, -1])
-    C[:, -1, :] = -cs[:, :-1] / cs_de.unsqueeze(-1)
-
-    # A companion matrix that is not finite has no usable roots, and torch.linalg.eigvals aborts on it,
-    # which takes the whole batch down: a RuntimeError on some platforms, a crash inside MKL on others.
-    # It comes from an overflow: an elimination system that is ill-conditioned without being exactly
-    # singular has a solution large enough for the determinant polynomial to overflow, or a finite
-    # polynomial overflows when it is divided by its leading coefficient. Nor has a polynomial whose
-    # leading coefficient is exactly zero: its degree is below 10, the floor above scales its companion
-    # row by 1e8, and the eigenvalues are not its roots. Its eigenvector matrix can then be singular,
-    # which makes the eigvals backward raise. Those elements get the identity in place of C, and their
-    # candidates are set to NaN at the end, like a singular one.
-    no_roots = ~torch.isfinite(C).flatten(-2).all(-1) | (cs[:, -1] == 0)  # (B,)
-    if no_roots.any():
-        C = torch.where(no_roots.view(B, 1, 1), eye10, C)
-
-    if C.device.type == "cuda":
-        # torch.linalg.eigvals has no batched CUDA kernel: it hands the companion matrices to cusolver one
-        # at a time with a synchronization each, about 3.6 ms per 10x10 matrix, so a RANSAC batch of 2048
-        # five-point samples spent 6.4 s here. LAPACK on the host takes about 15 ms for the same batch,
-        # transfers included, and the transfers are differentiable.
-        roots_eig = torch.linalg.eigvals(C.cpu()).to(C.device)  # (B,10), complex
-    else:
-        roots_eig = torch.linalg.eigvals(C)  # (B,10), complex
-    roots = torch.real(roots_eig)
-    is_real = torch.abs(torch.imag(roots_eig)) < 1e-10
-
-    roots_unsqu = roots.unsqueeze(1)  # (B,1,10)
-
+    # ---- back-substitution for x and y ----
+    zz = z[:, None]  # (B, 1, 10)
     Bs = torch.stack(
         (
-            A[:, :3, :1] * (roots_unsqu**3)
-            + A[:, :3, 1:2] * roots_unsqu.square()
-            + A[:, :3, 2:3] * roots_unsqu
-            + A[:, :3, 3:4],
-            A[:, :3, 4:5] * (roots_unsqu**3)
-            + A[:, :3, 5:6] * roots_unsqu.square()
-            + A[:, :3, 6:7] * roots_unsqu
-            + A[:, :3, 7:8],
+            A[:, :3, :1] * zz**3 + A[:, :3, 1:2] * zz.square() + A[:, :3, 2:3] * zz + A[:, :3, 3:4],
+            A[:, :3, 4:5] * zz**3 + A[:, :3, 5:6] * zz.square() + A[:, :3, 6:7] * zz + A[:, :3, 7:8],
         ),
         dim=1,
-    ).transpose(1, -1)  # (B,10,3,2)
-
-    bs_vec = (
-        (
-            A[:, :3, 8:9] * (roots_unsqu**4)
-            + A[:, :3, 9:10] * (roots_unsqu**3)
-            + A[:, :3, 10:11] * roots_unsqu.square()
-            + A[:, :3, 11:12] * roots_unsqu
-            + A[:, :3, 12:13]
-        )
-        .transpose(1, 2)
-        .unsqueeze(-1)
-    )  # (B,10,3,1)
-
-    A2 = Bs[:, :, 0:2, 0:2]  # (B,10,2,2)
-    b2 = bs_vec[:, :, 0:2, :]  # (B,10,2,1)
-
-    xzs, bad2 = _solve_2x2_tikhonov_safe(A2, b2, 1e-12)  # never throws
-
-    # ---- build Es ----
-    xzs_sq = xzs.squeeze(-1)  # (B,10,2)
-    x = -xzs_sq[:, :, 0]
-    y = -xzs_sq[:, :, 1]
-    z = roots
-
-    N0 = nullSpace[:, 0, :].unsqueeze(1)  # (B,1,9)
-    N1 = nullSpace[:, 1, :].unsqueeze(1)
-    N2 = nullSpace[:, 2, :].unsqueeze(1)
-    N3 = nullSpace[:, 3, :].unsqueeze(1)
-
-    Es_vec = x.unsqueeze(-1) * N0 + y.unsqueeze(-1) * N1 + z.unsqueeze(-1) * N2 + N3  # (B,10,9)
-    inv_norm = torch.rsqrt(x * x + y * y + z * z + 1.0)
-    Es_vec = Es_vec * inv_norm.unsqueeze(-1)
-
-    Es = Es_vec.view(B, 10, 3, 3).transpose(-1, -2)
-    # after Es is created (B,10,3,3)
-    if bad2.any():
-        Es[bad2] = torch.nan
-    # a singular elimination matrix has no candidates, and neither has a non-finite companion matrix
-    if singular.any():
-        Es[singular] = torch.nan
-    if no_roots.any():
-        Es[no_roots] = torch.nan
-    # mark complex roots as NaN (keeps shape, no compaction)
-    if is_real.logical_not().any():
-        Es[~is_real] = torch.nan
-
-    return Es.to(dtype=original_dtype)
-
-
-# Indices for null_ij reshaping
-IDX_IJ = torch.tensor([[0, 3, 6], [1, 4, 7], [2, 5, 8]], dtype=torch.long)
-I_IDX = torch.tensor([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=torch.long)
-J_IDX = torch.tensor([0, 1, 2, 0, 1, 2, 0, 1, 2], dtype=torch.long)
-IDX3 = torch.tensor([0, 1, 2], dtype=torch.long)
-
-TOP_IDX = torch.tensor([4, 6, 8], dtype=torch.long)
-BOT_IDX = torch.tensor([5, 7, 9], dtype=torch.long)
+    ).transpose(1, -1)  # (B, 10, 3, 2)
+    bs = (
+        (A[:, :3, 8:9] * zz**4 + A[:, :3, 9:10] * zz**3 + A[:, :3, 10:11] * zz.square() + A[:, :3, 11:12] * zz)
+        + A[:, :3, 12:13]
+    ).transpose(1, 2)[..., None]  # (B, 10, 3, 1)
+    xy, bad2 = _solve_2x2_tikhonov_safe(Bs[:, :, :2, :2], bs[:, :, :2], 1e-12)  # never throws
+    coefficients = torch.stack([-xy[..., 0, 0], -xy[..., 1, 0], z, torch.ones_like(z)], -1)  # (B, 10, 4)
+    Es = torch.einsum("bijk,brk->brij", N, coefficients)
+    norm = Es.flatten(2).norm(dim=-1)[..., None, None]
+    Es = Es / torch.where(norm > 0, norm, torch.ones_like(norm))
+    valid = valid & ~bad2 & torch.isfinite(Es).flatten(2).all(-1)
+    Es = torch.where(valid[..., None, None], Es, torch.full_like(Es, float("nan")))
+    return Es.to(out_dtype), valid
 
 
 def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
     return null_mat[:, ratio * j + i]
 
 
+# vec(x1 x2^T) -> vec(x2 x1^T): the column order of the historical design rows in terms of _epipolar_design_rows'.
+_TRANSPOSED_ROWS = [0, 3, 6, 1, 4, 7, 2, 5, 8]
+
+
 def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
-    device = X.device
-    dtype_internal = X.dtype
-
-    T1 = T_deg1.to(device=device, dtype=dtype_internal)
-    T2 = T_deg2.to(device=device, dtype=dtype_internal)
-    mult_idx = multiplication_indices.to(device=device)
-    sgns = signs.to(device=device, dtype=dtype_internal)
-    coeff_map = coefficient_map.to(device=device)
-    i_idx_dev = I_IDX.to(device=device)
-    j_idx_dev = J_IDX.to(device=device)
-    idx3_dev = IDX3.to(device=device)
-    top_idx_dev = TOP_IDX.to(device=device)
-    bot_idx_dev = BOT_IDX.to(device=device)
-    idx_ij_dev = IDX_IJ.to(device=device)
-
-    return _null_to_Nister_solution_script(
-        X,
-        batch_size,
-        T1,
-        T2,
-        mult_idx,
-        sgns,
-        coeff_map,
-        idx_ij_dev,
-        i_idx_dev,
-        j_idx_dev,
-        idx3_dev,
-        top_idx_dev,
-        bot_idx_dev,
-    )
+    """Candidates ``(B, 10, 3, 3)`` of design rows ``X`` ``(B, N, 9)`` in the column order ``vec(x1 x2^T)``."""
+    design = X[..., _TRANSPOSED_ROWS]
+    if design.shape[1] == 5:
+        return _five_point_candidates(design)[0]
+    return _nister_candidates(_least_squares_basis(design), X.dtype)[0]
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
@@ -916,11 +803,10 @@ def find_essential(
           in them. :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
         - All ten slots are always returned: each real root gives a candidate of unit Frobenius norm, and each
           complex root a ``NaN`` slot, so a sample with no real solution returns ten ``NaN`` slots.
-        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_); in
-          ``float32`` an exact five-point sample can miss the true solution, which six or more correspondences recover
-          (`#4884 <https://github.com/kornia/kornia/issues/4884>`_); backward can raise on a degenerate sample whose
-          polynomial has a multiple root at zero (`#4903 <https://github.com/kornia/kornia/issues/4903>`_);
-          on MPS the 5-point solve needs the CPU fallback (`#4528 <https://github.com/kornia/kornia/issues/4528>`_).
+        - The solve runs in float64 (float32 on MPS) whatever the input dtype, and the degree-ten polynomial's roots
+          come from LAPACK on the host for every device. A sample whose five design rows are rank deficient, such as
+          one with a repeated correspondence, has no unique solution: ten ``NaN`` slots and a zero gradient.
+        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_).
 
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
@@ -949,11 +835,11 @@ def _refine_essential_lm(
 
     ``E = U diag(1, 1, 0) V^T / sqrt(2)`` with ``U`` and ``V`` in SO(3): the factorization of
     :func:`~kornia.geometry.epipolar.fundamental._refine_fundamental_lm` with its singular-value ratio fixed to one.
-    Five parameters, as many as the rotation and translation direction of PoseLib's ``refine_relpose``: Cayley rotations
-    of ``U`` about the three axes and of ``V`` about ``V e_1`` and ``V e_2``. Rotating both about their third axes by the
-    same angle leaves ``E`` unchanged, so that direction is left out and the normal equations stay regular. Residuals,
-    losses, masks and step acceptance as for the fundamental matrix; ``x1`` and ``x2`` are homogeneous ``(N, 3)``
-    calibrated points. Returns matrices of unit Frobenius norm. For RANSAC, under ``torch.no_grad``.
+    Five parameters, as many as the rotation and translation direction of PoseLib's ``refine_relpose``: Cayley
+    rotations of ``U`` about the three axes and of ``V`` about ``V e_1`` and ``V e_2``. Rotating both about their third
+    axes by the same angle leaves ``E`` unchanged, so that direction is left out and the normal equations stay regular.
+    Residuals, losses, masks and step acceptance as for the fundamental matrix; ``x1`` and ``x2`` are homogeneous
+    ``(N, 3)`` calibrated points. Returns matrices of unit Frobenius norm. For RANSAC, under ``torch.no_grad``.
     """
     K = E.shape[0]
     dtype, device = E.dtype, E.device
