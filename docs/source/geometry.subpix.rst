@@ -40,7 +40,7 @@ Convolutional
           num_features=2000,
           resp_module=BlobDoG(),
           # default — auto-selects conv on CUDA, patch on CPU:
-          subpix_module=AdaptiveQuadInterp3d(strict_maxima_bonus=0.0),
+          subpix_module=AdaptiveQuadInterp3d(),
           scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
           scale_space_response=True,
           minima_are_also_good=True,

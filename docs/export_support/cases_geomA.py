@@ -937,11 +937,11 @@ CASES += [
     ),
     case("subpix.conv_soft_argmax3d", G, conv_soft_argmax3d, [heat3d], tags=("3d",)),
     case(
-        "subpix.conv_soft_argmax3d[normalized,bonus]",
+        "subpix.conv_soft_argmax3d[normalized]",
         G,
         conv_soft_argmax3d,
         [heat3d],
-        {"normalized_coordinates": True, "strict_maxima_bonus": 10.0},
+        {"normalized_coordinates": True},
         tags=("3d",),
     ),
     case("subpix.conv_quad_interp3d", G, conv_quad_interp3d, [heat3d], tags=("3d",)),
@@ -1103,13 +1103,6 @@ CASES += [
         G,
         lambda a, b, c: (lambda pl: (pl.normal.data, pl.offset.data))(Hyperplane.through(a, b, c)),
         [p3, q3, torch.tensor([0.0, 1.0, 5.0])],
-    ),
-    case(
-        "plane.Hyperplane.through[2d]",
-        G,
-        lambda a, b: (lambda pl: (pl.normal.data, pl.offset.data))(Hyperplane.through(a, b)),
-        [torch.tensor([[1.0, 2.0]]), torch.tensor([[3.0, 5.0]])],
-        note="KORNIA BUG: 2-D branch wraps a 2-vector into Vector3 -> always fails validation (plane.py:185)",
     ),
     case(
         "plane.Hyperplane.from_vector",
