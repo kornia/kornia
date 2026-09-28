@@ -290,3 +290,21 @@ class TestConventionsImageRegistrator(BaseTester):
         assert set(seen) == {((1, 1, self.height, self.width), (1, 1, self.height, self.width))}
         with pytest.raises(ValueError):
             ir.register(dst.expand(1, 3, -1, -1), dst)
+
+    def test_wart_similarity_rotation_is_not_a_pixel_rotation_on_non_square_5063(self, device, dtype):
+        # Wart pin (#5063): Similarity builds scale * R(rot) in the normalized [-1, 1] frame, whose x and y units differ
+        # by W / H on a non-square image, so the model is not a rotation in pixels: its 2 x 2 block is not orthogonal,
+        # and a rotation of the image content is not in the model family. The square image is the control. A fix that
+        # rotates in an isotropic frame makes the non-square block orthogonal too.
+        for (height, width), is_pixel_rotation in (((40, 40), True), ((32, 48), False)):
+            ir = ImageRegistrator("rotation", num_iterations=0, pyramid_levels=1).to(device, dtype)
+            image = torch.zeros(1, 1, height, width, device=device, dtype=dtype)
+            ir.register(image, image)
+            with torch.no_grad():
+                ir.model.rot.fill_(30.0)
+            size = (height, width)
+            block = denormalize_homography(ir.model().detach().float(), size, size, align_corners=False)[0, :2, :2]
+            gram = block @ block.T
+            identity = torch.eye(2, device=device)
+            # measured: 32 x 48 has gram[0, 0] = cos^2 + sin^2 * (W / H)^2 = 1.3125
+            assert torch.allclose(gram, identity, atol=1e-2) == is_pixel_rotation

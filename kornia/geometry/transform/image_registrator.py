@@ -101,9 +101,12 @@ class Similarity(BaseModel):
     """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
 
     Convention:
-        ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]`` in the normalized coordinates of
-        :class:`ImageRegistrator`, where ``R`` is :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` of
-        ``rot`` in degrees.
+        - ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]`` in the normalized coordinates of
+          :class:`ImageRegistrator`, where ``R`` is :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` of
+          ``rot`` in degrees.
+        - Known defect: on a non-square image the normalized frame is anisotropic, so ``rot`` is not a rotation of
+          the pixels and a rotated image cannot be registered exactly
+          (`#5063 <https://github.com/kornia/kornia/issues/5063>`_).
 
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
