@@ -18,7 +18,24 @@ last batch is truncated to it. Seven-point fundamental and five-point essential
 solvers may produce several candidate matrices from each set. Early stopping is
 checked between batches, and ``confidence=1`` runs the whole budget.
 
-The default ``batch_size="auto"`` picks the batch per call. On CUDA and MPS a
+``model_type="fundamental"`` draws seven-point samples and completes each with
+up to three rank-2 matrices, the roots of the cubic det F = 0, like
+``"fundamental_7pt"``; ``"fundamental_8pt"`` draws eight-point samples. Seven
+correspondences make an all-inlier sample more likely than eight, so fewer
+samples reach the same confidence.
+
+The default ``batch_size="auto"`` picks the batches per call. With the default
+``local_optimization="lm"`` (see below), a CPU call starts with 256 samples, 512
+for homographies, and doubles the batch after each one up to 2048, 4096 for
+homographies: inputs with many inliers stop after a small first batch, and the
+others pay the per-batch overhead only a few times. On CUDA and MPS the batch
+is the whole budget up to 8192 samples. Essential matrices start smaller on
+every device, with 64 samples up to 1024 on CPU and 256 up to 8192 on CUDA and
+MPS: a five-point sample needs few draws at high inlier ratios, and its
+eigenvalue solve runs on the host (on MPS, the whole solve). All shrink for many
+correspondences, down to 64 samples, so that above that floor a batch scores at
+most ``2**22`` (CPU) or ``2**25`` residuals. The rest of
+this paragraph describes ``local_optimization="dlt"``: on CUDA and MPS a
 homography batch costs about the same from a few hundred up to 8192 hypotheses,
 so the budget is drawn in batches of 8192; the epipolar solvers are
 compute-bound past 2048 hypotheses, so their batches stop there. Verification
@@ -84,7 +101,58 @@ model PROSAC certifies first may fit them well and the pose poorly. Prefer
 uniform sampling there, or run PROSAC with ``confidence=1`` when the extra
 draws are affordable.
 
-Local optimization refits the incumbent on its inliers. For the
+Local optimization
+------------------
+
+Homographies, fundamental and essential matrices default to
+``local_optimization="lm"``. The sampling loop keeps the eight best-scoring
+minimal models of the whole run, in coordinates normalized once per call (the
+caller's calibrated ones for essential matrices, see below). After sampling,
+all eight are refined together with
+``max_lo_iters`` Levenberg-Marquardt iterations that minimize the squared
+Sampson distance or one-way transfer error of every correspondence, truncated
+at ``inl_th``. The best-scoring model among the refits and the minimal models
+is then refined on its own inliers with ``refine_iters`` iterations of a Cauchy
+loss of scale ``inl_th / 3``, the noise level of a threshold at three standard
+deviations, and the returned mask holds the inliers of the returned model after
+conversion to the input dtype. If rounding removes sufficient support, the call
+returns the all-zero model and empty inlier mask used for estimation failure.
+Fundamental matrices keep rank two through the parametrization of
+`Bartoli and Sturm (TPAMI 2004) <https://doi.org/10.1109/TPAMI.2004.1265873>`_;
+the refinement follows PoseLib's ``refine_fundamental`` and
+``refine_homography``. Refining several models once sampling ends, rather than
+each new incumbent, is the batched form of PoseLib's rule of refining every
+minimal model that improves on the best one so far. The homography and
+fundamental-matrix solvers take their null spaces from a partial-pivoted LU
+factorization, the five-point solver from Householder reflections, and scores come from
+one matrix product per batch, which keeps the per-hypothesis cost low on every
+device. The refinements are a few dozen small operations per iteration and run
+on the CPU in float64 for every device, where launch latency would dominate.
+Early stopping follows the support of the best minimal model.
+
+On PhotoTourism pairs this raises the pose mAA of fundamental matrices by 0.04
+to 0.1 over the subset refits below at the same sample budget. SIFT matches take
+a third of the time on CPU and half on CUDA; ALIKED matches with LightGlue, on
+which both stop early, take about 0.5 ms longer on CPU. On the HEB homographies
+it adds about 0.04 mAA at a quarter to a half of the time.
+
+Essential matrices are estimated in the caller's calibrated coordinates, without
+the normalization, which would take them off the essential manifold, and are
+returned with unit Frobenius norm and their largest entry positive. They are
+refined as ``E = U diag(1, 1, 0) V^T`` with five parameters, as many as the
+rotation and translation direction of PoseLib's ``refine_relpose``: rotations
+of ``U`` about three axes and of ``V`` about its first two, which leaves out
+the rotation of both about their third axes that does not change ``E``. The
+five-point samples are solved with Nister's method in float64: a Householder
+null space, the degree-ten polynomial from polynomial products, and its real
+roots from the eigenvalues of its companion matrix on the host. MPS, which has
+no float64, solves its samples on the host. On PhotoTourism pairs this raises
+the pose mAA of essential matrices by 0.03 to 0.07 over the subset refits
+below, in about half the time on CPU, and an eighth of it with 8000 SIFT
+features per image.
+
+``local_optimization="dlt"``, the only choice for line-segment homographies,
+refits the incumbent on its inliers. For the
 homography models the refit is the iteratively re-weighted least squares of
 :func:`~kornia.geometry.homography.find_homography_dlt_iterated`, whose Gaussian
 weights use ``inl_th`` as their standard deviation, so a correspondence at the
