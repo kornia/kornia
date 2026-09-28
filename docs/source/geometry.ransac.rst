@@ -108,7 +108,9 @@ Sampson distance or one-way transfer error of every correspondence, truncated
 at ``inl_th``. The best-scoring model among the refits and the minimal models
 is then refined on its own inliers with ``refine_iters`` iterations of a Cauchy
 loss of scale ``inl_th / 3``, the noise level of a threshold at three standard
-deviations, and the returned mask holds the inliers of the returned model.
+deviations, and the returned mask holds the inliers of the returned model after
+conversion to the input dtype. If rounding removes sufficient support, the call
+returns the all-zero model and empty inlier mask used for estimation failure.
 Fundamental matrices keep rank two through the parametrization of
 `Bartoli and Sturm (TPAMI 2004) <https://doi.org/10.1109/TPAMI.2004.1265873>`_;
 the refinement follows PoseLib's ``refine_fundamental`` and

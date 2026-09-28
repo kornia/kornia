@@ -309,8 +309,7 @@ def _solve_cubic_real(coeffs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
 
     Cardano's formula for one real root, the trigonometric one for three, followed by a Newton step. A cubic with one
     real root repeats it in the two masked slots, so a caller builds every candidate from finite roots and masks
-    afterwards. The caller arranges ``|coeffs[:, 0]| >= |coeffs[:, 3]|`` so that the leading coefficient is not the
-    vanishing one.
+    afterwards. The caller chooses a well-conditioned pencil parametrization with a nonzero leading coefficient.
 
     A private kernel for the seven-point solvers rather than :func:`solve_cubic`, whose public contract differs where a
     hot loop cares: it pads missing roots with 0.0, indistinguishable from a genuine root at 0; it lowers the degree of
@@ -327,7 +326,9 @@ def _solve_cubic_real(coeffs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
         p = b - a * a3
         q = (2 * a3 * a3 - b) * a3 + c
         discriminant = 0.25 * q * q + p * p * p / 27
-        three = discriminant <= 0
+        # Cancellation at a repeated root can round the discriminant slightly positive.
+        discriminant_scale = 0.25 * q.square() + p.abs().pow(3) / 27
+        three = discriminant <= 32 * torch.finfo(coeffs.dtype).eps * discriminant_scale
         root = discriminant.clamp(min=0).sqrt()
         u, w = root - 0.5 * q, -root - 0.5 * q
         single = torch.copysign(u.abs().pow(1 / 3), u) + torch.copysign(w.abs().pow(1 / 3), w)
@@ -339,7 +340,12 @@ def _solve_cubic_real(coeffs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
         x = torch.where(three[:, None], triple, single[:, None].expand(-1, 3)) - a3[:, None]
     value = ((x + a[:, None]) * x + b[:, None]) * x + c[:, None]
     slope = (3 * x + 2 * a[:, None]) * x + b[:, None]
-    x = x - value / torch.where(slope == 0, torch.ones_like(slope), slope)
+    # At repeated roots rounding can leave a tiny nonzero slope: dividing two rounding errors then moves an
+    # already accurate root far away. Bound the derivative relative to its terms, including their cancellation.
+    slope_scale = 3 * x.square() + 2 * a[:, None].abs() * x.abs() + b[:, None].abs()
+    simple = slope.abs() > 8 * torch.finfo(coeffs.dtype).eps * slope_scale
+    correction = value / torch.where(simple, slope, torch.ones_like(slope))
+    x = x - torch.where(simple, correction, torch.zeros_like(correction))
     valid = torch.stack([torch.ones_like(three), three, three], 1)
     return x, valid
 

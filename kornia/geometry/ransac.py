@@ -130,9 +130,10 @@ class RANSAC(nn.Module):
           ``max_lo_iters`` Levenberg-Marquardt iterations on all correspondences with the squared error truncated
           at ``inl_th``, keeps the best-scoring refit or minimal model, and refines that one on its inliers with
           ``refine_iters`` iterations of a Cauchy loss of scale ``inl_th / 3``. The returned mask holds the inliers
-          of the returned model. Early stopping follows the support of the best minimal model. The refinements
-          run on the CPU in float64 whatever the device of the correspondences: they are a few dozen small
-          operations per iteration, which launch latency makes slower on an accelerator.
+          of the returned model after conversion to the input dtype; if that conversion loses sufficient support,
+          the call returns the all-zero failure result. Early stopping follows the support of the best minimal model.
+          The refinements run on the CPU in float64 whatever the device of the correspondences: they are a few dozen
+          small operations per iteration, which launch latency makes slower on an accelerator.
         - ``local_optimization="dlt"``, the only choice for ``"essential"`` and
           ``"homography_from_linesegments"``, refits each new best model from its inliers: with the default
           ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on 32-inlier subsets followed by one
@@ -970,11 +971,13 @@ class RANSAC(nn.Module):
             if len(models) == 0:
                 continue
             errors = _transfer_from_basis(models, basis) if planar else _sampson_from_quadratic_basis(models, basis)
-            top_scores, top = self._lm_score(errors, threshold).topk(min(_LM_CANDIDATES, len(models)))
-            # Support is counted for the best-scoring models only; a model needs more inliers than its sample.
+            # Reject insufficient support before ranking: high MSAC scores from minimal samples alone must not
+            # crowd supported models out of the candidate pool.
+            counts_all = (errors <= threshold).sum(1)
+            scores_all = self._lm_score(errors, threshold).masked_fill(counts_all <= m, -1.0)
+            top_scores, top = scores_all.topk(min(_LM_CANDIDATES, len(models)))
             top_inliers = errors[top] <= threshold
-            top_counts = top_inliers.sum(1)
-            top_scores = top_scores.masked_fill(top_counts <= m, -1.0)
+            top_counts = counts_all[top]
             # The run's best minimal models so far, refined after sampling.
             candidate_scores, order = torch.cat([top_scores, candidate_scores]).topk(
                 min(_LM_CANDIDATES, len(top_scores) + len(candidate_scores))
@@ -1013,6 +1016,14 @@ class RANSAC(nn.Module):
             if self._is_supported(int(refined_inliers.sum())):
                 model, inliers = refined[0], refined_inliers
         model = (torch.linalg.inv(t2) @ model @ t1) if planar else (t2.mT @ model @ t1)
-        mask = torch.zeros(num_tc, dtype=torch.bool)
-        mask[finite] = inliers
-        return normalize_transformation(model).to(device, dtype), mask.to(device)
+        model = normalize_transformation(model).to(dtype)
+        if not bool(torch.isfinite(model).all()):
+            return failure
+        # Casting (especially to half precision) changes the model. Classify that exact returned matrix in pixel
+        # coordinates, in float64 so metric arithmetic does not add another round of low-precision error. The public
+        # line/transfer forms also avoid cancellation in the normalized quadratic sampling basis near epipoles.
+        errors = self.error_fn(kp1_host[None], kp2_host[None], model[None].to(torch.float64), eps=0.0)[0]
+        mask = finite & (errors <= self.inl_th**2)
+        if not self._is_supported(int(mask.sum())):
+            return failure
+        return model.to(device), mask.to(device)

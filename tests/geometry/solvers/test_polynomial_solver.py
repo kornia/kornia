@@ -1325,6 +1325,16 @@ class TestSolveCubicReal(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the kernel runs in the seven-point solvers' float32/float64 solve dtype")
 
+    def test_repeated_root_newton_step(self, device, dtype):
+        self._skip_half(dtype)
+        coeffs = torch.tensor([[1.0, 0.0, -0.75, 0.25]], device=device, dtype=dtype, requires_grad=True)
+        roots, valid = _solve_cubic_real(coeffs)
+        assert valid.all()
+        expected = torch.tensor([[-1.0, 0.5, 0.5]], device=device, dtype=dtype)
+        self.assert_close(roots.sort(dim=1).values, expected)
+        roots.sum().backward()
+        assert torch.isfinite(coeffs.grad).all()
+
     def test_three_real_roots(self, device, dtype):
         self._skip_half(dtype)
         # (x - 1)(x - 2)(x - 3)

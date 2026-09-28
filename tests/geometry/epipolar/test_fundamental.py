@@ -1015,6 +1015,41 @@ class TestRankTwoProjection(BaseTester):
 
 
 class TestSevenPoint(BaseTester):
+    def test_identically_singular_pencil_is_finite(self, device, dtype):
+        _skip_half(dtype, "the seven-point kernel is compared at float32 and float64 accuracy")
+        # Only the first two entries of F are free: every matrix in this null space is rank deficient.
+        design = torch.eye(9, device=device, dtype=dtype)[None, 2:]
+        candidates, valid = _seven_point_candidates(design)
+        assert torch.isfinite(candidates).all()
+        assert not valid.any()
+
+    def test_singular_pencil_endpoints(self, device, dtype):
+        _skip_half(dtype, "the seven-point kernel is compared at float32 and float64 accuracy")
+        points1 = torch.tensor(
+            [[[0, -2], [-2, 1], [0, 1], [0, 0], [-1, 2], [-1, 1], [2, -1]]], device=device, dtype=dtype
+        )
+        points2 = torch.tensor(
+            [[[1, 2], [2, 2], [0, -2], [-1, 2], [0, -1], [-1, -2], [2, 2]]], device=device, dtype=dtype
+        )
+        # The constraints have full row rank, but both LU null-space basis matrices have zero determinant.
+        design = _epipolar_design_rows(points1, points2)
+        assert torch.linalg.matrix_rank(design).item() == 7
+        candidates = fundamental_module.run_7point(points1, points2)
+        norms = candidates.flatten(-2).norm(dim=-1)
+        valid = norms > 0
+        assert valid.any()
+        if dtype == torch.float64:
+            assert valid.all()  # Keep the double projective root as well as the simple root.
+        # Float32 perturbations of the constraints can split the double root into a complex pair.
+        candidates = candidates / torch.where(valid, norms, torch.ones_like(norms))[..., None, None]
+        tolerance = 1e-10 if dtype == torch.float64 else 1e-5
+        self.assert_close(torch.linalg.det(candidates), torch.zeros_like(norms), atol=tolerance, rtol=0)
+        residuals = design @ candidates.flatten(-2).mT
+        self.assert_close(residuals, torch.zeros_like(residuals), atol=tolerance, rtol=0)
+        if dtype == torch.float64:
+            distances = torch.cdist(candidates.flatten(-2), candidates.flatten(-2))
+            assert distances.max() > 0.1  # Keep both distinct matrices, including the root at infinity.
+
     def test_candidates_are_exact(self, device, dtype):
         _skip_half(dtype, "the seven-point kernel is compared at float32 and float64 accuracy")
         two_view = two_view_scene(torch.device("cpu"), torch.float64)

@@ -280,8 +280,9 @@ def _seven_point_candidates(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
 
     The two-dimensional null space ``x f_1 + f_2`` of the constraints ``A`` ``(B, 7, 9)`` (:func:`_epipolar_design_rows`
     of normalized points) is completed by the real roots of its determinant (Hartley and Zisserman, section 11.1.2), so
-    every candidate has rank two. The cubic is solved in :func:`_solve_dtype` and parametrized by its
-    better-conditioned end: ``x f_1 + f_2``, or ``f_1 + y f_2`` with the coefficients reversed.
+    every candidate has rank two. The cubic is solved in :func:`_solve_dtype`, choosing its leading matrix from
+    ``f_1``, ``f_2``, ``f_1 + f_2`` and ``f_1 - f_2`` to maximize the leading determinant. These four evaluations
+    determine the homogeneous cubic, so both singular basis matrices still give a well-conditioned parametrization.
 
     Returns:
         Candidates ``(B, 3, 3, 3)`` of unit Frobenius norm in ``A``'s dtype, and a mask ``(B, 3)`` of the real roots
@@ -291,11 +292,21 @@ def _seven_point_candidates(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
     solve_dtype = _solve_dtype(A.device)
     f1, f2 = (f.to(solve_dtype) for f in _seven_point_basis(A))
     coefficients = _det_pencil_coefficients(f1, f2)
-    swap = coefficients[:, 0].abs() < coefficients[:, 3].abs()
-    coefficients = torch.where(swap[:, None], coefficients.flip(1), coefficients)
-    roots, valid = _solve_cubic_real(coefficients)
-    lead = torch.where(swap[:, None, None], f2, f1)
-    rest = torch.where(swap[:, None, None], f1, f2)
+    a, b, c, d = coefficients.unbind(1)
+    # For lead = f1 +/- f2 and rest = f2, substitute (x, +/-x + 1) into the homogeneous cubic.
+    plus = torch.stack([a + b + c + d, b + 2 * c + 3 * d, c + 3 * d, d], 1)
+    minus = torch.stack([a - b + c - d, b - 2 * c + 3 * d, c - 3 * d, d], 1)
+    choices = torch.stack([coefficients, coefficients.flip(1), plus, minus], 1)
+    best = choices[:, :, 0].abs().argmax(1)
+    coefficients = choices.gather(1, best[:, None, None].expand(-1, 1, 4))[:, 0]
+    directions = torch.stack([f1, f2, f1 + f2, f1 - f2], 1)
+    lead = directions.gather(1, best[:, None, None, None].expand(-1, 1, 3, 3))[:, 0]
+    rest = torch.where((best == 1)[:, None, None], f1, f2)
+    # An identically zero determinant has no isolated roots. Substitute a finite cubic before masking the row.
+    isolated = coefficients[:, 0] != 0
+    fallback = coefficients.new_tensor([1.0, 0.0, 0.0, 0.0])
+    roots, valid = _solve_cubic_real(torch.where(isolated[:, None], coefficients, fallback))
+    valid = valid & isolated[:, None]
     F = roots[:, :, None, None] * lead[:, None] + rest[:, None]
     F = F * F.square().sum((-2, -1), keepdim=True).rsqrt()
     return F.to(A.dtype), valid & torch.isfinite(F).flatten(-2).all(-1)

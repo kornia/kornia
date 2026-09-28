@@ -1719,14 +1719,39 @@ class TestRANSACLevenbergMarquardt(BaseTester):
 
     @pytest.mark.parametrize("model_type", _LM_MODELS)
     def test_mask_holds_the_inliers_of_the_returned_model(self, device, dtype, model_type):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("a 1.5 px threshold on 600 px coordinates is below half-precision resolution")
         kp1, kp2, _, _, _ = _scene(model_type, 300, 120, 0.7, seed=1)
-        model, mask = RANSAC(model_type, inl_th=1.5, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
+        model, mask = RANSAC(model_type, inl_th=1.5, seed=0)(kp1, kp2)
         errors = _model_errors(model_type, model, kp1, kp2)
-        # Residuals are compared in the working precision; keep clear of the threshold itself.
-        clear = (errors - 1.5).abs() > 1e-2
-        assert torch.equal(mask.cpu()[clear], (errors <= 1.5)[clear])
+        # Classify the returned model on the actual input coordinates, including rounding in half precision.
+        assert mask.any()
+        assert torch.equal(mask.cpu(), errors <= 1.5)
+
+    def test_msac_does_not_discard_supported_candidates(self, device, dtype, monkeypatch):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("this tight-threshold regression uses float32/float64 coordinates")
+        generator = torch.Generator().manual_seed(31)
+        kp1 = (torch.rand(40, 2, generator=generator) * 100).to(device, dtype)
+        kp2 = (torch.rand(40, 2, generator=generator) * 100).to(device, dtype)
+        # Fix the sampled sets across backends: CPU and CUDA generators give different draws for the same seed.
+        ransac = RANSAC("fundamental_8pt", seed=0, max_samples=256, confidence=1, inl_th=0.3)
+        samples = ransac.sample(8, 40, 256, 0, device="cpu").to(device)
+        monkeypatch.setattr(ransac, "sample", lambda *args, **kwargs: samples)
+        # The eight highest MSAC scores belong to models supported by at most their eight-point sample.
+        # A lower-scoring candidate has additional support and must remain eligible for local optimization.
+        model, mask = ransac(kp1, kp2)
+        assert mask.sum() > 8
+        assert torch.isfinite(model).all()
+
+    def test_failure_when_model_cast_loses_support(self, device, dtype):
+        if dtype != torch.bfloat16:
+            pytest.skip("the model loses consensus when rounded to bfloat16")
+        kp1, kp2, _, _, _ = _scene("homography", 12, 0, 0.0, seed=1)
+        model, mask = RANSAC("homography", seed=0, max_samples=256, inl_th=0.5)(
+            kp1.to(device, dtype), kp2.to(device, dtype)
+        )
+        assert not mask.any()
+        assert torch.equal(model, torch.zeros_like(model))
 
     @pytest.mark.parametrize("model_type", _LM_MODELS)
     def test_refinement_improves_on_the_minimal_model(self, device, dtype, model_type):
