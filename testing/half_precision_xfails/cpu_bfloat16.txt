@@ -58,7 +58,6 @@ call	builtins.AssertionError	tests/augmentation/test_random_generator.py::TestRa
 call	builtins.AssertionError	tests/augmentation/test_random_generator.py::TestRandomCropSizeGen::test_random_gen[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/test_random_generator.py::TestRandomCropSizeGen::test_same_on_batch[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::TestRandomAffineGen3D::test_random_gen[cpu-bfloat16]
-call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::TestRandomCropGen3D::test_random_gen[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::TestRandomPerspectiveGen3D::test_random_gen[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::TestRandomPerspectiveGen3D::test_same_on_batch[cpu-bfloat16]
 call	builtins.AssertionError	tests/color/test_lab.py::TestLabToRgb::test_forth_and_back[cpu-bfloat16]

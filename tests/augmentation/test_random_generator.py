@@ -2011,6 +2011,8 @@ class TestTruncateToStart:
         [(torch.float32, torch.float16), (torch.float32, torch.bfloat16), (torch.float64, torch.float32)],
     )
     def test_draw_below_one_stays_in_range(self, device, draw_dtype, extent_dtype):
+        if device.type == "mps" and draw_dtype == torch.float64:
+            pytest.skip("MPS has no float64.")
         draw = torch.tensor([0.0, 0.5, 1.0 - torch.finfo(draw_dtype).eps / 2], device=device, dtype=draw_dtype)
         extent = torch.tensor(5.0, device=device, dtype=extent_dtype)
         start = _truncate_to_start(draw, extent)
