@@ -18,6 +18,7 @@
 """nn.Module containing the functionalities for computing the real roots of polynomial equation."""
 
 import math
+from typing import Tuple
 
 import torch
 
@@ -396,6 +397,52 @@ def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.T
             num_real[mask_dominant_rows] = torch.where(pair_is_real, 3, 1)
 
     return roots, num_real
+
+
+def _solve_cubic_real(coeffs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Real roots ``(B, 3)`` of the cubics ``coeffs (B, 4)``, highest degree first, and a mask of the genuine ones.
+
+    Cardano's formula for one real root, the trigonometric one for three, followed by a Newton step. A cubic with one
+    real root repeats it in the two masked slots, so a caller builds every candidate from finite roots and masks
+    afterwards. The caller chooses a well-conditioned pencil parametrization with a nonzero leading coefficient.
+
+    A private kernel for the seven-point solvers rather than :func:`solve_cubic`, whose public contract differs where a
+    hot loop cares: it pads missing roots with 0.0, indistinguishable from a genuine root at 0; it lowers the degree of
+    a vanishing leading coefficient behind ``torch.any`` tests, a device synchronization per call; and it defines a
+    surrogate backward at repeated roots. Here the closed form runs without gradient and the Newton step carries it:
+    at a simple root that is the implicit-function derivative ``-(dp/dc) / p'(x)``, and the ``clamp``-guarded
+    ``sqrt``, ``acos`` and cube roots of the closed form, whose derivatives are unbounded at their bounds (#4229),
+    never enter the backward pass. At a repeated root ``p'(x) = 0``; the division is guarded and the gradient finite.
+    """
+    c3, c2, c1, c0 = coeffs.unbind(1)
+    a, b, c = c2 / c3, c1 / c3, c0 / c3
+    with torch.no_grad():
+        a3 = a / 3
+        p = b - a * a3
+        q = (2 * a3 * a3 - b) * a3 + c
+        discriminant = 0.25 * q * q + p * p * p / 27
+        # Cancellation at a repeated root can round the discriminant slightly positive.
+        discriminant_scale = 0.25 * q.square() + p.abs().pow(3) / 27
+        three = discriminant <= 32 * torch.finfo(coeffs.dtype).eps * discriminant_scale
+        root = discriminant.clamp(min=0).sqrt()
+        u, w = root - 0.5 * q, -root - 0.5 * q
+        single = torch.copysign(u.abs().pow(1 / 3), u) + torch.copysign(w.abs().pow(1 / 3), w)
+        radius = (-p / 3).clamp(min=0).sqrt()
+        safe_radius = torch.where(radius > 0, radius, torch.ones_like(radius))
+        angle = torch.acos((-0.5 * q / safe_radius.pow(3)).clamp(-1, 1)) / 3
+        offsets = torch.tensor([0.0, 2 * math.pi / 3, 4 * math.pi / 3], dtype=c3.dtype, device=c3.device)
+        triple = 2 * radius[:, None] * torch.cos(angle[:, None] - offsets)
+        x = torch.where(three[:, None], triple, single[:, None].expand(-1, 3)) - a3[:, None]
+    value = ((x + a[:, None]) * x + b[:, None]) * x + c[:, None]
+    slope = (3 * x + 2 * a[:, None]) * x + b[:, None]
+    # At repeated roots rounding can leave a tiny nonzero slope: dividing two rounding errors then moves an
+    # already accurate root far away. Bound the derivative relative to its terms, including their cancellation.
+    slope_scale = 3 * x.square() + 2 * a[:, None].abs() * x.abs() + b[:, None].abs()
+    simple = slope.abs() > 8 * torch.finfo(coeffs.dtype).eps * slope_scale
+    correction = value / torch.where(simple, slope, torch.ones_like(slope))
+    x = x - torch.where(simple, correction, torch.zeros_like(correction))
+    valid = torch.stack([torch.ones_like(three), three, three], 1)
+    return x, valid
 
 
 def _quartic_root_residual_tol(dtype: torch.dtype) -> float:

@@ -27,6 +27,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.utils import _torch_svd_cast, register_module_state
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
+from kornia.geometry.vector import Scalar
 
 __all__ = ["ParametrizedLine", "fit_line"]
 
@@ -101,11 +102,12 @@ class ParametrizedLine(nn.Module):
         """
         return ParametrizedLine(p0, F.normalize((p1 - p0), p=2, dim=-1))
 
-    def point_at(self, t: Union[float, torch.Tensor]) -> torch.Tensor:
+    def point_at(self, t: Union[float, torch.Tensor, Scalar]) -> torch.Tensor:
         """Get the point at :math:`t` along this line.
 
         Args:
-            t: step along the line.
+            t: step along the line: a number or a 0-d tensor for every row, or one step per row of shape
+                :math:`(B,)` or :math:`(B, 1)` for a line of shape :math:`(B, D)`.
 
         Return:
             tensor with the point.
@@ -117,6 +119,10 @@ class ParametrizedLine(nn.Module):
             >>> p2 = l.point_at(0.1)
 
         """
+        if isinstance(t, Scalar):
+            t = t.data
+        if isinstance(t, torch.Tensor) and t.ndim > 0 and t.ndim == self.direction.ndim - 1:
+            t = t[..., None]
         return self.origin + self.direction * t
 
     def projection(self, point: torch.Tensor) -> torch.Tensor:
@@ -126,7 +132,7 @@ class ParametrizedLine(nn.Module):
             point: the point to be projected.
 
         """
-        return self.origin + (self.direction @ (point - self.origin)) * self.direction
+        return self.origin + batched_dot_product(self.direction, point - self.origin)[..., None] * self.direction
 
     def squared_distance(self, point: torch.Tensor) -> torch.Tensor:
         """Return the squared distance of a point to its projection onto the line.
@@ -275,15 +281,23 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
             return _fit_line_weighted_ols_2d(points, weights)
         return _fit_line_ols_2d(points)
 
-    mean = points.mean(-2, True)
-    A = points - mean
-
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         KORNIA_CHECK(points.shape[0] == weights.shape[0])
+        # Weighted total least squares: centre on the weighted centroid, as the D = 2 branch does. A row whose
+        # weights sum to 0 keeps the unweighted mean instead of 0 / 0, whose NaN would make the SVD raise.
+        w_sum = weights.sum(-1)[..., None, None]
+        has_weight = w_sum != 0
+        w_sum = torch.where(has_weight, w_sum, torch.ones_like(w_sum))
+        mean = torch.where(
+            has_weight, (weights[..., None] * points).sum(-2, keepdim=True) / w_sum, points.mean(-2, True)
+        )
+        A = points - mean
         A = A.transpose(-2, -1) @ torch.diag_embed(weights) @ A
     else:
+        mean = points.mean(-2, True)
+        A = points - mean
         A = A.transpose(-2, -1) @ A
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions

@@ -118,8 +118,10 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
 
     batch_size, channels, height, width = input.shape
 
-    # Create coordinates grid.
-    grid = create_meshgrid(height, width, normalized_coordinates, input.device)
+    # Create coordinates grid in the input dtype, so float64 coordinates carry no float32 rounding. float16 and
+    # bfloat16 still build it in float32 and round once in the cast below, which keeps their results unchanged.
+    grid_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
+    grid = create_meshgrid(height, width, normalized_coordinates, input.device, grid_dtype)
     grid = grid.to(input.dtype)
 
     pos_x = grid[..., 0].reshape(-1)

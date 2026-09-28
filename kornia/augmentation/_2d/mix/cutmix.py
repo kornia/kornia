@@ -57,6 +57,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             This flag will not maintain permutation order.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
+        data_keys: list of keys to apply the mix augmentation to.
         use_correct_lambda: if True, compute lambda according to the CutMix paper
             (`lam = 1 - area_ratio`). Defaults to False (`lam = area_ratio`) for backward compatibility,
             but will raise a deprecation warning when False.

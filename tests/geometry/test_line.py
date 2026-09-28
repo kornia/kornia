@@ -17,10 +17,10 @@
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
+from kornia.geometry.vector import Scalar, Vector3
 
 from testing.base import BaseTester, assert_close
 
@@ -50,6 +50,27 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(l1.point_at(0.5), torch.tensor([0.5, 0.0], device=device, dtype=dtype))
         self.assert_close(l1.point_at(1.0), torch.tensor([1.0, 0.0], device=device, dtype=dtype))
 
+    def test_batched_point_at(self, device, dtype):
+        origin = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        direction = torch.tensor([[1.0, 0.0], [1.0, 0.0]], device=device, dtype=dtype)
+        steps = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
+        line = ParametrizedLine(origin, direction)
+        expected = torch.stack([ParametrizedLine(origin[i], direction[i]).point_at(steps[i]) for i in range(2)])
+        self.assert_close(line.point_at(steps), expected)
+        # A (B, 1) step already carries the coordinate axis, and a Scalar is unwrapped to its tensor.
+        self.assert_close(line.point_at(steps[:, None]), expected)
+        from_scalar = line.point_at(Scalar(steps))
+        assert type(from_scalar) is torch.Tensor
+        self.assert_close(from_scalar, expected)
+
+    def test_scalar_point_at_preserves_line_dtype(self, device, dtype):
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0], device=device, dtype=dtype),
+        )
+        point = line.point_at(torch.tensor(2.0, device=device, dtype=torch.float32))
+        self.assert_close(point, torch.tensor([3.0, 2.0], device=device, dtype=dtype))
+
     def test_projection1(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
@@ -75,6 +96,16 @@ class TestParametrizedLine(BaseTester):
         point = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         point_projection = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         self.assert_close(l1.projection(point), point_projection)
+
+    @pytest.mark.parametrize("batch_size", (2, 3))
+    def test_batched_projection(self, device, dtype, batch_size):
+        origin = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], device=device, dtype=dtype)[:batch_size]
+        direction = torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]], device=device, dtype=dtype)[:batch_size]
+        point = torch.tensor([[2.0, 4.0], [6.0, 7.0], [8.0, 9.0]], device=device, dtype=dtype)[:batch_size]
+        expected = torch.stack(
+            [ParametrizedLine(origin[i], direction[i]).projection(point[i]) for i in range(batch_size)]
+        )
+        self.assert_close(ParametrizedLine(origin, direction).projection(point), expected)
 
     def test_distance(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -130,6 +161,18 @@ class TestParametrizedLine(BaseTester):
 
         self.assert_close(lmbda, expected_lambda)
         self.assert_close(point, expected_point)
+
+    def test_batched_intersect_plane(self, device, dtype):
+        origin = torch.tensor([[0.0, 1.0, 2.0], [1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        direction = torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        normal = Vector3(torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype))
+        plane = Hyperplane.from_vector(normal, Vector3(torch.tensor([3.0, 0.0, 0.0], device=device, dtype=dtype)))
+        steps, points = ParametrizedLine(origin, direction).intersect(plane)
+        expected_steps, expected_points = zip(
+            *(ParametrizedLine(origin[i], direction[i]).intersect(plane) for i in range(2))
+        )
+        self.assert_close(steps, torch.stack(expected_steps))
+        self.assert_close(points, torch.stack(expected_points))
 
     def test_intersect_plane_returns_tensors(self, device, dtype):
         plane = Hyperplane.through(
@@ -314,6 +357,47 @@ class TestFitLine(BaseTester):
 
         assert angle_est.abs() > 0.998
 
+    def test_fit_line_weighted_3d_ignores_a_zero_weight_point_5014(self, device):
+        # #5014: for D >= 3 the points were centred on the unweighted mean, so a point with weight 0 still moved
+        # the origin and tilted the direction (by 16 degrees here). float32, not float64: MPS has no float64.
+        d = torch.float32
+        t = torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0, 3.0], device=device, dtype=d)
+        u = torch.tensor([2.0, 1.0, -2.0], device=device, dtype=d) / 3
+        noise = torch.tensor(
+            [
+                [0.02, -0.01, 0.0],
+                [-0.01, 0.02, 0.01],
+                [0.0, 0.0, -0.02],
+                [0.01, -0.02, 0.0],
+                [-0.02, 0.01, 0.02],
+                [0.0, 0.01, -0.01],
+            ],
+            device=device,
+            dtype=d,
+        )
+        inliers = torch.tensor([1.0, 0.5, -1.0], device=device, dtype=d) + t[:, None] * u + noise
+        outlier = torch.tensor([[6.0, -4.0, 5.0]], device=device, dtype=d)
+        points = torch.cat([inliers, outlier])[None]
+        weights = torch.tensor([[1.0] * 6 + [0.0]], device=device, dtype=d)
+
+        expected = fit_line(inliers[None])
+        actual = fit_line(points, weights)
+        self.assert_close(actual.origin, expected.origin)
+        # The direction is defined up to sign.
+        self.assert_close((actual.direction * expected.direction).sum(-1).abs(), torch.ones(1, device=device, dtype=d))
+
+        # Uniform weights give the unweighted fit.
+        uniform = fit_line(points, torch.full((1, 7), 2.0, device=device, dtype=d))
+        self.assert_close(uniform.origin, fit_line(points).origin)
+
+        # Each batch row is centred on its own weighted centroid, whatever the other rows' weights sum to.
+        batch = fit_line(torch.cat([points, points]), torch.cat([weights, 3.0 * weights]))
+        self.assert_close(batch.origin, expected.origin.expand(2, 3))
+
+        # A row whose weights are all 0 keeps the unweighted mean and does not break the other rows.
+        zero = fit_line(torch.cat([points, points]), torch.cat([weights, torch.zeros_like(weights)]))
+        self.assert_close(zero.origin, torch.cat([expected.origin, points.mean(-2)]))
+
     def test_fit_line_vertical_dtype(self, device, dtype):
         pts = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype)
         line = fit_line(pts)
@@ -321,15 +405,15 @@ class TestFitLine(BaseTester):
         assert line.direction.dtype == dtype
         self.assert_close(line.direction, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
 
-    @pytest.mark.skip(reason="numerical do not match with analytical")
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("dim", (2, 3))
+    def test_gradcheck(self, device, dim):
+        # Two point sets whose rows differ, each projected onto its own fitted line (#5013).
         def proxy_func(pts, weights):
-            line = fit_line(pts, weights)
-            return line.projection(pts[:, 0].T)
+            return fit_line(pts, weights).projection(pts[:, 0])
 
-        pts = torch.rand(1, 3, 2, device=device, dtype=torch.float64, requires_grad=True)
-        weights = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=False)
-        assert gradcheck(proxy_func, (pts, weights), raise_exception=True)
+        pts = torch.rand(2, 5, dim, device=device)
+        weights = torch.rand(2, 5, device=device)
+        self.gradcheck(proxy_func, (pts, weights), requires_grad=(True, False))
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
