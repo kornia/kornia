@@ -53,6 +53,9 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
           ``float64``. The false-setting normalization defect is tracked in
           `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
         - the default interpolation is bilinear and the default ``align_corners`` is ``False``.
+        - a spatial dimension of 1 gets a unit source extent and no corner offset, so its single
+          slice, row or column maps onto itself. At ``distortion_scale=0`` the transform matrix is
+          the identity; output identity still requires ``align_corners=True`` as described above.
 
     Examples:
         >>> import torch
@@ -106,7 +109,13 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        return get_perspective_transform3d(params["start_points"], params["end_points"]).to(input)
+        start_points, end_points = params["start_points"], params["end_points"]
+        if isinstance(input.shape[-1], int) and input.shape[-1] == 1:
+            # The solver uses corners 0, 1, 2, 5, 7: only two lie on x=0. Swap the x/z or x/y
+            # corner ordering so three constrain each singleton plane to map onto itself.
+            order = [0, 4, 7, 3, 1, 5, 6, 2] if input.shape[-3] > 1 else [0, 3, 2, 1, 4, 7, 6, 5]
+            start_points, end_points = start_points[:, order], end_points[:, order]
+        return get_perspective_transform3d(start_points, end_points).to(input)
 
     def apply_transform(
         self,

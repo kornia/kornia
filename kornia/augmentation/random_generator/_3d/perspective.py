@@ -72,17 +72,26 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
 
+        # Coincident source corners make the perspective solve singular. Give singleton axes a
+        # unit extent and no offset, as in the 2D generator.
+        flat_x = isinstance(width, int) and width == 1
+        flat_y = isinstance(height, int) and height == 1
+        flat_z = isinstance(depth, int) and depth == 1
+        x_end = 1 if flat_x else width - 1
+        y_end = 1 if flat_y else height - 1
+        z_end = 1 if flat_z else depth - 1
+
         start_points: torch.Tensor = _constant_tensor(
             [
                 [
                     [0, 0, 0],
-                    [width - 1, 0, 0],
-                    [width - 1, height - 1, 0],
-                    [0, height - 1, 0],
-                    [0, 0, depth - 1],
-                    [width - 1, 0, depth - 1],
-                    [width - 1, height - 1, depth - 1],
-                    [0, height - 1, depth - 1],
+                    [x_end, 0, 0],
+                    [x_end, y_end, 0],
+                    [0, y_end, 0],
+                    [0, 0, z_end],
+                    [x_end, 0, z_end],
+                    [x_end, y_end, z_end],
+                    [0, y_end, z_end],
                 ]
             ],
             device=_device,
@@ -90,9 +99,9 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         ).expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        fx = self._distortion_scale * width / 2
-        fy = self._distortion_scale * height / 2
-        fz = self._distortion_scale * depth / 2
+        fx = self._distortion_scale * (0 if flat_x else width) / 2
+        fy = self._distortion_scale * (0 if flat_y else height) / 2
+        fz = self._distortion_scale * (0 if flat_z else depth) / 2
 
         factor = torch.stack([fx, fy, fz], 0).view(-1, 1, 3).to(device=_device, dtype=_dtype)
 
