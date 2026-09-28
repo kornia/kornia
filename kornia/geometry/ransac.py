@@ -419,11 +419,10 @@ class RANSAC(nn.Module):
         millisecond or so of work, 256 to 2048 hypotheses for homographies and 128 to 512 for the epipolar
         models. Other devices retain the historical 2048-sample batch.
 
-        With ``local_optimization="lm"`` an ``"auto"`` batch instead starts at 256 samples on CPU (128 for
-        homographies) and doubles after every batch (quadruples for CPU homographies), up to 2048 (4096 for
-        homographies), so that inputs with many inliers stop after a small first batch while the rest pay the
-        per-batch overhead a few times only.
-        On CUDA and MPS it is the whole budget up to 8192 samples. Essential matrices start at 32 samples on CPU,
+        With ``local_optimization="lm"`` an ``"auto"`` batch instead starts at 256 samples on CPU (512 for
+        homographies) and doubles after every batch, up to 2048 (4096 for homographies), so that inputs with
+        many inliers stop after a small first batch while the rest pay the per-batch overhead a few times only.
+        On CUDA and MPS it is the whole budget up to 8192 samples. Essential matrices start at 64 samples on CPU,
         up to 1024, and at 256 on CUDA and MPS, up to 8192: a five-point sample needs few draws at high inlier
         ratios, and its host eigenvalue solve costs the same on every device. The upper limits shrink to 64 samples
         when a batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting three models
@@ -457,7 +456,7 @@ class RANSAC(nn.Module):
         essential = self.model_type == "essential"
         if device.type == "cpu":
             first, upper, work = (
-                (128, 4096, 1 << 22) if planar else (32, 1024, 1 << 22) if essential else (256, 2048, 1 << 22)
+                (512, 4096, 1 << 22) if planar else (64, 1024, 1 << 22) if essential else (256, 2048, 1 << 22)
             )
         elif device.type in ("cuda", "mps"):
             first, upper, work = (256 if essential else 8192), 8192, 1 << 25
@@ -930,9 +929,9 @@ class RANSAC(nn.Module):
         """MSAC scores ``sum(1 - min(e / threshold, 1))`` or RANSAC support counts ``(M,)`` of squared residuals."""
         if self.score_type == "msac":
             # fmin, unlike clamp, takes the threshold for NaN residuals: a NaN residual is an outlier.
-            # The clipped residuals own their storage: reuse it for the three pointwise score operations.
+            # The clipped residuals own their storage: reuse it for the pointwise score operations.
             contributions = torch.fmin(errors, torch.full_like(errors[:1, :1], threshold))
-            return contributions.div_(threshold).neg_().add_(1.0).sum(1)
+            return contributions.div_(-threshold).add_(1.0).sum(1)
         return (errors <= threshold).sum(1).to(errors.dtype)
 
     def _lm_score_models(
@@ -1031,7 +1030,7 @@ class RANSAC(nn.Module):
             indices = self.sample(m, num_tc, current, iteration, device, offset=drawn)
             drawn, iteration = drawn + current, iteration + 1
             if grow:
-                batch = min((4 if planar and device.type == "cpu" else 2) * batch, largest)
+                batch = min(2 * batch, largest)
             models = self._lm_minimal_models(x1[indices], x2[indices])
             if len(models) == 0:
                 continue

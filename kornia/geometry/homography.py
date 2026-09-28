@@ -359,57 +359,37 @@ def _refine_homography_lm(
     h = h * h.square().sum(1, keepdim=True).rsqrt()
     damping = torch.full((K, 1, 1), 1e-3, dtype=dtype, device=device)
 
-    def normal_equations(
-        h: torch.Tensor, weights: Optional[torch.Tensor] = mask
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def normal_equations(h: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Householder reflection of h onto the last axis: its other eight columns span the tangent space.
         v = h + torch.where(h[:, 8:9] >= 0, 1.0, -1.0) * last
         v = v * v.square().sum(1, keepdim=True).rsqrt()
         tangent = (eye9 - 2 * v[:, :, None] * v[:, None, :])[:, :, :8]  # (K, 9, 8)
-        stacked = torch.cat([h[:, :, None], tangent], 2).mT.reshape(
-            h.shape[0], 27, 3
-        )  # rows of H, then of each direction
-        P = (stacked @ x1.T).reshape(h.shape[0], 9, 3, -1)  # (K, 9, 3, N): P = H x1, then its directional derivatives
+        stacked = torch.cat([h[:, :, None], tangent], 2).mT.reshape(K, 27, 3)  # rows of H, then of each direction
+        P = (stacked @ x1.T).reshape(K, 9, 3, -1)  # (K, 9, 3, N): P = H x1, then its directional derivatives
         iz = 1.0 / P[:, 0, 2]
         uv = P[:, 0, :2] * iz[:, None]  # (K, 2, N)
         r = uv.flatten(1) - target  # (K, 2N): u residuals, then v residuals
         J = ((P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]).flatten(2)  # (K, 8, 2N)
         r2 = r[:, : x1.shape[0]].square() + r[:, x1.shape[0] :].square()
         w, rho = _robust_loss(r2, loss, scale2)
-        if weights is not None:
-            w, rho = w * weights, rho * weights
+        if mask is not None:
+            w, rho = w * mask, rho * mask
         Jw = J * torch.cat([w, w], 1)[:, None]
         return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1), tangent
 
     system, cost, tangent = normal_equations(h)
     for iteration in range(iters):
         delta = -torch.linalg.solve_ex(system[..., :8] + damping * eye8, system[..., 8:])[0]
-        if cpu and delta.flatten(1).norm(dim=1).max() < 1e-10:
-            break
         h_new = h + (tangent @ delta)[..., 0]
         h_new = h_new * h_new.square().sum(1, keepdim=True).rsqrt()
-        if cpu:
+        if cpu and iteration + 1 == iters:
             projection = h_new.reshape(K, 3, 3) @ x1.T
             residual = projection[:, :2] / projection[:, 2:3] - x2.T
             r2 = residual.square().sum(1)
             rho = torch.log1p(r2 / scale2) if loss == "cauchy" else torch.fmin(r2, torch.full_like(r2[:1, :1], scale2))
             cost_new = (rho if mask is None else rho * mask).sum(1)
             accepted = cost_new < cost
-            if accepted.all():
-                h, cost = h_new, cost_new
-                damping *= 0.1
-                if iteration + 1 < iters:
-                    system, _, tangent = normal_equations(h)
-            elif accepted.any():
-                h[accepted], cost[accepted] = h_new[accepted], cost_new[accepted]
-                damping *= torch.where(accepted[:, None, None], 0.1, 10.0)
-                if iteration + 1 < iters:
-                    weights = None if mask is None else mask[accepted]
-                    system_new, _, tangent_new = normal_equations(h[accepted], weights)
-                    system[accepted], tangent[accepted] = system_new, tangent_new
-            else:
-                damping *= 10.0
-            continue
+            return torch.where(accepted[:, None], h_new, h).reshape(K, 3, 3)
         system_new, cost_new, tangent_new = normal_equations(h_new)
         accept = (cost_new < cost)[:, None, None]
         h, cost = torch.where(accept[:, :, 0], h_new, h), torch.where(accept[:, 0, 0], cost_new, cost)

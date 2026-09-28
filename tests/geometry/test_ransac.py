@@ -1861,9 +1861,9 @@ class TestRANSACLevenbergMarquardt(BaseTester):
     @pytest.mark.parametrize(
         "model_type, max_samples, expected",
         [
-            ("homography", 2000, [128, 512, 1360]),
+            ("homography", 2000, [512, 1024, 464]),
             ("fundamental", 2000, [256, 512, 1024, 208]),
-            ("essential", 2000, [32, 64, 128, 256, 512, 1008]),
+            ("essential", 2000, [64, 128, 256, 512, 1024, 16]),
         ],
     )
     def test_auto_batches_grow_on_cpu_and_cover_the_budget(self, device, model_type, max_samples, expected):
@@ -1882,7 +1882,7 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         # A five-point sample needs few draws at high inlier ratios: small first batches on every device, the CPU
         # one smallest (tuned on PhotoTourism, where a first batch of 256 doubled the time at equal accuracy).
         ransac = RANSAC("essential", max_samples=100000)
-        assert ransac._lm_batch_range(100, torch.device("cpu")) == (32, 1024)
+        assert ransac._lm_batch_range(100, torch.device("cpu")) == (64, 1024)
         assert ransac._lm_batch_range(100, torch.device("cuda")) == (256, 8192)
         assert ransac._lm_batch_range(100, torch.device("mps")) == (256, 8192)
 

@@ -911,13 +911,11 @@ def _refine_essential_lm(
     def compose(U: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
         return (U[..., :2] @ V[..., :2].mT) * 0.5**0.5
 
-    def normal_equations(
-        E: torch.Tensor, V: torch.Tensor, weights: Optional[torch.Tensor] = mask
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def normal_equations(E: torch.Tensor, V: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Directions dE/dp: H_a E (rotations of U), -E [V e_k]_x (rotations of V about its first two axes).
-        axes = (V[..., :2].mT.reshape(-1, 3) @ H.reshape(3, 9)).reshape(E.shape[0], 2, 3, 3)
+        axes = (V[..., :2].mT.reshape(K * 2, 3) @ H.reshape(3, 9)).reshape(K, 2, 3, 3)
         tangent = torch.cat([H @ E[:, None], (E[:, None] @ axes).neg()], 1)
-        return _sampson_normal_equations(E, tangent, algebraic, quadratic, weights, loss, scale2)
+        return _sampson_normal_equations(E, tangent, algebraic, quadratic, mask, loss, scale2)
 
     def cayley(half: torch.Tensor) -> torch.Tensor:
         # The rotation by the vector 2 * half: Cayley transform of the half-angle skew matrix.
@@ -929,29 +927,13 @@ def _refine_essential_lm(
     system, cost = normal_equations(E, V)
     for iteration in range(iters):
         delta = -torch.linalg.solve_ex(system[..., :5] + damping * eye5, system[..., 5:])[0][..., 0]
-        if cpu and delta.norm(dim=1).max() < 1e-10:
-            break
         U_new = cayley(0.5 * delta[:, :3]) @ U
         V_new = cayley(0.5 * (V[..., :2] @ delta[:, 3:, None])[..., 0]) @ V
         E_new = compose(U_new, V_new)
-        if cpu:
+        if cpu and iteration + 1 == iters:
             cost_new = _sampson_cost(E_new, algebraic, quadratic, mask, loss, scale2)
             accepted = cost_new < cost
-            if accepted.all():
-                U, V, E, cost = U_new, V_new, E_new, cost_new
-                damping *= 0.1
-                if iteration + 1 < iters:
-                    system = normal_equations(E, V)[0]
-            elif accepted.any():
-                U[accepted], V[accepted] = U_new[accepted], V_new[accepted]
-                E[accepted], cost[accepted] = E_new[accepted], cost_new[accepted]
-                damping *= torch.where(accepted[:, None, None], 0.1, 10.0)
-                if iteration + 1 < iters:
-                    weights = None if mask is None else mask[accepted]
-                    system[accepted] = normal_equations(E[accepted], V[accepted], weights)[0]
-            else:
-                damping *= 10.0
-            continue
+            return torch.where(accepted[:, None, None], E_new, E)
         system_new, cost_new = normal_equations(E_new, V_new)
         accept = (cost_new < cost)[:, None, None]
         U, V = torch.where(accept, U_new, U), torch.where(accept, V_new, V)

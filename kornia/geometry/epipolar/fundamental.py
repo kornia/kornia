@@ -401,9 +401,9 @@ def _refine_fundamental_lm(
     iteration takes the residuals and their Jacobian from two matrix products with per-correspondence monomials.
     ``x1`` and ``x2`` are homogeneous ``(N, 3)`` points, normalized by the caller. ``loss`` is ``"truncated"`` or
     ``"cauchy"`` with squared scale ``scale2``; ``mask`` (``(K, N)``) restricts each model to its correspondences. A
-    step is kept only if it lowers the cost. For RANSAC, under ``torch.no_grad``. On CPU, trial costs are evaluated
-    without Jacobians; only accepted models that need another iteration rebuild their normal equations. Steps below
-    ``1e-10`` stop the loop. Differentiable and accelerator calls retain fixed, fully batched iterations.
+    step is kept only if it lowers the cost. For RANSAC, under ``torch.no_grad``. On CPU, a singleton boolean mask
+    compacts its correspondences, and the last trial evaluates only the cost: its Jacobian and updated optimizer
+    state would not be used. Earlier iterations keep fused residual and Jacobian evaluation for small model batches.
     """
     K = F.shape[0]
     dtype, device = F.dtype, F.device
@@ -428,45 +428,27 @@ def _refine_fundamental_lm(
         scale = torch.stack([torch.ones_like(sigma), sigma], 1)[:, None, :]
         return (UV[:, 0, :, :2] * scale) @ UV[:, 1, :, :2].mT
 
-    def normal_equations(
-        F: torch.Tensor, UV: torch.Tensor, weights: Optional[torch.Tensor] = mask
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def normal_equations(F: torch.Tensor, UV: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Directions dF/dp: E_a F (left rotation), -F E_a (right rotation), u_2 v_2^T (singular value ratio).
         tangent = torch.cat(
             [E @ F[:, None], (F[:, None] @ E).neg(), (UV[:, 0, :, 1:2] @ UV[:, 1, :, 1:2].mT)[:, None]], 1
         )
-        return _sampson_normal_equations(F, tangent, algebraic, quadratic, weights, loss, scale2)
+        return _sampson_normal_equations(F, tangent, algebraic, quadratic, mask, loss, scale2)
 
     F = compose(UV, sigma)
     system, cost = normal_equations(F, UV)
     for iteration in range(iters):
         delta = -torch.linalg.solve_ex(system[..., :7] + damping * eye7, system[..., 7:])[0][..., 0]
-        if cpu and delta.norm(dim=1).max() < 1e-10:
-            break
         half = delta[:, :6].reshape(K * 2, 3) * 0.5
         skew = (half @ E.reshape(3, 9)).reshape(K, 2, 3, 3)
         factor = (2.0 / (1.0 + half.square().sum(1))).reshape(K, 2, 1, 1)
         UV_new = (eye3 + factor * (skew + skew @ skew)) @ UV  # Cayley transform of the half-angle skew matrix
         sigma_new = sigma + delta[:, 6]
         F_new = compose(UV_new, sigma_new)
-        if cpu:
+        if cpu and iteration + 1 == iters:
             cost_new = _sampson_cost(F_new, algebraic, quadratic, mask, loss, scale2)
             accepted = cost_new < cost
-            if accepted.all():
-                UV, F, sigma, cost = UV_new, F_new, sigma_new, cost_new
-                damping *= 0.1
-                if iteration + 1 < iters:
-                    system = normal_equations(F, UV)[0]
-            elif accepted.any():
-                UV[accepted], F[accepted] = UV_new[accepted], F_new[accepted]
-                sigma[accepted], cost[accepted] = sigma_new[accepted], cost_new[accepted]
-                damping *= torch.where(accepted[:, None, None], 0.1, 10.0)
-                if iteration + 1 < iters:
-                    weights = None if mask is None else mask[accepted]
-                    system[accepted] = normal_equations(F[accepted], UV[accepted], weights)[0]
-            else:
-                damping *= 10.0
-            continue
+            return torch.where(accepted[:, None, None], F_new, F)
         system_new, cost_new = normal_equations(F_new, UV_new)
         accept = (cost_new < cost)[:, None, None]
         UV = torch.where(accept[..., None], UV_new, UV)
