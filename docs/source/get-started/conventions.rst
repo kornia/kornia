@@ -30,6 +30,8 @@ Image tensors
     np_img = (np.random.rand(48, 64, 3) * 255).astype(np.uint8)  # (H, W, C) uint8
     t = kornia.image.image_to_tensor(np_img)[None].float() / 255.0  # (1, 3, 48, 64) in [0, 1]
 
+.. _coordinate-conventions:
+
 Coordinates and sizes
 ---------------------
 
