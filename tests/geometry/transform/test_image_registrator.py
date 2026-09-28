@@ -16,6 +16,7 @@
 #
 
 import sys
+import warnings
 
 import pytest
 import torch
@@ -147,17 +148,21 @@ class TestImageRegistrator(BaseTester):
     def test_warp_dst_into_src_and_deprecated_alias(self, device, dtype):
         ch, height, width = 1, 8, 10
         ir = ImageRegistrator("Similarity").to(device, dtype)
+        # A pure shift, so that the inverse warp differs from the forward one and equals the forward warp of the
+        # opposite shift. An identity model cannot tell the two directions apart.
+        with torch.no_grad():
+            ir.model.shift.copy_(torch.tensor([[[0.5], [-0.25]]], device=device, dtype=dtype))
+        opposite = ImageRegistrator("Similarity").to(device, dtype)
+        with torch.no_grad():
+            opposite.model.shift.copy_(-ir.model.shift)
         dst = torch.rand(1, ch, height, width, device=device, dtype=dtype)
-
-        into_src = ir.warp_dst_into_src(dst)
-
-        with pytest.warns(DeprecationWarning, match="warp_dst_inro_src"):
-            via_alias = ir.warp_dst_inro_src(dst)
-
-        self.assert_close(into_src, via_alias)
-        # The new name is the primary one: it warns on nobody's account.
-        import warnings
 
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            _ = ir.warp_dst_into_src(dst)
+            into_src = ir.warp_dst_into_src(dst)
+        self.assert_close(into_src, opposite.warp_src_into_dst(dst))
+        assert not torch.allclose(into_src, ir.warp_src_into_dst(dst))
+
+        with pytest.warns(DeprecationWarning, match="`warp_dst_inro_src` is deprecated in favor of"):
+            via_alias = ir.warp_dst_inro_src(dst)
+        self.assert_close(via_alias, into_src)

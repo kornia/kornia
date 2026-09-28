@@ -323,7 +323,7 @@ class ImageRegistrator(nn.Module):
         warper = self.warper(_height, _width)
         return warper(dst_img, self.model.forward_inverse())
 
-    @deprecated(replace_with="ImageRegistrator.warp_dst_into_src", version="0.8.5")
+    @deprecated(replace_with="ImageRegistrator.warp_dst_into_src", version="0.9.0")
     def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
         r"""Deprecated alias for :meth:`warp_dst_into_src`."""
         return self.warp_dst_into_src(dst_img)
