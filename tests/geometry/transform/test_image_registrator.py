@@ -143,3 +143,21 @@ class TestImageRegistrator(BaseTester):
 
         with pytest.raises(ValueError):
             registrator.register(img1, img2)
+
+    def test_warp_dst_into_src_and_deprecated_alias(self, device, dtype):
+        ch, height, width = 1, 8, 10
+        ir = ImageRegistrator("Similarity").to(device, dtype)
+        dst = torch.rand(1, ch, height, width, device=device, dtype=dtype)
+
+        into_src = ir.warp_dst_into_src(dst)
+
+        with pytest.warns(DeprecationWarning, match="warp_dst_inro_src"):
+            via_alias = ir.warp_dst_inro_src(dst)
+
+        self.assert_close(into_src, via_alias)
+        # The new name is the primary one: it warns on nobody's account.
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _ = ir.warp_dst_into_src(dst)
