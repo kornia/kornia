@@ -288,6 +288,34 @@ class TestSe3(BaseTester):
         self.assert_close(s.r.matrix(), matrix[..., 0:3, 0:3])
         self.assert_close(s.t, matrix[..., 0:3, 3])
 
+    @pytest.mark.parametrize("batch_size", (None, 1, 2))
+    def test_from_matrix_check_rotation(self, device, dtype, batch_size):
+        # kornia#4773: the rotation block reaches rotation_matrix_to_quaternion, so a reflection
+        # block is accepted by default and yields a non-unit quaternion. check_rotation=True has
+        # to pass through Se3 -> So3 -> Quaternion to reject it.
+        matrix = torch.eye(4, device=device, dtype=dtype)
+        matrix[0, 0] = -1.0
+        if batch_size is not None:
+            matrix = matrix.repeat(batch_size, 1, 1)
+
+        Se3.from_matrix(matrix)  # default is unchecked, must not raise
+        with pytest.raises(ValueError, match="reflection"):
+            Se3.from_matrix(matrix, check_rotation=True)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_matrix_check_rotation_accepts_rotation(self, device, dtype, batch_size):
+        # A genuine rotation block passes, and the flag leaves both parts of the group element
+        # alone. Comparing the checked call against the unchecked one rather than against the
+        # input keeps this about the check: the round trip loses too much in half precision.
+        rotation = So3(Quaternion.random(batch_size, device, dtype))
+        translation = self._make_rand_data(device, dtype, batch_size, dims=3)
+        matrix = Se3(rotation, translation).matrix()
+
+        checked = Se3.from_matrix(matrix, check_rotation=True)
+        unchecked = Se3.from_matrix(matrix)
+        self.assert_close(checked.r.q.data, unchecked.r.q.data)
+        self.assert_close(checked.t, unchecked.t)
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_from_qxyz(self, device, dtype, batch_size):
         qxyz = self._make_rand_data(device, dtype, batch_size, dims=7)

@@ -94,11 +94,12 @@ class So3(nn.Module):
           :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`,
           with :math:`J_r` = ``right_jacobian(omega)`` and :math:`J_l` = ``left_jacobian(omega)`` =
           ``right_jacobian(-omega)``.
+        - ``from_matrix`` does not check its input by default: a reflection (det :math:`-1`) is accepted without
+          error and returns an ``So3`` whose ``matrix()`` is not the input. ``check_rotation=True`` raises
+          ``ValueError`` instead.
         - Known defects: the quaternion is stored as given, so with a non-unit ``q`` the ``matrix()`` is not a
           rotation and ``s * p`` scales ``p`` by :math:`|q|^2`
-          (`#4942 <https://github.com/kornia/kornia/issues/4942>`_); ``from_matrix`` accepts a reflection
-          (det :math:`-1`) without error and returns an ``So3`` whose ``matrix()`` is not the input
-          (`#4773 <https://github.com/kornia/kornia/issues/4773>`_); ``exp``, ``identity``, ``random``,
+          (`#4942 <https://github.com/kornia/kornia/issues/4942>`_); ``exp``, ``identity``, ``random``,
           ``from_matrix`` and every operation store the quaternion as a plain tensor, which has no ``state_dict()``
           entry and which ``.to()`` leaves unchanged; only a quaternion built on an ``nn.Parameter`` is saved and moved
           (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
@@ -307,11 +308,17 @@ class So3(nn.Module):
         return torch.stack((row0, row1, row2), -2)
 
     @classmethod
-    def from_matrix(cls, matrix: torch.Tensor) -> So3:
+    def from_matrix(cls, matrix: torch.Tensor, check_rotation: bool = False) -> So3:
         """Create So3 from a rotation matrix.
 
         Args:
             matrix: the rotation matrix to convert of shape :math:`(B,3,3)`.
+            check_rotation: if ``True``, raise ``ValueError`` unless every input
+                is a rotation matrix. The default ``False`` keeps the unchecked
+                behaviour, under which a reflection such as ``diag(-1, 1, 1)``
+                is silently turned into the identity. Note that
+                ``So2.from_matrix`` rejects the 2D reflection ``diag(1, -1)``
+                regardless.
 
         Example:
             >>> m = torch.eye(3)
@@ -320,7 +327,7 @@ class So3(nn.Module):
             tensor([1., 0., 0., 0.])
 
         """
-        return cls(Quaternion.from_matrix(matrix))
+        return cls(Quaternion.from_matrix(matrix, check_rotation=check_rotation))
 
     @classmethod
     def from_wxyz(cls, wxyz: torch.Tensor) -> So3:
