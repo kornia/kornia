@@ -408,3 +408,43 @@ class TestLoadPointCloudPlyHeaderParsing(BaseTester):
         with pytest.warns(DeprecationWarning, match="header_size"):
             actual = getattr(kornia.geometry, loader)(str(filename), header_size=3)
         self.assert_close(actual, torch.tensor([[1.0, 2.0, 3.0]]))
+
+
+class TestConventionsPointCloudPly(BaseTester):
+    """Pins for the column order and value type the PLY writers declare."""
+
+    @pytest.mark.parametrize(
+        "saver, loader",
+        [
+            ("save_pointcloud_ply", "load_pointcloud_ply"),
+            ("save_pointcloud_ply_binary", "load_pointcloud_ply_binary"),
+        ],
+    )
+    def test_convention_save_pointcloud_ply_writes_xyz_double(self, tmp_path, saver, loader, device, dtype):
+        # One vertex per row, with the properties x, y and z in that order, all declared double. The ASCII file
+        # prints each row's three columns in that order and the binary file packs them as little-endian float64;
+        # both loaders return the float32 cast on the CPU. Every row holds three distinct values, so a column
+        # permutation is visible.
+        points = torch.tensor([[1.0, 2.0, 3.0], [7.25, 8.5, -9.75]], device=device, dtype=dtype)
+        filename = str(tmp_path / f"xyz_{saver}.ply")
+        getattr(kornia.geometry, saver)(filename, points)
+
+        with open(filename, "rb") as f:
+            raw = f.read()
+        header = raw[: raw.index(b"end_header")].decode("ascii").splitlines()
+        assert "element vertex 2" in header
+        properties = [line for line in header if line.startswith("property")]
+        assert properties == ["property double x", "property double y", "property double z"]
+        payload = raw[raw.index(b"end_header") + len(b"end_header") :]
+        if saver == "save_pointcloud_ply_binary":
+            assert payload[:1] == b"\n"
+            assert struct.unpack("<6d", payload[1:]) == (1.0, 2.0, 3.0, 7.25, 8.5, -9.75)
+        else:
+            # Parse the numbers rather than compare the text: the float format is not part of this convention.
+            rows = [tuple(float(v) for v in line.split()) for line in payload.decode("ascii").splitlines() if line]
+            assert rows == [(1.0, 2.0, 3.0), (7.25, 8.5, -9.75)]
+
+        loaded = getattr(kornia.geometry, loader)(filename)
+        assert loaded.dtype == torch.float32
+        assert loaded.device.type == "cpu"
+        self.assert_close(loaded, points.cpu().float(), rtol=0.0, atol=0.0)
