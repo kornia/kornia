@@ -30,7 +30,9 @@ def _documented_args(cls):
     return [match.group(1) for match in re.finditer(r"^\s{4}(\w+):", block.group(1), re.M)]
 
 
-@pytest.mark.parametrize("cls", [K.ColorJitter, K.ColorJiggle, K.RandomBrightness, K.RandomGaussianBlur])
+@pytest.mark.parametrize(
+    "cls", [K.ColorJitter, K.ColorJiggle, K.RandomBrightness, K.RandomCutMixV2, K.RandomGaussianBlur]
+)
 def test_args_block_matches_the_constructor(cls):
     # kornia#4437: three classes documented a `silence_instantiation_warning` argument that does not
     # exist, and ColorJitter did not document its real `order` argument.
