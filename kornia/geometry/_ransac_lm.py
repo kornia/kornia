@@ -40,6 +40,7 @@ from typing import Tuple
 
 import torch
 
+from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
 from kornia.geometry.epipolar.fundamental import (
     _eight_point_fundamental,
     _epipolar_design_rows,
@@ -117,29 +118,8 @@ def homography_4pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     return (h * h.square().sum(1, keepdim=True).rsqrt()).reshape(-1, 3, 3)
 
 
-def sampson_basis(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    """Per-correspondence monomials ``(27, 2N)`` for the residuals and gradient norms of the Sampson distance.
-
-    ``[vec F, vec Q1, vec Q2] @ basis`` gives the epipolar residuals and the squared gradient norms, with
-    ``Q1 = F[:2]^T F[:2]`` and ``Q2 = F[:, :2] F[:, :2]^T``. Both halves are linear in these per-model quantities:
-    ``x2^T F x1`` in ``vec(x2 x1^T)``, and ``|F[:2] x1|^2 + |F[:, :2]^T x2|^2 = x1^T Q1 x1 + x2^T Q2 x2`` in
-    ``vec(x1 x1^T)`` and ``vec(x2 x2^T)``.
-    """
-    n = x1.shape[0]
-    basis = x1.new_zeros(27, 2 * n)
-    basis[:9, :n] = _epipolar_design_rows(x1, x2).T
-    basis[9:18, n:] = _epipolar_design_rows(x1, x1).T
-    basis[18:, n:] = _epipolar_design_rows(x2, x2).T
-    return basis
-
-
-def sampson_errors(F: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
-    """Squared Sampson distances ``(B, N)`` of fundamental matrices ``(B, 3, 3)`` from :func:`sampson_basis`."""
-    n = basis.shape[1] // 2
-    q1 = F[:, :2, :].mT @ F[:, :2, :]
-    q2 = F[:, :, :2] @ F[:, :, :2].mT
-    out = torch.cat([F.flatten(1), q1.flatten(1), q2.flatten(1)], 1) @ basis
-    return out[:, :n].square() / out[:, n:]
+sampson_basis = _sampson_quadratic_basis
+sampson_errors = _sampson_from_quadratic_basis
 
 
 def transfer_basis(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
