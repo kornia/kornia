@@ -145,6 +145,18 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
        inherits this convention wherever it falls back to :func:`solve_cubic`.
 
     """
+    return _solve_cubic_with_count(coeffs)[0]
+
+
+def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Solve a cubic as :func:`solve_cubic` does and also count its real roots.
+
+    Returns:
+        The roots of :func:`solve_cubic`, shape `(B, 3)`, and the number of real roots per row counted with
+        multiplicity, shape `(B,)`. The real roots fill the first slots and the rest are the ``0.0`` padding,
+        which the count tells apart from a root at 0.
+
+    """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
 
     # In float16, Q^3 underflows to 0 for |Q| below about 4e-3. With R == 0 that makes D == 0, so
@@ -152,7 +164,8 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     # Q > 0: every root comes back NaN. Solve half-precision cubics in float32 and return the roots
     # in the input dtype, as solve_quartic does for its Ferrari path.
     if coeffs.dtype in (torch.float16, torch.bfloat16):
-        return solve_cubic(coeffs.float()).to(coeffs.dtype)
+        roots, num_real = _solve_cubic_with_count(coeffs.float())
+        return roots.to(coeffs.dtype), num_real
 
     _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
 
@@ -163,6 +176,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     d = coeffs[:, 3]  # constant term
 
     solutions = torch.zeros((len(coeffs), 3), device=a.device, dtype=a.dtype)
+    num_real = torch.zeros(len(coeffs), device=a.device, dtype=torch.long)
 
     mask_a_zero = a == 0
     mask_b_zero = b == 0
@@ -176,6 +190,9 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
 
     if torch.any(mask_second_order):
         solutions[mask_second_order, 0:2] = solve_quadratic(coeffs[mask_second_order, 1:])
+        # solve_quadratic's own discriminant: two real roots (a double root repeated) or none.
+        quad_b, quad_c, quad_d = b[mask_second_order], c[mask_second_order], d[mask_second_order]
+        num_real[mask_second_order] = torch.where(quad_c * quad_c - 4 * quad_b * quad_d < 0, 0, 2)
 
     if torch.any(mask_first_order):
         # cx + d = 0. The (a * x + b) * x^2 / c term is 0 in the forward pass, but it keeps the root's
@@ -184,6 +201,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         x0_first = -d[mask_first_order] / c_first
         a_first, b_first = a[mask_first_order], b[mask_first_order]
         solutions[mask_first_order, 0] = x0_first - (a_first * x0_first + b_first) * x0_first * x0_first / c_first
+        num_real[mask_first_order] = 1
 
     # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
     inv_a = 1.0 / a[~mask_a_zero]
@@ -220,6 +238,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         # but it keeps the root's dependence on Q in the gradient (d root / dQ = -1 / A).
         x0_Q_zero = A_Q_zero - Q[mask_Q_zero] / A_Q_zero - b_a_3[mask_Q_zero]
         solutions[mask_Q_zero_solutions, 0] = x0_Q_zero
+        num_real[mask_Q_zero_solutions] = 1
 
     mask_QR_zero = (Q == 0) & (R == 0)
     mask_QR_zero_solutions = (a_Q_zero == 0) & (a_R_zero == 0)
@@ -228,6 +247,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         solutions[mask_QR_zero_solutions] = torch.stack(
             [-b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero]], dim=1
         )
+        num_real[mask_QR_zero_solutions] = 3
 
     # D <= 0
     mask_D_zero = (D <= 0) & (Q != 0)
@@ -253,6 +273,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
         x2_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 4 * _PI) / 3.0) - b_a_3[mask_D_zero]
         solutions[mask_D_zero_solutions] = torch.stack([x0_D_zero, x1_D_zero, x2_D_zero], dim=1)
+        num_real[mask_D_zero_solutions] = 3
 
     a_D_positive = torch.zeros_like(a)
     a_D_positive[~mask_a_zero] = D
@@ -277,8 +298,9 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
             BD[mask_R_positive] = -Q[mask_R_positive] / AD[mask_R_positive]
         x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
         solutions[mask_D_positive_solution, 0] = x0_D_positive
+        num_real[mask_D_positive_solution] = 1
 
-    return solutions
+    return solutions, num_real
 
 
 def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
