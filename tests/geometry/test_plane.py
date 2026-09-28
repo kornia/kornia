@@ -100,6 +100,36 @@ class TestHyperplane(BaseTester):
         assert p0.normal.shape == shape or (3,)
         assert p0.offset.shape == ((*shape,) if shape is not None else ())
 
+    def test_through_orthogonal_equal_length_gradient_5056(self, device, dtype):
+        # #5056: the SVD fallback ran on every row and torch.where only zeroed its gradient. When p2 - p0 and
+        # p1 - p0 are orthogonal and of equal length the two singular values coincide, the SVD backward divides by
+        # their difference, and 0 * inf turned every input gradient into nan although the plane came from the cross
+        # product. Row 0: v0 = (2, 1, -2) and v1 = (1, 2, 2), orthogonal and both of length 3. Row 1: the
+        # axis-aligned plane z = 1, whose unit edges are orthogonal too. Row 2: a general triangle.
+        p0 = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.1, 0.2, 0.3]], device=device, dtype=dtype)
+        p1 = torch.tensor([[1.0, 2.0, 2.0], [1.0, 0.0, 1.0], [1.5, -0.4, 0.8]], device=device, dtype=dtype)
+        p2 = torch.tensor([[2.0, 1.0, -2.0], [0.0, 1.0, 1.0], [-0.7, 1.1, 2.0]], device=device, dtype=dtype)
+        for p in (p0, p1, p2):
+            p.requires_grad_(True)
+        plane = Hyperplane.through(p0, p1, p2)
+        expected = torch.tensor([[4.0, -4.0, 2.0], [0.0, 0.0, -1.0]], device=device, dtype=dtype)
+        self.assert_close(plane.normal.data[:2], expected / expected.norm(dim=-1, keepdim=True))
+        (plane.normal.data.sum() + plane.offset.data.sum()).backward()
+        for p in (p0, p1, p2):
+            assert torch.isfinite(p.grad).all(), p.grad
+
+    def test_through_orthogonal_equal_length_gradcheck_5056(self, device):
+        # The three rows of the test above through gradcheck; the two orthogonal rows failed on main with nan.
+        p0 = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.1, 0.2, 0.3]], device=device, dtype=torch.float64)
+        p1 = torch.tensor([[1.0, 2.0, 2.0], [1.0, 0.0, 1.0], [1.5, -0.4, 0.8]], device=device, dtype=torch.float64)
+        p2 = torch.tensor([[2.0, 1.0, -2.0], [0.0, 1.0, 1.0], [-0.7, 1.1, 2.0]], device=device, dtype=torch.float64)
+
+        def through(p0: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
+            plane = Hyperplane.through(p0, p1, p2)
+            return torch.cat([plane.normal.data, plane.offset.data[..., None]], dim=-1)
+
+        self.gradcheck(through, (p0, p1, p2))
+
     @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
     def test_abs_signed_distance(self, device, dtype, shape):
         p0 = Vector3.random(shape, device, dtype)
