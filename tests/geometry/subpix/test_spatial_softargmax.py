@@ -808,6 +808,39 @@ class TestConvQuadInterp3d(BaseTester):
         coord5, _ = conv_quad_interp3d(sample, n_iters=5)
         self.assert_close(coord1, coord5, atol=1e-5, rtol=1e-5)
 
+    @pytest.mark.parametrize("op", ["conv_quad_interp3d", "iterative_quad_interp3d"])
+    @pytest.mark.parametrize("n_iters", [1, 2])
+    @pytest.mark.parametrize("axis", [0, 1, 2], ids=["scale", "x", "y"])
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pos", "neg"])
+    def test_last_iteration_move_rejects_5038(self, device, dtype, op, n_iters, axis, sign):
+        # Quadratic with its peak (value 0) 0.65 voxel from the candidate at (d, y, x) = (2, 2, 5) along one axis,
+        # either way. The solve at the candidate asks for a 0.65 > max_subpixel_shift move, so the centre steps one
+        # voxel toward the peak. With n_iters=1 no solve follows: the point has not converged and is rejected,
+        # keeping its grid coordinates and the value read at that voxel, -(0.65)**2. It used to be reported at the
+        # new centre plus the old shift, one voxel beyond the peak, with the value read at the moved voxel. With
+        # n_iters=2 the solve at the new centre converges to the peak.
+        D, H, W = 5, 6, 9
+        candidate = [2.0, 5.0, 2.0]  # coords_max layout: dim2 = [scale, x(width), y(height)]
+        peak = list(candidate)
+        peak[axis] += sign * 0.65
+        zz, yy, xx = torch.meshgrid(
+            torch.arange(D, device=device, dtype=dtype),
+            torch.arange(H, device=device, dtype=dtype),
+            torch.arange(W, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        sample = (-((zz - peak[0]) ** 2) - (xx - peak[1]) ** 2 - (yy - peak[2]) ** 2)[None, None]
+        mask = torch.zeros(1, 1, D, H, W, dtype=torch.bool, device=device)
+        mask[0, 0, 2, 2, 5] = True
+        kwargs = {"dilation_radius": 2} if op == "conv_quad_interp3d" else {}
+        coord, val = getattr(kornia.geometry.subpix, op)(sample, n_iters=n_iters, precomputed_nms_mask=mask, **kwargs)
+        converged = n_iters == 2
+        expected = torch.tensor(peak if converged else candidate, device=device, dtype=dtype)
+        self.assert_close(coord[0, 0, :, 2, 2, 5], expected, atol=1e-4, rtol=1e-4)
+        # a rejected point keeps the input value at its NMS voxel; the converged one reads the peak value 0
+        expected_val = torch.zeros((), device=device, dtype=dtype) if converged else sample[0, 0, 2, 2, 5]
+        self.assert_close(val[0, 0, 2, 2, 5], expected_val, atol=1e-4, rtol=1e-4)
+
 
 class TestAdaptiveQuadInterp3d(BaseTester):
     def test_smoke(self, device, dtype):

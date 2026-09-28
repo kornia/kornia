@@ -778,7 +778,8 @@ def conv_quad_interp3d(
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
-        n_iters: maximum number of localization iterations per keypoint.
+        n_iters: maximum number of localization iterations per keypoint. A keypoint that still moves on the
+            last iteration has not converged and is rejected: it keeps its grid coordinates and input value.
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
             :class:`DeprecationWarning`. Select strict maxima with ``precomputed_nms_mask`` or
             :func:`~kornia.geometry.subpix.nms3d` instead.
@@ -943,6 +944,7 @@ def conv_quad_interp3d(
     shift_y = torch.zeros(N, device=device, dtype=dtype)
     shift_s = torch.zeros(N, device=device, dtype=dtype)
     grad_dot_shift = torch.zeros(N, device=device, dtype=dtype)
+    moved = torch.zeros(N, dtype=torch.bool, device=device)
 
     for _ in range(n_iters):
         di = d_cur.clamp(1, D - 2)
@@ -973,12 +975,14 @@ def conv_quad_interp3d(
 
         move_px = valid & (sx > max_subpixel_shift)
         move_nx = valid & (sx < -max_subpixel_shift)
+        moved = move_px | move_nx
         new_w = w_cur + move_px.long() - move_nx.long()
         valid = valid & (new_w >= 1) & (new_w <= W - 2)
         w_cur = new_w.clamp(0, W - 1)
 
         move_py = valid & (sy > max_subpixel_shift)
         move_ny = valid & (sy < -max_subpixel_shift)
+        moved = moved | move_py | move_ny
         new_h = h_cur + move_py.long() - move_ny.long()
         valid = valid & (new_h >= 1) & (new_h <= H - 2)
         h_cur = new_h.clamp(0, H - 1)
@@ -986,11 +990,14 @@ def conv_quad_interp3d(
         if allow_scale_steps:
             move_ps = valid & (ss > max_subpixel_shift)
             move_ns = valid & (ss < -max_subpixel_shift)
+            moved = moved | move_ps | move_ns
             new_d = d_cur + move_ps.long() - move_ns.long()
             valid = valid & (new_d >= 1) & (new_d <= D - 2)
             d_cur = new_d.clamp(0, D - 1)
 
-    valid = valid & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
+    # A point the last iteration moved has not converged: its shift was solved at the previous centre, so
+    # reject it rather than report it one voxel beyond that fit.
+    valid = valid & ~moved & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
 
     # ── Write refined coordinates and corrected response ──────────────────────
     b_idx = bc_idx // C
@@ -1001,7 +1008,10 @@ def conv_quad_interp3d(
     coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = torch.where(valid, h_cur.to(dtype) + shift_y, h_idx.to(dtype))
 
     val_correction = 0.5 * torch.where(valid, grad_dot_shift, torch.zeros_like(grad_dot_shift))
-    # Use the final recentered position for val_center (h_cur/w_cur may have moved during iteration)
+    # Read the value where the point is reported: the recentered voxel, or the NMS voxel of a rejected point
+    d_cur = torch.where(valid, d_cur, d_idx)
+    h_cur = torch.where(valid, h_cur, h_idx)
+    w_cur = torch.where(valid, w_cur, w_idx)
     val_center = input.view(BC, D, H, W)[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
 
@@ -1100,7 +1110,8 @@ def iterative_quad_interp3d(
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
-        n_iters: maximum number of localization iterations per keypoint.
+        n_iters: maximum number of localization iterations per keypoint. A keypoint that still moves on the
+            last iteration has not converged and is rejected: it keeps its grid coordinates and input value.
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
             :class:`DeprecationWarning`. Select strict maxima with ``precomputed_nms_mask`` or
             :func:`~kornia.geometry.subpix.nms3d` instead.
@@ -1213,6 +1224,7 @@ def iterative_quad_interp3d(
     shift_y = torch.zeros(N, device=device, dtype=dtype)
     shift_s = torch.zeros(N, device=device, dtype=dtype)
     grad_dot_shift = torch.zeros(N, device=device, dtype=dtype)
+    moved = torch.zeros(N, dtype=torch.bool, device=device)
 
     inp_flat = inp.reshape(-1)
     bc_base = bc_idx * DHW
@@ -1273,12 +1285,14 @@ def iterative_quad_interp3d(
 
         move_pos_x = valid & (sx > max_subpixel_shift)
         move_neg_x = valid & (sx < -max_subpixel_shift)
+        moved = move_pos_x | move_neg_x
         new_w = w_cur + move_pos_x.long() - move_neg_x.long()
         valid = valid & (new_w >= 1) & (new_w <= W - 2)
         w_cur = new_w.clamp(0, W - 1)
 
         move_pos_y = valid & (sy > max_subpixel_shift)
         move_neg_y = valid & (sy < -max_subpixel_shift)
+        moved = moved | move_pos_y | move_neg_y
         new_h = h_cur + move_pos_y.long() - move_neg_y.long()
         valid = valid & (new_h >= 1) & (new_h <= H - 2)
         h_cur = new_h.clamp(0, H - 1)
@@ -1286,11 +1300,14 @@ def iterative_quad_interp3d(
         if allow_scale_steps:
             move_pos_s = valid & (ss > max_subpixel_shift)
             move_neg_s = valid & (ss < -max_subpixel_shift)
+            moved = moved | move_pos_s | move_neg_s
             new_d = d_cur + move_pos_s.long() - move_neg_s.long()
             valid = valid & (new_d >= 1) & (new_d <= D - 2)
             d_cur = new_d.clamp(0, D - 1)
 
-    valid = valid & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
+    # A point the last iteration moved has not converged: its shift was solved at the previous centre, so
+    # reject it rather than report it one voxel beyond that fit.
+    valid = valid & ~moved & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
 
     b_idx = bc_idx // C
     c_idx = bc_idx % C
@@ -1304,7 +1321,10 @@ def iterative_quad_interp3d(
     coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = final_y
 
     val_correction = 0.5 * torch.where(valid, grad_dot_shift, torch.zeros_like(grad_dot_shift))
-    # Use the final recentered position for val_center (h_cur/w_cur may have moved during iteration)
+    # Read the value where the point is reported: the recentered voxel, or the NMS voxel of a rejected point
+    d_cur = torch.where(valid, d_cur, d_idx)
+    h_cur = torch.where(valid, h_cur, h_idx)
+    w_cur = torch.where(valid, w_cur, w_idx)
     val_center = inp[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
 
