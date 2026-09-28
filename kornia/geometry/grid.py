@@ -36,11 +36,10 @@ def create_meshgrid(
     r"""Generate a coordinate grid for an image.
 
     Convention:
-        - The last axis is ``(x, y)``, column first: with ``normalized_coordinates=False``, ``grid[0, i, j]`` is
-          ``(j, i)``. :ref:`Coordinates and sizes <coordinate-conventions>` has the pixel-centre convention.
-        - ``normalized_coordinates=True`` maps each axis to :math:`[-1, 1]` as
-          :py:func:`torch.nn.functional.grid_sample` reads it under the same ``align_corners`` flag, so pass both
-          calls the same flag: a grid built for one flag and sampled with the other lands up to half a pixel off.
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. With
+          ``normalized_coordinates=True``, the ``align_corners`` argument selects the matching
+          :py:func:`torch.nn.functional.grid_sample` convention; pass the same flag to both calls. The default is
+          corner-aligned (``align_corners=True``).
         - A size-1 axis is ``0`` under either flag, and a size-0 axis gives an empty grid.
         - An integer ``dtype`` is kept for a pixel grid; a normalized grid is then torch's default floating dtype.
 
@@ -162,12 +161,10 @@ def create_meshgrid3d(
     """Generate a coordinate grid for an image.
 
     Convention:
-        - The last axis is ``(d, x, y)``, depth first: with ``normalized_coordinates=False``,
-          ``grid[0, k, i, j]`` is ``(k, j, i)``. :py:func:`torch.nn.functional.grid_sample` reads ``(x, y, z)``,
-          so pass it ``grid[..., [1, 2, 0]]`` (:ref:`Coordinates and sizes <coordinate-conventions>`).
-        - ``normalized_coordinates=True`` is corner-aligned, as ``grid_sample(..., align_corners=True)`` reads it: the
-          first and last voxel centres of each axis are ``-1`` and ``1``. A size-1 axis is ``0``, and a size-0 axis
-          gives an empty grid.
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. A normalized grid is always
+          corner-aligned; reorder its last axis with ``grid[..., [1, 2, 0]]`` before passing it to
+          :py:func:`torch.nn.functional.grid_sample`.
+        - A size-1 axis is ``0`` and a size-0 axis gives an empty grid.
         - Known defect: there is no ``align_corners`` argument, so no normalized grid matches
           ``grid_sample(..., align_corners=False)`` (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
 

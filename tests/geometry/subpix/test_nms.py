@@ -454,9 +454,7 @@ class TestConventionsNMS2d(BaseTester):
         assert mask.nonzero().tolist() == [[0, 0, 2, 3]]
 
     def test_wart_nms2d_value_output_nan_at_suppressed_infinity_5067(self, device, dtype):
-        # Wart pin (#5067): the value output is input * mask, so a suppressed -inf (a response masked out with
-        # masked_fill(~valid, -inf)) becomes inf * 0 = NaN rather than 0, and topk ranks it above the true maximum.
-        # mask_only=True is the control. A fix with torch.where(mask, input, 0) flips the NaN to 0.
+        # #5067: multiplying a suppressed -inf by the mask produces NaN; mask_only=True is the control.
         response = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
         response[0, 0, 2, 3] = 1.0
         response[0, 0, :, 0] = float("-inf")

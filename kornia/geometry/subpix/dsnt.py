@@ -95,8 +95,8 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     r"""Compute the expectation of coordinate values using spatial probabilities.
 
     Convention:
-        - Output order and normalization as in :func:`~kornia.geometry.subpix.spatial_soft_argmax2d`. The input is
-          used as given, not renormalized, so each map should sum to one, as the output of
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. The input is used as given, not
+          renormalized, so each map should sum to one, as the output of
           :func:`~kornia.geometry.subpix.spatial_softmax2d` does: a map summing to ``s`` scales the result by ``s``.
 
     Args:
@@ -149,9 +149,8 @@ def render_gaussian2d(
     the Gaussian that falls on the grid, rescaled to sum to one; far outside, that mass sits on the nearest border.
 
     Convention:
-        - ``mean`` and ``std`` are ``(x, y)`` while ``size`` is ``(height, width)``. They are in pixels, or with
-          ``normalized_coordinates=True`` in corner-aligned coordinates, where ``-1`` and ``1`` are the centres of the
-          first and last pixel of each axis.
+        - ``mean`` and ``std`` follow :ref:`Coordinates and sizes <coordinate-conventions>`; ``size`` is
+          ``(height, width)``. The default normalized coordinates are corner-aligned.
 
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.

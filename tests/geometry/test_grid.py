@@ -427,7 +427,7 @@ def test_convention_create_meshgrid_align_corners_matches_grid_sample(device, dt
         same = torch.nn.functional.grid_sample(image, grid, align_corners=align_corners)
         crossed = torch.nn.functional.grid_sample(image, grid, align_corners=not align_corners)
         assert_close(same, image)
-        assert (crossed - image).abs().max() > 0.1  # measured 0.42 and 0.29 at every dtype
+        assert (crossed - image).abs().max() > 0.1
 
 
 def test_convention_create_meshgrid3d_reorder_for_grid_sample(device, dtype):
@@ -447,8 +447,8 @@ def test_convention_create_meshgrid3d_reorder_for_grid_sample(device, dtype):
     as_is = torch.nn.functional.grid_sample(volume, grid, align_corners=True)
     half_pixel = torch.nn.functional.grid_sample(volume, grid[..., [1, 2, 0]], align_corners=False)
     assert_close(reordered, volume)
-    assert (as_is - volume).abs().max() > 0.1  # measured 0.55 at every dtype
-    assert (half_pixel - volume).abs().max() > 0.1  # measured 0.77 at every dtype
+    assert (as_is - volume).abs().max() > 0.1
+    assert (half_pixel - volume).abs().max() > 0.1
 
     permuted = volume.permute(0, 1, 4, 2, 3).contiguous()  # (D, H, W) = (4, 2, 3)
     grid = kornia.geometry.create_meshgrid3d(4, 2, 3, device=device, dtype=dtype)

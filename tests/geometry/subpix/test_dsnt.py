@@ -297,7 +297,7 @@ class TestConventionsDsnt(BaseTester):
         heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (25, 21), False)
         assert heatmap.shape == (1, 25, 21)
 
-        # Moments in float64 on CPU (MPS has no float64), normalized by the total so rounding of the sum cancels.
+        # Measure the rendered distribution's moments in float64.
         h = heatmap[0].cpu().double()
         total = h.sum()
         cols = torch.arange(21, dtype=torch.float64)
@@ -306,8 +306,6 @@ class TestConventionsDsnt(BaseTester):
         mean_y = float((h.sum(1) * rows).sum() / total)
         std_x = float(((h.sum(0) * (cols - mean_x) ** 2).sum() / total).sqrt())
         std_y = float(((h.sum(1) * (rows - mean_y) ** 2).sum() / total).sqrt())
-        # float32/float64 measured 10, 12, 1.9999966 (the sampled Gaussian, cut at 5 sigma) and 0.9999999;
-        # bfloat16 is furthest off, with std_x 2.0017.
         tol = 5e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-5
         assert abs(mean_x - 10.0) < tol, mean_x
         assert abs(mean_y - 12.0) < tol, mean_y

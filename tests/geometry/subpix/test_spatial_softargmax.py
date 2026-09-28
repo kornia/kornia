@@ -1084,10 +1084,7 @@ class TestConventionsConvSoftArgmax(BaseTester):
         self.assert_close(coords[0, 0, :, 2, 1, 6], expected)
 
     def test_wart_conv_soft_argmax_eps_erases_far_windows_5020(self, device, dtype):
-        # exp() is stabilised with the maximum of the whole map and eps = 1e-8 is added to each window's denominator.
-        # The window centred on (3, 10) sits 39 below the map maximum, so its exp-sum (about 5e-17) is swamped by eps:
-        # it reports its centre and a value near 0. With eps=0 it reports its own soft-argmax, x 10.1026 and value
-        # 0.3767. A per-window stabilisation, or dropping eps, flips this pin (#5020).
+        # #5020: global stabilization and per-window eps erase a local peak far below the map maximum.
         heatmap = torch.zeros(1, 1, 7, 15, device=device, dtype=dtype)
         heatmap[0, 0, 3, 2] = 40.0  # the map maximum, eight columns from the window under test
         heatmap[0, 0, 3, 10] = 1.0
@@ -1097,7 +1094,6 @@ class TestConventionsConvSoftArgmax(BaseTester):
         )
         x, value = coords[0, 0, 0, 3, 10], values[0, 0, 3, 10]
         if dtype == torch.float16:
-            # float16 flushes both eps and every exp() of the window to zero: the window is 0 / 0 (#5020).
             assert bool(x.isnan()) and bool(value.isnan())
         else:
             assert abs(float(x) - 10.0) < 1e-6
@@ -1109,18 +1105,13 @@ class TestConventionsConvSoftArgmax(BaseTester):
             assert float(values[0, 0, 3, 10]) > 0.3
 
     def test_wart_conv_soft_argmax2d_even_window_border_centre_5066(self, device, dtype):
-        # Wart pin (#5066): each window's centre is the average of a coordinate grid convolved with the call's own
-        # zero padding. With an odd kernel_size the centre pixel is always inside the image; with an even one and
-        # padding = k / 2 the last window's centre averages a padded 0, so a window holding the hot pixel at x = 8
-        # reports a coordinate near the middle of the row. The odd window is the control. A fix that builds the
-        # centres without zero padding flips the even case to 8.
+        # #5066: zero padding moves an even border window's reported centre away from its hot pixel.
         heatmap = torch.zeros(1, 1, 5, 9, device=device, dtype=dtype)
         heatmap[0, 0, 2, 8] = 50.0
         odd = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (3, 3), (1, 1), (1, 1), normalized_coordinates=False)
         self.assert_close(odd[0, 0, 0, 2, -1], torch.tensor(8.0, device=device, dtype=dtype))
         even = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (4, 4), (1, 1), (2, 2), normalized_coordinates=False)
         assert even.shape[-1] == 10
-        # The last window holds the hot pixel; measured 3.67 (3.5 once #5017 is fixed).
         assert float(even[0, 0, 0, 2, -1]) < 5.0
 
 
@@ -1206,9 +1197,7 @@ class TestConventionsQuadInterp3d(BaseTester):
 
     @pytest.mark.parametrize("fn", _FUNCTIONS, ids=["conv", "iterative"])
     def test_wart_quad_interp3d_absolute_determinant_floor_5065(self, device, dtype, fn):
-        # Wart pin (#5065): a fit is rejected when |det H| <= 1e-7, an absolute floor on a quantity cubic in the
-        # response amplitude, so the same parabola refines at amplitude 1 and is left at its grid index at amplitude
-        # 1e-3. A scale-invariant test refines both, which flips the second assertion.
+        # #5065: the absolute Hessian determinant floor refines this peak at unit amplitude but rejects it at 1e-3.
         for amplitude, expected_x in ((1.0, 5 + 1 / 6), (1e-3, 5.0)):
             volume = torch.zeros(1, 1, 4, 6, 9, device=device, dtype=dtype)
             volume[0, 0, 1, 2, 5] = amplitude

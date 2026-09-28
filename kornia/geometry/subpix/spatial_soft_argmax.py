@@ -331,8 +331,8 @@ def conv_soft_argmax2d(
     heatmap value there and :math:`T` the temperature.
 
     Convention:
-        - ``coords`` are ``(x, y)``: pixel coordinates of the input grid, or with ``normalized_coordinates=True``,
-          the default here, corner-aligned coordinates as in :func:`spatial_soft_argmax2d`.
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. This function defaults to
+          normalized, corner-aligned coordinates.
           :func:`conv_soft_argmax3d` defaults to pixel coordinates and ``output_value=True`` instead.
         - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: with an odd
           ``kernel_size``, a window that overhangs the border averages over its in-image pixels only.
@@ -462,8 +462,8 @@ def conv_soft_argmax3d(
     Convention:
         - See the convention block of :func:`conv_soft_argmax2d`, including its known defects
           (`#5020 <https://github.com/kornia/kornia/issues/5020>`_,
-          `#5066 <https://github.com/kornia/kornia/issues/5066>`_). ``coords`` are ``(d, x, y)``, depth first as in
-          :func:`~kornia.geometry.grid.create_meshgrid3d`.
+          `#5066 <https://github.com/kornia/kornia/issues/5066>`_). Coordinates follow
+          :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to pixel coordinates.
 
     Args:
         input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
@@ -575,9 +575,8 @@ def spatial_soft_argmax2d(
     r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
 
     Convention:
-        - The output is ``(x, y)``, column first: pixel indices of the input grid, or with
-          ``normalized_coordinates=True`` corner-aligned coordinates, ``-1`` and ``1`` at the centres of the first and
-          last pixel (:ref:`Coordinates and sizes <coordinate-conventions>`).
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to
+          normalized, corner-aligned coordinates.
         - It is ``spatial_expectation2d(spatial_softmax2d(input, temperature))``: the expected coordinate under the
           softmax of each whole :math:`H \times W` map, so two equal peaks that dominate the map give their midpoint,
           not either peak.
@@ -806,17 +805,15 @@ def conv_quad_interp3d(
     :func:`iterative_quad_interp3d`, but is much slower on large images.
 
     Convention:
-        - ``coords_max`` holds absolute ``(d, x, y)`` voxel indices of the input, depth (scale) first as in
-          :func:`~kornia.geometry.grid.create_meshgrid3d`: only refined maxima move off their own grid index. At a
-          refined maximum ``y_max`` is the quadratic fit's value at the refined point; non-maxima keep their input
-          value.
+        - ``coords_max`` follows :ref:`Coordinates and sizes <coordinate-conventions>` and holds absolute voxel
+          indices of the input: only refined maxima move off their own grid index. At a refined maximum ``y_max`` is
+          the quadratic fit's value at the refined point; non-maxima keep their input value.
         - A maximum is not refined, and keeps its grid coordinates, when the determinant of its fit's Hessian is at
           most ``1e-7`` in magnitude, when a move would reach the border voxels, when its centre leaves the voxels
           precomputed for ``dilation_radius``, or when the final shift exceeds ``1.5`` voxels on any axis. A volume
           with a side shorter than 3 is returned unrefined.
-        - Known defect: the ``1e-7`` determinant floor is absolute while the determinant is cubic in the response
-          amplitude, so the maxima of a response computed from a ``[0, 1]`` image mostly stay at their grid index
-          (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
+        - Known defect: refinement depends on response amplitude because the ``1e-7`` determinant floor is absolute
+          while the determinant is cubic in that amplitude (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
