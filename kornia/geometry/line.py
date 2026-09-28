@@ -129,7 +129,7 @@ class ParametrizedLine(nn.Module):
         return self.origin + (self.direction @ (point - self.origin)) * self.direction
 
     def squared_distance(self, point: torch.Tensor) -> torch.Tensor:
-        """Return the squared distance of a point to its projection onte the line.
+        """Return the squared distance of a point to its projection onto the line.
 
         Args:
             point: the point to calculate the distance onto the line.
@@ -141,7 +141,7 @@ class ParametrizedLine(nn.Module):
         """Return the distance of a point to its projections onto the line.
 
         Args:
-            point: the point to calculate the distance into the line.
+            point: the point to calculate the distance onto the line.
         """
         return torch.linalg.vector_norm(self._perpendicular(point), dim=-1)
 

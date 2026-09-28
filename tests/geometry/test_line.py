@@ -99,6 +99,9 @@ class TestParametrizedLine(BaseTester):
         line = ParametrizedLine(o, torch.tensor([0.28, 0.96], device=device))
         u = line.direction.detach()
         on_line = o + torch.linspace(-50.0, 50.0, 200, device=device)[:, None] * u
+        # One value per row: a reduction over every element also passes the checks below.
+        assert line.squared_distance(on_line).shape == (200,)
+        assert line.distance(on_line).shape == (200,)
         assert (line.squared_distance(on_line) >= 0).all()
         assert torch.isfinite(line.distance(on_line)).all()
         assert line.distance(on_line).max() < 1e-4
