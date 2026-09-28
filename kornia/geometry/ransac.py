@@ -219,7 +219,7 @@ class RANSAC(nn.Module):
             max_samples: optional budget of minimal samples, overriding ``batch_size * max_iter``.
             local_optimization: ``"lm"`` (batched Levenberg-Marquardt refinement of the best minimal models and a
                 final robust refinement) or ``"dlt"`` (refits of each new best model); None picks ``"lm"`` where it
-                is supported, for homographies and fundamental matrices.
+                is supported, for homographies, fundamental and essential matrices.
             refine_iters: Levenberg-Marquardt iterations of the final refinement on the inliers with ``"lm"``.
 
         """
@@ -422,7 +422,9 @@ class RANSAC(nn.Module):
         With ``local_optimization="lm"`` an ``"auto"`` batch instead starts at 256 samples on CPU (512 for
         homographies) and doubles after every batch, up to 2048 (4096 for homographies), so that inputs with
         many inliers stop after a small first batch while the rest pay the per-batch overhead a few times only.
-        On CUDA and MPS it is the whole budget up to 8192 samples. Both shrink when a batch would score more
+        On CUDA and MPS it is the whole budget up to 8192 samples. Essential matrices start at 64 samples on CPU,
+        up to 1024, and at 256 on CUDA and MPS, up to 8192: a five-point sample needs few draws at high inlier
+        ratios, and its host eigenvalue solve costs the same on every device. All shrink when a batch would score more
         than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models of a seven-point
         sample; scoring holds two or three times that many entries at its peak, about 0.5 GiB in float32 on an
         accelerator. An integer ``batch_size`` is kept for every batch.

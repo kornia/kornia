@@ -105,7 +105,9 @@ Local optimization
 
 Homographies, fundamental and essential matrices default to
 ``local_optimization="lm"``. The sampling loop keeps the eight best-scoring
-minimal models of the whole run, normalized once per call. After sampling, all eight are refined together with
+minimal models of the whole run, in coordinates normalized once per call (the
+caller's calibrated ones for essential matrices, see below). After sampling,
+all eight are refined together with
 ``max_lo_iters`` Levenberg-Marquardt iterations that minimize the squared
 Sampson distance or one-way transfer error of every correspondence, truncated
 at ``inl_th``. The best-scoring model among the refits and the minimal models
@@ -139,9 +141,9 @@ refined as ``E = U diag(1, 1, 0) V^T`` with five parameters, as many as the
 rotation and translation direction of PoseLib's ``refine_relpose``: rotations
 of ``U`` about three axes and of ``V`` about its first two, which leaves out
 the rotation of both about their third axes that does not change ``E``. The
-five-point samples are solved with Nister's method in float64: an LU null space,
-the degree-ten polynomial from polynomial products, and its real roots from the
-eigenvalues of its companion matrix on the host. On PhotoTourism pairs this
+five-point samples are solved with Nister's method in float64: a Householder
+null space, the degree-ten polynomial from polynomial products, and its real
+roots from the eigenvalues of its companion matrix on the host. On PhotoTourism pairs this
 raises the pose mAA of essential matrices by 0.04 to 0.08 over the subset refits
 below, at a half to a third of the time on CPU.
 

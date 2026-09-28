@@ -24,7 +24,7 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import _torch_svd_cast
-from kornia.geometry.solvers.homogeneous import _null_space_lu
+from kornia.geometry.solvers.homogeneous import _null_space_householder
 from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2
 
 from .fundamental import _epipolar_design_rows, _hat_basis, _sampson_normal_equations, _solve_dtype
@@ -247,25 +247,29 @@ def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
 def _five_point_candidates(design: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Nister's five-point solver on the epipolar design rows ``(B, 5, 9)`` of minimal samples.
 
-    The four-dimensional null space comes from
-    :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, one batched LU factorization, and everything up to
-    the roots is computed in :func:`~kornia.geometry.epipolar.fundamental._solve_dtype`, so a float32 sample does
-    not lose its true solution to rounding.
+    The four-dimensional null space comes from batched Householder reflections,
+    :func:`~kornia.geometry.solvers.homogeneous._null_space_householder`, and everything up to the roots is computed
+    in :func:`~kornia.geometry.epipolar.fundamental._solve_dtype`, so a float32 sample does not lose its true
+    solution to rounding.
 
-    A sample whose design rows are rank deficient, such as one with a repeated correspondence, has a null space of
-    more than four dimensions and no unique solution: all ten of its slots are NaN. It is swapped for a constant
-    full-rank design before the null space is taken, because the backward of an LU factorization is not finite at a
-    singular matrix even for a zero incoming gradient, and the sample's gradient must be zero.
+    A sample whose design rows are rank deficient, such as one with a repeated correspondence or points collinear in
+    both images, has a null space of more than four dimensions and no unique solution: all ten of its slots are NaN.
+    It is found by a partial-pivoted LU factorization of the detached rows. Rounding rarely leaves an exactly zero
+    pivot, so rank deficiency is a pivot below ``1e3`` epsilons of the largest one: repeated correspondences measure
+    about 1e-16 relative, regular samples above 1e-3. The sample is swapped for a constant full-rank design before
+    the null space is taken, whose normalizations would otherwise divide by a vanishing norm, so that its gradient
+    is zero.
 
     Returns:
         Candidates ``(B, 10, 3, 3)`` of unit Frobenius norm in the design's dtype, NaN where the slot holds no
         real root, and the ``(B, 10)`` mask of the real ones.
     """
     A = design.to(_solve_dtype(design.device))
-    _, _, info = torch.linalg.lu_factor_ex(A.detach().mT)
-    rank_deficient = info > 0
+    lu, _, info = torch.linalg.lu_factor_ex(A.detach().mT)
+    pivots = lu.diagonal(dim1=-2, dim2=-1).abs()
+    rank_deficient = (info > 0) | (pivots.amin(-1) <= 1e3 * torch.finfo(A.dtype).eps * pivots.amax(-1))
     A = torch.where(rank_deficient[:, None, None], torch.eye(5, 9, device=A.device, dtype=A.dtype), A)
-    candidates, valid = _nister_candidates(_null_space_lu(A), design.dtype)
+    candidates, valid = _nister_candidates(_null_space_householder(A), design.dtype)
     valid = valid & ~rank_deficient[:, None]
     return torch.where(valid[..., None, None], candidates, torch.full_like(candidates, float("nan"))), valid
 
@@ -346,12 +350,19 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
     companion = torch.where(host_usable[:, None, None], companion, torch.eye(10, dtype=torch.float64))
     eigenvalues = torch.linalg.eigvals(companion)
     real = eigenvalues.imag.abs() <= 1e-10 * eigenvalues.abs().clamp(min=1.0)
-    root0 = torch.where(real, eigenvalues.real, 0.0).to(device, dtype)
-    valid = (real & host_usable[:, None]).to(device)
+    # A root beyond the fifth root of the dtype's largest number could overflow the z^4 terms of the back-substitution,
+    # and a masked infinity still turns the backward into 0 * inf = NaN: its slot is dropped, and a zero stands in for
+    # it. That only binds for a float32 solve (MPS), at |z| > 5.5e7, where the basis matrix W no longer shows in E.
+    in_range = eigenvalues.real.abs() < torch.finfo(dtype).max ** 0.2
+    valid = (real & in_range & host_usable[:, None]).to(device)
+    root0 = torch.where(real & in_range, eigenvalues.real, 0.0).to(device, dtype)
 
     # ---- Newton step: the root's polish and its gradient ----
+    # The polynomial and its slope are evaluated divided by s^10 with s = max(1, |z|): the same step, without the
+    # overflow of z^10 for large roots in float32.
     degrees = torch.arange(11, device=device, dtype=dtype)
-    powers = root0[..., None] ** degrees  # (B, 10, 11)
+    scale = root0.abs().clamp(min=1.0)[..., None]  # root0 carries no gradient
+    powers = (root0[..., None] / scale) ** degrees * scale ** (degrees - 10)  # (B, 10, 11)
     value = (powers * cs[:, None]).sum(-1)
     slope_terms = powers[..., :10] * (degrees[1:] * cs[:, 1:])[:, None]
     slope = slope_terms.sum(-1)
@@ -374,7 +385,12 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
         (A[:, :3, 8:9] * zz**4 + A[:, :3, 9:10] * zz**3 + A[:, :3, 10:11] * zz.square() + A[:, :3, 11:12] * zz)
         + A[:, :3, 12:13]
     ).transpose(1, 2)[..., None]  # (B, 10, 3, 1)
-    xy, bad2 = _solve_2x2_tikhonov_safe(Bs[:, :, :2, :2], bs[:, :, :2], 1e-12)  # never throws
+    # Each 2x2 system is divided by its largest entry, which leaves its solution unchanged: entries of size A z^3 would
+    # otherwise overflow the squares of the regularized fallback in float32, and a masked infinity still gives a NaN
+    # gradient. The scale is detached; the solution does not depend on it.
+    system = torch.cat([Bs[:, :, :2, :2].flatten(2), bs[:, :, :2, 0]], -1)
+    system_scale = system.detach().abs().amax(-1).clamp(min=torch.finfo(dtype).tiny)[..., None, None]
+    xy, bad2 = _solve_2x2_tikhonov_safe(Bs[:, :, :2, :2] / system_scale, bs[:, :, :2] / system_scale, 1e-12)
     coefficients = torch.stack([-xy[..., 0, 0], -xy[..., 1, 0], z, torch.ones_like(z)], -1)  # (B, 10, 4)
     Es = torch.einsum("bijk,brk->brij", N, coefficients)
     norm = Es.flatten(2).norm(dim=-1)[..., None, None]

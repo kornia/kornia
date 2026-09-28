@@ -1952,6 +1952,27 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         E, mask = RANSAC("essential", inl_th=1.0, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
         assert torch.isfinite(E).all() and mask.shape == (100,)
 
+    def test_planar_scene(self, device, dtype):
+        self._skip_half(dtype)
+        # Every scene point on one plane: the five-point solver still determines E (a homography does not), and the
+        # pipeline recovers it among outliers.
+        generator = torch.Generator().manual_seed(12)
+        f64 = torch.float64
+        XY = (torch.rand(120, 2, generator=generator, dtype=f64) - 0.5) * 4
+        X = torch.cat([XY, (4.0 + 0.3 * XY[:, :1] - 0.2 * XY[:, 1:])], 1)
+        R = axis_angle_to_rotation_matrix(torch.tensor([[0.05, -0.1, 0.02]], dtype=f64))[0]
+        t = torch.tensor([1.0, 0.1, 0.2], dtype=f64)
+        Y = X @ R.T + t
+        kp1, kp2 = X[:, :2] / X[:, 2:], Y[:, :2] / Y[:, 2:]
+        kp2[:30] = (torch.rand(30, 2, generator=generator, dtype=f64) - 0.5) * 1.2
+        E_true = _skew(t) @ R
+        E_true = E_true / E_true.norm()
+        E, mask = RANSAC("essential", inl_th=1e-4, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        assert torch.equal(mask.cpu(), torch.arange(120) >= 30)
+        E = E.cpu().double()
+        tolerance = 1e-6 if dtype == torch.float64 else 1e-3
+        assert torch.minimum((E - E_true).norm(), (E + E_true).norm()) < tolerance
+
     def test_batch_of_one_sample(self, device, dtype):
         self._skip_half(dtype)
         kp1, kp2, _, _, inliers = _scene("essential", 60, 10, 0.0, seed=5)

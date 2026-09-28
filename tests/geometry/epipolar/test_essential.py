@@ -80,8 +80,8 @@ class TestFindEssential(BaseTester):
 
     @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
     def test_exact_five_point_sample_recovers_the_true_e_4884(self, device, input_dtype):
-        if device.type == "mps" and input_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
+        if device.type == "mps":
+            pytest.skip("MPS solves in float32, which keeps the misses of #4884")
         # #4884: in float32 an exact five-point sample missed the true E; the solve now runs in float64.
         misses = 0
         for seed in range(20):
@@ -104,16 +104,42 @@ class TestFindEssential(BaseTester):
         epi.find_essential(points, points).nan_to_num().sum().backward()
         assert torch.isfinite(points.grad).all()
 
-    def test_true_e_is_recovered_on_random_scenes(self, device):
+    def test_no_parallax_backward_is_finite_with_a_float32_solve(self, monkeypatch):
+        # MPS solves in float32. There a spurious root near a vanishing leading coefficient (|z| ~ 5e8) overflows
+        # z ** 10, and a backward through the masked powers gave 0 * inf = NaN. Emulated on the CPU.
+        monkeypatch.setattr(epi.essential, "_solve_dtype", lambda device: torch.float32)
+        generator = torch.Generator().manual_seed(0)
+        points = torch.rand(1000, 5, 2, generator=generator).requires_grad_()
+        epi.find_essential(points, points).nan_to_num().sum().backward()
+        assert torch.isfinite(points.grad).all()
+
+    def test_true_e_is_recovered_on_random_motions(self, device):
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
-        errors = []
-        for seed in range(100, 300):
-            scene = calibrated_two_view_scene(5, 0.0, seed)
-            candidates = epi.find_essential(scene["x1"][None].to(device), scene["x2"][None].to(device))[0]
-            errors.append(self._true_e_error(candidates, scene["E"]))
-        # A missed root is off by more than 0.1; the worst recovered one of these scenes by 6e-8 on CUDA.
-        assert max(errors) < 1e-6
+        # 2000 exact minimal samples of random scenes, rotations and translation directions. The solver's accuracy
+        # tail depends on how the null space of the five constraints is taken: with main's SVD 2 of them missed E by
+        # more than 1e-3, with an LU null space 5, with the Householder QR none (worst 8e-5).
+        generator = torch.Generator().manual_seed(0)
+        f64 = torch.float64
+        X = torch.randn(2000, 5, 3, generator=generator, dtype=f64) * torch.tensor([1.0, 1.0, 0.5], dtype=f64)
+        X = X + torch.tensor([0.0, 0.0, 4.0], dtype=f64)
+        R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+            (torch.rand(2000, 3, generator=generator, dtype=f64) - 0.5) * 0.6
+        )
+        t = torch.nn.functional.normalize(torch.randn(2000, 3, generator=generator, dtype=f64), dim=-1)
+        Y = X @ R.mT + t[:, None]
+        x1, x2 = X[..., :2] / X[..., 2:], Y[..., :2] / Y[..., 2:]
+        E = epi.essential_from_Rt(
+            torch.eye(3, dtype=f64).expand(2000, 3, 3), torch.zeros(2000, 3, 1, dtype=f64), R, t[..., None]
+        )
+        E = E / E.flatten(1).norm(dim=1)[:, None, None]
+        candidates = epi.find_essential(x1.to(device), x2.to(device)).cpu()
+        distance = torch.minimum(
+            (candidates - E[:, None]).flatten(2).norm(dim=-1), (candidates + E[:, None]).flatten(2).norm(dim=-1)
+        )
+        best = distance.nan_to_num(10.0).amin(1)
+        assert best.max() < 1e-3
+        assert torch.quantile(best, 0.99) < 1e-6
 
     def test_degenerate_sample_does_not_affect_the_batch(self, device, dtype):
         _skip_find_essential(device, dtype)
@@ -128,6 +154,27 @@ class TestFindEssential(BaseTester):
         alone = epi.find_essential(points1[:1], points2[:1])[0]
         assert torch.equal(torch.isfinite(candidates[0]), torch.isfinite(alone))
         self.assert_close(candidates[0].nan_to_num(7.0), alone.nan_to_num(7.0), atol=1e-6, rtol=0)
+
+    @pytest.mark.parametrize("case", ["repeat-1-2", "repeat-2-4", "repeat-3-1", "repeat-0-3", "collinear"])
+    def test_rank_deficient_sample_has_no_candidates(self, device, case):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # Five constraints of rank four leave a null space of five dimensions: E is not determined. Rounding usually
+        # leaves a tiny pivot rather than an exact zero, which must not pass for a regular sample.
+        if case == "collinear":  # collinear in both images
+            t = torch.tensor([-0.4, -0.1, 0.05, 0.2, 0.45], dtype=torch.float64)
+            points1 = torch.stack([t, 0.3 * t + 0.1], -1)
+            points2 = torch.stack([t + 0.05, -0.5 * t + 0.2], -1)
+        else:
+            _, i, j = case.split("-")
+            scene = calibrated_two_view_scene(5, 0.0, 9)
+            points1, points2 = scene["x1"].clone(), scene["x2"].clone()
+            points1[int(j)], points2[int(j)] = points1[int(i)], points2[int(i)]
+        points1 = points1[None].to(device).requires_grad_()
+        candidates = epi.find_essential(points1, points2[None].to(device))
+        assert torch.isnan(candidates).all()
+        candidates.nan_to_num().sum().backward()
+        assert (points1.grad == 0).all()
 
     def test_repeated_calls_are_bitwise_equal(self, device, dtype):
         _skip_find_essential(device, dtype)

@@ -1096,8 +1096,9 @@ class TestRefineFundamentalLM(BaseTester):
         return F, convert_points_to_homogeneous(x1), convert_points_to_homogeneous(x2), mask
 
     def test_matches_recorded_outputs(self):
-        # Recorded at c27b2dac, before the normal equations were shared with the essential refiner: sharing them
-        # must not change a bit.
+        # Recorded at c27b2dac, before the normal equations were shared with the essential refiner, on x86-64 with
+        # MKL: sharing them changed no bit there. Other BLAS builds round differently and five LM iterations amplify
+        # it (MKL restricted to SSE4.2 moves the result by up to 3.8e-11), so the pin allows 1e-9.
         F, h1, h2, _ = self._problem(0)
         truncated = _refine_fundamental_lm(F, h1, h2, None, "truncated", 0.01, 5)
         expected = [
@@ -1112,7 +1113,7 @@ class TestRefineFundamentalLM(BaseTester):
                 [0.016680785956596982, -0.28587426648587977, -0.5717588387569966],
             ],
         ]
-        assert torch.equal(truncated, torch.tensor(expected, dtype=torch.float64))
+        self.assert_close(truncated, torch.tensor(expected, dtype=torch.float64), atol=1e-9, rtol=0)
         F, h1, h2, mask = self._problem(1)
         cauchy = _refine_fundamental_lm(F, h1, h2, mask, "cauchy", 0.001, 5)
         expected = [
@@ -1127,4 +1128,4 @@ class TestRefineFundamentalLM(BaseTester):
                 [-0.041273601467539764, -0.660172201639381, -0.0304491757491199],
             ],
         ]
-        assert torch.equal(cauchy, torch.tensor(expected, dtype=torch.float64))
+        self.assert_close(cauchy, torch.tensor(expected, dtype=torch.float64), atol=1e-9, rtol=0)
