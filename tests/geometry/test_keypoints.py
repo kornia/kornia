@@ -212,6 +212,9 @@ class TestKeypoints(BaseTester):
             unbatched.pad(torch.zeros(2, 4, device=device, dtype=dtype))
         with pytest.raises(RuntimeError, match="one row"):
             unbatched.unpad(torch.zeros(2, 4, device=device, dtype=dtype))
+        # zero rows as well: a `> 1` check would let it through to an IndexError instead
+        with pytest.raises(RuntimeError, match="one row"):
+            unbatched.pad(torch.zeros(0, 4, device=device, dtype=dtype))
 
     def test_int_input_raises_by_default(self, device, dtype):
         with pytest.raises(ValueError):
