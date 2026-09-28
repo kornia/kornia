@@ -193,8 +193,8 @@ class TestKnownFailureOutcomes:
 def test_recorded_mps_float32_baseline() -> None:
     failures, path = load_known_failures("mps", "float32")
 
-    # The exact count changes with every fix that removes a manifest line; the contract is the file, not a number.
-    assert len(failures) > 0
+    # The exact count changes with every fix that removes a manifest line, down to none; the contract is the file,
+    # not a number.
     assert path.name == "mps_float32.txt"
     assert all(issubclass(exception, BaseException) for exception in failures.values())
     assert ISSUE_URL == "https://github.com/kornia/kornia/issues/4159"

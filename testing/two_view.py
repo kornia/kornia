@@ -67,3 +67,28 @@ def two_view_scene(device: torch.device, dtype: torch.dtype) -> Dict[str, torch.
         return x[..., :2] / x[..., 2:]
 
     return {"K1": K1, "K2": K2, "R": R, "t": t, "X": X, "P1": P1, "P2": P2, "x1": proj(P1, X), "x2": proj(P2, X)}
+
+
+def calibrated_two_view_scene(
+    n: int, noise: float, seed: int, dtype: torch.dtype = torch.float64
+) -> Dict[str, torch.Tensor]:
+    """Seeded two-view scene in normalized camera coordinates, for essential-matrix tests.
+
+    ``n`` points at depths around 4 in front of both cameras, a small rotation and a unit translation off every axis;
+    ``x2`` carries Gaussian noise of standard deviation ``noise`` (calibrated units). ``E = [t]_x R`` is scaled to unit
+    Frobenius norm, so that ``x2^T E x1 = 0`` for the noise-free projections.
+    """
+    generator = torch.Generator().manual_seed(seed)
+    X = torch.randn(n, 3, generator=generator, dtype=dtype) * torch.tensor([1.0, 1.0, 0.5], dtype=dtype)
+    X = X + torch.tensor([0.0, 0.0, 4.0], dtype=dtype)
+    R = axis_angle_to_rotation_matrix(torch.tensor([[0.05, -0.1, 0.03]], dtype=dtype))[0]
+    t = torch.nn.functional.normalize(torch.tensor([1.0, 0.2, 0.1], dtype=dtype), dim=0)
+    Y = X @ R.T + t
+    x1, x2 = X[:, :2] / X[:, 2:], Y[:, :2] / Y[:, 2:]
+    x2 = x2 + noise * torch.randn(n, 2, generator=generator, dtype=dtype)
+    zero = torch.zeros((), dtype=dtype)
+    tx = torch.stack(
+        [torch.stack([zero, -t[2], t[1]]), torch.stack([t[2], zero, -t[0]]), torch.stack([-t[1], t[0], zero])]
+    )
+    E = tx @ R
+    return {"x1": x1, "x2": x2, "E": E / E.norm(), "R": R, "t": t}
