@@ -29,14 +29,29 @@ __all__ = ["Scalar", "Vector2", "Vector3"]
 
 # TODO: implement more functionality to validate
 class Scalar(TensorWrapper):
-    """Wrap a tensor representing a scalar value."""
+    """Wrap a tensor of scalars of any shape, such as the per-vector result of :meth:`Vector3.dot`.
+
+    The tensor is wrapped without a copy, and the call-path type defect of :class:`Vector3` applies to it.
+    """
 
     def __init__(self, data: torch.Tensor) -> None:
         super().__init__(data)
 
 
 class Vector3(TensorWrapper):
-    """Wrap a tensor representing a 3D vector."""
+    r"""Wrap a tensor of 3D vectors, shape :math:`(*, 3)`.
+
+    Convention:
+        - The tensor is wrapped without a copy; any leading shape and dtype are accepted. :attr:`x`, :attr:`y` and
+          :attr:`z` are plain tensors of the leading shape :math:`(*)`, and :meth:`dot` and :meth:`squared_norm`
+          return a :class:`Scalar` of that shape.
+        - :meth:`random` draws vectors uniformly in the unit cube from torch's global generator, so every vector
+          lies in the first octant: it is not a random direction.
+        - Known defect: the returned type depends on the call path (``copy.deepcopy(v)`` and ``v.clone()`` are
+          plain tensors, while a torch function rewraps its result as a ``Vector3``, so ``torch.linalg.norm(v,
+          dim=-1)`` raises for most batch sizes), and a tuple index such as ``v[..., 0]`` raises
+          (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
+    """
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
@@ -64,12 +79,13 @@ class Vector3(TensorWrapper):
         return self.data[..., 2]
 
     def normalized(self) -> "Vector3":
-        """Return a copy with unit Euclidean length.
+        """Return a copy with each vector divided by its Euclidean norm.
 
         Returns:
-            New :class:`Vector3` with the same leading shape as this vector.
-            The last dimension is normalized with the L2 norm, so each
-            ``(x, y, z)`` vector has length one when the input norm is nonzero.
+            New :class:`Vector3` of the same shape. The norm is floored at ``1e-12``, so a shorter vector is scaled
+            by ``1e12`` instead of normalized (`#3952 <https://github.com/kornia/kornia/issues/3952>`_) and a zero
+            vector stays zero, except in ``float16``, where the floor underflows and a zero vector gives NaN
+            (`#5062 <https://github.com/kornia/kornia/issues/5062>`_).
         """
         return Vector3(F.normalize(self.data, p=2, dim=-1))
 
@@ -103,6 +119,8 @@ class Vector3(TensorWrapper):
         dtype: Optional[torch.dtype] = None,
     ) -> "Vector3":
         """Create random 3D vectors with optional leading dimensions.
+
+        See the Convention block on :class:`Vector3`.
 
         Args:
             shape: Optional leading dimensions before the final coordinate
@@ -174,7 +192,11 @@ class Vector3(TensorWrapper):
 
 
 class Vector2(TensorWrapper):
-    """Wrap a tensor representing a 2D vector."""
+    r"""Wrap a tensor of 2D vectors, shape :math:`(*, 2)`.
+
+    See the Convention block on :class:`Vector3`, which applies to ``(x, y)`` vectors; :meth:`random` fills the
+    unit square.
+    """
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
@@ -197,12 +219,10 @@ class Vector2(TensorWrapper):
         return self.data[..., 1]
 
     def normalized(self) -> "Vector2":
-        """Return a copy with unit Euclidean length.
+        """Return a copy with each vector divided by its Euclidean norm.
 
         Returns:
-            New :class:`Vector2` with the same leading shape as this vector.
-            The last dimension is normalized so each ``(x, y)`` vector has
-            length one when the input norm is nonzero.
+            New :class:`Vector2` of the same shape, with the norm floored as in :meth:`Vector3.normalized`.
         """
         return Vector2(F.normalize(self.data, p=2, dim=-1))
 
@@ -235,6 +255,8 @@ class Vector2(TensorWrapper):
         dtype: Optional[torch.dtype] = None,
     ) -> "Vector2":
         """Create random 2D vectors with optional leading dimensions.
+
+        See the Convention block on :class:`Vector3`.
 
         Args:
             shape: Optional leading dimensions before the final coordinate
