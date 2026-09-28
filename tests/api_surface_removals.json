@@ -1,0 +1,8 @@
+{
+  "kornia.contrib": [
+    "BoxMotTracker"
+  ],
+  "kornia.contrib.boxmot_tracker": [
+    "BoxMotTracker"
+  ]
+}

@@ -52,7 +52,9 @@ from .laf import (
     get_laf_scale,
     laf_from_center_scale_ori,
     laf_from_three_points,
+    laf_is_filled,
     laf_is_inside_image,
+    laf_is_valid,
     laf_to_boundary_points,
     laf_to_three_points,
     make_upright,
@@ -90,6 +92,7 @@ from .responses import (
     hessian_response,
 )
 from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
+from .sift import SIFTDescriptorFromPyramid
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
@@ -142,6 +145,7 @@ __all__ = [
     "PatchAffineShapeEstimator",
     "PatchDominantGradientOrientation",
     "SIFTDescriptor",
+    "SIFTDescriptorFromPyramid",
     "SIFTFeature",
     "SIFTFeatureScaleSpace",
     "SOLD2_detector",
@@ -165,7 +169,9 @@ __all__ = [
     "hessian_response",
     "laf_from_center_scale_ori",
     "laf_from_three_points",
+    "laf_is_filled",
     "laf_is_inside_image",
+    "laf_is_valid",
     "laf_to_boundary_points",
     "laf_to_three_points",
     "make_upright",

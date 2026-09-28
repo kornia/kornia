@@ -95,6 +95,8 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomPlanckianJitter.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     This is physics based color augmentation, that creates realistic
     variations in chromaticity, this can simulate the illumination
     changes in the scene.
@@ -103,7 +105,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
     Args:
         mode: 'blackbody' or 'CIED'.
-        select_from: choose a list of jitters to apply from. `blackbody` range [0-24], `CIED` range [0-22]
+        select_from: choose a list of jitters to apply from. `blackbody` range [0-24], `CIED` range [0-22].
+          The entries index the table like a Python sequence: one past the end raises at construction, and a
+          negative one counts from the end.
         same_on_batch: apply the same transformation across the batch.
         p: probability that the random erasing operation will be performed.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -113,8 +117,17 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    .. note::
-        Input torch.Tensor must be float and normalized into [0, 1].
+    Convention:
+        - the red and blue channels are scaled by the selected row of the illuminant table and the green
+          channel is not scaled. The result is then clamped at the upper end only, so negative values stay
+          negative while any value above ``1``, green included, is cut back to ``1``.
+        - ``mode`` selects the illuminant lookup table, held in the persistent buffer ``pl``, and
+          ``select_from`` narrows that table to the listed rows. The input must have three channels.
+
+    .. warning::
+        ``pl``'s shape depends on ``mode``, so a ``state_dict`` saved by an instance built with one mode
+        does not load into an instance built with the other. Tracked in
+        `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
 
     Examples:
         To apply planckian jitter based on mode
@@ -191,10 +204,10 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        list_idx = params["idx"].tolist()
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
-        self.pl = self.pl.to(device=input.device)
-        coeffs = self.pl[list_idx]
+        # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. Cast the
+        # buffer to the input so both device and dtype follow the input for the channel-wise multiplication.
+        coeffs = self.pl.to(input)[params["idx"].long()]
 
         r_w = coeffs[:, 0][..., None, None]
         b_w = coeffs[:, 1][..., None, None]

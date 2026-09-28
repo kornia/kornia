@@ -15,10 +15,14 @@
 # limitations under the License.
 #
 
+import math
+import warnings
+
 import pytest
 import torch
 
-from kornia.geometry.liegroup import So2
+from kornia.geometry.conversions import angle_to_rotation_matrix
+from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
 from testing.base import BaseTester
@@ -35,7 +39,8 @@ class TestSo2(BaseTester):
         z = torch.randn(2, 1, dtype=cdtype, device=device)
         s = So2(z)
         assert isinstance(s, So2)
-        self.assert_close(s.z.data, z.data)
+        assert s.z.shape == (2,)  # a (B, 1) z is read as (B,) (#4932)
+        self.assert_close(s.z.data, z.data[:, 0])
 
     @pytest.mark.parametrize("input_shape", [(1,), (2,), (5,), ()])
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
@@ -110,7 +115,7 @@ class TestSo2(BaseTester):
         assert isinstance(s2, So2)
         self.assert_close(s1.z, s2.z)
         self.assert_close(So2(z1).z, z1)
-        self.assert_close(So2(z2).z, z2)
+        self.assert_close(So2(z2).z, z2.flatten())  # (B, 1) is squeezed to (B,); (1,) for batch_size None stays
         self.assert_close(So2(z3).z, z3)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
@@ -160,8 +165,8 @@ class TestSo2(BaseTester):
     def test_exp(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         s = So2.exp(theta)
-        self.assert_close(s.z.real, theta.cos())
-        self.assert_close(s.z.imag, theta.sin())
+        self.assert_close(s.z.real, theta.flatten().cos())
+        self.assert_close(s.z.imag, theta.flatten().sin())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
@@ -173,27 +178,19 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
-        self.assert_close(So2.exp(theta).log(), theta)
+        self.assert_close(So2.exp(theta).log(), theta.flatten())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_hat(self, device, dtype, batch_size):
+    def test_wart_so2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
+        # https://github.com/kornia/kornia/issues/4929: hat is symmetric rather than the so(2) generator and vee
+        # reads its upper-right entry. Keep both layouts together because vee(hat(theta)) conceals the defect.
         theta = self._make_rand_data(device, dtype, (batch_size,))
         m = So2.hat(theta)
         o = torch.ones((2, 1), device=device, dtype=dtype)
         self.assert_close((m @ o).reshape(-1, 2, 1), theta.reshape(-1, 1, 1).repeat(1, 2, 1))
-
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_vee(self, device, dtype, batch_size):
         omega = self._make_rand_data(device, dtype, (batch_size, 2, 2))
-        theta = So2.vee(omega)
-        self.assert_close(omega[..., 0, 1], theta)
-
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_hat_vee(self, device, dtype, batch_size):
-        a = self._make_rand_data(device, dtype, (batch_size,))
-        omega = So2.hat(a)
-        b = So2.vee(omega)
-        self.assert_close(b, a)
+        self.assert_close(So2.vee(omega), omega[..., 0, 1])
+        self.assert_close(So2.vee(m), theta)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_matrix(self, device, dtype, batch_size):
@@ -235,7 +232,162 @@ class TestSo2(BaseTester):
         self.assert_close(s_in_s.z.real, i.z.real)
         self.assert_close(s_in_s.z.imag, i.z.imag)
 
+    def test_random_is_a_uniform_unit_rotation_4930(self, device, dtype):
+        # #4930: random drew independent uniform real and imaginary parts on [0, 1), so |z| ranged over (0, sqrt 2),
+        # matrix() was a rotation scaled by |z| with det = |z|**2 down to 3.5e-6, and every angle was in [0, pi / 2].
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("torch.complex has no bfloat16 overload and linalg.det has no float16 CPU kernel")
+        torch.manual_seed(0)
+        s = So2.random(1000, device=device, dtype=dtype)
+        self.assert_close(s.z.abs(), torch.ones(1000, device=device, dtype=dtype))
+        self.assert_close(torch.linalg.det(s.matrix()), torch.ones(1000, device=device, dtype=dtype))
+        # a uniform angle on [-pi, pi) puts about 250 of 1000 draws in each quadrant (standard deviation 14)
+        theta = s.log()
+        counts = [
+            int(((lo <= theta) & (theta < lo + torch.pi / 2)).sum())
+            for lo in (-torch.pi, -torch.pi / 2, 0.0, torch.pi / 2)
+        ]
+        assert min(counts) > 150, counts
+        # the draws reach both ends of the range: P(none of 1000 within 0.05 of -pi, or of pi) = 3e-4 each
+        assert theta.min() < -torch.pi + 0.05 and theta.max() > torch.pi - 0.05, (theta.min(), theta.max())
+        self.assert_close(So2.random(device=device, dtype=dtype).z.abs(), torch.tensor(1.0, device=device, dtype=dtype))
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_adjoint(self, device, dtype, batch_size):
         s = So2.identity(batch_size, device=device, dtype=dtype)
         self.assert_close(s.matrix(), s.adjoint())
+
+    def test_user_leaf_receives_the_gradient(self, device, dtype):
+        # A complex leaf that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it
+        # (#4943). d/dz of sum(R @ (1, 0)) = d(re + im)/dz.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        re = torch.tensor([0.6], device=device, dtype=dtype)
+        z = torch.complex(re, re + 0.2).requires_grad_(True)
+        s = So2(z)
+        (s * torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)).sum().backward()
+        assert z.grad is not None
+        assert "_z" in s.state_dict()
+
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        theta = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
+        s = So2.exp(theta)
+        assert s.z.grad_fn is not None
+        assert list(s.state_dict()) == ["_z"] == list(So2.identity(2, device, dtype).state_dict())
+        assert dict(s.named_buffers()).keys() == {"_z"}  # registered, so ``.to(device)`` reaches it
+        restored = So2.identity(2, device, dtype)
+        restored.load_state_dict(s.state_dict())
+        self.assert_close(restored.matrix(), s.matrix().detach())
+        s.to(device).matrix().sum().backward()
+        assert theta.grad is not None
+
+    def test_convention_so2_positive_angle_rotates_x_toward_y(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # A positive angle turns the x axis toward the y axis, counter-clockwise in a y-up frame, and matrix() is
+        # [[cos, -sin], [sin, cos]]. Reference: math.cos(0.3), math.sin(0.3).
+        c, s = 0.955336489125606, 0.29552020666133955
+        g = So2.exp(torch.tensor(0.3, device=device, dtype=dtype))
+        axes = torch.tensor([[1.0, 0.0], [0.0, 1.0]], device=device, dtype=dtype)
+        rotated = g * axes
+        assert rotated[0, 1] > 0.25  # x moved toward +y
+        self.assert_close(rotated, torch.tensor([[c, s], [-s, c]], device=device, dtype=dtype))
+        self.assert_close(g.matrix(), torch.tensor([[c, -s], [s, c]], device=device, dtype=dtype))
+
+    def test_convention_so2_is_transpose_of_angle_to_rotation_matrix(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # kornia.geometry.conversions.angle_to_rotation_matrix takes degrees and returns [[cos, sin], [-sin, cos]],
+        # the transpose of So2's matrix: the same angle turns the other way.
+        theta = torch.tensor([0.3, -1.2], device=device, dtype=dtype)
+        m = So2.exp(theta).matrix()
+        assert (m - m.mT).abs().max() > 0.5  # a non-symmetric fixture, so a transpose is visible
+        self.assert_close(m, angle_to_rotation_matrix(torch.rad2deg(theta)).mT)
+
+    def test_convention_so2_log_is_principal(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # log returns the angle in [-pi, pi], so exp(3.5) logs to 3.5 - 2 pi. Reference: 3.5 - 2 * math.pi.
+        theta = torch.tensor([3.5, -3.5, 0.3], device=device, dtype=dtype)
+        g = So2.exp(theta)
+        expected = torch.tensor([3.5 - 2 * math.pi, 2 * math.pi - 3.5, 0.3], device=device, dtype=dtype)
+        self.assert_close(g.log(), expected)
+        self.assert_close(So2.exp(g.log()).matrix(), g.matrix())
+
+    def test_convention_so2_from_matrix_rejects_a_reflection(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # from_matrix checks m00 == m11 and m01 == -m10. The first reflection fails only the diagonal check, the
+        # axis swap only the off-diagonal one.
+        for reflection in ([[1.0, 0.0], [0.0, -1.0]], [[0.0, 1.0], [1.0, 0.0]]):
+            reflection = torch.tensor(reflection, device=device, dtype=dtype)
+            assert torch.linalg.det(reflection.float()) < 0
+            with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
+                So2.from_matrix(reflection)
+        rotation = So2.exp(torch.tensor(0.3, device=device, dtype=dtype)).matrix().detach()
+        self.assert_close(So2.from_matrix(rotation).log(), torch.tensor(0.3, device=device, dtype=dtype))
+
+    def test_so2_column_angle_is_squeezed_4932(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        theta = torch.tensor([0.3, 0.5, 0.7], device=device, dtype=dtype)
+        p = torch.tensor([[1.0, 0.0], [0.0, 1.0], [2.0, 3.0]], device=device, dtype=dtype)
+        paired = So2.exp(theta) * p  # the (B,) layout rotates point i by angle i
+        assert paired.shape == (3, 2)
+        # https://github.com/kornia/kornia/issues/4932 (fixed): a (B, 1) z or angle used to keep its singleton axis, so
+        # matrix() and hat() returned (B, 1, 2, 2), vee() rejected the latter and `*` broadcast z against the (B,)
+        # point coordinates into (B, B, 2), every rotation applied to every point. It is read as (B,).
+        column = theta[:, None]
+        col = So2.exp(column)
+        assert col.z.shape == (3,)
+        self.assert_close(col.z, So2.exp(theta).z)
+        assert So2(col.z[:, None]).z.shape == (3,)
+        assert col.matrix().shape == (3, 2, 2)
+        column_hat = So2.hat(column)
+        assert column_hat.shape == (3, 2, 2)
+        self.assert_close(So2.vee(column_hat), theta)
+        out = col * p
+        assert out.shape == (3, 2)
+        self.assert_close(out, paired)
+        moved = Se2(col, torch.zeros(3, 2, device=device, dtype=dtype)) * p  # used to raise on the (3, 1) z
+        self.assert_close(moved, paired)
+        # (1, 1) becomes (1,), while (1,) and () are unchanged
+        assert So2.exp(theta[:1, None]).z.shape == (1,)
+        assert So2.exp(theta[:1]).z.shape == (1,) and So2.exp(theta[0]).z.shape == ()
+        # the (B,) reading is a view, so the gradient reaches the (B, 1) angle
+        column = column.clone().requires_grad_()
+        (So2.exp(column) * p).sum().backward()
+        assert column.grad.shape == (3, 1) and torch.isfinite(column.grad).all()
+
+    def test_so2_column_parameter_stays_the_module_parameter_4932(self, device, dtype):
+        # Reading a (B, 1) z as (B,) must not take a caller's nn.Parameter away from the module: it stays its own
+        # parameter under the same state_dict key and shape, so an optimizer over So2.parameters() trains it.
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        theta = torch.tensor([0.3, 0.5, 0.7], device=device, dtype=dtype)
+        param = torch.nn.Parameter(torch.complex(theta.cos(), theta.sin())[:, None])
+        s = So2(param)
+        assert s.z.shape == (3,)
+        assert [(name, t is param) for name, t in s.named_parameters()] == [("_z", True)]
+        assert s.state_dict()["_z"].shape == (3, 1)
+        assert s[1].z.shape == ()  # indexing reads the (B,) view, as for a (B,) z
+        before = torch.view_as_real(param.detach()).clone()  # torch.equal has no complex float16 kernel
+        s.log().sum().backward()
+        torch.optim.SGD(s.parameters(), lr=0.1).step()
+        assert not torch.equal(torch.view_as_real(param.detach()), before)
+
+    def test_wart_so2_real_dtype_cast_drops_the_imaginary_part_4923(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        theta = torch.tensor([0.3, -1.2], device=device, dtype=dtype)
+        g = So2.exp(theta)
+        assert g.z.is_complex()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # torch warns, once per process, that the cast discards the imaginary part
+            cast = g.to(torch.float32)
+        # https://github.com/kornia/kornia/issues/4923: nn.Module.to(float32) casts the complex state z to a real
+        # tensor, which keeps cos(theta) and drops sin(theta), so the rotation is lost and matrix() raises.
+        assert not cast.z.is_complex()
+        self.assert_close(cast.z, theta.cos().float())
+        with pytest.raises(RuntimeError):
+            cast.matrix()

@@ -83,20 +83,15 @@ def get_motion_kernel2d(
     KORNIA_CHECK_SHAPE(direction, ["B"])
     KORNIA_CHECK(
         direction.size(0) == angle.size(0),
-        f"direction and angle must have the same length. Got {direction} and {angle}.",
+        f"direction and angle must have the same length. Got {direction.size(0)} and {angle.size(0)}.",
     )
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
-    # kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
-
-    # Element-wise linspace
-    # kernel[:, kernel_size // 2, :] = torch.stack(
-    #     [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
-    # Alternatively
-    # m = ((1 - 2 * direction)[:, None].repeat(1, kernel_size) / (kernel_size - 1))
-    # kernel[:, kernel_size // 2, :] = direction[:, None].repeat(1, kernel_size) + m * torch.arange(0, kernel_size)
-    k = torch.stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
+    # Linearly interpolate the directional weights along the central row.
+    step = (1 - 2 * direction) / (kernel_size - 1)
+    positions = torch.arange(kernel_size, device=direction.device, dtype=direction.dtype)
+    k = direction[:, None] + step[:, None] * positions
     kernel = F.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
@@ -106,8 +101,7 @@ def get_motion_kernel2d(
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate(kernel, angle, mode=mode, align_corners=True)
     kernel = kernel[:, 0]
-    kernel = kernel / kernel.sum(dim=(1, 2), keepdim=True)
-    return kernel
+    return kernel / kernel.sum(dim=(1, 2), keepdim=True)
 
 
 def get_motion_kernel3d(
@@ -207,6 +201,4 @@ def get_motion_kernel3d(
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode=mode, align_corners=True)
     kernel = kernel[:, 0]
-    kernel = kernel / kernel.sum(dim=(1, 2, 3), keepdim=True)
-
-    return kernel
+    return kernel / kernel.sum(dim=(1, 2, 3), keepdim=True)

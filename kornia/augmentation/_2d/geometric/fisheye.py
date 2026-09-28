@@ -30,6 +30,15 @@ class RandomFisheye(AugmentationBase2D):
 
     .. image:: _static/img/RandomFisheye.png
 
+    Convention:
+        Coordinates are normalized to ``[-1, 1]`` with corner pixel centres at the endpoints.
+        At output coordinate ``(x, y)``, let ``r`` be its distance from the sampled centre.
+        The input sampling coordinate is ``(x * (1 + r**gamma), y * (1 + r**gamma))``:
+        the centre changes the distance, but scaling is about the coordinate origin.
+        Sampling is bilinear with zero padding and ``align_corners=True``; these settings are fixed.
+        There is no ``transform_matrix`` or ``inverse``; spatial labels in containers have limitations
+        (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+
     Args:
         center_x: Ranges to sample respect to x-coordinate center with shape (2,).
         center_y: Ranges to sample respect to y-coordinate center with shape (2,).

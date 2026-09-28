@@ -1,0 +1,1 @@
+`RandomChannelDropout` accepts an `int` `fill_value` such as `0` or `1`, as `RandomErasing` does for `value`, instead of raising `TypeCheckError`. The value is stored as a float buffer, so the output is identical to passing the float.

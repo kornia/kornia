@@ -247,9 +247,14 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
         if model_name not in URLs:
             raise ValueError(f"No pretrained model for '{model_name}'. Please select from {list(URLs.keys())}.")
 
-        state_dict = load_state_dict_from_url(
-            URLs[model_name], map_location="cuda:0" if torch.cuda.is_available() else "cpu"
-        )
+        # Load weights on CPU and let the caller move the returned model to its
+        # target device with .to(device). Loading straight onto an accelerator is
+        # a wasted round-trip anyway: the model is built on CPU and load_state_dict
+        # copies into existing CPU parameters, so the map_location device is
+        # discarded. Hard-coding "cuda:0" (as before) also forces the state dict
+        # onto CUDA even on machines that expose a different accelerator (e.g.
+        # Ascend NPU or Intel XPU) whose torch build reports no CUDA.
+        state_dict = load_state_dict_from_url(URLs[model_name], map_location="cpu")
 
         def map_name(old_name: str) -> str:
             new_name = old_name
@@ -263,9 +268,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             # Backbone renaming
             new_name = re.sub(".branch2b.", ".convs.branch2b.", new_name)
             new_name = re.sub(".branch2a.", ".convs.branch2a.", new_name)
-            new_name = re.sub(".branch2c.", ".convs.branch2c.", new_name)
-
-            return new_name
+            return re.sub(".branch2c.", ".convs.branch2c.", new_name)
 
         def _state_dict_proc(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
             state_dict = state_dict["ema"]["module"]  # type:ignore
@@ -292,8 +295,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             num_classes: number of classes to detect.
 
         """
-        model = RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
-        return model
+        return RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
 
     def to_onnx(
         self,

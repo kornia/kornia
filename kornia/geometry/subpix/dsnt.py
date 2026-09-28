@@ -28,6 +28,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_compiling
 from kornia.geometry.grid import create_meshgrid
 
 
@@ -36,7 +37,21 @@ def _validate_batched_image_tensor_input(tensor: torch.Tensor) -> None:
     KORNIA_CHECK_SHAPE(tensor, ["B", "C", "H", "W"])
 
 
-def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] = None) -> torch.Tensor:
+def _check_positive_temperature(temperature: torch.Tensor | float) -> None:
+    """Raise ``ValueError`` unless ``temperature`` is positive; ``NaN`` is rejected as well.
+
+    A tensor is read only outside graph capture: under ``torch.compile`` or export, reading its value would be a
+    data-dependent branch, so a tensor temperature is not checked there.
+    """
+    if isinstance(temperature, torch.Tensor):
+        if is_compiling() or bool((temperature > 0).all()):
+            return
+    elif temperature > 0:
+        return
+    raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+
+
+def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None) -> torch.Tensor:
     r"""Apply the Softmax function over features in each image channel.
 
     Note that this function behaves differently to :py:class:`torch.nn.Softmax2d`, which
@@ -44,7 +59,8 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
 
     Args:
         input: the input torch.Tensor with shape :math:`(B, N, H, W)`.
-        temperature: factor to apply to input, adjusting the "smoothness" of the output distribution.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
 
     Returns:
        a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
@@ -64,11 +80,13 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
 
     batch_size, channels, height, width = input.shape
     if temperature is None:
-        temperature = torch.tensor(1.0)
-    temperature = temperature.to(device=input.device, dtype=input.dtype)
-    x = input.view(batch_size, channels, -1)
+        temperature = 1.0
+    _check_positive_temperature(temperature)
+    if isinstance(temperature, torch.Tensor):
+        temperature = temperature.to(device=input.device, dtype=input.dtype)
+    x = input.reshape(batch_size, channels, -1)
 
-    x_soft = F.softmax(x * temperature, dim=-1)
+    x_soft = F.softmax(x / temperature, dim=-1)
 
     return x_soft.view(batch_size, channels, height, width)
 
@@ -107,7 +125,7 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     pos_x = grid[..., 0].reshape(-1)
     pos_y = grid[..., 1].reshape(-1)
 
-    input_flat = input.view(batch_size, channels, -1)
+    input_flat = input.reshape(batch_size, channels, -1)
 
     # Compute the expectation of the coordinates.
     expected_y = torch.sum(pos_y * input_flat, -1, keepdim=True)
@@ -122,6 +140,9 @@ def render_gaussian2d(
     mean: torch.Tensor, std: torch.Tensor, size: tuple[int, int], normalized_coordinates: bool = True
 ) -> torch.Tensor:
     r"""Render the PDF of a 2D Gaussian distribution.
+
+    Each axis is normalised over the grid, so the heatmap sums to one. A mean outside the grid renders the part of
+    the Gaussian that falls on the grid, rescaled to sum to one; far outside, that mass sits on the nearest border.
 
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.
@@ -142,13 +163,16 @@ def render_gaussian2d(
     dtype = mean.dtype
     device = mean.device
 
-    # Create coordinates vectors.
+    # Build the coordinate vectors at float32 for half-precision inputs: float16 only represents
+    # integers exactly up to 2048 and bfloat16 up to 256, so a linspace built at `dtype` collapses
+    # distinct pixel coordinates on large grids. Other dtypes keep their own precision.
+    compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(-1, 1, height, device=device, dtype=dtype)
+        xs = torch.linspace(-1, 1, width, device=device, dtype=compute_dtype)
+        ys = torch.linspace(-1, 1, height, device=device, dtype=compute_dtype)
     else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+        xs = torch.linspace(0, width - 1, width, device=device, dtype=compute_dtype)
+        ys = torch.linspace(0, height - 1, height, device=device, dtype=compute_dtype)
 
     mu_x = mean[..., 0].unsqueeze(-1)
     mu_y = mean[..., 1].unsqueeze(-1)
@@ -167,12 +191,11 @@ def render_gaussian2d(
     k_x = -0.5 * torch.reciprocal(sigma_x**2)
     k_y = -0.5 * torch.reciprocal(sigma_y**2)
 
-    # Assemble the 2D Gaussian.
-    gauss_x = torch.exp(dist_x_sq * k_x)
-    gauss_y = torch.exp(dist_y_sq * k_y)
+    # Assemble each axis normalised to sum to one: softmax(dists * ks) = exp(dists * ks) / sum(exp(dists * ks)).
+    # Softmax subtracts the largest exponent first, so the normaliser is at least 1: no bias term is needed, a mean
+    # far off the grid cannot underflow the sum to 0, and the gradient stays finite at any distance.
+    gauss_x = torch.softmax(dist_x_sq * k_x, dim=-1)
+    gauss_y = torch.softmax(dist_y_sq * k_y, dim=-1)
 
-    # Rescale so that values sum to one.
-    gauss_x = gauss_x / (gauss_x.sum(dim=-1, keepdim=True) + 1e-8)
-    gauss_y = gauss_y / (gauss_y.sum(dim=-1, keepdim=True) + 1e-8)
-
-    return gauss_y.unsqueeze(-1) * gauss_x.unsqueeze(-2)
+    # Cast the 1-D vectors, not the (*, H, W) outer product, to avoid a full-size float32 intermediate.
+    return gauss_y.to(dtype).unsqueeze(-1) * gauss_x.to(dtype).unsqueeze(-2)

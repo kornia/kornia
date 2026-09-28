@@ -24,7 +24,7 @@ import kornia
 from testing.base import BaseTester
 
 
-@pytest.fixture()
+@pytest.fixture
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if "cuda" in device.type and dtype == torch.float16:
@@ -32,7 +32,7 @@ def atol(device, dtype):
     return 1.0e-4
 
 
-@pytest.fixture()
+@pytest.fixture
 def rtol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if "cuda" in device.type and dtype == torch.float16:
@@ -202,11 +202,10 @@ class TestAngleOfRotations(BaseTester):
         return rot_m, axis
 
     @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
-    def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol):
+    def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol, test_rng_seed):
         # Random angle in [-pi..pi]
-        angle = torch.tensor(
-            (np.random.default_rng().random(size=(2, 1)) * 2.0 * np.pi - np.pi), device=device, dtype=dtype
-        )
+        angle_values = np.random.default_rng(test_rng_seed).random(size=(2, 1)) * 2.0 * np.pi - np.pi
+        angle = torch.tensor(angle_values, device=device, dtype=dtype)
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype
         )

@@ -1,0 +1,1 @@
+`axis_angle_to_rotation_matrix` returns finite gradients near the identity in `float16`; the discarded Rodrigues branch no longer differentiates `sqrt(0)` behind a `1e-12` floor that underflows to zero.

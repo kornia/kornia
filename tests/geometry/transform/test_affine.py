@@ -84,6 +84,63 @@ class TestResize(BaseTester):
         out = kornia.geometry.transform.resize(inp, (3, 1), align_corners=False)
         assert out.shape == (1, 2, 3, 2, 1, 3, 3, 1)
 
+    def test_zero_output_size(self, device, dtype):
+        # A zero output side gives an empty image, matching warp_affine,
+        # warp_perspective and center_crop on the same argument.
+        inp = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+
+        assert kornia.geometry.transform.resize(inp, (0, 4)).shape == (1, 3, 0, 4)
+        assert kornia.geometry.transform.resize(inp, (4, 0)).shape == (1, 3, 4, 0)
+        assert kornia.geometry.transform.resize(inp, (0, 0)).shape == (1, 3, 0, 0)
+        assert kornia.geometry.transform.resize(inp, 0).shape == (1, 3, 0, 0)
+        assert kornia.geometry.transform.Resize((0, 4))(inp).shape == (1, 3, 0, 4)
+        assert kornia.geometry.transform.resize(inp, (0, 4), antialias=True).shape == (1, 3, 0, 4)
+
+        eye = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        assert kornia.geometry.transform.warp_affine(inp, eye, (0, 4)).shape == (1, 3, 0, 4)
+
+        # The empty result stays attached to the graph, as it does for the warping ops:
+        # _empty_warp_output_2d builds a connected tensor precisely so a batch that
+        # degenerates to a zero-sized output still contributes a zero gradient.
+        grad_inp = torch.rand(1, 3, 4, 4, device=device, dtype=dtype, requires_grad=True)
+        empty = kornia.geometry.transform.resize(grad_inp, (0, 4))
+        assert empty.requires_grad
+        assert empty.dtype == grad_inp.dtype
+        empty.sum().backward()
+        assert grad_inp.grad is not None
+
+        # 2D
+        inp_2d = torch.rand(4, 4, device=device, dtype=dtype)
+        assert kornia.geometry.transform.resize(inp_2d, (0, 4)).shape == (0, 4)
+
+        # 3D
+        inp_3d = torch.rand(3, 4, 4, device=device, dtype=dtype)
+        assert kornia.geometry.transform.resize(inp_3d, (0, 4)).shape == (3, 0, 4)
+
+        # arbitrary dim
+        inp_nd = torch.rand(2, 1, 3, 4, 4, device=device, dtype=dtype)
+        assert kornia.geometry.transform.resize(inp_nd, (0, 4)).shape == (2, 1, 3, 0, 4)
+
+    def test_zero_input_size(self, device, dtype):
+        # A degenerate input is rejected with the message the warping ops already
+        # use, instead of a bare ZeroDivisionError out of the aspect-ratio division.
+        inp = torch.rand(1, 3, 0, 4, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="Input image size must be positive"):
+            kornia.geometry.transform.resize(inp, (2, 2))
+
+        with pytest.raises(ValueError, match="Input image size must be positive"):
+            kornia.geometry.transform.resize(inp, 2)
+
+        # Empty in and empty out is not undefined, so it comes back empty rather than
+        # raising -- the same answer warp_affine and center_crop give.
+        assert kornia.geometry.transform.resize(inp, (0, 4)).shape == (1, 3, 0, 4)
+        assert kornia.geometry.transform.resize(inp, (0, 2)).shape == (1, 3, 0, 2)
+
+        eye = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        assert kornia.geometry.transform.warp_affine(inp, eye, (0, 4)).shape == (1, 3, 0, 4)
+        assert kornia.geometry.transform.center_crop(inp, (0, 4)).shape == (1, 3, 0, 4)
+
     def test_downsizeAA(self, device, dtype):
         inp = torch.rand(1, 3, 10, 8, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize(inp, (5, 3), align_corners=False, antialias=True)
@@ -256,6 +313,15 @@ class TestRescale(BaseTester):
         input = torch.rand(1, 3, 9, 8, device=device, dtype=dtype)
         output = kornia.geometry.transform.rescale(input, (1.0 / 3.0, 1.0 / 2.0), align_corners=False)
         assert output.shape == (1, 3, 3, 4)
+
+    def test_zero_factor(self, device, dtype):
+        # A zero factor asks for a zero-sized output, which gives an empty image
+        # rather than a ZeroDivisionError.
+        inp = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+
+        assert kornia.geometry.transform.rescale(inp, 0.0).shape == (1, 3, 0, 0)
+        assert kornia.geometry.transform.rescale(inp, (0.0, 1.0)).shape == (1, 3, 0, 4)
+        assert kornia.geometry.transform.Rescale(0.0)(inp).shape == (1, 3, 0, 0)
 
     def test_downscale_values(self, device, dtype):
         inp_x = torch.arange(20, device=device, dtype=dtype) / 20.0
@@ -538,8 +604,17 @@ class TestShear(BaseTester):
             device=device,
             dtype=dtype,
         )
+        # x-shear by 0.5 about the origin: dst[x, y] samples src[x - 0.5 * y, y], so row y=1
+        # samples x=-0.5 (half outside, zero padding -> 0.5), row y=2 samples x=-1 (fully
+        # outside -> 0), row y=3 samples x=-1.5 and x=-0.5 -> 0, 0.5.
+        # Snippet used to generate expected (identical to the call under test):
+        #   inp = torch.ones(1, 4, 4); shear = torch.tensor([[0.5, 0.0]])
+        #   expected = kornia.geometry.transform.Shear(shear, align_corners=False)(inp)
+        # Pre-#3945 literal from the same snippet, when warp_affine(align_corners=False) still
+        # normalized against a corner-aligned grid (the 0.75 / 0.25 are that sub-pixel artifact):
+        #   [[[0.75, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0], [0.0, 0.75, 1.0, 1.0], [0.0, 0.25, 1.0, 1.0]]]
         expected = torch.tensor(
-            [[[0.75, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0], [0.0, 0.75, 1.0, 1.0], [0.0, 0.25, 1.0, 1.0]]],
+            [[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]],
             device=device,
             dtype=dtype,
         )
@@ -556,8 +631,11 @@ class TestShear(BaseTester):
             device=device,
             dtype=dtype,
         )
+        # y-shear by 0.5 about the origin: the transpose of the test_shear_x case above.
+        # Pre-#3945 literal (shear = [[0.0, 0.5]], otherwise the test_shear_x snippet):
+        #   [[[0.75, 0.25, 0.0, 0.0], [1.0, 1.0, 0.75, 0.25], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]]
         expected = torch.tensor(
-            [[[0.75, 0.25, 0.0, 0.0], [1.0, 1.0, 0.75, 0.25], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
+            [[[1.0, 0.5, 0.0, 0.0], [1.0, 1.0, 1.0, 0.5], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
             device=device,
             dtype=dtype,
         )
@@ -575,10 +653,12 @@ class TestShear(BaseTester):
             dtype=dtype,
         ).repeat(2, 1, 1, 1)
 
+        # the test_shear_x and test_shear_y expectations, stacked; the pre-#3945 literals
+        # recorded in those two tests stack the same way
         expected = torch.tensor(
             [
-                [[[0.75, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0], [0.0, 0.75, 1.0, 1.0], [0.0, 0.25, 1.0, 1.0]]],
-                [[[0.75, 0.25, 0.0, 0.0], [1.0, 1.0, 0.75, 0.25], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
+                [[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]],
+                [[[1.0, 0.5, 0.0, 0.0], [1.0, 1.0, 1.0, 0.5], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
             ],
             device=device,
             dtype=dtype,
@@ -597,8 +677,9 @@ class TestShear(BaseTester):
             dtype=dtype,
         ).repeat(2, 1, 1, 1)
 
+        # the test_shear_x expectation broadcast over the batch (pre-#3945 literal recorded there)
         expected = torch.tensor(
-            [[[[0.75, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0], [0.0, 0.75, 1.0, 1.0], [0.0, 0.25, 1.0, 1.0]]]],
+            [[[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]]],
             device=device,
             dtype=dtype,
         ).repeat(2, 1, 1, 1)

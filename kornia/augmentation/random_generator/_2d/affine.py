@@ -26,7 +26,9 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
     _range_bound,
+    _shear_bound,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["AffineGenerator"]
@@ -82,8 +84,7 @@ class AffineGenerator(RandomGeneratorBase):
         self.shear = shear
 
     def __repr__(self) -> str:
-        repr = f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
-        return repr
+        return f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         _degrees = _range_bound(self.degrees, "degrees", 0, (-360, 360)).to(device=device, dtype=dtype)
@@ -111,20 +112,7 @@ class AffineGenerator(RandomGeneratorBase):
                 raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {self.scale}")
         _shear: Optional[torch.Tensor] = None
         if self.shear is not None:
-            shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
-            if shear.shape == torch.Size([2, 2]):
-                _shear = shear
-            else:
-                _shear = torch.stack(
-                    [
-                        _range_bound(shear if shear.dim() == 0 else shear[:2], "shear-x", 0, (-360, 360)),
-                        (
-                            torch.tensor([0, 0], device=device, dtype=dtype)
-                            if shear.dim() == 0 or len(shear) == 2
-                            else _range_bound(shear[2:], "shear-y", 0, (-360, 360))
-                        ),
-                    ]
-                )
+            _shear = _shear_bound(self.shear, device, dtype)
 
         translate_x_sampler: Optional[UniformDistribution] = None
         translate_y_sampler: Optional[UniformDistribution] = None
@@ -191,7 +179,8 @@ class AffineGenerator(RandomGeneratorBase):
         else:
             translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
 
-        center: torch.Tensor = torch.tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
+        center = _constant_tensor([width, height], device=_device, dtype=_dtype).view(1, 2)
+        center = center / 2.0 - 0.5
         center = center.expand(batch_size, -1)
 
         if self.shear_x_sampler is not None and self.shear_y_sampler is not None:
@@ -200,8 +189,8 @@ class AffineGenerator(RandomGeneratorBase):
             sx = sx.to(device=_device, dtype=_dtype)
             sy = sy.to(device=_device, dtype=_dtype)
         else:
-            sx = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
-            sy = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
+            sx = torch.zeros(batch_size, device=_device, dtype=_dtype)
+            sy = torch.zeros(batch_size, device=_device, dtype=_dtype)
 
         return {
             "translations": translations,

@@ -20,7 +20,7 @@ import torch
 
 from kornia.morphology import closing
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, supports_replicate_padding
 from testing.parametrized_tester import parametrized_test
 
 
@@ -91,8 +91,6 @@ class TestClosing(BaseTester):
         assert_close(
             closing(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
             expected,
-            atol=1e-3,
-            rtol=1e-3,
         )
 
     def test_exception(self, device, dtype):
@@ -113,7 +111,6 @@ class TestClosing(BaseTester):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert closing(tensor, test)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = closing
         op_script = torch.jit.script(op)
@@ -125,3 +122,71 @@ class TestClosing(BaseTester):
         expected = op(tensor, kernel)
 
         assert_close(actual, expected)
+
+    def test_closing_custom_origin_is_extensive_and_idempotent(self, device, dtype):
+        # closing = erosion(dilation(x)) must stay extensive (closing(x) >= x) and idempotent
+        # (closing(closing(x)) == closing(x)) under a custom origin too, not just the default
+        # centred one. `dilation`'s origin bug broke both for origin=[0, 0]. Mirrors
+        # TestOpening.test_opening_custom_origin_is_anti_extensive_and_idempotent. The `>=` on
+        # the rand fixture never needs a tolerance (selection only, no interpolation), and
+        # repeating `closing` on its own (already-closed) output is likewise exact, so
+        # `torch.equal` is fine.
+        # Generated with:
+        #   torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0))
+        # A local `torch.Generator` avoids touching the process-global (and any device) RNG state.
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        closed = closing(tensor, kernel, origin=[0, 0])
+        assert (closed >= tensor).all()
+        assert torch.equal(closing(closed, kernel, origin=[0, 0]), closed)
+
+    def test_convention_closing_is_a_morphological_closing(self, device, dtype):
+        # `closing` is `erosion(dilation(x))` with the same kernel in both halves; as only `dilation`
+        # reflects, it is extensive and idempotent for an asymmetric kernel too, and leaves a block that is
+        # already closed untouched.
+        # Generated with scipy 1.17.1 / scikit-image 0.26.0 / opencv-python-headless 5.0.0 / numpy 2.0.0:
+        #   blk = np.zeros((9, 11), np.float32); blk[3:6, 3:7] = 1.0; A = np.array([[0, 1, 1]], bool)
+        #   ndi.grey_closing(blk, footprint=A, mode="constant", cval=np.inf) == blk  -> True
+        #   sm.closing(blk, A, mode="ignore") == blk                                 -> True
+        #   cv2.morphologyEx(blk, cv2.MORPH_CLOSE, A.astype(np.uint8)) == blk        -> False
+        asymmetric = torch.tensor([[0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        block = torch.zeros(1, 1, 9, 11, device=device, dtype=dtype)
+        block[..., 3:6, 3:7] = 1.0
+        assert torch.equal(closing(block, asymmetric), block)
+
+        l_kernel = torch.tensor([[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        for kernel in (l_kernel, asymmetric):
+            closed = closing(tensor, kernel)
+            assert (closed >= tensor).all()
+            assert torch.equal(closing(closed, kernel), closed)
+
+        # `[[1, 0, 0]]` reads `x(p + 1)` in the dilation half and `y(p - 1)` in the erosion half. Under
+        # `replicate` the first column becomes `x(1)`, so the closing is not extensive (idempotence
+        # survives); under `circular` the two shifts cancel and the closing is exactly `x`.
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        if supports_replicate_padding(device, dtype):
+            dip = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)[None, None]
+            replicated = closing(dip, side_kernel, border_type="replicate")
+            assert replicated.flatten().tolist() == [0.0, 0.0, 1.0]
+            assert not bool((replicated >= dip).all())
+            assert torch.equal(closing(replicated, side_kernel, border_type="replicate"), replicated)
+        assert torch.equal(closing(tensor, side_kernel, border_type="circular"), tensor)
+
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    def test_convention_closing_empty_geodesic_window_is_infinite_4734(self, device, dtype, engine):
+        # Under `geodesic` the dilation window of `[[1, 0, 0]]` is empty in the first column, which becomes
+        # `+inf`; every other column round-trips exactly, so closing is extensive and idempotent on data of
+        # either sign. Before #4734 the finite `max_val` sentinel made both miss by up to one ULP of `max_val`.
+        side_kernel = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        tensor = torch.rand(1, 1, 7, 10, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(
+            device=device, dtype=dtype
+        )
+
+        for data in (tensor, -tensor):
+            closed = closing(data, side_kernel, engine=engine)
+            expected = torch.cat((torch.full_like(data[..., :1], float("inf")), data[..., 1:]), dim=-1)
+            assert torch.equal(closed, expected)
+            assert (closed >= data).all()
+            assert torch.equal(closing(closed, side_kernel, engine=engine), closed)

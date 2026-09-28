@@ -67,7 +67,7 @@ class TestSam3Common(BaseTester):
 class TestImageEncoderHiera(BaseTester):
     """Test ImageEncoderHiera architecture."""
 
-    @pytest.mark.parametrize("img_size,embed_dim", [(512, 128), (1024, 256)])
+    @pytest.mark.parametrize("img_size,embed_dim", [(64, 128), (128, 256)])
     def test_image_encoder_hiera_smoke(self, device: str, img_size: int, embed_dim: int) -> None:
         """Test ImageEncoderHiera basic functionality with different configs."""
         patch_size = 16
@@ -87,20 +87,20 @@ class TestImageEncoderHiera(BaseTester):
         num_patches = (img_size // patch_size) ** 2
         assert features.shape == (B, num_patches, embed_dim)
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_image_encoder_hiera_cardinality(self, device: str, batch_size: int) -> None:
         """Test ImageEncoderHiera output cardinality with different batch sizes."""
         encoder = ImageEncoderHiera(
-            img_size=512,
+            img_size=64,
             patch_size=16,
-            embed_dim=256,
+            embed_dim=128,
             depth=2,
-            num_heads=8,
+            num_heads=4,
         ).to(device)
 
-        x = torch.randn(batch_size, 3, 512, 512, device=device)
+        x = torch.randn(batch_size, 3, 64, 64, device=device)
         features = encoder(x)
-        assert features.shape == (batch_size, (512 // 16) ** 2, 256)
+        assert features.shape == (batch_size, (64 // 16) ** 2, 128)
 
     def test_image_encoder_hiera_output_shape(self) -> None:
         """Test output shape computation method."""

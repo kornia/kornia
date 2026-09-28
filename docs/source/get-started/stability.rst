@@ -1,6 +1,9 @@
 API Stability Policy
 ====================
 
+.. meta::
+   :description: What Kornia users may rely on: stable, best-effort and experimental module tiers, the deprecation policy, and how breaking changes are announced.
+
 Kornia is depended on by a large installed base (millions of downloads per
 month) and, increasingly, by language models that carry a lagging snapshot of
 the API in their weights. Both are punished by silent churn. This page states
@@ -18,12 +21,11 @@ Stability tiers
 promises below apply in full.
 
 **Best-effort** — pre-trained model wrappers (LoFTR, LightGlue, DISK, DeDoDe,
-SAM, and friends in ``kornia.feature``/``kornia.models``), ``kornia.onnx``,
-and the multi-framework ``kornia.transpiler``. These track external
-checkpoints, upstream repositories, and PyTorch internals; they are kept
-working on currently supported PyTorch versions, but their interfaces and
-weights may change with their upstreams, and they may be frozen or split out
-rather than grown.
+SAM, and friends in ``kornia.feature``/``kornia.models``) and ``kornia.onnx``.
+These track external checkpoints, upstream repositories, and PyTorch
+internals; they are kept working on currently supported PyTorch versions, but
+their interfaces and weights may change with their upstreams, and they may be
+frozen or split out rather than grown.
 
 **Experimental** — ``kornia.contrib`` and anything underscore-prefixed or
 absent from the rendered documentation. No stability promise.
@@ -99,3 +101,28 @@ Escape hatch
 A change that fixes a correctness bug (wrong math, wrong convention versus
 the documented one) or a security issue may ship without a deprecation
 window. When that happens the release notes say so explicitly.
+
+Recording a completed deprecation
+---------------------------------
+
+Once the deprecation window has passed, remove the API and describe the removal
+in a ``changelog.d/<PR>.breaking.md`` fragment. Update any existing entries in ``tests/api_surface.json``
+in the same pull request; keep the module key, using an empty list if necessary.
+The import-surface check verifies that recorded names leave the export surface
+in that change. An inventory edit acknowledges an ``__all__`` removal only for
+the exact same module and name; it does not authorize submodule removals.
+
+For a submodule API recorded only under an ancestor package, or an API absent
+from the inventory, record the exact module and removed ``__all__`` name in
+``tests/api_surface_removals.json``. For example::
+
+    {
+      "kornia.geometry.boxes": ["Boxes"]
+    }
+
+Only module/name pairs newly added relative to the pull request's merge base
+can acknowledge removals, and each must match an actual ``__all__`` removal in
+the same change. Existing entries cannot authorize a later removal. When reintroducing an API,
+remove its obsolete acknowledgement so a future removal requires a fresh entry.
+This file does not replace updates to the inventory or the deprecation and release-note
+requirements above.

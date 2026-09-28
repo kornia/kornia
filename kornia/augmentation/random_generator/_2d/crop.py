@@ -27,6 +27,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -65,8 +66,12 @@ class CropGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # The draw is truncated to a start position, so keep it in float32: half-precision
+        # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
+        sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
+            torch.tensor(0.0, device=device, dtype=sampler_dtype),
+            torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
@@ -82,7 +87,11 @@ class CropGenerator(RandomGeneratorBase):
 
         input_size = (batch_shape[-2], batch_shape[-1])
         if not isinstance(self.size, torch.Tensor):
-            size = torch.tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+            size = _constant_tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+            if size.shape != torch.Size([batch_size, 2]):
+                raise AssertionError(
+                    f"`size` must be a (height, width) pair of integers or a (B, 2) tensor. Got {self.size!r}."
+                )
         else:
             size = self.size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 2]):
@@ -118,14 +127,14 @@ class CropGenerator(RandomGeneratorBase):
         crop_src = bbox_generator(
             x_start.view(-1).to(device=_device, dtype=_dtype),
             y_start.view(-1).to(device=_device, dtype=_dtype),
-            torch.where(size[:, 1] == 0, torch.tensor(input_size[1], device=_device, dtype=_dtype), size[:, 1]),
-            torch.where(size[:, 0] == 0, torch.tensor(input_size[0], device=_device, dtype=_dtype), size[:, 0]),
+            torch.where(size[:, 1] == 0, torch.full((), input_size[1], device=_device, dtype=_dtype), size[:, 1]),
+            torch.where(size[:, 0] == 0, torch.full((), input_size[0], device=_device, dtype=_dtype), size[:, 0]),
         )
 
         if self.resize_to is None:
             crop_dst = bbox_generator(
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
                 size[:, 1],
                 size[:, 0],
             )
@@ -139,7 +148,7 @@ class CropGenerator(RandomGeneratorBase):
                 and self.resize_to[1] > 0
             ):
                 raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {self.resize_to}.")
-            crop_dst = torch.tensor(
+            crop_dst = _constant_tensor(
                 [
                     [
                         [0, 0],
@@ -151,9 +160,9 @@ class CropGenerator(RandomGeneratorBase):
                 device=_device,
                 dtype=_dtype,
             ).repeat(batch_size, 1, 1)
-            _output_size = torch.tensor(self.resize_to, device=_device, dtype=torch.long).expand(batch_size, -1)
+            _output_size = _constant_tensor(self.resize_to, device=_device, dtype=torch.long).expand(batch_size, -1)
 
-        _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _input_size = _constant_tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
         return {"src": crop_src, "dst": crop_dst, "input_size": _input_size, "output_size": _output_size}
 
@@ -200,6 +209,11 @@ class ResizedCropGenerator(CropGenerator):
         scale: Union[torch.Tensor, Tuple[float, float]],
         ratio: Union[torch.Tensor, Tuple[float, float]],
     ) -> None:
+        if not isinstance(output_size, (tuple, list)):
+            raise TypeError(
+                "`output_size` (`size` on RandomResizedCrop) must be a (height, width) tuple of 2 positive "
+                f"integers. Got {output_size!r} of type {type(output_size).__name__}."
+            )
         if not (
             len(output_size) == 2
             and isinstance(output_size[0], (int,))
@@ -214,16 +228,19 @@ class ResizedCropGenerator(CropGenerator):
         self.output_size = output_size
 
     def __repr__(self) -> str:
-        repr = f"scale={self.scale}, resize_to={self.ratio}, output_size={self.output_size}"
-        return repr
+        return f"scale={self.scale}, resize_to={self.ratio}, output_size={self.output_size}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
         ratio = torch.as_tensor(self.ratio, device=device, dtype=dtype)
         _joint_range_check(scale, "scale")
         _joint_range_check(ratio, "ratio")
+        # The draw is truncated to a start position, so keep it in float32: half-precision
+        # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
+        sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
+            torch.tensor(0.0, device=device, dtype=sampler_dtype),
+            torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
         self.log_ratio_sampler = Uniform(torch.log(ratio[0]), torch.log(ratio[1]), validate_args=False)
 
@@ -242,7 +259,11 @@ class ResizedCropGenerator(CropGenerator):
         rand_tensor = _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
-        scale_tensor = torch.as_tensor(self.scale, device=_device, dtype=_dtype)
+        scale_tensor = (
+            self.scale.to(device=_device, dtype=_dtype)
+            if isinstance(self.scale, torch.Tensor)
+            else _constant_tensor(self.scale, device=_device, dtype=_dtype)
+        )
         area = (rand_tensor * (scale_tensor[1] - scale_tensor[0]) + scale_tensor[0]) * size[0] * size[1]
         log_ratio = _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
@@ -251,31 +272,36 @@ class ResizedCropGenerator(CropGenerator):
 
         w = torch.sqrt(area * aspect_ratio).round().floor()
         h = torch.sqrt(area / aspect_ratio).round().floor()
-        # Element-wise w, h condition
-        cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
+        # Element-wise w, h condition. A candidate may equal the input size, as in torchvision's get_params.
+        cond = ((0 < w) * (w <= size[1]) * (0 < h) * (h <= size[0])).int()
 
         # torch.argmax is not reproducible across devices: https://github.com/pytorch/pytorch/issues/17738
         # Here, we will select the first occurrence of the duplicated elements.
-        cond_bool, argmax_dim1 = ((cond.cumsum(1) == 1) & cond.bool()).max(1)
+        # ``max`` over an integer (not bool) tensor: ONNX ``ReduceMax`` has no bool overload.
+        cond_bool, argmax_dim1 = ((cond.cumsum(1) == 1) & cond.bool()).int().max(1)
+        cond_bool = cond_bool.bool()
         h_out = h[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
         w_out = w[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
 
-        # Center-crop fallback for samples where no candidate crop fit (``cond_bool`` False). The
+        # Fallback crop size for samples where no candidate crop fit (``cond_bool`` False). The
         # fallback size is a compile-time constant (from ``size`` and ``self.ratio``), so compute it
         # unconditionally and select branchlessly with ``torch.where`` — dropping the
         # ``if not cond_bool.all()`` device sync keeps the generator torch.compile fullgraph. When
         # every candidate fit, ``where`` returns ``h_out``/``w_out`` unchanged (byte-identical).
-        in_ratio = float(size[0]) / float(size[1])
+        # As in torchvision's get_params: ``ratio`` is width / height, so an input narrower than min(ratio) keeps
+        # its full width, one wider than max(ratio) keeps its full height, and one in range is kept whole.
+        in_ratio = float(size[1]) / float(size[0])
         _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
+        _max = float(self.ratio.max()) if isinstance(self.ratio, torch.Tensor) else max(self.ratio)
         if in_ratio < _min:
-            h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
-            w_ct = torch.round(h_ct / _min)
-        elif in_ratio > _min:
-            w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
-            h_ct = torch.round(w_ct * _min)
+            w_ct = torch.full((), size[1], device=_device, dtype=_dtype)
+            h_ct = torch.round(w_ct / _min)
+        elif in_ratio > _max:
+            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
+            w_ct = torch.round(h_ct * _max)
         else:  # whole image
-            h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
-            w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
+            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
+            w_ct = torch.full((), size[1], device=_device, dtype=_dtype)
         h_ct = h_ct.floor()
         w_ct = w_ct.floor()
 
@@ -344,17 +370,17 @@ def center_crop_generator(
 
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src: torch.Tensor = torch.tensor(
+    points_src: torch.Tensor = _constant_tensor(
         [[[start_x, start_y], [end_x, start_y], [end_x, end_y], [start_x, end_y]]], device=device, dtype=torch.long
     ).expand(batch_size, -1, -1)
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor(
+    points_dst: torch.Tensor = _constant_tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], device=device, dtype=torch.long
     ).expand(batch_size, -1, -1)
 
-    _input_size = torch.tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
-    _output_size = torch.tensor(size, device=device, dtype=torch.long).expand(batch_size, -1)
+    _input_size = _constant_tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
+    _output_size = _constant_tensor(size, device=device, dtype=torch.long).expand(batch_size, -1)
 
     return {"src": points_src, "dst": points_dst, "input_size": _input_size, "output_size": _output_size}

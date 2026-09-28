@@ -59,6 +59,62 @@ def test_render_page_contains_table_and_metadata(tmp_path: Path) -> None:
     assert "close other applications" in rst  # hygiene box present
 
 
+def _seed_two_axis(tmp_path: Path) -> Path:
+    """A suite that sweeps a second axis at a fixed batch, like ``feature-laf-ops``."""
+    payload = {
+        "metadata": {
+            "timestamp_utc": "2026-09-03T12:00:00+00:00",
+            "git_commit": "d415faa0",
+            "platform": "Linux-6.18-x86_64",
+            "python": "3.13.0",
+            "torch": "2.14.0",
+            "kornia": "0.9.0rc1",
+            "device": "cpu",
+            "load": {"load_avg_1m": 1.0},
+            "units": "LAFs/s",
+        },
+        "results": [
+            {"op": "make_upright", "backend": "kornia (eager)", "batch": 1, "n_lafs": 2000, "throughput_per_s": 20.0},
+            {"op": "make_upright", "backend": "kornia (eager)", "batch": 1, "n_lafs": 20000, "throughput_per_s": 33.0},
+            {"op": "make_upright", "backend": "kornia (eager)", "batch": 8, "n_lafs": 2000, "throughput_per_s": 31.0},
+        ],
+    }
+    d = tmp_path / "0.9.0rc1"
+    d.mkdir(exist_ok=True)
+    (d / "feature-laf-ops--box--cpu.json").write_text(json.dumps(payload))
+    return tmp_path
+
+
+def test_render_page_keeps_configs_that_share_a_batch(tmp_path: Path) -> None:
+    rst = generate_benchmarks.render_page(_seed_two_axis(tmp_path))
+    # One cell per config, in order. Keying rows on (op, batch) alone collapses the two B=1
+    # configs and drops a value outright; a bare `"20" in rst` would not catch that, because the
+    # 2026-09-03 timestamp above the table contains "20" whatever the table renders.
+    assert [ln.strip()[2:] for ln in rst.splitlines() if ln.startswith("     - ")] == [
+        "kornia (eager)",
+        "20",
+        "33",
+        "31",
+    ]
+    assert "n_lafs=2000" in rst and "n_lafs=20000" in rst
+    assert "throughput in LAFs/s" in rst  # the item is a LAF, not an image
+
+
+def test_render_page_omits_constant_config_fields(tmp_path: Path) -> None:
+    rst = generate_benchmarks.render_page(_seed(tmp_path))
+    assert "ColorJiggle @ 32" in rst  # batch-only suites keep the short label
+    assert "throughput in items/s" in rst  # no units key -> the existing default
+
+
+def test_digest_disambiguates_configs_that_share_a_batch(tmp_path: Path) -> None:
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, _seed_two_axis(tmp_path))
+    line = next(ln for ln in llms.read_text().splitlines() if ln.startswith("- feature-laf-ops"))
+    assert "make_upright@1,n_lafs=20000" in line  # fastest row named by its full config
+    assert "LAFs/s" in line
+
+
 def test_latest_version_orders_rc_before_final() -> None:
     assert generate_benchmarks.latest_version(["0.9.0rc1", "0.9.0", "0.8.3"]) == "0.9.0"
 
@@ -125,3 +181,33 @@ def test_committed_digest_is_fresh(tmp_path: Path) -> None:
 
 def test_latest_version_tolerates_digitless_dirs() -> None:
     assert generate_benchmarks.latest_version(["unknown", "0.9.0rc1"]) == "0.9.0rc1"
+
+
+def test_superseded_results_are_not_published(tmp_path: Path) -> None:
+    """A run under ``superseded/`` keeps its version directory but reaches no rendered output."""
+    root = _seed(tmp_path)
+    stale = root / generate_benchmarks.SUPERSEDED_DIR / "0.9.0rc1"
+    stale.mkdir(parents=True)
+    payload = json.loads((root / "0.9.0rc1" / "augmentation--apple-m3--mps.json").read_text())
+    payload["metadata"]["git_commit"] = "deadbeef"
+    payload["results"][0]["throughput_per_s"] = 11.0  # the pre-change number that must not surface
+    (stale / "filters--apple-m3--mps.json").write_text(json.dumps(payload))
+
+    assert "0.9.0rc1" in generate_benchmarks.load_results(root)  # the live run is still loaded
+    assert list(generate_benchmarks.load_results(root)["0.9.0rc1"]) == ["augmentation--apple-m3--mps.json"]
+    rst = generate_benchmarks.render_page(root)
+    assert "deadbeef" not in rst and "filters" not in rst
+    assert "superseded/" in rst  # but the page says where the unpublished runs live
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, root)
+    assert "deadbeef" not in llms.read_text()
+
+
+def test_digest_line_names_version_and_commit(tmp_path: Path) -> None:
+    """A digest line must be readable on its own: the date alone does not identify the code."""
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+    line = next(ln for ln in llms.read_text().splitlines() if ln.startswith("- augmentation"))
+    assert "kornia 0.9.0rc1 @ c670e2ab" in line and "2026-08-08" in line

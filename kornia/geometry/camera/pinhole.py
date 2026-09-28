@@ -28,11 +28,39 @@ from kornia.geometry.linalg import inverse_transformation, transform_points
 class PinholeCamera:
     r"""Class that represents a Pinhole Camera model.
 
+    Convention:
+        - ``intrinsics`` is the :math:`(B, 4, 4)` calibration matrix whose top-left :math:`3 \times 3` block is
+          ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, and ``extrinsics`` the :math:`(B, 4, 4)` **world-to-camera**
+          transform ``[R | t]`` (OpenCV / COLMAP semantics): :meth:`project` takes **world** points, computes
+          ``K (R X + t)`` and returns pixels, while :meth:`unproject` takes pixels and a camera-frame depth and
+          returns **world** points. The functional API takes a ``3x3`` ``K`` and no extrinsics, so it works in
+          the **camera** frame.
+        - pixel coordinates are ``(u, v)`` = (column, row) with **integer pixel centres**: pixel ``(0, 0)`` is
+          centred at ``(0, 0)``, as :func:`~kornia.geometry.grid.create_meshgrid` enumerates, so a centred image
+          has ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``. COLMAP's half-pixel convention reports the same
+          principal point half a pixel larger. ``kornia.geometry.camera``, ``kornia.geometry.depth`` and
+          ``kornia.geometry.calibration`` all use this convention; see :doc:`/get-started/camera-conventions`.
+        - ``depth`` is the camera-frame ``z``, except where a ``normalize`` / ``normalize_points`` flag reads it
+          as the Euclidean ray length.
+        - the class owns copies of the tensors it is constructed from: :meth:`scale_` and the ``tx`` / ``ty`` /
+          ``tz`` setters update only the camera, and :meth:`scale` and :meth:`clone` return independent cameras.
+
+    .. warning::
+        :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` (the half-pixel rule),
+        which disagrees with the integer pixel centres above:
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. With the :math:`(B, N, 4, 4)` storage the
+        validator admits, :meth:`project` raises on :math:`(B, N, 3)` points:
+        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated: a
+        zero-padded ``K`` with ``intrinsics[3, 3] = 0`` projects but :meth:`unproject` raises on the singular
+        matrix: `#4771 <https://github.com/kornia/kornia/issues/4771>`_.
+
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
-          containing the full 4x4 camera calibration matrix.
+          containing the full 4x4 camera calibration matrix. The shared shape validator also accepts
+          :math:`(B, N, 4, 4)` for ``PinholeCamerasList``, while :meth:`project` requires
+          the documented :math:`(B, 4, 4)` layout.
         extrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
-          containing the full 4x4 rotation-translation matrix.
+          containing the full 4x4 rotation-translation matrix, checked by the same predicate.
         height: torch.Tensor with shape :math:`(B)` containing the image height.
         width: torch.Tensor with shape :math:`(B)` containing the image width.
 
@@ -53,20 +81,21 @@ class PinholeCamera:
         self._check_valid_shape(width, "width")
         self._check_consistent_device([intrinsics, extrinsics, height, width])
         # set class attributes
-        self.height: torch.Tensor = height
-        self.width: torch.Tensor = width
-        self._intrinsics: torch.Tensor = intrinsics
-        self._extrinsics: torch.Tensor = extrinsics
+        self.height: torch.Tensor = height.clone()
+        self.width: torch.Tensor = width.clone()
+        self._intrinsics: torch.Tensor = intrinsics.clone()
+        self._extrinsics: torch.Tensor = extrinsics.clone()
 
     @staticmethod
     def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
-        if not all(data.shape[0] for data in data_iter):
+        batch_sizes = [data.shape[0] for data in data_iter]
+        if not all(batch_size == batch_sizes[0] for batch_size in batch_sizes):
             raise ValueError("Arguments shapes must match")
         return True
 
     @staticmethod
     def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
-        if len(data.shape) not in (3, 4) and data.shape[-2:] != (4, 4):  # Shouldn't this be an OR logic than AND?
+        if len(data.shape) not in (3, 4) or data.shape[-2:] != (4, 4):
             raise ValueError(
                 f"Argument {data_name} shape must be in the following shape Bx4x4 or BxNx4x4. Got {data.shape}"
             )
@@ -253,24 +282,34 @@ class PinholeCamera:
         return self.extrinsics[..., :3, -1:]
 
     def clone(self) -> "PinholeCamera":
-        r"""Return a deep copy of the current object instance."""
-        height: torch.Tensor = self.height.clone()
-        width: torch.Tensor = self.width.clone()
-        intrinsics: torch.Tensor = self.intrinsics.clone()
-        extrinsics: torch.Tensor = self.extrinsics.clone()
-        return PinholeCamera(intrinsics, extrinsics, height, width)
+        r"""Return a deep copy of the current object instance.
+
+        See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        """
+        return PinholeCamera(self.intrinsics, self.extrinsics, self.height, self.width)
 
     def intrinsics_inverse(self) -> torch.Tensor:
-        r"""Return the inverse of the 4x4 instrisics matrix.
+        r"""Return the inverse of the 4x4 intrinsics matrix.
+
+        See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
         Returns:
             torch.Tensor of shape :math:`(B, 4, 4)`.
 
         """
-        return self.intrinsics.inverse()
+        return _torch_inverse_cast(self.intrinsics)
 
     def scale(self, scale_factor: torch.Tensor) -> "PinholeCamera":
         r"""Scale the pinhole model.
+
+        Convention:
+            - returns a **new** camera whose focal lengths, principal point and image size are multiplied by
+              ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``.
+            - ``height`` / ``width`` take the promoted dtype of ``scale_factor * height``.
+
+        .. warning::
+            The ``cx' = s * cx`` rule disagrees with kornia's integer pixel centres:
+            `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
 
         Args:
             scale_factor: a torch.Tensor with the scale factor. It has
@@ -295,6 +334,14 @@ class PinholeCamera:
     def scale_(self, scale_factor: Union[float, torch.Tensor]) -> "PinholeCamera":
         r"""Scale the pinhole model in-place.
 
+        Convention:
+            - applies the rescaling of :meth:`scale` in place and returns ``self``; the tensors passed to the
+              constructor are not modified.
+
+        .. warning::
+            The principal-point rule shared with :meth:`scale` is
+            `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
+
         Args:
             scale_factor: a torch.Tensor with the scale factor. It has
               to be broadcastable with class members. The expected shape is
@@ -310,16 +357,29 @@ class PinholeCamera:
         self.intrinsics[..., 0, 2] *= scale_factor
         self.intrinsics[..., 1, 2] *= scale_factor
         # scale the image height/width
-        self.height *= scale_factor
-        self.width *= scale_factor
+        self.height = self.height * scale_factor
+        self.width = self.width * scale_factor
         return self
 
     def project(self, point_3d: torch.Tensor) -> torch.Tensor:
         r"""Project a 3d point in world coordinates onto the 2d camera plane.
 
+        See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+        Convention:
+            - ``point_3d`` must be at least rank 2. An unbatched :math:`(3,)` point raises :class:`ValueError`.
+              An empty point set returns an empty result.
+            - a point whose **camera-frame** ``z`` is 0 does not raise: ``K`` is applied first and the
+              perspective divide is then skipped, so the result is the undivided ``K (R X + t)``.
+
+        .. warning::
+            This ``z = 0`` answer differs from :func:`~kornia.geometry.camera.perspective.project_points`, which
+            applies ``K`` after the skipped divide: `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+
         Args:
             point_3d: torch.Tensor containing the 3d points to be projected
-                to the camera plane. The shape of the torch.Tensor can be :math:`(*, 3)`.
+                to the camera plane. The shape of the torch.Tensor can be :math:`(*, 3)` with at least two
+                dimensions.
 
         Returns:
             torch.Tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
@@ -336,6 +396,8 @@ class PinholeCamera:
             tensor([[5.6088, 8.6827]])
 
         """
+        if len(point_3d.shape) < 2:
+            raise ValueError(f"Input must be at least a 2D tensor. Got {point_3d.shape}")
         P = self.intrinsics @ self.extrinsics
         return convert_points_from_homogeneous(transform_points(P, point_3d))
 
@@ -344,14 +406,14 @@ class PinholeCamera:
 
         Transform coordinates in the pixel frame to the world frame.
 
+        See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
         Args:
             point_2d: torch.Tensor containing the 2d to be projected to
-                world coordinates. The shape of the torch.Tensor can be :math:`(*, 2)`.
+                world coordinates. The shape of the torch.Tensor can be :math:`(*, 2)` with at least two
+                dimensions.
             depth: torch.Tensor containing the depth value of each 2d
                 points. The torch.Tensor shape must be equal to point2d :math:`(*, 1)`.
-            normalize: whether to F.normalize the pointcloud. This
-                must be set to `True` when the depth is represented as the Euclidean
-                ray length from the camera position.
 
         Returns:
             torch.Tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
@@ -392,9 +454,16 @@ class PinholeCamera:
     ) -> "PinholeCamera":
         r"""Construct a batched pinhole camera from scalar parameter tensors.
 
+        See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
         This helper allocates batched :math:`4 \times 4` intrinsic and
         extrinsic matrices, fills focal lengths/principal point/translation,
         and wraps them into a :class:`PinholeCamera` instance.
+
+        Convention:
+            - every parameter, including ``height`` and ``width``, is broadcast over ``batch_size``.
+            - ``height`` and ``width`` are stored as floating-point tensors of the requested ``dtype``, so the
+              camera it builds can be scaled in place.
 
         Args:
             fx: Horizontal focal length per batch element.
@@ -427,11 +496,9 @@ class PinholeCamera:
         extrinsics[..., 0, -1] += tx
         extrinsics[..., 1, -1] += ty
         extrinsics[..., 2, -1] += tz
-        # create image hegith and width
-        height_tmp = torch.zeros(batch_size, device=device, dtype=dtype)
-        height_tmp[..., 0] += height
-        width_tmp = torch.zeros(batch_size, device=device, dtype=dtype)
-        width_tmp[..., 0] += width
+        # create image height and width, one entry per batch element
+        height_tmp = torch.full((batch_size,), height, device=device, dtype=dtype)
+        width_tmp = torch.full((batch_size,), width, device=device, dtype=dtype)
         return self(intrinsics, extrinsics, height_tmp, width_tmp)
 
 
@@ -495,9 +562,22 @@ class PinholeCamerasList(PinholeCamera):
 def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Return the pinhole matrix from a pinhole model.
 
+    See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+    Convention:
+        - ``pinholes`` is the legacy 12-vector layout
+          ``(fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz)``, where ``(rx, ry, rz)`` is an angle-axis
+          rotation and ``(tx, ty, tz)`` a translation; only the first four entries are read here.
+        - an input that is not :math:`(N, 12)` raises :class:`AssertionError` carrying the offending shape,
+          not a :class:`~kornia.core.exceptions.ShapeError`.
+
     .. note::
-        This method is going to be deprecated in version 0.2 in favour of
-        :attr:`kornia.PinholeCamera.camera_matrix`.
+        Superseded by :class:`~kornia.geometry.camera.pinhole.PinholeCamera` and its ``camera_matrix`` property.
+
+    .. warning::
+        The output is built as ``eye(4) + eps`` before the parameters are written, so every structural zero
+        carries ``eps``; ``eps=0.0`` returns the exact matrix.
+        `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
         pinholes: torch.Tensor of pinhole models.
@@ -538,9 +618,22 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Return the inverted pinhole matrix from a pinhole model.
 
+    See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+    Convention:
+        - ``pinhole`` is the legacy 12-vector layout
+          ``(fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz)``, where ``(rx, ry, rz)`` is an angle-axis
+          rotation and ``(tx, ty, tz)`` a translation; only the first four entries are read here.
+        - an input that is not :math:`(N, 12)` raises :class:`AssertionError` carrying the offending shape,
+          not a :class:`~kornia.core.exceptions.ShapeError`.
+
     .. note::
-        This method is going to be deprecated in version 0.2 in favour of
-        :attr:`kornia.PinholeCamera.intrinsics_inverse()`.
+        Superseded by :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.intrinsics_inverse`.
+
+    .. warning::
+        The focal lengths are inverted as ``1 / (fx + eps)``, which inverts a perturbed matrix rather than the
+        one ``pinhole_matrix`` returns, and a zero focal length gives a large value instead of raising.
+        `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
         pinhole: torch.Tensor with pinhole models.
@@ -582,8 +675,8 @@ def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     r"""Scale the pinhole matrix for each pinhole model.
 
     .. note::
-        This method is going to be deprecated in version 0.2 in favour of
-        :attr:`kornia.PinholeCamera.scale()`.
+        Superseded by :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale`.
+        This legacy 12-vector API is tracked in `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
         pinholes: torch.Tensor with the pinhole model.
@@ -617,6 +710,11 @@ def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
 def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
     """Compute extrinsic transformation matrices for pinholes.
 
+    .. warning::
+        This function validates its input and then always raises :class:`NotImplementedError`: the
+        ``rtvec_to_pose`` helper it needs does not exist in kornia. Tracked in
+        `#4283 <https://github.com/kornia/kornia/issues/4283>`_.
+
     Args:
         pinholes: torch.Tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
                            of size (N, 12).
@@ -646,7 +744,7 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
             pinhole = (f_x, f_y, c_x, c_y, height, width,
             r_x, r_y, r_z, t_x, t_y, t_z)
 
-        torch.where:
+        where:
             :math:`(r_x, r_y, r_z)` is the rotation vector in angle-axis
             convention.
 
@@ -655,6 +753,11 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
     .. math::
 
         H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}
+
+    .. warning::
+        This function validates its input and then always raises :class:`NotImplementedError`: it calls
+        ``get_optical_pose_base``, which is unimplemented. Tracked in
+        `#4283 <https://github.com/kornia/kornia/issues/4283>`_.
 
     Args:
         pinhole_i: torch.Tensor with pinhole model for ith frame.
@@ -691,6 +794,16 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
 def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: torch.Tensor) -> torch.Tensor:
     r"""Transform coordinates in the pixel frame to the camera frame.
 
+    See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+    Convention:
+        - ``intrinsics_inv`` is a :math:`(B, 4, 4)` inverse calibration matrix (the
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera` layout, not a ``3x3`` ``K``), and ``depth`` is
+          the camera-frame ``z`` at each pixel of the ``(u, v, 1)`` grid.
+        - a ``depth`` that is not ``Bx1xHxW``, an ``intrinsics_inv`` that is not :math:`(B, 4, 4)` or a
+          ``pixel_coords`` that is not ``BxHxWx3`` raises :class:`ValueError`; that ``pixel_coords`` matches
+          the ``H`` and ``W`` of ``depth`` is not checked.
+
     Args:
         depth: the source depth maps. Shape must be Bx1xHxW.
         intrinsics_inv: the inverse intrinsics camera matrix. Shape must be Bx4x4.
@@ -700,12 +813,12 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         torch.Tensor of shape BxHxWx3 with (x, y, z) cam coordinates.
 
     """
-    if not len(depth.shape) == 4 and depth.shape[1] == 1:
+    if not (len(depth.shape) == 4 and depth.shape[1] == 1):
         raise ValueError(f"Input depth has to be in the shape of Bx1xHxW. Got {depth.shape}")
-    if not len(intrinsics_inv.shape) == 3:
+    if not (len(intrinsics_inv.shape) == 3 and intrinsics_inv.shape[-2:] == (4, 4)):
         raise ValueError(f"Input intrinsics_inv has to be in the shape of Bx4x4. Got {intrinsics_inv.shape}")
-    if not len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3:
-        raise ValueError(f"Input pixel_coords has to be in the shape of BxHxWx3. Got {intrinsics_inv.shape}")
+    if not (len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3):
+        raise ValueError(f"Input pixel_coords has to be in the shape of BxHxWx3. Got {pixel_coords.shape}")
     cam_coords: torch.Tensor = transform_points(intrinsics_inv[:, None], pixel_coords)
     return cam_coords * depth.permute(0, 2, 3, 1)
 
@@ -717,6 +830,19 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
 def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Transform coordinates in the camera frame to the pixel frame.
 
+    See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+    Convention:
+        - ``dst_proj_src`` is a :math:`(B, 4, 4)` projection matrix (the
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera` layout, not a ``3x3`` ``K``), and the result is
+          ``(u, v)`` pixel coordinates in the destination frame.
+
+    .. warning::
+        The perspective division is ``x / (z + eps)`` rather than a guarded divide, so ``z = 0`` gives
+        ``x / eps``, huge for a nonzero ``x`` (``inf`` where ``eps`` underflows), and ``eps`` biases every small
+        depth:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+
     Args:
         cam_coords_src: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
         dst_proj_src: the projection matrix between the
@@ -727,9 +853,9 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         torch.Tensor of shape BxHxWx2 with (u, v) pixel coordinates.
 
     """
-    if not len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3:
+    if not (len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3):
         raise ValueError(f"Input cam_coords_src has to be in the shape of BxHxWx3. Got {cam_coords_src.shape}")
-    if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
+    if not (len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_proj_src has to be in the shape of Bx4x4. Got {dst_proj_src.shape}")
     # apply projection matrix to points
     point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)

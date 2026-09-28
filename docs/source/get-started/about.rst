@@ -1,13 +1,10 @@
-About
-=====
+Citing Kornia
+=============
 
-Cite us
--------
-
-Below you can find the different academic publication derived from Kornia. If you use Kornia in your
+Below you can find the academic publications derived from Kornia. If you use Kornia in your
 work, do not hesitate to cite us :)
 
-.. code-block:: bash
+.. code-block:: bibtex
 
 	@inproceedings{eriba2020kornia,
 	  author    = {E. Riba, D. Mishkin, J. Shi, D. Ponsa, F. Moreno-Noguer and G. Bradski},
@@ -15,7 +12,7 @@ work, do not hesitate to cite us :)
 	  year      = {2020},
 	}
 
-.. code-block:: bash
+.. code-block:: bibtex
 
 	@inproceedings{eriba2019kornia,
 	  author    = {E. Riba, D. Mishkin, D. Ponsa, E. Rublee and G. Bradski},
@@ -25,7 +22,7 @@ work, do not hesitate to cite us :)
 	  url       = {https://arxiv.org/pdf/1910.02190.pdf}
 	}
 
-.. code-block:: bash
+.. code-block:: bibtex
 
 	@misc{Arraiy2018,
 	  author    = {E. Riba, M. Fathollahi, W. Chaney, E. Rublee and G. Bradski},

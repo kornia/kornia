@@ -31,10 +31,6 @@ class RandomRotation3D(GeometricAugmentationBase3D):
     r"""Apply random rotations to 3D volumes (5D torch.Tensor).
 
     Input should be a torch.Tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
-    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
-    the corresponding transformation matrix that has been applied to them. In this case the module
-    will rotate the tensors and torch.cat the corresponding transformation matrix to the
-    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
         degrees: Range of degrees to select from.
@@ -52,13 +48,21 @@ class RandomRotation3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
+          roll turns a displayed ``H x W`` slice clockwise, as :func:`kornia.geometry.transform.rotate3d` does;
+          :class:`RandomAffine3D`, the 2D :class:`~kornia.augmentation.RandomRotation` and
+          :func:`kornia.geometry.transform.rotate` turn it counter-clockwise
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - the default interpolation is bilinear with ``align_corners=False``.
 
     Examples:
         >>> import torch

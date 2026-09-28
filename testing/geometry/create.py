@@ -39,8 +39,7 @@ def create_rectified_fundamental_matrix(
     F_rect = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype).view(
         1, 3, 3
     )
-    F_repeat = F_rect.expand(batch_size, 3, 3)
-    return F_repeat
+    return F_rect.expand(batch_size, 3, 3)
 
 
 def create_random_fundamental_matrix(
@@ -64,7 +63,9 @@ def generate_two_view_random_scene(
     num_views: int = 2
     num_points: int = 30
 
-    scene: dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
+    with torch.random.fork_rng():
+        torch.manual_seed(4886)
+        scene: dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
 
     # internal parameters (same K)
     K1 = scene["K"].to(device, dtype)

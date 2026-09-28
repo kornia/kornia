@@ -44,6 +44,16 @@ class PadTo(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`torch.nn.functional.pad`.
 
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        This operation always runs and pads on the right and bottom, using ``pad_mode`` and ``pad_value``. A
+        target smaller than the input crops that axis instead, so a target can pad one axis while cropping the
+        other (`#4410 <https://github.com/kornia/kornia/issues/4410>`_).
+
+        :meth:`inverse` slices to the prior input size. It exactly removes right/bottom padding, but after a crop it
+        returns the cropped result unchanged rather than restoring discarded pixels. The transformation matrix is
+        identity, so keypoints and boxes are neither moved nor clipped when cropping puts them outside the canvas.
+
     Examples:
         >>> import torch
         >>> img = torch.tensor([[[[0., 0., 0.],

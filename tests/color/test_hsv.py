@@ -127,13 +127,23 @@ class TestRgbToHsv(BaseTester):
         hsv = kornia.color.rgb_to_hsv(data)
         self.assert_close(hsv[..., 0, :, :], expected_h)
 
-    def test_nan_rgb_to_hsv(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
-        data = torch.zeros(3, 5, 5, device=device, dtype=dtype)  # 3x5x5
+    @pytest.mark.parametrize("eps", [0.0, 1e-8, 1e-6, 1e-4])
+    def test_nan_rgb_to_hsv(self, device, dtype, eps):
+        data = torch.zeros(3, 5, 5, device=device, dtype=dtype, requires_grad=True)  # 3x5x5
         expected = torch.zeros_like(data)  # 3x5x5
-        self.assert_close(kornia.color.rgb_to_hsv(data), expected)
+        hsv = kornia.color.rgb_to_hsv(data, eps=eps)
+        self.assert_close(hsv, expected)
+        (gradient,) = torch.autograd.grad(hsv.sum(), data)
+        assert torch.isfinite(gradient).all()
+
+    @pytest.mark.parametrize("eps", [0.0, 1e-8, 1e-4])
+    def test_dark_red_saturation(self, device, dtype, eps):
+        # Dark nonzero colors must retain S = (max - min) / (max + eps).
+        # A blanket dtype-epsilon floor would desaturate this red pixel.
+        value = 2.0**-16
+        data = torch.tensor([[[value]], [[0.0]], [[0.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[0.0]], [[value / (value + eps)]], [[value]]], device=device, dtype=dtype)
+        self.assert_close(kornia.color.rgb_to_hsv(data, eps=eps), expected)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
@@ -326,13 +336,11 @@ class TestHsvToRgb(BaseTester):
         expected_black = torch.zeros(5, 3, 1, 1, device=device, dtype=dtype)
         self.assert_close(kornia.color.hsv_to_rgb(data_black), expected_black)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.hsv_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

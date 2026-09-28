@@ -25,8 +25,17 @@ from .augment import AugmentationSequential
 class ManyToManyAugmentationDispather(nn.Module):
     r"""Dispatches different augmentations to different inputs element-wisely.
 
+    See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
+
     Args:
         augmentations: a list or a sequence of kornia AugmentationSequential modules.
+
+    Convention:
+        - every member has to be an :class:`~kornia.augmentation.container.AugmentationSequential`; anything else is
+          rejected at construction with ``ValueError``.
+        - the call takes one input bundle per augmentation and returns a list in that order; a different number
+          of bundles raises ``ValueError`` before any augmentation runs. Each augmentation draws its own
+          parameters, so the members are independent of one another.
 
     Examples:
         >>> import torch
@@ -67,12 +76,21 @@ class ManyToManyAugmentationDispather(nn.Module):
 
         Returns:
             Outputs from each augmentation, preserving input order.
+
+        Raises:
+            ValueError: If the number of input bundles differs from the number of augmentations.
         """
+        if len(input) != len(self.augmentations):
+            raise ValueError(
+                f"Expected {len(self.augmentations)} input bundles, one per augmentation, but got {len(input)}."
+            )
         return [aug(*inp) for inp, aug in zip(input, self.augmentations)]
 
 
 class ManyToOneAugmentationDispather(nn.Module):
     r"""Dispatches different augmentations to a single input and returns a list.
+
+    See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
 
     Same `datakeys` must be applied across different augmentations. By default, with input
     (image, mask), the augmentations must not mess it as (mask, image) to avoid unexpected
@@ -80,6 +98,12 @@ class ManyToOneAugmentationDispather(nn.Module):
 
     Args:
         augmentations: a list or a sequence of kornia AugmentationSequential modules.
+
+    Convention:
+        - the same input payload is broadcast to every augmentation, so the returned list is always as long
+          as the list of augmentations and no input can be dropped.
+        - with ``strict=True``, the default, the members must all declare the same ``data_keys``; a mismatch
+          raises ``RuntimeError`` at construction.
 
     Examples:
         >>> import torch

@@ -29,12 +29,17 @@ from kornia.enhance.adjust import adjust_hue
 class RandomHue(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the hue of a torch.Tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The shift is in turns of the hue circle, the unit of torchvision's ``adjust_hue`` ``hue_factor``, so a
+    torchvision hue range carries over unchanged.
 
     .. image:: _static/img/RandomHue.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
-        hue: the saturation factor to apply.
+        hue: the hue shift, in turns of the hue circle, restricted to the closed ``[-0.5, 0.5]``. If ``hue``
+          is a single number ``x`` the shift is sampled from ``[-x, x]``, and ``x`` above ``0.5`` raises; a
+          tuple gives the range directly, and one outside the bound raises as well.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -42,6 +47,16 @@ class RandomHue(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the input must have three channels: the shift is computed in HSV, and any other channel count raises
+          a ``ValueError`` on the forward pass.
+        - the drawn shift is in turns of the hue circle, and the class multiplies it by ``2 * pi`` before
+          calling :func:`kornia.enhance.adjust_hue`, which takes radians. Passing the same number
+          straight to that primitive shifts the hue by a different amount.
+        - the result is not clamped: a hue rotation keeps each pixel's largest and smallest channel, so a pixel
+          outside ``[0, 1]`` keeps a channel outside it. A pixel whose largest channel is exactly ``0`` comes back
+          as zeros.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_hue`

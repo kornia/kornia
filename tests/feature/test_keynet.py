@@ -23,6 +23,11 @@ from testing.base import BaseTester
 
 
 class TestKeyNet(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        model = KeyNet().to(device, dtype)
+        self.assert_close(torch_optimizer(model)(inp), model(inp))
+
     def test_shape(self, device, dtype):
         inp = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
         keynet = KeyNet().to(device, dtype)

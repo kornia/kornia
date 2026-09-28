@@ -331,7 +331,7 @@ class BinaryFocalLossWithLogits(nn.Module):
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    torch.where:
+    where:
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:

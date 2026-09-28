@@ -66,18 +66,12 @@ def add_weighted(
 
     if isinstance(alpha, torch.Tensor):
         KORNIA_CHECK(src1.shape == alpha.shape, "alpha has a different shape than src.")
-    else:
-        alpha = torch.tensor(alpha, dtype=src1.dtype, device=src1.device)
 
     if isinstance(beta, torch.Tensor):
         KORNIA_CHECK(src1.shape == beta.shape, "beta has a different shape than src.")
-    else:
-        beta = torch.tensor(beta, dtype=src1.dtype, device=src1.device)
 
     if isinstance(gamma, torch.Tensor):
         KORNIA_CHECK(src1.shape == gamma.shape, "gamma has a different shape than src.")
-    else:
-        gamma = torch.tensor(gamma, dtype=src1.dtype, device=src1.device)
 
     return src1 * alpha + src2 * beta + gamma
 

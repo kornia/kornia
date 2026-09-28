@@ -145,9 +145,7 @@ class ZCAWhitening(nn.Module):
         if not self.fitted:
             raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
 
-        x_whiten = linear_transform(x, self.transform_matrix, self.mean_vector, self.dim)
-
-        return x_whiten
+        return linear_transform(x, self.transform_matrix, self.mean_vector, self.dim)
 
     def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
         r"""Apply the inverse transform to the whitened data.
@@ -170,9 +168,7 @@ class ZCAWhitening(nn.Module):
 
         mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)
 
-        y = linear_transform(x, self.transform_inv, mean_inv)
-
-        return y
+        return linear_transform(x, self.transform_inv, mean_inv)
 
 
 def zca_mean(
@@ -237,15 +233,17 @@ def zca_mean(
     if dim < 0:
         dim = len(inp_size) + dim
 
-    feat_dims = torch.cat([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
-
-    new_order: List[int] = torch.cat([torch.tensor([dim]), feat_dims]).tolist()
+    # Plain Python index arithmetic: tensor round-trips here would read data under graph capture.
+    new_order: List[int] = [dim]
+    num_features: int = 1
+    for i in range(len(inp_size)):
+        if i != dim:
+            new_order.append(i)
+            num_features *= inp_size[i]
 
     inp_permute = inp.permute(new_order)
 
     N = inp_size[dim]
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
-    num_features: int = int(torch.prod(feature_sizes).item())
 
     mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
 
@@ -293,10 +291,10 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
-        >>> zca_whiten(x)
-        tensor([[ 0.0000,  1.1547],
-                [ 1.0000, -0.5773],
-                [-1.0000, -0.5773]])
+        >>> zca_whiten(x).round(decimals=3)
+        tensor([[ 0.0000,  1.1550],
+                [ 1.0000, -0.5770],
+                [-1.0000, -0.5770]])
 
     """
     if not isinstance(inp, torch.Tensor):
@@ -313,9 +311,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 
     transform, mean, _ = zca_mean(inp, dim, unbiased, eps, False)
 
-    inp_whiten = linear_transform(inp, transform, mean, dim)
-
-    return inp_whiten
+    return linear_transform(inp, transform, mean, dim)
 
 
 def linear_transform(
@@ -372,16 +368,16 @@ def linear_transform(
     if dim < 0:
         dim = len(inp_size) + dim
 
-    feat_dims = torch.cat([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
-
-    perm = torch.cat([torch.tensor([dim]), feat_dims])
-    perm_inv = torch.argsort(perm)
-
-    new_order: List[int] = perm.tolist()
-    inv_order: List[int] = perm_inv.tolist()
-
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
-    num_features: int = int(torch.prod(feature_sizes).item())
+    # Plain Python index arithmetic: tensor round-trips here would read data under graph capture.
+    new_order: List[int] = [dim]
+    num_features: int = 1
+    for i in range(len(inp_size)):
+        if i != dim:
+            new_order.append(i)
+            num_features *= inp_size[i]
+    inv_order: List[int] = [0 for _ in new_order]
+    for i in range(len(new_order)):
+        inv_order[new_order[i]] = i
 
     inp_permute = inp.permute(new_order)
     inp_flat = inp_permute.reshape((-1, num_features))
@@ -391,6 +387,4 @@ def linear_transform(
 
     inp_transformed = inp_transformed.reshape(inp_permute.size())
 
-    inp_transformed = inp_transformed.permute(inv_order)
-
-    return inp_transformed
+    return inp_transformed.permute(inv_order)

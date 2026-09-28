@@ -22,6 +22,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 
+from kornia.core._compat import deprecated
+from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
 
 from .homography_warper import BaseWarper, HomographyWarper
@@ -90,7 +92,7 @@ class Homography(BaseModel):
             Homography martix with shape :math:`(1, 3, 3)`.
 
         """
-        return torch.unsqueeze(torch.inverse(self.model), dim=0)
+        return torch.unsqueeze(_torch_inverse_cast(self.model), dim=0)
 
 
 class Similarity(BaseModel):
@@ -138,8 +140,7 @@ class Similarity(BaseModel):
 
         """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
-        out = convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
-        return out
+        return convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
 
     def forward_inverse(self) -> torch.Tensor:
         r"""Single-batch inverse similarity transform".
@@ -148,7 +149,7 @@ class Similarity(BaseModel):
             Similarity with shape :math:`(1, 3, 3)`
 
         """
-        return torch.inverse(self.forward())
+        return _torch_inverse_cast(self.forward())
 
 
 class ImageRegistrator(nn.Module):
@@ -236,8 +237,7 @@ class ImageRegistrator(nn.Module):
         # compute and mask loss
         loss = self.loss_fn(img_src_to_dst, img_dst, reduction="none")  # 1xCxHxW
         ones_tensor = warper(torch.ones_like(img_src), transform_model)
-        loss = loss.masked_select(ones_tensor > 0.9).mean()
-        return loss
+        return loss.masked_select(ones_tensor > 0.9).mean()
 
     def reset_model(self) -> None:
         """Call model reset function."""
@@ -315,12 +315,15 @@ class ImageRegistrator(nn.Module):
         r"""Warp src_img with estimated model."""
         _height, _width = src_img.shape[-2:]
         warper = self.warper(_height, _width)
-        img_src_to_dst = warper(src_img, self.model())
-        return img_src_to_dst
+        return warper(src_img, self.model())
 
-    def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
-        r"""Warp src_img with inverted estimated model."""
+    def warp_dst_into_src(self, dst_img: torch.Tensor) -> torch.Tensor:
+        r"""Warp dst_img with inverted estimated model."""
         _height, _width = dst_img.shape[-2:]
         warper = self.warper(_height, _width)
-        img_dst_to_src = warper(dst_img, self.model.forward_inverse())
-        return img_dst_to_src
+        return warper(dst_img, self.model.forward_inverse())
+
+    @deprecated(replace_with="ImageRegistrator.warp_dst_into_src", version="0.9.0")
+    def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
+        r"""Deprecated alias for :meth:`warp_dst_into_src`."""
+        return self.warp_dst_into_src(dst_img)

@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
+from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.geometry.transform import vflip
 
@@ -37,6 +38,11 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        A selected flip maps ``(x, y)`` to ``(x, H - 1 - y)`` with the exact discrete
+        :func:`~kornia.geometry.transform.vflip`, without resampling; see
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for the shared contract.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.vflip`.
@@ -68,6 +74,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
     # it until `.transform_matrix` is read (see RigidAffineAugmentationBase2D).
     _compute_matrix_lazily = True
 
+    @_input_metadata_only
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:

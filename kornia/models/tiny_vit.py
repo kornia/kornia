@@ -168,8 +168,7 @@ class PatchMerging(nn.Module):
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
-        x = x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
-        return x
+        return x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
 
 
 class ConvLayer(nn.Module):
@@ -359,8 +358,7 @@ class Attention(nn.Module):
 
         attn = attn.softmax(dim=-1)
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.dh)
-        x = self.proj(x)
-        return x
+        return self.proj(x)
 
 
 class TinyViTBlock(nn.Module):
@@ -431,8 +429,7 @@ class TinyViTBlock(nn.Module):
         x = self.local_conv(x)
         x = x.view(B, C, L).transpose(1, 2)
 
-        x = x + self.drop_path2(self.mlp(x))
-        return x
+        return x + self.drop_path2(self.mlp(x))
 
 
 class BasicLayer(nn.Module):
@@ -658,6 +655,56 @@ class TinyViT(nn.Module):
         return {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
 
 
+# Module level, like every other weight registry in kornia, so the CI weights
+# cache can enumerate it -- see tests/core/test_weights_prefetch.py.
+urls: dict[str, dict[str, list[str]]] = {
+    "5m": {
+        "in22k": [
+            hf_url("tiny_vit", "tiny_vit_5m_22k_distill.pth"),
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth",
+        ],
+        "in1k": [
+            hf_url("tiny_vit", "tiny_vit_5m_22kto1k_distill.pth"),
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+        ],
+    },
+    "11m": {
+        "in22k": [
+            hf_url("tiny_vit", "tiny_vit_11m_22k_distill.pth"),
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth",
+        ],
+        "in1k": [
+            hf_url("tiny_vit", "tiny_vit_11m_22kto1k_distill.pth"),
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+        ],
+    },
+    "21m": {
+        "in22k": [
+            hf_url("tiny_vit", "tiny_vit_21m_22k_distill.pth"),
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth",
+        ],
+        "in1k": [
+            hf_url("tiny_vit", "tiny_vit_21m_22kto1k_distill.pth"),
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
+        ],
+        "in1k_384": [
+            hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"),
+            (
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
+                "tiny_vit_21m_22kto1k_384_distill.pth"
+            ),
+        ],
+        "in1k_512": [
+            hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"),
+            (
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
+                "tiny_vit_21m_22kto1k_512_distill.pth"
+            ),
+        ],
+    },
+}
+
+
 def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
     model_state_dict = model.state_dict()
     state_dict = load_state_dict_from_url(url)
@@ -705,16 +752,7 @@ def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
         if pretrained is True:
             pretrained = "in1k"
 
-        url = {
-            "in22k": [
-                hf_url("tiny_vit", "tiny_vit_5m_22k_distill.pth"),
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth",
-            ],
-            "in1k": [
-                hf_url("tiny_vit", "tiny_vit_5m_22kto1k_distill.pth"),
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
-            ],
-        }[pretrained]
+        url = urls["5m"][pretrained]
         model = _load_pretrained(model, url)
 
     return model
@@ -734,16 +772,7 @@ def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
         if pretrained is True:
             pretrained = "in1k"
 
-        url = {
-            "in22k": [
-                hf_url("tiny_vit", "tiny_vit_11m_22k_distill.pth"),
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth",
-            ],
-            "in1k": [
-                hf_url("tiny_vit", "tiny_vit_11m_22kto1k_distill.pth"),
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
-            ],
-        }[pretrained]
+        url = urls["11m"][pretrained]
         model = _load_pretrained(model, url)
 
     return model
@@ -768,24 +797,7 @@ def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
             if img_size >= 512:
                 pretrained = "in1k_512"
 
-        url = {
-            "in22k": [
-                hf_url("tiny_vit", "tiny_vit_21m_22k_distill.pth"),
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth",
-            ],
-            "in1k": [
-                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_distill.pth"),
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
-            ],
-            "in1k_384": [
-                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"),
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
-            ],
-            "in1k_512": [
-                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"),
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
-            ],
-        }[pretrained]
+        url = urls["21m"][pretrained]
         model = _load_pretrained(model, url)
 
     return model

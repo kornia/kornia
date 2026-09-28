@@ -27,7 +27,7 @@ from kornia.filters import (
     motion_blur3d,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_nearest_3d_grid_sample
 
 
 class TestMotionBlur(BaseTester):
@@ -81,6 +81,27 @@ class TestMotionBlur(BaseTester):
         assert actual.shape == (batch_size, ksize, ksize)
         self.assert_close(actual.sum(), expected.sum())
 
+    def test_get_motion_kernel2d_directional_weights(self, device, dtype):
+        direction = torch.tensor([-1.0, 0.0, 1.0], device=device, dtype=dtype)
+        actual = get_motion_kernel2d(5, torch.zeros_like(direction), direction)
+
+        expected = torch.zeros((3, 5, 5), device=device, dtype=dtype)
+        expected[0, 2] = torch.tensor([0.0, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
+        expected[1, 2] = 0.2
+        expected[2, 2] = torch.tensor([0.4, 0.3, 0.2, 0.1, 0.0], device=device, dtype=dtype)
+        self.assert_close(actual, expected)
+
+    def test_get_motion_kernel2d_direction_gradcheck(self, device):
+        direction = torch.tensor([-0.5, 0.5], device=device, dtype=torch.float64, requires_grad=True)
+        angle = torch.zeros_like(direction)
+        self.gradcheck(lambda direction: get_motion_kernel2d(5, angle, direction), (direction,))
+
+    def test_get_motion_kernel2d_mismatched_batch_size(self, device, dtype):
+        angle = torch.zeros(3, device=device, dtype=dtype)
+        direction = torch.zeros(2, device=device, dtype=dtype)
+        with pytest.raises(Exception, match=r"direction and angle must have the same length. Got 2 and 3."):
+            get_motion_kernel2d(3, angle, direction)
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
@@ -127,6 +148,14 @@ class TestMotionBlur3D(BaseTester):
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
+        if params_as_tensor:
+            supports_mode = (
+                supports_nearest_3d_grid_sample(device, dtype)
+                if mode == "nearest"
+                else supports_bilinear_3d_grid_sample(device, dtype)
+            )
+            if not supports_mode:
+                pytest.skip(f"This device does not support {mode} interpolation for 3D grid_sample")
         B, _C, _D, _H, _W = shape
         data = torch.rand(shape, device=device, dtype=dtype)
 
@@ -157,7 +186,13 @@ class TestMotionBlur3D(BaseTester):
     @pytest.mark.parametrize("direction", [-1.0, 1.0])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_get_motion_kernel3d(self, batch_size, ksize, angle, direction, params_as_tensor, device, dtype):
+        mode = "nearest"
         if params_as_tensor is True:
+            if not supports_nearest_3d_grid_sample(device, dtype):
+                if not supports_bilinear_3d_grid_sample(device, dtype):
+                    pytest.skip("This device does not support a viable interpolation mode for 3D grid_sample")
+                # This test checks only the normalized kernel sum, which is independent of interpolation mode.
+                mode = "bilinear"
             angle = torch.tensor([angle], device=device, dtype=dtype).repeat(batch_size, 1)
             direction = torch.tensor([direction], device=device, dtype=dtype).repeat(batch_size)
         else:
@@ -165,7 +200,7 @@ class TestMotionBlur3D(BaseTester):
             device = None
             dtype = None
 
-        actual = get_motion_kernel3d(ksize, angle, direction)
+        actual = get_motion_kernel3d(ksize, angle, direction, mode=mode)
         expected = torch.ones(1, device=device, dtype=dtype) * batch_size
         assert actual.shape == (batch_size, ksize, ksize, ksize)
         self.assert_close(actual.sum(), expected.sum())

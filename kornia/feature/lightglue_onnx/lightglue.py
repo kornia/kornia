@@ -17,20 +17,16 @@
 
 from __future__ import annotations
 
+import importlib.util
 from typing import ClassVar, Union
 
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
+from kornia.core.external import numpy as np
+from kornia.core.external import onnxruntime as ort
 
 from .utils import download_onnx_from_url, normalize_keypoints
-
-try:
-    import numpy as np
-    import onnxruntime as ort
-except ImportError:
-    np = None  # type: ignore
-    ort = None
 
 __all__ = ["OnnxLightGlue"]
 
@@ -62,8 +58,10 @@ class OnnxLightGlue:
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
     def __init__(self, weights: str | None = None, device: Union[str, torch.device, None] = "cpu") -> None:
-        KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
-        KORNIA_CHECK(np is not None, "numpy is not installed.")
+        # An ImportError that names the extra, like the LazyLoader handles raise, rather than a bare check.
+        if importlib.util.find_spec("onnxruntime") is None:
+            raise ImportError('onnxruntime is not installed. Install it with: pip install "kornia[onnx]".')
+        KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
         device = torch.device(device)  # type: ignore
         self.device = device

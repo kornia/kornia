@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
@@ -40,14 +41,34 @@ def undistort_points(
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
 
+    Convention:
+        - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result (integer pixel centres;
+          see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
+        - ``dist`` follows the layout of :func:`~kornia.geometry.calibration.distort_points`, the forward map
+          this function inverts; ``K`` maps the incoming pixel onto the normalized plane and ``new_K`` maps the
+          undistorted point back to pixels.
+        - the inverse is a fixed-point iteration of ``num_iters`` steps, so the round trip through
+          :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy the iteration reaches;
+          within its convergence region more steps improve it down to the dtype's rounding.
+        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
+
+    .. warning::
+        The iteration has no convergence test and no valid-radius guard: outside the convergence region it can
+        enter a two-point cycle, so the answer depends on the parity of ``num_iters``.
+        `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
+
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
         K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
-        new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
-            scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
+        new_K: Intrinsic camera matrix used to map the undistorted normalized point back to pixels, while ``K``
+            is the one that maps the incoming distorted ``points`` from pixels onto the normalized
+            :math:`z = 1` plane -- the mirror image of the two roles in
+            :func:`~kornia.geometry.calibration.distort_points`. By default it is the same as ``K``, in which
+            case both steps use the same camera; a different matrix rescales and shifts the **result**.
+            Shape: :math:`(*, 3, 3)`. Default: None.
         num_iters: Number of undistortion iterations. Default: 5.
 
     Returns:
@@ -93,9 +114,15 @@ def undistort_points(
     x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN
     y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN
 
-    # Compensate for tilt distortion
-    if torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
-        inv_tilt = tilt_projection(dist[..., 12], dist[..., 13], True)
+    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
+    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
+    capture = is_exporting()
+    if not torch.jit.is_scripting():
+        capture = capture or is_compiling()
+    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+        inv_tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14], True)
+        if inv_tilt.dim() == 2:
+            inv_tilt = inv_tilt.unsqueeze(0)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
         x, y = transform_points(inv_tilt, torch.stack([x, y], dim=-1)).unbind(-1)
@@ -138,9 +165,18 @@ def undistort_points(
 def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
     r"""Compensate an image for lens distortion.
 
-    Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
+    Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
+
+    Convention:
+        - the leading dimensions of ``image`` (in front of ``C, H, W``), ``K`` (in front of :math:`3 \times 3`)
+          and ``dist`` (in front of its ``n`` coefficients) must match exactly; the one exception is the
+          legacy unbatched call, a :math:`(1, C, H, W)` image with a :math:`(3, 3)` ``K`` and an :math:`(n,)`
+          ``dist``.
+        - the sampling map applies :func:`~kornia.geometry.calibration.distort_points` to the integer pixel
+          centres (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) and is resampled bilinearly with
+          a fixed ``align_corners=True``, so all-zero coefficients return the input only to rounding.
 
     Args:
         image: Input image with shape :math:`(*, C, H, W)`.

@@ -20,12 +20,14 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 import torch
 from torch import nn
 
+from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 
 NUMBER = Union[float, int]
 OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]
@@ -33,11 +35,33 @@ SUBPOLICY_CONFIG = List[OP_CONFIG]
 
 
 class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
-    """Policy-based image augmentation."""
+    """Base class for policy-based image augmentations.
+
+    Convention:
+        - a concrete policy selects one or more :class:`PolicySequential` children for each forward call and
+          records that selected path, including every operation parameter dictionary, in ``_params``. Passing
+          that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
+          path and reproduces their output.
+        - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy,
+          and for :class:`RandAugment` the order in which its sub-policies were drawn. When matrix computation is
+          enabled, their geometric transformation matrices
+          compose in that same execution order; a nonempty policy containing only intensity
+          operations has the identity matrix. An empty selected sub-policy has no matrix.
+          ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an applied
+          intensity operation cannot be undone.
+        - input normalization, random-number generation, parameter placement, replay, and serialization follow
+          the canonical augmentation contract in :doc:`/get-started/conventions`. This base does not expose a
+          per-instance generator.
+
+    Concrete policies define how they select children and interpret policy magnitudes.
+    """
 
     def __init__(self, policy: List[SUBPOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
         policies = self.compose_policy(policy)
         super().__init__(*policies)
+        # ``TransformMatrixMinIn`` sits after ``nn.Module`` in the MRO, so its ``__init__`` never runs.
+        self._transform_matrix: Optional[torch.Tensor] = None
+        self._transform_matrices: List[Optional[torch.Tensor]] = []
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
         self._valid_ops_for_transform_computation: Tuple[Any, ...] = (PolicySequential,)
 
@@ -115,6 +139,65 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
                 return False
         return True
 
+    def _non_invertible_ops(self, params: List[ParamItem]) -> List[str]:
+        """Name every applied operation that :meth:`inverse` cannot undo.
+
+        An operation whose probability gate skipped every sample left the input untouched, so it does
+        not count.
+
+        Args:
+            params: Parameters recorded by a forward pass.
+
+        Returns:
+            Class names of the applied operations that are not geometric, in execution order.
+        """
+        names: List[str] = []
+        for (_, module), param in zip(self.get_forward_sequence(params), params):
+            subpolicy = cast(PolicySequential, module)
+            subparams = cast(List[ParamItem], param.data)
+            for (_, operation), subparam in zip(subpolicy.get_forward_sequence(subparams), subparams):
+                operation = cast(OperationBase, operation)
+                if isinstance(operation.op, GeometricAugmentationBase2D):
+                    continue
+                batch_prob = cast(Dict[str, torch.Tensor], subparam.data).get("batch_prob")
+                if batch_prob is not None and not batch_prob.any():
+                    continue
+                names.append(operation.op.__class__.__name__)
+        return names
+
+    def inverse(
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
+        """Undo the drawn sub-policy, or refuse when it cannot be undone.
+
+        Only geometric operations are invertible. A policy draw that contains an intensity operation is
+        not round-trippable, and inverting it would return a tensor that still carries that operation --
+        for a draw with no geometry at all, the input unchanged. This raises instead, as ``inverse`` on
+        :class:`~kornia.augmentation.MixAugmentationBaseV2` already does for the mix classes.
+
+        Args:
+            input: Tensor produced by a forward pass.
+            params: Parameters used during that forward pass. Defaults to the cached ones.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            The inverse-transformed tensor.
+
+        Raises:
+            RuntimeError: The drawn sub-policy contains a non-invertible operation.
+        """
+        if params is None:
+            params = self._params
+        if params is not None:
+            non_invertible = self._non_invertible_ops(params)
+            if non_invertible:
+                raise RuntimeError(
+                    f"Inverse for {self.__class__.__name__} is not supported: the drawn sub-policy applied "
+                    f"{', '.join(non_invertible)}, which cannot be inverted. Only geometric operations are "
+                    "invertible, and the sub-policy is redrawn on every forward pass."
+                )
+        return super().inverse(input, params, extra_args=extra_args)
+
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         """Generate per-module parameters for one policy forward pass.
 
@@ -140,6 +223,9 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
     ) -> torch.Tensor:
         """Apply a prepared parameter list to the input tensor.
 
+        Resets the cached parameters and transformation matrix first, so a policy nested inside another
+        container ends up in the same state as after :meth:`forward` with these ``params``.
+
         Args:
             input: Input tensor.
             params: Parameters produced by :meth:`forward_parameters`.
@@ -148,9 +234,13 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         Returns:
             Transformed tensor.
         """
+        self.clear_state()
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            self._update_transform_matrix_by_module(module)
+        if not is_exporting():
+            self._params = params
         return input
 
     def forward(
@@ -167,17 +257,8 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         Returns:
             Augmented tensor.
         """
-        self.clear_state()
-
         if params is None:
-            inp = input
-            _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
+            _, out_shape = self.autofill_dim(input, dim_range=(2, 4))
             params = self.forward_parameters(out_shape)
 
-        for param in params:
-            module = self.get_submodule(param.name)
-            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-            self._update_transform_matrix_by_module(module)
-
-        self._params = params
-        return input
+        return self.transform_inputs(input, params=params, extra_args=extra_args)

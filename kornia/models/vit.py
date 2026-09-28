@@ -98,8 +98,7 @@ class MultiHeadAttention(nn.Module):
         out = torch.einsum("bhal, bhlv -> bhav ", att, v)
         out = out.permute(0, 2, 1, 3).contiguous().view(B, N, -1)
         out = self.projection(out)
-        out = self.projection_drop(out)
-        return out
+        return self.projection_drop(out)
 
 
 class TransformerEncoderBlock(nn.Sequential):
@@ -277,8 +276,7 @@ class VisionTransformer(nn.Module):
 
         out = self.patch_embedding(x)
         out = self.encoder(out)
-        out = self.norm(out)
-        return out
+        return self.norm(out)
 
     @staticmethod
     def from_config(variant: str, pretrained: bool = False, **kwargs: Any) -> VisionTransformer:

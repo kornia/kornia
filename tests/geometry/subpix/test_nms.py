@@ -15,12 +15,43 @@
 # limitations under the License.
 #
 
+import itertools
+
 import pytest
 import torch
 
 import kornia
 
 from testing.base import BaseTester
+
+
+def _reference_nms_mask(x: torch.Tensor, kernel_size: tuple[int, ...]) -> torch.Tensor:
+    """Strict local maxima, written out from the definition rather than from the implementation.
+
+    A position is a maximum when its whole window lies inside the input and its value is strictly
+    greater than every *other* value in that window. A position whose window would run off an edge is
+    not a maximum: the comparisons that would decide it have not been made. This is the rule the
+    ``(3, 3)``/``(5, 5)``/``(7, 7)`` fast paths have always applied, and since #4239 the general path
+    applies it too.
+
+    Built by shifting whole views and reducing with :func:`torch.maximum`, so it shares no structure
+    with the pooled implementation it checks.
+    """
+    ndim = len(kernel_size)
+    sizes = x.shape[-ndim:]
+    before = [(k - 1) // 2 for k in kernel_size]
+    after = [k - b - 1 for k, b in zip(kernel_size, before)]
+    centre_at = tuple(slice(b, s - a) for b, a, s in zip(before, after, sizes))
+    centre = x[(..., *centre_at)]
+    neighbours = torch.full_like(centre, float("-inf"))
+    for offset in itertools.product(*(range(k) for k in kernel_size)):
+        if list(offset) == before:
+            continue  # the centre itself is not one of its own neighbours
+        shifted = tuple(slice(o, o + s - k + 1) for o, s, k in zip(offset, sizes, kernel_size))
+        neighbours = torch.maximum(neighbours, x[(..., *shifted)])
+    mask = torch.zeros_like(x, dtype=torch.bool)
+    mask[(..., *centre_at)] = centre > neighbours
+    return mask
 
 
 class TestNMS2d(BaseTester):
@@ -161,6 +192,91 @@ class TestNMS2d(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.subpix.nms2d, (img, (3, 3)), nondet_tol=1e-4)
 
+    # ------------------------------------------------------------------ #4239, #4240
+    @pytest.mark.parametrize("kernel_size", [(3, 3), (5, 5), (7, 7), (9, 9), (15, 15), (4, 4)])
+    def test_matches_the_reference_rule(self, device, dtype, kernel_size):
+        # The three hand-written fast paths and the general path have to answer the same question.
+        # Parametrizing one reference over both is the pin: (3, 3), (5, 5) and (7, 7) take the
+        # explicit branches, the rest take the general one.
+        torch.manual_seed(0)
+        inp = (torch.rand(2, 3, 23, 27, device=device) * 4).to(dtype)
+        self.assert_close(
+            kornia.geometry.subpix.nms2d(inp, kernel_size, mask_only=True).to(dtype),
+            _reference_nms_mask(inp, kernel_size).to(dtype),
+        )
+
+    @pytest.mark.parametrize("kernel_size", [(5, 5), (9, 9)])
+    def test_a_plateau_holds_no_strict_maximum(self, device, dtype, kernel_size):
+        # The suppression is strict: tied neighbours kill each other. A max-pool written as
+        # `x == max_pool(x)` would keep the whole plateau instead.
+        inp = torch.zeros(1, 1, 31, 31, device=device, dtype=dtype)
+        inp[0, 0, 10:13, 10:13] = 1.0  # nine equal, mutually adjacent maxima
+        inp[0, 0, 22, 22] = 0.5  # one strictly larger than everything around it
+        mask = kornia.geometry.subpix.nms2d(inp, kernel_size, mask_only=True)
+        assert not bool(mask[0, 0, 10:13, 10:13].any())
+        assert bool(mask[0, 0, 22, 22])
+        assert int(mask.sum()) == 1
+
+    @pytest.mark.parametrize("kernel_size", [(3, 3), (5, 5), (9, 9), (15, 15)])
+    def test_the_border_strip_is_never_a_maximum(self, device, dtype, kernel_size):
+        # A peak whose window does not fit inside the image has not been compared against the
+        # neighbours that would decide it, so it is not reported (#4239). The strip is
+        # `(k - 1) // 2` wide, the same one the explicit paths have always rejected.
+        radius = (kernel_size[0] - 1) // 2
+        inside = torch.zeros(1, 1, 41, 41, device=device, dtype=dtype)
+        inside[0, 0, radius, radius] = 1.0
+        assert bool(kornia.geometry.subpix.nms2d(inside, kernel_size, mask_only=True)[0, 0, radius, radius])
+        outside = torch.zeros(1, 1, 41, 41, device=device, dtype=dtype)
+        outside[0, 0, radius - 1, radius] = 1.0
+        assert not bool(kornia.geometry.subpix.nms2d(outside, kernel_size, mask_only=True).any())
+
+    @pytest.mark.parametrize("kernel_size", [(11, 5), (5, 11), (13, 9)])
+    def test_non_square_kernel_size(self, device, dtype, kernel_size):
+        # A non-square window used to raise out of an internal `view`, because the conv kernel was
+        # built with its two extents swapped and the padding was applied to the wrong pair of
+        # edges (#4240).
+        torch.manual_seed(0)
+        inp = (torch.rand(1, 2, 29, 31, device=device) * 4).to(dtype)
+        self.assert_close(
+            kornia.geometry.subpix.nms2d(inp, kernel_size, mask_only=True).to(dtype),
+            _reference_nms_mask(inp, kernel_size).to(dtype),
+        )
+
+    def test_unit_window_suppresses_nothing(self, device, dtype):
+        # A 1x1 window has no neighbours, so every position is vacuously a strict maximum and the
+        # input comes back untouched. It used to come back thresholded at zero, an artifact of the
+        # zeroed centre tap summing to 0.0 rather than anything NMS means.
+        inp = torch.tensor([[[[float("-inf"), 0.0, 2.0], [0.5, -0.5, 0.0]]]], device=device, dtype=dtype)
+        assert bool(kornia.geometry.subpix.nms2d(inp, (1, 1), mask_only=True).all())
+        self.assert_close(kornia.geometry.subpix.nms2d(inp, (1, 1)), inp)
+
+    def test_unit_window_suppresses_nothing_integer(self, device):
+        inp = torch.tensor([[[[torch.iinfo(torch.int64).min, 0, 2]]]], device=device, dtype=torch.int64)
+        assert bool(kornia.geometry.subpix.nms2d(inp, (1, 1), mask_only=True).all())
+        self.assert_close(kornia.geometry.subpix.nms2d(inp, (1, 1)), inp)
+
+    def test_window_larger_than_the_input_finds_no_maxima(self, device, dtype):
+        inp = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
+        assert int(kornia.geometry.subpix.nms2d(inp, (9, 9), mask_only=True).sum()) == 0
+
+    def test_module_and_functional_agree(self, device, dtype):
+        torch.manual_seed(0)
+        inp = (torch.rand(1, 2, 21, 23, device=device) * 4).to(dtype)
+        module = kornia.geometry.subpix.NonMaximaSuppression2d((9, 9)).to(device)
+        self.assert_close(module(inp), kornia.geometry.subpix.nms2d(inp, (9, 9)))
+
+    @pytest.mark.parametrize("prefix", ["", "0."])
+    def test_loads_legacy_kernel_state_dict_strictly(self, prefix):
+        nms = kornia.geometry.subpix.NonMaximaSuppression2d((9, 9))
+        module = nms if prefix == "" else torch.nn.Sequential(nms)
+        incompatible = module.load_state_dict({f"{prefix}kernel": torch.empty(81, 1, 9, 9)})
+        assert incompatible.missing_keys == []
+        assert incompatible.unexpected_keys == []
+
+    def test_gradcheck_general_path(self, device):
+        img = torch.rand(1, 2, 13, 13, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.subpix.nms2d, (img, (9, 9)), nondet_tol=1e-4)
+
 
 class TestNMS3d(BaseTester):
     def test_shape(self, device):
@@ -241,6 +357,51 @@ class TestNMS3d(BaseTester):
         batch_size, channels, depth, height, width = 1, 1, 4, 5, 4
         img = torch.rand(batch_size, channels, depth, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.subpix.nms3d, (img, (3, 3, 3)), nondet_tol=1e-4)
+
+    # ------------------------------------------------------------------------------- #4241
+    @pytest.mark.parametrize("kernel_size", [(3, 3, 3), (5, 5, 5), (3, 5, 7), (5, 3, 3)])
+    def test_matches_the_reference_rule(self, device, dtype, kernel_size):
+        # Every kernel size other than (3, 3, 3) used to raise: `_compute_zero_padding3d` defined a
+        # `(k - 1) // 2` helper and then returned the full kernel sizes instead, so the padded
+        # volume did not match the kernel and the `view` after the convolution failed (#4241).
+        torch.manual_seed(0)
+        inp = (torch.rand(2, 2, 11, 13, 12, device=device) * 4).to(dtype)
+        self.assert_close(
+            kornia.geometry.subpix.nms3d(inp, kernel_size, mask_only=True).to(dtype),
+            _reference_nms_mask(inp, kernel_size).to(dtype),
+        )
+
+    @pytest.mark.parametrize("kernel_size", [(5, 5, 5), (3, 5, 7)])
+    def test_shape_general_kernel(self, device, kernel_size):
+        inp = torch.ones(1, 2, 9, 12, 12, device=device)
+        nms = kornia.geometry.subpix.NonMaximaSuppression3d(kernel_size).to(device)
+        assert nms(inp).shape == inp.shape
+
+    def test_a_plateau_holds_no_strict_maximum(self, device, dtype):
+        inp = torch.zeros(1, 1, 11, 21, 21, device=device, dtype=dtype)
+        inp[0, 0, 4:6, 8:10, 8:10] = 1.0
+        inp[0, 0, 5, 15, 15] = 0.5
+        mask = kornia.geometry.subpix.nms3d(inp, (5, 5, 5), mask_only=True)
+        assert not bool(mask[0, 0, 4:6, 8:10, 8:10].any())
+        assert int(mask.sum()) == 1
+
+    def test_window_larger_than_the_input_finds_no_maxima(self, device, dtype):
+        inp = torch.rand(1, 1, 2, 4, 4, device=device, dtype=dtype)
+        assert int(kornia.geometry.subpix.nms3d(inp, (5, 5, 5), mask_only=True).sum()) == 0
+
+    def test_unit_window_suppresses_nothing(self, device, dtype):
+        inp = torch.tensor([[[[[float("-inf"), 0.0, 2.0]]]]], device=device, dtype=dtype)
+        assert bool(kornia.geometry.subpix.nms3d(inp, (1, 1, 1), mask_only=True).all())
+        self.assert_close(kornia.geometry.subpix.nms3d(inp, (1, 1, 1)), inp)
+
+    def test_unit_window_suppresses_nothing_integer(self, device):
+        inp = torch.tensor([[[[[torch.iinfo(torch.int64).min, 0, 2]]]]], device=device, dtype=torch.int64)
+        assert bool(kornia.geometry.subpix.nms3d(inp, (1, 1, 1), mask_only=True).all())
+        self.assert_close(kornia.geometry.subpix.nms3d(inp, (1, 1, 1)), inp)
+
+    def test_gradcheck_general_path(self, device):
+        img = torch.rand(1, 1, 7, 9, 9, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.subpix.nms3d, (img, (5, 5, 5)), nondet_tol=1e-4)
 
 
 class TestNMS3dMinMax(BaseTester):

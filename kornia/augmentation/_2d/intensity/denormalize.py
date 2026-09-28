@@ -27,6 +27,8 @@ from kornia.enhance import denormalize
 class Denormalize(IntensityAugmentationBase2D):
     r"""Denormalize tensor images with mean and standard deviation.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
@@ -35,13 +37,19 @@ class Denormalize(IntensityAugmentationBase2D):
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
-        same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Return:
         Denormalised tensor with same size as input :math:`(*, C, H, W)`.
+
+    Convention:
+        - the ``mean`` and ``std`` forms, the batch-wide ``p`` gate and the storage in ``flags`` are those of
+          :class:`Normalize`.
+        - this class inverts :class:`Normalize` built with the same ``mean`` and ``std``, up to float rounding,
+          when both apply -- each draws its own ``p`` gate.
+        - the result is not clamped: it is ``input * std + mean`` whatever range the input is in.
 
     .. note::
         This function internally uses :func:`kornia.enhance.denormalize`.
@@ -63,10 +71,10 @@ class Denormalize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
-        if isinstance(mean, float):
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean])
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std])
 
         if isinstance(mean, (tuple, list)):

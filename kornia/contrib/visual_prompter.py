@@ -129,9 +129,8 @@ class VisualPrompter:
         encoder_im_size = self.model.image_encoder.img_size
         pad_h = encoder_im_size - x.shape[-2]
         pad_w = encoder_im_size - x.shape[-1]
-        x = F.pad(x, (0, pad_w, 0, pad_h))
 
-        return x
+        return F.pad(x, (0, pad_w, 0, pad_h))
 
     @torch.no_grad()
     def set_image(
@@ -239,7 +238,9 @@ class VisualPrompter:
         if isinstance(masks, torch.Tensor):
             self._valid_masks(masks)
 
-        data = self._transform_prompts(*to_transform, data_keys=data_keys)
+        # No prompt at all is a valid query (SAM then predicts from the image embedding alone); the
+        # augmentation container cannot be called with nothing to transform.
+        data = self._transform_prompts(*to_transform, data_keys=data_keys) if to_transform else {}
 
         if "keypoints" in data and isinstance(data["keypoints"], Keypoints):
             kpts_tensor = data["keypoints"].to_tensor()
@@ -369,7 +370,7 @@ class VisualPrompter:
 
         Example:
             >>> # prompter = VisualPrompter()
-            >>> # prompter.compile() # You should have torch >= 2.0.0 installed
+            >>> # prompter.compile()
             >>> # Use the prompter methods ...
 
         """

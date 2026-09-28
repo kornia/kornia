@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -34,22 +35,24 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     Localizable Features` :cite:`yun2019cutmix`.
 
     The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
-    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.Tensor that contains (label_permuted_batch, lambda)
-    for each cutmix.
+    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.Tensor that contains
+    (label_batch, label_permuted_batch, lambda) for each cutmix.
 
     The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
     <https://github.com/clovaai/CutMix-PyTorch>`_.
 
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
     Args:
-        height: the width of the input image.
-        width: the width of the input image.
         p: probability for applying an augmentation to a batch. This param controls the augmentation
                    probabilities batch-wisely.
         num_mix: cut mix times.
         beta: hyperparameter for generating cut size from beta distribution.
             Beta cannot be set to 0 after torch 1.8.0. If None, it will be set to 1.
-        cut_size: controlling the minimum and maximum cut ratio from [0, 1].
-            If None, it will be set to [0, 1], which means no restriction.
+        cut_size: the ``[min, max]`` clamp, within [0, 1], applied to the Beta-sampled mixing coefficient
+            ``lambda``, not the fraction of the image to cut. The cut side is ``floor(sqrt(1 - lambda) * side)``,
+            so a larger ``cut_size`` gives a *smaller* cut, and a minimum of 1 is rejected because it would cut
+            nothing. If None, it will be set to [0, 1], which means no restriction.
         same_on_batch: apply the same transformation across the batch.
             This flag will not maintain permutation order.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -65,7 +68,24 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
-        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
+        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(num_mix, B, 3)`.
+
+    Convention:
+        - With ``data_keys=["input", "class"]``, the class output is ``(num_mix, B, 3)``. Its last axis holds
+          the original label, the label selected by that mix's permutation, and the area fraction returned as
+          lambda. Labels must be one-dimensional and are returned as floating values in the image dtype, except that
+          a ``float16`` or ``bfloat16`` image yields ``float32`` labels so integer class ids up to
+          ``2 ** 24`` stay exact.
+          ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
+          the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
+        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`
+          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_): ``_params["batch_prob"]`` is all ones or all zeros,
+          and every row and mix of a selected batch receives a cut, though self-pairing or a zero-sized cut can
+          leave a row unchanged. With ``same_on_batch=False`` each row and mix draws its own cut size and placement;
+          ``same_on_batch=True`` shares one geometry, and with ``num_mix > 1`` one pairing too, so every mix
+          repeats the first cut while the labels credit the donor once per mix
+          (`#4805 <https://github.com/kornia/kornia/issues/4805>`_). At ``p=0`` the image is unchanged and each
+          class row contains the original label twice with lambda zero.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
@@ -77,13 +97,13 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         >>> label = torch.tensor([0, 1])
         >>> cutmix = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
         >>> cutmix(input, label)
-        [tensor([[[[0.8879, 0.4510, 1.0000],
+        [tensor([[[[1.0000, 1.0000, 1.0000],
                   [0.1498, 0.4015, 1.0000],
-                  [1.0000, 1.0000, 1.0000]]],
+                  [0.4594, 0.1756, 1.0000]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[1.0000, 1.0000, 0.7995],
-                  [1.0000, 1.0000, 0.0542],
+                [[[0.8879, 1.0000, 1.0000],
+                  [0.1498, 1.0000, 1.0000],
                   [0.4594, 0.1756, 0.9492]]]]), tensor([[[0.0000, 1.0000, 0.5556],
                  [1.0000, 0.0000, 0.5556]]])]
 
@@ -101,7 +121,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         use_correct_lambda: bool = False,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
+        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=1.0)
 
         self.use_correct_lambda = use_correct_lambda
         if not self.use_correct_lambda:
@@ -119,19 +139,21 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         height, width = params["image_shape"]
 
         out_labels = []
+        image_dtype = DType.to_torch(int(params["dtype"].item()))
+        calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
             labels_permute = input.index_select(dim=0, index=pair.to(input.device))
             w, h = infer_bbox_shape(crop)
 
-            lam_val = w.to(input.dtype) * h.to(input.dtype) / (width * height)
+            lam_val = w.to(calc_dtype) * h.to(calc_dtype) / (width * height)
             lam = 1 - lam_val if self.use_correct_lambda else lam_val
 
             out_labels.append(
                 torch.stack(
                     [
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        labels_permute.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        lam.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
+                        input.to(device=input.device, dtype=calc_dtype),
+                        labels_permute.to(device=input.device, dtype=calc_dtype),
+                        lam.to(device=input.device, dtype=calc_dtype),
                     ],
                     1,
                 )
@@ -143,13 +165,15 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         out_labels = []
-        lam = torch.zeros((len(input)), device=input.device, dtype=DType.to_torch(int(params["dtype"].item())))
+        image_dtype = DType.to_torch(int(params["dtype"].item()))
+        calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
+        lam = torch.zeros((len(input)), device=input.device, dtype=calc_dtype)
         for _ in range(self._param_generator.num_mix):
             out_labels.append(
                 torch.stack(
                     [
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
+                        input.to(device=input.device, dtype=calc_dtype),
+                        input.to(device=input.device, dtype=calc_dtype),
                         lam,
                     ],
                     1,

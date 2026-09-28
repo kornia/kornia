@@ -92,6 +92,27 @@ class TestParametrizedLine(BaseTester):
         distance_expected = torch.tensor(16.0, device=device, dtype=dtype)
         self.assert_close(l1.squared_distance(point), distance_expected)
 
+    def test_distance_near_the_line_does_not_cancel_5016(self, device):
+        # #5016: ||d||^2 - (d . u)^2 cancelled for points near a tilted line, so squared_distance went negative
+        # and distance returned NaN, with a NaN gradient.
+        o = torch.tensor([0.3, 0.7], device=device)
+        line = ParametrizedLine(o, torch.tensor([0.28, 0.96], device=device))
+        u = line.direction.detach()
+        on_line = o + torch.linspace(-50.0, 50.0, 200, device=device)[:, None] * u
+        # One value per row: a reduction over every element also passes the checks below.
+        assert line.squared_distance(on_line).shape == (200,)
+        assert line.distance(on_line).shape == (200,)
+        assert (line.squared_distance(on_line) >= 0).all()
+        assert torch.isfinite(line.distance(on_line)).all()
+        assert line.distance(on_line).max() < 1e-4
+
+        off_line = o + 40.0 * u + 1e-3 * torch.stack([-u[1], u[0]])
+        self.assert_close(line.distance(off_line), torch.tensor(1e-3, device=device), rtol=1e-2, atol=0.0)
+
+        p = on_line[7].clone().requires_grad_(True)
+        line.distance(p).backward()
+        assert torch.isfinite(p.grad).all()
+
     def test_instersect_plane(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
@@ -109,6 +130,35 @@ class TestParametrizedLine(BaseTester):
 
         self.assert_close(lmbda, expected_lambda)
         self.assert_close(point, expected_point)
+
+    def test_intersect_plane_returns_tensors(self, device, dtype):
+        plane = Hyperplane.through(
+            torch.tensor([0.0, 0.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 1.0, 2.0], device=device, dtype=dtype),
+        )
+        line = ParametrizedLine(
+            torch.tensor([1.0, 1.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 0.6, 0.8], device=device, dtype=dtype),
+        )
+
+        lmbda, point = line.intersect(plane)
+
+        assert type(lmbda) is torch.Tensor
+        assert type(point) is torch.Tensor
+
+        self.assert_close(lmbda, torch.tensor(2.5, device=device, dtype=dtype))
+        self.assert_close(
+            point,
+            torch.tensor([1.0, 2.5, 2.0], device=device, dtype=dtype),
+        )
+        self.assert_close(plane.signed_distance(point).data, torch.zeros_like(lmbda))
+
+        # An origin off z = 0, so that the sign of n . origin in lambda is pinned as well.
+        line = ParametrizedLine(torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype), line.direction)
+        lmbda, point = line.intersect(plane)
+        self.assert_close(lmbda, torch.tensor(1.25, device=device, dtype=dtype))
+        self.assert_close(point, torch.tensor([1.0, 1.75, 2.0], device=device, dtype=dtype))
 
     def test_intersect_plane_parallel(self, device, dtype):
         # the degenerate branch must return deterministic values, not uninitialized memory
@@ -145,6 +195,39 @@ class TestParametrizedLine(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
         pass
+
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        p0 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
+        p1 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
+        line = ParametrizedLine.through(p0, p1)
+        assert line.direction.grad_fn is not None
+        assert list(line.state_dict()) == ["_origin", "_direction"]
+        origin = torch.zeros(2, device=device, dtype=dtype)
+        restored = ParametrizedLine(origin, torch.ones(2, device=device, dtype=dtype))
+        restored.load_state_dict(line.state_dict())
+        self.assert_close(restored.direction, line.direction.detach())
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
+        moved = line.to(other)
+        assert moved.origin.dtype == other and moved.direction.dtype == other
+        assert moved.direction.grad_fn is not None
+        moved.direction.sum().backward()
+        assert p1.grad is not None
+
+    def test_user_leaf_receives_the_gradient(self, device, dtype):
+        # A tensor that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it (#4943).
+        origin = torch.tensor([0.5, 1.0], device=device, dtype=dtype, requires_grad=True)
+        direction = torch.tensor([0.6, 0.8], device=device, dtype=dtype, requires_grad=True)
+        line = ParametrizedLine(origin, direction)
+        assert line.origin is origin and line.direction is direction
+        assert [name for name, _ in line.named_buffers()] == ["_origin", "_direction"]
+        assert list(line.state_dict()) == ["_origin", "_direction"]
+        line.point_at(2.0).sum().backward()
+        assert origin.grad is not None and direction.grad is not None
+        self.assert_close(origin.grad, torch.ones_like(origin))
+        self.assert_close(direction.grad, torch.full_like(direction, 2.0))
+        # a tensor that does not require grad still becomes an optimizable parameter
+        plain = ParametrizedLine(origin.detach().clone(), direction.detach().clone())
+        assert [name for name, _ in plain.named_parameters()] == ["_origin", "_direction"]
 
 
 class TestFitLine(BaseTester):
@@ -230,6 +313,13 @@ class TestFitLine(BaseTester):
         angle_est = torch.nn.functional.cosine_similarity(line_est.direction, expected_dir, dim=-1)
 
         assert angle_est.abs() > 0.998
+
+    def test_fit_line_vertical_dtype(self, device, dtype):
+        pts = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype)
+        line = fit_line(pts)
+        assert line.origin.dtype == dtype
+        assert line.direction.dtype == dtype
+        self.assert_close(line.direction, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
 
     @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):

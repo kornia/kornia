@@ -28,9 +28,13 @@ from kornia.enhance.adjust import adjust_contrast
 class RandomContrast(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the contrast of a torch.Tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The factor scales the raw values: the output is ``input * factor``. torchvision's and PIL's contrast blends
+    the image with its grayscale mean instead (``factor * input + (1 - factor) * mean``); :class:`ColorJitter`'s
+    contrast step is that formula.
 
     .. image:: _static/img/RandomContrast.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         contrast: the contrast factor to apply.
@@ -42,6 +46,17 @@ class RandomContrast(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the drawn factor reaches :func:`kornia.enhance.adjust_contrast` unchanged -- it is not re-based the way
+          :class:`RandomBrightness` re-bases its own -- so ``1.0`` is the identity: for any input with
+          ``clip_output=False``, and for an input in ``[0, 1]`` at the default.
+        - at the default ``clip_output=True`` the result is clamped into ``[0, 1]``; with ``clip_output=False``
+          the raw product is returned.
+
+    .. warning::
+        At the default ``clip_output=True`` an all-negative input comes back as an all-zero image. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_contrast`

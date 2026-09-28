@@ -99,7 +99,6 @@ class TestDivergenceLoss(BaseTester):
         expected = torch.tensor(expected).to(device, dtype)
         self.assert_close(actual, expected)
 
-    @pytest.mark.grad()
     def test_gradcheck_kl(self, device, dtype):
         dtype = torch.float64
         pred = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
@@ -108,7 +107,6 @@ class TestDivergenceLoss(BaseTester):
         # evaluate function gradient
         self.gradcheck(kornia.losses.kl_div_loss_2d, (pred, target))
 
-    @pytest.mark.grad()
     def test_gradcheck_js(self, device, dtype):
         dtype = torch.float64
         pred = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)

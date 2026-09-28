@@ -60,19 +60,17 @@ class FinePreprocess(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Run this LoFTR component forward.
 
-        The method processes coarse or fine matching tensors used by LoFTR. Shape symbols such as `B`, `C`, `H`, `W`,
-        `N`, and `D` refer to batch size, channels, height, width, token count, and feature dimension.
-
         Args:
-            feat_f0: Input value used by this method.
-            feat_f1: Input value used by this method.
-            feat_c0: Input value used by this method.
-            feat_c1: Input value used by this method.
-            data: Dictionary containing image features, keypoints, descriptors, and image sizes for matching.
+            feat_f0: Fine feature map of the first image with shape :math:`(B, C_f, H_f, W_f)`.
+            feat_f1: Fine feature map of the second image with shape :math:`(B, C_f, H_f, W_f)`.
+            feat_c0: Coarse feature map or transformed tokens of the first image with shape
+                :math:`(B, C_c, H_c, W_c)` or :math:`(N_c, C_c)`.
+            feat_c1: Coarse feature map or transformed tokens of the second image with shape
+                :math:`(B, C_c, H_c, W_c)` or :math:`(N_c, C_c)`.
+            data: Dictionary containing coarse match metadata and indices.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Tuple of local cropped fine feature patches ``(feat0, feat1)`` each with shape :math:`(N_m, W^2, C)`.
         """
         W = self.W
         stride = data["hw0_f"][0] // data["hw0_c"][0]

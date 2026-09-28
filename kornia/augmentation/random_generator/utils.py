@@ -15,15 +15,20 @@
 # limitations under the License.
 #
 
-from typing import Any
+from typing import Any, Optional
 
 import torch
 
 
-def randperm(n: int, ensure_perm: bool = True, **kwargs: Any) -> torch.Tensor:
-    """`randomperm` with the ability to ensure the different arrangement generated."""
+def randperm(n: int, ensure_perm: bool = True, identity: Optional[torch.Tensor] = None, **kwargs: Any) -> torch.Tensor:
+    """`randomperm` with the ability to ensure the different arrangement generated.
+
+    ``identity`` is the permutation to reject when ``ensure_perm`` is set; it defaults to ``arange(n)``.
+    """
     perm = torch.randperm(n, **kwargs)
     if ensure_perm:
-        while torch.all(torch.eq(perm, torch.arange(n, device=perm.device))):
+        if identity is None:
+            identity = torch.arange(n, device=perm.device)
+        while torch.equal(perm, identity):
             perm = torch.randperm(n, **kwargs)
     return perm

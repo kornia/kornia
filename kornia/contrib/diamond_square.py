@@ -151,9 +151,7 @@ def _one_diamond_one_square(
     square_centers = (square_regions > 0).to(img.dtype)
 
     # TODO (anguelos) make sure square_centers*square_regions is needed
-    new_img = new_img + square_centers * random_img + (1 - random_scale) * square_centers * square_regions
-
-    return new_img
+    return new_img + square_centers * random_img + (1 - random_scale) * square_centers * square_regions
 
 
 def diamond_square(
@@ -206,9 +204,11 @@ def diamond_square(
     for x in output_size[:-2]:
         num_samples *= x
 
-    # compute the image seed
-    p2_width: float = 2 ** math.ceil(math.log2(width - 1)) + 1
-    p2_height: float = 2 ** math.ceil(math.log2(height - 1)) + 1
+    # compute the image seed. The smallest grid the algorithm builds is 3 px per side (two corners
+    # and a midpoint), so a smaller side is generated at 3 px and sliced down below: a 1 or 2 px
+    # side is just its corner draws. Sizes from 3 px up are unaffected.
+    p2_width: int = 2 ** math.ceil(math.log2(max(width, 3) - 1)) + 1
+    p2_height: int = 2 ** math.ceil(math.log2(max(height, 3) - 1)) + 1
     recursion_depth: int = int(min(math.log2(p2_width - 1) - 1, math.log2(p2_height - 1) - 1))
     seed_width: int = (p2_width - 1) // 2**recursion_depth + 1
     seed_height: int = (p2_height - 1) // 2**recursion_depth + 1

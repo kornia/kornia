@@ -17,39 +17,94 @@
 
 """Module containing RANSAC modules."""
 
+from __future__ import annotations
+
 import math
-from functools import partial
-from typing import Callable, Optional, Tuple
+import sys
+from functools import lru_cache, partial
+from typing import Callable, Optional, Tuple, Union
 
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry.epipolar import find_essential, find_fundamental, sampson_epipolar_distance
+from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.homography import (
+    _line_segment_squared_distance_one_way,
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
     find_homography_lines_dlt_iterated,
-    line_segment_transfer_error_one_way,
     oneway_transfer_error,
     sample_is_valid_for_homography,
 )
 
 __all__ = ["RANSAC"]
 
+# The batch size that the ``max_iter`` budget counts in when ``batch_size="auto"``.
+_DEFAULT_BATCH = 2048
+
+
+@lru_cache(maxsize=32)
+def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, ...]:
+    """Cumulative draw counts T'_n (Chum & Matas, CVPR 2005, eqs. 3--4)."""
+    expected = float(budget)
+    for i in range(sample_size):
+        expected *= (sample_size - i) / (pop_size - i)
+    ends = [1]
+    for n in range(sample_size + 1, pop_size + 1):
+        next_expected = expected * n / (n - sample_size)
+        ends.append(ends[-1] + max(1, math.ceil(next_expected - expected)))
+        expected = next_expected
+    return tuple(ends)
+
 
 class RANSAC(nn.Module):
     """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
+    Convention:
+        - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
+          ``model_type``, so a homography maps ``kp1`` to ``kp2``. ``forward`` returns a ``(3, 3)`` model and an
+          ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no candidate has more inliers than
+          its minimal sample (four correspondences for homographies, five for ``"essential"``, seven or eight
+          for the fundamental models).
+        - ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for ``"essential"``): a
+          correspondence is an inlier when its one-way transfer error for ``"homography"``, its Sampson distance
+          for ``"fundamental"``, ``"fundamental_7pt"`` and ``"essential"``, or the mean distance of its transferred
+          endpoints from the image-2 segment's line for ``"homography_from_linesegments"`` is at most ``inl_th``.
+          :ref:`two-view-conventions` compares this with OpenCV.
+        - ``score_type="msac"`` (the default) ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the
+          squared errors ``e``; acceptance and early stopping count inliers for either score.
+        - Local optimization defaults to ``lo_sample_size=32``: ``max_lo_iters`` randomized refits on 32-inlier
+          subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers iteratively.
+        - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
+          termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
+        - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
+          draws from the global generator.
+
     Args:
-        model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+        model_type: "homography", "fundamental", "fundamental_7pt", "essential", or
             "homography_from_linesegments".
-        inliers_threshold: threshold for the correspondence to be an inlier.
-        batch_size: number of generated samples at once.
-        max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
-        confidence: desired confidence of the result, used for the early stopping.
-        max_local_iterations: number of local optimization (polishing) iterations.
+        inl_th: positive inlier threshold, in the units given above.
+        batch_size: hypotheses generated and verified at once, or ``"auto"`` to pick the batch per call from
+            the device and the number of correspondences (see :meth:`resolve_batch_size`).
+        max_iter: with an integer ``batch_size``, the maximum number of batches, for a budget of
+            ``batch_size * max_iter`` minimal samples; with ``"auto"``, the budget is ``2048 * max_iter``. The
+            seven- and five-point solvers can return multiple models per sample.
+        confidence: stopping confidence in ``(0, 1]``; 1 disables early stopping.
+        max_lo_iters: maximum local refitting iterations; zero disables polishing.
+        score_type: "msac" (default) for truncated squared residuals, or "ransac" for support count.
+        prosac_sampling: use PROSAC sampling on best-first ordered correspondences. The growth schedule
+            advances per sampled set within each batch; stopping tests the incumbent's support within ranked
+            prefixes (Chum and Matas, 2005, section 2.2) as well as within the whole set. It pays off when the
+            ranking tracks inlier-ness and the inlier ratio is low (ratio-tested SIFT). On learned matches with
+            85% or more inliers it can certify a model fitted to a spatially clustered top-ranked prefix after
+            one batch and score below uniform sampling; use uniform sampling or ``confidence=1`` there.
+        seed: optional seed, reset on each call for reproducible estimation on the same device.
+        lo_sample_size: inlier-subset size for a batch of ``max_lo_iters`` randomized local refits followed
+            by a full-inlier refit (default 32). None uses iterative full-inlier refitting.
+        max_samples: optional budget of minimal samples that overrides the one implied by ``batch_size`` and
+            ``max_iter``; the last batch is truncated to it.
 
     """
 
@@ -57,27 +112,40 @@ class RANSAC(nn.Module):
         self,
         model_type: str = "homography",
         inl_th: float = 2.0,
-        batch_size: int = 2048,
+        batch_size: Union[int, str] = "auto",
         max_iter: int = 10,
         confidence: float = 0.99,
         max_lo_iters: int = 5,
-        score_type: str = "ransac",
+        score_type: str = "msac",
         prosac_sampling: bool = False,
         seed: Optional[int] = None,
+        lo_sample_size: Optional[int] = 32,
+        max_samples: Optional[int] = None,
     ) -> None:
         """Initialize the RANSAC estimator.
 
         Args:
             model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
                 "homography_from_linesegments".
-            inl_th: threshold for the correspondence to be an inlier. Internally is squared.
-            batch_size: number of generated samples at once.
-            max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
-            confidence: desired confidence of the result, used for the early stopping.
+            inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
+            batch_size: number of generated samples at once, or ``"auto"``: batches of up to 8192 homography or
+                2048 epipolar hypotheses on CUDA and MPS, fewer for very many correspondences, and on CPU a batch
+                sized for the model and the number of correspondences so that early stopping is checked every
+                millisecond or so. Other devices retain the historical 2048-sample batch.
+            max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn
+                (``2048 * max_iter`` with ``batch_size="auto"``) unless ``max_samples`` is given.
+            confidence: desired confidence of the result, used for the early stopping. 1 runs the full budget.
             max_lo_iters: number of local optimization (polishing) iterations.
-            score_type: scoring method to use: "ransac" or "msac".
-            prosac_sampling: whether to use PROSAC sampling instead of random sampling.
+            score_type: scoring method to use: "msac" (default) or "ransac".
+            prosac_sampling: use PROSAC's progressive sampling schedule. Inputs must be sorted best-first
+                by match quality. The schedule advances for every sampled set, including within batches.
+                Stops when a ranked prefix, or the whole set, certifies the incumbent with ``confidence``.
             seed: optional random seed for reproducible results. If None, uses global random state.
+            lo_sample_size: cap on the number of inliers used by each randomized local refit (default 32).
+                Fits ``max_lo_iters`` independent subsets in one batch, followed by one full-inlier refit.
+                None uses iterative full-inlier refitting. Subset refits must raise the score; a full-inlier
+                refit may also tie it, since it is more precise than the minimal-sample model.
+            max_samples: optional budget of minimal samples, overriding ``batch_size * max_iter``.
 
         """
         super().__init__()
@@ -89,16 +157,37 @@ class RANSAC(nn.Module):
             "essential",
         ]
         self.supported_scores = ["msac", "ransac"]
+        if score_type not in self.supported_scores:
+            raise ValueError(f"Unsupported score type: {score_type}")
+        if not math.isfinite(inl_th * inl_th) or inl_th <= 0 or inl_th * inl_th == 0:
+            raise ValueError("inl_th and its square must be positive and finite")
+        if isinstance(batch_size, str):
+            if batch_size != "auto":
+                raise ValueError('batch_size must be a positive integer or "auto"')
+        elif isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
+            raise ValueError('batch_size must be a positive integer or "auto"')
+        if max_iter <= 0 or max_lo_iters < 0:
+            raise ValueError("max_iter must be positive; max_lo_iters must be nonnegative")
+        if max_samples is not None and (
+            isinstance(max_samples, bool) or not isinstance(max_samples, int) or max_samples <= 0
+        ):
+            raise ValueError("max_samples must be a positive integer")
+        if not 0 < confidence <= 1:
+            raise ValueError("confidence must lie in (0, 1]")
         self.score_type = score_type
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size
+        self.max_samples = max_samples
         self.model_type = model_type
         self.confidence = confidence
         self.max_lo_iters = max_lo_iters
         self.model_type = model_type
         self.prosac_sampling = prosac_sampling
         self.seed = seed
+        self.lo_sample_size = lo_sample_size
+        # The PROSAC growth schedule as a device tensor, reused across the batches of a call.
+        self._prosac_ends: Optional[Tuple[Tuple[int, int, int, torch.device], torch.Tensor]] = None
 
         self.error_fn: Callable[..., torch.Tensor]
         self.minimal_solver: Callable[..., torch.Tensor]
@@ -107,13 +196,15 @@ class RANSAC(nn.Module):
         if model_type == "homography":
             self.error_fn = oneway_transfer_error
             self.minimal_solver = find_homography_dlt
-            self.polisher_solver = find_homography_dlt_iterated
+            # The polisher's Gaussian re-weighting uses the inlier threshold as its standard deviation.
+            self.polisher_solver = partial(find_homography_dlt_iterated, soft_inl_th=inl_th)
             self.minimal_sample_size = 4
             self.polisher_sample_size = 4
         elif model_type == "homography_from_linesegments":
-            self.error_fn = line_segment_transfer_error_one_way
+            self.error_fn = _line_segment_squared_distance_one_way
             self.minimal_solver = find_homography_lines_dlt
-            self.polisher_solver = find_homography_lines_dlt_iterated
+            # The polisher re-weights by the same perpendicular pixel distance the score uses.
+            self.polisher_solver = partial(find_homography_lines_dlt_iterated, soft_inl_th=inl_th)
             self.minimal_sample_size = 4
             self.polisher_sample_size = 4
         elif model_type == "fundamental":
@@ -136,9 +227,16 @@ class RANSAC(nn.Module):
             self.polisher_sample_size = 8
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
+        if lo_sample_size is not None and lo_sample_size < self.polisher_sample_size:
+            raise ValueError(f"lo_sample_size must be at least {self.polisher_sample_size}")
 
     def sample(
-        self, sample_size: int, pop_size: int, batch_size: int, iteration: int, device: Optional[torch.device] = None
+        self,
+        sample_size: int,
+        pop_size: int,
+        batch_size: int,
+        iteration: int,
+        device: Optional[Union[torch.device, str]] = None,
     ) -> torch.Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
@@ -148,23 +246,156 @@ class RANSAC(nn.Module):
             sample_size: number of samples to draw from the population.
             pop_size: size of the population to sample from.
             batch_size: number of sample sets to generate.
-            iteration: current iteration number (used for PROSAC sampling).
+            iteration: zero-based batch index (used for PROSAC scheduling and the random seed).
             device: device to place the samples on.
 
         Returns:
             Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
 
         """
-        if device is None:
-            device = torch.device("cpu")
+        device = torch.device("cpu") if device is None else torch.device(device)
+        if not 0 < sample_size <= pop_size:
+            raise ValueError("sample_size must be positive and no larger than pop_size")
+        generator = None
         if self.seed is not None:
             generator = torch.Generator(device=device)
             generator.manual_seed(self.seed + iteration)
-            rand = torch.rand(batch_size, pop_size, device=device, generator=generator)
+        if device.type != "cpu" and not self.prosac_sampling:
+            return (
+                torch.rand(batch_size, pop_size, device=device, generator=generator)
+                .topk(k=sample_size, dim=1, sorted=False)
+                .indices
+            )
+        # The PROSAC schedule is indexed by sampled SETS, not outer batches or solver roots.
+        # See https://cmp.felk.cvut.cz/~matas/papers/chum-prosac-cvpr05.pdf, eqs. 3--6.
+        population = torch.full((batch_size,), pop_size, device=device, dtype=torch.long)
+        force_newest = torch.zeros(batch_size, device=device, dtype=torch.bool)
+        if self.prosac_sampling:
+            ends = self._prosac_schedule(sample_size, pop_size, device)
+            draws = torch.arange(batch_size, device=device) + iteration * batch_size + 1
+            population = (torch.searchsorted(ends, draws) + sample_size).clamp(max=pop_size)
+            force_newest = draws <= ends[-1]
+
+        if device.type == "cpu":
+            # Floyd's sampling without replacement: O(B*m^2) comparisons and O(B*m)
+            # storage, independent of N. Vectorize over the entire hypothesis batch.
+            # Random-key topk is faster on CUDA, where these m small steps are launch-bound.
+            rand = torch.rand(batch_size, sample_size, device=device, dtype=torch.float64, generator=generator)
+            out = torch.empty(batch_size, sample_size, device=device, dtype=torch.long)
+            for i in range(sample_size):
+                last = population - sample_size + i
+                candidate = (rand[:, i] * (last + 1)).long()
+                if i > 0:
+                    duplicate = (out[:, :i] == candidate[:, None]).any(dim=1)
+                    candidate = torch.where(duplicate, last, candidate)
+                if i == sample_size - 1:
+                    candidate = torch.where(force_newest, last, candidate)
+                out[:, i] = candidate
+            return out
+
+        rand = torch.rand(batch_size, pop_size, device=device, generator=generator)
+        if self.prosac_sampling:
+            rand.masked_fill_(torch.arange(pop_size, device=device)[None] >= population[:, None], -1.0)
+            # Making the newest point largest forces its inclusion, leaving a uniform
+            # (m-1)-subset of the preceding prefix. After growth, sample uniformly.
+            newest = population[:, None] - 1
+            rand.scatter_(1, newest, torch.where(force_newest[:, None], 2.0, rand.gather(1, newest)))
+        return rand.topk(k=sample_size, dim=1, sorted=False).indices
+
+    @property
+    def sample_budget(self) -> int:
+        """Minimal samples drawn per call: ``max_samples`` if given, else ``batch_size * max_iter``.
+
+        ``batch_size="auto"`` counts ``max_iter`` in batches of 2048, the historical batch, whatever batch the
+        call resolves. Read at call time, like ``confidence``, so the attributes can be changed after construction.
+        """
+        if self.max_samples is not None:
+            return self.max_samples
+        if isinstance(self.batch_size, int):
+            return self.batch_size * self.max_iter
+        return _DEFAULT_BATCH * self.max_iter
+
+    def resolve_batch_size(self, num_tc: int, device: torch.device) -> int:
+        """Return the batch size of a call: the configured one, or the ``"auto"`` choice for the device.
+
+        On CUDA and MPS a homography batch costs about the same from a few hundred up to 8192 hypotheses
+        (the four-point solve is launch-bound), so the whole :attr:`sample_budget` is drawn in batches of
+        up to 8192; the epipolar solvers are compute-bound past 2048 hypotheses, so their batches stop there
+        and early stopping is checked in between. The verification holds a ``batch x N`` residual matrix and a
+        few temporaries of that size, so past ``2**27`` entries (about 1 GiB at peak in float32) the batch
+        shrinks with ``N``, down to the 2048 of the historical fixed batch. On CPU the cost is linear in
+        ``batch * N`` residuals, and the eight-point solver is about ten times a DLT, so the batch aims at a
+        millisecond or so of work, 256 to 2048 hypotheses for homographies and 128 to 512 for the epipolar
+        models. Other devices retain the historical 2048-sample batch.
+        """
+        if isinstance(self.batch_size, int):
+            return self.batch_size
+        planar = self.model_type in ("homography", "homography_from_linesegments")
+        if device.type == "cpu":
+            work, lower, upper = (1 << 19, 256, 2048) if planar else (1 << 17, 128, 512)
+        elif device.type in ("cuda", "mps"):
+            work, lower, upper = 1 << 27, 2048, 8192 if planar else 2048
         else:
-            rand = torch.rand(batch_size, pop_size, device=device)
-        _, out = rand.topk(k=sample_size, dim=1)
-        return out
+            return min(_DEFAULT_BATCH, self.sample_budget)
+        batch = min(max(work // max(num_tc, 1), lower), upper)
+        return min(batch, self.sample_budget)
+
+    def _is_supported(self, num_inliers: float) -> bool:
+        """Whether a model has support beyond the minimal sample it may have been fitted to.
+
+        A minimal-sample model always fits its own sample, so only further inliers are evidence of a
+        consensus; without them, input with no consensus returns the all-zero failure matrix.
+        """
+        return num_inliers > self.minimal_sample_size
+
+    def _prosac_schedule(self, sample_size: int, pop_size: int, device: torch.device) -> torch.Tensor:
+        """Return the cumulative PROSAC draw counts on ``device``, converting them once per configuration."""
+        key = (sample_size, pop_size, self.sample_budget, device)
+        if self._prosac_ends is None or self._prosac_ends[0] != key:
+            self._prosac_ends = (key, torch.tensor(_prosac_growth(*key[:3]), device=device))
+        return self._prosac_ends[1]
+
+    def _prosac_max_samples(self, inliers: torch.Tensor, num_inliers: int) -> int:
+        """PROSAC termination length test (Chum and Matas, CVPR 2005, section 2.2).
+
+        A ranked prefix ``U_n`` certifies the incumbent when its support ``I_n`` there is non-random and
+        ``k_n = log(1 - confidence) / log(1 - C(I_n, m) / C(n, m))`` draws fit inside the prefix's growth
+        interval ``T'_n``, so that every counted draw was taken from ``U_n`` or a shorter prefix. The
+        binomial tail of ``I_n - m`` accidental inliers with per-correspondence probability ``beta = 0.05`` is
+        bounded by Chernoff's inequality at significance 0.05. As in OpenCV's USAC, prefixes shorter than
+        ``min(N / 2, 100)`` correspondences or supporting fewer than 20% of all correspondences cannot
+        terminate: a handful of top-ranked inliers to a model fitted to their neighbours is no evidence of a
+        good model. The whole set is always a candidate, which is the uniform-sampling bound.
+        """
+        budget = self.sample_budget
+        m, total = self.minimal_sample_size, inliers.numel()
+        if self.confidence >= 1.0 or total <= m:
+            return budget
+        bound = min(budget, self.max_samples_by_conf(num_inliers, total, m, self.confidence))
+        n_min = max(m + 1, min(total // 2, 100))
+        # Independent of the keypoint dtype, including half precision. Double precision keeps a
+        # near-integer bound from rounding down; MPS has no float64.
+        dtype = torch.float32 if inliers.device.type == "mps" else torch.float64
+        n = torch.arange(n_min, total + 1, device=inliers.device, dtype=dtype)
+        support = inliers.cumsum(0)[n_min - 1 :].to(dtype)
+        # Chernoff: P[Binomial(n - m, beta) >= I - m] <= exp(-(n - m) * D(q || beta)) for q > beta.
+        beta = 0.05
+        q = (support - m).clamp(min=0) / (n - m)
+        divergence = torch.special.xlogy(q, q / beta) + torch.special.xlogy(1 - q, (1 - q) / (1 - beta))
+        non_random = (q > beta) & ((n - m) * divergence > -math.log(0.05))
+        enough = support >= 0.2 * total
+        # Exact without-replacement probability of an all-inlier sample from the prefix, eq. 10.
+        offsets = torch.arange(m, device=inliers.device, dtype=dtype)
+        probability = ((support[:, None] - offsets).clamp(min=0) / (n[:, None] - offsets)).prod(1)
+        required = torch.where(
+            probability > 0,
+            (math.log1p(-self.confidence) / torch.log1p(-probability)).ceil().clamp(min=1),
+            torch.full_like(probability, float("inf")),
+        )
+        ends = self._prosac_schedule(m, total, inliers.device)[n_min - m :].to(dtype)
+        eligible = non_random & enough & (required <= ends)
+        candidate = torch.where(eligible, required, torch.full_like(required, float(budget))).min()
+        return min(bound, int(candidate.item()))
 
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> int:
@@ -177,19 +408,16 @@ class RANSAC(nn.Module):
             conf: desired confidence level.
 
         Returns:
-            Maximum number of samples needed to achieve the desired confidence.
+            Number of samples needed to achieve the desired confidence, rounded up.
+            Returns ``sys.maxsize`` when no finite stopping bound is available.
 
         """
-        eps = 1e-9
-        if num_tc <= sample_size:
-            return 1
-        if n_inl == num_tc:
-            return 1
-        if n_inl <= sample_size:
-            return 1
-        if conf >= 1.0:
-            return 1
         if conf <= 0.0:
+            return 1
+        # conf >= 1 disables early stopping, even when every correspondence is an inlier.
+        if conf >= 1.0 or num_tc < sample_size or n_inl < sample_size:
+            return sys.maxsize
+        if n_inl >= num_tc:
             return 1
         # Proper RANSAC formula for sampling without replacement
         # P(all samples are inliers) = (n_inl/num_tc) * ((n_inl-1)/(num_tc-1)) * ...
@@ -198,7 +426,9 @@ class RANSAC(nn.Module):
         for i in range(sample_size):
             prob_inlier *= (n_inl - i) / (num_tc - i)
 
-        return int(math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - prob_inlier))))
+        if prob_inlier == 0.0:
+            return sys.maxsize
+        return min(sys.maxsize, math.ceil(math.log1p(-conf) / math.log1p(-prob_inlier)))
 
     def estimate_model_from_minsample(self, kp1: torch.Tensor, kp2: torch.Tensor) -> torch.Tensor:
         """Estimate models from minimal samples.
@@ -212,8 +442,7 @@ class RANSAC(nn.Module):
 
         """
         batch_size, sample_size = kp1.shape[:2]
-        H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
-        return H
+        return self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
 
     def verify(
         self, kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
@@ -224,15 +453,18 @@ class RANSAC(nn.Module):
             kp1: source keypoints.
             kp2: target keypoints.
             models: candidate models to verify.
-            inl_th: inlier threshold.
+            inl_th: positive squared inlier threshold.
 
         Returns:
             Tuple containing:
                 - Best model
                 - Inlier mask for the best model
                 - Score of the best model
+                - Number of inliers (distinct from the MSAC score)
 
         """
+        if not math.isfinite(inl_th) or inl_th <= 0:
+            raise ValueError("The squared inlier threshold must be positive and finite")
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
@@ -241,12 +473,29 @@ class RANSAC(nn.Module):
         if self.model_type == "homography_from_linesegments":
             errors = self.error_fn(kp1.expand(batch_size, -1, 2, 2), kp2.expand(batch_size, -1, 2, 2), models)
         else:
-            errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
+            # The point metrics broadcast over models. Expanding points first makes
+            # homogeneous conversion allocate B copies of identical coordinates.
+            errors = self.error_fn(kp1, kp2, models)
+        # Non-finite residuals must not poison the reduction or win argmax. One kernel: this runs for
+        # every batch and every LO step, where accelerator launches dominate the cost.
+        inf = float("inf")
+        errors = errors.nan_to_num(nan=inf, posinf=inf, neginf=inf)
         inl_mask = errors <= inl_th
         score_ransac = inl_mask.sum(dim=1)
         if self.score_type == "msac":
-            score = errors.shape[1] - errors.clamp(min=0.0, max=inl_th).sum(dim=1)
+            # Equivalent to minimizing the truncated squared loss (MSAC), normalized
+            # to [0, N]. This is a quality score, NOT an inlier count. Accumulate in at
+            # least float32: a half-precision total rounds to steps of 2-4 in the hundreds.
+            score = (1.0 - errors.clamp(min=0.0, max=inl_th) / inl_th).sum(
+                dim=1, dtype=torch.promote_types(errors.dtype, torch.float32)
+            )
+            # A high-quality but under-supported model must not hide a viable candidate
+            # elsewhere in the same batch. An all-invalid batch is rejected by forward.
+            # The same support rule as _is_supported.
+            score = score.masked_fill(score_ransac <= self.minimal_sample_size, -1)
         elif self.score_type == "ransac":
+            # The score is the support, so argmax already prefers any sufficiently supported
+            # candidate; forward rejects an insufficient best support.
             score = score_ransac
         else:
             raise ValueError(f"Unsupported score type: {self.score_type}")
@@ -286,7 +535,7 @@ class RANSAC(nn.Module):
 
         """
         # Filter out NaN or Inf models
-        mask = torch.isfinite(models).all(dim=-1).all(dim=-1)
+        mask = torch.isfinite(models).all(dim=-1).all(dim=-1) & (models.abs().amax(dim=(-2, -1)) > 0)
         return models[mask]
 
     def polish_model(self, kp1: torch.Tensor, kp2: torch.Tensor, inliers: torch.Tensor) -> torch.Tensor:
@@ -308,7 +557,91 @@ class RANSAC(nn.Module):
         model = self.polisher_solver(
             kp1_inl, kp2_inl, torch.ones(1, num_inl, dtype=kp1_inl.dtype, device=kp1_inl.device)
         )
-        return model
+        # The polisher fits a fundamental matrix via the 8-point DLT, which does not enforce the
+        # essential-matrix constraint (two equal non-zero singular values and a zero singular value).
+        # Project it back onto the essential manifold so that downstream decompose_essential_matrix /
+        # motion_from_essential do not silently fail.
+        # See https://github.com/kornia/kornia/issues/3874
+        return self._project_refits(model)
+
+    def _project_refits(self, models: torch.Tensor) -> torch.Tensor:
+        """Project essential refits onto the manifold, dropping invalid ones before the projection's SVD."""
+        if self.model_type != "essential":
+            return models
+        models = self.remove_bad_models(models)
+        return project_to_essential(models) if len(models) > 0 else models
+
+    def _subset_refits(
+        self, kp1: torch.Tensor, kp2: torch.Tensor, inliers: torch.Tensor, lo_sample_size: int, iteration: int
+    ) -> torch.Tensor:
+        """Fit ``max_lo_iters`` random ``lo_sample_size``-subsets of the inliers in one solver batch.
+
+        Randomized non-minimal refits let LO escape a bad consensus. Bounded subsets follow Lebeda et al.,
+        BMVC 2012 (LO+), but this is not the full LO+ algorithm with threshold scheduling.
+        """
+        generator = None
+        if self.seed is not None:
+            generator = torch.Generator(device=kp1.device)
+            # The sampling generators use seed + batch index, at most sample_budget of them.
+            generator.manual_seed(self.seed + self.sample_budget + iteration)
+        indices = inliers.nonzero().flatten()
+        # Independent refits share the current consensus and run in one
+        # solver batch, rather than max_lo_iters tiny accelerator calls.
+        subset = torch.rand(self.max_lo_iters, len(indices), device=kp1.device, generator=generator)
+        selected = indices[subset.topk(lo_sample_size, dim=1).indices]
+        models = self.polisher_solver(kp1[selected], kp2[selected], torch.ones_like(selected, dtype=kp1.dtype))
+        return self._project_refits(models)
+
+    def _local_optimization(
+        self,
+        kp1: torch.Tensor,
+        kp2: torch.Tensor,
+        model: torch.Tensor,
+        inliers: torch.Tensor,
+        model_score: float,
+        num_inliers: float,
+        iteration: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor, float, float, bool]:
+        """Refit a newly accepted model from its inliers.
+
+        Returns:
+            The refined model, its inlier mask, score and support, and whether the model is still the
+            minimal solver's (no refit replaced it).
+
+        """
+        from_minimal_solver = True
+        lo_sample_size = self.lo_sample_size
+        bounded_lo = lo_sample_size is not None and num_inliers > lo_sample_size and self.max_lo_iters > 0
+        for lo_iteration in range(2 if bounded_lo else self.max_lo_iters):
+            if num_inliers < self.polisher_sample_size:
+                break
+            use_subset = bounded_lo and lo_iteration == 0
+            if use_subset and lo_sample_size is not None:
+                model_lo = self._subset_refits(kp1, kp2, inliers, lo_sample_size, iteration)
+            else:
+                model_lo = self.polish_model(kp1, kp2, inliers)
+            if model_lo is not None and len(model_lo) > 0:
+                model_lo = self.remove_bad_models(model_lo)
+            if model_lo is None or len(model_lo) == 0:
+                # A failed subset batch still leaves the full refit. A failed full refit would
+                # only repeat itself, since the inliers it was fitted to have not changed.
+                if use_subset:
+                    continue
+                break
+            model_lo_best, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th**2)
+            improved = score_lo > model_score
+            # A full-inlier least-squares refit that keeps the score is still more precise than
+            # the minimal-sample model; RANSAC scoring ties whenever support does not grow.
+            tied_refit = score_lo == model_score and not use_subset
+            if (improved or tied_refit) and self._is_supported(num_inliers_lo):
+                model = model_lo_best
+                inliers = inliers_lo.clone()
+                model_score = score_lo
+                num_inliers = num_inliers_lo
+                from_minimal_solver = False
+            if not improved and not use_subset:
+                break
+        return model, inliers, model_score, num_inliers, from_minimal_solver
 
     def validate_inputs(self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> None:
         """Validate input tensors for shape and size requirements.
@@ -319,10 +652,12 @@ class RANSAC(nn.Module):
             weights: optional correspondence weights (not used currently).
 
         Raises:
-            ValueError: if input shapes are invalid or insufficient correspondences.
+            ValueError: if ``kp1`` and ``kp2`` differ in length or hold fewer correspondences than the minimal
+                sample.
+            ShapeError: if the keypoint shape is wrong.
 
         """
-        if self.model_type in ["homography", "fundamental"]:
+        if self.model_type != "homography_from_linesegments":
             KORNIA_CHECK_SHAPE(kp1, ["N", "2"])
             KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
@@ -346,23 +681,35 @@ class RANSAC(nn.Module):
         r"""Call main forward method to execute the RANSAC algorithm.
 
         Args:
-            kp1: source image keypoints :math:`(N, 2)`.
-            kp2: distance image keypoints :math:`(N, 2)`.
+            kp1: source image keypoints :math:`(N, 2)` (or line segments :math:`(N, 2, 2)`).
+            kp2: target image keypoints with the same shape. For PROSAC, both inputs must be sorted
+                best-first using the same correspondence-quality ordering. Essential estimation uses
+                camera-normalized coordinates and a threshold in those units.
             weights: optional correspondences weights. Not used now.
 
         Returns:
-            - Estimated model, shape of :math:`(1, 3, 3)`.
-            - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
+            - Estimated model, shape of :math:`(3, 3)`, or zeros if no valid model is found. A model needs
+              more inliers than its minimal sample, since a model fitted to a sample fits that sample.
+            - Boolean inlier mask, shape of :math:`(N,)`, in the supplied correspondence order.
 
         """
         self.validate_inputs(kp1, kp2, weights)
-        best_score_total: float = float(self.minimal_sample_size)
+        best_score_total = -float("inf")
         num_tc: int = len(kp1)
+        budget = self.sample_budget
+        batch_size = self.resolve_batch_size(num_tc, kp1.device)
+        max_samples = budget
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
-        inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
-        for i in range(self.max_iter):
-            # Sample minimal samples in batch to estimate models
-            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i, kp1.device)
+        inliers_best_total: torch.Tensor = torch.zeros(num_tc, device=kp1.device, dtype=torch.bool)
+        # Only a minimal-solver model needs projecting onto the essential manifold; LO refits already are.
+        best_needs_projection = False
+        for i in range(-(-budget // batch_size)):
+            if i * batch_size >= max_samples:
+                break
+            # Sample minimal samples in batch to estimate models. The last batch is truncated to the budget after
+            # sampling, so that the PROSAC schedule and the seed follow the nominal batch size.
+            current = min(batch_size, budget - i * batch_size)
+            idxs = self.sample(self.minimal_sample_size, num_tc, batch_size, i, kp1.device)[:current]
             kp1_sampled = kp1[idxs]
             kp2_sampled = kp2[idxs]
             kp1_sampled, kp2_sampled = self.remove_bad_samples(kp1_sampled, kp2_sampled)
@@ -378,31 +725,38 @@ class RANSAC(nn.Module):
             # Score the models and select the best one
             model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th**2)
             # Store far-the-best model and (optionally) do a local optimization
-            if (model_score > best_score_total) and num_inliers >= self.polisher_sample_size:
-                # Local optimization
-                for _ in range(self.max_lo_iters):
-                    model_lo = self.polish_model(kp1, kp2, inliers)
-                    if (model_lo is None) or (len(model_lo) == 0):
-                        continue
-                    _, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th**2)
-                    if (score_lo > model_score) and (num_inliers_lo >= self.polisher_sample_size):
-                        model = model_lo.clone()[0]
-                        inliers = inliers_lo.clone()
-                        model_score = score_lo
-                    else:
-                        break
+            if (model_score > best_score_total) and self._is_supported(num_inliers):
+                model, inliers, model_score, num_inliers, from_minimal_solver = self._local_optimization(
+                    kp1, kp2, model, inliers, model_score, num_inliers, i
+                )
                 # Now storing the best model
                 best_model_total = model.clone()
                 inliers_best_total = inliers.clone()
                 best_score_total = model_score
+                best_needs_projection = from_minimal_solver
 
                 # Should we already stop?
-                new_max_iter = self.max_samples_by_conf(
-                    int(best_score_total), num_tc, self.minimal_sample_size, self.confidence
-                )
-
-                # Stop estimation, if the model is very good
-                if (i + 1) * self.batch_size >= new_max_iter:
-                    break
-        # local optimization with all inliers for better precision
+                # The score may be MSAC; confidence depends on support, and counts
+                # sampled sets, not the number of roots returned by a minimal solver.
+                # The bound follows the incumbent's own support, as in OpenCV's USAC: under
+                # MSAC a better-scoring model can have less support than the one it replaced.
+                # PROSAC also tests ranked prefixes, which is where its speed comes from.
+                if self.prosac_sampling:
+                    max_samples = self._prosac_max_samples(inliers, int(num_inliers))
+                else:
+                    max_samples = min(
+                        budget,
+                        self.max_samples_by_conf(int(num_inliers), num_tc, self.minimal_sample_size, self.confidence),
+                    )
+        # The best model may come from the 5-point minimal solver (find_essential), which is not
+        # guaranteed to return a matrix on the essential manifold. Project the returned model once
+        # instead of projecting every candidate inside the loop, so that model selection is unaffected.
+        # See https://github.com/kornia/kornia/issues/3874
+        if self.model_type == "essential" and best_needs_projection:
+            best_model_total = project_to_essential(best_model_total[None])[0]
+            _, inliers_best_total, _, support = self.verify(kp1, kp2, best_model_total[None], self.inl_th**2)
+            # Projection moves the residuals; a model that loses its support is no model.
+            if not self._is_supported(support):
+                best_model_total = torch.zeros_like(best_model_total)
+                inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total

@@ -34,6 +34,7 @@ jobs:
   slow:
     # Only run tests with slow marker which aren't dynamo tests
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -60,10 +61,13 @@ jobs:
           pytorch-device: ${{ inputs.pytorch-device }}
           pytest-extra: '--runslow -k "slow and not test_dynamo"'
           coverage-artifact: coverage-slow-${{ matrix.pytorch-dtype }}
+          # tests/filters/test_dissolving.py is slow-only and needs kornia[sd]
+          extra-install: sd
 
   dynamo:
     # Run all dynamo (torch.compile) related tests
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -96,6 +100,7 @@ jobs:
   overall:
     # Run all tests which didn't have a slow marker or are dynamo tests
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -116,6 +121,9 @@ jobs:
           restore-keys: ${{ inputs.cache-restore-keys }}
 
       - uses: ./.github/actions/coverage
+        env:
+          MKL_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
         with:
           python-version: ${{ inputs.python-version }}
           pytorch-dtype: ${{ matrix.pytorch-dtype }}
@@ -124,6 +132,7 @@ jobs:
 
   report:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 15
     needs: [slow, dynamo, overall]
     steps:
       - name: Checkout repository
@@ -143,7 +152,7 @@ jobs:
         run: echo "name=py$(echo '${{ inputs.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.10.0
+        uses: prefix-dev/setup-pixi@v0.10.2
         with:
           pixi-version: v0.40.0
           cache: true

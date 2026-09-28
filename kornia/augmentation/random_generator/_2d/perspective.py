@@ -22,6 +22,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["PerspectiveGenerator"]
@@ -57,8 +58,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         self.sampling_method = sampling_method
 
     def __repr__(self) -> str:
-        repr = f"distortion_scale={self.distortion_scale}"
-        return repr
+        return f"distortion_scale={self.distortion_scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
@@ -80,13 +80,25 @@ class PerspectiveGenerator(RandomGeneratorBase):
         _check_positive_int_or_traced(height, "height")
         _check_positive_int_or_traced(width, "width")
 
-        start_points: torch.Tensor = torch.tensor(
-            [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]], device=_device, dtype=_dtype
-        ).expand(batch_size, -1, -1)
+        # A size-1 axis would make two source corners coincide and the homography singular. Give it a
+        # unit extent and no offset instead: the single row or column then maps onto itself.
+        flat_x = isinstance(width, int) and width == 1
+        flat_y = isinstance(height, int) and height == 1
+        x_end = 1 if flat_x else width - 1
+        y_end = 1 if flat_y else height - 1
+
+        # Subtract before casting: bbox_generator subtracts in the tensor dtype,
+        # which changes large half-precision image coordinates.
+        start_points = _constant_tensor(
+            [[[0, 0], [x_end, 0], [x_end, y_end], [0, y_end]]],
+            device=_device,
+            dtype=_dtype,
+        )
+        start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        fx = self._distortion_scale * width / 2
-        fy = self._distortion_scale * height / 2
+        fx = self._distortion_scale * (0 if flat_x else width) / 2
+        fy = self._distortion_scale * (0 if flat_y else height) / 2
 
         factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
 
@@ -95,7 +107,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
             device=_device, dtype=_dtype
         )
         if self.sampling_method == "basic":
-            pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
+            pts_norm = _constant_tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
             offset = factor * rand_val * pts_norm
         elif self.sampling_method == "area_preserving":
             offset = 2 * factor * (rand_val - 0.5)

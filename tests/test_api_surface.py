@@ -30,8 +30,12 @@ Additions are fine and do not fail the test; run this file with
 ``regenerate()`` below) whenever new public API lands.
 """
 
+import contextlib
 import importlib
 import json
+import pkgutil
+import types
+import warnings
 from pathlib import Path
 
 import pytest
@@ -54,6 +58,24 @@ def regenerate() -> None:
     INVENTORY.write_text(json.dumps(surface, indent=2, sort_keys=True) + "\n")
 
 
+def test_inventory_is_a_mapping_of_module_to_public_names():
+    """Guard the inventory's shape, so the removal test below cannot pass vacuously.
+
+    ``set(recorded) - current`` is empty for an entry mangled into ``{}``, so that entry
+    silently stops guarding its module while still parametrizing this file. A list
+    holding non-strings fails the removal test instead, but with a message about
+    "removed" names that names nothing a reader can act on. Asserting the shape here
+    reports the real problem in both cases -- and the ``Import Surface`` check reads the
+    same file, where a wrong-shaped entry acknowledges nothing at all.
+    """
+    inventory = json.loads(INVENTORY.read_text())
+    assert isinstance(inventory, dict)
+    for module_name, names in inventory.items():
+        assert isinstance(module_name, str), f"non-string inventory key: {module_name!r}"
+        assert isinstance(names, list), f"{module_name} must record a list of names, got {type(names).__name__}"
+        assert all(isinstance(name, str) for name in names), f"{module_name} records a non-string name"
+
+
 @pytest.mark.parametrize("module_name", sorted(json.loads(INVENTORY.read_text())))
 def test_no_public_name_removed(module_name):
     recorded = set(json.loads(INVENTORY.read_text())[module_name])
@@ -65,6 +87,103 @@ def test_no_public_name_removed(module_name):
         "release as a deprecated shim before removal. If this removal is deliberate and the "
         "deprecation window has passed, update tests/api_surface.json in this PR (run "
         "tests.test_api_surface.regenerate()) and list the removal in the release notes."
+    )
+
+
+def _foreign_names(module_name: str) -> set:
+    """Public names of ``module_name`` bound to an import rather than to its own API.
+
+    That is another package's module, a ``typing`` object, or an object defined in a kornia
+    module outside ``module_name``'s own subtree. A module without ``__all__`` exposes whatever
+    its star-imported submodules happen to import, so ``import sys`` in one of them makes
+    ``kornia.geometry.sys`` public, and ``from kornia.core.utils import is_compiling`` makes
+    ``kornia.geometry.is_compiling`` public (#4709).
+    """
+    mod = importlib.import_module(module_name)
+    found = set()
+    for name in _current_surface(module_name):
+        obj = getattr(mod, name, None)
+        if isinstance(obj, types.ModuleType):
+            if obj.__name__ != "kornia" and not obj.__name__.startswith("kornia."):
+                found.add(name)
+        else:
+            owner = getattr(obj, "__module__", None)
+            if owner == "typing":
+                found.add(name)
+            elif (
+                isinstance(owner, str)
+                and owner.startswith("kornia.")
+                and owner != module_name
+                and not owner.startswith(module_name + ".")
+            ):
+                found.add(name)
+    return found
+
+
+@pytest.mark.parametrize("module_name", sorted(json.loads(INVENTORY.read_text())))
+def test_no_foreign_name_leaks_into_the_surface(module_name):
+    """An import inside a submodule must not become public API by accident.
+
+    Additions do not fail ``test_no_public_name_removed``, and ``regenerate()`` would
+    record a leaked ``sys`` as a guarded public name. Names already in the inventory are
+    exempt: removing one is a deliberate API change, not something this test should force.
+    """
+    recorded = set(json.loads(INVENTORY.read_text())[module_name])
+    leaked = sorted(_foreign_names(module_name) - recorded)
+    assert not leaked, (
+        f"{module_name} exposes {leaked}, which are imports rather than kornia API. Give the "
+        "submodule that imports them an __all__ (or import them under a private name). Record a "
+        "name in tests/api_surface.json only for a deliberate cross-package re-export."
+    )
+
+
+def _modules_declaring_all() -> list:
+    """Every importable ``kornia`` submodule that declares ``__all__``.
+
+    The inventory tracks the stable-core modules, but an unbound name is a problem
+    wherever it sits: the breakage that motivated this guard (#4026, the
+    ComfyUI-LTXVideo report in #3986) was in ``kornia.geometry.transform.pyramid``,
+    which the inventory does not cover. Walking the package finds every module that
+    declares a public surface, costs a fraction of a second, and needs no upkeep as
+    modules come and go.
+    """
+    import kornia
+
+    found = []
+    for info in pkgutil.walk_packages(kornia.__path__, "kornia."):
+        # Optional extras and backends are out of scope for this guard, so a module that
+        # cannot be imported here is skipped rather than failing the sweep.
+        with contextlib.suppress(Exception):
+            mod = importlib.import_module(info.name)
+            if getattr(mod, "__all__", None) is not None:
+                found.append(info.name)
+    return sorted(found)
+
+
+@pytest.mark.parametrize("module_name", _modules_declaring_all())
+def test_public_names_resolve(module_name):
+    """
+    Every name in ``__all__`` has to be bound in its module.
+
+    An unbound name breaks ``from <module> import *`` for everyone, and
+    ``test_no_public_name_removed`` cannot see it: the surface that test compares is
+    ``__all__`` itself, so a name whose binding was dropped still reads as present.
+    """
+    mod = importlib.import_module(module_name)
+    declared = mod.__all__
+
+    with warnings.catch_warnings():
+        # ``hasattr`` runs module-level ``__getattr__``, which is how the deprecated
+        # ``kornia.utils`` re-exports announce themselves. Keep the probe quiet so it
+        # does not emit a DeprecationWarning per run just by looking.
+        warnings.simplefilter("ignore")
+        unbound = sorted(name for name in declared if not hasattr(mod, name))
+
+    assert not unbound, (
+        f"{module_name}.__all__ lists names that are not bound in the module: "
+        f"{unbound}. `from {module_name} import *` raises AttributeError on the "
+        "first of them. Either restore the binding or drop the name from __all__ "
+        "and from tests/api_surface.json in the same PR."
     )
 
 

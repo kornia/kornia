@@ -145,9 +145,10 @@ def affine(
     .. image:: _static/img/warp_affine.png
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
+        defaults and sampling rules.
+
         - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of
@@ -204,8 +205,7 @@ def affine3d(
 
     Convention:
         - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 3, 4)`
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - align_corners: ``False`` by default (the 2D :func:`affine` defaults to ``True``)
 
     Args:
         tensor: The image tensor to be warped in shapes of
@@ -269,8 +269,6 @@ def rotate(
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
         - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -289,7 +287,7 @@ def rotate(
         The rotated tensor with shape as input.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/rotate_affine.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/rotate_affine.html>`__.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -340,8 +338,7 @@ def rotate3d(
     Convention:
         - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
           slice (``z = 0``); defaults to the tensor center
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - align_corners: ``False`` by default (the 2D :func:`rotate` defaults to ``True``)
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
@@ -411,8 +408,6 @@ def translate(
 
     Convention:
         - ``translation`` is ``(dx, dy)`` in pixels
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -466,8 +461,6 @@ def scale(
 
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -532,8 +525,8 @@ def shear(
 
     Convention:
         - ``shear`` is ``(shx, shy)``
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - align_corners: ``False`` by default (differs from the other 2D affine warps and from
+          :class:`Shear`, which default to ``True``)
 
     Args:
         tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
@@ -598,6 +591,10 @@ def resize(
     .. image:: _static/img/resize.png
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for sampling and ``align_corners``
+        conventions. When resizing camera images, see
+        :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
+
         - input: :math:`(*, H, W)`; ``size`` is ``(h, w)``
         - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
           note :func:`warp_perspective`/:func:`rotate` default ``True``)
@@ -636,7 +633,13 @@ def resize(
 
     original_shape = input.shape
     h, w = input.shape[-2:]
+
     if isinstance(size, int):
+        if h <= 0 or w <= 0:
+            # An int size names one side and takes the other from the aspect ratio, which a
+            # degenerate input does not have. Reject it with the message the warping ops use,
+            # rather than letting the division below fail with a bare ZeroDivisionError.
+            raise ValueError(f"Input image size must be positive. Got height={h}, width={w}.")
         aspect_ratio = w / h
         size = _side_to_image_size(size, aspect_ratio, side)
     if len(original_shape) == 2:
@@ -652,19 +655,34 @@ def resize(
             batch_size *= d
         input = input.reshape(batch_size, *original_shape[-3:])
 
-    factors = (h / size[0], w / size[1])
-    antialias = antialias and (max(factors) > 1)
+    if size[0] == 0 or size[1] == 0:
+        # An output side of zero gives an empty image, matching warp_affine,
+        # warp_perspective and center_crop -- including when the input is empty as well,
+        # which is why this runs ahead of the positive-size check below. The result is
+        # built directly: the scale factors would divide by zero, and
+        # torch.nn.functional.interpolate rejects a zero-sized output outright.
+        #
+        # It is routed through the input so the empty result keeps its autograd link, the
+        # way _empty_warp_output_2d does for the warping ops. sum() promotes an integer
+        # input to int64, so the accumulation dtype is pinned to the input's.
+        zero = input.reshape(-1)[:1].sum(dtype=input.dtype) * 0
+        output = zero.reshape(*([1] * input.dim())).expand(*input.shape[:-2], size[0], size[1])
+    elif h <= 0 or w <= 0:
+        raise ValueError(f"Input image size must be positive. Got height={h}, width={w}.")
+    else:
+        factors = (h / size[0], w / size[1])
+        antialias = antialias and (max(factors) > 1)
 
-    if antialias:
-        sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
+        if antialias:
+            sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
 
-        ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
+            ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
-        ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
+            ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
 
-        input = gaussian_blur2d(input, ks, sigmas)
+            input = gaussian_blur2d(input, ks, sigmas)
 
-    output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
+        output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
 
     if len(original_shape) == 2:
         output = output[0, 0]
@@ -687,7 +705,7 @@ def resize_to_be_divisible(
     """Resize the input tensor to be divisible by a certain factor.
 
     Convention:
-        - align_corners: ``None`` by default; see the convention block of :func:`resize`
+        - see the convention block of :func:`resize`
         - rounds ``height``/``width`` to the nearest multiple of ``divisible_factor`` before
           delegating to :func:`resize`
 
@@ -729,8 +747,6 @@ def rescale(
     Convention:
         - ``factor`` is ``(factor_h, factor_w)`` when a pair — height first (contrast
           :func:`scale`, whose ``scale_factor`` is x-first)
-        - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
-          see the convention block of :func:`resize`)
         - delegates to :func:`resize` after converting ``factor`` to an output ``size``
 
     Args:
@@ -767,7 +783,10 @@ class Resize(nn.Module):
     r"""Resize the input torch.Tensor to the given size.
 
     Convention:
-        - align_corners: ``None`` by default, matching :func:`resize`
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for sampling and ``align_corners``
+        conventions. When resizing camera images, see
+        :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
+
         - See the convention block of :func:`resize`.
 
     Args:
@@ -791,10 +810,6 @@ class Resize(nn.Module):
         >>> out = Resize((6, 8))(img)
         >>> print(out.shape)
         torch.Size([1, 3, 6, 8])
-
-    .. raw:: html
-
-        <gradio-app src="https://kornia-kornia-resize-antialias.hf.space"></gradio-app>
 
     """
 
@@ -841,7 +856,6 @@ class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`affine`
         - See the convention block of :func:`affine`.
 
     Args:
@@ -1016,7 +1030,6 @@ class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`rotate`
         - See the convention block of :func:`rotate`.
 
     Args:
@@ -1078,7 +1091,6 @@ class Translate(nn.Module):
     r"""Translate the tensor in pixel units.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`translate`
         - See the convention block of :func:`translate`.
 
     Args:
@@ -1135,7 +1147,6 @@ class Scale(nn.Module):
     r"""Scale the tensor by a factor.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`scale`
         - See the convention block of :func:`scale`.
 
     Args:

@@ -139,6 +139,16 @@ class TestConfusionMatrix(BaseTester):
         )
         self.assert_close(conf_mat, conf_mat_real)
 
+    def test_empty_batch(self, device, dtype):
+        num_classes = 3
+        pred = torch.zeros(0, 4, 4, device=device, dtype=torch.long)
+        target = torch.zeros(0, 4, 4, device=device, dtype=torch.long)
+
+        conf_mat = kornia.metrics.confusion_matrix(pred, target, num_classes)
+        assert conf_mat.shape == (0, num_classes, num_classes)
+        assert conf_mat.dtype == torch.float32
+        assert conf_mat.device == pred.device
+
     def test_exception_shape_mismatch(self, device, dtype):
         pred = torch.zeros(1, 4, dtype=torch.long, device=device)
         target = torch.zeros(1, 5, dtype=torch.long, device=device)

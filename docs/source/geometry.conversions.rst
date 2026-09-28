@@ -2,8 +2,7 @@ kornia.geometry.conversions
 ==================================
 
 .. meta::
-   :name: description
-   :content: "The kornia.geometry.conversions module provides a collection of functions for converting between various geometric representations, such as angles, coordinates, homographies, quaternions, rotation matrices, and Euler angles. This module includes utilities for transforming points between homogeneous and non-homogeneous coordinates, normalizing and denormalizing pixel coordinates, as well as handling pose transformations and quaternion operations for 3D geometry tasks."
+   :description: The kornia.geometry.conversions module provides a collection of functions for converting between various geometric representations, such as angles, coordinates, homographies, quaternions, rotation matrices, and Euler angles. This module includes utilities for transforming points between homogeneous and non-homogeneous coordinates, normalizing and denormalizing pixel coordinates, as well as handling pose transformations and quaternion operations for 3D geometry tasks.
 
 .. currentmodule:: kornia.geometry.conversions
 
@@ -37,6 +36,8 @@ Homography
 .. autofunction:: normalize_homography
 .. autofunction:: denormalize_homography
 .. autofunction:: normalize_homography3d
+.. autofunction:: normal_transform_pixel
+.. autofunction:: normal_transform_pixel3d
 
 Quaternion
 ----------

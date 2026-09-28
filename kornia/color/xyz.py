@@ -20,9 +20,9 @@ from __future__ import annotations
 from typing import ClassVar
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from kornia.color.utils import _apply_linear_transformation
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
@@ -46,6 +46,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     # CIE RGB to XYZ Matrix (D65 White Point)
+    dtype = image.dtype if image.is_floating_point() else torch.float32
     kernel = torch.tensor(
         [
             [0.412453, 0.357580, 0.180423],
@@ -53,7 +54,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
             [0.019334, 0.119193, 0.950227],
         ],
         device=image.device,
-        dtype=torch.float32,
+        dtype=dtype,
     )
 
     # Apply Optimized Linear Transformation
@@ -78,6 +79,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     # CIE XYZ to RGB Matrix (D65 White Point)
+    dtype = image.dtype if image.is_floating_point() else torch.float32
     kernel = torch.tensor(
         [
             [3.2404813432005266, -1.5371515162713185, -0.4985363261688878],
@@ -85,58 +87,11 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
             [0.0556466391351772, -0.2040413383665112, 1.0573110696453443],
         ],
         device=image.device,
-        dtype=torch.float32,
+        dtype=dtype,
     )
 
     # Apply Optimized Linear Transformation
     return _apply_linear_transformation(image, kernel)
-
-
-def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
-    """Apply a 3x3 linear color transformation with device-aware optimization.
-
-    Args:
-        image: Input image tensor with shape :math:`(*, 3, H, W)`.
-        kernel: Transformation matrix with shape :math:`(3, 3)` applied along the channel
-            dimension.
-
-    Returns:
-        Tensor with the same shape as ``image`` containing the transformed values.
-    """
-    # Handle Integer inputs by casting to float safely
-    # If it's already floating point (e.g. float64 from gradcheck), we preserve it
-    if image.is_floating_point():
-        image_compute = image
-    else:
-        image_compute = image.float()
-
-    # Match kernel dtype to the image (propagates float64 if needed)
-    kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
-
-    input_shape = image_compute.shape
-
-    # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
-    # while conv2d offers significant speedups on GPU/CUDA.
-    # We branch to ensure optimal performance on both devices.
-    # BRANCH 1: CPU (Einsum)
-    if image_compute.device.type == "cpu":
-        out = torch.einsum("...chw,oc->...ohw", image_compute, kernel_compute)
-        out = out.contiguous()
-
-    # BRANCH 2: GPU/Accelerators (Conv2d)
-    else:
-        # Reshape for conv2d: (B*..., C, H, W)
-        input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
-
-        # Reshape kernel: (3, 3) -> (3, 3, 1, 1)
-        weight = kernel_compute.view(3, 3, 1, 1)
-
-        out_flat = F.conv2d(input_flat, weight)
-
-        # Unflatten back to original shape
-        out = out_flat.reshape(input_shape)
-
-    return out
 
 
 class RgbToXyz(nn.Module):

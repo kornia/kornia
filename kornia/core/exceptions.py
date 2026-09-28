@@ -32,7 +32,7 @@ __all__ = [
 
 
 class BaseError(Exception):
-    """Base exception class for all Kornia errors."""
+    """Base class of the exceptions raised by kornia's ``KORNIA_CHECK*`` validation helpers and a few functions."""
 
 
 class ShapeError(BaseError):

@@ -17,11 +17,10 @@
 
 import copy
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, Type, TypeVar, Union
 
 import torch
 from torch import nn
-from typing_extensions import ParamSpec
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
@@ -151,8 +150,7 @@ class AugmentationSequentialOps:
             if isinstance(self.data_keys, list):
                 return self.data_keys
             raise ValueError("nn.Sequential ops needs data keys to be able to process.")
-        else:
-            return [DataKey.get(inp) for inp in data_keys]
+        return [DataKey.get(inp) for inp in data_keys]
 
     def _get_op(self, data_key: DataKey) -> Type[SequentialOpsInterface[Any]]:
         """Return the corresponding operation given a data key."""
@@ -241,7 +239,11 @@ class AugmentationSequentialOps:
         for inp, dcate in zip(arg, _data_keys):
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
-            outputs.append(op.inverse(inp, module, param=param, extra_args=extra_arg))
+            if dcate.name == "MASK" and isinstance(inp, list):
+                # Mirror ``transform``: a list of masks is inverted element by element.
+                outputs.append(MaskSequentialOps.inverse_list(inp, module, param=param, extra_args=extra_arg))
+            else:
+                outputs.append(op.inverse(inp, module, param=param, extra_args=extra_arg))
         if len(outputs) == 1 and isinstance(outputs, (list, tuple)):
             return outputs[0]
         return outputs
@@ -331,6 +333,8 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            input = module.inverse(**extra_args)
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d inverse operations are not yet supported. You are welcome to file a PR in our repo."
@@ -395,6 +399,18 @@ class ClassSequentialOps(SequentialOpsInterface[torch.Tensor]):
 class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
+    @staticmethod
+    def _mask_extra_args(module: Any, extra_args: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        extra_args = {} if extra_args is None else extra_args
+        # A per-channel image fill has no unambiguous meaning for a semantic mask, whose channel count
+        # commonly differs from the image. Default mask padding to background while preserving an explicit
+        # per-mask override and the legacy behavior of scalar fills.
+        fill = module.flags.get("fill")
+        if fill is not None and not isinstance(fill, (int, float)):
+            extra_args = dict(extra_args)
+            extra_args.setdefault("fill", 0.0)
+        return extra_args
+
     @classmethod
     def transform(
         cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
@@ -412,6 +428,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            extra_args = cls._mask_extra_args(module, extra_args)
             input = module.transform_masks(
                 input,
                 params=cls.get_instance_module_param(param),
@@ -427,6 +444,12 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
 
         elif isinstance(module, K.RandomTransplantation):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
+
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            # Dispatch to the mix child's own mask handler. Unsupported children
+            # raise NotImplementedError from apply_transform_mask (matching a
+            # direct call) instead of silently returning the mask unchanged.
+            input = module.transform_mask(input, cls.get_instance_module_param(param), module.flags)
 
         elif isinstance(module, (_AugmentationBase)):
             input = module.transform_masks(
@@ -460,6 +483,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if extra_args is None:
             extra_args = {}
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            extra_args = cls._mask_extra_args(module, extra_args)
             tfm_input = []
             params = cls.get_instance_module_param(param)
             params_i = copy.deepcopy(params)
@@ -550,6 +574,54 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
 
         return input
 
+    @classmethod
+    def inverse_list(
+        cls, input: List[torch.Tensor], module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> List[torch.Tensor]:
+        """Inverse a transformation on a list of masks, undoing :meth:`transform_list` element by element.
+
+        Args:
+            input: list of input tensors.
+            module: any torch nn.Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
+        """
+        if extra_args is None:
+            extra_args = {}
+
+        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            if module.transform_matrix is None:
+                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
+            transform = module.compute_inverse_transformation(module.transform_matrix)
+            params = cls.get_instance_module_param(param)
+            params_i = copy.deepcopy(params)
+            inv_input = []
+            for i, inp in enumerate(input):
+                # The same per-element ``batch_prob`` that ``transform_list`` gave this element.
+                params_i["batch_prob"] = params["batch_prob"][i]
+                inv_input.append(
+                    module.inverse_masks(inp, params=params_i, flags=module.flags, transform=transform, **extra_args)
+                )
+            input = inv_input
+
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
+            raise NotImplementedError(
+                "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
+            )
+
+        elif isinstance(module, K.container.ImageSequentialBase):
+            seq_params = cls.get_sequential_module_param(param)
+            input = [module.inverse_masks(inp, params=seq_params, extra_args=extra_args) for inp in input]
+
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
+            raise NotImplementedError(
+                "The support for list of masks under auto operations are not yet supported. You are welcome to file a"
+                " PR in our repo."
+            )
+
+        return input
+
 
 class BoxSequentialOps(SequentialOpsInterface[Boxes]):
     """Apply and inverse transformations for bounding box tensors.
@@ -587,6 +659,12 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             raise NotImplementedError(
                 "The support for 3d box operations are not yet supported. You are welcome to file a PR in our repo."
             )
+
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            # Dispatch to the mix child's own box handler (e.g. RandomMosaic).
+            # Unsupported children raise NotImplementedError from
+            # apply_transform_boxes, matching a direct call.
+            _input = module.transform_boxes(_input, cls.get_instance_module_param(param), module.flags)
 
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_boxes(
@@ -685,6 +763,13 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 "The support for 3d keypoint operations are not yet supported. "
                 "You are welcome to file a PR in our repo."
             )
+
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            # Dispatch to the mix child's own keypoint handler. Unsupported
+            # children raise NotImplementedError from apply_transform_keypoint
+            # (matching a direct call) instead of silently returning keypoints.
+            out = module.transform_keypoint(_input.data, cls.get_instance_module_param(param), module.flags)
+            _input = Keypoints(out, raise_if_not_floating_point=False)
 
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_keypoints(

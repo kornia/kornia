@@ -50,6 +50,11 @@ class RandomShear(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - ``shear`` supplies one or two degree ranges for the x and y shears; a scalar or pair supplies only x
+          shear. The signs are those of :class:`RandomAffine`'s ``shear``.
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 

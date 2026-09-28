@@ -23,15 +23,13 @@ TorchGeo migrated its inference-time transforms off kornia onto ``torchvision.tr
 citing exactly this gap ("kornia augmentations can't be torch.exported").
 
 The augmentation base ``forward`` stashes per-call state on ``self`` (``_params`` and the lazy
-transform matrix), which ``torch.export`` on torch <= 2.9 rejects ("attrs created in forward" /
-pytree "Node arity mismatch"). Those side effects are now skipped under ``torch.export`` (the
-captured image output is unchanged), so the deterministic transforms export cleanly and
-numerically match eager. This pins that so it does not regress.
+transform matrix). ``torch.compiler.is_exporting`` lets the base skip those side effects during
+``torch.export`` capture without changing the captured image output. This capability was added in
+torch 2.7, so the tests are skipped on earlier versions.
 
-Only *deterministic single* transforms are covered — random augmentations sample parameters
-during capture in ways that don't line up with a separate eager call (RNG bookkeeping), and
-``AugmentationSequential`` containers still stash their own per-call state and are not export-clean
-yet.
+The cases cover deterministic single transforms and ``AugmentationSequential`` containers. Random
+augmentations that sample parameters during capture are excluded because their RNG bookkeeping does
+not line up with a separate eager call.
 """
 
 from __future__ import annotations
@@ -42,6 +40,11 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+
+from testing.base import DYNAMO_UNAVAILABLE_REASON, dynamo_is_available
+
+_HAS_TORCH_EXPORT_TRACKING = hasattr(torch, "compiler") and hasattr(torch.compiler, "is_exporting")
+_TORCH_EXPORT_TRACKING_REASON = "torch.export tracking requires torch.compiler.is_exporting (torch>=2.7)"
 
 
 def _normalize() -> torch.nn.Module:
@@ -74,7 +77,10 @@ TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 
 
 @pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_DETERMINISTIC, ids=[n for n, _ in TORCH_EXPORT_DETERMINISTIC])
+@pytest.mark.device_agnostic
 def test_torch_export_deterministic(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """Deterministic inference transform captures via ``torch.export`` and matches eager."""
     torch.manual_seed(0)
@@ -116,7 +122,10 @@ TORCH_EXPORT_CONTAINERS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 
 
 @pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_CONTAINERS, ids=[n for n, _ in TORCH_EXPORT_CONTAINERS])
+@pytest.mark.device_agnostic
 def test_torch_export_container(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """A deterministic ``AugmentationSequential`` pipeline captures via ``torch.export`` and matches eager."""
     torch.manual_seed(0)
@@ -127,3 +136,44 @@ def test_torch_export_container(name: str, factory: Callable[[], torch.nn.Module
     out = exported.module()(x)
     assert out.shape == eager.shape, f"{name}: shape {out.shape} vs {eager.shape}"
     torch.testing.assert_close(out, eager, atol=1e-5, rtol=1e-5)
+
+
+def _mask_export_case(case: str) -> Tuple[torch.nn.Module, tuple, Callable[[object], torch.Tensor], torch.Tensor]:
+    """Build a float64 image/mask pipeline for ``case``: the module, its arguments, a mask getter, the expected mask."""
+    image = torch.zeros(1, 1, 1, 2, dtype=torch.float64)
+    # float32 cannot hold either value, so any conversion through a narrower dtype rounds them
+    mask = torch.tensor([1.0 + 2**-30, 2.0 + 2**-29], dtype=torch.float64).reshape_as(image)
+    if case == "dict_mask_first":
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+        return seq, ({"mask": mask, "image": image},), lambda out: out["mask"], mask.flip(-1)
+    seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+    if case == "after_float16_call":
+        # an earlier eager call with a float16 image leaves float16 behind in the container's state
+        seq(torch.zeros(1, 1, 1, 2, dtype=torch.float16), torch.zeros(1, 1, 1, 2))
+    return seq, (image, mask), lambda out: out[1], mask.flip(-1)
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("case", ["fresh", "after_float16_call", "dict_mask_first"])
+@pytest.mark.device_agnostic
+def test_torch_export_mask_uses_the_call_image_dtype_4478(case: str) -> None:
+    """A mask is converted with this call's image dtype under ``torch.export``, exactly as in eager (#4478).
+
+    The call's image dtype used to be resolved only outside export, because the attribute that holds it is not
+    written during capture. Mask conversion read that attribute anyway, so an exported pipeline converted a
+    float64 mask through float32 on a fresh container, or through whatever dtype an earlier eager call had left
+    behind, and baked the rounding into the graph. The mask now comes back bit for bit in all three setups.
+    """
+    seq, args, get_mask, expected = _mask_export_case(case)
+    # ``input_dtype`` and ``mask_dtype`` are class attributes until the first eager call writes them. Export must
+    # not create or change them: torch 2.9 rejects an attribute created during capture, and torch 2.14 lets it
+    # through silently, so the state is pinned here as well as by the export itself.
+    state_before = {k: vars(seq).get(k, "<unset>") for k in ("input_dtype", "mask_dtype")}
+    exported = torch.export.export(seq, args)
+    state_after = {k: vars(seq).get(k, "<unset>") for k in ("input_dtype", "mask_dtype")}
+    assert state_after == state_before, f"{case}: export changed the container state {state_before} -> {state_after}"
+    mask = get_mask(exported.module()(*args))
+    assert mask.dtype == torch.float64
+    assert torch.equal(mask, expected), f"{case}: {mask.flatten().tolist()} vs {expected.flatten().tolist()}"

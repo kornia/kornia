@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
 
 from testing.base import BaseTester
@@ -38,9 +39,7 @@ class TestSolvePnpDlt(BaseTester):
         kornia.geometry.project_points can be used.
         """
         cam_points = kornia.geometry.transform_points(world_to_cam_4x4, world_points)
-        img_points = kornia.geometry.project_points(cam_points, repeated_intrinsics)
-
-        return img_points
+        return kornia.geometry.project_points(cam_points, repeated_intrinsics)
 
     @staticmethod
     def _get_world_points_and_img_points(cam_points, world_to_cam_4x4, repeated_intrinsics):
@@ -161,6 +160,224 @@ class TestSolvePnpDlt(BaseTester):
         pred_img_points = self._project_to_image(world_points, pred_world_to_cam_4x4, repeated_intrinsics)
 
         self.assert_close(pred_img_points, img_points, atol=1e-3, rtol=1e-3)
+
+    @staticmethod
+    def _convention_world_points(device, dtype):
+        # Six non-coplanar, non-collinear points spread over x, y and z with mixed signs. A planar or collinear set
+        # trips solve_pnp_dlt's own singular-value guard, and a
+        # symmetric set would hide a transposed [R|t].
+        return torch.tensor(
+            [
+                [
+                    [5.0, -5.0, 10.0],
+                    [0.0, 0.0, 11.5],
+                    [2.5, 3.0, 16.0],
+                    [9.0, -2.0, 13.0],
+                    [-4.0, 5.0, 12.0],
+                    [-5.0, 5.0, 11.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_convention_returns_the_world_to_camera_extrinsics(self, device, dtype):
+        # The (B, 3, 4) [R | t] maps world points into the camera frame (PinholeCamera.extrinsics, OpenCV
+        # solvePnP). Camera-frame world points recover [I | 0]; a camera with cam = world + (1, 0, 0) recovers
+        # t = (+1, 0, 0), where a camera-to-world reading would give (-1, 0, 0).
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only (pinned below)")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        identity = torch.tensor(
+            [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]], device=device, dtype=dtype
+        )
+        recovered = kornia.geometry.solve_pnp_dlt(world_points, kornia.geometry.project_points(world_points, K), K)
+        assert recovered.shape == (1, 3, 4)
+        self.assert_close(recovered, identity, atol=1e-4, rtol=1e-4)
+        shift = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        shifted = kornia.geometry.solve_pnp_dlt(
+            world_points, kornia.geometry.project_points(world_points + shift, K), K
+        )
+        expected = torch.tensor(
+            [[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]], device=device, dtype=dtype
+        )
+        self.assert_close(shifted, expected, atol=1e-4, rtol=1e-4)
+
+    def test_convention_validation_errors_name_the_argument(self, device, dtype):
+        # solve_pnp_dlt accepts float32 and float64 only, needs N >= 6 points and a float svd_eps; each check
+        # raises a kornia BaseError that names its argument.
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        img_points = world_points[..., :2] / world_points[..., 2:]
+        if dtype not in (torch.float32, torch.float64):
+            with pytest.raises(BaseError, match="world_points must be float32 or float64"):
+                kornia.geometry.solve_pnp_dlt(world_points, img_points, K)
+            return
+        with pytest.raises(BaseError, match="world_points must hold at least 6 points"):
+            kornia.geometry.solve_pnp_dlt(world_points[:, :5], img_points[:, :5], K)
+        with pytest.raises(BaseError, match="svd_eps must be a float, got int"):
+            kornia.geometry.solve_pnp_dlt(world_points, img_points, K, svd_eps=1)
+
+    def test_convention_rejects_4x4_intrinsics(self, device, dtype):
+        # intrinsics is the (B, 3, 3) K: the (B, 4, 4) matrix a PinholeCamera stores is rejected rather than
+        # truncated, while its upper-left block solves.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        img_points = kornia.geometry.project_points(world_points, K)
+        K_4x4 = torch.eye(4, device=device, dtype=dtype)[None].clone()
+        K_4x4[:, :3, :3] = K
+        with pytest.raises(ShapeError, match="expected 3, got 4"):
+            kornia.geometry.solve_pnp_dlt(world_points, img_points, K_4x4)
+        assert kornia.geometry.solve_pnp_dlt(world_points, img_points, K_4x4[:, :3, :3]).shape == (1, 3, 4)
+
+    def test_convention_planar_world_points_raise(self, device, dtype):
+        # A coplanar point set (the six points flattened onto z = 5) raises kornia's singular-value
+        # AssertionError instead of returning a wrong pose.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        planar = torch.stack(
+            [world_points[0, :, 0], world_points[0, :, 1], torch.full_like(world_points[0, :, 0], 5.0)], -1
+        )[None]
+        with pytest.raises(AssertionError, match="last singular value"):
+            kornia.geometry.solve_pnp_dlt(planar, kornia.geometry.project_points(planar, K), K)
+
+    def test_zero_weight_points_do_not_pass_the_degeneracy_check(self, device, dtype):
+        # kornia#4799: the same coplanar set plus two off-plane points recovers [I | 0]; with those two points at
+        # weight 0 only the coplanar points are left, so the degeneracy check must reject it.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        planar = torch.stack(
+            [world_points[0, :, 0], world_points[0, :, 1], torch.full_like(world_points[0, :, 0], 5.0)], -1
+        )[None]
+        off_plane = torch.tensor([[[0.0, 0.0, 8.0], [1.0, -1.0, 11.0]]], device=device, dtype=dtype)
+        points = torch.cat([planar, off_plane], 1)
+        img_points = kornia.geometry.project_points(points, K)
+        weights = torch.ones(1, points.shape[1], device=device, dtype=dtype)
+        pose = kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
+        assert pose[0, :, 3].abs().max() < 1e-2
+        weights[0, -2:] = 0.0
+        with pytest.raises(AssertionError, match="last singular value"):
+            kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
+
+    def test_zero_weight_point_is_the_same_as_removing_it(self, device, dtype):
+        # kornia#4799: a zero weight also kept the point in the normalization, so on noisy data the pose
+        # differed from the solve without that point.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        torch.manual_seed(0)
+        K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        points = torch.rand(1, 10, 3, device=device, dtype=dtype) * 4 - 2
+        points[..., 2] += 10.0
+        img_points = kornia.geometry.project_points(points, K)
+        img_points = img_points + torch.randn_like(img_points)
+        far_point = torch.tensor([[[30.0, -20.0, 60.0]]], device=device, dtype=dtype)
+        far_img = torch.tensor([[[0.0, 0.0]]], device=device, dtype=dtype)
+        weights = torch.ones(1, 11, device=device, dtype=dtype)
+        weights[0, -1] = 0.0
+        with_zero = kornia.geometry.solve_pnp_dlt(
+            torch.cat([points, far_point], 1), torch.cat([img_points, far_img], 1), K, weights=weights
+        )
+        without = kornia.geometry.solve_pnp_dlt(points, img_points, K)
+        self.assert_close(with_zero, without, rtol=1e-4, atol=1e-4)
+
+    def test_weight_squared_is_the_point_multiplicity(self, device, dtype):
+        # A weight scales the point's rows, so its square multiplies the point's residual: weight sqrt(2) is the
+        # same as listing the point twice, also in the normalization. On noisy data this separates w**2 from w.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        torch.manual_seed(0)
+        K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        points = torch.rand(1, 10, 3, device=device, dtype=dtype) * 4 - 2
+        points[..., 2] += 10.0
+        img_points = kornia.geometry.project_points(points, K)
+        img_points = img_points + 3 * torch.randn_like(img_points)
+        weights = torch.ones(1, 10, device=device, dtype=dtype)
+        weights[0, 0] = 2.0**0.5
+        weighted = kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
+        duplicated = kornia.geometry.solve_pnp_dlt(
+            torch.cat([points, points[:, :1]], 1), torch.cat([img_points, img_points[:, :1]], 1), K
+        )
+        self.assert_close(weighted, duplicated, rtol=1e-4, atol=1e-4)
+
+    def test_weights_scale_and_sign_do_not_change_the_result(self, device, dtype):
+        # Only the weights' magnitudes relative to each other matter: a negative weight counts as its magnitude,
+        # and scales whose squares overflow or underflow the dtype do not change the pose or the degeneracy
+        # decision.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        torch.manual_seed(0)
+        K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        points = torch.rand(2, 10, 3, device=device, dtype=dtype) * 4 - 2
+        points[..., 2] += 10.0
+        img_points = kornia.geometry.project_points(points, K[:, None])
+        img_points = img_points + torch.randn_like(img_points)
+        weights = torch.rand(2, 10, device=device, dtype=dtype) + 0.1
+        weights[:, 0] = 0.0
+        expected = kornia.geometry.solve_pnp_dlt(points, img_points, K.expand(2, 3, 3), weights=weights)
+        for scale in (-1.0, 1e20, 1e-25) if dtype == torch.float32 else (-1.0, 1e160, 1e-170):
+            scaled = kornia.geometry.solve_pnp_dlt(points, img_points, K.expand(2, 3, 3), weights=weights * scale)
+            self.assert_close(scaled, expected, rtol=1e-4, atol=1e-4)
+
+    def test_degeneracy_check_ignores_zero_weights_and_the_weight_scale(self, device, dtype):
+        # The check sees the nonzero-weight points as if they were passed alone, with the squared weights
+        # rescaled to sum to their count: the six points listed twice, the copies at half weight, have the last
+        # singular value of the six listed twice (sqrt(2) times theirs), whatever the overall weight scale and
+        # whatever the zero-weight points.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        last = 2.0**0.5 * torch.linalg.svdvals(_mean_isotropic_scale_normalize(world_points)[0])[0, -1].item()
+        extra = world_points * torch.tensor([3.0, -2.0, 4.0], device=device, dtype=dtype)
+        points = torch.cat([world_points, world_points, extra], 1)
+        img_points = kornia.geometry.project_points(points, K)
+        weights = torch.full((1, 18), 1e3, device=device, dtype=dtype)
+        weights[0, 6:12] = 0.5e3
+        weights[0, 12:] = 0.0
+        kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights, svd_eps=0.9 * last)
+        with pytest.raises(AssertionError, match="last singular value"):
+            kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights, svd_eps=1.1 * last)
+
+    def test_near_zero_weight_points_do_not_pass_the_degeneracy_check(self, device, dtype):
+        # The check runs on the weighted points: off-plane points at weight 1e-8 leave the system as degenerate
+        # as the coplanar points alone.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        planar = torch.stack(
+            [world_points[0, :, 0], world_points[0, :, 1], torch.full_like(world_points[0, :, 0], 5.0)], -1
+        )[None]
+        off_plane = torch.tensor([[[0.0, 0.0, 8.0], [1.0, -1.0, 11.0]]], device=device, dtype=dtype)
+        points = torch.cat([planar, off_plane], 1)
+        weights = torch.ones(1, 8, device=device, dtype=dtype)
+        weights[0, -2:] = 1e-8
+        with pytest.raises(AssertionError, match="last singular value"):
+            kornia.geometry.solve_pnp_dlt(points, kornia.geometry.project_points(points, K), K, weights=weights)
+
+    def test_fewer_than_six_nonzero_weights_raise(self, device, dtype):
+        # A zero weight removes the point, so fewer than 6 nonzero weights is rejected like fewer than 6 points.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        world_points = self._convention_world_points(device, dtype)
+        points = torch.cat([world_points, world_points + 1.0], 1).repeat(2, 1, 1)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        K = K.expand(2, 3, 3)
+        img_points = kornia.geometry.project_points(points, K[:, None])
+        weights = torch.ones(2, 12, device=device, dtype=dtype)
+        weights[1, 5:] = 0.0
+        with pytest.raises(BaseError, match="at least 6 nonzero"):
+            kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
+        weights[1] = 0.0
+        with pytest.raises(BaseError, match="at least 6 nonzero"):
+            kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
 
 
 class TestNormalization(BaseTester):

@@ -119,9 +119,13 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     cb_shifted: torch.Tensor = cb - delta
     cr_shifted: torch.Tensor = cr - delta
 
-    r: torch.Tensor = y + 1.403 * cr_shifted
-    g: torch.Tensor = y - 0.714 * cr_shifted - 0.344 * cb_shifted
-    b: torch.Tensor = y + 1.773 * cb_shifted
+    # Exact inverse of the forward coefficients (0.564, 0.713) above: 1/0.713,
+    # 1/0.564, and the derived green terms. The previously rounded values
+    # (1.403, 0.714, 0.344, 1.773) were not a true inverse, so a
+    # rgb->ycbcr->rgb round-trip drifted by ~2.7e-4 instead of being lossless.
+    r: torch.Tensor = y + 1.4025245442 * cr_shifted
+    g: torch.Tensor = y - 0.7144034731 * cr_shifted - 0.3443401356 * cb_shifted
+    b: torch.Tensor = y + 1.7730496454 * cb_shifted
     return torch.stack([r, g, b], -3).clamp(0, 1)
 
 

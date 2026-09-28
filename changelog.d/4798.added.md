@@ -1,0 +1,1 @@
+The `kornia.core` API page documents the six exception classes in `kornia.core.exceptions` (`BaseError`, `ShapeError`, `TypeCheckError`, `ValueCheckError`, `DeviceError`, `ImageError`), so references to them from other pages now link.

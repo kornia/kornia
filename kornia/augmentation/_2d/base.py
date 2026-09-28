@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, NamedTuple, Optional, Tuple, TypeVar, Union
 
 import torch
 from torch import float16, float32, float64
@@ -27,6 +29,33 @@ from kornia.core.utils import is_autocast_enabled
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
+_F = TypeVar("_F", bound=Callable[..., torch.Tensor])
+
+
+def _input_metadata_only(method: _F) -> _F:
+    """Mark an implementation that only reads the input's shape, dtype and device.
+
+    Store the function itself, not a boolean: an override (including a wrapper that
+    copies function attributes) must not inherit another implementation's promise.
+    Overridable callees in the matrix path are checked separately.
+    """
+    method.__dict__["_kornia_input_metadata_only"] = method
+    return method
+
+
+class _InputMetadata(NamedTuple):
+    shape: Tuple[int, ...]
+    dtype: torch.dtype
+    device: torch.device
+
+    def materialize(self) -> torch.Tensor:
+        # These implementations never read pixels. Allocate one element only when
+        # the matrix is requested, preserving the original shape without its storage.
+        return torch.empty((), dtype=self.dtype, device=self.device).expand(self.shape)
+
+
+_LazyMatrixArgs = Tuple[Union[torch.Tensor, _InputMetadata], Dict[str, torch.Tensor], Dict[str, Any]]
+
 
 class AugmentationBase2D(_AugmentationBase):
     r"""AugmentationBase2D base class for customized augmentation implementations.
@@ -34,6 +63,9 @@ class AugmentationBase2D(_AugmentationBase):
     AugmentationBase2D aims at offering a generic base class for a greater level of customization.
     If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
     might be a better fit.
+
+    This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit.
+    Mix and 3D augmentations have their own bases and contracts.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -43,6 +75,39 @@ class AugmentationBase2D(_AugmentationBase):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
+
+    Convention:
+        - the working layout is ``(B, C, H, W)`` float. A ``(C, H, W)`` input is promoted to ``(1, C, H, W)``
+          and an ``(H, W)`` input to ``(1, 1, H, W)``; ``keepdim=True`` restores the input rank on the way out
+          and never drops a real batch dimension. The dtype guard accepts ``float16``, ``bfloat16``, ``float32``
+          and ``float64`` and raises ``TypeError`` on an integer tensor. The output keeps the input's device.
+        - a wrong input rank raises different exception types depending on the entry point that sees it
+          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
+        - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
+          shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
+          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. The gate selects after the transform
+          has been computed for the whole batch, so a sample it skips can still raise or carry a NaN gradient
+          (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+        - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
+          samplers is incomplete for some generators, and returned parameter placement is a separate concern;
+          see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
+        - reproducibility goes through torch's global generators; there is no per-instance generator.
+          ``generator=`` raises at construction, and ``forward`` silently drops it like any other unknown keyword
+          (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). :doc:`/get-started/conventions` states the
+          seeding, ``DataLoader``-worker, parameter-placement and serialization rules.
+        - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale, stores the
+          caller's dict by reference and, if ``batch_prob`` is absent, inserts an all-true gate into it. Replaying
+          parameters reproduces the output, except for :class:`RandomDissolving`, whose VAE latents are drawn
+          during application and are not stored.
+        - some ``_param_generator.*`` range buffers in ``state_dict()`` do not update the samplers when loaded
+          (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+        - an empty batch gives an empty output, except on a minority of classes that raise on ``B = 0``
+          (`#4429 <https://github.com/kornia/kornia/issues/4429>`_).
+        - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
+          displayed (top-left origin, y pointing down), as :func:`~kornia.geometry.transform.rotate` documents;
+          :class:`RandomAffine` turns clockwise (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - ``torch.jit.script`` is not supported; ``torch.compile(fullgraph=True)`` works for some augmentations
+          and flags only.
 
     """
 
@@ -52,6 +117,7 @@ class AugmentationBase2D(_AugmentationBase):
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
+    @_input_metadata_only
     def transform_tensor(
         self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
     ) -> torch.Tensor:
@@ -60,15 +126,17 @@ class AugmentationBase2D(_AugmentationBase):
 
         if shape is None:
             return _transform_input(input)
-        else:
-            return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
+
+        return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
     r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
 
-    RigidAffineAugmentationBase2D enables routined transformation with given transformation matrices
-    for different data types like masks, boxes, and keypoints.
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
+    RigidAffineAugmentationBase2D manages transformation matrices. Further subclasses supply the
+    handlers for different data types like masks, boxes, and keypoints.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -79,6 +147,18 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
 
+    Convention:
+        - a subclass implements :meth:`compute_transformation`, which returns the ``(B, 3, 3)`` matrix of the
+          sampled transform, and ``apply_transform`` for images. Direct mask, box, and keypoint handlers are
+          incomplete on this base; inherit the geometric base for its matrix-based handlers. Container dispatch
+          recognizes geometric children, so custom rigid subclasses need integration work of their own. See
+          `#4481 <https://github.com/kornia/kornia/issues/4481>`_.
+        - the matrix of the last call is readable as ``transform_matrix``. Subclasses opt into lazy construction
+          with ``_compute_matrix_lazily``; a lazy matrix keeps only the input's shape, dtype and device, unless the
+          subclass overrides ``transform_tensor``, ``generate_transformation_matrix``, ``compute_transformation``
+          or ``identity_matrix``, in which case the input is kept until the matrix is read or replaced.
+        - this base does not implement an inverse operation.
+
     """
 
     _transform_matrix: Optional[torch.Tensor] = None
@@ -86,16 +166,18 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     # the image output never reads it, so building it every forward is pure overhead. When True,
     # ``apply_func`` defers the matrix and ``transform_matrix`` computes it on first access.
     _compute_matrix_lazily: bool = False
-    _lazy_matrix_args: Optional[Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Any]]] = None
+    _lazy_matrix_args: Optional[_LazyMatrixArgs] = None
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
         if self._transform_matrix is None and self._lazy_matrix_args is not None:
-            in_tensor, params, flags = self._lazy_matrix_args
+            matrix_input, params, flags = self._lazy_matrix_args
+            in_tensor = matrix_input.materialize() if isinstance(matrix_input, _InputMetadata) else matrix_input
             self._transform_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
             self._lazy_matrix_args = None
         return self._transform_matrix
 
+    @_input_metadata_only
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return 3x3 identity matrix."""
         return eye_like(3, input)
@@ -105,6 +187,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         raise NotImplementedError
 
+    @_input_metadata_only
     def generate_transformation_matrix(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
@@ -135,7 +218,9 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         # If batch sizes line up, do the where-blend. Otherwise (e.g. VideoSequential
         # passes B-sized batch_prob into a B*T-sized input) fall back to all-or-nothing.
         if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1)))
+            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))).to(
+                trans_matrix_applied.device
+            )
             trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:
             trans_matrix = trans_matrix_applied if bool(to_apply.any()) else trans_matrix_identity
@@ -197,7 +282,21 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
             # apply_transform ignores the matrix for these ops, so don't build it here; defer to
             # the first `.transform_matrix` access (e.g. AugmentationSequential propagating to
             # boxes/keypoints/masks). A standalone flip that never reads the matrix skips it.
-            self._commit_state(transform_matrix=None, lazy_matrix_args=(in_tensor, params, flags))
+            matrix_input: Union[torch.Tensor, _InputMetadata] = in_tensor
+            # Check the implementations, not the class: custom overrides may read
+            # pixels even when they inherit the built-in's lazy-computation flag.
+            if all(
+                getattr(method, "_kornia_input_metadata_only", None) is getattr(method, "__func__", method)
+                for method in (
+                    self.transform_tensor,
+                    self.generate_transformation_matrix,
+                    self.compute_transformation,
+                    self.identity_matrix,
+                )
+            ):
+                # PyTorch 2.5 snapshots torch.Size as a tuple during non-strict export.
+                matrix_input = _InputMetadata(tuple(in_tensor.shape), in_tensor.dtype, in_tensor.device)
+            self._commit_state(transform_matrix=None, lazy_matrix_args=(matrix_input, params, flags))
             return self.transform_inputs(in_tensor, params, flags, None)
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)

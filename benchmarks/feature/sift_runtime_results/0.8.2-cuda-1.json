@@ -1,0 +1,57 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "batch_regime": "same graf image repeated as a true tensor batch",
+    "compile": false,
+    "compile_dynamic": null,
+    "compile_scope": [],
+    "cuda_device": "NVIDIA GeForce RTX 4090",
+    "cuda_version": "13.0",
+    "cudnn_allow_tf32": true,
+    "cudnn_benchmark": false,
+    "device": "cuda",
+    "git_commit": "856fd1ae",
+    "historical_presets": "native release defaults; refinement algorithms and quality differ",
+    "image": "img1.ppm",
+    "input_sha256": "8d53092ffa5b27f5138ec458302f35e7c72a9f35d1f94078ca35944c4b3626dd",
+    "kornia": "0.8.2",
+    "kornia_rs": "0.1.10",
+    "machine": "x86_64",
+    "min_run_time": 5,
+    "model_repr": "SIFTFeatureScaleSpace(\n  (detector): ScaleSpaceDetector(num_features=4096, mr_size=6.0, scale_pyr=ScalePyramid(n_levels=3, init_sigma=1.6, min_size=32, extra_levels=3, border=15, sigma_step=1.2599210498948732, double_image=True), resp=BlobDoG, nms=ConvQuadInterp3d(strict_maxima_bonus=10), ori=LAFOrienter(patch_size=19, angle_detector=PatchDominantGradientOrientation(patch_size=19, num_ang_bins=36, eps=1e-08)), aff=PassLAF())\n  (descriptor): LAFDescriptor(descriptor=SIFTDescriptor(num_ang_bins=8, num_spatial_bins=4, patch_size=41, rootsift=True, clipval=0.2), patch_size=41, grayscale_descriptor='True)\n)",
+    "num_features": 4096,
+    "numpy": "2.4.0",
+    "opencv": "4.11.0",
+    "opencv_num_threads": 1,
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.11.14",
+    "seed": 0,
+    "series": "0.8.2",
+    "timestamp_utc": "2026-09-05T17:37:54+00:00",
+    "timing": "feature extraction only; raw batch latency; transfers/compilation/matching/RANSAC excluded",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "device": "cuda",
+      "dtype": "float32",
+      "features_per_image": [
+        4096
+      ],
+      "height": 640,
+      "initial_call_seconds": 0.8002390969995758,
+      "iqr_us": 16349.892501239083,
+      "median_us": 126638.37799846078,
+      "op": "SIFTFeatureScaleSpace",
+      "peak_extra_cuda_bytes": 2030630912,
+      "series": "0.8.2",
+      "throughput_per_s": 7.8965003800992655,
+      "width": 800
+    }
+  ]
+}

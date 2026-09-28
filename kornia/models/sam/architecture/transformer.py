@@ -286,6 +286,4 @@ class Attention(nn.Module):
         # Get output
         out = attn @ v
         out = self._recombine_heads(out)
-        out = self.out_proj(out)
-
-        return out
+        return self.out_proj(out)

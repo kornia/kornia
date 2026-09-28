@@ -78,9 +78,10 @@ def test_import_emits_no_warnings():
 
         import torch  # noqa: F401  # torch's own import warnings are not kornia's to fix
 
-        # Same for onnxruntime, which kornia.feature.lightglue_onnx imports eagerly when
-        # installed: its import-time platform warnings (e.g. "Unsupported Windows version
-        # (2025server)" on windows-2025 runners) are not kornia's to fix either.
+        # Same for onnxruntime, if installed: its import-time platform warnings (e.g.
+        # "Unsupported Windows version (2025server)" on windows-2025 runners) are not
+        # kornia's to fix either. `import kornia` no longer imports onnxruntime eagerly
+        # (kornia#4260), but pre-importing it here keeps the guard robust regardless.
         with contextlib.suppress(ImportError):
             import onnxruntime  # noqa: F401
 

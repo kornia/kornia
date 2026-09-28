@@ -103,13 +103,33 @@ class TestElasticTransform(BaseTester):
         noise = torch.ones(1, 2, 3, 3, device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[0.0005, 0.3795, 0.1905], [0.1034, 0.4235, 0.0702], [0.0259, 0.2007, 0.2193]]]],
+            [[[[0.0062, 0.7506, 0.7487], [0.2058, 0.4235, 0.1397], [0.1036, 0.3996, 0.8693]]]],
             device=device,
             dtype=dtype,
         )
 
         actual = elastic_transform2d(image, noise)
-        self.assert_close(actual, expected, atol=1e-3, rtol=1e-3)
+        # bfloat16's 7-bit mantissa makes the reference values intentionally rounded more
+        # coarsely than float16/float32; retain a tolerance that covers that representation.
+        tolerance = 1e-2 if dtype is torch.bfloat16 else 1e-3
+        self.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
+
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_zero_displacement_is_identity(self, device, dtype, align_corners):
+        """Zero displacement should preserve the input for either grid convention."""
+        image = torch.arange(16.0, device=device, dtype=dtype).reshape(1, 1, 4, 4)
+        noise = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
+
+        output = elastic_transform2d(
+            image,
+            noise,
+            kernel_size=(3, 3),
+            sigma=(1.0, 1.0),
+            alpha=(1.0, 1.0),
+            align_corners=align_corners,
+        )
+
+        self.assert_close(output, image)
 
     @pytest.mark.parametrize("requires_grad", [True, False])
     def test_gradcheck(self, device, dtype, requires_grad):
@@ -137,10 +157,8 @@ class TestElasticTransform(BaseTester):
         assert (out[0, 0] > 0.1).nonzero().tolist() == [[2, 1]]
 
     def test_convention_alpha_xy_order(self, device, dtype):
-        # alpha is genuinely (x, y) order in the executed code: alpha[0] always scales the
-        # x-displacement and alpha[1] the y-displacement -- contradicting the "in the y and x
-        # directions, respectively" docstring text, which only holds for kernel_size/sigma
-        # (see test_convention_sigma_yx_order for that half).
+        # alpha is (x, y): alpha[0] scales the x-displacement, unlike kernel_size and sigma, which
+        # are (y, x) (test_convention_sigma_yx_order).
         image = torch.zeros(1, 1, 9, 9, device=device, dtype=dtype)
         image[0, 0, 4, 4] = 1.0
         noise = torch.zeros(1, 2, 9, 9, device=device, dtype=dtype)
@@ -202,46 +220,27 @@ class TestElasticTransform(BaseTester):
         # sigma=(0.3, 3.0) (large sigma_x) -- a robust ordering property, not an exact pixel list.
         assert spread_y_wide > 5 * spread_x_wide
 
-    def test_convention_padding_mode_default_zeros(self, device, dtype):
-        # padding_mode's default ('zeros') genuinely affects boundary sampling, but only once the
-        # displacement pushes the (internally clamped-to-[-1,1]) sampling grid all the way to the
-        # edge -- no other existing test drives the displacement far enough to reach it.
+    def test_convention_padding_mode_border_differs_from_zeros(self, device, dtype):
+        # padding_mode is forwarded: once the displacement pushes the (clamped) sampling grid to the
+        # edge, the 'zeros' default and 'border' give different rows.
         image = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
         image[0, 0, 2, 4] = 5.0
         noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
         noise[0, 0] = 1.0
         kwargs = {"kernel_size": (3, 3), "sigma": (1.0, 1.0), "alpha": (4.0, 0.0)}
 
-        out_default = elastic_transform2d(image, noise, **kwargs)
-        out_zeros = elastic_transform2d(image, noise, padding_mode="zeros", **kwargs)
         # Snippet used to generate expected (requires only this module):
         # image = torch.zeros(1, 1, 5, 5); image[0, 0, 2, 4] = 5.0
         # noise = torch.zeros(1, 2, 5, 5); noise[0, 0] = 1.0
         # kwargs = dict(kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(4.0, 0.0))
-        # elastic_transform2d(image, noise, **kwargs)[0, 0, 2]                       # 'zeros' row
+        # elastic_transform2d(image, noise, **kwargs)[0, 0, 2]                        # default row
+        # elastic_transform2d(image, noise, padding_mode="border", **kwargs)[0, 0, 2]  # 'border' row
+        out_default = elastic_transform2d(image, noise, **kwargs)
         expected_zeros_row = torch.tensor([2.5, 2.5, 2.5, 2.5, 2.5], device=device, dtype=dtype)
         self.assert_close(out_default[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
-        self.assert_close(out_zeros[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
 
-    def test_convention_padding_mode_border_differs_from_zeros(self, device, dtype):
-        # Companion to test_convention_padding_mode_default_zeros above: 'border' padding must
-        # actually differ from the 'zeros' default. MPS's 2D grid_sample doesn't support 'border'
-        # (probed at runtime), so this half is skipped visibly there instead of silently no-op'ing
-        # inside an `if` guard.
         if not supports_2d_border_padding(device):
             pytest.skip("MPS 2D grid_sample lacks 'border' padding")
-
-        image = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
-        image[0, 0, 2, 4] = 5.0
-        noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
-        noise[0, 0] = 1.0
-        kwargs = {"kernel_size": (3, 3), "sigma": (1.0, 1.0), "alpha": (4.0, 0.0)}
-
-        # Snippet used to generate expected (requires only this module):
-        # image = torch.zeros(1, 1, 5, 5); image[0, 0, 2, 4] = 5.0
-        # noise = torch.zeros(1, 2, 5, 5); noise[0, 0] = 1.0
-        # kwargs = dict(kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(4.0, 0.0))
-        # elastic_transform2d(image, noise, padding_mode="border", **kwargs)[0, 0, 2]  # 'border' row
         out_border = elastic_transform2d(image, noise, padding_mode="border", **kwargs)
         expected_border_row = torch.tensor([5.0, 5.0, 5.0, 5.0, 5.0], device=device, dtype=dtype)
         self.assert_close(out_border[0, 0, 2], expected_border_row, rtol=1e-2, atol=1e-2)

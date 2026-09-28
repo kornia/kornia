@@ -29,6 +29,8 @@ from kornia.geometry.keypoints import Keypoints
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""GeometricAugmentationBase2D base class for customized geometric augmentation implementations.
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
@@ -37,6 +39,48 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
+    Convention:
+        - pixel coordinates are ``(x, y)`` at integer pixel centres, with corners ``(0, 0)`` and
+          ``(W - 1, H - 1)`` (see :doc:`/get-started/conventions`); rotations, shears and affine maps are centred
+          at ``((W - 1) / 2, (H - 1) / 2)``, and ``transform_matrix`` maps input pixel coordinates to output pixel
+          coordinates. Two exceptions: with pre-crop padding (``padding`` or ``pad_if_needed``), the matrix of
+          :class:`RandomCrop` starts from the padded canvas
+          (`#4801 <https://github.com/kornia/kornia/issues/4801>`_); at ``align_corners=False``, the bilinear and
+          bicubic interpolation of :class:`Resize`, :class:`LongestMaxSize`, :class:`SmallestMaxSize` and
+          slice-mode :class:`RandomResizedCrop` samples on a half-pixel grid that the matrix does not follow
+          (`#4804 <https://github.com/kornia/kornia/issues/4804>`_).
+        - the resampling classes, including the non-rigid :class:`RandomElasticTransform` and
+          :class:`RandomThinPlateSpline`, default to bilinear interpolation with zero sampler padding. The
+          ``align_corners`` default is ``True`` for :class:`RandomRotation`, :class:`RandomRotation90` and the crop
+          and resize classes, and ``False`` for :class:`RandomAffine`, :class:`RandomShear`,
+          :class:`RandomTranslate`, :class:`RandomPerspective`, :class:`RandomElasticTransform` and
+          :class:`RandomThinPlateSpline` (`#4412 <https://github.com/kornia/kornia/issues/4412>`_).
+        - this base provides a matrix-based ``inverse`` interface. Whether a concrete augmentation can invert a
+          call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
+          Inverse resampling cannot recover image or mask information lost through cropping, padding, or
+          interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
+        - container mask processing has dtype- and operator-specific limitations; see
+          `#4478 <https://github.com/kornia/kornia/issues/4478>`_. Direct ``transform_masks`` calls use the
+          image dtype guard and therefore reject ``bool`` masks.
+        - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
+          while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
+        - a scalar magnitude ``x`` means ``center ± x``, as it does for the intensity classes: its lower end
+          is floored at the parameter's lower bound, and an upper end past the upper bound raises the same
+          error the explicit range does. The bounds are ``(-360, 360)`` for :class:`RandomRotation`'s and
+          :class:`RandomAffine`'s ``degrees`` and for :class:`RandomShear`'s and :class:`RandomAffine`'s
+          ``shear``, ``(-1, 1)`` for :class:`RandomTranslate`'s ``translate_x`` and ``translate_y``,
+          ``(0, 1)`` for :class:`RandomAffine`'s ``translate``, and ``(-3, 3)`` for
+          :class:`RandomRotation90`'s ``times``. The 3D classes read their scalar through a helper that
+          carries no bound, tracked in `#4617 <https://github.com/kornia/kornia/issues/4617>`_.
+
+    Note:
+        Masks are resampled with nearest neighbour whatever ``resample`` the augmentation uses for images,
+        unless ``resample`` is passed explicitly to :meth:`transform_masks` or :meth:`inverse_masks` --
+        which is what ``extra_args[DataKey.MASK]`` does in a container. An explicit value is honoured in
+        both directions. Antialiasing is disabled for masks by default, even when it is enabled for images.
+        Pass ``antialias=True`` explicitly to :meth:`transform_masks` or through ``extra_args[DataKey.MASK]``
+        to filter soft masks.
 
     """
 
@@ -84,6 +128,25 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process masks corresponding to the inputs that are no transformation applied."""
         return input
 
+    def transform_masks(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+        **kwargs: Any,
+    ) -> torch.Tensor:
+        # Nearest is the mask default, but an explicit ``resample`` wins, matching ``inverse_masks``.
+        if "resample" not in kwargs and "resample" in (self.flags if flags is None else flags):
+            kwargs["resample"] = Resample.get("nearest")
+
+        # Disable antialiasing by default for masks so discrete labels are preserved,
+        # while allowing an explicit override for soft masks.
+        if "antialias" not in kwargs and "antialias" in (self.flags if flags is None else flags):
+            kwargs["antialias"] = False
+
+        return super().transform_masks(input, params, flags, transform=transform, **kwargs)
+
     def apply_transform_mask(
         self,
         input: torch.Tensor,
@@ -94,41 +157,24 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process masks corresponding to the inputs that are transformed.
 
         Note:
-            Convert "resample" arguments to "nearest" by default.
-            Normalize "align_corners" from None to False to match PyTorch's default behavior.
+            Uses ``flags["resample"]`` as given; :meth:`transform_masks` supplies "nearest" when the caller
+            did not choose one.
+            Treats ``align_corners=None`` as the module's own ``align_corners``, so a mask is resampled on the
+            same grid as its input.
 
         """
-        resample_method: Optional[Resample] = None
         align_corners_was_none: bool = False
         original_align_corners: Optional[bool] = None
 
-        if "resample" in flags:
-            resample_method = flags["resample"]
-            flags["resample"] = Resample.get("nearest")
-
-        # When align_corners=None is in flags (from extra_args), use the module's default
-        # This ensures masks use the same align_corners value as inputs for consistency
-        # However, for 'slice' cropping_mode with 'nearest' mode, align_corners must be None
-        # because crop_by_indices -> resize -> interpolate doesn't accept align_corners with nearest
-        # For 'resample' cropping_mode, warp_affine/grid_sample accepts align_corners with nearest
+        # When align_corners=None is in flags (from extra_args), use the module's default, so masks use the
+        # same align_corners as inputs. This holds in 'slice' cropping_mode too: RandomResizedCrop drops
+        # align_corners for nearest itself (#4852), and RandomCrop's slice resize does not read it.
         if "align_corners" in flags and flags["align_corners"] is None:
             align_corners_was_none = True
             original_align_corners = None
-            # Check if we're using 'slice' cropping_mode which uses interpolate
-            # interpolate doesn't accept align_corners with nearest mode
-            if flags.get("cropping_mode") == "slice":
-                # Keep align_corners=None for slice mode with nearest (interpolate requirement)
-                pass
-            else:
-                # Use the module's default align_corners value from self.flags
-                # This ensures masks use the same align_corners as inputs
-                # For 'resample' mode, warp_affine/grid_sample accepts align_corners with nearest
-                flags["align_corners"] = self.flags.get("align_corners", False)
+            flags["align_corners"] = self.flags.get("align_corners", False)
 
         output = self.apply_transform(input, params, flags, transform)
-
-        if resample_method is not None:
-            flags["resample"] = resample_method
 
         # Restore align_corners if it was modified
         if align_corners_was_none:
@@ -232,29 +278,15 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         # This ensures masks use the same align_corners setting in inverse as in forward
         if "align_corners" in kwargs:
             align_corners_value = flags.get("align_corners")
-            # When align_corners=None is in kwargs, use the module's default
-            # This ensures masks use the same align_corners value as inputs for consistency
-            # However, for 'slice' cropping_mode with 'nearest' mode, align_corners must be None
-            # because crop_by_indices -> resize -> interpolate doesn't accept align_corners with nearest
-            # For 'resample' cropping_mode, warp_affine/grid_sample accepts align_corners with nearest
+            # When align_corners=None is in kwargs, use the module's default, as apply_transform_mask does.
             # We need to normalize it in kwargs too, because inverse_inputs will call
             # _process_kwargs_to_params_and_flags which merges kwargs into flags
             if kwargs["align_corners"] is None:
                 align_corners_was_none_in_kwargs = True
-                # Check if we're using 'slice' cropping_mode which uses interpolate
-                # interpolate doesn't accept align_corners with nearest mode
-                if flags.get("cropping_mode") == "slice":
-                    # Keep align_corners=None for slice mode with nearest (interpolate requirement)
-                    # Don't modify flags or kwargs
-                    pass
-                else:
-                    # Use the module's default align_corners value
-                    # This ensures masks use the same align_corners as inputs
-                    # For 'resample' mode, warp_affine/grid_sample accepts align_corners with nearest
-                    normalized_align_corners = self.flags.get("align_corners", False)
-                    flags["align_corners"] = normalized_align_corners
-                    # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
-                    kwargs["align_corners"] = normalized_align_corners
+                normalized_align_corners = self.flags.get("align_corners", False)
+                flags["align_corners"] = normalized_align_corners
+                # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
+                kwargs["align_corners"] = normalized_align_corners
             else:
                 flags["align_corners"] = kwargs["align_corners"]
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)

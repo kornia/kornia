@@ -28,11 +28,20 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomChannelShuffle.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
+    Convention:
+        - the drawn ``channels`` index the source, not the destination: output channel ``c`` of sample
+          ``b`` is input channel ``channels[b][c]``.
+        - the permutation is drawn independently per sample; ``same_on_batch=True`` shares one
+          permutation across the batch.
+        - values are only reordered, never recomputed, so the input's value range is carried through.
 
     Examples:
         >>> rng = torch.manual_seed(0)

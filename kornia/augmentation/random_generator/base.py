@@ -65,7 +65,6 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
             self.device = device
             self.dtype = dtype
 
-    # TODO: refine the logic with module.to()
     def to(self, *args: Any, **kwargs: Any) -> "RandomGeneratorBase":
         """Update sampler device and dtype using ``torch.nn.Module.to`` semantics.
 
@@ -76,9 +75,16 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
         Returns:
             This generator instance.
         """
-        device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
-        self.set_rng_device_and_dtype(device=device, dtype=dtype)
-        return self
+        return super().to(*args, **kwargs)
+
+    def _apply(self, fn: Callable[[torch.Tensor], torch.Tensor], *args: Any, **kwargs: Any) -> "RandomGeneratorBase":
+        # Follow registered tensors for direct, convenience, and parent-module moves.
+        # Plain tensor constructor attributes keep their existing placement precedence.
+        out = super()._apply(fn, *args, **kwargs)
+        probe = fn(torch.zeros((), device=self.device, dtype=self.dtype))
+        dtype = probe.dtype if probe.is_floating_point() else self.dtype
+        self.set_rng_device_and_dtype(probe.device, dtype)
+        return out
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         """Create distribution samplers for the given device and dtype.

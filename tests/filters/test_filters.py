@@ -759,6 +759,20 @@ class TestFilter3D(BaseTester):
 
 
 class TestFilter2D_fftconv(BaseTester):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_matches_spatial_filter(self, padding, behaviour, normalized, device, dtype):
+        sample = torch.arange(1, 169, device=device, dtype=dtype).reshape(2, 2, 6, 7) / 128
+        kernel = torch.tensor([[[1, 2, 3], [3, 2, 1]], [[2, 1, 2], [1, 3, 1]]], device=device, dtype=dtype)
+
+        actual = fft_conv(sample, kernel, normalized=normalized, padding=padding, behaviour=behaviour)
+        expected = filter2d(sample, kernel, normalized=normalized, padding=padding, behaviour=behaviour)
+
+        assert actual.dtype == dtype
+        assert actual.device == sample.device
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])

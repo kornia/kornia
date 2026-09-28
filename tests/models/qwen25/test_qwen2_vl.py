@@ -30,16 +30,16 @@ class TestQwen2VL:
         #  smaller model → stable
         model = Qwen2VLVisionTransformer(embed_dim=64, depth=2, num_heads=4).to(device=device, dtype=dtype)
 
-        x = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        x = torch.randn(batch_size, 3, 112, 112, device=device, dtype=dtype)
 
         output = model(x)
 
-        assert output.shape == (batch_size, 256, 64)
+        assert output.shape == (batch_size, 64, 64)
 
     def test_gradients(self, device):
         model = Qwen2VLVisionTransformer(embed_dim=64, depth=1, num_heads=4).to(device)
 
-        x = torch.randn(1, 3, 224, 224, device=device, requires_grad=True)
+        x = torch.randn(1, 3, 112, 112, device=device, requires_grad=True)
         output = model(x)
 
         loss = output.mean()
@@ -50,16 +50,16 @@ class TestQwen2VL:
     def test_patch_merger(self, device):
         merger = Qwen2VLPatchMerger(dim=64).to(device)
 
-        x = torch.randn(1, 3, 224, 224, device=device)
+        x = torch.randn(1, 3, 112, 112, device=device)
         output = merger(x)
 
-        assert output.shape == (1, 256, 64)
+        assert output.shape == (1, 64, 64)
 
     def test_batch_consistency(self, device):
         """Ensure outputs are consistent between batch and single input."""
         model = Qwen2VLVisionTransformer(embed_dim=64, depth=2, num_heads=4).to(device)
 
-        x = torch.randn(2, 3, 224, 224, device=device)
+        x = torch.randn(2, 3, 112, 112, device=device)
 
         out_batch = model(x)
         out_single = model(x[:1])

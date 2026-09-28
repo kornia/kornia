@@ -84,9 +84,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     u: torch.Tensor = 13 * L * (u_p - u_w)
     v: torch.Tensor = 13 * L * (v_p - v_w)
 
-    out = torch.stack([L, u, v], dim=-3)
-
-    return out
+    return torch.stack([L, u, v], dim=-3)
 
 
 def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -134,9 +132,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
 
     # Convert from RGB Linear to sRGB
-    rgb_im = linear_rgb_to_rgb(rgbs_im)
-
-    return rgb_im
+    return linear_rgb_to_rgb(rgbs_im)
 
 
 class RgbToLuv(nn.Module):

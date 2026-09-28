@@ -88,16 +88,15 @@ class OtsuThreshold(torch.nn.Module):
 
         if dimensionality <= 2:
             return x.flatten().unsqueeze(0), original_shape
-        elif dimensionality == 3:
+        if dimensionality == 3:
             return x.flatten(start_dim=1), original_shape
-        elif dimensionality == 4:
+        if dimensionality == 4:
             b, c, h, w = x.shape
             return self.transform_input(x.reshape(b * c, h, w), original_shape=original_shape)
-        elif dimensionality == 5:
+        if dimensionality == 5:
             f, b, c, h, w = x.shape
             return self.transform_input(x.reshape(f * b * c, h, w), original_shape=original_shape)
-        else:
-            raise ValueError(f"Unsupported tensor dimensionality: {dimensionality}")
+        raise ValueError(f"Unsupported tensor dimensionality: {dimensionality}")
 
     def forward(
         self, x: torch.Tensor, nbins: int = 256, slow_and_differentiable: bool = False

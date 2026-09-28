@@ -282,7 +282,6 @@ class Image:
         Args:
             data: a numpy array containing the image data.
             color_space: the color space of the image.
-            pixel_format: the pixel format of the image.
             channels_order: what dimension the channels are in the image torch.Tensor.
 
         Example:

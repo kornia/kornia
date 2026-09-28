@@ -2,45 +2,45 @@ kornia.io
 =========
 
 .. meta::
-   :name: description
-   :content: "The Kornia.io package provides utilities to load and save image data efficiently. It integrates with `kornia_rs`, a low-level Rust implementation for computer vision, and supports the DLPack protocol to reduce memory footprint. This package is designed for Linux platforms and requires PyTorch 1.10.0 or higher."
+   :description: The kornia.io package loads and saves images directly as PyTorch tensors. It is backed by kornia-rs, a low-level Rust computer vision library, and uses the DLPack protocol to decode images with a minimal memory footprint on Linux, macOS and Windows.
 
 .. currentmodule:: kornia.io
 
-Package to load and save image data.
+Package to load and save image data directly as tensors.
 
-The package internally implements `kornia_rs <https://github.com/kornia/kornia-rs>`_ which contains a low level implementation
-for Computer Vision in the `Rust <https://www.rust-lang.org/>`_ language. In addition, we implement the `DLPack <https://github.com/dmlc/dlpack>`_ protocol
-natively in Rust to reduce the memory footprint during the decoding and types conversion.
-
-.. tip::
-    You need to ``pip install kornia_rs`` to use this package. For now we only support Linux platforms.
-    Contact us or sponsor the project for more support (mac, win, rust, c++, video and camera). See:
-    `https://opencollective.com/kornia <https://opencollective.com/kornia>`_
-
-.. note::
-    The package needs at least PyTorch 1.10.0 installed.
+The package is backed by `kornia-rs <https://github.com/kornia/kornia-rs>`_, a low-level computer vision
+library written in `Rust <https://www.rust-lang.org/>`_ that is installed automatically as a dependency of
+Kornia (wheels are available for Linux, macOS and Windows). Decoded images are handed to PyTorch through the
+`DLPack <https://github.com/dmlc/dlpack>`_ protocol, which avoids extra copies and keeps the memory footprint low.
 
 .. code-block:: python
 
+    import torch
     import kornia as K
     from kornia.io import ImageLoadType
-    from kornia.core import Tensor
 
-    img: Tensor = K.io.load_image(file_path, ImageLoadType.UNCHANGED, device="cuda")
-    # will load CxHxW / in the original format in "cuda"
+    file_path = "image.jpg"
 
-    img: Tensor = K.io.load_image(file_path, ImageLoadType.RGB8, device="cpu")
-    # will load 3xHxW / in torch.uint in range [0,255] in "cpu"
+    img = K.io.load_image(file_path, ImageLoadType.UNCHANGED, device="cuda")
+    # (C, H, W) in the file's original dtype and channel count, on "cuda"
 
-    img: Tensor = K.io.load_image(file_path, ImageLoadType.GRAY8, device="cuda")
-    # will load 1xHxW / in torch.uint8 in range [0,255] in "cuda"
+    img = K.io.load_image(file_path, ImageLoadType.RGB8, device="cpu")
+    # (3, H, W) torch.uint8 in [0, 255], on "cpu"
 
-    img: Tensor = K.io.load_image(file_path, ImageLoadType.GRAY32, device="cpu")
-    # will load 1xHxW / in torch.float32 in range [0,1] in "cpu"
+    img = K.io.load_image(file_path, ImageLoadType.GRAY8, device="cuda")
+    # (1, H, W) torch.uint8 in [0, 255], on "cuda"
 
-    img: Tensor = K.io.load_image(file_path, ImageLoadType.RGB32, device="cuda")
-    # will load 3xHxW / in torch.float32 in range [0,1] in "cuda"
+    img = K.io.load_image(file_path, ImageLoadType.GRAY32, device="cpu")
+    # (1, H, W) torch.float32 in [0, 1], on "cpu"
+
+    img = K.io.load_image(file_path, ImageLoadType.RGB32, device="cuda")
+    # (3, H, W) torch.float32 in [0, 1], on "cuda"
+
+    K.io.write_image("copy.jpg", (img * 255).to(torch.uint8).cpu())  # expects (3, H, W) uint8
+
+.. tip::
+    Most Kornia operators expect a batched ``(B, C, H, W)`` float tensor in ``[0, 1]``; load with
+    ``ImageLoadType.RGB32`` and add the batch dimension with ``img[None]``.
 
 .. autofunction:: load_image
 .. autofunction:: write_image

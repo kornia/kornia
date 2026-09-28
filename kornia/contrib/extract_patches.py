@@ -44,9 +44,8 @@ def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadTy
     else:
         pad_vert = padding[:2]
         pad_horz = padding[2:]
-    padding = cast(FullPadType, pad_horz + pad_vert)
 
-    return padding
+    return cast(FullPadType, pad_horz + pad_vert)
 
 
 def compute_padding(
@@ -113,8 +112,7 @@ def compute_padding(
         left_padding = horizontal_padding // 2
         right_padding = ceil(horizontal_padding / 2)
     # the new implementation with unfolding requires symmetric padding
-    padding = int(top_padding), int(bottom_padding), int(left_padding), int(right_padding)
-    return padding
+    return int(top_padding), int(bottom_padding), int(left_padding), int(right_padding)
 
 
 class ExtractTensorPatches(nn.Module):

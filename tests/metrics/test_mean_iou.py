@@ -99,6 +99,16 @@ class TestMeanIoU(BaseTester):
         with pytest.raises(ValueError, match="bigger than two"):
             kornia.metrics.mean_iou(pred, pred, num_classes=1)
 
+    def test_empty_batch(self, device, dtype):
+        num_classes = 3
+        pred = torch.zeros(0, 4, 4, device=device, dtype=torch.long)
+        target = torch.zeros(0, 4, 4, device=device, dtype=torch.long)
+
+        mean_iou = kornia.metrics.mean_iou(pred, target, num_classes)
+        assert mean_iou.shape == (0, num_classes)
+        assert mean_iou.dtype == torch.float32
+        assert mean_iou.device == pred.device
+
 
 class TestMeanIoUBBox(BaseTester):
     """Tests for mean_iou_bbox with different box formats."""

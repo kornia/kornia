@@ -32,11 +32,14 @@ class Rescale(nn.Module):
     def __init__(self, factor: Union[float, torch.Tensor]) -> None:
         super().__init__()
         if isinstance(factor, float):
-            self.factor = torch.tensor(factor)
-        else:
-            if not isinstance(factor, torch.Tensor) or factor.ndim != 0:
-                raise TypeError(f"Expected factor to be a float or a 0-d torch.Tensor, got {factor}.")
-            self.factor = factor
+            factor = torch.tensor(factor)
+        elif not isinstance(factor, torch.Tensor) or factor.ndim != 0:
+            raise TypeError(f"Expected factor to be a float or a 0-d torch.Tensor, got {factor}.")
+
+        # A buffer, so `.to(device)` moves it with the module. Non-persistent:
+        # the factor is a constructor argument, not learned state, and adding
+        # it to `state_dict()` would break existing checkpoints.
+        self.register_buffer("factor", factor, persistent=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Multiply the input tensor by the configured scaling factor.

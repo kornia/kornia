@@ -63,6 +63,13 @@ class RandomAffine(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - ``translate=(a, b)`` samples pixel offsets from ``[-a W, a W]`` and ``[-b H, b H]``; positive offsets
+          move content right and down.
+        - a positive ``degrees`` rotates the displayed image clockwise, unlike :class:`RandomRotation`
+          (:doc:`/get-started/conventions`, `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 

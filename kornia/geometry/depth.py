@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ShapeError
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
@@ -63,25 +64,36 @@ def unproject_meshgrid(
         This function should be used in conjunction with :py:func:`kornia.geometry.depth.depth_to_3d_v2` to cache
         the meshgrid computation when warping multiple frames with the same camera intrinsics.
 
+    Convention:
+        - the result is the **camera-frame** ray through each pixel at depth 1, :math:`(B, H, W, 3)`, so
+          multiplying it by a :math:`(B, H, W)` depth map reproduces :func:`~kornia.geometry.depth.depth_to_3d_v2`
+          (its ``xyz_grid`` cache). Pixel centres are integers; see
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        - ``camera_matrix`` must be :math:`(B, 3, 3)`; an unbatched matrix or extra leading dimensions raise
+          ``ShapeError``.
+        - ``normalize_points=True`` returns the unit ray instead of the ray whose ``z`` is 1.
+
     Args:
         height: height of image.
         width: width of image.
-        camera_matrix: tensor containing the camera intrinsics with shape :math:`(3, 3)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
         device: device to place the result on.
         dtype: dtype of the result.
 
     Return:
-        tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
+        tensor with a 3d point per pixel, with shape :math:`(B, H, W, 3)`.
 
     """
-    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
-    # create base coordinates grid
+    # create base coordinates grid. ``create_meshgrid`` returns ``(1, H, W, 2)``; drop only that leading
+    # batch axis. A bare ``squeeze()`` would also drop ``H`` or ``W`` whenever either is 1, and the grid
+    # would then broadcast across a phantom axis instead of keeping the documented ``(*, H, W, 3)`` shape.
     points_uv: torch.Tensor = create_meshgrid(
         height, width, normalized_coordinates=False, device=device, dtype=dtype
-    ).squeeze()  # HxWx2
+    ).squeeze(0)  # HxWx2
 
     # project pixels to camera frame
     camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
@@ -92,7 +104,7 @@ def unproject_meshgrid(
     points_xyz = convert_points_to_homogeneous(points_xy)  # HxWx3
 
     if normalize_points:
-        points_xyz = F.normalize(points_xyz, dim=-1, p=2)
+        points_xyz = F.normalize(points_xyz, dim=-1, p=2.0)
 
     return points_xyz
 
@@ -112,15 +124,31 @@ def depth_to_3d_v2(
         This is an alternative implementation of :py:func:`kornia.geometry.depth.depth_to_3d`
         that does not require the creation of a meshgrid.
 
+    Convention:
+        - ``depth`` is the camera-frame ``z`` of each pixel and the result the camera-frame point
+          ``((u - cx) z / fx, (v - cy) z / fy, z)``, channels-**last** :math:`(*, H, W, 3)`, with ``u`` the
+          column and ``v`` the row (integer pixel centres; see
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`). It equals
+          :func:`~kornia.geometry.depth.depth_to_3d` after ``permute(0, 2, 3, 1)``.
+        - without ``xyz_grid``, ``camera_matrix`` must be exactly :math:`(B, 3, 3)` (another shape raises
+          ``ShapeError``); with ``xyz_grid`` it is never read.
+        - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
+        - ``xyz_grid`` replaces the grid construction; pass what :func:`~kornia.geometry.depth.unproject_meshgrid`
+          returns for the same camera.
+
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
-        camera_matrix: tensor containing the camera intrinsics with shape :math:`(*, 3, 3)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
         xyz_grid: explicit xyz point values.
 
     Return:
-        tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
+        tensor with a 3d point per pixel of the same resolution as the input, :math:`(*, H, W, 3)`, whose
+        leading dimensions are the broadcast of ``depth``'s and the grid's: the Example broadcasts a
+        :math:`(4, 4)` depth against a :math:`(2, 3, 3)` camera to :math:`(2, 4, 4, 3)`, and a
+        :math:`(B, T, H, W)` depth with an ``xyz_grid`` of shape :math:`(B, 1, H, W, 3)` returns
+        :math:`(B, T, H, W, 3)`.
 
     Example:
         >>> depth = torch.rand(4, 4)
@@ -150,8 +178,17 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
 
     .. note::
 
-        This is an alternative implementation of `depth_to_3d` that does not require the creation of a meshgrid.
-        In future, we will support only this implementation.
+        :py:func:`kornia.geometry.depth.depth_to_3d_v2` computes the same points without building a meshgrid,
+        in the :math:`(B, H, W, 3)` layout.
+
+    Convention:
+        - ``depth`` is the camera-frame ``z`` of each pixel and the result the camera-frame point
+          ``((u - cx) z / fx, (v - cy) z / fy, z)``, channels-**first** :math:`(B, 3, H, W)`, with ``u`` the
+          column and ``v`` the row (integer pixel centres; see
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`). It equals
+          :func:`~kornia.geometry.depth.depth_to_3d_v2` after ``permute(0, 2, 3, 1)``.
+        - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
+        - an integer ``depth`` is not rejected; the result takes the floating dtype of ``camera_matrix``.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
@@ -193,16 +230,28 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
 
 
 def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
-    """Compute the normal surface per pixel.
+    r"""Compute the normal surface per pixel.
+
+    Convention:
+        - both spatial dimensions must be at least 2: a surface normal requires two tangent directions.
+        - the normal is the unit cross product ``d/dx`` x ``d/dy`` of the unprojected point cloud, so a
+          fronto-parallel plane gets ``(0, 0, 1)``, pointing **away** from the camera; a depth growing along
+          the columns tilts it towards ``-x``, one growing along the rows towards ``-y``.
+        - the arguments mean what they mean for :func:`~kornia.geometry.depth.depth_to_3d`, and the result
+          has its :math:`(B, 3, H, W)` layout.
 
     Args:
-        depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
+        depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`, with
+            :math:`H \geq 2` and :math:`W \geq 2`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
         represented as the Euclidean ray length from the camera position.
 
     Return:
         tensor with a normal surface vector per pixel of the same resolution as the input :math:`(B, 3, H, W)`.
+
+    Raises:
+        ShapeError: if either spatial dimension of ``depth`` is smaller than 2.
 
     Example:
         >>> depth = torch.rand(1, 1, 4, 4)
@@ -215,6 +264,14 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     KORNIA_CHECK_IS_TENSOR(camera_matrix)
     KORNIA_CHECK_SHAPE(depth, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
+
+    height, width = depth.shape[-2:]
+    if height < 2 or width < 2:
+        raise ShapeError(
+            f"depth_to_normals requires H >= 2 and W >= 2. Got H={height}, W={width}.",
+            actual_shape=list(depth.shape),
+            expected_shape=["B", "1", "H >= 2", "W >= 2"],
+        )
 
     # compute the 3d points from depth; permute to channel-first for spatial_gradient
     xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW
@@ -239,7 +296,20 @@ def depth_from_plane_equation(
     camera_matrix: torch.Tensor,
     eps: float = 1e-8,
 ) -> torch.Tensor:
-    """Compute depth values from plane equations and pixel coordinates.
+    r"""Compute depth values from plane equations and pixel coordinates.
+
+    Convention:
+        - the plane is given in Hessian form :math:`n \cdot X = d`, with the normal ``plane_normals`` and the
+          offset ``plane_offsets`` in the **camera** frame: ``n = (0, 0, 1)`` with ``d = 2`` is the plane
+          ``z = 2``, and every pixel on it has depth 2.
+        - ``points_uv`` are **pixels** (integer centres; see
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`), normalized here with ``camera_matrix``.
+        - the result is the camera-frame ``z`` of each pixel, :math:`(B, N)`: a list of depths, not a map.
+        - a ray-plane dot product inside :math:`(-eps, eps)` is replaced by :math:`\pm` ``eps`` with its sign
+          (``+eps`` for an exact zero), so a grazing ray returns the large signed depth ``d / eps`` rather than
+          ``inf``. In float16 a positive ``eps`` is floored at the smallest subnormal, ``2**-24``, because the
+          default ``1e-8`` rounds to zero there; ``d / 2**-24`` is still ``inf`` in float16 once ``|d|`` exceeds
+          about ``3.9e-3``, so pass a larger ``eps`` for a finite depth (``eps=1e-4`` keeps ``|d| <= 6.5`` finite).
 
     Args:
         plane_normals (torch.Tensor): Plane normal vectors of shape (B, 3).
@@ -267,13 +337,26 @@ def depth_from_plane_equation(
 
     # Compute the denominator of the depth equation
     denom = torch.sum(rays * plane_normals_exp, dim=-1)  # (B, N)
+    # A positive eps below float16's smallest subnormal rounds to zero there, which would turn the guard into
+    # a division by zero, so floor it at that subnormal (as normalize_quaternion does).
+    if denom.dtype == torch.float16 and eps > 0.0:
+        eps = max(eps, 5.960464477539063e-08)
     denom_abs = torch.abs(denom)
     zero_mask = denom_abs < eps
-    denom = torch.where(zero_mask, eps * torch.sign(denom), denom)
+    # The guard was `eps * sign(denom)`, and `sign` is zero at zero, so the
+    # multiplication cancelled the guard at the exact singularity it exists for
+    # and a ray parallel to the plane returned inf. Choose the sign with a
+    # comparison instead: it has no hole at zero, and keeps the branch's sign
+    # for the small non-zero denominators the guard already handled.
+    # `torch.copysign` would read the same but is not exportable -- the legacy
+    # ONNX exporter has no `aten::copysign` and the dynamo one has no ONNX
+    # function for the `prims.signbit` it decomposes to -- and this function is
+    # in the documented export surface (docs/export_support/cases_geomB.py).
+    signed_eps = torch.where(denom < 0, torch.full_like(denom, -eps), torch.full_like(denom, eps))
+    denom = torch.where(zero_mask, signed_eps, denom)
 
     # Compute depth from plane equation
-    depth = plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)
-    return depth
+    return plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)
 
 
 def warp_frame_depth(
@@ -288,6 +371,21 @@ def warp_frame_depth(
     Compute 3d points from the depth, transform them using given transformation, then project the point cloud to an
     image plane.
 
+    Convention:
+        - the depth belongs to the **destination** frame (``depth_dst``) and the image to the **source** frame
+          (``image_src``), and ``src_trans_dst`` maps destination-frame points into the source frame. With
+          ``fx = fy = 1`` and a unit depth, a :math:`+1` translation in ``x`` samples ``image_src`` one pixel to
+          the right of each destination pixel.
+        - the unprojection is :func:`~kornia.geometry.depth.depth_to_3d_v2` and the reprojection
+          :func:`~kornia.geometry.camera.perspective.project_points`, whose conventions apply.
+        - the sampling is bilinear ``grid_sample`` with a fixed ``align_corners=True`` and
+          ``padding_mode="zeros"``; the output is :math:`(B, D, H, W)` with ``image_src``'s channels.
+
+    .. warning::
+        :class:`~kornia.geometry.depth.DepthWarper` performs the same warp under the **opposite** naming: this
+        function's ``dst`` (holding the depth) is that class's ``src``, and ``image_src`` is its ``patch_dst``:
+        `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
+
     Args:
         image_src: image tensor in the source frame with shape :math:`(B,D,H,W)`.
         depth_dst: depth tensor in the destination frame with shape :math:`(B,1,H,W)`.
@@ -297,13 +395,28 @@ def warp_frame_depth(
            is represented as the Euclidean ray length from the camera position.
 
     Return:
-        the warped tensor in the source frame with shape :math:`(B,3,H,W)`.
+        ``image_src`` resampled onto the destination pixel grid, with shape :math:`(B,D,H,W)`.
 
     """
     KORNIA_CHECK_SHAPE(image_src, ["B", "D", "H", "W"])
     KORNIA_CHECK_SHAPE(depth_dst, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(src_trans_dst, ["B", "4", "4"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
+    KORNIA_CHECK(
+        image_src.shape[-2:] == depth_dst.shape[-2:],
+        f"image_src and depth_dst must have the same height and width. "
+        f"Got {list(image_src.shape[-2:])} and {list(depth_dst.shape[-2:])}.",
+    )
+
+    if (
+        image_src.shape[0] == 0
+        and depth_dst.shape[0] == 0
+        and src_trans_dst.shape[0] == 0
+        and camera_matrix.shape[0] == 0
+    ):
+        output_shape = (0, image_src.shape[1], depth_dst.shape[-2], depth_dst.shape[-1])
+        output_zero = image_src.reshape(-1)[:1].sum() * 0.0
+        return output_zero.reshape(1, 1, 1, 1).expand(output_shape)
 
     # unproject source points to camera frame as (B, H, W, 3) directly — avoids two permutes
     points_3d_dst: torch.Tensor = depth_to_3d_v2(depth_dst.squeeze(1), camera_matrix, normalize_points)  # BxHxWx3
@@ -330,8 +443,34 @@ class DepthWarper(nn.Module):
 
         I_{src} = \\omega(I_{dst}, P_{src}^{\{dst\}}, D_{src})
 
+    Convention:
+        - the depth lives in the **source** frame and the image in the **destination** frame:
+          :meth:`forward` takes ``(depth_src, patch_dst)``, samples ``patch_dst`` at the pixels the
+          source-frame depth projects to, and returns a :math:`(B, C, H, W)` tensor carrying ``patch_dst``'s
+          channel count.
+        - this is a two-step API: :meth:`compute_projection_matrix` has to be called first. Until it has
+          been, :meth:`warp_grid` and :meth:`forward` raise ``ValueError`` and :meth:`compute_subpixel_step`
+          raises ``RuntimeError``.
+        - :meth:`compute_projection_matrix` stores ``K_dst @ (E_dst @ inverse(E_src))``, the matrix above, from
+          the constructor's ``pinhole_dst`` and that method's ``pinhole_src`` (both
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, world-to-camera extrinsics).
+        - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
+          ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
+          ``align_corners=True`` normalized coordinates of the **destination** image.
+        - ``align_corners`` (default ``True``), ``mode`` and ``padding_mode`` are forwarded to ``grid_sample``.
+          :func:`~kornia.geometry.depth.depth_warp` is the functional form and exposes ``align_corners`` only.
+
+    .. warning::
+        :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the **opposite** naming:
+        this class's ``src`` (holding the depth) is that function's ``dst``, and ``patch_dst`` is its
+        ``image_src``; reading "dst" as "dst" across the two gives the inverse warp:
+        `#4273 <https://github.com/kornia/kornia/issues/4273>`_. The two agree to rounding for float32/float64
+        away from ``z = 0``, and split at ``z = 0``, where ``cam2pixel`` sends every pixel with a nonzero
+        projected numerator far outside the image:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+
     Args:
-        pinholes_dst: the pinhole models for the destination frame.
+        pinhole_dst: the pinhole model for the destination frame.
         height: the height of the image to warp.
         width: the width of the image to warp.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
@@ -375,7 +514,10 @@ class DepthWarper(nn.Module):
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
     def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
-        """Compute the projection matrix from the source to destination frame."""
+        """Compute the projection matrix from the source to destination frame.
+
+        See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+        """
         # Inline type checks for faster fail-fast
         if type(self._pinhole_dst) is not PinholeCamera:
             raise TypeError(
@@ -434,6 +576,8 @@ class DepthWarper(nn.Module):
     def compute_subpixel_step(self) -> torch.Tensor:
         """Compute the inverse depth step for sub pixel accurate sampling of the depth cost volume, per camera.
 
+        See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
         """
@@ -471,6 +615,8 @@ class DepthWarper(nn.Module):
     def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
         """Compute a grid for warping a given the depth from the reference pinhole camera.
 
+        See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+
         The function `compute_projection_matrix` has to be called beforehand in order to have precomputed the relative
         projection matrices encoding the relative pose and the intrinsics between the reference and a non reference
         camera.
@@ -507,6 +653,8 @@ class DepthWarper(nn.Module):
     def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:
         """Warp a tensor from destination frame to reference given the depth in the reference frame.
 
+        See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+
         Args:
             depth_src: the depth in the reference frame. The tensor must have a shape :math:`(B, 1, H, W)`.
             patch_dst: the patch in the destination frame. The tensor must have a shape :math:`(B, C, H, W)`.
@@ -515,7 +663,8 @@ class DepthWarper(nn.Module):
             the warped patch from destination frame to reference.
 
         Shape:
-            - Output: :math:`(N, C, H, W)` where C = number of channels.
+            - Input: :math:`(B, 1, H, W)` and :math:`(B, C, H, W)`.
+            - Output: :math:`(B, C, H, W)` where C = number of channels.
 
         Example:
             >>> # pinholes camera models
@@ -552,7 +701,12 @@ def depth_warp(
 ) -> torch.Tensor:
     """Warp a tensor from destination frame to reference given the depth in the reference frame.
 
-    See :class:`~kornia.geometry.warp.DepthWarper` for details.
+    See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+
+    This function is that class's functional form: it constructs a
+    :class:`~kornia.geometry.depth.DepthWarper`, calls its ``compute_projection_matrix`` and returns its
+    output, which is equal to the class's bit for bit under the default ``mode`` and ``padding_mode``, the only
+    ones this function offers (``align_corners`` is forwarded).
 
     Example:
         >>> # pinholes camera models
@@ -576,15 +730,48 @@ def depth_warp(
     return warper(depth_src, patch_dst)
 
 
+def _per_sample_camera_parameter(parameter: float | torch.Tensor, disparity: torch.Tensor) -> float | torch.Tensor:
+    """Shape a per-batch-element ``(B,)`` camera parameter so each value meets its own disparity sample.
+
+    A Python number, a scalar tensor and a ``(1,)`` tensor already broadcast over the whole disparity and are
+    returned untouched, so every input accepted before ``(B,)`` support existed takes the same path as it did.
+    A ``(B,)`` tensor pairs element ``b`` with ``disparity[b]``, which needs a batch axis: ``disparity`` must
+    have rank 3 or more and a leading size of ``B``. Anything else raises ``ShapeError``.
+    """
+    if not isinstance(parameter, torch.Tensor) or parameter.ndim == 0 or parameter.shape == (1,):
+        return parameter
+    if parameter.ndim == 1 and disparity.ndim >= 3:
+        KORNIA_CHECK_SHAPE(parameter, [str(disparity.shape[0])])
+        return parameter.reshape(disparity.shape[0], *([1] * (disparity.ndim - 1)))
+    KORNIA_CHECK_SHAPE(parameter, ["1"])
+    return parameter
+
+
 def depth_from_disparity(
     disparity: torch.Tensor, baseline: float | torch.Tensor, focal: float | torch.Tensor
 ) -> torch.Tensor:
     """Compute depth from disparity.
 
+    Convention:
+        - the depth is ``baseline * focal / disparity``, elementwise: ``baseline`` is the distance between the
+          two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a baseline of
+          0.5 and a focal length of 100 gives a depth of 25.
+        - ``baseline`` and ``focal`` are each a scalar (Python number, 0-d or :math:`(1,)` tensor) shared by the
+          whole disparity, or a :math:`(B,)` tensor paired with ``disparity[b]``, which then needs a leading
+          batch axis of size ``B`` (otherwise ``ShapeError``). The two may mix.
+        - ``disparity`` is :math:`(*, H, W)` and the result has its shape. Its sign is not checked.
+
+    .. warning::
+        The divisor is ``disparity + 1e-8``, so a zero disparity (no stereo match) returns a large finite depth
+        set by the epsilon (``5e9`` for baseline ``0.5``, focal ``100``) rather than ``inf``, except where the
+        epsilon underflows: `#4272 <https://github.com/kornia/kornia/issues/4272>`_.
+
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.
-        baseline: float/tensor containing the distance between the two lenses.
-        focal: float/tensor containing the focal length.
+        baseline: Distance between the two lenses, as an int, float, or tensor of shape ``()`` or ``(1,)``,
+            or of shape ``(B,)`` for one value per batch element.
+        focal: Focal length, as an int, float, or tensor of shape ``()`` or ``(1,)``, or of shape ``(B,)`` for
+            one value per batch element.
 
     Return:
         Depth map of the shape :math:`(*, H, W)`.
@@ -600,18 +787,15 @@ def depth_from_disparity(
     KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a torch.Tensor. Got {type(disparity)}.")
     KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])
     KORNIA_CHECK(
-        isinstance(baseline, (float, torch.Tensor)),
-        f"Input baseline should be either a float or torch.Tensor. Got {type(baseline)}",
+        isinstance(baseline, (int, float, torch.Tensor)) and not isinstance(baseline, bool),
+        f"Input baseline should be an int, float or torch.Tensor. Got {type(baseline)}",
     )
     KORNIA_CHECK(
-        isinstance(focal, (float, torch.Tensor)),
-        f"Input focal should be either a float or torch.Tensor. Got {type(focal)}",
+        isinstance(focal, (int, float, torch.Tensor)) and not isinstance(focal, bool),
+        f"Input focal should be an int, float or torch.Tensor. Got {type(focal)}",
     )
 
-    if isinstance(baseline, torch.Tensor):
-        KORNIA_CHECK_SHAPE(baseline, ["1"])
-
-    if isinstance(focal, torch.Tensor):
-        KORNIA_CHECK_SHAPE(focal, ["1"])
+    baseline = _per_sample_camera_parameter(baseline, disparity)
+    focal = _per_sample_camera_parameter(focal, disparity)
 
     return baseline * focal / (disparity + 1e-8)
