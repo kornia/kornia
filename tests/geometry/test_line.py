@@ -266,8 +266,8 @@ class TestFitLine(BaseTester):
 
     def test_fit_line_weighted_3d_ignores_a_zero_weight_point_5014(self, device):
         # #5014: for D >= 3 the points were centred on the unweighted mean, so a point with weight 0 still moved
-        # the origin and tilted the direction (by 16 degrees here).
-        d = torch.float64
+        # the origin and tilted the direction (by 16 degrees here). float32, not float64: MPS has no float64.
+        d = torch.float32
         t = torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0, 3.0], device=device, dtype=d)
         u = torch.tensor([2.0, 1.0, -2.0], device=device, dtype=d) / 3
         noise = torch.tensor(
@@ -296,6 +296,10 @@ class TestFitLine(BaseTester):
         # Uniform weights give the unweighted fit.
         uniform = fit_line(points, torch.full((1, 7), 2.0, device=device, dtype=d))
         self.assert_close(uniform.origin, fit_line(points).origin)
+
+        # Each batch row is centred on its own weighted centroid, whatever the other rows' weights sum to.
+        batch = fit_line(torch.cat([points, points]), torch.cat([weights, 3.0 * weights]))
+        self.assert_close(batch.origin, expected.origin.expand(2, 3))
 
     @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):
