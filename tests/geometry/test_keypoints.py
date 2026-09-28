@@ -516,6 +516,28 @@ class TestConventionsKeypoints(BaseTester):
         self.assert_close(kp.data, expected)
         self.assert_close(caller, original)
 
+    @pytest.mark.parametrize("shape", [(0, 2), (1, 0, 2)])
+    def test_convention_keypoints_empty_transform_keeps_storage_independent(self, shape, device, dtype):
+        # transform_points returns empty inputs unchanged; Keypoints still gives every transform result new storage.
+        caller = torch.empty(shape, device=device, dtype=dtype)
+        transform = torch.eye(3, device=device, dtype=dtype)
+
+        kp = Keypoints(caller)
+        out = kp.transform_keypoints(transform)
+        assert out is not kp
+        assert out.data is not caller
+        assert out.data.untyped_storage() is not caller.untyped_storage()
+        assert kp.data is caller
+
+        for transform_inplace in (
+            lambda obj: obj.transform_keypoints(transform, inplace=True),
+            lambda obj: obj.transform_keypoints_(transform),
+        ):
+            kp = Keypoints(caller)
+            assert transform_inplace(kp) is kp
+            assert kp.data is not caller
+            assert kp.data.untyped_storage() is not caller.untyped_storage()
+
     @pytest.mark.parametrize("layout", ["batched", "unbatched", "strided"])
     def test_convention_keypoints_wrap_without_copy_and_edits_write_through(self, layout, device, dtype):
         # The constructor wraps the caller's tensor without copying it, a non-contiguous view included, and pad /

@@ -20,6 +20,7 @@ import copy
 import pytest
 import torch
 
+from kornia.core.check import BaseError
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector2, Vector3
 
@@ -208,11 +209,9 @@ class TestConventionsVector(BaseTester):
         assert squared_norm.data.shape == (2,)
         self.assert_close(squared_norm.data, torch.tensor([7.78, 16.74], device=device, dtype=dtype))
 
-    def test_wart_vector3_deepcopy_returns_tensor_5022(self, device, dtype):
-        # Wart pin (#5022): copy.deepcopy of a Vector3, Vector2 or Scalar returns a plain torch.Tensor (the instance
-        # __getattr__ hands the lookup of __deepcopy__ to the wrapped tensor), while copy.copy keeps the class. A
-        # module holding one degrades with it: a deep-copied Hyperplane stores Tensors, so .normal.x raises. A fix
-        # (a __deepcopy__ on TensorWrapper) flips the `is torch.Tensor` assertions and the AttributeError below.
+    def test_wart_vector3_call_path_type_split_5022(self, device, dtype):
+        # Wart pin (#5022): deepcopy and tensor methods lose the wrapper, while torch functions rewrap their result.
+        # A shape-changing torch function then fails Vector3 validation. Each part flips when its path is fixed.
         wrapped = (
             Vector3(torch.tensor([[0.3, -1.2, 2.5]], device=device, dtype=dtype)),
             Vector2(torch.tensor([[0.3, -1.2]], device=device, dtype=dtype)),
@@ -223,6 +222,16 @@ class TestConventionsVector(BaseTester):
             deep = copy.deepcopy(obj)
             assert type(deep) is torch.Tensor
             self.assert_close(deep, obj.data)
+            assert type(obj.clone()) is torch.Tensor
+            assert type(torch.clone(obj)) is type(obj)
+
+        with pytest.raises(BaseError):
+            torch.linalg.norm(wrapped[0], dim=-1)
+        # A reduced result with three elements instead passes shape validation and is miswrapped as a Vector3.
+        lucky_shape = Vector3(torch.ones(3, 3, device=device, dtype=dtype))
+        reduced = torch.linalg.norm(lucky_shape, dim=-1)
+        assert type(reduced) is Vector3
+        assert reduced.data.shape == (3,)
 
         normal = Vector3(torch.tensor([2.0, 1.0, -2.0], device=device, dtype=dtype) / 3.0)
         point = Vector3(torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype))
