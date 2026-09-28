@@ -19,6 +19,7 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import ValueCheckError
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
@@ -386,6 +387,36 @@ class TestFitLine(BaseTester):
         zero_weights = torch.zeros(1, 3, device=device, dtype=dtype)
         with pytest.raises(ValueCheckError, match="positive sum of weights"):
             fit_line(points, zero_weights)
+
+        # Identical points whose mean rounds: three copies of 0.1 sum to 0.30000000000000004, so centring on the
+        # mean leaves a residual of about 1e-17 and a mean-based test would accept them.
+        identical_rounding = torch.tensor([[[0.1, 0.7]] * 3], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="two distinct points"):
+            fit_line(identical_rounding)
+
+        # A batch is rejected as a whole when one of its rows is degenerate.
+        batch = torch.tensor([[[0.0, 0.0], [1.0, 3.0]], [[1.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="two distinct points"):
+            fit_line(batch)
+
+    def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
+        # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
+        # on identical points returns what an eager call returns with checks disabled.
+        p = torch.tensor([[[1.0, 2.0, 3.0]] * 4], device=device, dtype=dtype)
+
+        def op(points):
+            return ParametrizedLine.through(points[0, 0], points[0, 1]).direction, fit_line(points).direction
+
+        actual = torch_optimizer(op)(p)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            expected = op(p)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
 
     def test_fit_line_small_valid_set_still_fits(self, device, dtype):
         # The degeneracy test is relative, not absolute: a small-but-distinct set still fits.

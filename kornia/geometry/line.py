@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, are_checks_enabled
 from kornia.core.exceptions import ValueCheckError
 from kornia.core.utils import _torch_svd_cast, is_compiling, register_module_state
 from kornia.geometry.linalg import batched_dot_product
@@ -104,7 +104,7 @@ class ParametrizedLine(nn.Module):
 
         """
         direction = p1 - p0
-        if not torch.jit.is_scripting() and _checks_enabled() and not is_compiling():
+        if not torch.jit.is_scripting() and are_checks_enabled() and not is_compiling():
             if not bool((direction.abs().amax(dim=-1) > 0).all()):
                 raise ValueCheckError("ParametrizedLine.through requires two distinct points; p0 and p1 coincide.")
         return ParametrizedLine(p0, F.normalize(direction, p=2, dim=-1))
@@ -253,34 +253,26 @@ def _fit_line_weighted_ols_2d(points: torch.Tensor, weights: torch.Tensor) -> Pa
 def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor]) -> None:
     """Raise ``ValueCheckError`` when the point set cannot determine a line.
 
-    A line needs at least two points and a nonzero spread: every centred coordinate is zero
-    exactly when all points are identical, a test with no arithmetic on the values that
-    holds at any scale. With weights, the weighted mean is undefined unless the weight sum
-    is positive.
+    A line needs at least two points that are not all identical. Comparing every point with
+    the first one is exact at any scale; comparing with the mean is not, because its rounding
+    leaves a nonzero residual for identical points such as three copies of (0.1, 0.7). With
+    weights, the weighted mean is undefined unless the weight sum is positive.
 
     The value checks are skipped under ``torch.compile``/export, where they would be a
     data-dependent branch, and by ``disable_checks()``, like every kornia value check.
     """
-    if torch.jit.is_scripting() or is_compiling() or not _checks_enabled():
+    if torch.jit.is_scripting() or is_compiling() or not are_checks_enabled():
         return
     n = points.shape[-2]
     if n < 2:
         raise ValueCheckError(f"fit_line requires at least two points to determine a line; got a set of {n} point(s).")
-    centered = points - points.mean(-2, True)
-    if not bool((centered.abs().amax(dim=(-2, -1)) > 0).all()):
+    if not bool((points != points[..., :1, :]).flatten(-2).any(-1).all()):
         raise ValueCheckError("fit_line requires at least two distinct points; the given points are all identical.")
     if weights is not None and weights.shape == points.shape[:2]:
         if not bool((weights.sum(-1) > 0).all()):
             raise ValueCheckError(
                 "fit_line requires a positive sum of weights; the given weights do not sum to a positive value."
             )
-
-
-def _checks_enabled() -> bool:
-    # Read at call time so disable_checks() also disables the degenerate-input checks.
-    from kornia.core.check import _KORNIA_CHECKS_ENABLED
-
-    return _KORNIA_CHECKS_ENABLED
 
 
 def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
