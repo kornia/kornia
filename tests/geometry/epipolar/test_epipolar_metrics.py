@@ -462,7 +462,9 @@ class TestSampsonSharedPoints(BaseTester):
         models = F.expand(64, 3, 3)
         shared = _sampson_epipolar_distance_shared_impl_(x1, x2, models, True, 0.0, 0.0)[:, 0].cpu().double()
         manual = _sampson_epipolar_distance_manual_impl_(x1, x2, F[None], True, 0.0)[0, 0].cpu().double()
-        reference = _sampson_epipolar_distance_manual_impl_(x1.cpu().double(), x2.cpu().double(), F[None].cpu().double(), True, 0.0)
+        reference = _sampson_epipolar_distance_manual_impl_(
+            x1.cpu().double(), x2.cpu().double(), F[None].cpu().double(), True, 0.0
+        )
         reference = reference[0, 0].cpu()
         self.assert_close(shared, manual.expand_as(shared), rtol=1e-4, atol=0.0)
         assert (shared - reference).abs().max() <= 2 * (manual - reference).abs()
