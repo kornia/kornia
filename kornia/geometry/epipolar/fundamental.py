@@ -61,6 +61,7 @@ def normalize_points(
 
     if weights is None:
         x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
+        kept: Optional[torch.Tensor] = None
     else:
         if weights.shape != points.shape[:2]:
             raise AssertionError(weights.shape)
@@ -75,12 +76,21 @@ def normalize_points(
         # A fully de-weighted sample is degenerate; keep its normalization finite and batched.
         effective_weights = torch.where(total_weight > 0, positive_weights, torch.ones_like(positive_weights))
         total_weight = effective_weights.sum(dim=1, keepdim=True)
-        weighted_sum = (points.to(acc_dtype) * effective_weights[..., None]).sum(dim=1, keepdim=True)
+        # A zero-weight point may be NaN or infinite; 0 * nan is nan, so substitute it rather than weight it away. A
+        # finite one keeps its value, so the gradient of its weight is still the derivative from above (#4912).
+        kept = (effective_weights[..., None] > 0) | torch.isfinite(points)
+        kept_points = torch.where(kept, points.to(acc_dtype), torch.zeros_like(points, dtype=acc_dtype))
+        weighted_sum = (kept_points * effective_weights[..., None]).sum(dim=1, keepdim=True)
         x_mean = (weighted_sum / total_weight[..., None]).to(dtype)
     centered = points - x_mean  # (B,N,2)
 
-    # Mean Euclidean distance to origin (radius)
-    radii = centered.norm(dim=-1, p=2)
+    # Mean Euclidean distance to origin (radius). The substituted points are substituted before the norm too, whose
+    # backward would otherwise multiply their zero gradient by a non-finite derivative.
+    if kept is not None:
+        centered_kept = torch.where(kept, centered, torch.zeros_like(centered))
+    else:
+        centered_kept = centered
+    radii = centered_kept.norm(dim=-1, p=2)
     if weights is None:
         mean_radius = radii.mean(dim=-1)  # (B,)
     else:
@@ -90,7 +100,17 @@ def normalize_points(
     scale = (math.sqrt(2.0)) / (mean_radius + eps)  # (B,)
 
     # Apply similarity transform in-place-ish (broadcast scale)
-    points_norm = centered * scale.view(B, 1, 1)  # (B,N,2)
+    if kept is None:
+        points_norm = centered * scale.view(B, 1, 1)  # (B,N,2)
+    else:
+        # A non-finite point stays non-finite but gets no path to ``scale``: its zero gradient would otherwise meet a
+        # non-finite factor in the backward of the product and make every gradient NaN.
+        finite = torch.isfinite(centered)
+        points_norm = torch.where(
+            finite,
+            torch.where(finite, centered, torch.zeros_like(centered)) * scale.view(B, 1, 1),
+            centered * scale.detach().view(B, 1, 1),
+        )
 
     # Build transform matrix:
     # T = [[s, 0, -s*mx],

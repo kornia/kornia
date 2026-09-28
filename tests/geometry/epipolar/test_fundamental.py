@@ -47,6 +47,28 @@ class TestNormalizePoints(BaseTester):
         self.assert_close(normalized[:, :-1], expected_normalized)
         self.assert_close(transform, expected_transform)
 
+    def test_zero_weight_nonfinite_point_does_not_change_transform(self, device, dtype):
+        points = torch.tensor(
+            [[[0.0, 0.0], [0.0, 2.0], [2.0, 0.0], [2.0, 2.0], [float("nan"), float("inf")]]], device=device, dtype=dtype
+        )
+        weights = torch.tensor([[1.0, 1.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype)
+        normalized, transform = epi.normalize_points(points, weights=weights)
+        expected_normalized, expected_transform = epi.normalize_points(points[:, :-1])
+        self.assert_close(normalized[:, :-1], expected_normalized)
+        self.assert_close(transform, expected_transform)
+
+    def test_zero_weight_nonfinite_point_keeps_gradients_finite(self, device):
+        finite = torch.tensor([[[0.0, 0.0], [0.0, 2.0], [2.0, 1.0], [3.0, 2.0]]], device=device, dtype=torch.float64)
+        points = torch.cat([finite, torch.tensor([[[float("nan"), 1.0]]], device=device, dtype=torch.float64)], 1)
+        points.requires_grad_()
+        weights = torch.tensor([[1.0, 2.0, 1.0, 0.5, 0.0]], device=device, dtype=torch.float64)
+        normalized, transform = epi.normalize_points(points, weights=weights)
+        (normalized[:, :-1].sum() + transform.sum()).backward()
+        reference = finite.clone().requires_grad_()
+        normalized_ref, transform_ref = epi.normalize_points(reference, weights=weights[:, :-1])
+        (normalized_ref.sum() + transform_ref.sum()).backward()
+        self.assert_close(points.grad[:, :-1], reference.grad)
+
     def test_all_zero_weights_keep_transform_finite(self, device, dtype):
         points = torch.tensor([[[0.0, 0.0], [0.0, 2.0], [2.0, 0.0], [2.0, 2.0]]], device=device, dtype=dtype)
         normalized, transform = epi.normalize_points(points, weights=torch.zeros(1, 4, device=device, dtype=dtype))
