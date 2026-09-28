@@ -236,9 +236,7 @@ def _rank2_projection(F: torch.Tensor) -> torch.Tensor:
     noise = (8 * torch.finfo(F.dtype).eps * trace).square()
     two_rows = cross_norm > noise * row_norm
     one_row = row_norm > noise
-    v = torch.where(
-        two_rows[:, None], cross, torch.where(one_row[:, None], perpendicular, eye[2].expand_as(cross))
-    )
+    v = torch.where(two_rows[:, None], cross, torch.where(one_row[:, None], perpendicular, eye[2].expand_as(cross)))
     norm = v.square().sum(-1)
     v = v * torch.where(norm > 0, norm, torch.ones_like(norm)).rsqrt()[:, None]
     return (F - (F @ v[:, :, None]) @ v[:, None, :]).to(dtype)
@@ -300,7 +298,13 @@ def _hat_basis(dtype: torch.dtype, device: torch.device) -> torch.Tensor:
 
 
 def _refine_fundamental_lm(
-    F: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, mask: Optional[torch.Tensor], loss: str, scale2: float, iters: int
+    F: torch.Tensor,
+    x1: torch.Tensor,
+    x2: torch.Tensor,
+    mask: Optional[torch.Tensor],
+    loss: str,
+    scale2: float,
+    iters: int,
 ) -> torch.Tensor:
     """Levenberg-Marquardt on the Sampson distance, batched over fundamental matrices ``(K, 3, 3)``.
 

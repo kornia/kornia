@@ -283,7 +283,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
 
 
 def _solve_cubic_real(coeffs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Real roots ``(B, 3)`` of the cubics ``coeffs (B, 4)``, highest degree first, and a mask ``(B, 3)`` of genuine ones.
+    """Real roots ``(B, 3)`` of the cubics ``coeffs (B, 4)``, highest degree first, and a mask of the genuine ones.
 
     Cardano's formula for one real root, the trigonometric one for three, followed by a Newton step. A cubic with one
     real root repeats it in the two masked slots, so a caller builds every candidate from finite roots and masks

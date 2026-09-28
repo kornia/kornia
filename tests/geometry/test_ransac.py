@@ -24,13 +24,12 @@ import torch
 
 import kornia
 from kornia.geometry import RANSAC, transform_points
-from kornia.geometry.epipolar._metrics import _sampson_errors
-from kornia.geometry.epipolar.fundamental import _rank2_projection, _refine_fundamental_lm
-from kornia.geometry.homography import _refine_homography_lm, _transfer_errors
-from kornia.geometry.ransac import _normalize_correspondences
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_from_homogeneous
 from kornia.geometry.epipolar import find_fundamental, project_to_essential, sampson_epipolar_distance
-from kornia.geometry.homography import oneway_transfer_error
+from kornia.geometry.epipolar._metrics import _sampson_errors
+from kornia.geometry.epipolar.fundamental import _rank2_projection, _refine_fundamental_lm
+from kornia.geometry.homography import _refine_homography_lm, _transfer_errors, oneway_transfer_error
+from kornia.geometry.ransac import _normalize_correspondences
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -1869,7 +1868,9 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
         expected_scale = float((radius + 1e-8) / math.sqrt(2.0))
         self.assert_close(torch.tensor([s1, s2]), torch.tensor([expected_scale, expected_scale]), rtol=1e-12, atol=0.0)
         self.assert_close(x1[finite, :2], (kp1[finite] - c1) / s1, rtol=1e-9, atol=1e-12)
-        self.assert_close((t2 @ torch.cat([kp2[finite], torch.ones(48, 1, dtype=kp2.dtype)], 1).T).T, x2[finite])
+        ones = torch.ones(48, 1, dtype=kp1.dtype)
+        self.assert_close((t1 @ torch.cat([kp1[finite], ones], 1).T).T, x1[finite])
+        self.assert_close((t2 @ torch.cat([kp2[finite], ones], 1).T).T, x2[finite])
 
     @pytest.mark.parametrize("model_type", ["homography", "fundamental"])
     @pytest.mark.parametrize("loss", ["cauchy", "truncated"])

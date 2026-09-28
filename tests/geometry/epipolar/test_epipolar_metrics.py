@@ -371,7 +371,11 @@ class TestSampsonSharedPoints(BaseTester):
         # 4000 models x 20 points: the GEMM path on every device.
         Fm = create_random_fundamental_matrix(4000, dtype=dtype, device=device)
         out = epi.sampson_epipolar_distance(pts1, pts2, Fm, squared=squared)
-        other = _sampson_epipolar_distance_matmul_impl_ if device.type == "cuda" else _sampson_epipolar_distance_manual_impl_
+        other = (
+            _sampson_epipolar_distance_matmul_impl_
+            if device.type == "cuda"
+            else _sampson_epipolar_distance_manual_impl_
+        )
         work = torch.promote_types(dtype, torch.float32)
         expected = other(pts1.to(work), pts2.to(work), Fm.to(work), squared, 1e-8).to(dtype)
         assert out.dtype == dtype
@@ -379,7 +383,9 @@ class TestSampsonSharedPoints(BaseTester):
 
     def test_shapes(self, device, dtype):
         pts1 = torch.rand(1, 1, 7, 2, device=device, dtype=dtype)
-        pts2 = torch.cat([torch.rand(1, 7, 2, device=device, dtype=dtype), torch.ones(1, 7, 1, device=device, dtype=dtype)], -1)
+        pts2 = torch.cat(
+            [torch.rand(1, 7, 2, device=device, dtype=dtype), torch.ones(1, 7, 1, device=device, dtype=dtype)], -1
+        )
         Fm = create_random_fundamental_matrix(6, dtype=dtype, device=device).reshape(2, 3, 3, 3)
         assert _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm, True, 1e-8, 1e-8).shape == (2, 3, 7)
         assert _sampson_epipolar_distance_shared_impl_(pts1[0, 0], pts2[0], Fm[0], True, 1e-8, 1e-8).shape == (3, 7)
@@ -402,7 +408,9 @@ class TestSampsonSharedPoints(BaseTester):
         Fm = create_random_fundamental_matrix(4, dtype=dtype, device=device)
         out = _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm.mT, True, 1e-8, 1e-8)
         assert out.dtype == torch.promote_types(torch.float64, dtype)
-        self.assert_close(out, _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm.mT.contiguous(), True, 1e-8, 1e-8))
+        self.assert_close(
+            out, _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm.mT.contiguous(), True, 1e-8, 1e-8)
+        )
         one = Fm[:1].expand(5, 3, 3)
         expanded = _sampson_epipolar_distance_shared_impl_(pts1, pts2, one, True, 1e-8, 1e-8)
         self.assert_close(expanded, expanded[:1].expand_as(expanded))
@@ -412,7 +420,9 @@ class TestSampsonSharedPoints(BaseTester):
             pytest.skip("a float32 cancellation case (half cannot hold 1000.1 or 2e6; float64 is the reference)")
         # PR #5031 review: a numerator expanded into monomials of the coordinates cancels here (0.0521 against a
         # float64 value of 0.0403); forming x2 . (F x1) keeps the manual path's 0.0319.
-        F = torch.tensor([[1.0, 0.0, -1000.0], [0.0, 1.0, -1000.0], [-1000.0, -1000.0, 2e6]], device=device, dtype=dtype)
+        F = torch.tensor(
+            [[1.0, 0.0, -1000.0], [0.0, 1.0, -1000.0], [-1000.0, -1000.0, 2e6]], device=device, dtype=dtype
+        )
         x1 = torch.tensor([[[1000.1, 1000.2]]], device=device, dtype=dtype)
         x2 = torch.tensor([[[1000.3, 1000.4]]], device=device, dtype=dtype)
         models = F.expand(64, 3, 3)

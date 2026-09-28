@@ -164,9 +164,7 @@ def _sampson_errors(F: Tensor, x1: Tensor, x2: Tensor, eps: float) -> Tensor:
     lines = (F.reshape(3 * m, 3) @ x1.T).view(m, 3, n)
     lines_t = (F.mT[:, :2].reshape(2 * m, 3) @ x2.T).view(m, 2, n)
     residual = x2[:, 0] * lines[:, 0] + x2[:, 1] * lines[:, 1] + x2[:, 2] * lines[:, 2]
-    denominator = (
-        lines[:, 0].square() + lines[:, 1].square() + lines_t[:, 0].square() + lines_t[:, 1].square() + eps
-    )
+    denominator = lines[:, 0].square() + lines[:, 1].square() + lines_t[:, 0].square() + lines_t[:, 1].square() + eps
     return residual.square() / denominator
 
 

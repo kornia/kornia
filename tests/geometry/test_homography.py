@@ -1202,7 +1202,10 @@ class TestHomographySharedKernels(BaseTester):
         out = oneway_transfer_error(pts1, pts2, H, squared=squared)
         work = torch.promote_types(dtype, torch.float32)
         expected = torch.cat(
-            [oneway_transfer_error(pts1.to(work), pts2.to(work), H[i : i + 1].to(work), squared=squared) for i in range(5)]
+            [
+                oneway_transfer_error(pts1.to(work), pts2.to(work), H[i : i + 1].to(work), squared=squared)
+                for i in range(5)
+            ]
         )
         assert out.dtype == dtype
         self.assert_close(out, expected.to(dtype))
@@ -1230,20 +1233,27 @@ class TestHomographySharedKernels(BaseTester):
         reference = torch.cat([oneway_transfer_error(src, dst, models[i : i + 1], eps=0.0) for i in range(8)])
         cast = lambda t: t.to(device, dtype)  # noqa: E731
         shared = oneway_transfer_error(cast(src), cast(dst), cast(models), eps=0.0).double().cpu()
-        per_model = torch.cat(
-            [oneway_transfer_error(cast(src), cast(dst), cast(models[i : i + 1]), eps=0.0) for i in range(8)]
-        ).double().cpu()
+        per_model = (
+            torch.cat([oneway_transfer_error(cast(src), cast(dst), cast(models[i : i + 1]), eps=0.0) for i in range(8)])
+            .double()
+            .cpu()
+        )
         small = reference < 100
         assert (shared - reference)[small].abs().max() <= 2 * (per_model - reference)[small].abs().max() + 1e-6
 
     def test_ransac_transfer_basis_matches(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("RANSAC scores in float32 or float64")
-        x1 = torch.cat([torch.randn(50, 2, device=device, dtype=dtype), torch.ones(50, 1, device=device, dtype=dtype)], 1)
+        x1 = torch.cat(
+            [torch.randn(50, 2, device=device, dtype=dtype), torch.ones(50, 1, device=device, dtype=dtype)], 1
+        )
         x2 = torch.randn(50, 2, device=device, dtype=dtype)
         models = torch.randn(6, 3, 3, device=device, dtype=dtype)
         self.assert_close(
-            _transfer_from_basis(models, _transfer_basis(x1, x2)), _transfer_errors(models, x1, x2, 0.0), rtol=1e-3, atol=1e-5
+            _transfer_from_basis(models, _transfer_basis(x1, x2)),
+            _transfer_errors(models, x1, x2, 0.0),
+            rtol=1e-3,
+            atol=1e-5,
         )
 
     def test_gradcheck(self, device):

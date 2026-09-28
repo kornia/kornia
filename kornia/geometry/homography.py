@@ -325,7 +325,13 @@ def _transfer_from_basis(H: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
 
 
 def _refine_homography_lm(
-    H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, mask: Optional[torch.Tensor], loss: str, scale2: float, iters: int
+    H: torch.Tensor,
+    x1: torch.Tensor,
+    x2: torch.Tensor,
+    mask: Optional[torch.Tensor],
+    loss: str,
+    scale2: float,
+    iters: int,
 ) -> torch.Tensor:
     """Levenberg-Marquardt on the one-way transfer error, batched over homographies ``(K, 3, 3)``.
 
