@@ -171,4 +171,9 @@ class TestHyperplane(BaseTester):
 
         # 3. Projection of x onto the plane must lie on the plane (signed distance == 0)
         proj = plane.projection(x)
-        assert torch.allclose(plane.signed_distance(proj).data.squeeze(), torch.tensor(0.0, device=device, dtype=dtype), rtol=rtol, atol=atol)
+        assert torch.allclose(
+            plane.signed_distance(proj).data.squeeze(),
+            torch.tensor(0.0, device=device, dtype=dtype),
+            rtol=rtol,
+            atol=atol,
+        )
