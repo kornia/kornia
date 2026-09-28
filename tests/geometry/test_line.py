@@ -17,11 +17,10 @@
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
-from kornia.geometry.vector import Vector3
+from kornia.geometry.vector import Scalar, Vector3
 
 from testing.base import BaseTester, assert_close
 
@@ -58,6 +57,11 @@ class TestParametrizedLine(BaseTester):
         line = ParametrizedLine(origin, direction)
         expected = torch.stack([ParametrizedLine(origin[i], direction[i]).point_at(steps[i]) for i in range(2)])
         self.assert_close(line.point_at(steps), expected)
+        # A (B, 1) step already carries the coordinate axis, and a Scalar is unwrapped to its tensor.
+        self.assert_close(line.point_at(steps[:, None]), expected)
+        from_scalar = line.point_at(Scalar(steps))
+        assert type(from_scalar) is torch.Tensor
+        self.assert_close(from_scalar, expected)
 
     def test_scalar_point_at_preserves_line_dtype(self, device, dtype):
         line = ParametrizedLine(
@@ -360,15 +364,15 @@ class TestFitLine(BaseTester):
         assert line.direction.dtype == dtype
         self.assert_close(line.direction, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
 
-    @pytest.mark.skip(reason="numerical do not match with analytical")
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("dim", (2, 3))
+    def test_gradcheck(self, device, dim):
+        # Two point sets whose rows differ, each projected onto its own fitted line (#5013).
         def proxy_func(pts, weights):
-            line = fit_line(pts, weights)
-            return line.projection(pts[:, 0].T)
+            return fit_line(pts, weights).projection(pts[:, 0])
 
-        pts = torch.rand(1, 3, 2, device=device, dtype=torch.float64, requires_grad=True)
-        weights = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=False)
-        assert gradcheck(proxy_func, (pts, weights), raise_exception=True)
+        pts = torch.rand(2, 5, dim, device=device)
+        weights = torch.rand(2, 5, device=device)
+        self.gradcheck(proxy_func, (pts, weights), requires_grad=(True, False))
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
