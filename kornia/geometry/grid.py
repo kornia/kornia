@@ -35,20 +35,13 @@ def create_meshgrid(
 ) -> torch.Tensor:
     r"""Generate a coordinate grid for an image.
 
-    When the flag ``normalized_coordinates`` is set to True, the grid is
-    normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
-    function :py:func:`torch.nn.functional.grid_sample`. A singleton axis is
-    represented by ``0``, the centre of the normalized range. A zero spatial size
-    produces a correspondingly empty grid; this differs from pixel-coordinate
-    normalization, where a zero-sized coordinate system is undefined.
-
-    ``grid_sample`` has two such conventions, selected by its own ``align_corners``
-    flag, and ``align_corners`` here picks the matching one. Feeding a grid built
-    under one convention to a ``grid_sample`` call using the other applies a
-    spurious sub-pixel scale and shift, so the two flags must agree.
-
-    See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre and
-    normalized-coordinate conventions used by this grid.
+    Convention:
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. With
+          ``normalized_coordinates=True``, the ``align_corners`` argument selects the matching
+          :py:func:`torch.nn.functional.grid_sample` convention; pass the same flag to both calls. The default is
+          corner-aligned (``align_corners=True``).
+        - A size-1 axis is ``0`` under either flag, and a size-0 axis gives an empty grid.
+        - An integer ``dtype`` is kept for a pixel grid; a normalized grid is then torch's default floating dtype.
 
     Args:
         height: the image height (rows).
@@ -167,20 +160,20 @@ def create_meshgrid3d(
 ) -> torch.Tensor:
     """Generate a coordinate grid for an image.
 
-    When the flag ``normalized_coordinates`` is set to True, the grid is
-    normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
-    function :py:func:`torch.nn.functional.grid_sample`. A singleton axis is
-    represented by ``0``, the centre of the normalized range. A zero spatial size
-    produces a correspondingly empty grid; this differs from pixel-coordinate
-    normalization, where a zero-sized coordinate system is undefined.
+    Convention:
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. A normalized grid is always
+          corner-aligned; reorder its last axis with ``grid[..., [1, 2, 0]]`` before passing it to
+          :py:func:`torch.nn.functional.grid_sample`.
+        - A size-1 axis is ``0`` and a size-0 axis gives an empty grid.
+        - Known defect: there is no ``align_corners`` argument, so the half-pixel grid that
+          ``grid_sample(..., align_corners=False)`` expects cannot be requested
+          (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
 
     Args:
-        depth: the image depth (channels).
+        depth: the volume depth (the ``D`` axis).
         height: the image height (rows).
         width: the image width (cols).
-        normalized_coordinates: whether to normalize
-          coordinates in the range :math:`[-1,1]` in order to be consistent with the
-          PyTorch function :py:func:`torch.nn.functional.grid_sample`.
+        normalized_coordinates: whether to normalize coordinates to :math:`[-1, 1]`.
         device: the device on which the grid will be generated.
         dtype: the data type of the generated grid.
 

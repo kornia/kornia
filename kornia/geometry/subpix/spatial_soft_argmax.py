@@ -178,8 +178,8 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.dev
 class ConvSoftArgmax2d(nn.Module):
     r"""nn.Module that calculates soft argmax 2d per window.
 
-    See
-    :func: `~kornia.geometry.subpix.conv_soft_argmax2d` for details.
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.conv_soft_argmax2d`.
     """
 
     def __init__(
@@ -245,8 +245,8 @@ class ConvSoftArgmax2d(nn.Module):
 class ConvSoftArgmax3d(nn.Module):
     r"""nn.Module that calculates soft argmax 3d per window.
 
-    See
-    :func: `~kornia.geometry.subpix.conv_soft_argmax3d` for details.
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.conv_soft_argmax3d`.
     """
 
     def __init__(
@@ -322,18 +322,32 @@ def conv_soft_argmax2d(
     r"""Compute the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
 
     .. math::
-        ij(X) = \frac{\sum{(i,j)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
+        xy(X) = \frac{\sum_{p \in X} (x_p, y_p) \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
 
     .. math::
-        val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
+        val(X) = \frac{\sum_{p \in X} v_p \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
 
-    where :math:`T` is temperature.
+    where :math:`X` is a window, :math:`(x_p, y_p)` the column and row of its pixel :math:`p`, :math:`v_p` the
+    heatmap value there and :math:`T` the temperature.
+
+    Convention:
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. This function defaults to
+          normalized, corner-aligned coordinates.
+          :func:`conv_soft_argmax3d` defaults to pixel coordinates and ``output_value=True`` instead.
+        - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: with an odd
+          ``kernel_size``, a window that overhangs the border averages over its in-image pixels only.
+        - Known defects: the exponent is shifted by the maximum of the whole map and ``eps`` is added to each
+          window's denominator, so a window whose values sit far below that maximum, in units of ``temperature``, is
+          pulled toward its centre with a value near ``0``, or is ``NaN`` in float16
+          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_); with an even ``kernel_size`` and
+          ``padding = k // 2`` the border windows average a zero-padded coordinate into their centre and report a
+          point far inside the image (`#5066 <https://github.com/kornia/kornia/issues/5066>`_).
 
     Args:
         input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
         kernel_size: the size of the window.
         stride: the stride of the window.
-        padding: input zero padding.
+        padding: the padding added to each side of the input.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
           A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
@@ -437,21 +451,28 @@ def conv_soft_argmax3d(
     r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
     .. math::
-             ijk(X) = \frac{\sum{(i,j,k)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
+        dxy(X) = \frac{\sum_{p \in X} (d_p, x_p, y_p) \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
 
     .. math::
-             val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
+        val(X) = \frac{\sum_{p \in X} v_p \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
 
-    where ``T`` is temperature.
+    where :math:`X` is a window, :math:`(d_p, x_p, y_p)` the depth, column and row of its voxel :math:`p`,
+    :math:`v_p` the heatmap value there and :math:`T` the temperature.
+
+    Convention:
+        - See the convention block of :func:`conv_soft_argmax2d`, including its known defects
+          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_,
+          `#5066 <https://github.com/kornia/kornia/issues/5066>`_). Coordinates follow
+          :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to pixel coordinates.
 
     Args:
         input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
         kernel_size:  size of the window.
         stride: stride of the window.
-        padding: input zero padding.
+        padding: the padding added to each side of the input.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
           A tensor temperature is not checked under ``torch.compile`` or export.
-        normalized_coordinates: whether to return the coordinates normalized in the range of :math:[-1, 1]`.
+        normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
         eps: small value to avoid zero division.
         output_value: if True, val is output, if False, only ij.
@@ -553,6 +574,13 @@ def spatial_soft_argmax2d(
 ) -> torch.Tensor:
     r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
 
+    Convention:
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to
+          normalized, corner-aligned coordinates.
+        - It is ``spatial_expectation2d(spatial_softmax2d(input, temperature))``: the expected coordinate under the
+          softmax of each whole :math:`H \times W` map, so two equal peaks that dominate the map give their midpoint,
+          not either peak.
+
     Args:
         input: the given heatmap with shape :math:`(B, N, H, W)`.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
@@ -561,8 +589,7 @@ def spatial_soft_argmax2d(
             Otherwise, it will return the coordinates in the range of the input shape.
 
     Returns:
-        the index of the maximum 2d coordinates of the give map :math:`(B, N, 2)`.
-        The output order is x-coord and y-coord.
+        the expected coordinates of each map with shape :math:`(B, N, 2)`.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -581,7 +608,8 @@ def spatial_soft_argmax2d(
 class SpatialSoftArgmax2d(nn.Module):
     r"""Compute the Spatial Soft-Argmax 2D of a given heatmap.
 
-    See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.spatial_soft_argmax2d`.
     """
 
     def __init__(self, temperature: Optional[torch.Tensor | float] = None, normalized_coordinates: bool = True) -> None:
@@ -773,8 +801,22 @@ def conv_quad_interp3d(
     default ``max_subpixel_shift=0.6`` almost all keypoints converge within 1 move,
     so the default ``dilation_radius=1`` (i.e. :math:`3^3 = 27` positions per
     maximum) is sufficient.  Use ``dilation_radius=2`` (:math:`5^3 = 125`) for
-    extra safety.  Setting it equal to ``n_iters`` recovers the original behaviour
-    but is much slower on large images.
+    extra safety.  Setting it to ``n_iters`` gives the result of
+    :func:`iterative_quad_interp3d`, but is much slower on large images.
+
+    Convention:
+        - ``coords_max`` follows :ref:`Coordinates and sizes <coordinate-conventions>` and holds absolute voxel
+          indices of the input: only refined maxima move off their own grid index. At a refined maximum ``y_max`` is
+          the quadratic fit's value at the refined point; non-maxima keep their input value.
+        - A maximum is not refined, and keeps its grid coordinates, when the determinant of its fit's Hessian is at
+          most ``1e-7`` in magnitude, when a move would reach the border voxels, when its centre leaves the voxels
+          precomputed for ``dilation_radius``, when the final shift exceeds ``1.5`` voxels on any axis, or when it
+          still requires an integer-centre move on the last iteration. A volume with a side shorter than 3 is returned
+          unrefined.
+        - Known defect: the ``1e-7`` determinant floor is absolute while the determinant is cubic in the response
+          amplitude, so low-amplitude maxima stay unrefined, among them most keypoints of the default
+          :class:`~kornia.feature.ScaleSpaceDetector` on a ``[0, 1]`` image
+          (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
@@ -1027,6 +1069,9 @@ class ConvQuadInterp3d(nn.Module):
     table lookup with no GPU→CPU synchronisation — making the module compatible
     with ``torch.compile`` and CUDA graphs.
 
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.conv_quad_interp3d`.
+
     Args:
         n_iters: maximum localization iterations per keypoint.
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
@@ -1105,8 +1150,11 @@ def iterative_quad_interp3d(
     function explicitly re-extracts the :math:`3 \times 3 \times 3` patch at each
     NMS maximum and iterates up to ``n_iters`` times. When the estimated subpixel
     shift along any spatial or scale axis exceeds ``max_subpixel_shift`` the integer
-    center is moved one step in that direction and the solve is repeated — matching
-    the localization loop from the HessAff / SIFT family of detectors.
+    center is moved one step in that direction and the solve is repeated.
+
+    Convention:
+        - See the convention block of :func:`conv_quad_interp3d`; here a maximum is not limited to a
+          ``dilation_radius`` neighbourhood.
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
@@ -1334,7 +1382,8 @@ def iterative_quad_interp3d(
 class IterativeQuadInterp3d(nn.Module):
     r"""Iterative subpixel localization of 3D extrema via quadratic interpolation.
 
-    See :func:`~kornia.geometry.subpix.iterative_quad_interp3d` for details.
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.iterative_quad_interp3d`.
     """
 
     def __init__(
@@ -1402,6 +1451,9 @@ class AdaptiveQuadInterp3d(nn.Module):
       parallelism on the batched gather+solve.
     * **CPU** — :func:`iterative_quad_interp3d` is faster for large images because
       it processes only the NMS maxima directly without any dilation/dedup overhead.
+
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.conv_quad_interp3d`.
 
     Args:
         mode: backend selection strategy.
