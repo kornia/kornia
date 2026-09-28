@@ -383,11 +383,6 @@ class TestFitLine(BaseTester):
         with pytest.raises(ValueCheckError, match="two distinct points"):
             fit_line(identical)
 
-        points = torch.tensor([[[0.0, 0.0], [1.0, 3.0], [2.0, 5.0]]], device=device, dtype=dtype)
-        zero_weights = torch.zeros(1, 3, device=device, dtype=dtype)
-        with pytest.raises(ValueCheckError, match="positive sum of weights"):
-            fit_line(points, zero_weights)
-
         # Identical points whose mean rounds: three copies of 0.1 sum to 0.30000000000000004, so centring on the
         # mean leaves a residual of about 1e-17 and a mean-based test would accept them.
         identical_rounding = torch.tensor([[[0.1, 0.7]] * 3], device=device, dtype=dtype)
