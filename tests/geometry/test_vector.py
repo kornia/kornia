@@ -235,6 +235,32 @@ class TestConventionsVector(BaseTester):
         with pytest.raises(AttributeError):
             _ = copied.normal.x
 
+    def test_wart_vector3_normalized_scales_below_eps_3952(self, device, dtype):
+        # Wart pin (#3952): normalized() divides by max(norm, 1e-12), so a vector shorter than 1e-12 is scaled by 1e12
+        # instead of normalized: (1e-13, 0, 0) comes back with length 0.1. A fix that raises or returns a unit
+        # vector flips it. float16 cannot hold 1e-13 (it underflows to the zero vector, #5062).
+        if dtype == torch.float16:
+            pytest.skip("1e-13 underflows to 0 in float16")
+        short = Vector3(torch.tensor([1e-13, 0.0, 0.0], device=device, dtype=dtype))
+        self.assert_close(short.normalized().data, torch.tensor([0.1, 0.0, 0.0], device=device, dtype=dtype))
+        self.assert_close(
+            Vector2(short.data[:2]).normalized().data, torch.tensor([0.1, 0.0], device=device, dtype=dtype)
+        )
+
+    def test_wart_vector3_normalized_zero_is_nan_in_float16_5062(self, device, dtype):
+        # Wart pin (#5062): the 1e-12 norm floor underflows to 0 in float16, so a zero vector normalizes to 0 / 0 = NaN
+        # there and to zero in every other dtype. A floor at the dtype's smallest subnormal (the #4162 guard) flips
+        # the float16 case to zero.
+        for zero in (
+            Vector3(torch.zeros(2, 3, device=device, dtype=dtype)),
+            Vector2(torch.zeros(2, 2, device=device, dtype=dtype)),
+        ):
+            out = zero.normalized().data
+            if dtype == torch.float16:
+                assert bool(out.isnan().all())
+            else:
+                assert bool((out == 0).all())
+
     def test_wart_vector3_tuple_index_raises_5022(self, device, dtype):
         # Wart pin (#5022): Vector3.__getitem__ indexes data[idx, ...], so a tuple key is turned into an index
         # tensor and raises RuntimeError (v[..., 0], v[:, 0]), and an int index of an unbatched vector leaves a 0-d
