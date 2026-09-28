@@ -33,14 +33,22 @@ __all__ = ["ParametrizedLine", "fit_line"]
 
 
 class ParametrizedLine(nn.Module):
-    """Class that describes a parametrize line.
+    r"""Class that describes a parametrized line.
 
-    A parametrized line is defined by an origin point :math:`o` and a unit
+    A parametrized line is defined by an origin point :math:`o` and a
     direction vector :math:`d` such that the line corresponds to the set
 
     .. math::
 
         l(t) = o + t * d
+
+    Convention:
+        - The constructor stores ``direction`` as given, without normalising or checking it, so :meth:`point_at`
+          steps ``t`` in units of its length. :meth:`through` and :func:`fit_line` return a unit direction; after
+          :meth:`through`, ``t`` is the Euclidean distance from ``p0``.
+        - :meth:`projection`, :meth:`squared_distance` and :meth:`distance` require a unit ``direction``.
+        - :meth:`intersect` returns ``(lambda, point)`` with ``point = point_at(lambda)``: ``lambda`` is in units of
+          the stored direction, and the plane's normal need not be unit.
     """
 
     def __init__(self, origin: torch.Tensor, direction: torch.Tensor) -> None:
@@ -48,11 +56,11 @@ class ParametrizedLine(nn.Module):
 
         Args:
             origin: any point on the line of any dimension.
-            direction: the normalized vector direction of any dimension.
+            direction: the direction vector of the line, of the same dimension.
 
         Example:
             >>> o = torch.tensor([0.0, 0.0])
-            >>> d = torch.tensor([1.0, 1.0])
+            >>> d = torch.tensor([0.6, 0.8])
             >>> l = ParametrizedLine(o, d)
 
         """
@@ -144,7 +152,7 @@ class ParametrizedLine(nn.Module):
         return torch.sum(perp * perp, dim=-1)
 
     def distance(self, point: torch.Tensor) -> torch.Tensor:
-        """Return the distance of a point to its projections onto the line.
+        """Return the distance of a point to its projection onto the line.
 
         Args:
             point: the point to calculate the distance onto the line.
@@ -168,7 +176,7 @@ class ParametrizedLine(nn.Module):
 
         Args:
             plane: the plane to compute the intersection point.
-            eps: epsilon for numerical stability.
+            eps: absolute threshold on ``|normal . direction|`` below which the line counts as parallel to the plane.
 
         Return:
             - the lambda value used to compute the look at point.
@@ -249,16 +257,24 @@ def _fit_line_weighted_ols_2d(points: torch.Tensor, weights: torch.Tensor) -> Pa
 
 
 def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
-    """Fit a line from a set of points.
+    r"""Fit a line from a set of points.
+
+    Convention:
+        - Returns a :class:`ParametrizedLine` (see its conventions) through the centroid of the points, weighted
+          when ``weights`` are given, with a unit direction of unspecified sign. Each batch row is fitted on its own.
+        - Known defect: 2-D points are fitted by ordinary least squares of y on x and :math:`D \ge 3` points by total
+          least squares, so noisy steep 2-D points are fitted with a bias, swapping x and y changes the 2-D fit,
+          and a 2-D set with :math:`\sum w_i (x_i - \bar{x})^2 \le 10^{-8}` comes out vertical
+          (`#5040 <https://github.com/kornia/kornia/issues/5040>`_).
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The expected
             shape of the tensor is :math:`(B, N, D)`.
-        weights: weights to use to solve the equations system. The expected
+        weights: per-point weights, used in the centroid and in the fit. The expected
             shape of the tensor is :math:`(B, N)`.
 
     Return:
-        A tensor containing the direction of the fitted line of shape :math:`(B, D)`.
+        The fitted line, with origin and direction of shape :math:`(B, D)`.
 
     Example:
         >>> points = torch.rand(2, 10, 3)

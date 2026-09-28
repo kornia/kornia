@@ -34,11 +34,24 @@ __all__ = ["Hyperplane", "fit_plane"]
 
 
 class Hyperplane(nn.Module):
-    """Represent a hyperplane in n-dimensional space.
+    r"""Represent a plane in 3D space by its normal :math:`n` and offset :math:`d`.
+
+    Convention:
+        - The plane is :math:`n \cdot x + d = 0`, and :meth:`signed_distance` is :math:`n \cdot x + d`: positive on
+          the side the normal points to, and ``d`` at the origin. :meth:`from_vector` sets :math:`d = -n \cdot e`.
+          :func:`~kornia.geometry.depth.depth_from_plane_equation` takes :math:`n \cdot X = d` instead: pass it
+          ``-offset``.
+        - The normal must be unit for :meth:`signed_distance`, :meth:`abs_distance` and :meth:`projection` to give
+          Euclidean distances and the closest point; the constructor and :meth:`from_vector` do not normalise it.
+        - :meth:`through` points the normal along :math:`(p_2 - p_0) \times (p_1 - p_0)`, as Eigen's
+          ``Hyperplane::Through`` does: the opposite of the right-hand normal of the loop
+          :math:`p_0 \to p_1 \to p_2`. Swapping two points flips it.
+        - Known defect: ``normal`` and ``offset`` are not registered module state, so ``state_dict()`` is empty and
+          ``.to()`` neither moves nor casts them (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Args:
-        n: The normal vector of the hyperplane.
-        d: The scalar distance from the origin.
+        n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
+        d: The offset :math:`d`, a :class:`~kornia.geometry.vector.Scalar`.
     """
 
     def __init__(self, n: Vector3, d: Scalar) -> None:
@@ -213,9 +226,13 @@ class Hyperplane(nn.Module):
 def fit_plane(points: Vector3) -> Hyperplane:
     """Fit a plane from a set of points using SVD.
 
+    Convention:
+        Returns a :class:`Hyperplane` (see its conventions) through the centroid of the points, with a unit normal
+        of unspecified sign. Each batch row is fitted on its own.
+
     Args:
-        points: tensor containing a batch of sets of n-dimensional points. The expected
-            shape of the tensor is :math:`(N, D)`.
+        points: a tensor or a :class:`~kornia.geometry.vector.Vector3` of 3D points, of shape :math:`(N, 3)` or
+            :math:`(B, N, 3)`. Another number of coordinates raises ``TypeError``.
 
     Return:
         The computed hyperplane object.
