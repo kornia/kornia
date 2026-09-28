@@ -21,6 +21,7 @@ import uuid
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
@@ -55,9 +56,9 @@ class NamedPose:
           guaranteed to satisfy this identity (`#4942 <https://github.com/kornia/kornia/issues/4942>`_).
           The left operand's ``frame_src`` must equal the right operand's ``frame_dst``, otherwise ``*`` raises
           ``ValueError``; :meth:`inverse` inverts the pose and swaps the frame names.
-        - Known defect: the pose type is not validated, so an ``So3``, ``So2``, ``Quaternion`` or tensor is accepted
-          and :attr:`rotation` then raises ``AttributeError``; a product of an ``Se3`` pose and an ``Se2`` pose also
-          raises ``AttributeError`` instead of ``ValueError`` (`#4937 <https://github.com/kornia/kornia/issues/4937>`_).
+        - The pose must be an ``Se2`` or an ``Se3``: an ``So3``, ``So2``, ``Quaternion`` or tensor is rejected at
+          construction (use :meth:`from_rt` or :meth:`from_matrix` to build a pose from one), and ``*`` raises
+          ``TypeError`` for a right operand that is not a ``NamedPose`` or holds the other group.
 
     Example:
         >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
@@ -77,7 +78,11 @@ class NamedPose:
             frame_src: Name of the source frame; a random unique name when omitted or empty.
             frame_dst: Name of the destination frame; a random unique name when omitted or empty.
 
+        Raises:
+            TypeCheckError: if ``dst_from_src`` is not an ``Se2`` or an ``Se3``.
+
         """
+        KORNIA_CHECK_TYPE(dst_from_src, (Se2, Se3))
         self._dst_from_src = dst_from_src
         self._frame_src = frame_src or uuid.uuid4().hex
         self._frame_dst = frame_dst or uuid.uuid4().hex
@@ -97,6 +102,10 @@ class NamedPose:
         Returns:
             Composed NamedPose.
 
+        Raises:
+            TypeError: if ``other`` is not a ``NamedPose`` or its pose is not of the same group as ``self.pose``.
+            ValueError: if ``self.frame_src`` is not ``other.frame_dst``.
+
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> c_from_b = NamedPose(Se3.identity(), frame_src="frame_b", frame_dst="frame_c")
@@ -106,13 +115,15 @@ class NamedPose:
             frame_src: frame_a -> frame_dst: frame_c)
 
         """
+        if not isinstance(other, NamedPose):
+            raise TypeError(f"NamedPose can only be composed with a NamedPose, got {type(other)}")
         if self._frame_src != other._frame_dst:
             raise ValueError(f"Cannot compose {self} with {other}")
-        if isinstance(other.pose, Se2):
+        if isinstance(self.pose, Se2) and isinstance(other.pose, Se2):
             return NamedPose(self._dst_from_src._mul_se2(other.pose), other._frame_src, self._frame_dst)
-        if isinstance(other.pose, Se3):
+        if isinstance(self.pose, Se3) and isinstance(other.pose, Se3):
             return NamedPose(self._dst_from_src._mul_se3(other.pose), other._frame_src, self._frame_dst)
-        raise ValueError(f"Pose must be either Se2 or Se3, got {type(self._dst_from_src)}")
+        raise TypeError(f"Cannot compose an {type(self.pose).__name__} pose with an {type(other.pose).__name__} pose")
 
     @property
     def pose(self) -> Se2 | Se3:
