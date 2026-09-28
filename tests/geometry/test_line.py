@@ -131,6 +131,35 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(lmbda, expected_lambda)
         self.assert_close(point, expected_point)
 
+    def test_intersect_plane_returns_tensors(self, device, dtype):
+        plane = Hyperplane.through(
+            torch.tensor([0.0, 0.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 1.0, 2.0], device=device, dtype=dtype),
+        )
+        line = ParametrizedLine(
+            torch.tensor([1.0, 1.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 0.6, 0.8], device=device, dtype=dtype),
+        )
+
+        lmbda, point = line.intersect(plane)
+
+        assert type(lmbda) is torch.Tensor
+        assert type(point) is torch.Tensor
+
+        self.assert_close(lmbda, torch.tensor(2.5, device=device, dtype=dtype))
+        self.assert_close(
+            point,
+            torch.tensor([1.0, 2.5, 2.0], device=device, dtype=dtype),
+        )
+        self.assert_close(plane.signed_distance(point).data, torch.zeros_like(lmbda))
+
+        # An origin off z = 0, so that the sign of n . origin in lambda is pinned as well.
+        line = ParametrizedLine(torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype), line.direction)
+        lmbda, point = line.intersect(plane)
+        self.assert_close(lmbda, torch.tensor(1.25, device=device, dtype=dtype))
+        self.assert_close(point, torch.tensor([1.0, 1.75, 2.0], device=device, dtype=dtype))
+
     def test_intersect_plane_parallel(self, device, dtype):
         # the degenerate branch must return deterministic values, not uninitialized memory
         p0 = torch.tensor([0.0, 4.0, 0.0], device=device, dtype=dtype)
