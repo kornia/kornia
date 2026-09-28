@@ -31,6 +31,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
+from kornia.geometry.epipolar.essential import _refine_essential_lm
 from kornia.geometry.epipolar.fundamental import (
     _eight_point_fundamental,
     _epipolar_design_rows,
@@ -59,7 +60,7 @@ __all__ = ["RANSAC"]
 _DEFAULT_BATCH = 2048
 
 # Model types that local_optimization="lm" supports, and how many minimal models it refines.
-_LM_MODELS = ("homography", "fundamental", "fundamental_7pt", "fundamental_8pt")
+_LM_MODELS = ("homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential")
 _LM_CANDIDATES = 8
 
 
@@ -125,19 +126,22 @@ class RANSAC(nn.Module):
           :ref:`two-view-conventions` compares this with OpenCV.
         - ``score_type="msac"`` (the default) ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the
           squared errors ``e``; acceptance and early stopping count inliers for either score.
-        - ``local_optimization="lm"``, the default for homographies and fundamental matrices, keeps the eight
-          best-scoring minimal models of the whole run. After sampling, it refines them together with
+        - ``local_optimization="lm"``, the default for homographies, fundamental and essential matrices, keeps the
+          eight best-scoring minimal models of the whole run. After sampling, it refines them together with
           ``max_lo_iters`` Levenberg-Marquardt iterations on all correspondences with the squared error truncated
           at ``inl_th``, keeps the best-scoring refit or minimal model, and refines that one on its inliers with
           ``refine_iters`` iterations of a Cauchy loss of scale ``inl_th / 3``. The returned mask holds the inliers
           of the returned model after conversion to the input dtype; if that conversion loses sufficient support,
           the call returns the all-zero failure result. Early stopping follows the support of the best minimal model.
           The refinements run on the CPU in float64 whatever the device of the correspondences: they are a few dozen
-          small operations per iteration, which launch latency makes slower on an accelerator.
-        - ``local_optimization="dlt"``, the only choice for ``"essential"`` and
-          ``"homography_from_linesegments"``, refits each new best model from its inliers: with the default
-          ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on 32-inlier subsets followed by one
-          full-inlier refit; ``lo_sample_size=None`` refits all inliers iteratively.
+          small operations per iteration, which launch latency makes slower on an accelerator. Homographies and
+          fundamental matrices are estimated on Hartley-normalized correspondences; essential matrices in the
+          caller's calibrated coordinates, which a normalization would take off the essential manifold, refined on
+          that manifold and returned with unit Frobenius norm.
+        - ``local_optimization="dlt"``, the only choice for ``"homography_from_linesegments"``, refits each new best
+          model from its inliers: with the default ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on
+          32-inlier subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers
+          iteratively.
         - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
           termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
@@ -168,8 +172,8 @@ class RANSAC(nn.Module):
             refitting. Unused with ``"lm"``.
         max_samples: optional budget of minimal samples that overrides the one implied by ``batch_size`` and
             ``max_iter``; the last batch is truncated to it.
-        local_optimization: ``"lm"`` or ``"dlt"``, as described above; None picks ``"lm"`` for homographies and
-            fundamental matrices and ``"dlt"`` for the other models.
+        local_optimization: ``"lm"`` or ``"dlt"``, as described above; None picks ``"lm"`` for homographies,
+            fundamental and essential matrices and ``"dlt"`` for line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
 
@@ -440,7 +444,8 @@ class RANSAC(nn.Module):
         budget = self.sample_budget
         if isinstance(self.batch_size, int):
             return min(self.batch_size, budget), min(self.batch_size, budget)
-        models = 3 if self.minimal_sample_size == 7 else 1
+        # Candidate slots per sample: the cubic's three roots, the degree-ten polynomial's ten for "essential".
+        models = {7: 3, 5: 10}.get(self.minimal_sample_size, 1)
         planar = self.model_type == "homography"
         if device.type == "cpu":
             first, upper, work = (512, 4096, 1 << 22) if planar else (256, 2048, 1 << 22)
@@ -893,6 +898,13 @@ class RANSAC(nn.Module):
                 return _four_point_homography(x1, x2)
             models = _four_point_homography(x1, x2)
             return models.masked_fill(~oriented[:, None, None], float("nan"))
+        if self.model_type == "essential":
+            # A sample with a non-finite correspondence becomes a degenerate all-zero one, and its candidates NaN.
+            finite = (torch.isfinite(x1) & torch.isfinite(x2)).flatten(1).all(1)
+            x1, x2 = x1.masked_fill(~finite[:, None, None], 0.0), x2.masked_fill(~finite[:, None, None], 0.0)
+            candidates = find_essential(x1[..., :2], x2[..., :2]).masked_fill(~finite[:, None, None, None], float("nan"))
+            models = candidates.flatten(0, 1)
+            return models[torch.isfinite(models).flatten(1).all(1)] if compact else models
         design = _epipolar_design_rows(x1, x2)
         if self.minimal_sample_size == 7:
             candidates, valid = _seven_point_candidates(design)
@@ -927,6 +939,8 @@ class RANSAC(nn.Module):
         """Refine normalized models with Levenberg-Marquardt; all inputs are float64 host tensors."""
         if self.model_type == "homography":
             return _refine_homography_lm(models, x1, x2[:, :2], mask, loss, scale2, iters)
+        if self.model_type == "essential":
+            return _refine_essential_lm(models, x1, x2, mask, loss, scale2, iters)
         return _refine_fundamental_lm(models, x1, x2, mask, loss, scale2, iters)
 
     def _forward_lm(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -938,12 +952,14 @@ class RANSAC(nn.Module):
         needs: correspondences are normalized once per call rather than per sample, models stay in that normalized
         frame at unit Frobenius norm instead of ``F[2, 2] = 1``, absent candidates are NaN on accelerators rather than
         dropped, and scoring uses the quadratic Sampson and folded transfer bases, which are fast and accurate in that
-        frame only.
+        frame only. Essential matrices skip the normalization: calibrated coordinates are already of unit scale, and
+        a translation or scaling of them would take the models off the essential manifold.
         """
         device, dtype = kp1.device, kp1.dtype
         work = torch.float64 if dtype == torch.float64 else torch.float32
         num_tc, m = len(kp1), self.minimal_sample_size
         planar = self.model_type == "homography"
+        essential = self.model_type == "essential"
         failure = (torch.zeros(3, 3, dtype=dtype, device=device), torch.zeros(num_tc, dtype=torch.bool, device=device))
         host = torch.device("cpu")
         # The Sampson distance scales with a similarity shared by both images; the transfer error with image 2's.
@@ -951,8 +967,16 @@ class RANSAC(nn.Module):
         finite = torch.isfinite(kp1_host).all(1) & torch.isfinite(kp2_host).all(1)
         if not bool(finite.any()):
             return failure
-        x1_host, x2_host, t1, t2, s1, s2 = _normalize_correspondences(kp1_host, kp2_host, not planar)
-        threshold = (self.inl_th / (s2 if planar else s1)) ** 2
+        if essential:
+            # Non-finite correspondences stay NaN, as the normalization leaves them, and are never inliers.
+            x1_host, x2_host = (
+                convert_points_to_homogeneous(kp.masked_fill(~finite[:, None], float("nan"))) for kp in (kp1_host, kp2_host)
+            )
+            t1 = t2 = torch.eye(3, dtype=torch.float64)
+            threshold = self.inl_th**2
+        else:
+            x1_host, x2_host, t1, t2, s1, s2 = _normalize_correspondences(kp1_host, kp2_host, not planar)
+            threshold = (self.inl_th / (s2 if planar else s1)) ** 2
         x1, x2 = x1_host.to(device, work), x2_host.to(device, work)
         basis = _transfer_basis(x1, x2[:, :2]) if planar else _sampson_quadratic_basis(x1, x2)
         budget = self.sample_budget
@@ -1015,8 +1039,15 @@ class RANSAC(nn.Module):
             refined_inliers = self._lm_errors(refined, x1_host, x2_host)[0] <= threshold
             if self._is_supported(int(refined_inliers.sum())):
                 model, inliers = refined[0], refined_inliers
-        model = (torch.linalg.inv(t2) @ model @ t1) if planar else (t2.mT @ model @ t1)
-        model = normalize_transformation(model).to(dtype)
+        if essential:
+            # A minimal model is essential only up to rounding when neither refinement ran: project it.
+            model = project_to_essential(model)
+            model = (model / model.norm()).to(dtype)
+            # E and -E are the same model; a fixed sign makes equal inputs give equal outputs.
+            model = model * model.flatten()[model.abs().argmax()].sign()
+        else:
+            model = (torch.linalg.inv(t2) @ model @ t1) if planar else (t2.mT @ model @ t1)
+            model = normalize_transformation(model).to(dtype)
         if not bool(torch.isfinite(model).all()):
             return failure
         # Casting (especially to half precision) changes the model. Classify that exact returned matrix in pixel
