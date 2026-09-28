@@ -590,10 +590,11 @@ def build_laplacian_pyramid(
           element (index ``max_level - 1``) is the unsubtracted final Gaussian
           level — level 0 is **not** the unchanged original image whenever
           ``max_level > 1``
-        - the input is reflect-padded up to the next power of two (per
-          dimension) when padding is required to keep adjacent Gaussian levels
-          aligned for subtraction; when it is applied, every returned level
-          — including level 0 — is shaped from the padded size
+        - the input is reflect-padded up to the next power of two (per dimension)
+          when neither side is already a power of two, or when ``max_level > 1``
+          and a side is not divisible by ``2 ** (max_level - 1)``. When
+          padding is applied, every returned level — including level 0 — is
+          shaped from the padded size
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
@@ -626,11 +627,12 @@ def build_laplacian_pyramid(
 
     h = input.size()[2]
     w = input.size()[3]
-    width_is_powerof_two = is_powerof_two(w)
-    height_is_powerof_two = is_powerof_two(h)
-    require_padding = not (width_is_powerof_two or height_is_powerof_two)
+    require_padding = not (is_powerof_two(w) or is_powerof_two(h))
     if max_level > 1:
-        require_padding = not (width_is_powerof_two and height_is_powerof_two)
+        # pyrdown halves each side with floor division, while pyrup doubles it.
+        # Every side subtracted from an upsampled level must therefore be even.
+        stride = 1 << (max_level - 1)
+        require_padding = require_padding or h % stride != 0 or w % stride != 0
 
     if require_padding:
         # in case of arbitrary shape torch.Tensor image need to be padded.

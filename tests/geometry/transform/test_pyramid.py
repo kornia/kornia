@@ -230,6 +230,21 @@ class TestBuildLaplacianPyramid(BaseTester):
         pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level=2)
         assert [img.shape for img in pyramid] == [torch.Size((1, 2, 8, 8)), torch.Size((1, 2, 4, 4))]
 
+    @pytest.mark.parametrize(
+        "height,width,max_level,level_sizes",
+        (
+            (8, 6, 2, ((8, 6), (4, 3))),
+            (12, 8, 2, ((12, 8), (6, 4))),
+            (8, 12, 3, ((8, 12), (4, 6), (2, 3))),
+            (20, 64, 3, ((20, 64), (10, 32), (5, 16))),
+            (20, 64, 4, ((32, 64), (16, 32), (8, 16), (4, 8))),
+        ),
+    )
+    def test_padding_only_when_required_by_level_alignment(self, height, width, max_level, level_sizes, device, dtype):
+        sample = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level)
+        assert [img.shape[-2:] for img in pyramid] == list(level_sizes)
+
     @pytest.mark.parametrize("batch_size", (1, 2, 3))
     @pytest.mark.parametrize("channels", (1, 3))
     @pytest.mark.parametrize("max_level", (2, 3, 4))
