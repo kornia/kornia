@@ -47,7 +47,7 @@ from kornia.geometry.epipolar.fundamental import (
     _rank2_projection,
     _seven_point_candidates,
 )
-from kornia.geometry.solvers.homogeneous import _null_space_lu
+from kornia.geometry.homography import _four_point_homography, _transfer_basis, _transfer_from_basis
 
 __all__: list[str] = []
 
@@ -111,37 +111,15 @@ def fundamental_7pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
 
 def homography_4pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     """Homographies ``(B, 3, 3)``, of unit Frobenius norm, from four normalized correspondences ``(B, 4, 3)``."""
-    zero = torch.zeros_like(x1)
-    rows_u = torch.cat([x1, zero, -x2[..., 0:1] * x1], -1)
-    rows_v = torch.cat([zero, x1, -x2[..., 1:2] * x1], -1)
-    h = _null_space_lu(torch.stack([rows_u, rows_v], 2).flatten(1, 2))[..., 0]
-    return (h * h.square().sum(1, keepdim=True).rsqrt()).reshape(-1, 3, 3)
+    return _four_point_homography(x1[..., :2], x2[..., :2])
 
 
 sampson_basis = _sampson_quadratic_basis
 sampson_errors = _sampson_from_quadratic_basis
 
 
-def transfer_basis(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    """Per-correspondence monomials ``(9, 3N)`` for the one-way transfer error.
-
-    ``vec(H) @ basis`` is ``[P_0 - u P_2 | P_1 - v P_2 | P_2]`` for ``P = H x1`` and ``x2 = (u, v)``.
-    """
-    n = x1.shape[0]
-    basis = x1.new_zeros(9, 3 * n)
-    basis[0:3, :n] = x1.T
-    basis[6:9, :n] = -(x2[:, 0:1] * x1).T
-    basis[3:6, n : 2 * n] = x1.T
-    basis[6:9, n : 2 * n] = -(x2[:, 1:2] * x1).T
-    basis[6:9, 2 * n :] = x1.T
-    return basis
-
-
-def transfer_errors(H: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
-    """Squared one-way transfer errors ``(B, N)`` of homographies ``(B, 3, 3)`` from :func:`transfer_basis`."""
-    n = basis.shape[1] // 3
-    out = H.flatten(1) @ basis
-    return (out[:, :n].square() + out[:, n : 2 * n].square()) / out[:, 2 * n :].square()
+transfer_basis = _transfer_basis
+transfer_errors = _transfer_from_basis
 
 
 def _robust(r2: torch.Tensor, loss: str, scale2: float) -> Tuple[torch.Tensor, torch.Tensor]:

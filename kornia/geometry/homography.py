@@ -24,6 +24,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
+from kornia.geometry.epipolar._metrics import _shares_points
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
@@ -49,6 +50,9 @@ def oneway_transfer_error(
     Convention:
         - ``oneway_transfer_error(pts1, pts2, H)`` measures in image 2, between ``H`` applied to ``pts1`` and
           ``pts2``.
+        - One set of correspondences scored against several homographies (points with leading dimensions of
+          size 1) is computed from one matrix product for all of them, in at least float32; the result matches the
+          per-homography computation to roundoff.
         - ``squared=True``, the default here and in :func:`symmetric_transfer_error`, returns the squared
           distance; :func:`line_segment_transfer_error_one_way` defaults to ``squared=False``.
         - Known defects: ``eps`` is added to the projective denominator and inside the square root, so the error
@@ -69,6 +73,8 @@ def oneway_transfer_error(
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
+    if H.shape[0] >= 2 and _shares_points(pts1, pts2):
+        return _oneway_transfer_error_shared_impl_(pts1, pts2, H, squared, eps)
 
     if pts1.shape[-1] == 3:
         x1y1 = convert_points_from_homogeneous(pts1)
@@ -227,6 +233,96 @@ def _line_segment_squared_distance_one_way(ls1: torch.Tensor, ls2: torch.Tensor,
     return torch.where(length > 0, distance.square(), torch.full_like(distance, float("inf")))
 
 
+def _homography_design_rows(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    """DLT rows ``(..., 2N, 9)`` of correspondences ``(..., N, 2)``, two per correspondence, ``row . vec(H) = 0``.
+
+    ``H`` is row-major and maps ``points1`` to ``points2``. Shared by :func:`find_homography_dlt` and RANSAC's
+    four-point sampler.
+    """
+    x1, y1 = torch.chunk(points1, dim=-1, chunks=2)
+    x2, y2 = torch.chunk(points2, dim=-1, chunks=2)
+    ones, zeros = torch.ones_like(x1), torch.zeros_like(x1)
+    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf  # noqa: E501
+    ax = torch.cat([zeros, zeros, zeros, -x1, -y1, -ones, y2 * x1, y2 * y1, y2], dim=-1)
+    ay = torch.cat([x1, y1, ones, zeros, zeros, zeros, -x2 * x1, -x2 * y1, -x2], dim=-1)
+    return torch.cat((ax, ay), dim=-1).reshape(*ax.shape[:-2], -1, ax.shape[-1])
+
+
+def _four_point_homography(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    """Homographies ``(B, 3, 3)`` of unit Frobenius norm through four normalized correspondences ``(B, 4, 2)``.
+
+    The null vector of :func:`_homography_design_rows` from
+    :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, in at least float32. Unlike
+    :func:`find_homography_dlt` there is no per-sample normalization, gauge solve or ``H[2, 2] = 1`` scaling: RANSAC's
+    sampler normalizes once per call and scores unit-norm models.
+    """
+    A = _homography_design_rows(points1, points2)
+    h = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
+    return (h * h.square().sum(-1, keepdim=True).rsqrt()).reshape(-1, 3, 3).to(points1.dtype)
+
+
+def _transfer_errors(H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, eps: float) -> torch.Tensor:
+    """Squared one-way transfer errors ``(M, N)`` of homographies ``(M, 3, 3)`` on one set of correspondences.
+
+    ``x1`` is homogeneous ``(N, 3)`` with unit last coordinate and ``x2`` ``(N, 2)``. ``H x1`` of every model is one
+    ``(3M, 3) @ (3, N)`` product; the rest is :func:`oneway_transfer_error`'s formula, ``eps`` in the projective
+    denominator included.
+    """
+    m, n = H.shape[0], x1.shape[0]
+    projected = (H.reshape(3 * m, 3) @ x1.T).view(m, 3, n)
+    w = projected[:, 2] + eps
+    return (projected[:, 0] / w - x2[:, 0]).square() + (projected[:, 1] / w - x2[:, 1]).square()
+
+
+def _oneway_transfer_error_shared_impl_(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool, eps: float
+) -> torch.Tensor:
+    """One-way transfer errors of many homographies on one set of correspondences, by :func:`_transfer_errors`.
+
+    ``pts1`` and ``pts2`` have leading dimensions of size 1; homogeneous points are dehomogenized. Half precision is
+    computed in float32 and returned in the input dtype.
+    """
+    num_points = pts1.shape[-2]
+    dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), H.dtype)
+    work = torch.promote_types(dtype, torch.float32)
+    x1 = pts1.reshape(num_points, pts1.shape[-1]).to(work)
+    x2 = pts2.reshape(num_points, pts2.shape[-1]).to(work)
+    if x1.shape[-1] == 3:
+        x1 = convert_points_from_homogeneous(x1)
+    if x2.shape[-1] == 3:
+        x2 = convert_points_from_homogeneous(x2)
+    err2 = _transfer_errors(H.to(work), convert_points_to_homogeneous(x1), x2, eps)
+    out = err2 if squared else (err2 + eps).sqrt()
+    shape = torch.broadcast_shapes(pts1.shape[:-2], pts2.shape[:-2], H.shape[:-2])
+    return out.reshape(*shape, num_points).to(dtype)
+
+
+def _transfer_basis(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """Per-correspondence monomials ``(9, 3N)`` of the one-way transfer error, for RANSAC's sampling loop only.
+
+    ``vec(H) @ basis`` is ``[P_0 - u P_2 | P_1 - v P_2 | P_2]`` for ``P = H x1`` and ``x2 = (u, v)``, with ``x1``
+    homogeneous ``(N, 3)``. Folding the subtraction into the product is about 10% faster than
+    :func:`_transfer_errors` in RANSAC's loop on CPU (2048 models x 500 points: 6.6 against 7.2 ms) and 20-35 us per
+    CUDA batch of 512-8192 models; it is accurate on normalized points, but in pixel units its float32 error was 2.5x
+    that of :func:`oneway_transfer_error`.
+    """
+    n = x1.shape[0]
+    basis = x1.new_zeros(9, 3 * n)
+    basis[0:3, :n] = x1.T
+    basis[6:9, :n] = -(x2[:, 0:1] * x1).T
+    basis[3:6, n : 2 * n] = x1.T
+    basis[6:9, n : 2 * n] = -(x2[:, 1:2] * x1).T
+    basis[6:9, 2 * n :] = x1.T
+    return basis
+
+
+def _transfer_from_basis(H: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
+    """Squared one-way transfer errors ``(M, N)`` of homographies ``(M, 3, 3)`` from :func:`_transfer_basis`."""
+    n = basis.shape[1] // 3
+    out = H.flatten(1) @ basis
+    return (out[:, :n].square() + out[:, n : 2 * n].square()) / out[:, 2 * n :].square()
+
+
 def find_homography_dlt(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, solver: str = "lu"
 ) -> torch.Tensor:
@@ -279,14 +375,7 @@ def _homography_dlt_system(
     points1_norm, transform1 = normalize_points(points1, weights=weights)
     points2_norm, transform2 = normalize_points(points2, weights=weights)
 
-    x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # BxNx1
-    x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # BxNx1
-    ones, zeros = torch.ones_like(x1), torch.zeros_like(x1)
-
-    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf  # noqa: E501
-    ax = torch.cat([zeros, zeros, zeros, -x1, -y1, -ones, y2 * x1, y2 * y1, y2], dim=-1)
-    ay = torch.cat([x1, y1, ones, zeros, zeros, zeros, -x2 * x1, -x2 * y1, -x2], dim=-1)
-    A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
+    A = _homography_design_rows(points1_norm, points2_norm)
     return A, transform1, transform2
 
 
