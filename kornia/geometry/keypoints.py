@@ -142,30 +142,72 @@ class Keypoints:
         obj._data = _data
         return obj
 
-    def pad(self, padding_size: torch.torch.Tensor) -> "Keypoints":
-        """Pad a bounding keypoints.
+    def _broadcast_over_points(self, values: torch.Tensor) -> torch.Tensor:
+        """Shape a per-image ``(B, 1)`` column so it broadcasts over ``self._data[..., i]``.
+
+        The batched container indexes as ``(B, N)``, so a ``(B, 1)`` column broadcasts directly.
+        The unbatched ``(N, 2)`` form carries a single implicit image and indexes as ``(N,)``,
+        so a single row ``(1, 1)`` must be squeezed to ``(1,)`` (via ``values[0]``) to broadcast.
+        """
+        if self._is_batched:
+            return values
+        if values.size(0) != 1:
+            raise RuntimeError(
+                f"Unbatched (N, 2) keypoints carry a single image, so a per-image tensor must have one row. "
+                f"Got {values.size(0)}."
+            )
+        return values[0]
+
+    def pad(self, padding_size: torch.Tensor) -> "Keypoints":
+        """Pad keypoints in place.
+
+        ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only
+        ``left`` and ``top`` change the coordinate origin; this method returns
+        ``self`` after adding those two values to every keypoint. Both the
+        batched :math:`(B, N, 2)` and the unbatched :math:`(N, 2)` container
+        are supported; the unbatched form carries a single image, so
+        ``padding_size`` must have exactly one row.
+
+        Note:
+            Padded :class:`~kornia.augmentation.RandomCrop` routes keypoints
+            through this method, and so accepts either container: a rank-3
+            :math:`(B, N, 2)` tensor builds a batched one, and a rank-2
+            :math:`(N, 2)` tensor for a single image builds an unbatched one.
 
         Args:
-            padding_size: (B, 4)
+            padding_size: Per-batch padding in ``(left, right, top, bottom)``
+                order, shaped :math:`(B, 4)`. A single row broadcasts across the
+                batch.
 
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
-        self._data[..., 0] += padding_size[..., :1]  # left padding
-        self._data[..., 1] += padding_size[..., 2:3]  # top padding
+        offset = padding_size.to(device=self._data.device)
+        self._data[..., 0] += self._broadcast_over_points(offset[..., :1])  # left padding
+        self._data[..., 1] += self._broadcast_over_points(offset[..., 2:3])  # top padding
         return self
 
-    def unpad(self, padding_size: torch.torch.Tensor) -> "Keypoints":
-        """Pad a bounding keypoints.
+    def unpad(self, padding_size: torch.Tensor) -> "Keypoints":
+        """Undo :meth:`pad` in place.
+
+        ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only
+        ``left`` and ``top`` change the coordinate origin; this method returns
+        ``self`` after subtracting those two values from every keypoint. Both the
+        batched :math:`(B, N, 2)` and the unbatched :math:`(N, 2)` container
+        are supported; the unbatched form carries a single image, so
+        ``padding_size`` must have exactly one row.
 
         Args:
-            padding_size: (B, 4)
+            padding_size: Per-batch padding in ``(left, right, top, bottom)``
+                order, shaped :math:`(B, 4)`. A single row broadcasts across the
+                batch.
 
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
-        self._data[..., 0] -= padding_size[..., :1]  # left padding
-        self._data[..., 1] -= padding_size[..., 2:3]  # top padding
+        offset = padding_size.to(device=self._data.device)
+        self._data[..., 0] -= self._broadcast_over_points(offset[..., :1])  # left padding
+        self._data[..., 1] -= self._broadcast_over_points(offset[..., 2:3])  # top padding
         return self
 
     def transform_keypoints(self, M: torch.torch.Tensor, inplace: bool = False) -> "Keypoints":

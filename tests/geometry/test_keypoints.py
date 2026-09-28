@@ -132,6 +132,48 @@ class TestKeypoints(BaseTester):
         self.assert_close(kp.data[0, :, 0], torch.full((4,), 4.0, device=device, dtype=dtype))
         self.assert_close(kp.data[0, :, 1], torch.full((4,), 3.0, device=device, dtype=dtype))
 
+    @pytest.mark.parametrize("operation", ["pad", "unpad"])
+    @pytest.mark.parametrize("num_points", [1, 2, 5])
+    def test_unbatched_pad_unpad(self, operation, num_points, device, dtype):
+        points = [[8.0, 2.0], [3.0, 5.0], [1.0, 7.0], [4.0, 6.0], [9.0, 0.0]]
+        data = torch.tensor(points[:num_points], device=device, dtype=dtype)
+        batched = Keypoints(data[None].clone())
+        unbatched = Keypoints(data.clone())
+        padding = torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype)
+        expected = getattr(batched, operation)(padding)
+        actual = getattr(unbatched, operation)(padding)
+        assert actual is unbatched
+        self.assert_close(actual.data, expected.data.squeeze(0), atol=0.0, rtol=0.0)
+
+    def test_unbatched_pad_multi_row_raises(self, device, dtype):
+        kp = Keypoints(torch.zeros(3, 2, device=device, dtype=dtype))
+        padding = torch.zeros(2, 4, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match=r"Unbatched \(N, 2\) keypoints carry a single image"):
+            kp.pad(padding)
+        with pytest.raises(RuntimeError, match=r"Unbatched \(N, 2\) keypoints carry a single image"):
+            kp.unpad(padding)
+
+    def test_pad_device_alignment(self, device, dtype):
+        kp = Keypoints(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype))
+        cpu_padding = torch.tensor([[3.0, 0.0, 4.0, 0.0]], device="cpu", dtype=dtype)
+        kp.pad(cpu_padding)
+        assert kp.data.device == kp.device
+        self.assert_close(kp.data, torch.tensor([[4.0, 6.0]], device=device, dtype=dtype))
+        kp.unpad(cpu_padding)
+        self.assert_close(kp.data, torch.tensor([[1.0, 2.0]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("operation", ["pad", "unpad"])
+    def test_single_row_broadcasts_across_batched_keypoints(self, operation, device, dtype):
+        data = torch.tensor([[[1.0, 2.0]], [[3.0, 4.0]]], device=device, dtype=dtype)
+        kp = Keypoints(data.clone())
+        padding = torch.tensor([[10.0, 0.0, 20.0, 0.0]], device=device, dtype=dtype)
+        getattr(kp, operation)(padding)
+        if operation == "pad":
+            expected = torch.tensor([[[11.0, 22.0]], [[13.0, 24.0]]], device=device, dtype=dtype)
+        else:
+            expected = torch.tensor([[[-9.0, -18.0]], [[-7.0, -16.0]]], device=device, dtype=dtype)
+        self.assert_close(kp.data, expected, atol=0.0, rtol=0.0)
+
     def test_index_put(self, device, dtype):
         data = torch.zeros(10, 2, device=device, dtype=dtype)
         kp = Keypoints(data)

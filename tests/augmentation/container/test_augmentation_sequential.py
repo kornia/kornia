@@ -230,6 +230,26 @@ class TestAugmentationSequential:
         assert out_bbox.shape == (num_boxes, 4)
         assert torch.isfinite(out_bbox).all()
 
+    @pytest.mark.parametrize("padding", [0, 2])
+    @pytest.mark.parametrize("num_points", [1, 2])
+    def test_convention_padded_random_crop_accepts_rank2_keypoints_5021(self, padding, num_points, device, dtype):
+        # kornia#5021: RandomCrop's padded path routes keypoints through Keypoints.pad and
+        # Keypoints.unpad. A rank-2 (N, 2) keypoints tensor for a single image builds an *unbatched*
+        # Keypoints container, which crashed with "output with shape [N] doesn't match the broadcast
+        # shape [1, N]".
+        input = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        keypoints = torch.tensor([[1.0, 1.0], [2.0, 2.0]], device=device, dtype=dtype)[:num_points]
+        aug = K.AugmentationSequential(
+            K.RandomCrop((6, 6), padding=padding, p=1.0),
+            data_keys=["input", "keypoints"],
+        )
+
+        out_input, out_keypoints = aug(input, keypoints)
+
+        assert out_input.shape == (1, 3, 6, 6)
+        assert out_keypoints.shape == (num_points, 2)
+        assert torch.isfinite(out_keypoints).all()
+
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_padded_random_crop_batched_bboxes(self, batch_size, device, dtype):
         # The batched (B, N, 4) companion of the pin above. It builds a batched Boxes container,
