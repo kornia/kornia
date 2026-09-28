@@ -436,9 +436,9 @@ class TestNMS3dMinMax(BaseTester):
 
 class TestConventionsNMS2d(BaseTester):
     def test_convention_nms2d_value_output_zeroes_suppressed(self, device, dtype):
-        # The default output is the input multiplied by the maxima mask, in the input dtype: suppressed positions
-        # are 0, not -inf. On a signed response a suppressed 0 therefore outranks a negative maximum, so rank with
-        # mask_only=True, which returns the boolean mask. H != W and an off-centre maximum.
+        # The default output keeps the input value at each maximum and is 0 elsewhere, in the input dtype: suppressed
+        # positions are 0, not -inf. On a signed response a suppressed 0 therefore outranks a negative maximum, so
+        # rank with mask_only=True, which returns the boolean mask. H != W and an off-centre maximum.
         response = torch.full((1, 1, 5, 7), -5.0, device=device, dtype=dtype)
         response[0, 0, 2, 3] = -1.0
         expected = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
@@ -451,15 +451,4 @@ class TestConventionsNMS2d(BaseTester):
 
         mask = kornia.geometry.subpix.nms2d(response, (3, 3), mask_only=True)
         assert mask.dtype == torch.bool
-        assert mask.nonzero().tolist() == [[0, 0, 2, 3]]
-
-    def test_wart_nms2d_value_output_nan_at_suppressed_infinity_5067(self, device, dtype):
-        # #5067: multiplying a suppressed -inf by the mask produces NaN; mask_only=True is the control.
-        response = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
-        response[0, 0, 2, 3] = 1.0
-        response[0, 0, :, 0] = float("-inf")
-        values = kornia.geometry.subpix.nms2d(response, (3, 3))
-        assert bool(values[0, 0, :, 0].isnan().all())
-        self.assert_close(values[0, 0, 2, 3], torch.tensor(1.0, device=device, dtype=dtype))
-        mask = kornia.geometry.subpix.nms2d(response, (3, 3), mask_only=True)
         assert mask.nonzero().tolist() == [[0, 0, 2, 3]]

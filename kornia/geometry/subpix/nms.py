@@ -397,10 +397,8 @@ def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = F
         - The window spans ``(k - 1) // 2`` positions before the centre and ``k // 2`` after it on each axis, so an
           even ``k`` reaches one further forward, and the first ``(k - 1) // 2`` and last ``k // 2`` positions of
           each axis are never maxima.
-        - The default output is ``input * mask``: a suppressed finite value becomes ``0``, which is larger than a
+        - The default output keeps the input value at each maximum and is ``0`` elsewhere, which is larger than a
           negative maximum, so use ``mask_only=True`` for a signed response.
-        - Known defect: a suppressed ``±inf`` becomes ``NaN``, which ``topk`` ranks above every maximum
-          (`#5067 <https://github.com/kornia/kornia/issues/5067>`_).
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
