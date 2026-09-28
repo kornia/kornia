@@ -21,6 +21,7 @@ import torch
 
 import kornia.geometry.solvers as solver
 from kornia.core.exceptions import ShapeError
+from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
 
 from testing.base import BaseTester
 
@@ -1293,3 +1294,55 @@ class TestConventionPolynomialSolvers(BaseTester):
         # gradient is nan.
         (grad,) = torch.autograd.grad(roots.sum(), coeffs)
         assert grad.isfinite().all()
+
+
+class TestSolveCubicReal(BaseTester):
+    """The private seven-point cubic kernel: real roots, a validity mask, and gradients from the Newton step."""
+
+    def _skip_half(self, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the kernel runs in the seven-point solvers' float32/float64 solve dtype")
+
+    def test_three_real_roots(self, device, dtype):
+        self._skip_half(dtype)
+        # (x - 1)(x - 2)(x - 3)
+        coeffs = torch.tensor([[1.0, -6.0, 11.0, -6.0]], device=device, dtype=dtype)
+        roots, valid = _solve_cubic_real(coeffs)
+        assert valid.all()
+        self.assert_close(roots.sort(dim=1).values, torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype))
+
+    def test_one_real_root_is_repeated_in_the_masked_slots(self, device, dtype):
+        self._skip_half(dtype)
+        # x^3 + x + 1 has one real root, -0.6823278...
+        coeffs = torch.tensor([[1.0, 0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        roots, valid = _solve_cubic_real(coeffs)
+        assert valid.tolist() == [[True, False, False]]
+        assert torch.isfinite(roots).all()
+        self.assert_close(roots, roots[:, :1].expand(-1, 3))
+        self.assert_close(roots[:, 0], torch.tensor([-0.6823278038280193], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(
+        "coeffs", [[1.0, 0.0, 1.0, 1.0], [1.0, -6.0, 11.0, -6.0], [1.0, 0.0, 0.0, -8.0], [1.0, -3.0, 3.0, -1.0]]
+    )
+    def test_backward_is_finite(self, device, dtype, coeffs):
+        # One real root, three, a vanishing depressed coefficient (x^3 = 8 takes a cube root of 0 in Cardano's formula)
+        # and a triple root: the closed form's guards have unbounded derivatives at all of them (#4229).
+        self._skip_half(dtype)
+        c = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
+        roots, valid = _solve_cubic_real(c)
+        (roots * valid).sum().backward()
+        assert torch.isfinite(c.grad).all()
+
+    def test_gradient_is_the_implicit_derivative(self, device, dtype):
+        self._skip_half(dtype)
+        # For a simple root, d root / d c_i = -x^(3 - i) / p'(x): x^3 - 8 has the root 2 and p'(2) = 12.
+        c = torch.tensor([[1.0, 0.0, 0.0, -8.0]], device=device, dtype=dtype, requires_grad=True)
+        roots, _ = _solve_cubic_real(c)
+        roots[0, 0].backward()
+        expected = -torch.tensor([[8.0, 4.0, 2.0, 1.0]], device=device, dtype=dtype) / 12.0
+        self.assert_close(c.grad, expected)
+
+    @pytest.mark.parametrize("coeffs", [[1.0, 0.0, 1.0, 1.0], [1.0, -6.0, 11.0, -6.0], [1.0, 0.0, 0.0, -8.0]])
+    def test_gradcheck(self, device, coeffs):
+        c = torch.tensor([coeffs], device=device, dtype=torch.float64)
+        self.gradcheck(lambda c: _solve_cubic_real(c)[0], (c,))

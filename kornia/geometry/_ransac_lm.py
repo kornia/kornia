@@ -138,7 +138,8 @@ def fundamental_7pt(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     # Parametrize by the better-conditioned end: F = x f1 + f2, or F = f1 + y f2 with the coefficients reversed.
     swap = coefficients[:, 0].abs() < coefficients[:, 3].abs()
     coefficients = torch.where(swap[:, None], coefficients.flip(1), coefficients)
-    roots = _solve_cubic_real(coefficients)
+    roots, valid = _solve_cubic_real(coefficients)
+    roots = roots.masked_fill(~valid, float("nan"))
     lead = torch.where(swap[:, None, None], f2, f1)
     rest = torch.where(swap[:, None, None], f1, f2)
     F = roots[:, :, None, None] * lead[:, None] + rest[:, None]

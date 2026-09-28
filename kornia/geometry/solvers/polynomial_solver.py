@@ -18,6 +18,7 @@
 """nn.Module containing the functionalities for computing the real roots of polynomial equation."""
 
 import math
+from typing import Tuple
 
 import torch
 
@@ -281,40 +282,44 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     return solutions
 
 
-def _solve_cubic_real(coeffs: torch.Tensor) -> torch.Tensor:
-    """Real roots ``(B, 3)`` of the cubics ``coeffs (B, 4)``, highest degree first, NaN where a cubic has only one.
+def _solve_cubic_real(coeffs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Real roots ``(B, 3)`` of the cubics ``coeffs (B, 4)``, highest degree first, and a mask ``(B, 3)`` of genuine ones.
 
-    Cardano's formula for one real root, the trigonometric one for three, each followed by a Newton step. The caller
-    arranges ``|coeffs[:, 0]| >= |coeffs[:, 3]|`` so that the leading coefficient is not the vanishing one.
+    Cardano's formula for one real root, the trigonometric one for three, followed by a Newton step. A cubic with one
+    real root repeats it in the two masked slots, so a caller builds every candidate from finite roots and masks
+    afterwards. The caller arranges ``|coeffs[:, 0]| >= |coeffs[:, 3]|`` so that the leading coefficient is not the
+    vanishing one.
 
-    A private kernel for RANSAC's seven-point solver rather than :func:`solve_cubic`, whose public contract differs
-    where a hot loop cares: it pads missing roots with 0.0, indistinguishable from a genuine root at 0 (the cause of
-    `#4862 <https://github.com/kornia/kornia/issues/4862>`_); it lowers the degree of a vanishing leading
-    coefficient behind ``torch.any`` tests, a device synchronization per call; and it defines a surrogate backward
-    at repeated roots. This kernel has no degree lowering, no synchronization and no backward convention: its
-    ``clamp``-guarded ``sqrt`` and ``acos`` are for forward use under ``torch.no_grad`` only (#4229).
+    A private kernel for the seven-point solvers rather than :func:`solve_cubic`, whose public contract differs where a
+    hot loop cares: it pads missing roots with 0.0, indistinguishable from a genuine root at 0; it lowers the degree of
+    a vanishing leading coefficient behind ``torch.any`` tests, a device synchronization per call; and it defines a
+    surrogate backward at repeated roots. Here the closed form runs without gradient and the Newton step carries it:
+    at a simple root that is the implicit-function derivative ``-(dp/dc) / p'(x)``, and the ``clamp``-guarded
+    ``sqrt``, ``acos`` and cube roots of the closed form, whose derivatives are unbounded at their bounds (#4229),
+    never enter the backward pass. At a repeated root ``p'(x) = 0``; the division is guarded and the gradient finite.
     """
     c3, c2, c1, c0 = coeffs.unbind(1)
     a, b, c = c2 / c3, c1 / c3, c0 / c3
-    a3 = a / 3
-    p = b - a * a3
-    q = (2 * a3 * a3 - b) * a3 + c
-    discriminant = 0.25 * q * q + p * p * p / 27
-    three = discriminant <= 0
-    root = discriminant.clamp(min=0).sqrt()
-    u, w = root - 0.5 * q, -root - 0.5 * q
-    single = torch.copysign(u.abs().pow(1 / 3), u) + torch.copysign(w.abs().pow(1 / 3), w)
-    radius = (-p / 3).clamp(min=0).sqrt()
-    safe_radius = torch.where(radius > 0, radius, torch.ones_like(radius))
-    angle = torch.acos((-0.5 * q / safe_radius.pow(3)).clamp(-1, 1)) / 3
-    offsets = torch.tensor([0.0, 2 * math.pi / 3, 4 * math.pi / 3], dtype=c3.dtype, device=c3.device)
-    triple = 2 * radius[:, None] * torch.cos(angle[:, None] - offsets)
-    x = torch.where(three[:, None], triple, single[:, None].expand(-1, 3)) - a3[:, None]
+    with torch.no_grad():
+        a3 = a / 3
+        p = b - a * a3
+        q = (2 * a3 * a3 - b) * a3 + c
+        discriminant = 0.25 * q * q + p * p * p / 27
+        three = discriminant <= 0
+        root = discriminant.clamp(min=0).sqrt()
+        u, w = root - 0.5 * q, -root - 0.5 * q
+        single = torch.copysign(u.abs().pow(1 / 3), u) + torch.copysign(w.abs().pow(1 / 3), w)
+        radius = (-p / 3).clamp(min=0).sqrt()
+        safe_radius = torch.where(radius > 0, radius, torch.ones_like(radius))
+        angle = torch.acos((-0.5 * q / safe_radius.pow(3)).clamp(-1, 1)) / 3
+        offsets = torch.tensor([0.0, 2 * math.pi / 3, 4 * math.pi / 3], dtype=c3.dtype, device=c3.device)
+        triple = 2 * radius[:, None] * torch.cos(angle[:, None] - offsets)
+        x = torch.where(three[:, None], triple, single[:, None].expand(-1, 3)) - a3[:, None]
     value = ((x + a[:, None]) * x + b[:, None]) * x + c[:, None]
     slope = (3 * x + 2 * a[:, None]) * x + b[:, None]
     x = x - value / torch.where(slope == 0, torch.ones_like(slope), slope)
-    only_one = torch.stack([torch.zeros_like(three), ~three, ~three], 1)
-    return x.masked_fill(only_one, float("nan"))
+    valid = torch.stack([torch.ones_like(three), three, three], 1)
+    return x, valid
 
 
 def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
