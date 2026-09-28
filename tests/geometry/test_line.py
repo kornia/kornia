@@ -430,3 +430,70 @@ class TestFitLine(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
+
+
+class TestConventionsParametrizedLine(BaseTester):
+    def test_convention_parametrized_line_direction_is_not_normalized(self, device, dtype):
+        # The constructor stores the direction as given, so point_at(t) = origin + t * direction steps in units of
+        # ||direction||. through(p0, p1) normalises p1 - p0, so there t is the Euclidean distance from p0. The
+        # distance methods assume a unit direction, which the constructor does not enforce.
+        origin = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        direction = torch.tensor([3.0, 4.0], device=device, dtype=dtype)
+        assert torch.linalg.vector_norm(direction).item() == 5.0  # not a unit direction
+
+        line = ParametrizedLine(origin, direction)
+        self.assert_close(line.direction, direction)
+        self.assert_close(line.point_at(1.0), torch.tensor([4.0, 6.0], device=device, dtype=dtype))
+
+        through = ParametrizedLine.through(origin, origin + direction)
+        self.assert_close(through.origin, origin)
+        self.assert_close(through.direction, torch.tensor([0.6, 0.8], device=device, dtype=dtype))
+        self.assert_close(through.point_at(5.0), torch.tensor([4.0, 6.0], device=device, dtype=dtype))
+
+    def test_convention_parametrized_line_intersect_lambda_units(self, device, dtype):
+        # intersect returns (lambda, point) with point = point_at(lambda), so lambda is in units of the stored
+        # direction: a unit direction gives the Euclidean distance from the origin, and a non-unit direction a
+        # different lambda for the same point. lambda = -(offset + n . origin) / (n . direction).
+        normal = torch.tensor([1.0, 2.0, 2.0], device=device, dtype=dtype) / 3
+        assert (normal.abs() >= 0.1).all()  # a tilted plane: no normal component near 0
+        plane = Hyperplane.from_vector(Vector3(normal), Vector3(torch.ones(3, device=device, dtype=dtype)))
+        origin = torch.tensor([0.5, -1.0, 2.0], device=device, dtype=dtype)
+        direction = torch.tensor([2.0, 1.0, -0.5], device=device, dtype=dtype)
+        # origin + 5/6 * direction lies on the plane; ||direction|| = sqrt(5.25).
+        expected_point = torch.tensor([13 / 6, -1 / 6, 19 / 12], device=device, dtype=dtype)
+
+        lmbda, point = ParametrizedLine(origin, direction / torch.linalg.vector_norm(direction)).intersect(plane)
+        self.assert_close(lmbda, torch.tensor(5.25**0.5 * 5 / 6, device=device, dtype=dtype))  # 1.9094
+        self.assert_close(point, expected_point)
+        self.assert_close(plane.signed_distance(point).data, torch.zeros((), device=device, dtype=dtype))
+
+        lmbda, point = ParametrizedLine(origin, direction).intersect(plane)
+        self.assert_close(lmbda, torch.tensor(5 / 6, device=device, dtype=dtype))  # 0.8333
+        self.assert_close(point, expected_point)
+
+
+class TestConventionsFitLine(BaseTester):
+    def test_wart_fit_line_2d_is_ols_5040(self, device, dtype):
+        # fit_line fits 2-D points by ordinary least squares of y on x, but D >= 3 points by total least squares
+        # (#5040). On this near-vertical set the 2-D fit is 8.3 degrees off the true direction, while the same points
+        # given to the D >= 3 path (with z = 0) are 1.4 degrees off. A 2-D total least squares fit agrees with the
+        # D >= 3 path, which flips the first assertion.
+        t = torch.tensor([-2.0, -1.3, -0.2, 0.4, 1.1, 2.7, 3.5], device=device, dtype=dtype)
+        offset = torch.tensor([0.21, -0.35, 0.12, 0.30, -0.27, 0.05, -0.18], device=device, dtype=dtype)
+        true_direction = torch.tensor([0.1, 1.0], device=device, dtype=dtype)
+        true_direction = true_direction / torch.linalg.vector_norm(true_direction)
+        normal = torch.stack([-true_direction[1], true_direction[0]])
+        start = torch.tensor([2.0, 0.0], device=device, dtype=dtype)
+        points = start + t[:, None] * true_direction + offset[:, None] * normal
+
+        acc = torch.float64 if dtype == torch.float64 else torch.float32
+
+        def angle_deg(a: torch.Tensor, b: torch.Tensor) -> float:
+            a, b = a.detach().to(acc), b.detach().to(acc)
+            cos = (a * b).sum() / (torch.linalg.vector_norm(a) * torch.linalg.vector_norm(b))
+            return torch.rad2deg(torch.acos(cos.abs().clamp(max=1.0))).item()
+
+        fit_2d = fit_line(points[None]).direction[0]
+        fit_3d = fit_line(torch.cat([points, torch.zeros_like(points[:, :1])], -1)[None]).direction[0, :2]
+        assert angle_deg(fit_2d, true_direction) > 5.0  # 8.26 in float64
+        assert angle_deg(fit_3d, true_direction) < 2.0  # 1.42 in float64
