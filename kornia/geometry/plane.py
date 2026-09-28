@@ -49,7 +49,7 @@ class Hyperplane(nn.Module):
           :math:`p_0 \to p_1 \to p_2`. Swapping two points flips it.
         - Known defects: ``normal`` and ``offset`` are not registered module state, so ``state_dict()`` is empty and
           ``.to()`` neither moves nor casts them (`#4923 <https://github.com/kornia/kornia/issues/4923>`_); in
-          float16 a small triangle whose cross product underflows gets the opposite normal from :meth:`through`
+          float16 a small triangle whose cross product underflows loses its input-order orientation in the SVD fallback
           (`#5064 <https://github.com/kornia/kornia/issues/5064>`_).
 
     Args:

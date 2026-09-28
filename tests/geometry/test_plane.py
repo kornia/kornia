@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+import kornia.geometry.plane as plane_module
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 from kornia.geometry.plane import Hyperplane, fit_plane
@@ -320,17 +321,31 @@ class TestConventionsHyperplane(BaseTester):
                 plane.signed_distance(p).data / torch.linalg.vector_norm(plane.normal.data), torch.zeros_like(one)
             )
 
-    def test_wart_hyperplane_through_float16_underflow_flips_normal_5064(self, device, dtype):
-        # Wart pin (#5064): through() points the normal along (p2 - p0) x (p1 - p0), here -z. In float16 the cross
-        # product of this valid triangle with sides of 1e-4 underflows to zero, the SVD fallback takes over and returns
-        # +z. The side-1e-3 triangle is the control at every dtype. Computing the cross product in float32 for half
-        # inputs flips the float16 case to -z.
-        for scale, flips in ((1e-3, False), (1e-4, dtype == torch.float16)):
-            p0 = torch.zeros(3, device=device, dtype=dtype)
-            p1 = torch.tensor([scale, 0.0, 0.0], device=device, dtype=dtype)
-            p2 = torch.tensor([0.0, scale, 0.0], device=device, dtype=dtype)
-            normal_z = float(Hyperplane.through(p0, p1, p2).normal.data[2])
-            assert normal_z == (1.0 if flips else -1.0)
+    def test_wart_hyperplane_through_float16_underflow_loses_orientation_5064(self, device, dtype, monkeypatch):
+        # Wart pin (#5064): through() points the normal along (p2 - p0) x (p1 - p0), so swapping p1 and p2 should
+        # reverse it. In float16 the cross product of this valid triangle with sides of 1e-4 underflows to zero and
+        # the SVD fallback loses that input-order orientation. Once the fallback preserves orientation, this assertion
+        # should instead require swapped_normal == -normal. Pin the fallback's sign so this test checks Kornia's
+        # orientation handling rather than PyTorch's arbitrary SVD sign choice.
+        def deterministic_svd(matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            columns = matrix.shape[-1]
+            v = torch.eye(columns, device=matrix.device, dtype=matrix.dtype).expand(
+                *matrix.shape[:-2], columns, columns
+            )
+            return matrix, matrix[..., 0], v
+
+        monkeypatch.setattr(plane_module, "_torch_svd_cast", deterministic_svd)
+        scale = 1e-4 if dtype == torch.float16 else 1e-3
+        p0 = torch.zeros(3, device=device, dtype=dtype)
+        p1 = torch.tensor([scale, 0.0, 0.0], device=device, dtype=dtype)
+        p2 = torch.tensor([0.0, scale, 0.0], device=device, dtype=dtype)
+        normal = Hyperplane.through(p0, p1, p2).normal.data
+        swapped_normal = Hyperplane.through(p0, p2, p1).normal.data
+
+        if dtype == torch.float16:
+            self.assert_close(swapped_normal, normal)
+        else:
+            self.assert_close(swapped_normal, -normal)
 
     def test_wart_hyperplane_state_not_registered_4923(self, device, dtype):
         # Hyperplane keeps its normal and offset as Vector3 / Scalar wrappers outside the module state (#4923), so

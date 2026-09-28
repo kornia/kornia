@@ -42,23 +42,22 @@ class BaseModel(nn.Module):
 
     @abstractmethod
     def forward(self) -> torch.Tensor:
-        """Return the transform that maps destination coordinates to source coordinates.
+        """Return the transform used to warp the source image into the destination image.
 
-        See :class:`ImageRegistrator` for the coordinate convention.
+        The built-in models map destination coordinates to source coordinates. A custom model's coordinates must
+        match its supplied warper; see :class:`ImageRegistrator`.
 
         Returns:
-            Transform matrix tensor for the current model state. Concrete
-            models return the matrix shape required by their warp function.
+            Transform tensor for the current model state, in the shape required by the warper.
         """
         ...
 
     @abstractmethod
     def forward_inverse(self) -> torch.Tensor:
-        """Return the inverse mapping for the current registration transform.
+        """Return the transform used to warp the destination image into the source image.
 
         Returns:
-            Transform matrix tensor that maps source coordinates to
-            destination coordinates.
+            Transform tensor for the inverse warp, in the coordinates expected by the warper.
         """
         ...
 
@@ -166,13 +165,15 @@ class ImageRegistrator(nn.Module):
     r"""nn.Module, which performs optimization-based image registration.
 
     Convention:
-        - :meth:`register` returns ``self.model()``, which maps **destination** coordinates to **source**
-          coordinates, normalized to :math:`[-1, 1]` with ``align_corners=False``: the ``src_homo_dst`` argument of
-          :func:`~kornia.geometry.transform.homography_warp`. :meth:`warp_src_into_dst` warps with it, and
-          :meth:`warp_dst_into_src` with ``self.model.forward_inverse()``, which maps source to destination.
-        - ``denormalize_homography(M, (H, W), (H, W), align_corners=False)`` converts the returned ``M`` to pixels:
-          content that moves by :math:`(t_x, t_y)` pixels from ``src_img`` to ``dst_img`` gives a shift of
-          :math:`(-t_x, -t_y)`.
+        - :meth:`register` returns ``self.model()`` unchanged. For the built-in string ``model_type`` values, this
+          maps **destination** coordinates to **source** coordinates, normalized to :math:`[-1, 1]` with
+          ``align_corners=False``: the ``src_homo_dst`` argument of
+          :func:`~kornia.geometry.transform.homography_warp`. :meth:`warp_src_into_dst` uses this model, and
+          :meth:`warp_dst_into_src` uses ``self.model.forward_inverse()``. A custom ``model_type`` and ``warper``
+          determine their own coordinate system; their forward and inverse mappings must agree with that warper.
+        - For the built-in models, ``denormalize_homography(M, (H, W), (H, W), align_corners=False)`` converts the
+          returned ``M`` to pixels: content that moves by :math:`(t_x, t_y)` pixels from ``src_img`` to ``dst_img``
+          gives a shift of :math:`(-t_x, -t_y)`.
         - :meth:`register` always starts from the identity, so a loaded ``state_dict`` drives the warps but is not a
           warm start.
 
@@ -185,7 +186,8 @@ class ImageRegistrator(nn.Module):
         pyramid_levels: number of scale pyramid levels.
         lr: learning rate for optimization.
         num_iterations: maximum number of iterations at each pyramid level, from coarse to fine.
-        tolerance: stop optimizing a pyramid level if the loss changes by less. default 1e-4.
+        tolerance: stop a pyramid level when successive losses at that level differ by less than this value.
+            The first iteration at each level always runs. Default 1e-4.
         warper: the warper class, called as ``warper(height, width)``. Required when ``model_type`` is a module;
             a string ``model_type`` uses :class:`~kornia.geometry.transform.HomographyWarper`.
         allow_shape_mismatch: if True, :meth:`register` resizes ``src_img`` bilinearly to the height and width of
@@ -312,18 +314,18 @@ class ImageRegistrator(nn.Module):
         # [::-1] because we have to register from coarse to fine
         img_src_pyr = build_pyramid(src_img, self.pyramid_levels)[::-1]
         img_dst_pyr = build_pyramid(dst_img, self.pyramid_levels)[::-1]
-        prev_loss = 1e10
         aux_models = []
         if len(img_dst_pyr) != len(img_src_pyr):
             raise ValueError("Cannot register images of different sizes")
         for img_src_level, img_dst_level in zip(img_src_pyr, img_dst_pyr):
+            prev_loss = None
             for i in range(self.num_iterations):
                 # compute gradient and update optimizer parameters
                 opt.zero_grad()
                 loss = self.get_single_level_loss(img_src_level, img_dst_level, self.model())
                 loss += self.get_single_level_loss(img_dst_level, img_src_level, self.model.forward_inverse())
                 current_loss = loss.item()
-                if abs(current_loss - prev_loss) < self.tolerance:
+                if prev_loss is not None and abs(current_loss - prev_loss) < self.tolerance:
                     break
                 prev_loss = current_loss
                 loss.backward()
