@@ -189,14 +189,20 @@ class Hyperplane(nn.Module):
         norm = normal.norm(-1)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
-        def compute_normal_svd(v0: torch.Tensor, v1: torch.Tensor) -> "Vector3":
+        def compute_normal_svd(v0: torch.Tensor, v1: torch.Tensor, use_svd: torch.Tensor) -> "Vector3":
             # NOTE: for reason torch.TensorWrapper does not stack well
             m = torch.stack((_unwrap(v0), _unwrap(v1)), -2)  # Bx2x3
+            # The SVD runs on every row and torch.where only zeroes the gradient of the rows that take the cross
+            # product. Its backward divides by the difference of the squared singular values, which is 0 when v0 and
+            # v1 are orthogonal and of equal length, and 0 * inf is nan (#5056). Rows that do not use the fallback
+            # get a constant matrix with distinct singular values instead.
+            safe = torch.tensor([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]], device=m.device, dtype=m.dtype)
+            m = torch.where(use_svd[..., None, None], m, safe)
             _, _, V = _torch_svd_cast(m)  # kornia solution lies in the last row
             return _wrap(V[..., :, -1], Vector3)  # Bx3
 
         normal_mask = norm <= v0.norm(-1) * v1.norm(-1) * 1e-6
-        normal = torch.where(normal_mask, compute_normal_svd(v0, v1).data, normal / (norm + 1e-6))
+        normal = torch.where(normal_mask, compute_normal_svd(v0, v1, normal_mask).data, normal / (norm + 1e-6))
         offset = -batched_dot_product(p0, normal)
 
         return Hyperplane(_wrap(normal, Vector3), _wrap(offset, Scalar))
