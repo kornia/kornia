@@ -256,7 +256,7 @@ def dilation(
           window of a kernel with no non-zero cell. The composite operations inherit these infinities.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`.
+        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
             magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
@@ -439,7 +439,7 @@ def erosion(
         OpenCV. ``structuring_element`` is subtracted before the minimum.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`.
+        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
             magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
@@ -624,7 +624,7 @@ def opening(
         ``replicate`` can break them.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`.
+        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
             magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
@@ -730,7 +730,7 @@ def closing(
         ``replicate`` can break them.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`.
+        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
             magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
@@ -834,7 +834,7 @@ def gradient(
         ``gradient`` is ``dilation(tensor) - erosion(tensor)`` with the same arguments; see :func:`dilation`.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`.
+        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
             magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
@@ -927,7 +927,7 @@ def top_hat(
         ``top_hat`` is ``tensor - opening(tensor)`` with the same arguments.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`.
+        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
             magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
@@ -1023,7 +1023,7 @@ def bottom_hat(
         ``bottom_hat`` is ``closing(tensor) - tensor`` with the same arguments.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`.
+        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
             magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
