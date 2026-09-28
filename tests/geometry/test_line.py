@@ -301,6 +301,10 @@ class TestFitLine(BaseTester):
         batch = fit_line(torch.cat([points, points]), torch.cat([weights, 3.0 * weights]))
         self.assert_close(batch.origin, expected.origin.expand(2, 3))
 
+        # A row whose weights are all 0 keeps the unweighted mean and does not break the other rows.
+        zero = fit_line(torch.cat([points, points]), torch.cat([weights, torch.zeros_like(weights)]))
+        self.assert_close(zero.origin, torch.cat([expected.origin, points.mean(-2)]))
+
     @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):
         def proxy_func(pts, weights):
