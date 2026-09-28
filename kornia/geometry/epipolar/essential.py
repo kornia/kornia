@@ -273,8 +273,8 @@ def _five_point_candidates(design: torch.Tensor) -> Tuple[torch.Tensor, torch.Te
     Note:
         MPS has no float64, so an MPS sample is solved on the host and its candidates are copied back; autograd
         follows both copies. Solved in float32 on the device instead, an exact sample could miss its true solution
-        by more than 1e-3, and on an Apple M1 (torch 2.14) the host solve was also faster: about 10 ms against 48 ms
-        for 256 samples and 56 ms against 86 ms for 2048, the same at 8192.
+        by more than 1e-3, and on an Apple M1 (torch 2.14) the host solve was also faster: 8 ms against 37 ms for 256
+        samples, 45 ms against 75 ms for 2048, and about the same at 8192.
 
     Returns:
         Candidates ``(B, 10, 3, 3)`` of unit Frobenius norm in the design's dtype, NaN where the slot holds no
