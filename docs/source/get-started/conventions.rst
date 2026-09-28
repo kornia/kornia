@@ -41,13 +41,14 @@ Coordinates and sizes
 - Sizes and ``dsize`` arguments are ``(h, w)`` — the *opposite* order from
   points. ``warp_perspective(img, M, dsize=(2, 8))`` produces a 2-row,
   8-column image.
-- Normalized coordinates, where used, are ``[-1, 1]`` in both axes,
-  identical to :func:`torch.nn.functional.grid_sample` **called with**
-  ``align_corners=True`` — not to its default, ``align_corners=False``,
-  which places the same values up to half a pixel off — exactly half a
-  pixel at the image borders, and identically at the image center.
-  :func:`kornia.geometry.grid.create_meshgrid` returns a normalized grid by
-  default (``normalized_coordinates=True``).
+- Normalized coordinates, where used, are ``[-1, 1]`` in both axes.
+  :func:`kornia.geometry.grid.create_meshgrid` defaults to a corner-aligned
+  normalized grid (``normalized_coordinates=True``, ``align_corners=True``),
+  matching :func:`torch.nn.functional.grid_sample` with ``align_corners=True``:
+  the first and last pixel centres map to the endpoints. Passing
+  ``align_corners=False`` to ``create_meshgrid`` uses the half-pixel mapping
+  that matches ``grid_sample(..., align_corners=False)`` instead, where the
+  endpoints are the outer pixel edges. Use the same flag in both calls.
 - 3D grids and 3D pixel coordinates are ``(d, x, y)`` — depth first, not
   ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
   order and the ``*_pixel_coordinates3d`` conversions consume it.

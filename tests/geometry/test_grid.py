@@ -432,8 +432,8 @@ def test_convention_create_meshgrid_align_corners_matches_grid_sample(device, dt
 
 def test_convention_create_meshgrid3d_reorder_for_grid_sample(device, dtype):
     # The last axis of create_meshgrid3d is (d, x, y) -- depth, column, row -- while grid_sample reads (x, y, z), so
-    # the grid samples a volume as the identity only after the [1, 2, 0] reorder, and only with align_corners=True
-    # (the grid is corner-aligned). D != H != W; the permuted volume is the relabel control.
+    # the default corner-aligned grid samples a volume as the identity after the [1, 2, 0] reorder.
+    # D != H != W; the permuted volume is the relabel control.
     if not supports_bilinear_3d_grid_sample(device, dtype):
         pytest.skip(f"torch has no bilinear 3D grid_sample kernel for {device.type} {dtype}")
     pixel = kornia.geometry.create_meshgrid3d(2, 3, 4, normalized_coordinates=False, device=device, dtype=dtype)
@@ -445,11 +445,19 @@ def test_convention_create_meshgrid3d_reorder_for_grid_sample(device, dtype):
     grid = kornia.geometry.create_meshgrid3d(2, 3, 4, device=device, dtype=dtype)
     reordered = torch.nn.functional.grid_sample(volume, grid[..., [1, 2, 0]], align_corners=True)
     as_is = torch.nn.functional.grid_sample(volume, grid, align_corners=True)
-    half_pixel = torch.nn.functional.grid_sample(volume, grid[..., [1, 2, 0]], align_corners=False)
     assert_close(reordered, volume)
     assert (as_is - volume).abs().max() > 0.1
-    assert (half_pixel - volume).abs().max() > 0.1
 
     permuted = volume.permute(0, 1, 4, 2, 3).contiguous()  # (D, H, W) = (4, 2, 3)
     grid = kornia.geometry.create_meshgrid3d(4, 2, 3, device=device, dtype=dtype)
     assert_close(torch.nn.functional.grid_sample(permuted, grid[..., [1, 2, 0]], align_corners=True), permuted)
+
+
+@pytest.mark.xfail(
+    strict=True, raises=TypeError, reason="#4503: create_meshgrid3d cannot produce an align_corners=False grid"
+)
+def test_wart_create_meshgrid3d_lacks_align_corners_false_4503(device, dtype):
+    # Correct half-pixel coordinates for (D, H, W) = (2, 3, 4), in Kornia's (d, x, y) order.
+    grid = kornia.geometry.create_meshgrid3d(2, 3, 4, device=device, dtype=dtype, align_corners=False)
+    assert_close(grid[0, 0, 0, 0], torch.tensor([-0.5, -0.75, -2 / 3], device=device, dtype=dtype))
+    assert_close(grid[0, -1, -1, -1], torch.tensor([0.5, 0.75, 2 / 3], device=device, dtype=dtype))
