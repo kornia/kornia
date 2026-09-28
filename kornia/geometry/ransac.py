@@ -28,9 +28,23 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
+from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
+from kornia.geometry.epipolar.fundamental import (
+    _eight_point_fundamental,
+    _epipolar_design_rows,
+    _refine_fundamental_lm,
+    _seven_point_candidates,
+    normalize_points,
+    normalize_transformation,
+)
 from kornia.geometry.homography import (
+    _four_point_homography,
     _line_segment_squared_distance_one_way,
+    _refine_homography_lm,
+    _transfer_basis,
+    _transfer_from_basis,
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
@@ -43,6 +57,10 @@ __all__ = ["RANSAC"]
 
 # The batch size that the ``max_iter`` budget counts in when ``batch_size="auto"``.
 _DEFAULT_BATCH = 2048
+
+# Model types that local_optimization="lm" supports, and how many minimal models it refines.
+_LM_MODELS = ("homography", "fundamental", "fundamental_7pt", "fundamental_8pt")
+_LM_CANDIDATES = 8
 
 
 @lru_cache(maxsize=32)
@@ -59,6 +77,36 @@ def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, .
     return tuple(ends)
 
 
+def _normalize_correspondences(
+    kp1: torch.Tensor, kp2: torch.Tensor, shared_scale: bool
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, float, float]:
+    r"""Hartley-normalize both images' correspondences with :func:`normalize_points`, once per RANSAC call.
+
+    Statistics use the correspondences finite in both images: the others enter :func:`normalize_points` as zero-weight
+    placeholders, since a weight of 0 does not remove a NaN from its weighted sums, and come out as NaN in both images,
+    so they are never counted as inliers. ``shared_scale`` gives both images the scale of the mean of their two mean
+    radii, which keeps the Sampson distance a multiple of the pixel one: :func:`normalize_points` scales by
+    :math:`\sqrt{2} / (r + \epsilon)`, so that scale is the harmonic mean of the two.
+
+    Returns:
+        Homogeneous normalized points ``(N, 3)`` of each image, the ``(3, 3)`` transforms that map pixels to them, and
+        the two scales in pixels per normalized unit.
+    """
+    finite = torch.isfinite(kp1).all(1) & torch.isfinite(kp2).all(1)
+    stacked = torch.stack([kp1, kp2])
+    placeholders = torch.where(finite[None, :, None], stacked, torch.zeros_like(stacked))
+    points, transforms = normalize_points(placeholders, weights=finite.to(kp1.dtype).expand(2, -1))
+    if shared_scale:
+        scale = transforms[:, 0, 0]
+        ratio = (2.0 / (1.0 / scale).sum()) / scale
+        points = points * ratio[:, None, None]
+        transforms = torch.cat([transforms[:, :2] * ratio[:, None, None], transforms[:, 2:]], 1)
+    points = torch.where(finite[None, :, None], points, torch.full_like(points, float("nan")))
+    points = convert_points_to_homogeneous(points)
+    s1, s2 = (1.0 / transforms[:, 0, 0]).tolist()
+    return points[0], points[1], transforms[0], transforms[1], s1, s2
+
+
 class RANSAC(nn.Module):
     """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
@@ -66,33 +114,47 @@ class RANSAC(nn.Module):
         - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
           ``model_type``, so a homography maps ``kp1`` to ``kp2``. ``forward`` returns a ``(3, 3)`` model and an
           ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no candidate has more inliers than
-          its minimal sample (four correspondences for homographies, five for ``"essential"``, seven or eight
-          for the fundamental models).
+          its minimal sample (four correspondences for homographies, five for ``"essential"``, seven for
+          ``"fundamental"`` and ``"fundamental_7pt"``, eight for ``"fundamental_8pt"``).
+        - ``"fundamental"`` draws seven-point samples, like ``"fundamental_7pt"``; ``"fundamental_8pt"`` draws
+          eight-point ones.
         - ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for ``"essential"``): a
           correspondence is an inlier when its one-way transfer error for ``"homography"``, its Sampson distance
-          for ``"fundamental"``, ``"fundamental_7pt"`` and ``"essential"``, or the mean distance of its transferred
-          endpoints from the image-2 segment's line for ``"homography_from_linesegments"`` is at most ``inl_th``.
+          for the fundamental models and ``"essential"``, or the mean distance of its transferred endpoints from
+          the image-2 segment's line for ``"homography_from_linesegments"`` is at most ``inl_th``.
           :ref:`two-view-conventions` compares this with OpenCV.
         - ``score_type="msac"`` (the default) ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the
           squared errors ``e``; acceptance and early stopping count inliers for either score.
-        - Local optimization defaults to ``lo_sample_size=32``: ``max_lo_iters`` randomized refits on 32-inlier
-          subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers iteratively.
+        - ``local_optimization="lm"``, the default for homographies and fundamental matrices, keeps the eight
+          best-scoring minimal models of the whole run. After sampling, it refines them together with
+          ``max_lo_iters`` Levenberg-Marquardt iterations on all correspondences with the squared error truncated
+          at ``inl_th``, keeps the best-scoring refit or minimal model, and refines that one on its inliers with
+          ``refine_iters`` iterations of a Cauchy loss of scale ``inl_th / 3``. The returned mask holds the inliers
+          of the returned model after conversion to the input dtype; if that conversion loses sufficient support,
+          the call returns the all-zero failure result. Early stopping follows the support of the best minimal model.
+          The refinements run on the CPU in float64 whatever the device of the correspondences: they are a few dozen
+          small operations per iteration, which launch latency makes slower on an accelerator.
+        - ``local_optimization="dlt"``, the only choice for ``"essential"`` and
+          ``"homography_from_linesegments"``, refits each new best model from its inliers: with the default
+          ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on 32-inlier subsets followed by one
+          full-inlier refit; ``lo_sample_size=None`` refits all inliers iteratively.
         - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
           termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
           draws from the global generator.
 
     Args:
-        model_type: "homography", "fundamental", "fundamental_7pt", "essential", or
+        model_type: "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
             "homography_from_linesegments".
         inl_th: positive inlier threshold, in the units given above.
-        batch_size: hypotheses generated and verified at once, or ``"auto"`` to pick the batch per call from
+        batch_size: hypotheses generated and verified at once, or ``"auto"`` to pick the batches per call from
             the device and the number of correspondences (see :meth:`resolve_batch_size`).
         max_iter: with an integer ``batch_size``, the maximum number of batches, for a budget of
             ``batch_size * max_iter`` minimal samples; with ``"auto"``, the budget is ``2048 * max_iter``. The
             seven- and five-point solvers can return multiple models per sample.
         confidence: stopping confidence in ``(0, 1]``; 1 disables early stopping.
-        max_lo_iters: maximum local refitting iterations; zero disables polishing.
+        max_lo_iters: local optimization iterations: Levenberg-Marquardt iterations with
+            ``local_optimization="lm"``, refits with ``"dlt"``; zero disables local optimization.
         score_type: "msac" (default) for truncated squared residuals, or "ransac" for support count.
         prosac_sampling: use PROSAC sampling on best-first ordered correspondences. The growth schedule
             advances per sampled set within each batch; stopping tests the incumbent's support within ranked
@@ -101,10 +163,15 @@ class RANSAC(nn.Module):
             85% or more inliers it can certify a model fitted to a spatially clustered top-ranked prefix after
             one batch and score below uniform sampling; use uniform sampling or ``confidence=1`` there.
         seed: optional seed, reset on each call for reproducible estimation on the same device.
-        lo_sample_size: inlier-subset size for a batch of ``max_lo_iters`` randomized local refits followed
-            by a full-inlier refit (default 32). None uses iterative full-inlier refitting.
+        lo_sample_size: with ``local_optimization="dlt"``, the inlier-subset size for a batch of ``max_lo_iters``
+            randomized local refits followed by a full-inlier refit (default 32). None uses iterative full-inlier
+            refitting. Unused with ``"lm"``.
         max_samples: optional budget of minimal samples that overrides the one implied by ``batch_size`` and
             ``max_iter``; the last batch is truncated to it.
+        local_optimization: ``"lm"`` or ``"dlt"``, as described above; None picks ``"lm"`` for homographies and
+            fundamental matrices and ``"dlt"`` for the other models.
+        refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
+            zero disables it.
 
     """
 
@@ -121,31 +188,35 @@ class RANSAC(nn.Module):
         seed: Optional[int] = None,
         lo_sample_size: Optional[int] = 32,
         max_samples: Optional[int] = None,
+        local_optimization: Optional[str] = None,
+        refine_iters: int = 3,
     ) -> None:
         """Initialize the RANSAC estimator.
 
         Args:
-            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
-                "homography_from_linesegments".
+            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+                "fundamental_8pt", "essential", "homography_from_linesegments".
             inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
-            batch_size: number of generated samples at once, or ``"auto"``: batches of up to 8192 homography or
-                2048 epipolar hypotheses on CUDA and MPS, fewer for very many correspondences, and on CPU a batch
-                sized for the model and the number of correspondences so that early stopping is checked every
-                millisecond or so. Other devices retain the historical 2048-sample batch.
+            batch_size: number of generated samples at once, or ``"auto"`` (see :meth:`resolve_batch_size`).
             max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn
                 (``2048 * max_iter`` with ``batch_size="auto"``) unless ``max_samples`` is given.
             confidence: desired confidence of the result, used for the early stopping. 1 runs the full budget.
-            max_lo_iters: number of local optimization (polishing) iterations.
+            max_lo_iters: number of local optimization iterations.
             score_type: scoring method to use: "msac" (default) or "ransac".
             prosac_sampling: use PROSAC's progressive sampling schedule. Inputs must be sorted best-first
                 by match quality. The schedule advances for every sampled set, including within batches.
                 Stops when a ranked prefix, or the whole set, certifies the incumbent with ``confidence``.
             seed: optional random seed for reproducible results. If None, uses global random state.
-            lo_sample_size: cap on the number of inliers used by each randomized local refit (default 32).
-                Fits ``max_lo_iters`` independent subsets in one batch, followed by one full-inlier refit.
-                None uses iterative full-inlier refitting. Subset refits must raise the score; a full-inlier
-                refit may also tie it, since it is more precise than the minimal-sample model.
+            lo_sample_size: with ``local_optimization="dlt"``, the cap on the number of inliers used by each
+                randomized local refit (default 32). Fits ``max_lo_iters`` independent subsets in one batch,
+                followed by one full-inlier refit. None uses iterative full-inlier refitting. Subset refits must
+                raise the score; a full-inlier refit may also tie it, since it is more precise than the
+                minimal-sample model.
             max_samples: optional budget of minimal samples, overriding ``batch_size * max_iter``.
+            local_optimization: ``"lm"`` (batched Levenberg-Marquardt refinement of the best minimal models and a
+                final robust refinement) or ``"dlt"`` (refits of each new best model); None picks ``"lm"`` where it
+                is supported, for homographies and fundamental matrices.
+            refine_iters: Levenberg-Marquardt iterations of the final refinement on the inliers with ``"lm"``.
 
         """
         super().__init__()
@@ -153,6 +224,7 @@ class RANSAC(nn.Module):
             "homography",
             "fundamental",
             "fundamental_7pt",
+            "fundamental_8pt",
             "homography_from_linesegments",
             "essential",
         ]
@@ -174,6 +246,14 @@ class RANSAC(nn.Module):
             raise ValueError("max_samples must be a positive integer")
         if not 0 < confidence <= 1:
             raise ValueError("confidence must lie in (0, 1]")
+        if isinstance(refine_iters, bool) or not isinstance(refine_iters, int) or refine_iters < 0:
+            raise ValueError("refine_iters must be a nonnegative integer")
+        if local_optimization is None:
+            local_optimization = "lm" if model_type in _LM_MODELS else "dlt"
+        if local_optimization not in ("lm", "dlt"):
+            raise ValueError(f'local_optimization must be "lm" or "dlt", got {local_optimization!r}')
+        if local_optimization == "lm" and model_type not in _LM_MODELS:
+            raise ValueError(f'local_optimization="lm" supports {", ".join(_LM_MODELS)}, not {model_type!r}')
         self.score_type = score_type
         self.inl_th = inl_th
         self.max_iter = max_iter
@@ -186,6 +266,8 @@ class RANSAC(nn.Module):
         self.prosac_sampling = prosac_sampling
         self.seed = seed
         self.lo_sample_size = lo_sample_size
+        self.local_optimization = local_optimization
+        self.refine_iters = refine_iters
         # The PROSAC growth schedule as a device tensor, reused across the batches of a call.
         self._prosac_ends: Optional[Tuple[Tuple[int, int, int, torch.device], torch.Tensor]] = None
 
@@ -207,13 +289,13 @@ class RANSAC(nn.Module):
             self.polisher_solver = partial(find_homography_lines_dlt_iterated, soft_inl_th=inl_th)
             self.minimal_sample_size = 4
             self.polisher_sample_size = 4
-        elif model_type == "fundamental":
+        elif model_type == "fundamental_8pt":
             self.error_fn = sampson_epipolar_distance
             self.minimal_solver = find_fundamental
             self.minimal_sample_size = 8
             self.polisher_solver = find_fundamental
             self.polisher_sample_size = 8
-        elif model_type == "fundamental_7pt":
+        elif model_type in ("fundamental", "fundamental_7pt"):
             self.error_fn = sampson_epipolar_distance
             self.minimal_solver = partial(find_fundamental, method="7POINT")
             self.minimal_sample_size = 7
@@ -237,6 +319,7 @@ class RANSAC(nn.Module):
         batch_size: int,
         iteration: int,
         device: Optional[Union[torch.device, str]] = None,
+        offset: Optional[int] = None,
     ) -> torch.Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
@@ -246,8 +329,11 @@ class RANSAC(nn.Module):
             sample_size: number of samples to draw from the population.
             pop_size: size of the population to sample from.
             batch_size: number of sample sets to generate.
-            iteration: zero-based batch index (used for PROSAC scheduling and the random seed).
+            iteration: zero-based batch index (used for the random seed and, without ``offset``, for PROSAC
+                scheduling).
             device: device to place the samples on.
+            offset: number of sets drawn by the previous batches, for PROSAC scheduling when batches differ in
+                size; None assumes ``iteration`` batches of ``batch_size``.
 
         Returns:
             Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
@@ -272,7 +358,8 @@ class RANSAC(nn.Module):
         force_newest = torch.zeros(batch_size, device=device, dtype=torch.bool)
         if self.prosac_sampling:
             ends = self._prosac_schedule(sample_size, pop_size, device)
-            draws = torch.arange(batch_size, device=device) + iteration * batch_size + 1
+            start = iteration * batch_size if offset is None else offset
+            draws = torch.arange(batch_size, device=device) + start + 1
             population = (torch.searchsorted(ends, draws) + sample_size).clamp(max=pop_size)
             force_newest = draws <= ends[-1]
 
@@ -316,7 +403,7 @@ class RANSAC(nn.Module):
         return _DEFAULT_BATCH * self.max_iter
 
     def resolve_batch_size(self, num_tc: int, device: torch.device) -> int:
-        """Return the batch size of a call: the configured one, or the ``"auto"`` choice for the device.
+        """Return the batch size of a ``local_optimization="dlt"`` call: the configured one, or the ``"auto"`` choice.
 
         On CUDA and MPS a homography batch costs about the same from a few hundred up to 8192 hypotheses
         (the four-point solve is launch-bound), so the whole :attr:`sample_budget` is drawn in batches of
@@ -327,6 +414,14 @@ class RANSAC(nn.Module):
         ``batch * N`` residuals, and the eight-point solver is about ten times a DLT, so the batch aims at a
         millisecond or so of work, 256 to 2048 hypotheses for homographies and 128 to 512 for the epipolar
         models. Other devices retain the historical 2048-sample batch.
+
+        With ``local_optimization="lm"`` an ``"auto"`` batch instead starts at 256 samples on CPU (512 for
+        homographies) and doubles after every batch, up to 2048 (4096 for homographies), so that inputs with
+        many inliers stop after a small first batch while the rest pay the per-batch overhead a few times only.
+        On CUDA and MPS it is the whole budget up to 8192 samples. Both shrink when a batch would score more
+        than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models of a seven-point
+        sample; scoring holds two or three times that many entries at its peak, about 0.5 GiB in float32 on an
+        accelerator. An integer ``batch_size`` is kept for every batch.
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
@@ -339,6 +434,22 @@ class RANSAC(nn.Module):
             return min(_DEFAULT_BATCH, self.sample_budget)
         batch = min(max(work // max(num_tc, 1), lower), upper)
         return min(batch, self.sample_budget)
+
+    def _lm_batch_range(self, num_tc: int, device: torch.device) -> Tuple[int, int]:
+        """First and largest batch of a ``local_optimization="lm"`` call; see :meth:`resolve_batch_size`."""
+        budget = self.sample_budget
+        if isinstance(self.batch_size, int):
+            return min(self.batch_size, budget), min(self.batch_size, budget)
+        models = 3 if self.minimal_sample_size == 7 else 1
+        planar = self.model_type == "homography"
+        if device.type == "cpu":
+            first, upper, work = (512, 4096, 1 << 22) if planar else (256, 2048, 1 << 22)
+        elif device.type in ("cuda", "mps"):
+            first, upper, work = 8192, 8192, 1 << 25
+        else:
+            first, upper, work = _DEFAULT_BATCH, _DEFAULT_BATCH, 1 << 25
+        largest = max(min(upper, work // (models * max(num_tc, 1))), 64)
+        return min(first, largest, budget), min(largest, budget)
 
     def _is_supported(self, num_inliers: float) -> bool:
         """Whether a model has support beyond the minimal sample it may have been fitted to.
@@ -694,6 +805,9 @@ class RANSAC(nn.Module):
 
         """
         self.validate_inputs(kp1, kp2, weights)
+        if self.local_optimization == "lm":
+            with torch.no_grad():
+                return self._forward_lm(kp1, kp2)
         best_score_total = -float("inf")
         num_tc: int = len(kp1)
         budget = self.sample_budget
@@ -717,7 +831,7 @@ class RANSAC(nn.Module):
                 continue
             # Estimate models
             models = self.estimate_model_from_minsample(kp1_sampled, kp2_sampled)
-            if self.model_type in ["essential", "fundamental_7pt"]:
+            if self.model_type in ["essential", "fundamental", "fundamental_7pt"]:
                 models = models.reshape(-1, 3, 3)
             models = self.remove_bad_models(models)
             if (models is None) or (len(models) == 0):
@@ -760,3 +874,156 @@ class RANSAC(nn.Module):
                 best_model_total = torch.zeros_like(best_model_total)
                 inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total
+
+    def _lm_minimal_models(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+        """Minimal models ``(M, 3, 3)`` of normalized homogeneous samples ``(B, m, 3)``.
+
+        Samples that :func:`~kornia.geometry.homography.sample_is_valid_for_homography` rejects and absent roots of
+        the seven-point cubic are dropped on CPU; on other devices, where dropping would need a synchronization, they
+        are NaN models, which score no inliers. The orientation test is unaffected by the normalization, a
+        translation and a positive scale.
+        """
+        compact = x1.device.type == "cpu"
+        if self.model_type == "homography":
+            oriented = sample_is_valid_for_homography(x1[..., :2], x2[..., :2])
+            if compact:
+                x1, x2 = x1[oriented], x2[oriented]
+                if len(x1) == 0:
+                    return x1.new_zeros(0, 3, 3)
+                return _four_point_homography(x1, x2)
+            models = _four_point_homography(x1, x2)
+            return models.masked_fill(~oriented[:, None, None], float("nan"))
+        design = _epipolar_design_rows(x1, x2)
+        if self.minimal_sample_size == 7:
+            candidates, valid = _seven_point_candidates(design)
+            models = candidates.masked_fill(~valid[..., None, None], float("nan")).flatten(0, 1)
+        else:
+            models = _eight_point_fundamental(design)
+        return models[torch.isfinite(models).flatten(1).all(1)] if compact else models
+
+    def _lm_errors(self, models: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+        """Squared residuals ``(M, N)``, in normalized units, of normalized models on normalized correspondences."""
+        if self.model_type == "homography":
+            return _transfer_from_basis(models, _transfer_basis(x1, x2[:, :2]))
+        return _sampson_from_quadratic_basis(models, _sampson_quadratic_basis(x1, x2))
+
+    def _lm_score(self, errors: torch.Tensor, threshold: float) -> torch.Tensor:
+        """MSAC scores ``sum(1 - min(e / threshold, 1))`` or RANSAC support counts ``(M,)`` of squared residuals."""
+        if self.score_type == "msac":
+            # fmin, unlike clamp, takes the threshold for NaN residuals: a NaN residual is an outlier.
+            return (1.0 - torch.fmin(errors, torch.full_like(errors[:1, :1], threshold)) / threshold).sum(1)
+        return (errors <= threshold).sum(1).to(errors.dtype)
+
+    def _lm_refine(
+        self,
+        models: torch.Tensor,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        mask: Optional[torch.Tensor],
+        loss: str,
+        scale2: float,
+        iters: int,
+    ) -> torch.Tensor:
+        """Refine normalized models with Levenberg-Marquardt; all inputs are float64 host tensors."""
+        if self.model_type == "homography":
+            return _refine_homography_lm(models, x1, x2[:, :2], mask, loss, scale2, iters)
+        return _refine_fundamental_lm(models, x1, x2, mask, loss, scale2, iters)
+
+    def _forward_lm(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """RANSAC with batched minimal solvers and Levenberg-Marquardt local optimization and refinement.
+
+        Sampling, minimal solving and scoring run on the device of the correspondences; the normalization, the
+        refinements and the final selection run on the host in float64, which needs a handful of synchronizations
+        per call instead of one per small operation. What differs from the public solvers is what a sampling loop
+        needs: correspondences are normalized once per call rather than per sample, models stay in that normalized
+        frame at unit Frobenius norm instead of ``F[2, 2] = 1``, absent candidates are NaN on accelerators rather than
+        dropped, and scoring uses the quadratic Sampson and folded transfer bases, which are fast and accurate in that
+        frame only.
+        """
+        device, dtype = kp1.device, kp1.dtype
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        num_tc, m = len(kp1), self.minimal_sample_size
+        planar = self.model_type == "homography"
+        failure = (torch.zeros(3, 3, dtype=dtype, device=device), torch.zeros(num_tc, dtype=torch.bool, device=device))
+        host = torch.device("cpu")
+        # The Sampson distance scales with a similarity shared by both images; the transfer error with image 2's.
+        kp1_host, kp2_host = kp1.detach().to(host, torch.float64), kp2.detach().to(host, torch.float64)
+        finite = torch.isfinite(kp1_host).all(1) & torch.isfinite(kp2_host).all(1)
+        if not bool(finite.any()):
+            return failure
+        x1_host, x2_host, t1, t2, s1, s2 = _normalize_correspondences(kp1_host, kp2_host, not planar)
+        threshold = (self.inl_th / (s2 if planar else s1)) ** 2
+        x1, x2 = x1_host.to(device, work), x2_host.to(device, work)
+        basis = _transfer_basis(x1, x2[:, :2]) if planar else _sampson_quadratic_basis(x1, x2)
+        budget = self.sample_budget
+        batch, largest = self._lm_batch_range(num_tc, device)
+        grow = not isinstance(self.batch_size, int)
+        candidates, candidate_scores = x1.new_zeros(0, 3, 3), x1.new_zeros(0)
+        best_score = -1.0
+        max_samples, drawn, iteration = budget, 0, 0
+        while drawn < max_samples:
+            current = min(batch, max_samples - drawn)
+            indices = self.sample(m, num_tc, current, iteration, device, offset=drawn)
+            drawn, iteration = drawn + current, iteration + 1
+            if grow:
+                batch = min(2 * batch, largest)
+            models = self._lm_minimal_models(x1[indices], x2[indices])
+            if len(models) == 0:
+                continue
+            errors = _transfer_from_basis(models, basis) if planar else _sampson_from_quadratic_basis(models, basis)
+            # Reject insufficient support before ranking: high MSAC scores from minimal samples alone must not
+            # crowd supported models out of the candidate pool.
+            counts_all = (errors <= threshold).sum(1)
+            scores_all = self._lm_score(errors, threshold).masked_fill(counts_all <= m, -1.0)
+            top_scores, top = scores_all.topk(min(_LM_CANDIDATES, len(models)))
+            top_inliers = errors[top] <= threshold
+            top_counts = counts_all[top]
+            # The run's best minimal models so far, refined after sampling.
+            candidate_scores, order = torch.cat([top_scores, candidate_scores]).topk(
+                min(_LM_CANDIDATES, len(top_scores) + len(candidate_scores))
+            )
+            candidates = torch.cat([models[top], candidates])[order]
+            scores, counts = torch.stack([top_scores, top_counts.to(top_scores.dtype)]).tolist()
+            best = max(range(len(scores)), key=scores.__getitem__)
+            if scores[best] > best_score:
+                # The bound follows the new incumbent's own support, as with local_optimization="dlt".
+                best_score = scores[best]
+                if self.prosac_sampling:
+                    max_samples = self._prosac_max_samples(top_inliers[best], int(counts[best]))
+                else:
+                    support = int(counts[best])
+                    max_samples = min(budget, self.max_samples_by_conf(support, num_tc, m, self.confidence))
+        x1_host, x2_host = x1_host[finite], x2_host[finite]
+        candidates = candidates.to(host, torch.float64)[candidate_scores.to(host) >= 0]
+        if len(candidates) == 0:
+            return failure
+        if self.max_lo_iters > 0:
+            refits = self._lm_refine(candidates, x1_host, x2_host, None, "truncated", threshold, self.max_lo_iters)
+            # Refits first: a tie goes to the refit, which is fitted to more than a minimal sample.
+            candidates = torch.cat([refits, candidates])
+        errors = self._lm_errors(candidates, x1_host, x2_host)
+        inliers = errors <= threshold
+        scores = self._lm_score(errors, threshold).masked_fill(inliers.sum(1) <= m, -1.0)
+        best = int(scores.argmax())
+        if scores[best] < 0:
+            return failure
+        model, inliers = candidates[best], inliers[best]
+        if self.refine_iters > 0:
+            # A Cauchy scale of a third of the threshold: the threshold as three standard deviations of the noise.
+            mask = inliers.to(torch.float64)[None]
+            refined = self._lm_refine(model[None], x1_host, x2_host, mask, "cauchy", threshold / 9, self.refine_iters)
+            refined_inliers = self._lm_errors(refined, x1_host, x2_host)[0] <= threshold
+            if self._is_supported(int(refined_inliers.sum())):
+                model, inliers = refined[0], refined_inliers
+        model = (torch.linalg.inv(t2) @ model @ t1) if planar else (t2.mT @ model @ t1)
+        model = normalize_transformation(model).to(dtype)
+        if not bool(torch.isfinite(model).all()):
+            return failure
+        # Casting (especially to half precision) changes the model. Classify that exact returned matrix in pixel
+        # coordinates, in float64 so metric arithmetic does not add another round of low-precision error. The public
+        # line/transfer forms also avoid cancellation in the normalized quadratic sampling basis near epipoles.
+        errors = self.error_fn(kp1_host[None], kp2_host[None], model[None].to(torch.float64), eps=0.0)[0]
+        mask = finite & (errors <= self.inl_th**2)
+        if not self._is_supported(int(mask.sum())):
+            return failure
+        return model.to(device), mask.to(device)
