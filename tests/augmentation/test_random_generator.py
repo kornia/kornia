@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from typing import Any
 from unittest.mock import patch
 
@@ -702,6 +703,33 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys()
         assert_close(res["start_points"], expected["start_points"])
         assert_close(res["end_points"], expected["end_points"])
+
+    @pytest.mark.parametrize("height,width", [(1, 8), (8, 1), (1, 1)])
+    @pytest.mark.device_agnostic
+    def test_traced_singleton_axis_5000(self, height, width):
+        # #5000: torch.onnx.export(dynamo=False) traces with 0-d tensor sizes. The size-1 rule must
+        # reach the graph: a unit source extent, and no corner offset along that axis.
+        class _Params(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.generator = PerspectiveGenerator(torch.tensor(1.0))
+
+            def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+                params = self.generator(x.shape)
+                return params["start_points"], params["end_points"]
+
+        image = torch.zeros(2, 1, height, width)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(_Params(), image, check_trace=False)
+        start, end = traced(image)
+
+        x_end, y_end = max(width - 1, 1), max(height - 1, 1)
+        expected = torch.tensor([[0.0, 0.0], [x_end, 0.0], [x_end, y_end], [0.0, y_end]]).expand(2, 4, 2)
+        assert torch.equal(start, expected)
+        for axis, size in ((0, width), (1, height)):
+            if size == 1:
+                assert torch.equal(end[..., axis], start[..., axis])
 
     def test_sampling_method(self, device, dtype):
         torch.manual_seed(42)
