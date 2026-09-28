@@ -876,6 +876,23 @@ def _with_singular_values(values, rotate: bool) -> torch.Tensor:
     return _rotation([0.3, -0.2, 0.5]) @ S @ _rotation([-0.4, 0.1, 0.2]).T
 
 
+class TestEpipolarDesignRows(BaseTester):
+    def test_inhomogeneous_and_homogeneous_rows_agree(self, device, dtype):
+        # Each entry is one product x2_i * x1_j, so every construction (chosen per device for speed) gives the same
+        # bits, and inhomogeneous points imply w = 1.
+        generator = torch.Generator().manual_seed(7)
+        p1 = torch.rand(5, 11, 2, generator=generator).to(device, dtype)
+        p2 = torch.rand(5, 11, 2, generator=generator).to(device, dtype)
+        rows = _epipolar_design_rows(p1, p2)
+        assert rows.shape == (5, 11, 9)
+        assert torch.equal(rows, _epipolar_design_rows(_hom(p1), _hom(p2)))
+        x1, y1 = p1.unbind(-1)
+        x2, y2 = p2.unbind(-1)
+        one = torch.ones_like(x1)
+        expected = torch.stack([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, one], -1)
+        assert torch.equal(rows, expected)
+
+
 class TestRankTwoProjection(BaseTester):
     def test_matches_svd(self, device):
         F = torch.randn(128, 3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
