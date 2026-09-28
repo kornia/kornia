@@ -80,9 +80,10 @@ class TestFindEssential(BaseTester):
 
     @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
     def test_exact_five_point_sample_recovers_the_true_e_4884(self, device, input_dtype):
-        if device.type == "mps":
-            pytest.skip("MPS solves in float32, which keeps the misses of #4884")
-        # #4884: in float32 an exact five-point sample missed the true E; the solve now runs in float64.
+        if device.type == "mps" and input_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # #4884: in float32 an exact five-point sample missed the true E; the solve now runs in float64, on the host
+        # for MPS inputs.
         misses = 0
         for seed in range(20):
             scene = calibrated_two_view_scene(5, 0.0, seed)
@@ -105,8 +106,9 @@ class TestFindEssential(BaseTester):
         assert torch.isfinite(points.grad).all()
 
     def test_no_parallax_backward_is_finite_with_a_float32_solve(self, monkeypatch):
-        # MPS solves in float32. There a spurious root near a vanishing leading coefficient (|z| ~ 5e8) overflows
-        # z ** 10, and a backward through the masked powers gave 0 * inf = NaN. Emulated on the CPU.
+        # In a float32 solve, as MPS ran before its samples moved to the host, a spurious root near a vanishing
+        # leading coefficient (|z| ~ 5e8) overflows z ** 10, and a backward through the masked powers gave
+        # 0 * inf = NaN.
         monkeypatch.setattr(epi.essential, "_solve_dtype", lambda device: torch.float32)
         generator = torch.Generator().manual_seed(0)
         points = torch.rand(1000, 5, 2, generator=generator).requires_grad_()
@@ -116,9 +118,9 @@ class TestFindEssential(BaseTester):
     def test_true_e_is_recovered_on_random_motions(self, device):
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
-        # 2000 exact minimal samples of random scenes, rotations and translation directions. The solver's accuracy
-        # tail depends on how the null space of the five constraints is taken: with main's SVD 2 of them missed E by
-        # more than 1e-3, with an LU null space 5, with the Householder QR none (worst 8e-5).
+        # 2000 exact minimal samples of random scenes, rotations and translation directions. The previous solver
+        # missed E by more than 1e-3 on two of them, this one on none (worst about 1e-4, depending on the BLAS); with
+        # the LU null-space basis in place of the Householder one it missed seven.
         generator = torch.Generator().manual_seed(0)
         f64 = torch.float64
         X = torch.randn(2000, 5, 3, generator=generator, dtype=f64) * torch.tensor([1.0, 1.0, 0.5], dtype=f64)
@@ -176,8 +178,26 @@ class TestFindEssential(BaseTester):
         candidates.nan_to_num().sum().backward()
         assert (points1.grad == 0).all()
 
+    @pytest.mark.parametrize("num_points", [5, 7])
+    def test_mps_input_is_solved_on_the_host(self, device, num_points):
+        if device.type != "mps":
+            pytest.skip("compares an MPS input with the same input on the CPU")
+        # MPS has no float64: its samples are solved on the host in float64 and the candidates copied back, so they
+        # match a CPU solve of the same float32 input and still carry a gradient to the MPS input.
+        scene = calibrated_two_view_scene(num_points, 0.0, 8)
+        x1, x2 = scene["x1"][None].float(), scene["x2"][None].float()
+        on_cpu = epi.find_essential(x1, x2)
+        points1 = x1.to(device).requires_grad_()
+        on_mps = epi.find_essential(points1, x2.to(device))
+        assert on_mps.device == points1.device and on_mps.dtype == torch.float32
+        assert torch.equal(torch.isfinite(on_mps).cpu(), torch.isfinite(on_cpu))
+        self.assert_close(on_mps.cpu().nan_to_num(7.0), on_cpu.nan_to_num(7.0), atol=1e-6, rtol=0)
+        assert self._true_e_error(on_mps[0].detach(), scene["E"]) < 1e-4
+        on_mps.nan_to_num().sum().backward()
+        assert points1.grad.device == points1.device
+        assert torch.isfinite(points1.grad).all() and bool((points1.grad != 0).any())
+
     def test_repeated_calls_are_bitwise_equal(self, device, dtype):
-        _skip_find_essential(device, dtype)
         # No atomic accumulation: CUDA's scatter_add_ summed the determinant polynomial in a varying order.
         generator = torch.Generator().manual_seed(0)
         points1 = torch.randn(512, 5, 2, generator=generator, dtype=torch.float64).to(device, dtype)
@@ -859,7 +879,10 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
 
 
 _NO_HALF_LU = "{} calls torch.det (LU), which has no float16/bfloat16 kernel"
-_NO_HALF_FIND_ESSENTIAL = "find_essential calls torch.linalg.lu_factor_ex, which has no float16/bfloat16 kernel"
+_NO_HALF_FIND_ESSENTIAL = (
+    "find_essential solves in float64, but float16/bfloat16 correspondences are too coarse for these tolerances and "
+    "the reference helpers call torch.linalg.inv, which has no half kernel"
+)
 _HALF_PIXEL_F = (
     "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
     "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
@@ -889,10 +912,6 @@ def _skip_half(dtype: torch.dtype, reason: str) -> None:
 
 def _skip_find_essential(device: torch.device, dtype: torch.dtype) -> None:
     _skip_half(dtype, _NO_HALF_FIND_ESSENTIAL)
-    if device.type == "mps":
-        # The roots now come from torch.linalg.eigvals on the host for every device (#4528); the batched LU kernels
-        # the solver runs on the input's device are not verified on MPS.
-        pytest.skip("find_essential is not verified on MPS (#4528)")
 
 
 def _hom(p: torch.Tensor) -> torch.Tensor:
@@ -944,7 +963,7 @@ class TestConventionEssential(BaseTester):
         for cand in real[5]:
             assert _epipolar_residual(cand[None], p1, p2).max() < 1e-3 * _epipolar_residual(cand[None], p2, p1).max()
         # The minimal sample and all twelve points: one candidate is the true E up to sign, on the same side. The
-        # minimal sample used to miss it in float32 (#4884); the solve now runs in float64.
+        # minimal sample used to miss it in float32 (#4884); the solve now runs in float64, on the host for MPS.
         E_gt = _gt_essential(two_view)
         E_gt = E_gt / E_gt.norm()
         for num_points in (5, 12):
@@ -1171,7 +1190,6 @@ class TestConventionEssential(BaseTester):
         assert (X_b[1, :, 2] > 0).all()
 
     def test_convention_find_essential_no_real_root_nan_4883(self, device, dtype):
-        _skip_find_essential(device, dtype)
         # #4883: a five-point sample with no real root returns ten NaN slots, like the complex slots of any other
         # sample, so an isfinite filter drops it. Sample:
         #   g = torch.Generator().manual_seed(0)
@@ -1236,6 +1254,23 @@ class TestRefineEssentialLM(BaseTester):
         mask[0, :30] = 1.0
         refined = _refine_essential_lm(self._start(scene["E"], 0.01, 5), h1, h2, mask, "cauchy", 1e-6, 20)[0]
         self.assert_close(self._aligned(refined, scene["E"]), scene["E"], atol=1e-9, rtol=0)
+
+    def test_rejects_steps_that_raise_the_cost(self):
+        # A start 0.3 off and 30 of 100 correspondences moved off their epipolar lines: an undamped Gauss-Newton step
+        # raises the Cauchy cost at the third iteration here. The refiner keeps only steps that lower it, so its cost
+        # after each iteration is never above the one before (the loop is deterministic, so k iterations are the
+        # first k of k + 1).
+        scene = calibrated_two_view_scene(100, 1e-3, 8)
+        x1, x2 = scene["x1"], scene["x2"].clone()
+        x2[70:] = x2[70:] + 0.2 * torch.randn(30, 2, generator=torch.Generator().manual_seed(8), dtype=x2.dtype)
+        h1, h2 = convert_points_to_homogeneous(x1), convert_points_to_homogeneous(x2)
+        start, scale2 = self._start(scene["E"], 0.3, 108), 3e-3**2
+        costs = []
+        for iters in range(11):
+            refined = _refine_essential_lm(start, h1, h2, None, "cauchy", scale2, iters)
+            costs.append(float(torch.log1p(epi.sampson_epipolar_distance(x1[None], x2[None], refined) / scale2).sum()))
+        assert all(later <= earlier * (1 + 1e-9) for earlier, later in zip(costs, costs[1:]))
+        assert costs[-1] < 0.5 * costs[0]
 
     def test_batched_models_are_refined_independently(self):
         scene = calibrated_two_view_scene(80, 0.0, 6)

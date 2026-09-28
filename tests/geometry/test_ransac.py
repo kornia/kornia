@@ -1745,7 +1745,7 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         kp1, kp2, _, _, inliers = _scene(model_type, 200, 60, 0.0, seed=0)
         ransac = RANSAC(model_type, inl_th=_px(model_type, 1.0), seed=0)
         model, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
-        assert model.shape == (3, 3) and model.dtype == dtype and model.device == kp1.to(device).device
+        assert model.shape == (3, 3) and model.dtype == dtype and model.device == kp1.to(device, dtype).device
         assert mask.shape == (200,) and mask.dtype == torch.bool and mask.device == model.device
         assert torch.equal(mask.cpu(), inliers)
         tolerance = _px(model_type, 1e-4 if dtype == torch.float64 else 5e-2)
@@ -1925,25 +1925,31 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("calibrated thresholds of 1e-3 are below half-precision resolution")
 
-    def test_returns_a_unit_frobenius_essential_matrix(self, device, dtype):
+    @pytest.mark.parametrize("seed", [0, 2, 3])
+    def test_returns_a_unit_frobenius_essential_matrix(self, device, dtype, seed):
         self._skip_half(dtype)
-        kp1, kp2, _, _, _ = _scene("essential", 200, 60, 0.5, seed=0)
+        kp1, kp2, _, _, _ = _scene("essential", 200, 60, 0.5, seed=seed)
         E, _ = RANSAC("essential", inl_th=_px("essential", 1.5), seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
         singular_values = torch.linalg.svdvals(E.cpu().double())
         expected = torch.tensor([2**-0.5, 2**-0.5, 0.0], dtype=torch.float64)
         self.assert_close(singular_values, expected, atol=1e-6 if dtype == torch.float64 else 1e-3, rtol=0)
         # E and -E are the same model; the sign is fixed so that equal inputs give equal outputs on every backend.
+        # Without the rule, the scene of seed 2 returns a negative largest entry on the CPU in either dtype.
         assert E.flatten()[E.abs().argmax()] > 0
 
     @pytest.mark.parametrize("n", [6, 7, 8])
     def test_small_inputs(self, device, dtype, n):
         self._skip_half(dtype)
-        kp1, kp2, _, _, _ = _scene("essential", n, 0, 0.0, seed=3)
+        kp1, kp2, _, truth, _ = _scene("essential", n, 0, 0.0, seed=3)
         E, mask = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0)(
             kp1.to(device, dtype), kp2.to(device, dtype)
         )
         assert E.shape == (3, 3) and mask.shape == (n,)
-        assert torch.isfinite(E).all()
+        # Noise-free: every correspondence is an inlier and E is the true one, up to sign.
+        assert bool(mask.all())
+        E = E.cpu().double()
+        tolerance = 1e-9 if dtype == torch.float64 else 1e-4
+        assert min(float((E - truth).norm()), float((E + truth).norm())) < tolerance
 
     def test_pixel_coordinates_by_mistake_stay_finite(self, device, dtype):
         self._skip_half(dtype)
@@ -2014,6 +2020,8 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
     @pytest.mark.parametrize("loss", ["cauchy", "truncated"])
     def test_refinement_reaches_a_local_minimum(self, device, dtype, model_type, loss):
         self._skip_half(dtype)
+        if device.type == "mps":
+            pytest.skip("the refinement kernels run in float64, which MPS does not support")
         # Noisy inliers only, refined from a perturbed ground truth: the refit's cost is below the start's and does
         # not drop along small steps in any direction of the model's manifold.
         kp1, kp2, _, truth, _ = _scene(model_type, 80, 0, 1.0, seed=13)

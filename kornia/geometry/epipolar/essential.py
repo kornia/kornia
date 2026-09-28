@@ -69,7 +69,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     if design.shape[1] == 5:
         candidates, _ = _five_point_candidates(design)
     else:
-        candidates, _ = _nister_candidates(_least_squares_basis(design), design.dtype)
+        candidates = _least_squares_candidates(design)
     return candidates
 
 
@@ -244,26 +244,45 @@ def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
     return V[:, :, -4:]
 
 
+def _least_squares_candidates(design: torch.Tensor) -> torch.Tensor:
+    """Nister's candidates ``(B, 10, 3, 3)`` of design rows ``(B, N, 9)`` with ``N > 5``, on the design's device.
+
+    MPS inputs are solved on the host, as in :func:`_five_point_candidates`.
+    """
+    if design.device.type == "mps":
+        return _least_squares_candidates(design.cpu()).to(design.device)
+    return _nister_candidates(_least_squares_basis(design), design.dtype)[0]
+
+
 def _five_point_candidates(design: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Nister's five-point solver on the epipolar design rows ``(B, 5, 9)`` of minimal samples.
 
     The four-dimensional null space comes from batched Householder reflections,
     :func:`~kornia.geometry.solvers.homogeneous._null_space_householder`, and everything up to the roots is computed
-    in :func:`~kornia.geometry.epipolar.fundamental._solve_dtype`, so a float32 sample does not lose its true
-    solution to rounding.
+    in float64, so a float32 sample does not lose its true solution to rounding.
 
     A sample whose design rows are rank deficient, such as one with a repeated correspondence or points collinear in
     both images, has a null space of more than four dimensions and no unique solution: all ten of its slots are NaN.
     It is found by a partial-pivoted LU factorization of the detached rows. Rounding rarely leaves an exactly zero
     pivot, so rank deficiency is a pivot below ``1e3`` epsilons of the largest one: repeated correspondences measure
-    about 1e-16 relative, regular samples above 1e-3. The sample is swapped for a constant full-rank design before
-    the null space is taken, whose normalizations would otherwise divide by a vanishing norm, so that its gradient
-    is zero.
+    at most about 1e-16 relative, regular samples above 1e-8 even with all five points in a patch 1e-4 wide.
+    Collinear points rounded to float32 are no longer collinear, and are solved like any other sample. A rank-deficient
+    sample is swapped for a constant full-rank design before the null space is taken, whose normalizations would
+    otherwise divide by a vanishing norm, so that its gradient is zero.
+
+    Note:
+        MPS has no float64, so an MPS sample is solved on the host and its candidates are copied back; autograd
+        follows both copies. Solved in float32 on the device instead, an exact sample could miss its true solution
+        by more than 1e-3, and on an Apple M1 (torch 2.14) the host solve was also faster: about 10 ms against 48 ms
+        for 256 samples and 56 ms against 86 ms for 2048, the same at 8192.
 
     Returns:
         Candidates ``(B, 10, 3, 3)`` of unit Frobenius norm in the design's dtype, NaN where the slot holds no
         real root, and the ``(B, 10)`` mask of the real ones.
     """
+    if design.device.type == "mps":
+        candidates, valid = _five_point_candidates(design.cpu())
+        return candidates.to(design.device), valid.to(design.device)
     A = design.to(_solve_dtype(design.device))
     lu, _, info = torch.linalg.lu_factor_ex(A.detach().mT)
     pivots = lu.diagonal(dim1=-2, dim2=-1).abs()
@@ -342,7 +361,7 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
     # has no usable companion matrix: its sample gets the identity instead and NaN slots.
     lead = cs[:, -1]
     usable = ~singular & torch.isfinite(cs).all(1) & (lead != 0)
-    detached = cs.detach().to("cpu", torch.float64)
+    detached = cs.detach().cpu().double()
     companion = torch.zeros(B, 10, 10, dtype=torch.float64)
     companion[:, :9, 1:] = torch.eye(9, dtype=torch.float64)
     companion[:, 9] = -detached[:, :10] / torch.where(detached[:, 10:] == 0, 1.0, detached[:, 10:])
@@ -352,7 +371,7 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
     real = eigenvalues.imag.abs() <= 1e-10 * eigenvalues.abs().clamp(min=1.0)
     # A root beyond the fifth root of the dtype's largest number could overflow the z^4 terms of the back-substitution,
     # and a masked infinity still turns the backward into 0 * inf = NaN: its slot is dropped, and a zero stands in for
-    # it. That only binds for a float32 solve (MPS), at |z| > 5.5e7, where the basis matrix W no longer shows in E.
+    # it. That only binds for a float32 solve, at |z| > 5.5e7, where the basis matrix W no longer shows in E.
     in_range = eigenvalues.real.abs() < torch.finfo(dtype).max ** 0.2
     valid = (real & in_range & host_usable[:, None]).to(device)
     root0 = torch.where(real & in_range, eigenvalues.real, 0.0).to(device, dtype)
@@ -413,7 +432,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     design = X[..., _TRANSPOSED_ROWS]
     if design.shape[1] == 5:
         return _five_point_candidates(design)[0]
-    return _nister_candidates(_least_squares_basis(design), X.dtype)[0]
+    return _least_squares_candidates(design)
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
@@ -819,9 +838,11 @@ def find_essential(
           in them. :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
         - All ten slots are always returned: each real root gives a candidate of unit Frobenius norm, and each
           complex root a ``NaN`` slot, so a sample with no real solution returns ten ``NaN`` slots.
-        - The solve runs in float64 (float32 on MPS) whatever the input dtype, and the degree-ten polynomial's roots
-          come from LAPACK on the host for every device. A sample whose five design rows are rank deficient, such as
-          one with a repeated correspondence, has no unique solution: ten ``NaN`` slots and a zero gradient.
+        - The solve runs in float64 whatever the input dtype, and the degree-ten polynomial's roots come from LAPACK
+          on the host for every device. MPS has no float64, so MPS inputs are solved on the host and the candidates
+          copied back, which on an Apple M1 was also faster than a float32 solve on the device. A sample whose five
+          design rows are rank deficient, such as one with a repeated correspondence, has no unique solution: ten
+          ``NaN`` slots and a zero gradient.
         - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_).
 
     Args:

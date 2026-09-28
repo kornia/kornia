@@ -32,8 +32,9 @@ others pay the per-batch overhead only a few times. On CUDA and MPS the batch
 is the whole budget up to 8192 samples. Essential matrices start smaller on
 every device, with 64 samples up to 1024 on CPU and 256 up to 8192 on CUDA and
 MPS: a five-point sample needs few draws at high inlier ratios, and its
-eigenvalue solve runs on the host. All shrink for many correspondences, so
-that a batch scores at most ``2**22`` (CPU) or ``2**25`` residuals. The rest of
+eigenvalue solve runs on the host (on MPS, the whole solve). All shrink for many
+correspondences, down to 64 samples, so that above that floor a batch scores at
+most ``2**22`` (CPU) or ``2**25`` residuals. The rest of
 this paragraph describes ``local_optimization="dlt"``: on CUDA and MPS a
 homography batch costs about the same from a few hundred up to 8192 hypotheses,
 so the budget is drawn in batches of 8192; the epipolar solvers are
@@ -121,8 +122,9 @@ Fundamental matrices keep rank two through the parametrization of
 the refinement follows PoseLib's ``refine_fundamental`` and
 ``refine_homography``. Refining several models once sampling ends, rather than
 each new incumbent, is the batched form of PoseLib's rule of refining every
-minimal model that improves on the best one so far. The minimal solvers take
-their null spaces from a partial-pivoted LU factorization and scores come from
+minimal model that improves on the best one so far. The homography and
+fundamental-matrix solvers take their null spaces from a partial-pivoted LU
+factorization, the five-point solver from Householder reflections, and scores come from
 one matrix product per batch, which keeps the per-hypothesis cost low on every
 device. The refinements are a few dozen small operations per iteration and run
 on the CPU in float64 for every device, where launch latency would dominate.
@@ -143,9 +145,11 @@ of ``U`` about three axes and of ``V`` about its first two, which leaves out
 the rotation of both about their third axes that does not change ``E``. The
 five-point samples are solved with Nister's method in float64: a Householder
 null space, the degree-ten polynomial from polynomial products, and its real
-roots from the eigenvalues of its companion matrix on the host. On PhotoTourism pairs this
-raises the pose mAA of essential matrices by 0.04 to 0.08 over the subset refits
-below, at a half to a third of the time on CPU.
+roots from the eigenvalues of its companion matrix on the host. MPS, which has
+no float64, solves its samples on the host. On PhotoTourism pairs this raises
+the pose mAA of essential matrices by 0.03 to 0.07 over the subset refits
+below, in about half the time on CPU, and an eighth of it with 8000 SIFT
+features per image.
 
 ``local_optimization="dlt"``, the only choice for line-segment homographies,
 refits the incumbent on its inliers. For the

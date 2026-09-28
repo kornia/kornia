@@ -196,10 +196,11 @@ def _null_space_householder(A: torch.Tensor) -> torch.Tensor:
 
     The last ``n - m`` columns of ``Q`` in the QR factorization ``A^T = Q R``, from ``m`` Householder reflections
     written as batched tensor operations: ``torch.linalg.qr`` has no batched CUDA kernel and loops over the batch.
-    Householder QR is backward stable, where the span of :func:`_null_space_lu` can lose accuracy: on 2000 exact
-    five-point samples, Nister's candidates from this null space were all within 8e-5 of the true essential matrix,
-    those from the LU one missed it by up to 0.1 five times. It costs about four times the LU null space. ``A`` must
-    have full rank: at a vanishing reflector the normalization divides by zero.
+    Both this and :func:`_null_space_lu` span the null space to rounding, but a solver that parametrizes its solution
+    in the basis can depend on which basis it gets: on 22000 exact five-point samples, Nister's candidates missed the
+    true essential matrix by more than 1e-3 nine times with this orthonormal basis, seven times with the SVD's, and 81
+    times with the LU one. It costs about four times the LU null space. ``A`` must have full rank: at a vanishing
+    reflector the normalization divides by zero.
     """
     batch, m, n = A.shape
     remaining = A.mT  # (B, n, m): the columns still to be reduced, below the rows already done

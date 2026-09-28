@@ -424,10 +424,11 @@ class RANSAC(nn.Module):
         many inliers stop after a small first batch while the rest pay the per-batch overhead a few times only.
         On CUDA and MPS it is the whole budget up to 8192 samples. Essential matrices start at 64 samples on CPU,
         up to 1024, and at 256 on CUDA and MPS, up to 8192: a five-point sample needs few draws at high inlier
-        ratios, and its host eigenvalue solve costs the same on every device. All shrink when a batch would score more
-        than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models of a seven-point
-        sample; scoring holds two or three times that many entries at its peak, about 0.5 GiB in float32 on an
-        accelerator. An integer ``batch_size`` is kept for every batch.
+        ratios, and its host eigenvalue solve costs the same on every device. All shrink, down to 64 samples, when a
+        batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models
+        of a seven-point sample and the ten candidate slots of a five-point one; scoring holds two or three times
+        that many entries at its peak, about 0.5 GiB in float32 on an accelerator. An integer ``batch_size`` is kept
+        for every batch.
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
@@ -888,7 +889,7 @@ class RANSAC(nn.Module):
         return best_model_total, inliers_best_total
 
     def _lm_minimal_models(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-        """Minimal models ``(M, 3, 3)`` of normalized homogeneous samples ``(B, m, 3)``.
+        """Minimal models ``(M, 3, 3)`` of normalized (for essential matrices, calibrated) samples ``(B, m, 3)``.
 
         Samples that :func:`~kornia.geometry.homography.sample_is_valid_for_homography` rejects and absent roots of
         the seven-point cubic are dropped on CPU; on other devices, where dropping would need a synchronization, they
@@ -918,7 +919,7 @@ class RANSAC(nn.Module):
         return models[torch.isfinite(models).flatten(1).all(1)] if compact else models
 
     def _lm_errors(self, models: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-        """Squared residuals ``(M, N)``, in normalized units, of normalized models on normalized correspondences."""
+        """Squared residuals ``(M, N)`` of normalized models on normalized correspondences (calibrated: essential)."""
         if self.model_type == "homography":
             return _transfer_from_basis(models, _transfer_basis(x1, x2[:, :2]))
         return _sampson_from_quadratic_basis(models, _sampson_quadratic_basis(x1, x2))
@@ -940,7 +941,7 @@ class RANSAC(nn.Module):
         scale2: float,
         iters: int,
     ) -> torch.Tensor:
-        """Refine normalized models with Levenberg-Marquardt; all inputs are float64 host tensors."""
+        """Refine normalized (calibrated: essential) models with Levenberg-Marquardt, on float64 host tensors."""
         if self.model_type == "homography":
             return _refine_homography_lm(models, x1, x2[:, :2], mask, loss, scale2, iters)
         if self.model_type == "essential":
@@ -967,7 +968,9 @@ class RANSAC(nn.Module):
         failure = (torch.zeros(3, 3, dtype=dtype, device=device), torch.zeros(num_tc, dtype=torch.bool, device=device))
         host = torch.device("cpu")
         # The Sampson distance scales with a similarity shared by both images; the transfer error with image 2's.
-        kp1_host, kp2_host = kp1.detach().to(host, torch.float64), kp2.detach().to(host, torch.float64)
+        # Moved first, then cast: a single .to(host, torch.float64) out of MPS returns zeros on torch 2.14 and
+        # raises on 2.5.1 (pytorch/pytorch#197715).
+        kp1_host, kp2_host = kp1.detach().to(host).double(), kp2.detach().to(host).double()
         finite = torch.isfinite(kp1_host).all(1) & torch.isfinite(kp2_host).all(1)
         if not bool(finite.any()):
             return failure
@@ -1023,7 +1026,7 @@ class RANSAC(nn.Module):
                     support = int(counts[best])
                     max_samples = min(budget, self.max_samples_by_conf(support, num_tc, m, self.confidence))
         x1_host, x2_host = x1_host[finite], x2_host[finite]
-        candidates = candidates.to(host, torch.float64)[candidate_scores.to(host) >= 0]
+        candidates = candidates.to(host).double()[candidate_scores.to(host) >= 0]
         if len(candidates) == 0:
             return failure
         if self.max_lo_iters > 0:
