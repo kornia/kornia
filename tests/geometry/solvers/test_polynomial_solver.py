@@ -382,15 +382,19 @@ class TestCubicSolver(BaseTester):
             assert num_real.tolist() == [3, 1], num_real
 
     def test_dominant_root_gradcheck_4914(self, device):
-        # The Vieta rows keep an implicit-function gradient: (x - 1)(x - 2)(x + 1000) and (x + 1000)(x^2 + x + 1).
+        # Vieta rows: (x - 1)(x - 2)(x + 1000), (x + 1000)(x^2 + x + 1) and (x - 32)(x - 1)(x + 1). The first and the
+        # last were right before and keep the closed form's slot order; the complex pair puts its root in slot 0.
         rows = torch.tensor(
-            [[1.0, 997.0, -2998.0, 2000.0], [1.0, 1001.0, 1001.0, 1000.0]], device=device, dtype=torch.float64
+            [[1.0, 997.0, -2998.0, 2000.0], [1.0, 1001.0, 1001.0, 1000.0], [1.0, -32.0, -1.0, 32.0]],
+            device=device,
+            dtype=torch.float64,
         )
-        roots = solver.solve_cubic(rows)
-        self.assert_close(
-            roots.sort(dim=-1).values[0], torch.tensor([-1000.0, 1.0, 2.0], device=device, dtype=torch.float64)
+        expected = torch.tensor(
+            [[2.0, -1000.0, 1.0], [-1000.0, 0.0, 0.0], [32.0, -1.0, 1.0]], device=device, dtype=torch.float64
         )
-        assert torch.equal(roots[1, 1:], torch.zeros(2, device=device, dtype=torch.float64)), roots[1]
+        roots, num_real = _solve_cubic_with_count(rows)
+        self.assert_close(roots, expected, rtol=1e-13, atol=0.0)
+        assert num_real.tolist() == [3, 1, 3], num_real
         self.gradcheck(solver.solve_cubic, (rows.requires_grad_(),))
 
 

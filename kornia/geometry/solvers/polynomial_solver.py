@@ -357,11 +357,14 @@ def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.T
     # small roots are ordinary numbers; in the scaled row they can be below the dtype's normal range. Only a row
     # whose largest root exceeds _DOMINANT_ROOT_RATIO times the scale of the other two enters, so every other row
     # keeps its bits. The gate is decided on detached values: a rejected row can overflow these quotients, and a lane
-    # that autograd differentiates must not.
+    # that autograd differentiates must not. The dominant root keeps its slot and the other two take the remaining
+    # slots in the order closest to the closed-form values they replace, so a row the closed form got right keeps its
+    # slot order; a complex pair puts the single real root in slot 0 as everywhere else.
     mask_cubic = ~mask_a_zero
     if torch.any(mask_cubic):
         x = roots[mask_cubic]
-        x0 = x.gather(1, x.abs().argmax(dim=1, keepdim=True)).squeeze(1)
+        slot0 = x.abs().argmax(dim=1, keepdim=True)
+        x0 = x.gather(1, slot0).squeeze(1)
         a_cubic, c_cubic, d_cubic = a[mask_cubic], c[mask_cubic], d[mask_cubic]
         x0_detached = x0.detach()
         safe_x0 = torch.where(x0_detached == 0, torch.ones_like(x0_detached), x0_detached)
@@ -376,11 +379,21 @@ def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.T
             product = -d_cubic[mask_dominant] / lead
             total = (c_cubic[mask_dominant] + d_cubic[mask_dominant] / x0_dominant) / lead
             others = solve_quadratic(torch.stack([torch.ones_like(total), -total, product], dim=1))
+            pair_is_real = total * total - 4 * product >= 0
+            previous = x[mask_dominant]
+            slot0_dominant = slot0[mask_dominant]
+            rest = torch.sort(torch.cat([(slot0_dominant + 1) % 3, (slot0_dominant + 2) % 3], dim=1), dim=1).values
+            previous_rest = previous.gather(1, rest)
+            swap = (previous_rest - others.flip(1)).abs().sum(1) < (previous_rest - others).abs().sum(1)
+            others = torch.where(swap[:, None], others.flip(1), others)
+            in_place = torch.zeros_like(previous)
+            in_place.scatter_(1, slot0_dominant, x0_dominant[:, None])
+            in_place.scatter_(1, rest, others)
+            alone = torch.stack([x0_dominant, torch.zeros_like(x0_dominant), torch.zeros_like(x0_dominant)], dim=1)
             mask_dominant_rows = torch.zeros_like(mask_a_zero)
             mask_dominant_rows[mask_cubic] = mask_dominant
-            roots[mask_dominant_rows] = torch.stack([x0_dominant, others[:, 0], others[:, 1]], dim=1)
-            # solve_quadratic's own discriminant decides: a complex pair leaves the dominant root alone.
-            num_real[mask_dominant_rows] = torch.where(total * total - 4 * product < 0, 1, 3)
+            roots[mask_dominant_rows] = torch.where(pair_is_real[:, None], in_place, alone)
+            num_real[mask_dominant_rows] = torch.where(pair_is_real, 3, 1)
 
     return roots, num_real
 
