@@ -286,7 +286,7 @@ class ScaleSpaceDetector(nn.Module):
             resp_module = BlobHessian()
         self.resp = _maybe_compile(resp_module, "resp")
         if subpix_module is None:
-            subpix_module = AdaptiveQuadInterp3d(strict_maxima_bonus=0.0, allow_scale_steps=True)
+            subpix_module = AdaptiveQuadInterp3d(allow_scale_steps=True)
         self.subpix = _maybe_compile(subpix_module, "subpix")
         if ori_module is None:
             ori_module = PassLAF()

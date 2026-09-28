@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Vector3
 
@@ -79,15 +80,14 @@ class TestHyperplane(BaseTester):
         loaded_plane = torch.load(file_path, weights_only=False)
         self.assert_close(plane.normal.unwrap(), loaded_plane.normal.unwrap())
 
-    # TODO: implement `Vector2`
-    # @pytest.mark.parametrize("batch_size", [1, 2])
-    # def test_through_two(self, device, dtype, batch_size):
-    #    v0 = _VectorType.random((batch_size, 2), device, dtype)
-    #    v1 = _VectorType.random((batch_size, 2), device, dtype)
-    #    # TODO: improve api so that we can accept Vector too
-    #    p0 = Hyperplane.through(v0.data, v1.data)
-    #    assert p0.offset.shape == (batch_size,)
-    #    assert p0.normal.shape == (batch_size, 2)
+    @pytest.mark.parametrize("shape", ((2,), (1, 2), (3,), (1, 3)))
+    def test_through_two_points_raises(self, device, dtype, shape):
+        # Hyperplane stores a Vector3 normal and has no 2D form: two points must be rejected with a
+        # message that names the three-point requirement, whatever the points' dimension.
+        p0 = torch.rand(shape, device=device, dtype=dtype)
+        p1 = torch.rand(shape, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="requires three points"):
+            Hyperplane.through(p0, p1)
 
     @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
     def test_through_three(self, device, dtype, shape):

@@ -20,8 +20,10 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import TypeCheckError
 from kornia.geometry import NamedPose
 from kornia.geometry.liegroup import Se2, Se3, So2, So3
+from kornia.geometry.quaternion import Quaternion
 
 from testing.base import BaseTester
 
@@ -300,19 +302,42 @@ class TestNamedPoseConventions(BaseTester):
         )
         self.assert_close(a_from_b.pose.matrix(), expected_inv)
 
-    def test_wart_named_pose_mixed_groups_4937(self, device, dtype):
+    def test_named_pose_rejects_wrong_types_4937(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch.complex has no bfloat16 overload, so So2 (and an Se2 pose) cannot be built at all")
-        # https://github.com/kornia/kornia/issues/4937: NamedPose validates no types. Composing an Se3 pose with an
-        # Se2 pose fails inside the dispatch with an AttributeError; the ValueError branch meant for it is never
-        # reached.
+        # https://github.com/kornia/kornia/issues/4937: the pose type is checked at construction, and composing poses
+        # of different groups, or a NamedPose with something else, raises a TypeError that names the offending type.
         g1, _ = self._poses(device, dtype)
         se2 = Se2.exp(torch.tensor([0.5, -1.0, 0.3], device=device, dtype=dtype))
-        with pytest.raises(AttributeError):
-            NamedPose(g1, frame_src="b", frame_dst="c") * NamedPose(se2, frame_src="a", frame_dst="b")
-        with pytest.raises(AttributeError):
-            NamedPose(se2, frame_src="b", frame_dst="c") * NamedPose(g1, frame_src="a", frame_dst="b")
-        # A rotation-only group is accepted at construction, and its rotation then raises.
-        so3_pose = NamedPose(So3.identity(device=device, dtype=dtype), frame_src="a", frame_dst="b")
-        with pytest.raises(AttributeError):
-            _ = so3_pose.rotation
+        for bad, name in (
+            (So3.identity(device=device, dtype=dtype), "so3.So3"),
+            (So2.identity(device=device, dtype=dtype), "so2.So2"),
+            (Quaternion.identity(device=device, dtype=dtype), "quaternion.Quaternion"),
+            (g1.matrix(), "torch.Tensor"),
+        ):
+            with pytest.raises(TypeCheckError, match=rf"expected Se2 \| Se3, got <class '.*{name}'>"):
+                NamedPose(bad, frame_src="a", frame_dst="b")
+        c_from_b = NamedPose(g1, frame_src="b", frame_dst="c")
+        with pytest.raises(TypeError, match="Cannot compose an Se3 pose with an Se2 pose"):
+            _ = c_from_b * NamedPose(se2, frame_src="a", frame_dst="b")
+        with pytest.raises(TypeError, match="Cannot compose an Se2 pose with an Se3 pose"):
+            _ = NamedPose(se2, frame_src="b", frame_dst="c") * NamedPose(g1, frame_src="a", frame_dst="b")
+        with pytest.raises(TypeError, match=r"got <class 'kornia.geometry.liegroup.se3.Se3'>"):
+            _ = c_from_b * g1
+        with pytest.raises(TypeError, match=r"got <class 'torch.Tensor'>"):
+            _ = c_from_b * torch.ones(1, 3, device=device, dtype=dtype)
+
+        # A subclass of the group composes with the group, on either side.
+        class _Se3(Se3):
+            pass
+
+        sub_c_from_b = NamedPose(_Se3(g1.r, g1.t), frame_src="b", frame_dst="c")
+        sub_b_from_a = NamedPose(_Se3(g1.r, g1.t), frame_src="a", frame_dst="b")
+        self.assert_close((c_from_b * sub_b_from_a).pose.matrix(), g1.matrix() @ g1.matrix())
+        self.assert_close((sub_c_from_b * NamedPose(g1, "a", "b")).pose.matrix(), g1.matrix() @ g1.matrix())
+        # Two NamedPoses with mismatched frames still fail on the frames first.
+        with pytest.raises(ValueError, match="Cannot compose"):
+            _ = c_from_b * NamedPose(se2, frame_src="a", frame_dst="x")
+        # from_rt keeps accepting rotation-only groups, since it wraps them in an Se2 or an Se3 itself.
+        assert isinstance(NamedPose.from_rt(So3.identity(device=device, dtype=dtype), g1.t).pose, Se3)
+        assert isinstance(NamedPose.from_rt(So2.identity(device=device, dtype=dtype), se2.t).pose, Se2)

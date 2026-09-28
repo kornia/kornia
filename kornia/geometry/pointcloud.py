@@ -40,6 +40,8 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         pointcloud: tensor containing the pointcloud to save.
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
+          Every row is written, so the vertex count is the number of points and
+          row order is kept; non-finite coordinates are written as ``nan`` / ``inf``.
     """
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
         raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
@@ -50,12 +52,10 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     if pointcloud.ndim < 2 or pointcloud.shape[-1] != 3:
         raise TypeError(f"Input pointcloud must have shape (..., 3). Got {tuple(pointcloud.shape)}")
 
-    # Flatten points
+    # Flatten points. Every row is written, non-finite ones included, so row ``i`` of the file is
+    # row ``i`` of the flattened input.
     xyz = pointcloud.reshape(-1, 3)
-
-    valid_mask = torch.isfinite(xyz).any(dim=1)
-    valid_points = xyz[valid_mask]
-    valid_count = valid_points.shape[0]
+    num_points = xyz.shape[0]
 
     with open(filename, "w", encoding="utf-8") as f:
         # Write PLY header
@@ -64,7 +64,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
                 "ply\n",
                 "format ascii 1.0\n",
                 "comment arraiy generated\n",
-                f"element vertex {valid_count}\n",
+                f"element vertex {num_points}\n",
                 "property double x\n",
                 "property double y\n",
                 "property double z\n",
@@ -72,12 +72,14 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
             ]
         )
 
-        if valid_count > 0:
+        if num_points > 0:
             # Move to CPU, convert to float64 for matching 'double' in header
-            arr = valid_points.detach().cpu().to(torch.float64)
-            # Write each row as space-separated floats
+            arr = xyz.detach().cpu().to(torch.float64)
+            # Write each row as space-separated floats. repr of a Python float is the
+            # shortest string that round-trips it exactly, which a 'double' property
+            # needs; a fixed significant-digit count silently loses float64 precision.
             for x, y, z in arr.tolist():
-                f.write(f"{x:.9g} {y:.9g} {z:.9g}\n")
+                f.write(f"{x!r} {y!r} {z!r}\n")
 
 
 def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
@@ -88,6 +90,8 @@ def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
         pointcloud: tensor containing the pointcloud to save.
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
+          Every row is written, so the vertex count is the number of points and
+          row order is kept; non-finite coordinates are written as IEEE values.
     """
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
         raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
@@ -98,12 +102,10 @@ def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
     if pointcloud.ndim < 2 or pointcloud.shape[-1] != 3:
         raise TypeError(f"Input pointcloud must have shape (..., 3). Got {tuple(pointcloud.shape)}")
 
-    # Flatten points
+    # Flatten points. Every row is written, non-finite ones included, so row ``i`` of the file is
+    # row ``i`` of the flattened input.
     xyz = pointcloud.reshape(-1, 3)
-
-    valid_mask = torch.isfinite(xyz).any(dim=1)
-    valid_points = xyz[valid_mask]
-    valid_count = valid_points.shape[0]
+    num_points = xyz.shape[0]
 
     with open(filename, "wb") as f:
         # Write PLY header : Binary version
@@ -111,7 +113,7 @@ def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
             "ply\n",
             "format binary_little_endian 1.0\n",
             "comment kornia generated\n",
-            f"element vertex {valid_count}\n",
+            f"element vertex {num_points}\n",
             "property double x\n",
             "property double y\n",
             "property double z\n",
@@ -119,9 +121,9 @@ def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
         ]
         f.writelines(s.encode("utf-8") for s in header)
 
-        if valid_count > 0:
+        if num_points > 0:
             # Move to CPU, convert to float64 for matching 'double' in header
-            arr = valid_points.detach().cpu().to(torch.float64).reshape(-1)
+            arr = xyz.detach().cpu().to(torch.float64).reshape(-1)
 
             # Convert to array.array for efficient byte-level handling
             data_array = array.array("d", arr.tolist())

@@ -544,8 +544,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
      - OpenCV
    * - fundamental matrix
      - ``find_fundamental(points1, points2)``, scaled to ``F[2, 2] = 1`` unless that entry is numerically zero;
-       ``method="7POINT"`` returns three candidates ``(B, 3, 3, 3)`` in no particular order, padded when the cubic
-       has one real root (`#4862 <https://github.com/kornia/kornia/issues/4862>`_)
+       ``method="7POINT"`` returns three candidates ``(B, 3, 3, 3)`` in no particular order, padded with zero
+       matrices when the cubic has one real root
      - ``findFundamentalMat(points1, points2)``, the same ``F``; ``FM_7POINT`` stacks only the real solutions as
        ``(3k, 3)``
    * - essential matrix
