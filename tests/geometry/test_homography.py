@@ -1189,7 +1189,7 @@ class TestHomographySharedKernels(BaseTester):
         src, dst = src[:, :4], dst[:, :4]
         n1, t1 = normalize_points(src)
         n2, t2 = normalize_points(dst)
-        model = _four_point_homography(n1.to(device, dtype), n2.to(device, dtype))[0].cpu().double()
+        model = _four_point_homography(_hom(n1).to(device, dtype), n2.to(device, dtype))[0].cpu().double()
         model = torch.linalg.inv(t2[0]) @ model @ t1[0]
         tolerance = 1e-6 if dtype == torch.float64 else 1e-3
         self.assert_close(model / model[2, 2], H[0] / H[0, 2, 2], atol=tolerance, rtol=tolerance)

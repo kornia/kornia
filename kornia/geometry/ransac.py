@@ -885,8 +885,8 @@ class RANSAC(nn.Module):
                 x1, x2 = x1[oriented], x2[oriented]
                 if len(x1) == 0:
                     return x1.new_zeros(0, 3, 3)
-                return _four_point_homography(x1[..., :2], x2[..., :2])
-            models = _four_point_homography(x1[..., :2], x2[..., :2])
+                return _four_point_homography(x1, x2)
+            models = _four_point_homography(x1, x2)
             return models.masked_fill(~oriented[:, None, None], float("nan"))
         design = _epipolar_design_rows(x1, x2)
         if self.minimal_sample_size == 7:

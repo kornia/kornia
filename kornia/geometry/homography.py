@@ -234,32 +234,38 @@ def _line_segment_squared_distance_one_way(ls1: torch.Tensor, ls2: torch.Tensor,
     return torch.where(length > 0, distance.square(), torch.full_like(distance, float("inf")))
 
 
-def _homography_design_rows(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
-    """DLT rows ``(..., 2N, 9)`` of correspondences ``(..., N, 2)``, two per correspondence, ``row . vec(H) = 0``.
+def _homography_rows(p1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    """DLT rows ``(..., 2N, 9)`` of homogeneous ``p1`` ``(..., N, 3)`` with unit last coordinate and ``points2``.
 
-    ``H`` is row-major and maps ``points1`` to ``points2``. Shared by :func:`find_homography_dlt` and RANSAC's
-    four-point sampler.
+    Two rows per correspondence, ``[0, -p1, y2 p1]`` and ``[p1, 0, -x2 p1]``, so that ``row . vec(H) = 0`` for
+    ``points2 ~ H p1`` with ``H`` row-major; only the first two coordinates of ``points2`` are read.
     """
-    x1, y1 = torch.chunk(points1, dim=-1, chunks=2)
-    x2, y2 = torch.chunk(points2, dim=-1, chunks=2)
-    ones, zeros = torch.ones_like(x1), torch.zeros_like(x1)
     # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf  # noqa: E501
-    ax = torch.cat([zeros, zeros, zeros, -x1, -y1, -ones, y2 * x1, y2 * y1, y2], dim=-1)
-    ay = torch.cat([x1, y1, ones, zeros, zeros, zeros, -x2 * x1, -x2 * y1, -x2], dim=-1)
-    return torch.cat((ax, ay), dim=-1).reshape(*ax.shape[:-2], -1, ax.shape[-1])
+    zeros = torch.zeros_like(p1)
+    ax = torch.cat([zeros, -p1, points2[..., 1:2] * p1], dim=-1)
+    ay = torch.cat([p1, zeros, -points2[..., 0:1] * p1], dim=-1)
+    return torch.stack([ax, ay], dim=-2).flatten(-3, -2)
 
 
-def _four_point_homography(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
-    """Homographies ``(B, 3, 3)`` of unit Frobenius norm through four normalized correspondences ``(B, 4, 2)``.
+def _homography_design_rows(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    """DLT rows ``(..., 2N, 9)`` of correspondences ``(..., N, 2)``, as :func:`_homography_rows`.
 
-    The null vector of :func:`_homography_design_rows` from
-    :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, in at least float32. Unlike
-    :func:`find_homography_dlt` there is no per-sample normalization, gauge solve or ``H[2, 2] = 1`` scaling: RANSAC's
-    sampler normalizes once per call and scores unit-norm models.
+    Each entry is the product the rows used to be written out with coordinate by coordinate, in fewer kernels.
     """
-    A = _homography_design_rows(points1, points2)
+    return _homography_rows(torch.cat([points1, torch.ones_like(points1[..., :1])], dim=-1), points2)
+
+
+def _four_point_homography(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """Homographies ``(B, 3, 3)`` of unit Frobenius norm through four normalized correspondences.
+
+    ``x1`` is homogeneous ``(B, 4, 3)`` with unit last coordinate and ``x2`` ``(B, 4, 2)`` or homogeneous. The null
+    vector of :func:`_homography_rows` comes from :func:`~kornia.geometry.solvers.homogeneous._null_space_lu`, in at
+    least float32. Unlike :func:`find_homography_dlt` there is no per-sample normalization, gauge solve or
+    ``H[2, 2] = 1`` scaling: RANSAC's sampler normalizes once per call and scores unit-norm models.
+    """
+    A = _homography_rows(x1, x2)
     h = _null_space_lu(A.to(torch.promote_types(A.dtype, torch.float32)))[..., 0]
-    return (h * h.square().sum(-1, keepdim=True).rsqrt()).reshape(-1, 3, 3).to(points1.dtype)
+    return (h * h.square().sum(-1, keepdim=True).rsqrt()).reshape(-1, 3, 3).to(x1.dtype)
 
 
 def _transfer_errors(H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, eps: float) -> torch.Tensor:
