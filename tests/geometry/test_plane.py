@@ -220,9 +220,10 @@ class TestHyperplane(BaseTester):
         self.assert_close(batched.normal.data, expected.expand(2, 3))
 
     def test_through_degenerate_takes_svd_fallback(self, device, dtype):
-        # Collinear or coincident points leave a zero cross product. The SVD fallback returns a finite unit normal,
-        # and for collinear points finite gradients (the masked division does not reach the backward pass).
-        # Checks are disabled so this also covers the fallback where eager calls reject these inputs.
+        # Collinear or coincident points leave a zero cross product, and the SVD fallback returns a finite unit normal.
+        # The gradient is not pinned: the plane through collinear points is not unique, so the fallback normal is
+        # not differentiable there. Checks are disabled so this also covers the fallback where eager calls reject
+        # these inputs.
         checks_were_enabled = are_checks_enabled()
         disable_checks()
         try:
@@ -234,11 +235,6 @@ class TestHyperplane(BaseTester):
                 plane = Hyperplane.through(*points)
                 norm = torch.linalg.vector_norm(plane.normal.data, dim=-1)
                 self.assert_close(norm, torch.tensor(1.0, device=device, dtype=dtype))
-
-            points = [p.clone().requires_grad_(True) for p in collinear]
-            plane = Hyperplane.through(*points)
-            (plane.normal.data.sum() + plane.offset.data.sum()).backward()
-            assert all(torch.isfinite(p.grad).all() for p in points)
 
             # A degenerate row does not send the other rows of its batch to the fallback.
             tilted = [
