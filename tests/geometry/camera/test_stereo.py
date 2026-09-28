@@ -209,10 +209,11 @@ class TestStereoCamera(BaseTester):
         disparity = torch.ones(disparity_shape, device=device, dtype=dtype)
 
         with pytest.raises(StereoException) as exc_info:
-            if entrypoint == "method":
+            (
                 camera.reproject_disparity_to_3D(disparity)
-            else:
-                reproject_disparity_to_3D(disparity, camera.Q)
+                if entrypoint == "method"
+                else reproject_disparity_to_3D(disparity, camera.Q)
+            )
 
         assert str(exc_info.value).splitlines()[0] == (
             "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "

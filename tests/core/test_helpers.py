@@ -101,9 +101,9 @@ class TestInverseCast:
         assert_close(op(x), op_jit(x))
 
     def test_not_invertible(self, device, dtype):
+        x = torch.tensor([[0.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
-            x = torch.tensor([[0.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype)
-            _ = _torch_inverse_cast(x)
+            _torch_inverse_cast(x)
 
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_closed_form_matches_linalg_inv(self, device, dtype, n):
