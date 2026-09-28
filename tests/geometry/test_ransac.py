@@ -23,7 +23,11 @@ import pytest
 import torch
 
 import kornia
-from kornia.geometry import RANSAC, _ransac_lm, transform_points
+from kornia.geometry import RANSAC, transform_points
+from kornia.geometry.epipolar._metrics import _sampson_errors
+from kornia.geometry.epipolar.fundamental import _rank2_projection, _refine_fundamental_lm
+from kornia.geometry.homography import _refine_homography_lm, _transfer_errors
+from kornia.geometry.ransac import _normalize_correspondences
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_from_homogeneous
 from kornia.geometry.epipolar import find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.homography import oneway_transfer_error
@@ -1842,57 +1846,30 @@ class TestRANSACLevenbergMarquardt(BaseTester):
 
 
 class TestRANSACLevenbergMarquardtKernels(BaseTester):
-    """The batched kernels of ``kornia.geometry._ransac_lm``."""
+    """RANSAC's normalization and the Levenberg-Marquardt refiners it calls."""
 
     def _skip_half(self, dtype):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the kernels run in float32 or float64")
 
-    def test_rank2_projection_matches_svd(self, device, dtype):
+    def test_normalize_correspondences(self, device, dtype):
         self._skip_half(dtype)
-        F = torch.randn(128, 3, 3, device=device, dtype=torch.float64)
-        U, S, Vh = torch.linalg.svd(F)
-        expected = U @ torch.diag_embed(S * torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64)) @ Vh
-        self.assert_close(_ransac_lm.rank2_projection(F), expected, atol=1e-9, rtol=0)
-
-    @pytest.mark.parametrize("points", [7, 8])
-    def test_minimal_fundamental_solvers_are_exact(self, device, dtype, points):
-        self._skip_half(dtype)
-        kp1, kp2, _, F, _ = _two_view_scene(points, 0, 0.0, seed=10)
-        x1, x2, t1, t2, _, _ = _ransac_lm.normalize_correspondences(kp1, kp2, True)
-        solve = _ransac_lm.fundamental_7pt if points == 7 else _ransac_lm.fundamental_8pt
-        models = solve(x1[None].to(device, dtype), x2[None].to(device, dtype)).reshape(-1, 3, 3).cpu().double()
-        models = t2.mT @ models @ t1
-        models = models / models.flatten(1).norm(dim=1)[:, None, None]
-        valid = torch.isfinite(models).flatten(1).all(1)
-        assert valid.any()
-        # Every root is a rank-2 matrix through the sample; one of them is the scene's F.
-        tolerance = 1e-6 if dtype == torch.float64 else 1e-2
-        assert torch.linalg.det(models[valid]).abs().max() < tolerance
-        distance = torch.minimum((models[valid] - F).flatten(1).norm(dim=1), (models[valid] + F).flatten(1).norm(dim=1))
-        assert distance.min() < tolerance
-
-    def test_minimal_homography_solver_is_exact(self, device, dtype):
-        self._skip_half(dtype)
-        kp1, kp2, _, H, _ = _planar_scene(4, 0, 0.0, seed=11)
-        x1, x2, t1, t2, _, _ = _ransac_lm.normalize_correspondences(kp1, kp2, False)
-        model = _ransac_lm.homography_4pt(x1[None].to(device, dtype), x2[None].to(device, dtype))[0].cpu().double()
-        model = torch.linalg.inv(t2) @ model @ t1
-        tolerance = 1e-6 if dtype == torch.float64 else 1e-3
-        self.assert_close(model / model[2, 2], H / H[2, 2], atol=tolerance, rtol=tolerance)
-
-    def test_scores_match_the_public_error_functions(self, device, dtype):
-        self._skip_half(dtype)
-        generator = torch.Generator().manual_seed(12)
-        x1 = torch.cat([torch.randn(50, 2, generator=generator), torch.ones(50, 1)], 1).to(device, dtype)
-        x2 = torch.cat([torch.randn(50, 2, generator=generator), torch.ones(50, 1)], 1).to(device, dtype)
-        models = torch.randn(6, 3, 3, generator=generator).to(device, dtype)
-        sampson = _ransac_lm.sampson_errors(models, _ransac_lm.sampson_basis(x1, x2))
-        transfer = _ransac_lm.transfer_errors(models, _ransac_lm.transfer_basis(x1, x2[:, :2]))
-        expected_sampson = sampson_epipolar_distance(x1[None, :, :2], x2[None, :, :2], models, eps=0.0)
-        expected_transfer = oneway_transfer_error(x1[None, :, :2], x2[None, :, :2], models, eps=0.0)
-        self.assert_close(sampson, expected_sampson, rtol=1e-3, atol=1e-5)
-        self.assert_close(transfer, expected_transfer, rtol=1e-3, atol=1e-5)
+        kp1, kp2, _, _, _ = _two_view_scene(50, 0, 0.0, seed=14)
+        kp1[3] = float("nan")
+        kp2[7, 0] = float("inf")
+        x1, x2, t1, t2, s1, s2 = _normalize_correspondences(kp1, kp2, True)
+        finite = torch.ones(50, dtype=torch.bool)
+        finite[[3, 7]] = False
+        # Correspondences that are not finite in both images stay non-finite and do not enter the statistics.
+        assert not torch.isfinite(x1[3]).all()
+        assert not torch.isfinite(x2[7]).all()
+        c1, c2 = kp1[finite].mean(0), kp2[finite].mean(0)
+        radius = ((kp1[finite] - c1).norm(dim=1).mean() + (kp2[finite] - c2).norm(dim=1).mean()) / 2
+        # One scale for both images: sqrt(2) over the mean of the two mean radii (normalize_points adds eps = 1e-8).
+        expected_scale = float((radius + 1e-8) / math.sqrt(2.0))
+        self.assert_close(torch.tensor([s1, s2]), torch.tensor([expected_scale, expected_scale]), rtol=1e-12, atol=0.0)
+        self.assert_close(x1[finite, :2], (kp1[finite] - c1) / s1, rtol=1e-9, atol=1e-12)
+        self.assert_close((t2 @ torch.cat([kp2[finite], torch.ones(48, 1, dtype=kp2.dtype)], 1).T).T, x2[finite])
 
     @pytest.mark.parametrize("model_type", ["homography", "fundamental"])
     @pytest.mark.parametrize("loss", ["cauchy", "truncated"])
@@ -1901,22 +1878,28 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
         # Noisy inliers only, refined from a perturbed ground truth: the refit's cost is below the start's and does
         # not drop along small steps in any direction of the model's manifold.
         kp1, kp2, _, truth, _ = _scene(model_type, 80, 0, 1.0, seed=13)
-        x1, x2, t1, t2, s1, s2 = _ransac_lm.normalize_correspondences(kp1, kp2, model_type != "homography")
+        x1, x2, t1, t2, s1, s2 = _normalize_correspondences(kp1, kp2, model_type != "homography")
         if model_type == "homography":
             start = t2 @ truth @ torch.linalg.inv(t1)
-            refine, errors = _ransac_lm.refine_homography, _ransac_lm.transfer_errors
-            basis, scale2, x2_arg = _ransac_lm.transfer_basis(x1, x2[:, :2]), (2.0 / s2) ** 2, x2[:, :2]
+            refine, scale2, x2_arg = _refine_homography_lm, (2.0 / s2) ** 2, x2[:, :2]
+
+            def errors(models):
+                return _transfer_errors(models, x1, x2[:, :2], 0.0)
+
         else:
             start = torch.linalg.inv(t2).mT @ truth @ torch.linalg.inv(t1)
-            refine, errors = _ransac_lm.refine_fundamental, _ransac_lm.sampson_errors
-            basis, scale2, x2_arg = _ransac_lm.sampson_basis(x1, x2), (2.0 / s1) ** 2, x2
+            refine, scale2, x2_arg = _refine_fundamental_lm, (2.0 / s1) ** 2, x2
+
+            def errors(models):
+                return _sampson_errors(models, x1, x2, 0.0)
+
         start = start / start.norm()
         start = start + 1e-2 * torch.randn(3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
         if model_type != "homography":
-            start = _ransac_lm.rank2_projection(start[None])[0]
+            start = _rank2_projection(start[None])[0]
 
         def cost(models):
-            r2 = errors(models, basis)
+            r2 = errors(models)
             return (torch.log1p(r2 / scale2) if loss == "cauchy" else torch.fmin(r2, torch.tensor(scale2))).sum(1)
 
         refined = refine(start[None].to(device), x1.to(device), x2_arg.to(device), None, loss, scale2, 20).cpu()
@@ -1924,5 +1907,5 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
         steps = 1e-4 * torch.randn(32, 3, 3, generator=torch.Generator().manual_seed(1), dtype=torch.float64)
         neighbours = refined + steps * refined.norm()
         if model_type != "homography":
-            neighbours = _ransac_lm.rank2_projection(neighbours)
+            neighbours = _rank2_projection(neighbours)
         assert (cost(neighbours) >= cost(refined) * (1 - 1e-9)).all()

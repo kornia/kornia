@@ -28,11 +28,23 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry import _ransac_lm
+from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
-from kornia.geometry.epipolar.fundamental import normalize_transformation
+from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
+from kornia.geometry.epipolar.fundamental import (
+    _eight_point_fundamental,
+    _epipolar_design_rows,
+    _refine_fundamental_lm,
+    _seven_point_candidates,
+    normalize_points,
+    normalize_transformation,
+)
 from kornia.geometry.homography import (
+    _four_point_homography,
     _line_segment_squared_distance_one_way,
+    _refine_homography_lm,
+    _transfer_basis,
+    _transfer_from_basis,
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
@@ -63,6 +75,32 @@ def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, .
         ends.append(ends[-1] + max(1, math.ceil(next_expected - expected)))
         expected = next_expected
     return tuple(ends)
+
+
+def _normalize_correspondences(
+    kp1: torch.Tensor, kp2: torch.Tensor, shared_scale: bool
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, float, float]:
+    r"""Hartley-normalize both images' correspondences with :func:`normalize_points`, once per RANSAC call.
+
+    Statistics use the correspondences finite in both images (weight 1, the others weight 0); the others stay
+    non-finite and so are never counted as inliers. ``shared_scale`` gives both images the scale of the mean of their
+    two mean radii, which keeps the Sampson distance a multiple of the pixel one: :func:`normalize_points` scales by
+    :math:`\sqrt{2} / (r + \epsilon)`, so that scale is the harmonic mean of the two.
+
+    Returns:
+        Homogeneous normalized points ``(N, 3)`` of each image, the ``(3, 3)`` transforms that map pixels to them, and
+        the two scales in pixels per normalized unit.
+    """
+    finite = (torch.isfinite(kp1).all(1) & torch.isfinite(kp2).all(1)).to(kp1.dtype)
+    points, transforms = normalize_points(torch.stack([kp1, kp2]), weights=finite.expand(2, -1))
+    if shared_scale:
+        scale = transforms[:, 0, 0]
+        ratio = (2.0 / (1.0 / scale).sum()) / scale
+        points = points * ratio[:, None, None]
+        transforms = torch.cat([transforms[:, :2] * ratio[:, None, None], transforms[:, 2:]], 1)
+    points = convert_points_to_homogeneous(points)
+    s1, s2 = (1.0 / transforms[:, 0, 0]).tolist()
+    return points[0], points[1], transforms[0], transforms[1], s1, s2
 
 
 class RANSAC(nn.Module):
@@ -845,19 +883,24 @@ class RANSAC(nn.Module):
             oriented = sample_is_valid_for_homography(x1[..., :2], x2[..., :2])
             if compact:
                 x1, x2 = x1[oriented], x2[oriented]
-                return _ransac_lm.homography_4pt(x1, x2) if len(x1) > 0 else x1.new_zeros(0, 3, 3)
-            return _ransac_lm.homography_4pt(x1, x2).masked_fill(~oriented[:, None, None], float("nan"))
+                if len(x1) == 0:
+                    return x1.new_zeros(0, 3, 3)
+                return _four_point_homography(x1[..., :2], x2[..., :2])
+            models = _four_point_homography(x1[..., :2], x2[..., :2])
+            return models.masked_fill(~oriented[:, None, None], float("nan"))
+        design = _epipolar_design_rows(x1, x2)
         if self.minimal_sample_size == 7:
-            models = _ransac_lm.fundamental_7pt(x1, x2).flatten(0, 1)
+            candidates, valid = _seven_point_candidates(design)
+            models = candidates.masked_fill(~valid[..., None, None], float("nan")).flatten(0, 1)
         else:
-            models = _ransac_lm.fundamental_8pt(x1, x2)
+            models = _eight_point_fundamental(design)
         return models[torch.isfinite(models).flatten(1).all(1)] if compact else models
 
     def _lm_errors(self, models: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
         """Squared residuals ``(M, N)``, in normalized units, of normalized models on normalized correspondences."""
         if self.model_type == "homography":
-            return _ransac_lm.transfer_errors(models, _ransac_lm.transfer_basis(x1, x2[:, :2]))
-        return _ransac_lm.sampson_errors(models, _ransac_lm.sampson_basis(x1, x2))
+            return _transfer_from_basis(models, _transfer_basis(x1, x2[:, :2]))
+        return _sampson_from_quadratic_basis(models, _sampson_quadratic_basis(x1, x2))
 
     def _lm_score(self, errors: torch.Tensor, threshold: float) -> torch.Tensor:
         """MSAC scores ``sum(1 - min(e / threshold, 1))`` or RANSAC support counts ``(M,)`` of squared residuals."""
@@ -878,15 +921,19 @@ class RANSAC(nn.Module):
     ) -> torch.Tensor:
         """Refine normalized models with Levenberg-Marquardt; all inputs are float64 host tensors."""
         if self.model_type == "homography":
-            return _ransac_lm.refine_homography(models, x1, x2[:, :2], mask, loss, scale2, iters)
-        return _ransac_lm.refine_fundamental(models, x1, x2, mask, loss, scale2, iters)
+            return _refine_homography_lm(models, x1, x2[:, :2], mask, loss, scale2, iters)
+        return _refine_fundamental_lm(models, x1, x2, mask, loss, scale2, iters)
 
     def _forward_lm(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """RANSAC with batched minimal solvers and Levenberg-Marquardt local optimization and refinement.
 
-        Sampling, minimal solving and scoring run on the device of the correspondences; the normalization,
-        the refinements and the final selection run on the host in float64, which needs a handful of
-        synchronizations per call instead of one per small operation.
+        Sampling, minimal solving and scoring run on the device of the correspondences; the normalization, the
+        refinements and the final selection run on the host in float64, which needs a handful of synchronizations
+        per call instead of one per small operation. What differs from the public solvers is what a sampling loop
+        needs: correspondences are normalized once per call rather than per sample, models stay in that normalized
+        frame at unit Frobenius norm instead of ``F[2, 2] = 1``, absent candidates are NaN on accelerators rather than
+        dropped, and scoring uses the quadratic Sampson and folded transfer bases, which are fast and accurate in that
+        frame only.
         """
         device, dtype = kp1.device, kp1.dtype
         work = torch.float64 if dtype == torch.float64 else torch.float32
@@ -895,12 +942,14 @@ class RANSAC(nn.Module):
         failure = (torch.zeros(3, 3, dtype=dtype, device=device), torch.zeros(num_tc, dtype=torch.bool, device=device))
         host = torch.device("cpu")
         # The Sampson distance scales with a similarity shared by both images; the transfer error with image 2's.
-        x1_host, x2_host, t1, t2, s1, s2 = _ransac_lm.normalize_correspondences(
-            kp1.detach().to(host, torch.float64), kp2.detach().to(host, torch.float64), not planar
-        )
+        kp1_host, kp2_host = kp1.detach().to(host, torch.float64), kp2.detach().to(host, torch.float64)
+        finite = torch.isfinite(kp1_host).all(1) & torch.isfinite(kp2_host).all(1)
+        if not bool(finite.any()):
+            return failure
+        x1_host, x2_host, t1, t2, s1, s2 = _normalize_correspondences(kp1_host, kp2_host, not planar)
         threshold = (self.inl_th / (s2 if planar else s1)) ** 2
         x1, x2 = x1_host.to(device, work), x2_host.to(device, work)
-        basis = _ransac_lm.transfer_basis(x1, x2[:, :2]) if planar else _ransac_lm.sampson_basis(x1, x2)
+        basis = _transfer_basis(x1, x2[:, :2]) if planar else _sampson_quadratic_basis(x1, x2)
         budget = self.sample_budget
         batch, largest = self._lm_batch_range(num_tc, device)
         grow = not isinstance(self.batch_size, int)
@@ -916,7 +965,7 @@ class RANSAC(nn.Module):
             models = self._lm_minimal_models(x1[indices], x2[indices])
             if len(models) == 0:
                 continue
-            errors = _ransac_lm.transfer_errors(models, basis) if planar else _ransac_lm.sampson_errors(models, basis)
+            errors = _transfer_from_basis(models, basis) if planar else _sampson_from_quadratic_basis(models, basis)
             top_scores, top = self._lm_score(errors, threshold).topk(min(_LM_CANDIDATES, len(models)))
             # Support is counted for the best-scoring models only; a model needs more inliers than its sample.
             top_inliers = errors[top] <= threshold
@@ -937,7 +986,6 @@ class RANSAC(nn.Module):
                 else:
                     support = int(counts[best])
                     max_samples = min(budget, self.max_samples_by_conf(support, num_tc, m, self.confidence))
-        finite = torch.isfinite(x1_host).all(1) & torch.isfinite(x2_host).all(1)
         x1_host, x2_host = x1_host[finite], x2_host[finite]
         candidates = candidates.to(host, torch.float64)[candidate_scores.to(host) >= 0]
         if len(candidates) == 0:
