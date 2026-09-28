@@ -37,6 +37,19 @@ class TestMeanAveragePrecision(BaseTester):
         self.assert_close(mean_ap[0], torch.tensor(1.0, device=device, dtype=dtype))
         self.assert_close(mean_ap[1][1], 1.0)
 
+    def test_recall_per_class(self, device, dtype):
+        # Two objects of different classes in one image, each detected exactly. Recall is taken
+        # over the objects of the class being scored, so both classes reach recall 1 and AP 1.
+        boxes = torch.tensor([[0.0, 0.0, 10.0, 10.0], [20.0, 20.0, 30.0, 30.0]], device=device, dtype=dtype)
+        labels = torch.tensor([1, 2], device=device, dtype=torch.long)
+        scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [boxes], [labels], 3)
+
+        self.assert_close(mean_ap, torch.tensor(1.0, device=device, dtype=dtype))
+        self.assert_close(ap[1], 1.0)
+        self.assert_close(ap[2], 1.0)
+
     def test_raise(self, device, dtype):
         boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
         labels = torch.tensor([1], device=device, dtype=torch.long)
