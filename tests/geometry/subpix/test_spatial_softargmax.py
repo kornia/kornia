@@ -531,7 +531,7 @@ class TestConvSoftArgmax3d(BaseTester):
         for expected, actual in zip(op(data, temperature=temperature), op_opt(data, temperature=temperature)):
             self.assert_close(expected, actual)
 
-    @pytest.mark.parametrize("kernel_size", [(3, 3, 3), (5, 5, 5), (5, 3, 4)])
+    @pytest.mark.parametrize("kernel_size", [(3, 3, 3), (5, 5, 5), (5, 3, 4), (4, 4, 2)])
     def test_window_offset_in_pixels_5017(self, device, dtype, kernel_size):
         # 3-D counterpart of TestConvSoftArgmax2d::test_window_offset_in_pixels_5017: the depth offset used to
         # come from linspace(-1, 1, d), so a 5-deep window reported depth 4 for a peak at depth 5.
