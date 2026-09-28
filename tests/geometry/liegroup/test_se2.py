@@ -556,3 +556,13 @@ class TestSe2(BaseTester):
             self.assert_close(g * p, p)
         assert isinstance(identity * Vector2(p), Vector2)
         self.assert_close((identity * Vector2(p)).data, p)
+
+    def test_random_translation_is_uniform_in_the_unit_interval(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("torch.complex has no bfloat16 overload and ComplexHalf support is experimental")
+        # random draws its translation with torch.rand, which the Vector2 it used to build drew as well (#4931).
+        torch.manual_seed(0)
+        t = Se2.random(1000, device=device, dtype=dtype).t
+        assert t.shape == (1000, 2)
+        assert t.min() >= 0 and t.max() <= 1, (t.min(), t.max())
+        assert 0.45 < t.mean() < 0.55, t.mean()

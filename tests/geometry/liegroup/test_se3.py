@@ -572,3 +572,11 @@ class TestSe3(BaseTester):
         assert not result.missing_keys and not result.unexpected_keys
         self.assert_close(dst.t, src.t.detach())
         self.assert_close(dst.r.matrix(), eye)
+
+    def test_random_translation_is_uniform_in_the_unit_interval(self, device, dtype):
+        # random draws its translation with torch.rand, which the Vector3 it used to build drew as well (#4931).
+        torch.manual_seed(0)
+        t = Se3.random(1000, device=device, dtype=dtype).t
+        assert t.shape == (1000, 3)
+        assert t.min() >= 0 and t.max() <= 1, (t.min(), t.max())
+        assert 0.45 < t.mean() < 0.55, t.mean()
