@@ -902,6 +902,8 @@ class TestEpipolarDesignRows(BaseTester):
 
 class TestRankTwoProjection(BaseTester):
     def test_matches_svd(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         F = torch.randn(128, 3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
         U, S, Vh = torch.linalg.svd(F)
         expected = U @ torch.diag_embed(S * torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64)) @ Vh
@@ -924,6 +926,8 @@ class TestRankTwoProjection(BaseTester):
     def test_repeated_singular_values(self, device, values, rotate):
         # At a repeated smallest singular value the nearest rank-2 matrix is not unique, so compare what every one of
         # them shares with the SVD's: the two largest singular values, a zero third one, and the distance sigma_3.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         F = _with_singular_values(values, rotate).to(device)[None]
         P = _rank2_projection(F)
         s = torch.linalg.svdvals(F)[0]
@@ -946,6 +950,8 @@ class TestRankTwoProjection(BaseTester):
         assert (P - expected).abs().max() < 1e-5
 
     def test_backward_is_finite_at_a_repeated_spectrum(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         F = torch.eye(3, device=device, dtype=torch.float64)[None].requires_grad_()
         _rank2_projection(F).sum().backward()
         assert torch.isfinite(F.grad).all()
@@ -1072,6 +1078,8 @@ class TestSevenPoint(BaseTester):
     def test_backward_is_finite(self, device, idx):
         # The second sample has one real root (#4862): masking candidates built from NaN roots used to leave NaN in
         # the backward pass although the output was finite.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         two_view = two_view_scene(device, torch.float64)
         x1 = two_view["x1"][:, idx].clone().requires_grad_()
         F = epi.find_fundamental(x1, two_view["x2"][:, idx], method="7POINT")
