@@ -58,6 +58,29 @@ class TestSaveLoadPointCloud(BaseTester):
         assert xyz_load.shape == (height * width, 3)
         self.assert_close(xyz_load, xyz_save.reshape(-1, 3))
 
+    def test_ascii_writer_round_trips_float64(self, tmp_path):
+        # The ASCII writer declares `property double` and converts to float64, so a
+        # written value must read back exactly: a fixed significant-digit format
+        # loses the digits past the ninth (UTM-scale metres off by millimetres),
+        # while the binary writer stores the same values bit-exactly.
+        pts = torch.tensor(
+            [[0.1234567890123456, -4.5, 1e-7], [5123456.789012, 612345.678901, 123.456789012]],
+            dtype=torch.float64,
+        )
+
+        filename = str(tmp_path / "pointcloud_f64.ply")
+        kornia.geometry.save_pointcloud_ply(filename, pts)
+
+        xyz_load = kornia.geometry.load_pointcloud_ply(filename)
+        assert xyz_load.dtype == torch.float32, "the loader returns float32"
+        # The loader downcasts to float32, so compare through the written text: every
+        # float64 value must survive the write as its exact shortest round-trip form.
+        with open(filename, encoding="utf-8") as f:
+            body = f.read()
+        assert body.splitlines()[0] == "ply"
+        for value in (0.1234567890123456, 5123456.789012, 612345.678901):
+            assert repr(value) in body
+
     def test_invalid_filename_type(self):
         xyz_save = torch.rand(10, 3)
         with pytest.raises(TypeError):

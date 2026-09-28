@@ -75,9 +75,11 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         if num_points > 0:
             # Move to CPU, convert to float64 for matching 'double' in header
             arr = xyz.detach().cpu().to(torch.float64)
-            # Write each row as space-separated floats
+            # Write each row as space-separated floats. repr of a Python float is the
+            # shortest string that round-trips it exactly, which a 'double' property
+            # needs; a fixed significant-digit count silently loses float64 precision.
             for x, y, z in arr.tolist():
-                f.write(f"{x:.9g} {y:.9g} {z:.9g}\n")
+                f.write(f"{x!r} {y!r} {z!r}\n")
 
 
 def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
