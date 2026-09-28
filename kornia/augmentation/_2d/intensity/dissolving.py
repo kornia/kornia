@@ -34,22 +34,16 @@ class RandomDissolving(IntensityAugmentationBase2D):
     and SD XL; once ``diffusers`` is importable, any other ``version`` raises a bare ``NotImplementedError``
     (without it, construction fails on the optional-dependency prompt before the version is looked at).
 
-    .. note::
-        The table below does not render: its cells are missing the ``..`` directive marker, so Sphinx
-        prints ``figure:: https://...`` as text, and the ``SD xl`` column still points at the SD 2.1
-        image because ``dslv-sd-xl.png`` is a 404 in the ``kornia/data`` repository. Tracked in
-        `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
-
-    .. list-table:: Title
+    .. list-table::
         :widths: 32 32 32
         :header-rows: 1
 
         * - SD 1.4
           - SD 1.5
-          - SD xl
-        * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
+          - SD XL
+        * - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
+          - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
+          - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
 
     Args:
         p: probability of applying the transformation.
