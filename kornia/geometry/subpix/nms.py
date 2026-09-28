@@ -141,9 +141,6 @@ class NonMaximaSuppression2d(nn.Module):
         neighbors are suppressed. This is commonly used to turn dense corner or
         keypoint response maps into sparse candidate locations.
 
-        The first ``(k - 1) // 2`` and last ``k // 2`` rows and columns are never maxima: their window
-        does not fit inside the input, so the comparisons that would decide them cannot be made.
-
         Args:
             x: Response tensor with shape :math:`(B, C, H, W)`, where
                 :math:`B` is the batch size, :math:`C` is the number of
@@ -314,9 +311,6 @@ class NonMaximaSuppression3d(nn.Module):
         Each voxel is compared with its neighbors across depth, height, and
         width. This is used by scale-space detectors to keep responses that are
         locally maximal both in image position and in scale/depth.
-
-        As in :meth:`NonMaximaSuppression2d.forward`, the first ``(k - 1) // 2`` and last ``k // 2``
-        positions of each axis are never maxima: their window does not fit inside the input.
 
         Args:
             x: Response tensor with shape :math:`(B, C, D, H, W)`, where

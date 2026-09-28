@@ -165,8 +165,8 @@ def create_meshgrid3d(
           corner-aligned; reorder its last axis with ``grid[..., [1, 2, 0]]`` before passing it to
           :py:func:`torch.nn.functional.grid_sample`.
         - A size-1 axis is ``0`` and a size-0 axis gives an empty grid.
-        - Known defect: there is no ``align_corners`` argument, so its normalized grid cannot match
-          ``grid_sample(..., align_corners=False)`` on a non-singleton axis
+        - Known defect: there is no ``align_corners`` argument, so the half-pixel grid that
+          ``grid_sample(..., align_corners=False)`` expects cannot be requested
           (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
 
     Args:

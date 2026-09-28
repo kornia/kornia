@@ -813,9 +813,10 @@ def conv_quad_interp3d(
           precomputed for ``dilation_radius``, when the final shift exceeds ``1.5`` voxels on any axis, or when it
           still requires an integer-centre move on the last iteration. A volume with a side shorter than 3 is returned
           unrefined.
-        - Known defect: refinement depends on response amplitude because the ``1e-7`` determinant floor is absolute
-          while the determinant is cubic in that amplitude. Low-amplitude peaks can therefore remain at their
-          integer-grid position and lose subpixel refinement (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
+        - Known defect: the ``1e-7`` determinant floor is absolute while the determinant is cubic in the response
+          amplitude, so low-amplitude maxima stay unrefined, among them most keypoints of the default
+          :class:`~kornia.feature.ScaleSpaceDetector` on a ``[0, 1]`` image
+          (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.
