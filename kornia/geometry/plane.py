@@ -42,12 +42,15 @@ class Hyperplane(nn.Module):
           :func:`~kornia.geometry.depth.depth_from_plane_equation` takes :math:`n \cdot X = d` instead: pass it
           ``-offset``.
         - The normal must be unit for :meth:`signed_distance`, :meth:`abs_distance` and :meth:`projection` to give
-          Euclidean distances and the closest point; the constructor and :meth:`from_vector` do not normalise it.
+          Euclidean distances and the closest point. :meth:`through` and :func:`fit_plane` return a unit normal; the
+          constructor and :meth:`from_vector` do not normalise it.
         - :meth:`through` points the normal along :math:`(p_2 - p_0) \times (p_1 - p_0)`, as Eigen's
           ``Hyperplane::Through`` does: the opposite of the right-hand normal of the loop
           :math:`p_0 \to p_1 \to p_2`. Swapping two points flips it.
-        - Known defect: ``normal`` and ``offset`` are not registered module state, so ``state_dict()`` is empty and
-          ``.to()`` neither moves nor casts them (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - Known defects: ``normal`` and ``offset`` are not registered module state, so ``state_dict()`` is empty and
+          ``.to()`` neither moves nor casts them (`#4923 <https://github.com/kornia/kornia/issues/4923>`_); in
+          float16 a small triangle whose cross product underflows gets the opposite normal from :meth:`through`
+          (`#5064 <https://github.com/kornia/kornia/issues/5064>`_).
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
