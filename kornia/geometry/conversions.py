@@ -1843,13 +1843,18 @@ def normalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
+    normalization_dtype = (
+        dst_pix_trans_src_pix.dtype
+        if dst_pix_trans_src_pix.is_floating_point() or dst_pix_trans_src_pix.is_complex()
+        else None
+    )
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(
         src_h,
         src_w,
         device=dst_pix_trans_src_pix.device,
-        dtype=dst_pix_trans_src_pix.dtype,
+        dtype=normalization_dtype,
         align_corners=align_corners,
-    )
+    ).to(dst_pix_trans_src_pix)
 
     # Closed-form 3x3 inverse of the (well-conditioned) pixel-normalization matrix: cusolver-free,
     # so homography normalization runs on the Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
@@ -1858,9 +1863,9 @@ def normalize_homography(
         dst_h,
         dst_w,
         device=dst_pix_trans_src_pix.device,
-        dtype=dst_pix_trans_src_pix.dtype,
+        dtype=normalization_dtype,
         align_corners=align_corners,
-    )
+    ).to(dst_pix_trans_src_pix)
 
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
@@ -2215,21 +2220,26 @@ def denormalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
+    normalization_dtype = (
+        dst_pix_trans_src_pix.dtype
+        if dst_pix_trans_src_pix.is_floating_point() or dst_pix_trans_src_pix.is_complex()
+        else None
+    )
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(
         src_h,
         src_w,
         device=dst_pix_trans_src_pix.device,
-        dtype=dst_pix_trans_src_pix.dtype,
+        dtype=normalization_dtype,
         align_corners=align_corners,
-    )
+    ).to(dst_pix_trans_src_pix)
 
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(
         dst_h,
         dst_w,
         device=dst_pix_trans_src_pix.device,
-        dtype=dst_pix_trans_src_pix.dtype,
+        dtype=normalization_dtype,
         align_corners=align_corners,
-    )
+    ).to(dst_pix_trans_src_pix)
     dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
@@ -2291,14 +2301,19 @@ def normalize_homography3d(
     src_d, src_h, src_w = dsize_src
     dst_d, dst_h, dst_w = dsize_dst
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
-        src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=dst_pix_trans_src_pix.dtype
+    normalization_dtype = (
+        dst_pix_trans_src_pix.dtype
+        if dst_pix_trans_src_pix.is_floating_point() or dst_pix_trans_src_pix.is_complex()
+        else None
     )
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
+        src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
+    ).to(dst_pix_trans_src_pix)
 
     src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
-        dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=dst_pix_trans_src_pix.dtype
-    )
+        dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
+    ).to(dst_pix_trans_src_pix)
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
     return dst_norm_trans_src_norm

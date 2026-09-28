@@ -483,8 +483,7 @@ def _ambient_default_dtype(dtype: torch.dtype) -> Iterator[None]:
     # Swap the PROCESS-WIDE torch default dtype for the duration of a with-block, restoring it even
     # if the body raises. The finally-restore is the safety-critical part -- a leaked float64
     # default would silently change every later test's tolerances across the whole suite -- so it
-    # lives in one place instead of being hand-rolled at each ambient-default pin (the two #3958
-    # pins today; any future one should use this too).
+    # lives in one place instead of being hand-rolled at each ambient-default pin.
     previous = torch.get_default_dtype()
     torch.set_default_dtype(dtype)
     try:
@@ -3530,9 +3529,8 @@ class TestNormalTransformPixel(BaseTester):
         # Python ints rather than tensors. With dtype=None the matrix is built by torch.tensor()
         # from Python floats, so its dtype is torch's AMBIENT default rather than float32
         # unconditionally: changing the process default changes the result. That is the mechanism
-        # behind the float32 constants that leak into float64 homography pipelines (kornia#3958,
-        # pinned in TestNormalizeHomography): normalize_homography calls these helpers without
-        # passing dtype= through, so they materialise at the ambient default and are cast after.
+        # behind the former float32 constants in float64 homography pipelines: the public
+        # homography functions now pass their input dtype through explicitly.
         # The dtype fixture is dropped because the claim is about the *absence* of a dtype
         # argument, and the default is read back through torch.get_default_dtype() rather than
         # hardcoded, so the pin says "follows the ambient default" and not "is always float32".
@@ -3555,10 +3553,7 @@ class TestNormalTransformPixel(BaseTester):
         with _ambient_default_dtype(torch.float64):
             ambient_dtype = normal_transform_pixel(4, 5).dtype
 
-        assert ambient_dtype == torch.float64, (
-            "normal_transform_pixel no longer follows the ambient default dtype, so the kornia#3958 "
-            "mechanism pinned in TestNormalizeHomography has changed"
-        )
+        assert ambient_dtype == torch.float64, "normal_transform_pixel no longer follows the ambient default dtype"
 
     def test_convention_corner_aligned_scale_is_two_over_size_minus_one(self, device):
         # Convention pin: by default the matrix is diag(2/(width - 1), 2/(height - 1), 1) with a -1
@@ -3822,9 +3817,7 @@ class TestNormalizeHomography(BaseTester):
     # normal_transform_pixel, whose corner-aligned convention all three inherit.
     # The CONVENTION pins below (composition, direction, round-trip, batching, 3-D) use sizes of
     # the form 2**k + 1 (3, 5, 9, 17) so that every 2/(size - 1) is exact in every dtype and those
-    # pins compare at atol=rtol=0. That also keeps them independent of kornia#3958 (the float32
-    # constants leak, pinned separately below with non-dyadic sizes): a fix for #3958 must not flip
-    # an ordering or direction pin. The exactness invariant is theirs alone -- the bug pins below
+    # pins compare at atol=rtol=0. The exactness invariant is theirs alone -- the numerical pins below
     # deliberately step outside it (the round-trip pin's non-dyadic (4, 5)/(8, 9) legs at
     # atol=32*eps, the #3960 shape-guard cells), so a new atol=0 pin belongs here
     # only at these sizes AND with a literal whose intermediates are exact. The invariant also
@@ -3843,11 +3836,10 @@ class TestNormalizeHomography(BaseTester):
     # NOTE: kornia#3904 landed and moved none of these. normalize_homography and
     # denormalize_homography now take an align_corners argument and forward it to
     # normal_transform_pixel, but it defaults to True, so the composition, direction, round-trip,
-    # batching and 3-D pins here -- and the #3957 singleton and #3958 bug pins -- still see the
+    # batching and 3-D pins here -- and the #3957 singleton pin -- still see the
     # corner-aligned 2/(size - 1) constants they were written against. normalize_homography3d has no
     # such argument at all. A change to that default, not the parameter, is what would flip them.
-    # They record current default behavior; none of them ratifies that choice as contract. (The
-    # #3958 pins would also flip on a #3958 fix, which is their point and is separate from this.)
+    # They record current default behavior; none of them ratifies that choice as contract.
 
     def test_gradcheck(self, device):
         # The three functions are on the warp_perspective path and are differentiable in their
@@ -4103,19 +4095,13 @@ class TestNormalizeHomography(BaseTester):
         )
 
     def test_convention_float64_input_gets_float64_normalization_constants(self, device):
-        # Intended behavior: a float64 homography is normalized with float64 constants, so the
-        # entries carry float64 accuracy. They do not: normalize_homography calls
-        # normal_transform_pixel() without passing dtype= through, so the constants materialise at
-        # the ambient default (float32) and are cast to float64 afterwards, leaving about eight
-        # significant digits. For sizes (4, 4) -> (6, 6) the (0, 0) entry is mathematically
+        # A float64 homography is normalized with float64 constants, so the entries carry float64
+        # accuracy. For sizes (4, 4) -> (6, 6) the (0, 0) entry is mathematically
         # 2/(6 - 1) * (4 - 1)/2 = 0.6 exactly, and any float64-native evaluation lands within an ulp
         # of it; the tolerance 1e-12 sits four orders above float64 noise and three below the
-        # deviation the current implementation produces.
-        # Non-dyadic sizes are required here: with 2**k + 1 sizes the float32 constants are exact
-        # and there is nothing to leak, which is why the ordering pins above use them and this pin
-        # does not. float64 is hardcoded and the dtype fixture dropped because the claim is a
-        # float64 claim, and the skip is visible so that on MPS, which has no float64, a raw
-        # TypeError cannot satisfy the raises=AssertionError mark instead of the assertion.
+        # deviation from float64 arithmetic. Non-dyadic sizes are required here: with 2**k + 1
+        # sizes the constants are exact. float64 is hardcoded and the dtype fixture dropped because
+        # the claim is a float64 claim.
         _skip_if_dtype_unavailable(device, torch.float64)
 
         identity = torch.eye(3, device=device, dtype=torch.float64)[None]
