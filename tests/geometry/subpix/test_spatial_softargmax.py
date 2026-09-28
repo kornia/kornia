@@ -765,6 +765,33 @@ class TestConvQuadInterp3d(BaseTester):
         coord5, _ = conv_quad_interp3d(sample, n_iters=5)
         self.assert_close(coord1, coord5, atol=1e-5, rtol=1e-5)
 
+    @pytest.mark.parametrize("op", ["conv_quad_interp3d", "iterative_quad_interp3d"])
+    @pytest.mark.parametrize("n_iters, expected_x, converged", [(1, 5.0, False), (2, 5.65, True)])
+    def test_last_iteration_move_rejects_5038(self, device, dtype, op, n_iters, expected_x, converged):
+        # Quadratic with its peak (value 0) at (d, y, x) = (1, 2, 5.65); the candidate is forced at x = 5. The solve
+        # there asks for a 0.65 > max_subpixel_shift move, so the centre steps to x = 6. With n_iters=1 no solve
+        # follows: the point has not converged and is rejected, keeping its grid coordinate and the value read at
+        # that voxel, -(5 - 5.65)**2. It used to be reported at the new centre plus the old shift, 6.65, with the
+        # value read at x = 6. With n_iters=2 the solve at x = 6 converges to the true 5.65.
+        D, H, W = 4, 6, 9
+        zz, yy, xx = torch.meshgrid(
+            torch.arange(D, device=device, dtype=dtype),
+            torch.arange(H, device=device, dtype=dtype),
+            torch.arange(W, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        sample = (-((xx - 5.65) ** 2) - (yy - 2) ** 2 - (zz - 1) ** 2)[None, None]
+        mask = torch.zeros(1, 1, D, H, W, dtype=torch.bool, device=device)
+        mask[0, 0, 1, 2, 5] = True
+        kwargs = {"dilation_radius": 2} if op == "conv_quad_interp3d" else {}
+        coord, val = getattr(kornia.geometry.subpix, op)(sample, n_iters=n_iters, precomputed_nms_mask=mask, **kwargs)
+        # coords_max layout: dim2 = [scale, x(width), y(height)]
+        expected = torch.tensor([1.0, expected_x, 2.0], device=device, dtype=dtype)
+        self.assert_close(coord[0, 0, :, 1, 2, 5], expected, atol=1e-4, rtol=1e-4)
+        # a rejected point keeps the input value at its NMS voxel; the converged one reads the peak value 0
+        expected_val = sample[0, 0, 1, 2, 5] if not converged else torch.zeros((), device=device, dtype=dtype)
+        self.assert_close(val[0, 0, 1, 2, 5], expected_val, atol=1e-4, rtol=1e-4)
+
 
 class TestAdaptiveQuadInterp3d(BaseTester):
     def test_smoke(self, device, dtype):
