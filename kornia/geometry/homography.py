@@ -25,6 +25,7 @@ from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inver
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.epipolar._metrics import _shares_points
+from kornia.geometry.epipolar.fundamental import _robust_loss
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
@@ -321,6 +322,57 @@ def _transfer_from_basis(H: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
     n = basis.shape[1] // 3
     out = H.flatten(1) @ basis
     return (out[:, :n].square() + out[:, n : 2 * n].square()) / out[:, 2 * n :].square()
+
+
+def _refine_homography_lm(
+    H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, mask: Optional[torch.Tensor], loss: str, scale2: float, iters: int
+) -> torch.Tensor:
+    """Levenberg-Marquardt on the one-way transfer error, batched over homographies ``(K, 3, 3)``.
+
+    In the spirit of PoseLib's ``refine_homography``: steps are taken in the eight-dimensional orthogonal complement of
+    the unit-norm ``vec(H)`` and renormalized. ``x1`` is homogeneous ``(N, 3)`` and ``x2`` ``(N, 2)``, normalized by
+    the caller; the loss, ``mask`` and step acceptance are those of
+    :func:`~kornia.geometry.epipolar.fundamental._refine_fundamental_lm`. For RANSAC, under ``torch.no_grad``.
+    """
+    K = H.shape[0]
+    dtype, device = H.dtype, H.device
+    eye8 = torch.eye(8, dtype=dtype, device=device)
+    eye9 = torch.eye(9, dtype=dtype, device=device)
+    last = eye9[8]
+    target = torch.cat([x2[:, 0], x2[:, 1]])
+    h = H.flatten(1)
+    h = h * h.square().sum(1, keepdim=True).rsqrt()
+    damping = torch.full((K, 1, 1), 1e-3, dtype=dtype, device=device)
+
+    def normal_equations(h: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # Householder reflection of h onto the last axis: its other eight columns span the tangent space.
+        v = h + torch.where(h[:, 8:9] >= 0, 1.0, -1.0) * last
+        v = v * v.square().sum(1, keepdim=True).rsqrt()
+        tangent = (eye9 - 2 * v[:, :, None] * v[:, None, :])[:, :, :8]  # (K, 9, 8)
+        stacked = torch.cat([h[:, :, None], tangent], 2).mT.reshape(K, 27, 3)  # rows of H, then of each direction
+        P = (stacked @ x1.T).reshape(K, 9, 3, -1)  # (K, 9, 3, N): P = H x1, then its directional derivatives
+        iz = 1.0 / P[:, 0, 2]
+        uv = P[:, 0, :2] * iz[:, None]  # (K, 2, N)
+        r = uv.flatten(1) - target  # (K, 2N): u residuals, then v residuals
+        J = ((P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]).flatten(2)  # (K, 8, 2N)
+        r2 = r[:, : x1.shape[0]].square() + r[:, x1.shape[0] :].square()
+        w, rho = _robust_loss(r2, loss, scale2)
+        if mask is not None:
+            w, rho = w * mask, rho * mask
+        Jw = J * torch.cat([w, w], 1)[:, None]
+        return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1), tangent
+
+    system, cost, tangent = normal_equations(h)
+    for _ in range(iters):
+        delta = -torch.linalg.solve_ex(system[..., :8] + damping * eye8, system[..., 8:])[0]
+        h_new = h + (tangent @ delta)[..., 0]
+        h_new = h_new * h_new.square().sum(1, keepdim=True).rsqrt()
+        system_new, cost_new, tangent_new = normal_equations(h_new)
+        accept = (cost_new < cost)[:, None, None]
+        h, cost = torch.where(accept[:, :, 0], h_new, h), torch.where(accept[:, 0, 0], cost_new, cost)
+        system, tangent = torch.where(accept, system_new, system), torch.where(accept, tangent_new, tangent)
+        damping = damping * torch.where(accept, 0.1, 10.0)
+    return h.reshape(K, 3, 3)
 
 
 def find_homography_dlt(

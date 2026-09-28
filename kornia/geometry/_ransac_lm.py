@@ -44,10 +44,16 @@ from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sa
 from kornia.geometry.epipolar.fundamental import (
     _eight_point_fundamental,
     _epipolar_design_rows,
+    _refine_fundamental_lm,
     _rank2_projection,
     _seven_point_candidates,
 )
-from kornia.geometry.homography import _four_point_homography, _transfer_basis, _transfer_from_basis
+from kornia.geometry.homography import (
+    _four_point_homography,
+    _refine_homography_lm,
+    _transfer_basis,
+    _transfer_from_basis,
+)
 
 __all__: list[str] = []
 
@@ -122,136 +128,5 @@ transfer_basis = _transfer_basis
 transfer_errors = _transfer_from_basis
 
 
-def _robust(r2: torch.Tensor, loss: str, scale2: float) -> Tuple[torch.Tensor, torch.Tensor]:
-    """IRLS weights and costs of a squared residual: Cauchy, or truncated at ``scale2``."""
-    if loss == "cauchy":
-        return 1.0 / (1.0 + r2 / scale2), torch.log1p(r2 / scale2)
-    return (r2 < scale2).to(r2.dtype), torch.fmin(r2, torch.full_like(r2[:1, :1], scale2))
-
-
-def _hat_basis(dtype: torch.dtype, device: torch.device) -> torch.Tensor:
-    """``E[a] = [e_a]_x``, the generators of rotations, as ``(3, 3, 3)``."""
-    E = torch.zeros(3, 3, 3, dtype=dtype, device=device)
-    E[0, 1, 2], E[0, 2, 1] = -1.0, 1.0
-    E[1, 0, 2], E[1, 2, 0] = 1.0, -1.0
-    E[2, 0, 1], E[2, 1, 0] = -1.0, 1.0
-    return E
-
-
-def refine_fundamental(
-    F: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, mask: torch.Tensor | None, loss: str, scale2: float, iters: int
-) -> torch.Tensor:
-    """Levenberg-Marquardt on the Sampson distance, batched over fundamental matrices ``(K, 3, 3)``.
-
-    ``F = U diag(1, s, 0) V^T`` with rotations ``U``, ``V`` updated by Cayley steps, seven parameters (Bartoli and
-    Sturm). Each iteration takes the residuals and their Jacobian from two matrix products with per-correspondence
-    monomials, like :func:`sampson_errors`. ``loss`` is ``"truncated"`` or ``"cauchy"`` with squared scale ``scale2``;
-    ``mask`` (``(K, N)``) restricts each model to its correspondences. A step is kept only if it lowers the cost.
-    """
-    K = F.shape[0]
-    dtype, device = F.dtype, F.device
-    E = _hat_basis(dtype, device)
-    eye3 = torch.eye(3, dtype=dtype, device=device)
-    eye7 = torch.eye(7, dtype=dtype, device=device)
-    algebraic = _epipolar_design_rows(x1, x2).T  # (9, N)
-    quadratic = torch.cat([_epipolar_design_rows(x1, x1), _epipolar_design_rows(x2, x2)], 1).T  # (18, N)
-    U, S, Vh = torch.linalg.svd(F)
-    V = Vh.mT
-    # Proper rotations: the third singular vectors do not enter F, so their signs are free.
-    U = torch.cat([U[..., :2], U[..., 2:] * torch.linalg.det(U).sign()[:, None, None]], -1)
-    V = torch.cat([V[..., :2], V[..., 2:] * torch.linalg.det(V).sign()[:, None, None]], -1)
-    UV = torch.stack([U, V], 1)
-    sigma = S[:, 1] / S[:, 0].clamp(min=torch.finfo(dtype).tiny)
-    damping = torch.full((K, 1, 1), 1e-3, dtype=dtype, device=device)
-
-    def compose(UV: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
-        scale = torch.stack([torch.ones_like(sigma), sigma], 1)[:, None, :]
-        return (UV[:, 0, :, :2] * scale) @ UV[:, 1, :, :2].mT
-
-    def normal_equations(F: torch.Tensor, UV: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Directions dF/dp: E_a F (left rotation), -F E_a (right rotation), u_2 v_2^T (singular value ratio).
-        tangent = torch.cat(
-            [E @ F[:, None], (F[:, None] @ E).neg(), (UV[:, 0, :, 1:2] @ UV[:, 1, :, 1:2].mT)[:, None]], 1
-        )
-        stacked = torch.cat([F[:, None], tangent], 1)  # (K, 8, 3, 3): F, then the seven directions
-        # x1^T (F[:2]^T X[:2]) x1 + x2^T (F[:, :2] X[:, :2]^T) x2 is half the derivative of the squared gradient norm.
-        quad1 = F[:, None, :2, :].mT @ stacked[:, :, :2, :]
-        quad2 = F[:, None, :, :2] @ stacked[:, :, :, :2].mT
-        out_c = stacked.reshape(K, 8, 9) @ algebraic
-        out_g = torch.cat([quad1, quad2], 2).reshape(K, 8, 18) @ quadratic
-        inv = out_g[:, 0].rsqrt()
-        r = out_c[:, 0] * inv
-        J = (out_c[:, 1:] - (r * inv)[:, None] * out_g[:, 1:]) * inv[:, None]  # (K, 7, N)
-        w, rho = _robust(r * r, loss, scale2)
-        if mask is not None:
-            w, rho = w * mask, rho * mask
-        Jw = J * w[:, None]
-        return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1)
-
-    F = compose(UV, sigma)
-    system, cost = normal_equations(F, UV)
-    for _ in range(iters):
-        delta = -torch.linalg.solve_ex(system[..., :7] + damping * eye7, system[..., 7:])[0][..., 0]
-        half = delta[:, :6].reshape(K * 2, 3) * 0.5
-        skew = (half @ E.reshape(3, 9)).reshape(K, 2, 3, 3)
-        factor = (2.0 / (1.0 + half.square().sum(1))).reshape(K, 2, 1, 1)
-        UV_new = (eye3 + factor * (skew + skew @ skew)) @ UV  # Cayley transform of the half-angle skew matrix
-        sigma_new = sigma + delta[:, 6]
-        F_new = compose(UV_new, sigma_new)
-        system_new, cost_new = normal_equations(F_new, UV_new)
-        accept = (cost_new < cost)[:, None, None]
-        UV = torch.where(accept[..., None], UV_new, UV)
-        F, system = torch.where(accept, F_new, F), torch.where(accept, system_new, system)
-        sigma, cost = torch.where(accept[:, 0, 0], sigma_new, sigma), torch.where(accept[:, 0, 0], cost_new, cost)
-        damping = damping * torch.where(accept, 0.1, 10.0)
-    return F
-
-
-def refine_homography(
-    H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, mask: torch.Tensor | None, loss: str, scale2: float, iters: int
-) -> torch.Tensor:
-    """Levenberg-Marquardt on the one-way transfer error, batched over homographies ``(K, 3, 3)``.
-
-    ``x1`` is homogeneous ``(N, 3)`` and ``x2`` ``(N, 2)``. Steps are taken in the eight-dimensional orthogonal
-    complement of the unit-norm ``vec(H)`` and renormalized; the loss, ``mask`` and step acceptance are those of
-    :func:`refine_fundamental`.
-    """
-    K = H.shape[0]
-    dtype, device = H.dtype, H.device
-    eye8 = torch.eye(8, dtype=dtype, device=device)
-    eye9 = torch.eye(9, dtype=dtype, device=device)
-    last = eye9[8]
-    target = torch.cat([x2[:, 0], x2[:, 1]])
-    h = H.flatten(1)
-    h = h * h.square().sum(1, keepdim=True).rsqrt()
-    damping = torch.full((K, 1, 1), 1e-3, dtype=dtype, device=device)
-
-    def normal_equations(h: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        # Householder reflection of h onto the last axis: its other eight columns span the tangent space.
-        v = h + torch.where(h[:, 8:9] >= 0, 1.0, -1.0) * last
-        v = v * v.square().sum(1, keepdim=True).rsqrt()
-        tangent = (eye9 - 2 * v[:, :, None] * v[:, None, :])[:, :, :8]  # (K, 9, 8)
-        stacked = torch.cat([h[:, :, None], tangent], 2).mT.reshape(K, 27, 3)  # rows of H, then of each direction
-        P = (stacked @ x1.T).reshape(K, 9, 3, -1)  # (K, 9, 3, N): P = H x1, then its directional derivatives
-        iz = 1.0 / P[:, 0, 2]
-        uv = P[:, 0, :2] * iz[:, None]  # (K, 2, N)
-        r = uv.flatten(1) - target  # (K, 2N): u residuals, then v residuals
-        J = ((P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]).flatten(2)  # (K, 8, 2N)
-        r2 = r[:, : x1.shape[0]].square() + r[:, x1.shape[0] :].square()
-        w, rho = _robust(r2, loss, scale2)
-        if mask is not None:
-            w, rho = w * mask, rho * mask
-        Jw = J * torch.cat([w, w], 1)[:, None]
-        return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1), tangent
-
-    system, cost, tangent = normal_equations(h)
-    for _ in range(iters):
-        delta = -torch.linalg.solve_ex(system[..., :8] + damping * eye8, system[..., 8:])[0]
-        h_new = h + (tangent @ delta)[..., 0]
-        h_new = h_new * h_new.square().sum(1, keepdim=True).rsqrt()
-        system_new, cost_new, tangent_new = normal_equations(h_new)
-        accept = (cost_new < cost)[:, None, None]
-        h, cost = torch.where(accept[:, :, 0], h_new, h), torch.where(accept[:, 0, 0], cost_new, cost)
-        system, tangent = torch.where(accept, system_new, system), torch.where(accept, tangent_new, tangent)
-        damping = damping * torch.where(accept, 0.1, 10.0)
-    return h.reshape(K, 3, 3)
+refine_fundamental = _refine_fundamental_lm
+refine_homography = _refine_homography_lm
