@@ -111,6 +111,27 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     return torch.stack([root_0, root_1], dim=-1)
 
 
+# Bit layout of the float dtypes solve_cubic scales in: the integer dtype of the same width, the exponent bias and the
+# number of mantissa bits. A float with a zero mantissa is 2 ** (stored exponent - bias).
+_FLOAT_LAYOUT = {torch.float32: (torch.int32, 127, 23), torch.float64: (torch.int64, 1023, 52)}
+
+# A cubic root that is this many times larger than the other two is taken as dominant by solve_cubic, which then gets
+# the other two from Vieta's relations instead of the closed form. See the comment there.
+_DOMINANT_ROOT_RATIO = 2.0**4
+
+
+def _exact_power_of_two(exponent: torch.Tensor) -> torch.Tensor:
+    """Return ``2 ** exponent`` for an integer-valued float tensor, exact on every backend.
+
+    ``torch.exp2`` and ``torch.pow`` are not exact for integer arguments on every backend (MPS), and a scale that is
+    not a power of two changes the bits of the scaled row. The exponent is clamped so that both ``2 ** exponent`` and
+    ``2 ** -exponent`` are normal floats, and is written into the exponent field of the float.
+    """
+    int_dtype, bias, mantissa_bits = _FLOAT_LAYOUT[exponent.dtype]
+    biased = exponent.clamp(1 - bias, bias - 1).to(int_dtype) + bias
+    return (biased * 2**mantissa_bits).view(exponent.dtype)
+
+
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     r"""Solve given cubic equation.
 
@@ -123,6 +144,9 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         - Coefficient layout and zero padding as :func:`solve_quadratic`. Three real roots are returned unsorted,
           and a single real root is in slot 0.
         - A zero leading coefficient lowers the degree, and the roots of the remaining polynomial come first.
+        - The closed form is evaluated on the row scaled by an exact power of two to a unit root bound, and the
+          roots are scaled back, so its intermediates neither overflow nor underflow for a tiny leading coefficient
+          or for roots far from unit scale (#4914).
 
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
@@ -206,10 +230,27 @@ def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.T
     # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
     inv_a = 1.0 / a[~mask_a_zero]
     b_a = inv_a * b[~mask_a_zero]
-    b_a2 = b_a * b_a
-
     c_a = inv_a * c[~mask_a_zero]
     d_a = inv_a * d[~mask_a_zero]
+
+    # Solve for y = x / s, with s the power of two just above max(|b/a|, |c/a|^(1/2), |d/a|^(1/3)), which bounds the
+    # root magnitude. The scaled coefficients b/(a s), c/(a s^2) and d/(a s^3) are below 1 in magnitude, so Q^3 and
+    # R^2 below neither overflow when a tiny leading coefficient makes b/a, c/a and d/a huge (#4914) nor underflow for
+    # tiny roots. Multiplying by a power of two is exact, so a row that neither overflowed nor underflowed takes the
+    # same branch as before and its D <= 0 roots are the same bits. s is a step function of the coefficients, so it is
+    # a constant for autograd. A row with b == c == d == 0 has bound 0 and keeps s = 1.
+    bound = torch.maximum(torch.maximum(b_a.abs(), c_a.abs().sqrt()), d_a.abs().pow(1.0 / 3.0)).detach()
+    positive_bound = bound > 0
+    exponent = torch.floor(torch.log2(torch.where(positive_bound, bound, torch.ones_like(bound)))) + 1
+    exponent = torch.where(positive_bound, exponent, torch.zeros_like(exponent))
+    s = _exact_power_of_two(exponent)
+    inv_s = _exact_power_of_two(-exponent)
+    b_a = b_a * inv_s
+    c_a = c_a * inv_s * inv_s
+    d_a = d_a * inv_s * inv_s * inv_s
+    b_a2 = b_a * b_a
+    scale = torch.ones_like(a)
+    scale[~mask_a_zero] = s
 
     # Solve the cubic equation
     Q = (3 * c_a - b_a2) / 9
@@ -281,26 +322,67 @@ def _solve_cubic_with_count(coeffs: torch.Tensor) -> tuple[torch.Tensor, torch.T
     mask_D_positive_solution = (a_D_positive > 0) & (a_Q_zero != 0)
     mask_D_positive = (D > 0) & (Q != 0)
     if torch.any(mask_D_positive):
-        AD = torch.zeros_like(R)
-        BD = torch.zeros_like(R)
-        R_abs = torch.abs(R)
-        # Intersect with mask_D_positive: sqrt(D) on a D <= 0 row is nan, and
-        # although such a row is never read out of AD/BD, `-Q / nan` stays in
-        # the graph and its backward poisons every coefficient's gradient.
-        mask_R_positive = (R_abs > 1e-16) & mask_D_positive
-        if torch.any(mask_R_positive):
-            AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
-            mask_R_positive_ = R < 0
-
-            if torch.any(mask_R_positive_):
-                AD[mask_R_positive_] = -AD[mask_R_positive_]
-
-            BD[mask_R_positive] = -Q[mask_R_positive] / AD[mask_R_positive]
-        x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
+        # Cardano: the real root is A + B with A = cbrt(R + sqrt(D)) and B = cbrt(R - sqrt(D)) = -Q / A. Take the cube
+        # root of the larger magnitude, |R| + sqrt(D), and restore the sign of R, so A is never 0 and no floor on |R|
+        # is needed. Only the mask_D_positive rows enter: sqrt(D) on a D <= 0 row is nan, and although such a row
+        # would never be read out, `-Q / nan` would stay in the graph and its backward poison every coefficient's
+        # gradient.
+        Q_pos, R_pos, D_pos = Q[mask_D_positive], R[mask_D_positive], D[mask_D_positive]
+        AD = torch.pow(R_pos.abs() + torch.sqrt(D_pos), 1 / 3)
+        AD = torch.where(R_pos < 0, -AD, AD)
+        BD = -Q_pos / AD
+        # When Q > 0, A and B have opposite signs and A + B cancels once the root is small next to sqrt(Q), the case
+        # of a tiny leading coefficient (#4914): the finite root of 1e-30 x^3 + 2 x - 6 came out as 0 in float64.
+        # A^3 + B^3 = 2 R and A B = -Q, so A + B = 2 R / (A^2 - A B + B^2) = 2 R / (A^2 + B^2 + Q), a quotient of
+        # same-sign sums when Q > 0. When Q < 0, A and B have the same sign, A + B does not cancel and stays the more
+        # accurate form. With t = A^2 / Q >= 1, a relative rounding error in A moves A + B by (t + 1) / (t - 1) times
+        # as much and the quotient by 2 (t^2 - 1) / (t^2 + t + 1) times as much; the two are equal at
+        # t = (5 + sqrt(21)) / 2 = 4.79, so the quotient is only taken below that, where A + B cancels, and A + B is
+        # kept where |R| >> Q^(3/2) and the quotient would be up to twice as sensitive.
+        quotient_is_better = (Q_pos > 0) & (AD * AD < 4.79 * Q_pos)
+        sum_AB = torch.where(quotient_is_better, 2 * R_pos / (AD * AD + BD * BD + Q_pos), AD + BD)
+        x0_D_positive = sum_AB - b_a_3[mask_D_positive]
         solutions[mask_D_positive_solution, 0] = x0_D_positive
         num_real[mask_D_positive_solution] = 1
 
-    return solutions, num_real
+    roots = solutions * scale[:, None]
+
+    # A root that dominates the other two, the case of a tiny leading coefficient with b != 0 (#4914: the row is
+    # y^3 + b' y^2 + tiny y + tinier after scaling), makes D = Q^3 + R^2 a difference of nearly equal numbers, so the
+    # branch is chosen by rounding: the D > 0 branch then drops two real roots, and the trigonometric branch returns
+    # the two small roots as differences of numbers of size |b'| / 3, which are not roots at all. Both branches get
+    # the dominant root x0 right. Keep it and take the other two from Vieta's relations, x1 x2 = -d / (a x0) and
+    # x1 + x2 = (c + d / x0) / (a x0), which are well conditioned when |x0| dominates (a x0 is then about -b), and
+    # let the stable quadratic decide whether they are real. They are formed in the original scale, where the two
+    # small roots are ordinary numbers; in the scaled row they can be below the dtype's normal range. Only a row
+    # whose largest root exceeds _DOMINANT_ROOT_RATIO times the scale of the other two enters, so every other row
+    # keeps its bits. The gate is decided on detached values: a rejected row can overflow these quotients, and a lane
+    # that autograd differentiates must not.
+    mask_cubic = ~mask_a_zero
+    if torch.any(mask_cubic):
+        x = roots[mask_cubic]
+        x0 = x.gather(1, x.abs().argmax(dim=1, keepdim=True)).squeeze(1)
+        a_cubic, c_cubic, d_cubic = a[mask_cubic], c[mask_cubic], d[mask_cubic]
+        x0_detached = x0.detach()
+        safe_x0 = torch.where(x0_detached == 0, torch.ones_like(x0_detached), x0_detached)
+        lead = a_cubic.detach() * safe_x0
+        product = -d_cubic.detach() / lead
+        total = (c_cubic.detach() + d_cubic.detach() / safe_x0) / lead
+        other_scale = torch.maximum(total.abs(), product.abs().sqrt())
+        mask_dominant = (x0_detached != 0) & (x0_detached.abs() > _DOMINANT_ROOT_RATIO * other_scale)
+        if torch.any(mask_dominant):
+            x0_dominant = x0[mask_dominant]
+            lead = a_cubic[mask_dominant] * x0_dominant
+            product = -d_cubic[mask_dominant] / lead
+            total = (c_cubic[mask_dominant] + d_cubic[mask_dominant] / x0_dominant) / lead
+            others = solve_quadratic(torch.stack([torch.ones_like(total), -total, product], dim=1))
+            mask_dominant_rows = torch.zeros_like(mask_a_zero)
+            mask_dominant_rows[mask_cubic] = mask_dominant
+            roots[mask_dominant_rows] = torch.stack([x0_dominant, others[:, 0], others[:, 1]], dim=1)
+            # solve_quadratic's own discriminant decides: a complex pair leaves the dominant root alone.
+            num_real[mask_dominant_rows] = torch.where(total * total - 4 * product < 0, 1, 3)
+
+    return roots, num_real
 
 
 def _quartic_root_residual_tol(dtype: torch.dtype) -> float:
