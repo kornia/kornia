@@ -414,6 +414,17 @@ def _adapted_rsampling(
     return dist.rsample(shape)
 
 
+def _truncate_to_start(draw: torch.Tensor, extent: torch.Tensor) -> torch.Tensor:
+    r"""Turn a ``[0, 1)`` draw into an integer start in ``[0, extent)`` for a crop or patch.
+
+    The product and the floor are taken in the wider of the two dtypes and the result is cast to the dtype of
+    ``extent``. Casting the draw to a narrower ``extent`` dtype first rounds a draw close to 1 up to 1.0, which
+    puts the start one past the last valid position (#5052).
+    """
+    dtype = torch.promote_types(draw.dtype, extent.dtype)
+    return (draw.to(device=extent.device, dtype=dtype) * extent.to(dtype)).floor().to(extent.dtype)
+
+
 def _adapted_sampling(
     shape: Union[Tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
