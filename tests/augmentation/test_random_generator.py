@@ -28,9 +28,11 @@ from kornia.augmentation.random_generator import (
     ColorJiggleGenerator,
     ColorJitterGenerator,
     CropGenerator,
+    CropGenerator3D,
     CutmixGenerator,
     MixupGenerator,
     MotionBlurGenerator,
+    PatchMixGenerator,
     PerspectiveGenerator,
     PlainUniformGenerator,
     PlanckianJitterGenerator,
@@ -1899,3 +1901,63 @@ class TestPlanckianJitterGenerator:
         assert idx.device.type == device.type
         assert int(idx.min()) >= 0
         assert int(idx.max()) < 25
+
+
+# The four generators that truncate a Uniform(0, 1) draw to a crop or patch start. Each case builds a
+# fresh generator and gives the batch shape of an 8-pixel-wide input that a size-4 crop or patch fits
+# in exactly five ways per axis.
+_POSITION_SAMPLER_CASES = [
+    pytest.param(lambda: CropGenerator((4, 4)), torch.Size([1 << 16, 1, 8, 8]), id="crop"),
+    pytest.param(
+        lambda: ResizedCropGenerator((4, 4), (0.25, 0.25), (1.0, 1.0)),
+        torch.Size([1 << 16, 1, 8, 8]),
+        id="resized_crop",
+    ),
+    pytest.param(lambda: CropGenerator3D((4, 4, 4)), torch.Size([1 << 16, 1, 8, 8, 8]), id="crop3d"),
+    pytest.param(lambda: PatchMixGenerator(patch_size=4), torch.Size([1 << 16, 1, 8, 8]), id="patchmix"),
+]
+
+
+class TestHalfPrecisionPositionSamplers:
+    # The half dtypes are named rather than taken from the fixture so the pins run on the default float32
+    # legs too; the device comes from the fixture so the MPS leg draws on MPS.
+    @pytest.mark.parametrize("make_generator,batch_shape", _POSITION_SAMPLER_CASES)
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_position_sampler_stays_float32_for_half_precision(self, make_generator, batch_shape, device, half_dtype):
+        # The draw is truncated to a start position. Half-precision torch.rand on MPS can return
+        # exactly 1.0, which put the start one past the last valid position (#4553).
+        generator = make_generator()
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        assert generator.rand_sampler.low.dtype == torch.float32
+        assert generator.rand_sampler.high.dtype == torch.float32
+        assert generator.rand_sampler.low.device.type == device.type
+        assert generator.rand_sampler.high.device.type == device.type
+
+    @pytest.mark.parametrize("make_generator,batch_shape", _POSITION_SAMPLER_CASES)
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_position_sampler_follows_full_precision_dtype(self, make_generator, batch_shape, dtype):
+        generator = make_generator()
+        generator.set_rng_device_and_dtype(torch.device("cpu"), dtype)
+        assert generator.rand_sampler.low.dtype == dtype
+        assert generator.rand_sampler.high.dtype == dtype
+
+    # CPU half torch.rand never returns 1.0, so this only discriminates on the MPS leg: there, with a
+    # half-precision sampler, 2**16 draws put about 16 (float16) or 128 (bfloat16) starts per axis one
+    # past the edge.
+    @pytest.mark.parametrize("make_generator,batch_shape", _POSITION_SAMPLER_CASES)
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_starts_stay_in_range(self, make_generator, batch_shape, device, half_dtype):
+        generator = make_generator()
+        if isinstance(generator, PatchMixGenerator) and device.type == "cpu":
+            pytest.skip("The PatchMix Beta sampler is not implemented for CPU half precision.")
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        torch.manual_seed(0)
+        params = generator(batch_shape)
+        if isinstance(generator, PatchMixGenerator):
+            # (B, 2) patch starts; the far corner of a size-4 patch is 3 pixels on.
+            last_covered = params["patch_coords"] + 3
+        else:
+            # (B, 4, 2) or (B, 8, 3) crop corners in pixel coordinates.
+            last_covered = params["src"]
+        assert int(last_covered.min()) >= 0
+        assert int(last_covered.max()) < 8
