@@ -1039,8 +1039,6 @@ class TestStrictMaximaBonusDeprecated(BaseTester):
 
 
 class TestConventionsConvSoftArgmax(BaseTester):
-    # 3 x 3 windows only; #5017 concerns the in-window offsets of larger windows.
-
     def test_convention_conv_soft_argmax2d_is_xy(self, device, dtype):
         # Every window returns (x, y) = (column, row) of the input grid: pixel coordinates, or normalized
         # corner-aligned ones (the default). One hot pixel at (row 1, col 6) of a 5 x 8 map: the window on it and the
@@ -1169,8 +1167,7 @@ class TestConventionsQuadInterp3d(BaseTester):
             coords, _ = fn(self._separable(device, dtype, profile), n_iters=2, precomputed_nms_mask=mask)
             self.assert_close(coords[0, 0, :, 1, 2, 5], torch.tensor([1.0, expected, 2.0], device=device, dtype=dtype))
 
-        # allow_scale_steps=False never moves the level, so the depth shift itself meets the 1.5 bound: 1.4 is kept,
-        # 1.6 rejects the point. Coordinates only: a fix of #5038 changes the value a rejected point reports.
+        # With allow_scale_steps=False, the depth shift itself meets the 1.5 bound: 1.4 is kept, 1.6 is rejected.
         parabola = [-((w - 5.0) ** 2) for w in range(9)]
         for depth_peak, expected in ((2.4, [2.4, 5.0, 2.0]), (2.6, [1.0, 5.0, 2.0])):
             volume = self._separable(device, dtype, parabola, depth_peak)

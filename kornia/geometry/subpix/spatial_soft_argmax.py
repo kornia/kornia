@@ -810,8 +810,9 @@ def conv_quad_interp3d(
           the quadratic fit's value at the refined point; non-maxima keep their input value.
         - A maximum is not refined, and keeps its grid coordinates, when the determinant of its fit's Hessian is at
           most ``1e-7`` in magnitude, when a move would reach the border voxels, when its centre leaves the voxels
-          precomputed for ``dilation_radius``, or when the final shift exceeds ``1.5`` voxels on any axis. A volume
-          with a side shorter than 3 is returned unrefined.
+          precomputed for ``dilation_radius``, when the final shift exceeds ``1.5`` voxels on any axis, or when it
+          still requires an integer-centre move on the last iteration. A volume with a side shorter than 3 is returned
+          unrefined.
         - Known defect: refinement depends on response amplitude because the ``1e-7`` determinant floor is absolute
           while the determinant is cubic in that amplitude. Low-amplitude peaks can therefore remain at their
           integer-grid position and lose subpixel refinement (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
