@@ -22,7 +22,15 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version_le
+from kornia.geometry.conversions import convert_points_from_homogeneous
+from kornia.geometry.epipolar import normalize_points
 from kornia.geometry.homography import (
+    _four_point_homography,
+    _homography_design_rows,
+    _oneway_transfer_error_shared_impl_,
+    _transfer_basis,
+    _transfer_errors,
+    _transfer_from_basis,
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
@@ -807,6 +815,10 @@ def _planar(device, dtype):
     return p1.to(device, dtype), p2.to(device, dtype), H.to(device, dtype)
 
 
+def _hom(p: torch.Tensor) -> torch.Tensor:
+    return torch.cat([p, torch.ones_like(p[..., :1])], -1)
+
+
 def _inverse(H: torch.Tensor) -> torch.Tensor:
     """H^-1 scaled so that its [2, 2] entry is 1, computed in float64 on the CPU."""
     H_inv = torch.linalg.inv(H.cpu().double())
@@ -1160,3 +1172,105 @@ class TestConventionHomography(BaseTester):
         # #4890: excluding the zero-weight match from Hartley statistics must match dropping it entirely.
         tol = 1e-8 if dtype == torch.float64 else 1e-2
         assert _transfer_max(H_weighted, p1, kornia.geometry.transform_points(H_dropped, p1)) < tol
+
+
+class TestHomographySharedKernels(BaseTester):
+    def test_design_rows_vanish_on_exact_matches(self, device, dtype):
+        _skip_half(dtype, _HALF_DLT)
+        src, dst, H = _planar(device, dtype)
+        rows = _homography_design_rows(src, dst)
+        assert rows.shape == (src.shape[0], 2 * src.shape[1], 9)
+        residual = rows @ (H / H.norm()).reshape(-1, 9, 1)
+        assert residual.abs().max() < 1e-3 * rows.abs().max()
+
+    def test_four_point_homography_is_exact(self, device, dtype):
+        _skip_half(dtype, _HALF_DLT)
+        src, dst, H = _planar(torch.device("cpu"), torch.float64)
+        src, dst = src[:, :4], dst[:, :4]
+        n1, t1 = normalize_points(src)
+        n2, t2 = normalize_points(dst)
+        model = _four_point_homography(_hom(n1).to(device, dtype), n2.to(device, dtype))[0].cpu().double()
+        model = torch.linalg.inv(t2[0]) @ model @ t1[0]
+        tolerance = 1e-6 if dtype == torch.float64 else 1e-3
+        self.assert_close(model / model[2, 2], H[0] / H[0, 2, 2], atol=tolerance, rtol=tolerance)
+
+    @pytest.mark.parametrize("squared", [True, False])
+    def test_shared_points_match_per_model(self, device, dtype, squared):
+        pts1 = torch.rand(1, 20, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 20, 2, device=device, dtype=dtype)
+        H = create_random_homography(torch.zeros(5, 1, device=device, dtype=dtype), 3, std_val=0.1)
+        out = oneway_transfer_error(pts1, pts2, H, squared=squared)
+        work = torch.promote_types(dtype, torch.float32)
+        expected = torch.cat(
+            [
+                oneway_transfer_error(pts1.to(work), pts2.to(work), H[i : i + 1].to(work), squared=squared)
+                for i in range(5)
+            ]
+        )
+        assert out.dtype == dtype
+        self.assert_close(out, expected.to(dtype))
+
+    def test_public_dispatch(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("compared at float32 and float64 accuracy")
+        generator = torch.Generator().manual_seed(6)
+        pts1 = torch.rand(1, 30, 2, generator=generator).to(device, dtype)
+        pts2 = torch.rand(1, 30, 2, generator=generator).to(device, dtype)
+        H = torch.eye(3) + 0.1 * (2 * torch.rand(3, 3, 3, generator=generator) - 1)
+        H = H.to(device, dtype)
+        out = oneway_transfer_error(pts1, pts2, H)
+        assert torch.equal(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H, True, 1e-8))
+        per_model = torch.cat([oneway_transfer_error(pts1, pts2, H[i : i + 1]) for i in range(3)])
+        self.assert_close(out, per_model)
+
+    def test_shapes_and_homogeneous_points(self, device, dtype):
+        H = create_random_homography(torch.zeros(4, 1, device=device, dtype=dtype), 3, std_val=0.1)
+        pts1 = torch.rand(1, 7, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 7, 2, device=device, dtype=dtype)
+        # Homogeneous points are dehomogenized, whatever their w.
+        out = _oneway_transfer_error_shared_impl_(2.0 * _hom(pts1), 3.0 * _hom(pts2), H, True, 1e-8)
+        self.assert_close(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H, True, 1e-8))
+        self.assert_close(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H.mT.contiguous().mT, True, 1e-8))
+        empty = torch.zeros(1, 0, 2, device=device, dtype=dtype)
+        assert _oneway_transfer_error_shared_impl_(empty, empty, H, True, 1e-8).shape == (4, 0)
+
+    def test_pixel_scale_accuracy(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("the float32 pixel-scale case")
+        generator = torch.Generator().manual_seed(3)
+        f64 = torch.float64
+        src = torch.rand(1, 2000, 2, generator=generator, dtype=f64) * torch.tensor([1920.0, 1080.0], dtype=f64)
+        H = torch.tensor([[1.1, 0.05, 20.0], [0.02, 0.95, -10.0], [1e-4, 2e-4, 1.0]], dtype=f64)
+        models = H[None] * (1 + 1e-3 * torch.randn(8, 3, 3, generator=generator, dtype=f64))
+        dst = convert_points_from_homogeneous(_hom(src) @ H.T) + torch.randn(1, 2000, 2, generator=generator, dtype=f64)
+        reference = torch.cat([oneway_transfer_error(src, dst, models[i : i + 1], eps=0.0) for i in range(8)])
+        cast = lambda t: t.to(device, dtype)  # noqa: E731
+        shared = oneway_transfer_error(cast(src), cast(dst), cast(models), eps=0.0).cpu().double()
+        per_model = (
+            torch.cat([oneway_transfer_error(cast(src), cast(dst), cast(models[i : i + 1]), eps=0.0) for i in range(8)])
+            .cpu()
+            .double()
+        )
+        small = reference < 100
+        assert (shared - reference)[small].abs().max() <= 2 * (per_model - reference)[small].abs().max() + 1e-6
+
+    def test_ransac_transfer_basis_matches(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scores in float32 or float64")
+        x1 = torch.cat(
+            [torch.randn(50, 2, device=device, dtype=dtype), torch.ones(50, 1, device=device, dtype=dtype)], 1
+        )
+        x2 = torch.randn(50, 2, device=device, dtype=dtype)
+        models = torch.randn(6, 3, 3, device=device, dtype=dtype)
+        self.assert_close(
+            _transfer_from_basis(models, _transfer_basis(x1, x2)),
+            _transfer_errors(models, x1, x2, 0.0),
+            rtol=1e-3,
+            atol=1e-5,
+        )
+
+    def test_gradcheck(self, device):
+        pts1 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
+        pts2 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
+        H = create_random_homography(torch.zeros(3, 1, device=device, dtype=torch.float64), 3, std_val=0.1)
+        self.gradcheck(lambda a, b, h: _oneway_transfer_error_shared_impl_(a, b, h, True, 1e-8), (pts1, pts2, H))

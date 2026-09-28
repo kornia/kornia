@@ -50,9 +50,9 @@ class TestConnectedComponents(BaseTester):
             assert kornia.contrib.connected_components(img, 0)
         assert "Input num_iterations must be a positive integer." in str(errinf)
 
+        img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError) as errinf:
-            img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-            assert kornia.contrib.connected_components(img, 2)
+            kornia.contrib.connected_components(img, 2)
         assert "Input image shape must be (*,1,H,W). Got:" in str(errinf)
 
     def test_value(self, device, dtype):
