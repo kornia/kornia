@@ -186,6 +186,15 @@ class TestSpatialExpectation2d(BaseTester):
         reference = torch.stack([(probs.sum(-2) * xs).sum(-1), (probs.sum(-1) * ys).sum(-1)], -1)
         self.assert_close(kornia.geometry.subpix.spatial_expectation2d(probs, True), reference, rtol=0.0, atol=1e-14)
 
+    def test_bfloat16_grid_rounds_once_5019(self, device):
+        # bfloat16 keeps building the grid in float32 and rounds each coordinate once. Built directly in bfloat16,
+        # the pixel coordinate 2057 comes out as 2048 instead of its nearest bfloat16 value 2064.
+        heatmap = torch.zeros(1, 1, 1, 3001, device=device, dtype=torch.bfloat16)
+        heatmap[0, 0, 0, 2057] = 1.0
+        out = kornia.geometry.subpix.spatial_expectation2d(heatmap, False)
+        expected = torch.tensor([[[2064.0, 0.0]]], device=device, dtype=torch.bfloat16)
+        self.assert_close(out, expected, rtol=0.0, atol=0.0)
+
     @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):
         data = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
