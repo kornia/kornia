@@ -19,6 +19,7 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
+from kornia.core.exceptions import ValueCheckError
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
 
@@ -112,6 +113,12 @@ class TestParametrizedLine(BaseTester):
         p = on_line[7].clone().requires_grad_(True)
         line.distance(p).backward()
         assert torch.isfinite(p.grad).all()
+
+    def test_through_coincident_points_raises_5041(self, device, dtype):
+        # #5041: through(p, p) used to return a line with direction (0, 0).
+        p = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="two distinct points"):
+            ParametrizedLine.through(p, p.clone())
 
     def test_instersect_plane(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
@@ -235,7 +242,9 @@ class TestFitLine(BaseTester):
     @pytest.mark.parametrize("D", (2, 3, 4))
     def test_smoke(self, device, dtype, B, D):
         N: int = 10  # num points
-        points = torch.ones(B, N, D, device=device, dtype=dtype)
+        # A line needs distinct points: ones() is a set of identical points, rejected since #5041.
+        t = torch.linspace(-1.0, 1.0, N, device=device, dtype=dtype)
+        points = torch.stack([t] + [t * (i + 1) for i in range(D - 1)], dim=-1)[None].expand(B, N, D)
         line = fit_line(points)
         assert isinstance(line, ParametrizedLine)
         assert line.origin.shape == (B, D)
@@ -361,6 +370,30 @@ class TestFitLine(BaseTester):
         assert line.origin.dtype == dtype
         assert line.direction.dtype == dtype
         self.assert_close(line.direction, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
+
+    def test_fit_line_degenerate_raises_5041(self, device, dtype):
+        # #5041: a single point, identical points, or all-zero weights used to return an
+        # arbitrary-looking line ((0, 1) / (1, 0, 0) directions, a NaN origin for zero weights).
+        one_point = torch.tensor([[[1.0, 2.0]]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="at least two points"):
+            fit_line(one_point)
+
+        identical = torch.tensor([[[1.0, 2.0, 3.0]] * 5], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="two distinct points"):
+            fit_line(identical)
+
+        points = torch.tensor([[[0.0, 0.0], [1.0, 3.0], [2.0, 5.0]]], device=device, dtype=dtype)
+        zero_weights = torch.zeros(1, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="positive sum of weights"):
+            fit_line(points, zero_weights)
+
+    def test_fit_line_small_valid_set_still_fits(self, device, dtype):
+        # The degeneracy test is relative, not absolute: a small-but-distinct set still fits.
+        points = torch.tensor([[[1e-6, 2e-6], [3e-6, 7e-6]]], device=device, dtype=dtype)
+        line = fit_line(points)
+        assert line.direction.shape == (1, 2)
+        assert torch.isfinite(line.direction).all()
+        assert torch.isfinite(line.origin).all()
 
     @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):

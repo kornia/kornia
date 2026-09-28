@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Vector3
 
@@ -31,7 +31,9 @@ class TestFitPlane(BaseTester):
     @pytest.mark.parametrize("D", (3,))
     # @pytest.mark.parametrize("D", (2, 3, 4))
     def test_smoke(self, device, dtype, N, D):
-        points = torch.ones(N, D, device=device, dtype=dtype)
+        # A plane needs non-collinear points: ones() is a set of identical points, rejected since #5041.
+        t = torch.linspace(-1.0, 1.0, N, device=device, dtype=dtype)
+        points = torch.stack([t, t**2, 1.0 - t], dim=-1).expand(N, D).contiguous()
         plane = fit_plane(points)
         assert isinstance(plane, Hyperplane)
         assert plane.offset.shape == ()
@@ -56,6 +58,29 @@ class TestFitPlane(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
         pass
+
+    def test_fit_plane_degenerate_raises_5041(self, device, dtype):
+        # #5041: fewer than three points, collinear points or identical points used to
+        # return an arbitrary valid-looking plane normal.
+        a = torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype)
+        b = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
+        c = 2 * b - a
+        with pytest.raises(ValueCheckError, match="at least three points"):
+            fit_plane(a[None])
+        with pytest.raises(ValueCheckError, match="at least three points"):
+            fit_plane(torch.stack([a, b]))
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            fit_plane(torch.stack([a, b, c]))
+        with pytest.raises(ValueCheckError, match="not identical"):
+            fit_plane(torch.stack([a, a.clone(), a.clone()]))
+
+    def test_fit_plane_small_valid_set_still_fits(self, device, dtype):
+        # The collinearity test is relative, not absolute: a small non-degenerate set still fits.
+        s = 1e-6
+        points = torch.tensor([[0.0, 0.0, 0.0], [s, 0.0, 0.0], [0.0, s, 0.0]], device=device, dtype=dtype)
+        plane = fit_plane(points)
+        assert plane.normal.shape == (3,)
+        assert torch.isfinite(plane.normal.unwrap()).all()
 
 
 # TODO: implement the rest of methods
@@ -98,6 +123,17 @@ class TestHyperplane(BaseTester):
         p0 = Hyperplane.through(v0, v1, v2)
         assert p0.normal.shape == shape or (3,)
         assert p0.offset.shape == ((*shape,) if shape is not None else ())
+
+    def test_through_collinear_points_raises_5041(self, device, dtype):
+        # #5041: collinear (or coincident) points used to take the SVD fallback and return an
+        # arbitrary plane containing the line instead of raising.
+        a = torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype)
+        b = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
+        c = 2 * b - a
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            Hyperplane.through(a, b, c)
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            Hyperplane.through(a, a.clone(), a.clone())
 
     @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
     def test_abs_signed_distance(self, device, dtype, shape):

@@ -24,9 +24,9 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
-from kornia.core.utils import _torch_svd_cast
+from kornia.core.utils import _torch_svd_cast, is_compiling
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
 
@@ -174,6 +174,8 @@ class Hyperplane(nn.Module):
         Raises:
             BaseError: if ``p2`` is omitted, or if the points are not ``(..., 3)`` tensors of the
                 same shape.
+            ValueCheckError: if the three points are collinear (or coincide), so they do not
+                determine a plane.
         """
         if p2 is None:
             # Raised directly rather than through KORNIA_CHECK, so it still fires with checks disabled.
@@ -186,7 +188,10 @@ class Hyperplane(nn.Module):
         KORNIA_CHECK(p1.shape == p2.shape)
         v0, v1 = (p2 - p0), (p1 - p0)
         normal = torch.linalg.cross(v0, v1, dim=-1)
-        norm = normal.norm(-1)
+        # ``TensorWrapper.norm(-1)`` is the p=-1 Minkowski norm, not a norm along the last
+        # dimension: for a vector with a zero component it is always 0, which made this
+        # threshold accept every input. Use the Euclidean norm explicitly (#5041).
+        norm = torch.linalg.vector_norm(normal.data, dim=-1, keepdim=True)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
         def compute_normal_svd(v0: torch.Tensor, v1: torch.Tensor) -> "Vector3":
@@ -195,7 +200,18 @@ class Hyperplane(nn.Module):
             _, _, V = _torch_svd_cast(m)  # kornia solution lies in the last row
             return _wrap(V[..., :, -1], Vector3)  # Bx3
 
-        normal_mask = norm <= v0.norm(-1) * v1.norm(-1) * 1e-6
+        normal_mask = norm <= torch.linalg.vector_norm(v0.data, dim=-1, keepdim=True) * (
+            torch.linalg.vector_norm(v1.data, dim=-1, keepdim=True) * 1e-6
+        )
+        # Collinear points leave the cross product near zero: the plane is not determined, so
+        # raise instead of taking the SVD fallback (which returns an arbitrary valid-looking
+        # normal). The relative threshold keeps a small but valid set working. Skipped under
+        # torch.compile/export and by disable_checks(), like every kornia value check.
+        if not torch.jit.is_scripting() and not is_compiling() and _plane_checks_enabled() and bool(normal_mask.any()):
+            raise ValueCheckError(
+                "Hyperplane.through requires three points that are not collinear; "
+                "the given points do not determine a plane."
+            )
         normal = torch.where(normal_mask, compute_normal_svd(v0, v1).data, normal / (norm + 1e-6))
         offset = -batched_dot_product(p0, normal)
 
@@ -204,6 +220,13 @@ class Hyperplane(nn.Module):
 
 # TODO: factor to avoid duplicated from line.py
 # https://github.com/strasdat/Sophus/blob/23.04-beta/cpp/sophus/geometry/fit_plane.h
+def _plane_checks_enabled() -> bool:
+    # Read at call time so disable_checks() also disables the degenerate-input checks.
+    from kornia.core.check import _KORNIA_CHECKS_ENABLED
+
+    return _KORNIA_CHECKS_ENABLED
+
+
 def fit_plane(points: Vector3) -> Hyperplane:
     """Fit a plane from a set of points using SVD.
 
@@ -214,11 +237,33 @@ def fit_plane(points: Vector3) -> Hyperplane:
     Return:
         The computed hyperplane object.
 
+    Raises:
+        ValueCheckError: if fewer than three points are given, or the points are collinear,
+            so they do not determine a plane.
+
     """
     # TODO: fix to support more type check here
     # KORNIA_CHECK_SHAPE(points, ["N", "D"])
     if points.shape[-1] != 3:
         raise TypeError("vector must be (*, 3)")
+
+    if not torch.jit.is_scripting() and not is_compiling() and _plane_checks_enabled():
+        n = points.shape[-2]
+        if n < 3:
+            raise ValueCheckError(f"fit_plane requires at least three points to determine a plane; got {n} point(s).")
+        centered = points - points.mean(-2, True)
+        if not bool((centered.abs().amax(dim=(-2, -1)) > 0).all()):
+            raise ValueCheckError(
+                "fit_plane requires at least three points that are not identical; the given points are all identical."
+            )
+        # The plane is determined when the centred points have rank 2: the two largest
+        # singular values must both be nonzero relative to each other, a scale-invariant
+        # test that keeps a small but valid set working.
+        sv = torch.linalg.svdvals(centered)
+        if not bool((sv[..., 1] > sv[..., 0] * 1e-6).all()):
+            raise ValueCheckError(
+                "fit_plane requires points that are not collinear; the given points do not determine a plane."
+            )
 
     mean = points.mean(-2, True)
     points_centered = points - mean
