@@ -250,12 +250,13 @@ def _fit_line_weighted_ols_2d(points: torch.Tensor, weights: torch.Tensor) -> Pa
     return ParametrizedLine(origin, direction)
 
 
-def _reject_degenerate_line(points: torch.Tensor) -> None:
+def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor]) -> None:
     """Raise ``ValueCheckError`` when the point set cannot determine a line.
 
     A line needs at least two points that are not all identical. Comparing every point with
     the first one is exact at any scale; comparing with the mean is not, because its rounding
-    leaves a nonzero residual for identical points such as three copies of (0.1, 0.7).
+    leaves a nonzero residual for identical points such as three copies of (0.1, 0.7). With
+    weights, the weighted mean is undefined unless the weight sum of every row is positive.
 
     The value checks are skipped under ``torch.compile``/export, where they would be a
     data-dependent branch, and by ``disable_checks()``, like every kornia value check.
@@ -267,6 +268,11 @@ def _reject_degenerate_line(points: torch.Tensor) -> None:
         raise ValueCheckError(f"fit_line requires at least two points to determine a line; got a set of {n} point(s).")
     if not bool((points != points[..., :1, :]).flatten(-2).any(-1).all()):
         raise ValueCheckError("fit_line requires at least two distinct points; the given points are all identical.")
+    if weights is not None and weights.shape == points.shape[:2]:
+        if not bool((weights.sum(-1) > 0).all()):
+            raise ValueCheckError(
+                "fit_line requires a positive sum of weights; the given weights do not sum to a positive value."
+            )
 
 
 def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
@@ -283,7 +289,7 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     Raises:
         ValueCheckError: if the points do not determine a line — fewer than two points,
-            or all points identical.
+            all points identical, or (with weights) a zero weight sum.
 
     Example:
         >>> points = torch.rand(2, 10, 3)
@@ -297,7 +303,7 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     _B, _N, D = points.shape
 
-    _reject_degenerate_line(points)
+    _reject_degenerate_line(points, weights)
 
     # Fast path: use OLS for unweighted 2D case
     if D == 2:
