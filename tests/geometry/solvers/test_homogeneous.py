@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.geometry import solvers
+from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 from testing.base import BaseTester
 
@@ -270,3 +271,33 @@ class TestConventionNullVector3x4(BaseTester):
         self.assert_close(null([A[1], A[0], A[2]]), expect([-40.0, 16.0, 4.0, 32.0]))
         rank2 = [A[0], A[1], [a + 2.0 * b for a, b in zip(A[0], A[1])]]
         self.assert_close(null(rank2), expect([0.0, 0.0, 0.0, 0.0]))
+
+
+class TestNullSpaceLU(BaseTester):
+    """``_null_space_lu``, the batched null space behind the seven-, eight- and four-point minimal solvers."""
+
+    @pytest.mark.parametrize("rows", [7, 8])
+    def test_matches_svd_subspace(self, device, dtype, rows):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("no backend factorizes half precision; callers promote to float32")
+        A = torch.randn(64, rows, 9, device=device, dtype=dtype)
+        basis = _null_space_lu(A)
+        assert basis.shape == (64, 9, 9 - rows)
+        basis = basis / basis.norm(dim=1, keepdim=True)
+        self.assert_close((A @ basis).abs().amax(), torch.zeros((), device=device, dtype=dtype), atol=1e-5, rtol=0)
+        # The same subspace as the SVD's null space: projecting onto it keeps the basis.
+        null = torch.linalg.svd(A.cpu().double(), full_matrices=True)[2][:, rows:].mT
+        projected = null @ (null.mT @ basis.cpu().double())
+        self.assert_close(projected, basis.cpu().double(), atol=1e-5, rtol=0)
+
+    def test_rank_deficient_stays_in_null_space(self, device):
+        # Zero rows, as a zero-weight correspondence gives the DLT design matrix: the unit triangular factor the
+        # basis is solved from stays regular, so the vectors are finite and still annihilated by A.
+        A = torch.randn(3, 8, 9, device=device, dtype=torch.float32)
+        A[0, 6:] = 0
+        A[1, 4:] = 0
+        A[2] = 0
+        basis = _null_space_lu(A)
+        assert torch.isfinite(basis).all()
+        basis = basis / basis.norm(dim=1, keepdim=True)
+        assert (A @ basis).abs().amax() < 1e-5

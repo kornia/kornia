@@ -72,27 +72,27 @@ class TestKMeans(BaseTester):
         assert "num_clusters can't be 0" in str(errinfo.value)
 
         # case: cluster centers is not a 2D tensor
+        starting_centers = torch.rand((2, 3, 5), device=device, dtype=dtype)
         with pytest.raises(ShapeError) as errinfo:
-            starting_centers = torch.rand((2, 3, 5), device=device, dtype=dtype)
-            kmeans = kornia.contrib.KMeans(None, starting_centers, 1e-3, 100, 0)
+            kornia.contrib.KMeans(None, starting_centers, 1e-3, 100, 0)
         assert "Shape dimension mismatch" in str(errinfo.value)
 
         # case: input data is not a 2D tensor
+        kmeans = kornia.contrib.KMeans(3, None, 1e-3, 100, 0)
         with pytest.raises(ShapeError) as errinfo:
-            kmeans = kornia.contrib.KMeans(3, None, 1e-3, 100, 0)
             kmeans.fit(torch.rand((1000, 5, 60), dtype=dtype, device=device))
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         # case: column dimensions of cluster centers and data to be predicted do not match
+        kmeans = kornia.contrib.KMeans(3, None, 1e-3, 100, 0)
+        kmeans.fit(torch.rand((1000, 5), dtype=dtype))
         with pytest.raises(Exception) as errinfo:
-            kmeans = kornia.contrib.KMeans(3, None, 1e-3, 100, 0)
-            kmeans.fit(torch.rand((1000, 5), dtype=dtype))
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
         assert "7 != 5" in str(errinfo)
 
         # case: num_clusters does not match the number of rows in an explicit cluster_centers
+        starting_centers = torch.rand((5, 2), device=device, dtype=dtype)
         with pytest.raises(BaseError) as errinfo:
-            starting_centers = torch.rand((5, 2), device=device, dtype=dtype)
             kornia.contrib.KMeans(3, starting_centers, 1e-3, 100, 0)
         assert "cluster_centers has 5 rows but num_clusters=3" in str(errinfo.value)
 

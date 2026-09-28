@@ -459,34 +459,34 @@ class TestUndistortImage(BaseTester):
         self.assert_close(actual, expected)
 
     def test_exception(self, device, dtype):
+        im = torch.rand(5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(5, 5, device=device, dtype=dtype)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(4, 4, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(4, 4, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(6, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(6, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.randint(0, 256, (3, 5, 5), device=device, dtype=torch.uint8)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.randint(0, 256, (3, 5, 5), device=device, dtype=torch.uint8)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(1, 3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
     def test_opencv(self, device, dtype):
