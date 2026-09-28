@@ -26,6 +26,7 @@ from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2, coefficient_map, multiplication_indices, signs
 
+from .fundamental import _epipolar_design_rows, _hat_basis, _sampson_normal_equations
 from .numeric import cross_product_matrix, matrix_cofactor_tensor
 from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
@@ -933,3 +934,67 @@ def find_essential(
 
     """
     return run_5point(points1, points2, weights).to(points1.dtype)
+
+
+def _refine_essential_lm(
+    E: torch.Tensor,
+    x1: torch.Tensor,
+    x2: torch.Tensor,
+    mask: Optional[torch.Tensor],
+    loss: str,
+    scale2: float,
+    iters: int,
+) -> torch.Tensor:
+    """Levenberg-Marquardt on the Sampson distance, batched over essential matrices ``(K, 3, 3)``.
+
+    ``E = U diag(1, 1, 0) V^T / sqrt(2)`` with ``U`` and ``V`` in SO(3): the factorization of
+    :func:`~kornia.geometry.epipolar.fundamental._refine_fundamental_lm` with its singular-value ratio fixed to one.
+    Five parameters, as many as the rotation and translation direction of PoseLib's ``refine_relpose``: Cayley rotations
+    of ``U`` about the three axes and of ``V`` about ``V e_1`` and ``V e_2``. Rotating both about their third axes by the
+    same angle leaves ``E`` unchanged, so that direction is left out and the normal equations stay regular. Residuals,
+    losses, masks and step acceptance as for the fundamental matrix; ``x1`` and ``x2`` are homogeneous ``(N, 3)``
+    calibrated points. Returns matrices of unit Frobenius norm. For RANSAC, under ``torch.no_grad``.
+    """
+    K = E.shape[0]
+    dtype, device = E.dtype, E.device
+    H = _hat_basis(dtype, device)
+    eye3 = torch.eye(3, dtype=dtype, device=device)
+    eye5 = torch.eye(5, dtype=dtype, device=device)
+    algebraic = _epipolar_design_rows(x1, x2).T  # (9, N)
+    quadratic = torch.cat([_epipolar_design_rows(x1, x1), _epipolar_design_rows(x2, x2)], 1).T  # (18, N)
+    U, _, Vh = torch.linalg.svd(E)
+    V = Vh.mT
+    # Proper rotations: the third singular vectors do not enter E, so their signs are free.
+    U = torch.cat([U[..., :2], U[..., 2:] * torch.linalg.det(U).sign()[:, None, None]], -1)
+    V = torch.cat([V[..., :2], V[..., 2:] * torch.linalg.det(V).sign()[:, None, None]], -1)
+    damping = torch.full((K, 1, 1), 1e-3, dtype=dtype, device=device)
+
+    def compose(U: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
+        return (U[..., :2] @ V[..., :2].mT) * 0.5**0.5
+
+    def normal_equations(E: torch.Tensor, V: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Directions dE/dp: H_a E (rotations of U), -E [V e_k]_x (rotations of V about its first two axes).
+        axes = (V[..., :2].mT.reshape(K * 2, 3) @ H.reshape(3, 9)).reshape(K, 2, 3, 3)
+        tangent = torch.cat([H @ E[:, None], (E[:, None] @ axes).neg()], 1)
+        return _sampson_normal_equations(E, tangent, algebraic, quadratic, mask, loss, scale2)
+
+    def cayley(half: torch.Tensor) -> torch.Tensor:
+        # The rotation by the vector 2 * half: Cayley transform of the half-angle skew matrix.
+        skew = (half @ H.reshape(3, 9)).reshape(-1, 3, 3)
+        factor = (2.0 / (1.0 + half.square().sum(1)))[:, None, None]
+        return eye3 + factor * (skew + skew @ skew)
+
+    E = compose(U, V)
+    system, cost = normal_equations(E, V)
+    for _ in range(iters):
+        delta = -torch.linalg.solve_ex(system[..., :5] + damping * eye5, system[..., 5:])[0][..., 0]
+        U_new = cayley(0.5 * delta[:, :3]) @ U
+        V_new = cayley(0.5 * (V[..., :2] @ delta[:, 3:, None])[..., 0]) @ V
+        E_new = compose(U_new, V_new)
+        system_new, cost_new = normal_equations(E_new, V_new)
+        accept = (cost_new < cost)[:, None, None]
+        U, V = torch.where(accept, U_new, U), torch.where(accept, V_new, V)
+        E, system = torch.where(accept, E_new, E), torch.where(accept, system_new, system)
+        cost = torch.where(accept[:, 0, 0], cost_new, cost)
+        damping = damping * torch.where(accept, 0.1, 10.0)
+    return E

@@ -20,10 +20,12 @@ import torch
 
 import kornia
 import kornia.geometry.epipolar as epi
+from kornia.geometry.conversions import convert_points_to_homogeneous
+from kornia.geometry.epipolar.essential import _refine_essential_lm
 
 from testing.base import BaseTester
 from testing.geometry.create import generate_two_view_random_scene
-from testing.two_view import two_view_scene
+from testing.two_view import calibrated_two_view_scene, two_view_scene
 
 
 def test_generate_two_view_random_scene_is_deterministic():
@@ -1065,3 +1067,55 @@ class TestConventionEssential(BaseTester):
         (grad,) = torch.autograd.grad(E[1][real].sum(), p1)
         assert torch.isfinite(grad).all()
         assert (grad[0] == 0).all()
+
+
+class TestRefineEssentialLM(BaseTester):
+    """``_refine_essential_lm``, RANSAC's Levenberg-Marquardt refinement of essential matrices (float64, host)."""
+
+    @staticmethod
+    def _start(E, scale, seed):
+        noise = torch.randn(3, 3, generator=torch.Generator().manual_seed(seed), dtype=E.dtype)
+        start = epi.project_to_essential(E + scale * noise)
+        return (start / start.norm())[None]
+
+    @staticmethod
+    def _aligned(E, reference):
+        return E * torch.sign((E * reference).sum())
+
+    @pytest.mark.parametrize("loss", ["truncated", "cauchy"])
+    def test_stays_on_the_manifold_and_lowers_the_cost(self, loss):
+        scene = calibrated_two_view_scene(200, 1e-3, 0)
+        x1, x2 = scene["x1"], scene["x2"]
+        start = self._start(scene["E"], 0.02, 1)
+        refined = _refine_essential_lm(
+            start, convert_points_to_homogeneous(x1), convert_points_to_homogeneous(x2), None, loss, 3e-3**2, 10
+        )
+        singular_values = torch.linalg.svdvals(refined[0])
+        self.assert_close(singular_values, torch.tensor([2**-0.5, 2**-0.5, 0.0], dtype=torch.float64), atol=1e-12, rtol=0)
+        before = epi.sampson_epipolar_distance(x1[None], x2[None], start).sum()
+        after = epi.sampson_epipolar_distance(x1[None], x2[None], refined).sum()
+        assert after < 0.5 * before
+
+    def test_reaches_the_noise_free_model(self):
+        scene = calibrated_two_view_scene(100, 0.0, 2)
+        h1, h2 = convert_points_to_homogeneous(scene["x1"]), convert_points_to_homogeneous(scene["x2"])
+        refined = _refine_essential_lm(self._start(scene["E"], 0.01, 3), h1, h2, None, "cauchy", 1e-6, 20)[0]
+        self.assert_close(self._aligned(refined, scene["E"]), scene["E"], atol=1e-9, rtol=0)
+
+    def test_mask_restricts_each_model_to_its_correspondences(self):
+        scene = calibrated_two_view_scene(60, 0.0, 4)
+        x2 = scene["x2"].clone()
+        x2[30:] = x2[30:] + 0.3  # gross outliers, excluded by the mask
+        h1, h2 = convert_points_to_homogeneous(scene["x1"]), convert_points_to_homogeneous(x2)
+        mask = torch.zeros(1, 60, dtype=torch.float64)
+        mask[0, :30] = 1.0
+        refined = _refine_essential_lm(self._start(scene["E"], 0.01, 5), h1, h2, mask, "cauchy", 1e-6, 20)[0]
+        self.assert_close(self._aligned(refined, scene["E"]), scene["E"], atol=1e-9, rtol=0)
+
+    def test_batched_models_are_refined_independently(self):
+        scene = calibrated_two_view_scene(80, 0.0, 6)
+        h1, h2 = convert_points_to_homogeneous(scene["x1"]), convert_points_to_homogeneous(scene["x2"])
+        starts = torch.cat([self._start(scene["E"], 0.01, 7), self._start(scene["E"], 0.03, 8)])
+        together = _refine_essential_lm(starts, h1, h2, None, "truncated", 1e-4, 15)
+        alone = torch.cat([_refine_essential_lm(start[None], h1, h2, None, "truncated", 1e-4, 15) for start in starts])
+        self.assert_close(together, alone, atol=1e-12, rtol=0)
