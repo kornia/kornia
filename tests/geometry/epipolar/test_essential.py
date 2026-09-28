@@ -1022,7 +1022,7 @@ class TestConventionEssential(BaseTester):
             self.assert_close(R2b, R2.expand_as(R2b))
             self.assert_close(tb, t.expand_as(tb))
 
-    def test_wart_choose_solution_batched_uses_element0_index_2198(self, device, dtype):
+    def test_convention_choose_solution_batch_independent_2198(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
@@ -1037,14 +1037,13 @@ class TestConventionEssential(BaseTester):
         for E_in in (E, -E):
             R_out, t_out, _ = epi.motion_from_essential_choose_solution(E_in, K1, K2, x1, x2)
             assert is_truth(R_out[0], t_out[0])
-        # #2198: in the batch [E, -E] with the same correspondences, element 1 gets element 0's index: a wrong pose
-        # with points behind a camera.
+        # #2198: each batch element must select its own candidate, independently of the others.
         R_b, t_b, X_b = epi.motion_from_essential_choose_solution(
             torch.cat([E, -E]), K1.expand(2, 3, 3), K2.expand(2, 3, 3), x1.expand(2, 12, 2), x2.expand(2, 12, 2)
         )
         assert is_truth(R_b[0], t_b[0])
-        assert not is_truth(R_b[1], t_b[1])
-        assert (X_b[1, :, 2] < 0).any()
+        assert is_truth(R_b[1], t_b[1])
+        assert (X_b[1, :, 2] > 0).all()
 
     def test_convention_find_essential_no_real_root_nan_4883(self, device, dtype):
         _skip_find_essential(device, dtype)

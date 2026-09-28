@@ -7622,7 +7622,7 @@
       "export": "ok",
       "export_detail": "",
       "graph_breaks": 0,
-      "name": "subpix.conv_soft_argmax3d[normalized,bonus]",
+      "name": "subpix.conv_soft_argmax3d[normalized]",
       "note": "",
       "onnx": "ok",
       "onnx_detail": "",
@@ -7630,7 +7630,7 @@
       "package": "kornia.geometry",
       "ref": "kornia.geometry.subpix.conv_soft_argmax3d",
       "section": "subpix",
-      "variant": "normalized,bonus",
+      "variant": "normalized",
       "where": ""
     },
     {
@@ -8328,23 +8328,6 @@
       "ref": "",
       "section": "plane",
       "variant": "",
-      "where": ""
-    },
-    {
-      "compile": "n/a",
-      "compile_detail": "does not run eagerly with the probed inputs: BaseError : Validation condition failed",
-      "export": "n/a",
-      "export_detail": "does not run eagerly with the probed inputs: BaseError : Validation condition failed",
-      "graph_breaks": 0,
-      "name": "plane.Hyperplane.through[2d]",
-      "note": "KORNIA BUG: 2-D branch wraps a 2-vector into Vector3 -> always fails validation (plane.py:185)",
-      "onnx": "n/a",
-      "onnx_detail": "does not run eagerly with the probed inputs: BaseError : Validation condition failed",
-      "operator": "Hyperplane.through",
-      "package": "kornia.geometry",
-      "ref": "",
-      "section": "plane",
-      "variant": "2d",
       "where": ""
     },
     {

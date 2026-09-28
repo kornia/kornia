@@ -24,17 +24,13 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.exceptions import BaseError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
 from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
 
 __all__ = ["Hyperplane", "fit_plane"]
-
-
-def normalized(v: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    norm_sq = (v * v).sum(dim=-1, keepdim=True) + eps
-    return v * norm_sq.rsqrt()
 
 
 class Hyperplane(nn.Module):
@@ -156,30 +152,31 @@ class Hyperplane(nn.Module):
 
     @classmethod
     def through(cls, p0: torch.Tensor, p1: torch.Tensor, p2: Optional[torch.Tensor] = None) -> "Hyperplane":
-        """Construct a line-like 2D hyperplane or a 3D plane through points.
+        """Construct the 3D plane through three points.
+
+        Only the three-point form is supported: :class:`Hyperplane` stores its normal as a
+        :class:`~kornia.geometry.vector.Vector3`, so it cannot represent a 2D line, and calling
+        ``through`` with two points raises.
 
         Args:
-            p0: First point tensor, shaped ``(..., 2)`` for the 2D case or
-                ``(..., 3)`` for the 3D case.
+            p0: First point tensor, shaped ``(..., 3)``.
             p1: Second point tensor with the same shape as ``p0``.
-            p2: Optional third point tensor. If omitted, the method builds the
-                2D line representation from ``p0`` and ``p1``. If provided, it
-                builds the 3D plane passing through all three points.
+            p2: Third point tensor with the same shape as ``p0``. It is required; the default of
+                ``None`` only exists so that a two-point call fails with a clear error.
 
         Returns:
-            :class:`Hyperplane` with a normal and offset determined by the
-            provided point set.
+            :class:`Hyperplane` passing through the three points.
+
+        Raises:
+            BaseError: if ``p2`` is omitted, or if the points are not ``(..., 3)`` tensors of the
+                same shape.
         """
-        # 2d case
         if p2 is None:
-            # TODO: improve tests
-            KORNIA_CHECK_SHAPE(p0, ["*", "2"])
-            KORNIA_CHECK(p0.shape == p1.shape)
-            # TODO: implement `.unitOrthonormal`
-            normal2d = normalized(p1 - p0)
-            offset2d = -batched_dot_product(p0, normal2d)
-            return Hyperplane(_wrap(normal2d, Vector3), _wrap(offset2d, Scalar))
-        # 3d case
+            # Raised directly rather than through KORNIA_CHECK, so it still fires with checks disabled.
+            raise BaseError(
+                "Hyperplane.through requires three points p0, p1 and p2 of shape (..., 3); "
+                "the two-point (2D line) form is not supported."
+            )
         KORNIA_CHECK_SHAPE(p0, ["*", "3"])
         KORNIA_CHECK(p0.shape == p1.shape)
         KORNIA_CHECK(p1.shape == p2.shape)

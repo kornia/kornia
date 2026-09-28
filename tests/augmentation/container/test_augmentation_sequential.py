@@ -245,6 +245,26 @@ class TestAugmentationSequential:
         assert out_bbox.shape == (batch_size, 1, 4)
         assert torch.isfinite(out_bbox).all()
 
+    @pytest.mark.parametrize("padding", [None, 2])
+    def test_random_crop_accepts_unbatched_keypoints_5021(self, padding, device, dtype):
+        # kornia#5021: RandomCrop routes keypoints through Keypoints.pad, with or without padding. A
+        # rank-2 (N, 2) keypoints tensor for a single image builds an *unbatched* Keypoints container,
+        # which pad crashed on with "output with shape [2] doesn't match the broadcast shape [1, 2]".
+        # The same crop on the singleton-batch (1, N, 2) keypoints always worked and is the reference.
+        input = torch.rand(1, 1, 7, 11, device=device, dtype=dtype)
+        keypoints = torch.tensor([[8.0, 2.0], [3.0, 5.0]], device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomCrop((5, 9), padding=padding, p=1.0), data_keys=["input", "keypoints"])
+
+        torch.manual_seed(0)
+        _, expected = aug(input, keypoints[None])
+        torch.manual_seed(0)
+        out_input, out_keypoints = aug(input, keypoints)
+
+        assert out_input.shape == (1, 1, 5, 9)
+        # the rank of the caller's keypoints is preserved on the way out
+        assert out_keypoints.shape == (2, 2)
+        assert_close(out_keypoints, expected[0])
+
     def test_random_crops_and_flips(self, device, dtype):
         width, height = 100, 100
         crop_width, crop_height = 3, 3

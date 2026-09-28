@@ -415,17 +415,17 @@ class TestSe2(BaseTester):
         converted.t.sum().backward()
         assert v.grad is not None
 
-    def test_wart_se2_vector2_translation_is_not_registered_or_moved_4923(self, device, dtype):
+    def test_se2_identity_and_random_translation_is_module_state_4931(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
-        # https://github.com/kornia/kornia/issues/4923: identity and random keep their Vector2 translation outside
-        # module state, so it is absent from state_dict() and .to() leaves it at its original dtype. Cast to a
-        # complex dtype so this pin does not depend on So2's separate real-cast defect under the same issue.
+        # https://github.com/kornia/kornia/issues/4931: identity and random register their translation like the other
+        # constructors, so it is in state_dict() and ``.half()`` / ``.float()`` convert it (float64 is unavailable on
+        # MPS, so convert towards float16 from float32). The complex So2 state is left alone by these casts.
         for pose in (Se2.identity(1, device, dtype), Se2.random(1, device, dtype)):
-            assert "_translation" not in pose.state_dict()
-            pose.to(torch.complex64)
-            assert pose.r.z.dtype == torch.complex64
-            assert pose.t.data.dtype == dtype
+            assert "_translation" in pose.state_dict()
+            converted = pose.half() if dtype == torch.float32 else pose.float()
+            assert converted.t.dtype == (torch.float16 if dtype == torch.float32 else torch.float32)
+            assert converted.r.z.is_complex()
 
     def test_convention_se2_tangent_is_vx_vy_theta_with_V(self, device, dtype):
         if dtype == torch.bfloat16:
@@ -529,18 +529,40 @@ class TestSe2(BaseTester):
         exported = torch.export.export(FromMatrix(), (matrix,)).module()
         self.assert_close(exported(matrix), expected)
 
-    def test_wart_se2_identity_point_action_returns_a_vector2_4931(self, device, dtype):
+    def test_se2_translation_is_a_tensor_for_every_constructor_4931(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # https://github.com/kornia/kornia/issues/4931: identity and random store their translation as a registered
+        # tensor like the other constructors, so g * p is a tensor for a tensor p whichever constructor built g, and
+        # a Vector2 only for a Vector2 p.
         p = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype)
         from_exp = Se2.exp(torch.zeros(1, 3, device=device, dtype=dtype))
         identity = Se2.identity(1, device, dtype)
         self.assert_close(identity.matrix(), from_exp.matrix())  # the same group element
-        assert isinstance(from_exp * p, torch.Tensor)
-        # https://github.com/kornia/kornia/issues/4931: identity stores its translation as a Vector2 and __mul__ adds
-        # it without unwrapping, so the point action of the identity returns a Vector2, not a tensor.
-        out = identity * p
-        assert isinstance(out, Vector2)
-        assert not isinstance(out, torch.Tensor)
-        self.assert_close(out.data, p)
-        assert isinstance((from_exp * identity) * p, Vector2)  # a product with the identity inherits it
+        poses = [
+            identity,
+            Se2.random(1, device, dtype),
+            Se2(So2.identity(1, device, dtype), Vector2(p)),
+            from_exp * identity,
+        ]
+        if dtype != torch.float16:  # So2.inverse divides a ComplexHalf z, which the CPU does not implement
+            poses.append(identity.inverse())
+        for pose in poses:
+            assert isinstance(pose.t, torch.Tensor) and pose.t.shape == (1, 2)
+            assert "_translation" in pose.state_dict()
+        self.assert_close(identity.t[..., 0], torch.zeros(1, device=device, dtype=dtype))
+        for g in (from_exp, identity, from_exp * identity):
+            assert type(g * p) is torch.Tensor
+            self.assert_close(g * p, p)
+        assert isinstance(identity * Vector2(p), Vector2)
+        self.assert_close((identity * Vector2(p)).data, p)
+
+    def test_random_translation_is_uniform_in_the_unit_interval(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("torch.complex has no bfloat16 overload and ComplexHalf support is experimental")
+        # random draws its translation with torch.rand, which the Vector2 it used to build drew as well (#4931).
+        torch.manual_seed(0)
+        t = Se2.random(1000, device=device, dtype=dtype).t
+        assert t.shape == (1000, 2)
+        assert t.min() >= 0 and t.max() <= 1, (t.min(), t.max())
+        assert 0.45 < t.mean() < 0.55, t.mean()
