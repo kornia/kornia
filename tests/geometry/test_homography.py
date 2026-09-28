@@ -1210,6 +1210,19 @@ class TestHomographySharedKernels(BaseTester):
         assert out.dtype == dtype
         self.assert_close(out, expected.to(dtype))
 
+    def test_public_dispatch(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("compared at float32 and float64 accuracy")
+        generator = torch.Generator().manual_seed(6)
+        pts1 = torch.rand(1, 30, 2, generator=generator).to(device, dtype)
+        pts2 = torch.rand(1, 30, 2, generator=generator).to(device, dtype)
+        H = torch.eye(3) + 0.1 * (2 * torch.rand(3, 3, 3, generator=generator) - 1)
+        H = H.to(device, dtype)
+        out = oneway_transfer_error(pts1, pts2, H)
+        assert torch.equal(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H, True, 1e-8))
+        per_model = torch.cat([oneway_transfer_error(pts1, pts2, H[i : i + 1]) for i in range(3)])
+        self.assert_close(out, per_model)
+
     def test_shapes_and_homogeneous_points(self, device, dtype):
         H = create_random_homography(torch.zeros(4, 1, device=device, dtype=dtype), 3, std_val=0.1)
         pts1 = torch.rand(1, 7, 2, device=device, dtype=dtype)

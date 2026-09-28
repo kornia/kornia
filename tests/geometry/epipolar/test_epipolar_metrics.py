@@ -364,6 +364,26 @@ def _near_epipole_scene(n: int, seed: int):
 class TestSampsonSharedPoints(BaseTester):
     """One point set scored against many fundamental matrices: two matrix products instead of per-model broadcasting."""
 
+    @pytest.mark.parametrize("squared", [True, False])
+    def test_public_dispatch_and_eps_4881(self, device, dtype, squared):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("eps = 1e-8 is below half precision's resolution")
+        # 256 matrices x 300 points reach the shared path on every device. At 1e-4 of unit scale, eps moves the
+        # distances by tens of percent, so the comparison tells the CPU rule (eps in the denominator) from the CUDA
+        # matmul one (no eps in the denominator, #4881).
+        generator = torch.Generator().manual_seed(5)
+        pts1 = torch.rand(1, 300, 2, generator=generator).to(device, dtype)
+        pts2 = torch.rand(1, 300, 2, generator=generator).to(device, dtype)
+        Fm = 1e-4 * create_random_fundamental_matrix(256, dtype=dtype, device=device)
+        out = epi.sampson_epipolar_distance(pts1, pts2, Fm, squared=squared)
+        matmul = device.type == "cuda"
+        shared = _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm, squared, 1e-8, 0.0 if matmul else 1e-8)
+        assert torch.equal(out, shared)
+        reference = _sampson_epipolar_distance_matmul_impl_ if matmul else _sampson_epipolar_distance_manual_impl_
+        expected = reference(pts1, pts2, Fm, squared, 1e-8)
+        # Roundoff on the near-zero distances aside, eps in or out of the denominator is a 20-60% difference.
+        self.assert_close(out, expected, rtol=1e-3, atol=1e-3 * float(expected.abs().median()))
+
     def test_single_matrix_without_batch_dimension(self, device, dtype):
         if device.type != "cuda":
             pytest.skip("the manual implementation, used on CPU, has always required a batch dimension on Fm")
