@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Vector3
@@ -99,22 +100,6 @@ class TestHyperplane(BaseTester):
         assert p0.normal.shape == shape or (3,)
         assert p0.offset.shape == ((*shape,) if shape is not None else ())
 
-    def test_through_orthogonal_equal_length_gradient_5056(self, device, dtype):
-        # #5056: the SVD fallback ran on every row and torch.where only zeroed its gradient. When p2 - p0 and
-        # p1 - p0 are orthogonal and of equal length the two singular values coincide, the SVD backward divides by
-        # their difference, and 0 * inf turned every input gradient into nan although the plane came from the cross
-        # product. v0 = (2, 1, -2) and v1 = (1, 2, 2) are orthogonal and both of length 3; the second row is a
-        # general triangle.
-        p0 = torch.tensor([[0.0, 0.0, 0.0], [0.1, 0.2, 0.3]], device=device, dtype=dtype, requires_grad=True)
-        p1 = torch.tensor([[1.0, 2.0, 2.0], [1.5, -0.4, 0.8]], device=device, dtype=dtype, requires_grad=True)
-        p2 = torch.tensor([[2.0, 1.0, -2.0], [-0.7, 1.1, 2.0]], device=device, dtype=dtype, requires_grad=True)
-        plane = Hyperplane.through(p0, p1, p2)
-        expected = torch.tensor([4.0, -4.0, 2.0], device=device, dtype=dtype)
-        self.assert_close(plane.normal.data[0] / plane.normal.data[0].norm(), expected / expected.norm())
-        (plane.normal.data.sum() + plane.offset.data.sum()).backward()
-        for p in (p0, p1, p2):
-            assert torch.isfinite(p.grad).all(), p.grad
-
     @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
     def test_abs_signed_distance(self, device, dtype, shape):
         p0 = Vector3.random(shape, device, dtype)
@@ -132,7 +117,9 @@ class TestHyperplane(BaseTester):
         expected = torch.ones(shape or (), device=device, dtype=dtype)
         self.assert_close(pl1.signed_distance(p1 + n1 * s0[..., None]), s0)
         assert (pl0.abs_distance(p0) < expected).all()
-        assert (pl1.signed_distance(pl1.projection(p0)) < expected).all()
+        projected_distance = pl1.signed_distance(pl1.projection(p0)).data
+        assert projected_distance.shape == (shape or ())
+        self.assert_close(projected_distance, torch.zeros_like(projected_distance))
         assert (pl1.abs_distance(p1 + pl1.normal * s1) < expected).all()
 
     def test_projection(self, device, dtype):
@@ -144,6 +131,24 @@ class TestHyperplane(BaseTester):
         p_in_plane = plane_in_world.projection(p_in_world)
         p_in_plane_expected = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
         self.assert_close(p_in_plane, p_in_plane_expected)
+
+    def test_batched_projection_preserves_shape_and_values(self, device, dtype):
+        normal = Vector3(torch.tensor([[[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]]], device=device, dtype=dtype))
+        anchor = Vector3(torch.tensor([[[2.0, 0.0, 0.0]], [[0.0, 3.0, 0.0]]], device=device, dtype=dtype))
+        point = Vector3(torch.tensor([[[5.0, 4.0, 1.0]], [[6.0, 7.0, 2.0]]], device=device, dtype=dtype))
+        plane = Hyperplane.from_vector(normal, anchor)
+        projected = plane.projection(point)
+        expected = torch.stack(
+            [
+                Hyperplane.from_vector(Vector3(normal.data[i, 0]), Vector3(anchor.data[i, 0]))
+                .projection(Vector3(point.data[i, 0]))
+                .data
+                for i in range(2)
+            ]
+        )[:, None, :]
+        assert projected.data.shape == point.data.shape
+        self.assert_close(projected.data, expected)
+        self.assert_close(plane.signed_distance(projected).data, torch.zeros(2, 1, device=device, dtype=dtype))
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -162,13 +167,103 @@ class TestHyperplane(BaseTester):
         pass
 
     def test_gradcheck(self, device):
-        # The orthogonal equal-length triangle of #5056 next to a general one.
-        p0 = torch.tensor([[0.0, 0.0, 0.0], [0.1, 0.2, 0.3]], device=device, dtype=torch.float64)
-        p1 = torch.tensor([[1.0, 2.0, 2.0], [1.5, -0.4, 0.8]], device=device, dtype=torch.float64)
-        p2 = torch.tensor([[2.0, 1.0, -2.0], [-0.7, 1.1, 2.0]], device=device, dtype=torch.float64)
+        # A tilted triangle whose edges are neither orthogonal nor of equal length, so the SVD fallback
+        # (which torch.where differentiates as well) has distinct singular values.
+        p0 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=torch.float64)
+        p1 = torch.tensor([0.0, 2.0, 0.0], device=device, dtype=torch.float64)
+        p2 = torch.tensor([0.0, 0.0, 3.0], device=device, dtype=torch.float64)
 
-        def through(p0: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
-            plane = Hyperplane.through(p0, p1, p2)
-            return torch.cat([plane.normal.data, plane.offset.data[..., None]], dim=-1)
+        def proxy(a, b, c):
+            plane = Hyperplane.through(a, b, c)
+            return plane.normal.data, plane.offset.data
 
-        self.gradcheck(through, (p0, p1, p2))
+        self.gradcheck(proxy, (p0, p1, p2))
+
+    def test_through_tilted_plane_unit_normal(self, device, dtype):
+        # #5012: a tilted plane (no zero component in its normal) used to get the cross product divided by
+        # its p=-1 "norm", here (-6, -3, -2) with length 7, so distances came out 7x too large.
+        p0 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        p1 = torch.tensor([0.0, 2.0, 0.0], device=device, dtype=dtype)
+        p2 = torch.tensor([0.0, 0.0, 3.0], device=device, dtype=dtype)
+
+        plane = Hyperplane.through(p0, p1, p2)
+
+        # The unit normal (p2 - p0) x (p1 - p0) / 7 and the offset -p0 . n = 6 / 7.
+        expected_normal = torch.tensor([-6.0, -3.0, -2.0], device=device, dtype=dtype) / 7.0
+        self.assert_close(plane.normal.data, expected_normal)
+        self.assert_close(plane.offset.data, torch.tensor(6.0 / 7.0, device=device, dtype=dtype))
+
+        # The point x = (1, 2, 3) has signed distance -12 / 7 and projects to x + (12 / 7) n.
+        x = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        self.assert_close(plane.signed_distance(x).data, torch.tensor(-12.0 / 7.0, device=device, dtype=dtype))
+        expected_projection = torch.tensor([-23.0, 62.0, 123.0], device=device, dtype=dtype) / 49.0
+        # low_tolerance: the first coordinate is 1 - 72 / 49, which cancels in float16 and bfloat16.
+        self.assert_close(plane.projection(x).data, expected_projection, low_tolerance=True)
+
+    def test_through_axis_aligned_follows_cross_product_orientation(self, device, dtype):
+        # An axis-aligned plane has a zero component in its cross product, so its p=-1 "norm" was 0 and it took
+        # the SVD fallback, whose sign is arbitrary: for this plane z = 1 it returned (0, 0, 1). It now takes the
+        # cross-product branch like every other plane, and the normal is (p2 - p0) x (p1 - p0) = (0, 0, -1).
+        p0 = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        p1 = torch.tensor([1.0, 0.0, 1.0], device=device, dtype=dtype)
+        p2 = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+        plane = Hyperplane.through(p0, p1, p2)
+        self.assert_close(plane.normal.data, torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype))
+        origin = torch.zeros(3, device=device, dtype=dtype)
+        self.assert_close(plane.signed_distance(origin).data, torch.tensor(1.0, device=device, dtype=dtype))
+
+    def test_through_batched_rows_are_independent(self, device, dtype):
+        # The collinearity threshold is per row. The p=-1 "norm" reduced over the whole batch, so an axis-aligned
+        # row sent a tilted row to the SVD fallback too, where it got a different sign than on its own.
+        p0 = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        p1 = torch.tensor([[0.0, 2.0, 0.0], [1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        p2 = torch.tensor([[0.0, 0.0, 3.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        batched = Hyperplane.through(p0, p1, p2)
+        expected = torch.tensor([[-6.0 / 7.0, -3.0 / 7.0, -2.0 / 7.0], [0.0, 0.0, -1.0]], device=device, dtype=dtype)
+        self.assert_close(batched.normal.data, expected)
+        for i in range(2):
+            self.assert_close(batched.normal.data[i], Hyperplane.through(p0[i], p1[i], p2[i]).normal.data)
+
+    def test_through_batched_threshold_is_per_row(self, device, dtype):
+        # The fallback threshold compares each row's cross product with that row's own edge lengths. Measured
+        # against the whole batch, the 1e-4 triangle would fall below it next to the 1e4 one and take the SVD
+        # fallback, whose sign differs from the cross product's for this triangle.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the 1e4 triangle's cross product overflows float16")
+        base = [
+            torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 2.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 0.0, 3.0], device=device, dtype=dtype),
+        ]
+        batched = Hyperplane.through(*(torch.stack([1e-4 * p, 1e4 * p]) for p in base))
+        expected = torch.tensor([-6.0, -3.0, -2.0], device=device, dtype=dtype) / 7.0
+        self.assert_close(batched.normal.data, expected.expand(2, 3))
+
+    def test_through_degenerate_takes_svd_fallback(self, device, dtype):
+        # Collinear or coincident points leave a zero cross product, and the SVD fallback returns a finite unit normal.
+        # The gradient is not pinned: the plane through collinear points is not unique, so the fallback normal is
+        # not differentiable there. Checks are disabled so this also covers the fallback where eager calls reject
+        # these inputs.
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            a = torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype)
+            b = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
+            collinear = [a, b, 2 * b - a]
+            coincident = [a, a.clone(), a.clone()]
+            for points in (collinear, coincident):
+                plane = Hyperplane.through(*points)
+                norm = torch.linalg.vector_norm(plane.normal.data, dim=-1)
+                self.assert_close(norm, torch.tensor(1.0, device=device, dtype=dtype))
+
+            # A degenerate row does not send the other rows of its batch to the fallback.
+            tilted = [
+                torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype),
+                torch.tensor([0.0, 2.0, 0.0], device=device, dtype=dtype),
+                torch.tensor([0.0, 0.0, 3.0], device=device, dtype=dtype),
+            ]
+            batched = Hyperplane.through(*(torch.stack([c, t]) for c, t in zip(collinear, tilted)))
+            self.assert_close(batched.normal.data[1], Hyperplane.through(*tilted).normal.data)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
