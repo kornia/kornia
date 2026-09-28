@@ -41,16 +41,33 @@ Coordinates and sizes
 - Sizes and ``dsize`` arguments are ``(h, w)`` — the *opposite* order from
   points. ``warp_perspective(img, M, dsize=(2, 8))`` produces a 2-row,
   8-column image.
-- Normalized coordinates, where used, are ``[-1, 1]`` in both axes,
-  identical to :func:`torch.nn.functional.grid_sample` **called with**
-  ``align_corners=True`` — not to its default, ``align_corners=False``,
-  which places the same values up to half a pixel off — exactly half a
-  pixel at the image borders, and identically at the image center.
-  :func:`kornia.geometry.grid.create_meshgrid` returns a normalized grid by
-  default (``normalized_coordinates=True``).
+- Normalized coordinates, where used, are ``[-1, 1]`` in both axes.
+  :func:`kornia.geometry.grid.create_meshgrid` defaults to a corner-aligned
+  normalized grid (``normalized_coordinates=True``, ``align_corners=True``),
+  matching :func:`torch.nn.functional.grid_sample` with ``align_corners=True``:
+  the first and last pixel centres map to the endpoints. Passing
+  ``align_corners=False`` to ``create_meshgrid`` uses the half-pixel mapping
+  that matches ``grid_sample(..., align_corners=False)`` instead, where the
+  endpoints are the outer pixel edges. Use the same flag in both calls.
 - 3D grids and 3D pixel coordinates are ``(d, x, y)`` — depth first, not
   ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
   order and the ``*_pixel_coordinates3d`` conversions consume it.
+  :func:`torch.nn.functional.grid_sample` reads a 3D grid as ``(x, y, z)``:
+  pass ``grid[..., [1, 2, 0]]`` and ``align_corners=True``, because the
+  normalized 3D grid is corner-aligned and has no ``align_corners`` argument
+  (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+- Sub-pixel outputs follow the same orders: the soft-argmax functions of
+  :doc:`kornia.geometry.subpix </geometry.subpix>` return ``(x, y)`` in 2D
+  and ``(d, x, y)`` in 3D, and the quadratic refiners
+  (``conv_quad_interp3d``, ``iterative_quad_interp3d``) return ``(d, x, y)``
+  voxel indices of their input. Normalized outputs are corner-aligned, as
+  above.
+- Non-maximum suppression is **strict** in
+  :func:`kornia.geometry.subpix.nms2d`, ``nms3d``, ``nms3d_minmax`` and the
+  detectors built on them: with a window of at least 3 on every axis, every
+  pixel of a plateau is suppressed. ``skimage.feature.peak_local_max`` at its
+  default ``min_distance=1``, ``scipy.ndimage.maximum_filter(x, size=k) == x``
+  and ``cv2.dilate(x, kernel) == x`` keep every pixel of the plateau instead.
 - Pixel ``(0, 0)`` is centred at ``(0, 0)`` — the OpenCV "integer" convention,
   not COLMAP's half-pixel one. :doc:`camera-conventions` catalogues the
   pixel-centre and camera-frame conventions of the surrounding ecosystem and

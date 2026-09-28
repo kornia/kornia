@@ -1515,10 +1515,9 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, bits, device, dtype):
         with pytest.raises(Exception):
-            if isinstance(bits, Tensor):
-                PosterizeGenerator(bits.to(device=device, dtype=dtype))(torch.Size([3]))
-            else:
-                PosterizeGenerator(bits)(torch.Size([3]))
+            PosterizeGenerator(bits.to(device=device, dtype=dtype) if isinstance(bits, Tensor) else bits)(
+                torch.Size([3])
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(9)

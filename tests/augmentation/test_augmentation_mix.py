@@ -1148,25 +1148,25 @@ class TestRandomTransplantation(BaseTester):
         with pytest.raises(Exception, match="excluded_labels must be a 1-dimensional"):
             RandomTransplantation(p=1.0, excluded_labels=torch.tensor([[0, 1]], device=device, dtype=dtype))
 
+        f = RandomTransplantation(p=1.0)
         with pytest.raises(Exception, match=r"Length of keys.*does not match number of inputs"):
-            f = RandomTransplantation(p=1.0)
             f(image, mask, data_keys=["input", "mask", "mask"])
 
+        params_copy = copy.deepcopy(params)
+        params_copy["selected_labels"] = torch.tensor([[0, 1]], device=device, dtype=dtype)
+        del params_copy["selection"]
         with pytest.raises(Exception, match=r"selected_labels must be a 1-dimensional torch\.tensor"):
-            params_copy = copy.deepcopy(params)
-            params_copy["selected_labels"] = torch.tensor([[0, 1]], device=device, dtype=dtype)
-            del params_copy["selection"]
             f(image, mask, params=params_copy)
 
+        params_copy = copy.deepcopy(params)
+        params_copy["selected_labels"] = torch.tensor([0, 1], device=device, dtype=dtype)
+        del params_copy["selection"]
         with pytest.raises(Exception, match="There cannot be more selected labels"):
-            params_copy = copy.deepcopy(params)
-            params_copy["selected_labels"] = torch.tensor([0, 1], device=device, dtype=dtype)
-            del params_copy["selection"]
             f(image, mask, params=params_copy)
 
         with pytest.raises(Exception, match="Every image input must have one additional dimension"):
             f(image.unsqueeze(dim=-1), mask)
 
+        image = torch.rand(1, 3, 2, 5, device=device, dtype=torch.float64)
         with pytest.raises(Exception, match="The dimensions of the input image and segmentation mask must match"):
-            image = torch.rand(1, 3, 2, 5, device=device, dtype=torch.float64)
             f(image, mask)

@@ -6005,8 +6005,7 @@ class TestRandomSnow(BaseTester):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, snow_coef, brght_coef, input_data in exception_test_data:
             with pytest.raises(Exception) as errinfo:
-                aug = RandomSnow(p=1.0, snow_coefficient=snow_coef, brightness=brght_coef)
-                aug(input_data)
+                RandomSnow(p=1.0, snow_coefficient=snow_coef, brightness=brght_coef)(input_data)
 
             assert err_msg in str(errinfo)
 
@@ -6158,8 +6157,7 @@ class TestRandomRain(BaseTester):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:
             with pytest.raises(Exception) as errinfo:
-                aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)
-                aug(input_data)
+                RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)(input_data)
 
             assert err_msg in str(errinfo)
 

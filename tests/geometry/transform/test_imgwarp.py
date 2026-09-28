@@ -519,12 +519,12 @@ class TestWarpAffine(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.geometry.warp_affine(img, 0.0, size)
 
+        img = torch.rand(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.rand(2, 3, 4, device=device, dtype=dtype)
             assert kornia.geometry.warp_affine(img, aff, size)
 
+        aff = torch.eye(2, 2, device=device, dtype=dtype)[None]
         with pytest.raises(ValueError):
-            aff = torch.eye(2, 2, device=device, dtype=dtype)[None]
             assert kornia.geometry.warp_affine(img, aff, size)
 
     def test_translation(self, device, dtype):
@@ -689,12 +689,12 @@ class TestWarpPerspective(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.geometry.warp_perspective(img, 0.0, size)
 
+        img = torch.rand(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.rand(2, 3, 4, device=device, dtype=dtype)
             assert kornia.geometry.warp_perspective(img, homo, size)
 
+        homo = torch.eye(2, 2, device=device, dtype=dtype)[None]
         with pytest.raises(ValueError):
-            homo = torch.eye(2, 2, device=device, dtype=dtype)[None]
             assert kornia.geometry.warp_perspective(img, homo, size)
 
     def test_translation(self, device, dtype):

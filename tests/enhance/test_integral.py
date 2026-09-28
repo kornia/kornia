@@ -38,11 +38,9 @@ class TestIntegralTensor(BaseTester):
     def test_exception(self, device, dtype):
         tensor = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
         with pytest.raises(Exception):
-            dim = (0, 1, 2, 3, 4)
-            integral_tensor(tensor, dim)
+            integral_tensor(tensor, (0, 1, 2, 3, 4))
         with pytest.raises(Exception):
-            dim = (4, 5)
-            integral_tensor(tensor, dim)
+            integral_tensor(tensor, (4, 5))
         with pytest.raises(Exception) as errinfo:
             integral_tensor(tensor, ())
         assert "dim must be a non-empty tuple." in str(errinfo)
