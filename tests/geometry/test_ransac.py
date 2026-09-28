@@ -26,6 +26,10 @@ import kornia
 from kornia.geometry import RANSAC, transform_points
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_from_homogeneous
 from kornia.geometry.epipolar import find_fundamental, project_to_essential, sampson_epipolar_distance
+from kornia.geometry.epipolar._metrics import _sampson_errors
+from kornia.geometry.epipolar.fundamental import _rank2_projection, _refine_fundamental_lm
+from kornia.geometry.homography import _refine_homography_lm, _transfer_errors, oneway_transfer_error
+from kornia.geometry.ransac import _normalize_correspondences
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -209,7 +213,7 @@ class TestRANSACFundamental(BaseTester):
         # The ground-truth F leaves up to 0.58px on these 10 points. At 0.5px the best eight-point fit has
         # only its own sample as inliers, which is no consensus, so RANSAC returns the zero failure matrix;
         # at 1px all ten are inliers, and over 100 seeds the refit's largest error is at most 1px.
-        ransac = RANSAC("fundamental", inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
+        ransac = RANSAC("fundamental_8pt", inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
         fundamental_matrix, mask = ransac(pts_src, pts_dst)
         # A zero matrix is the failure result and has zero Sampson error for every point.
         assert fundamental_matrix.abs().amax() > 0
@@ -220,7 +224,6 @@ class TestRANSACFundamental(BaseTester):
         assert gross_errors.sum().item() == 0
 
     @pytest.mark.slow
-    @pytest.mark.xfail(reason="might fail, because out F-RANSAC is not yet 7pt")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -250,7 +253,7 @@ class TestRANSACFundamental(BaseTester):
         kp1 = data_dev["loftr_indoor_tentatives0"]
         kp2 = data_dev["loftr_indoor_tentatives1"]
 
-        ransac = RANSAC("fundamental", inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
+        ransac = RANSAC("fundamental_8pt", inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
         # compute transform from source to target
         fundamental_matrix, _ = ransac(kp1, kp2)
         assert fundamental_matrix.abs().amax() > 0
@@ -260,7 +263,6 @@ class TestRANSACFundamental(BaseTester):
         assert gross_errors.sum().item() < 2
 
     @pytest.mark.slow
-    @pytest.mark.xfail(reason="might fail, because this F-RANSAC is not 7pt")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_dirty_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -337,7 +339,15 @@ class TestRANSACLocalOptimization(BaseTester):
             calls.append(1)
             return candidates
 
-        ransac = RANSAC("fundamental", inl_th=1.0, batch_size=4, max_iter=1, max_lo_iters=1, score_type="msac")
+        ransac = RANSAC(
+            "fundamental_8pt",
+            inl_th=1.0,
+            batch_size=4,
+            max_iter=1,
+            max_lo_iters=1,
+            score_type="msac",
+            local_optimization="dlt",
+        )
         ransac.minimal_solver = lambda kp1, kp2, w: worse_fit.expand(kp1.shape[0], 3, 3).clone()
         ransac.polisher_solver = fake_polisher
 
@@ -515,6 +525,7 @@ class TestRANSACSeed:
             seed=0,
             lo_sample_size=8,
             confidence=1.0,
+            local_optimization="dlt",
         )
         ransac(kp1, kp1.clone())
         assert len(seeds) > 4  # four sampling batches and at least one local optimization
@@ -748,7 +759,15 @@ class TestConventionRANSAC(BaseTester):
             # sample_is_valid_for_homography, which rejects some lattice samples, so a seeded batch of 64 is drawn.
             H = torch.tensor([_H_TRUE], device=device, dtype=dtype)
             for inl_th, expected in ((9.0, False), (11.0, True)):
-                ransac = RANSAC("homography", inl_th=inl_th, batch_size=64, max_iter=1, max_lo_iters=0, seed=0)
+                ransac = RANSAC(
+                    "homography",
+                    inl_th=inl_th,
+                    batch_size=64,
+                    max_iter=1,
+                    max_lo_iters=0,
+                    seed=0,
+                    local_optimization="dlt",
+                )
                 _, mask = _fixed_model(ransac, H)(kp1, kp2_bad)
                 assert bool(mask[9]) is expected
                 assert int(mask.sum()) == 15 + int(expected)
@@ -774,7 +793,15 @@ class TestConventionRANSAC(BaseTester):
         # the distance itself against inl_th**2, the two verdicts would not both hold.
         assert 2.0 < distance < 4.0
         for inl_th, expected in ((2.0, False), (4.0, True)):
-            ransac = RANSAC("fundamental", inl_th=inl_th, batch_size=1, max_iter=1, max_lo_iters=0, seed=0)
+            ransac = RANSAC(
+                "fundamental",
+                inl_th=inl_th,
+                batch_size=1,
+                max_iter=1,
+                max_lo_iters=0,
+                seed=0,
+                local_optimization="dlt",
+            )
             model, mask = _fixed_model(ransac, F)(kp1, kp2_bad)
             assert torch.equal(model, F[0])
             assert bool(mask[6]) is expected
@@ -855,7 +882,11 @@ class TestConventionRANSAC(BaseTester):
 
     @pytest.mark.parametrize(
         "model_type, n, validated_type, validated_n",
-        [("fundamental_7pt", 6, "fundamental", 7), ("essential", 4, "homography", 3)],
+        [
+            ("fundamental_7pt", 6, "fundamental_8pt", 7),
+            ("fundamental", 6, "fundamental_8pt", 7),
+            ("essential", 4, "homography", 3),
+        ],
     )
     def test_convention_ransac_size_validation_4872(self, model_type, n, validated_type, validated_n, device, dtype):
         _cpu_only(device)
@@ -877,7 +908,15 @@ class TestRANSACScoringAndStopping(BaseTester):
         target = points.clone()
         target[40:] += 100
         identity = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("homography", inl_th=threshold, batch_size=1, max_iter=1, max_lo_iters=0, score_type="msac")
+        ransac = RANSAC(
+            "homography",
+            inl_th=threshold,
+            batch_size=1,
+            max_iter=1,
+            max_lo_iters=0,
+            score_type="msac",
+            local_optimization="dlt",
+        )
         ransac.remove_bad_samples = lambda a, b: (a, b)
         ransac.minimal_solver = lambda a, b, w: identity
         model, mask = ransac(points, target)
@@ -892,7 +931,7 @@ class TestRANSACScoringAndStopping(BaseTester):
         matrix = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
         if model_type == "homography":
             matrix = torch.eye(3, device=device, dtype=dtype)
-        ransac = RANSAC(model_type, batch_size=1, max_iter=1)
+        ransac = RANSAC(model_type, batch_size=1, max_iter=1, local_optimization="dlt")
         ransac.remove_bad_samples = lambda a, b: (a, b)
         ransac.minimal_solver = lambda a, b, w: matrix[None]
         ransac.polisher_solver = lambda a, b, w: matrix[None]
@@ -926,7 +965,9 @@ class TestRANSACScoringAndStopping(BaseTester):
         # LO increases support to 70/100. The MSAC score is intentionally different.
         points = torch.rand(100, 2, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("fundamental", batch_size=16, max_iter=10, max_lo_iters=1, score_type="msac")
+        ransac = RANSAC(
+            "fundamental_8pt", batch_size=16, max_iter=10, max_lo_iters=1, score_type="msac", local_optimization="dlt"
+        )
         sampled = []
         ransac.minimal_solver = lambda a, b, w: sampled.append(1) or matrix
         ransac.polisher_solver = lambda a, b, w: matrix
@@ -956,7 +997,9 @@ class TestRANSACScoringAndStopping(BaseTester):
         target = points.clone()
         target[:outliers] += 100
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("homography", batch_size=8, max_iter=3, max_lo_iters=0, confidence=confidence)
+        ransac = RANSAC(
+            "homography", batch_size=8, max_iter=3, max_lo_iters=0, confidence=confidence, local_optimization="dlt"
+        )
         calls = []
         ransac.remove_bad_samples = lambda a, b: (a, b)
         ransac.minimal_solver = lambda a, b, w: calls.append(1) or matrix
@@ -965,7 +1008,7 @@ class TestRANSACScoringAndStopping(BaseTester):
 
     def test_failure_mask_shape(self, device, dtype):
         points = torch.zeros(10, 2, device=device, dtype=dtype)
-        ransac = RANSAC("fundamental", batch_size=2, max_iter=1)
+        ransac = RANSAC("fundamental", batch_size=2, max_iter=1, local_optimization="dlt")
         ransac.minimal_solver = lambda a, b, w: torch.zeros(1, 3, 3, device=device, dtype=dtype)
         _, mask = ransac(points, points)
         assert mask.shape == (10,)
@@ -978,7 +1021,9 @@ class TestRANSACScoringAndStopping(BaseTester):
         target = points + 100
         target[:4] = points[:4]
         identity = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("homography", batch_size=1, max_iter=2, max_lo_iters=0, score_type=score_type)
+        ransac = RANSAC(
+            "homography", batch_size=1, max_iter=2, max_lo_iters=0, score_type=score_type, local_optimization="dlt"
+        )
         ransac.remove_bad_samples = lambda a, b: (a, b)
         ransac.minimal_solver = lambda a, b, w: identity
         model, mask = ransac(points, target)
@@ -990,7 +1035,9 @@ class TestRANSACScoringAndStopping(BaseTester):
         # stopping bound must then follow the new incumbent, not the larger support it displaced.
         points = torch.rand(100, 2, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("fundamental", batch_size=1, max_iter=50, max_lo_iters=0, score_type="msac")
+        ransac = RANSAC(
+            "fundamental_8pt", batch_size=1, max_iter=50, max_lo_iters=0, score_type="msac", local_optimization="dlt"
+        )
         sampled = []
         ransac.minimal_solver = lambda a, b, w: sampled.append(1) or matrix
         results = {1: (1.0, 95), 2: (2.0, 60)}
@@ -1010,7 +1057,15 @@ class TestRANSACScoringAndStopping(BaseTester):
         # batch still leaves the full refit to try.
         points = torch.rand(20, 2, device=device, dtype=dtype)
         identity = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("homography", batch_size=1, max_iter=1, max_lo_iters=5, lo_sample_size=lo_sample_size, seed=0)
+        ransac = RANSAC(
+            "homography",
+            batch_size=1,
+            max_iter=1,
+            max_lo_iters=5,
+            lo_sample_size=lo_sample_size,
+            seed=0,
+            local_optimization="dlt",
+        )
         ransac.remove_bad_samples = lambda a, b: (a, b)
         ransac.minimal_solver = lambda a, b, w: identity
         calls = []
@@ -1029,7 +1084,15 @@ class TestRANSACScoringAndStopping(BaseTester):
         points = torch.rand(20, 2, device=device, dtype=dtype)
         minimal = torch.eye(3, device=device, dtype=dtype)[None]
         refit = 2 * minimal
-        ransac = RANSAC("homography", batch_size=1, max_iter=1, max_lo_iters=3, lo_sample_size=lo_sample_size, seed=0)
+        ransac = RANSAC(
+            "homography",
+            batch_size=1,
+            max_iter=1,
+            max_lo_iters=3,
+            lo_sample_size=lo_sample_size,
+            seed=0,
+            local_optimization="dlt",
+        )
         ransac.remove_bad_samples = lambda a, b: (a, b)
         ransac.minimal_solver = lambda a, b, w: minimal
         polished = []
@@ -1087,7 +1150,13 @@ class TestRANSACSampling(BaseTester):
         points = torch.rand(20, 2, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
         ransac = RANSAC(
-            "homography", batch_size=8, max_iter=3, max_lo_iters=0, prosac_sampling=True, confidence=confidence
+            "homography",
+            batch_size=8,
+            max_iter=3,
+            max_lo_iters=0,
+            prosac_sampling=True,
+            confidence=confidence,
+            local_optimization="dlt",
         )
         calls = []
         ransac.remove_bad_samples = lambda a, b: (a, b)
@@ -1096,7 +1165,7 @@ class TestRANSACSampling(BaseTester):
         assert len(calls) == batches
 
     def test_prosac_stopping_uses_ranking(self, device):
-        ransac = RANSAC("fundamental", batch_size=16, max_iter=256, prosac_sampling=True)
+        ransac = RANSAC("fundamental_8pt", batch_size=16, max_iter=256, prosac_sampling=True)
         # 150 inliers of 500: ranked first, one draw from the top-150 prefix certifies the model.
         # Ranked last, no prefix qualifies and the uniform bound (over 60,000 draws) caps at the budget.
         ranked = torch.arange(500, device=device) < 150
@@ -1105,7 +1174,7 @@ class TestRANSACSampling(BaseTester):
 
     @pytest.mark.parametrize("support", [0, 8, 9, 50, 99])
     def test_prosac_stopping_rejects_small_prefix_support(self, device, support):
-        ransac = RANSAC("fundamental", batch_size=16, max_iter=256, prosac_sampling=True)
+        ransac = RANSAC("fundamental_8pt", batch_size=16, max_iter=256, prosac_sampling=True)
         # Fewer than 20% of all correspondences cannot terminate, however perfect the prefix
         # (OpenCV USAC guard): the top ten all-inlier matches of a locally fitted model are no evidence.
         inliers = torch.arange(500, device=device) < support
@@ -1135,7 +1204,13 @@ class TestRANSACSampling(BaseTester):
         points = torch.rand(20, 2, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
         ransac = RANSAC(
-            "homography", batch_size=16, max_iter=16, max_lo_iters=0, score_type="msac", prosac_sampling=True
+            "homography",
+            batch_size=16,
+            max_iter=16,
+            max_lo_iters=0,
+            score_type="msac",
+            prosac_sampling=True,
+            local_optimization="dlt",
         )
         calls = []
         ransac.remove_bad_samples = lambda a, b: (a, b)
@@ -1159,7 +1234,7 @@ class TestRANSACSampling(BaseTester):
         assert ransac._prosac_max_samples(torch.ones(4, device=device, dtype=torch.bool), 4) == 4096
 
     def test_prosac_stopping_respects_growth(self, device):
-        ransac = RANSAC("fundamental", batch_size=16, max_iter=256, prosac_sampling=True)
+        ransac = RANSAC("fundamental_8pt", batch_size=16, max_iter=256, prosac_sampling=True)
         # 45 inliers among the top 100 of 200 pass the support guards, but the 3970 draws that
         # prefix needs exceed the ~106 draws PROSAC takes from it: later draws sampled larger
         # prefixes and must not be credited to the top 100. The uniform bound caps at the budget.
@@ -1200,6 +1275,25 @@ class TestRANSACDefaults(BaseTester):
         assert ransac.lo_sample_size == 32
         assert ransac.max_lo_iters == 5
         assert not ransac.prosac_sampling
+
+    @pytest.mark.parametrize(
+        "model_type, sample_size, local_optimization",
+        [
+            ("homography", 4, "lm"),
+            ("fundamental", 7, "lm"),
+            ("fundamental_7pt", 7, "lm"),
+            ("fundamental_8pt", 8, "lm"),
+            ("essential", 5, "dlt"),
+            ("homography_from_linesegments", 4, "dlt"),
+        ],
+    )
+    def test_defaults_per_model(self, model_type, sample_size, local_optimization):
+        # "fundamental" draws seven-point samples; Levenberg-Marquardt local optimization is the default wherever it
+        # is implemented.
+        ransac = RANSAC(model_type)
+        assert ransac.minimal_sample_size == sample_size
+        assert ransac.local_optimization == local_optimization
+        assert ransac.refine_iters == 3
 
     def test_legacy_configuration_is_still_available(self):
         ransac = RANSAC("fundamental", score_type="ransac", lo_sample_size=None)
@@ -1287,7 +1381,9 @@ class TestRANSACAutoBatch(BaseTester):
     def test_last_batch_is_truncated_to_the_budget(self, device, dtype):
         points = torch.rand(20, 2, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("homography", batch_size=16, max_samples=40, max_lo_iters=0, confidence=1.0)
+        ransac = RANSAC(
+            "homography", batch_size=16, max_samples=40, max_lo_iters=0, confidence=1.0, local_optimization="dlt"
+        )
         sizes = []
         ransac.remove_bad_samples = lambda a, b: sizes.append(len(a)) or (a, b)
         ransac.minimal_solver = lambda a, b, w: matrix
@@ -1301,7 +1397,13 @@ class TestRANSACAutoBatch(BaseTester):
         points = torch.arange(num_tc, device=device, dtype=dtype)[:, None].expand(num_tc, 2)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
         ransac = RANSAC(
-            "homography", batch_size=400, max_samples=1000, prosac_sampling=True, max_lo_iters=0, confidence=1.0
+            "homography",
+            batch_size=400,
+            max_samples=1000,
+            prosac_sampling=True,
+            max_lo_iters=0,
+            confidence=1.0,
+            local_optimization="dlt",
         )
         batches = []
         ransac.remove_bad_samples = lambda a, b: (a, b)
@@ -1325,8 +1427,9 @@ class TestRANSACAutoBatch(BaseTester):
         matrix = torch.tensor([[1.0, 0.1, 5.0], [0.0, 1.0, 3.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         kp2 = transform_points(matrix[None], kp1[None])[0]
         kp2[:60] = torch.rand(60, 2, device=device, dtype=dtype) * 500
-        auto = RANSAC("homography", inl_th=1.0, seed=0)
-        explicit = RANSAC("homography", inl_th=1.0, batch_size=auto.resolve_batch_size(200, kp1.device), seed=0)
+        auto = RANSAC("homography", inl_th=1.0, seed=0, local_optimization="dlt")
+        batch = auto.resolve_batch_size(200, kp1.device)
+        explicit = RANSAC("homography", inl_th=1.0, batch_size=batch, seed=0, local_optimization="dlt")
         H_auto, mask_auto = auto(kp1, kp2)
         H_explicit, mask_explicit = explicit(kp1, kp2)
         assert torch.equal(mask_auto, mask_explicit)
@@ -1347,7 +1450,15 @@ class TestRANSACBoundedLO(BaseTester):
     def test_subset_refits_and_final_full_refit(self, device, dtype):
         points = torch.rand(100, 2, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("fundamental", batch_size=1, max_iter=1, max_lo_iters=3, lo_sample_size=16, seed=0)
+        ransac = RANSAC(
+            "fundamental",
+            batch_size=1,
+            max_iter=1,
+            max_lo_iters=3,
+            lo_sample_size=16,
+            seed=0,
+            local_optimization="dlt",
+        )
         ransac.minimal_solver = lambda a, b, w: matrix
         sizes = []
         ransac.polisher_solver = lambda a, b, w: sizes.append(a.shape[:2]) or matrix
@@ -1362,7 +1473,14 @@ class TestRANSACBoundedLO(BaseTester):
         wrong = identity.clone()
         wrong[:, 0, 2] = 100
         ransac = RANSAC(
-            "homography", batch_size=1, max_iter=1, max_lo_iters=2, lo_sample_size=8, score_type="msac", seed=3
+            "homography",
+            batch_size=1,
+            max_iter=1,
+            max_lo_iters=2,
+            lo_sample_size=8,
+            score_type="msac",
+            seed=3,
+            local_optimization="dlt",
         )
         ransac.minimal_solver = lambda a, b, w: identity
         ransac.remove_bad_samples = lambda a, b: (a, b)
@@ -1374,7 +1492,15 @@ class TestRANSACBoundedLO(BaseTester):
     def test_seeded_subsets_reproducible(self, device, dtype):
         points = torch.rand(50, 2, device=device, dtype=dtype)
         identity = torch.eye(3, device=device, dtype=dtype)[None]
-        ransac = RANSAC("homography", batch_size=1, max_iter=1, max_lo_iters=2, lo_sample_size=8, seed=13)
+        ransac = RANSAC(
+            "homography",
+            batch_size=1,
+            max_iter=1,
+            max_lo_iters=2,
+            lo_sample_size=8,
+            seed=13,
+            local_optimization="dlt",
+        )
         ransac.minimal_solver = lambda a, b, w: identity
         ransac.remove_bad_samples = lambda a, b: (a, b)
         subsets = []
@@ -1399,11 +1525,20 @@ class TestRANSACValidation(BaseTester):
             {"confidence": 1.5},
             {"confidence": 0.0},
             {"lo_sample_size": 3},
+            {"local_optimization": "irls"},
+            {"refine_iters": -1},
+            {"refine_iters": True},
+            {"refine_iters": 1.5},
         ],
     )
     def test_invalid_configuration(self, kwargs):
         with pytest.raises(ValueError):
             RANSAC(**kwargs)
+
+    @pytest.mark.parametrize("model_type", ["essential", "homography_from_linesegments"])
+    def test_lm_local_optimization_needs_a_supported_model(self, model_type):
+        with pytest.raises(ValueError):
+            RANSAC(model_type, local_optimization="lm")
 
     @pytest.mark.parametrize("model", ["fundamental_7pt", "essential"])
     def test_mismatched_correspondences(self, device, dtype, model):
@@ -1512,3 +1647,291 @@ class TestRANSACEssentialInvalidPolisher(BaseTester):
         model, mask = estimator(points, points)
         assert torch.isfinite(model).all()
         assert mask.all()
+
+
+def _skew(v: torch.Tensor) -> torch.Tensor:
+    return torch.tensor([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]], dtype=v.dtype)
+
+
+def _two_view_scene(n: int, outliers: int, noise: float, seed: int):
+    """Pixel matches of a 640x480 two-view scene, the first ``outliers`` replaced by random points. float64 CPU.
+
+    Returns the matches, their noise-free second-image positions, the ground-truth F and the inlier mask.
+    """
+    generator = torch.Generator().manual_seed(seed)
+    f64 = torch.float64
+    K = torch.tensor([[800.0, 0.0, 320.0], [0.0, 800.0, 240.0], [0.0, 0.0, 1.0]], dtype=f64)
+    R = axis_angle_to_rotation_matrix(torch.tensor([[0.05, -0.1, 0.02]], dtype=f64))[0]
+    t = torch.tensor([1.0, 0.1, 0.2], dtype=f64)
+    X = torch.randn(n, 3, generator=generator, dtype=f64) * torch.tensor([2.0, 2.0, 1.0], dtype=f64)
+    X = X + torch.tensor([0.0, 0.0, 8.0], dtype=f64)
+    kp1 = convert_points_from_homogeneous(X @ K.T)
+    clean = convert_points_from_homogeneous((X @ R.T + t) @ K.T)
+    kp2 = clean + noise * torch.randn(n, 2, generator=generator, dtype=f64)
+    kp2[:outliers] = torch.rand(outliers, 2, generator=generator, dtype=f64) * torch.tensor([640.0, 480.0], dtype=f64)
+    F = torch.linalg.inv(K).T @ _skew(t) @ R @ torch.linalg.inv(K)
+    inliers = torch.arange(n) >= outliers
+    return kp1, kp2, clean, F / F.norm(), inliers
+
+
+def _planar_scene(n: int, outliers: int, noise: float, seed: int):
+    """Matches ``kp2 = H(kp1)`` over 600x600 px, the first ``outliers`` replaced by random points. float64 CPU."""
+    generator = torch.Generator().manual_seed(seed)
+    f64 = torch.float64
+    H = torch.tensor([[1.1, 0.05, 20.0], [0.02, 0.95, -10.0], [1e-4, 2e-4, 1.0]], dtype=f64)
+    kp1 = torch.rand(n, 2, generator=generator, dtype=f64) * 600
+    clean = transform_points(H[None], kp1[None])[0]
+    kp2 = clean + noise * torch.randn(n, 2, generator=generator, dtype=f64)
+    kp2[:outliers] = torch.rand(outliers, 2, generator=generator, dtype=f64) * 600
+    return kp1, kp2, clean, H, torch.arange(n) >= outliers
+
+
+def _model_errors(model_type: str, model: torch.Tensor, kp1: torch.Tensor, kp2: torch.Tensor) -> torch.Tensor:
+    """Unsquared pixel errors in float64: Sampson distances, or one-way transfer errors for homographies."""
+    model, kp1, kp2 = model.cpu().double(), kp1.cpu().double(), kp2.cpu().double()
+    if model_type == "homography":
+        return oneway_transfer_error(kp1[None], kp2[None], model[None], squared=False, eps=0.0)[0]
+    return sampson_epipolar_distance(kp1[None], kp2[None], model[None], squared=False, eps=0.0)[0]
+
+
+def _scene(model_type: str, n: int, outliers: int, noise: float, seed: int):
+    return (_planar_scene if model_type == "homography" else _two_view_scene)(n, outliers, noise, seed)
+
+
+_LM_MODELS = ["homography", "fundamental", "fundamental_8pt"]
+
+
+class TestRANSACLevenbergMarquardt(BaseTester):
+    """``local_optimization="lm"``, the default for homographies and fundamental matrices."""
+
+    @pytest.mark.parametrize("model_type", _LM_MODELS)
+    def test_recovers_exact_model_among_outliers(self, device, dtype, model_type):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
+        kp1, kp2, _, _, inliers = _scene(model_type, 200, 60, 0.0, seed=0)
+        ransac = RANSAC(model_type, inl_th=1.0, seed=0)
+        model, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
+        assert model.shape == (3, 3) and model.dtype == dtype and model.device == kp1.to(device).device
+        assert mask.shape == (200,) and mask.dtype == torch.bool and mask.device == model.device
+        assert torch.equal(mask.cpu(), inliers)
+        tolerance = 1e-4 if dtype == torch.float64 else 5e-2
+        assert _model_errors(model_type, model, kp1[inliers], kp2[inliers]).max() < tolerance
+
+    @pytest.mark.parametrize("model_type", _LM_MODELS)
+    def test_mask_holds_the_inliers_of_the_returned_model(self, device, dtype, model_type):
+        kp1, kp2, _, _, _ = _scene(model_type, 300, 120, 0.7, seed=1)
+        kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
+        model, mask = RANSAC(model_type, inl_th=1.5, seed=0)(kp1, kp2)
+        errors = _model_errors(model_type, model, kp1, kp2)
+        # Classify the returned model on the actual input coordinates, including rounding in half precision.
+        assert mask.any()
+        assert torch.equal(mask.cpu(), errors <= 1.5)
+
+    def test_msac_does_not_discard_supported_candidates(self, device, dtype, monkeypatch):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("this tight-threshold regression uses float32/float64 coordinates")
+        generator = torch.Generator().manual_seed(31)
+        kp1 = (torch.rand(40, 2, generator=generator) * 100).to(device, dtype)
+        kp2 = (torch.rand(40, 2, generator=generator) * 100).to(device, dtype)
+        # Fix the sampled sets across backends: CPU and CUDA generators give different draws for the same seed.
+        ransac = RANSAC("fundamental_8pt", seed=0, max_samples=256, confidence=1, inl_th=0.3)
+        samples = ransac.sample(8, 40, 256, 0, device="cpu").to(device)
+        monkeypatch.setattr(ransac, "sample", lambda *args, **kwargs: samples)
+        # The eight highest MSAC scores belong to models supported by at most their eight-point sample.
+        # A lower-scoring candidate has additional support and must remain eligible for local optimization.
+        model, mask = ransac(kp1, kp2)
+        assert mask.sum() > 8
+        assert torch.isfinite(model).all()
+
+    def test_failure_when_model_cast_loses_support(self, device, dtype):
+        if dtype != torch.bfloat16:
+            pytest.skip("the model loses consensus when rounded to bfloat16")
+        kp1, kp2, _, _, _ = _scene("homography", 12, 0, 0.0, seed=1)
+        model, mask = RANSAC("homography", seed=0, max_samples=256, inl_th=0.5)(
+            kp1.to(device, dtype), kp2.to(device, dtype)
+        )
+        assert not mask.any()
+        assert torch.equal(model, torch.zeros_like(model))
+
+    @pytest.mark.parametrize("model_type", _LM_MODELS)
+    def test_refinement_improves_on_the_minimal_model(self, device, dtype, model_type):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("sub-pixel accuracy on 600 px coordinates is below half-precision resolution")
+        kp1, kp2, clean, _, inliers = _scene(model_type, 300, 90, 0.5, seed=2)
+        args = kp1.to(device, dtype), kp2.to(device, dtype)
+        minimal, _ = RANSAC(model_type, inl_th=1.5, seed=0, max_lo_iters=0, refine_iters=0)(*args)
+        refined, _ = RANSAC(model_type, inl_th=1.5, seed=0)(*args)
+        # The distance of the noise-free matches from each model: the best of the minimal models misses them by 0.2
+        # to 0.4 px at 0.5 px of noise, the Levenberg-Marquardt refits on two hundred inliers by about 0.1 px.
+        miss_minimal = _model_errors(model_type, minimal, kp1[inliers], clean[inliers]).mean()
+        miss_refined = _model_errors(model_type, refined, kp1[inliers], clean[inliers]).mean()
+        assert miss_refined < 0.75 * miss_minimal
+        assert miss_refined < 0.15
+
+    @pytest.mark.parametrize("model_type", _LM_MODELS)
+    def test_no_consensus_returns_the_failure_result(self, device, dtype, model_type):
+        generator = torch.Generator().manual_seed(0)
+        kp1 = (torch.rand(40, 2, generator=generator) * 600).to(device, dtype)
+        kp2 = (torch.rand(40, 2, generator=generator) * 600).to(device, dtype)
+        # A sample's model fits its own points; at 1e-4 px no other random point is expected on an epipolar line.
+        model, mask = RANSAC(model_type, inl_th=1e-4, seed=0, max_samples=512)(kp1, kp2)
+        assert bool((model == 0).all()) and model.dtype == dtype
+        assert mask.shape == (40,) and mask.dtype == torch.bool and not bool(mask.any())
+
+    @pytest.mark.parametrize("model_type", _LM_MODELS)
+    def test_nonfinite_correspondences_are_outliers(self, device, dtype, model_type):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
+        kp1, kp2, _, _, _ = _scene(model_type, 150, 0, 0.0, seed=3)
+        kp1[:3] = float("nan")
+        kp2[3:6, 0] = float("inf")
+        model, mask = RANSAC(model_type, inl_th=1.0, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        assert torch.isfinite(model).all()
+        assert not bool(mask[:6].any()) and bool(mask[6:].all())
+
+    @pytest.mark.parametrize("model_type", _LM_MODELS)
+    def test_seeded_call_is_reproducible_and_private(self, device, dtype, model_type):
+        kp1, kp2, _, _, _ = _scene(model_type, 120, 50, 0.5, seed=4)
+        kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
+        state = torch.get_rng_state()
+        model_a, mask_a = RANSAC(model_type, inl_th=2.0, seed=11, max_samples=1024)(kp1, kp2)
+        assert torch.equal(torch.get_rng_state(), state)
+        torch.manual_seed(123)
+        model_b, mask_b = RANSAC(model_type, inl_th=2.0, seed=11, max_samples=1024)(kp1, kp2)
+        assert torch.equal(model_a, model_b) and torch.equal(mask_a, mask_b)
+
+    @pytest.mark.parametrize("score_type", ["msac", "ransac"])
+    def test_score_types(self, device, dtype, score_type):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
+        kp1, kp2, _, _, inliers = _planar_scene(200, 80, 0.0, seed=5)
+        _, mask = RANSAC("homography", inl_th=1.0, score_type=score_type, seed=0)(
+            kp1.to(device, dtype), kp2.to(device, dtype)
+        )
+        assert torch.equal(mask.cpu(), inliers)
+
+    def test_half_precision_inputs(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision inputs only")
+        # A 10 px extent keeps bfloat16 rounding of the exact matches below inl_th; the pipeline computes in float32.
+        kp1, kp2, _, _, inliers = _planar_scene(64, 16, 0.0, seed=6)
+        kp1, kp2 = kp1 / 60, kp2 / 60
+        kp2[:16] = torch.rand(16, 2, generator=torch.Generator().manual_seed(0), dtype=torch.float64) * 10 + 20
+        model, mask = RANSAC("homography", inl_th=0.5, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        assert model.dtype == dtype and torch.isfinite(model).all()
+        assert torch.equal(mask.cpu(), inliers)
+
+    @pytest.mark.parametrize(
+        "model_type, max_samples, expected",
+        [("homography", 2000, [512, 1024, 464]), ("fundamental", 2000, [256, 512, 1024, 208])],
+    )
+    def test_auto_batches_grow_on_cpu_and_cover_the_budget(self, device, model_type, max_samples, expected):
+        if device.type != "cpu":
+            pytest.skip("the CPU batch schedule")
+        # confidence=1 draws the whole budget: batches double from the first one, the last is cut to the budget.
+        kp1, kp2, _, _, _ = _scene(model_type, 100, 30, 0.5, seed=7)
+        ransac = RANSAC(model_type, max_samples=max_samples, confidence=1.0, seed=0)
+        sizes = []
+        sample = ransac.sample
+        ransac.sample = lambda m, n, batch, *a, _s=sample, **k: sizes.append(batch) or _s(m, n, batch, *a, **k)
+        ransac(kp1.float(), kp2.float())
+        assert sizes == expected
+
+    def test_explicit_batch_size_is_kept(self, device):
+        kp1, kp2, _, _, _ = _planar_scene(100, 30, 0.5, seed=8)
+        ransac = RANSAC("homography", batch_size=300, max_samples=1000, confidence=1.0, seed=0)
+        sizes = []
+        sample = ransac.sample
+        ransac.sample = lambda m, n, batch, *a, _s=sample, **k: sizes.append(batch) or _s(m, n, batch, *a, **k)
+        ransac(kp1.to(device, torch.float32), kp2.to(device, torch.float32))
+        assert sizes == [300, 300, 300, 100]
+
+    def test_prosac_offset_continues_the_schedule(self, device):
+        # Batches of different sizes pass the number of sets drawn so far: each growth draw includes the newest
+        # correspondence of its prefix, so its largest index follows the schedule from that offset.
+        ransac = RANSAC("homography", max_samples=1000, prosac_sampling=True, seed=0)
+        ends = ransac._prosac_schedule(4, 100, device)
+        samples = ransac.sample(4, 100, 50, 3, device, offset=120)
+        draws = torch.arange(121, 171, device=device)
+        assert samples.amax(1).tolist() == (torch.searchsorted(ends, draws) + 3).tolist()
+        # Without an offset, the batch index times the batch size is assumed, as before.
+        assert torch.equal(ransac.sample(4, 100, 40, 3, device), ransac.sample(4, 100, 40, 3, device, offset=120))
+
+    def test_prosac_finds_the_ranked_consensus(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
+        # 60 of 300 matches follow the homography and are ranked first.
+        kp1, kp2, _, _, inliers = _planar_scene(300, 240, 0.0, seed=9)
+        kp1, kp2, inliers = kp1.flip(0), kp2.flip(0), inliers.flip(0)
+        _, mask = RANSAC("homography", inl_th=1.0, prosac_sampling=True, seed=0)(
+            kp1.to(device, dtype), kp2.to(device, dtype)
+        )
+        assert torch.equal(mask.cpu(), inliers)
+
+
+class TestRANSACLevenbergMarquardtKernels(BaseTester):
+    """RANSAC's normalization and the Levenberg-Marquardt refiners it calls."""
+
+    def _skip_half(self, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the kernels run in float32 or float64")
+
+    def test_normalize_correspondences(self, device, dtype):
+        self._skip_half(dtype)
+        kp1, kp2, _, _, _ = _two_view_scene(50, 0, 0.0, seed=14)
+        kp1[3] = float("nan")
+        kp2[7, 0] = float("inf")
+        x1, x2, t1, t2, s1, s2 = _normalize_correspondences(kp1, kp2, True)
+        finite = torch.ones(50, dtype=torch.bool)
+        finite[[3, 7]] = False
+        # Correspondences that are not finite in both images stay non-finite and do not enter the statistics.
+        assert not torch.isfinite(x1[3]).all()
+        assert not torch.isfinite(x2[7]).all()
+        c1, c2 = kp1[finite].mean(0), kp2[finite].mean(0)
+        radius = ((kp1[finite] - c1).norm(dim=1).mean() + (kp2[finite] - c2).norm(dim=1).mean()) / 2
+        # One scale for both images: sqrt(2) over the mean of the two mean radii (normalize_points adds eps = 1e-8).
+        expected_scale = float((radius + 1e-8) / math.sqrt(2.0))
+        self.assert_close(torch.tensor([s1, s2]), torch.tensor([expected_scale, expected_scale]), rtol=1e-12, atol=0.0)
+        self.assert_close(x1[finite, :2], (kp1[finite] - c1) / s1, rtol=1e-9, atol=1e-12)
+        ones = torch.ones(48, 1, dtype=kp1.dtype)
+        self.assert_close((t1 @ torch.cat([kp1[finite], ones], 1).T).T, x1[finite])
+        self.assert_close((t2 @ torch.cat([kp2[finite], ones], 1).T).T, x2[finite])
+
+    @pytest.mark.parametrize("model_type", ["homography", "fundamental"])
+    @pytest.mark.parametrize("loss", ["cauchy", "truncated"])
+    def test_refinement_reaches_a_local_minimum(self, device, dtype, model_type, loss):
+        self._skip_half(dtype)
+        # Noisy inliers only, refined from a perturbed ground truth: the refit's cost is below the start's and does
+        # not drop along small steps in any direction of the model's manifold.
+        kp1, kp2, _, truth, _ = _scene(model_type, 80, 0, 1.0, seed=13)
+        x1, x2, t1, t2, s1, s2 = _normalize_correspondences(kp1, kp2, model_type != "homography")
+        if model_type == "homography":
+            start = t2 @ truth @ torch.linalg.inv(t1)
+            refine, scale2, x2_arg = _refine_homography_lm, (2.0 / s2) ** 2, x2[:, :2]
+
+            def errors(models):
+                return _transfer_errors(models, x1, x2[:, :2], 0.0)
+
+        else:
+            start = torch.linalg.inv(t2).mT @ truth @ torch.linalg.inv(t1)
+            refine, scale2, x2_arg = _refine_fundamental_lm, (2.0 / s1) ** 2, x2
+
+            def errors(models):
+                return _sampson_errors(models, x1, x2, 0.0)
+
+        start = start / start.norm()
+        start = start + 1e-2 * torch.randn(3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
+        if model_type != "homography":
+            start = _rank2_projection(start[None])[0]
+
+        def cost(models):
+            r2 = errors(models)
+            return (torch.log1p(r2 / scale2) if loss == "cauchy" else torch.fmin(r2, torch.tensor(scale2))).sum(1)
+
+        refined = refine(start[None].to(device), x1.to(device), x2_arg.to(device), None, loss, scale2, 20).cpu()
+        assert cost(refined) < cost(start[None])
+        steps = 1e-4 * torch.randn(32, 3, 3, generator=torch.Generator().manual_seed(1), dtype=torch.float64)
+        neighbours = refined + steps * refined.norm()
+        if model_type != "homography":
+            neighbours = _rank2_projection(neighbours)
+        assert (cost(neighbours) >= cost(refined) * (1 - 1e-9)).all()

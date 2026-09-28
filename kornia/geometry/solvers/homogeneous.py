@@ -168,3 +168,24 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
     )
 
     return torch.stack([v0, v1, v2, v3], dim=-1)
+
+
+def _null_space_lu(A: torch.Tensor) -> torch.Tensor:
+    r"""Right null spaces of a batch of ``(B, m, n)`` matrices, ``m < n``, as ``(B, n, n - m)``.
+
+    With ``A^T = P L U`` from a partial-pivoted LU factorization, ``f^T A^T = 0`` exactly when ``y = P^T f`` solves
+    ``y^T L = 0``. Splitting the unit lower trapezoidal ``L`` into its square top ``L_1`` and bottom ``L_2`` rows
+    gives the basis ``y = [-(L_2 L_1^{-1})^T; I]``. The pivoting chooses the gauge, so no coordinate of the null
+    vector is assumed non-zero, and the basis is not orthonormal.
+
+    Unlike an SVD, a QR or an ``eigh`` of ``A^T A``, a batched LU factorization is one batched kernel on every
+    backend, and working on ``A`` rather than ``A^T A`` does not square its condition number. ``L_1`` is unit
+    triangular, so a rank-deficient ``A`` still gives a basis of null vectors, of dimension ``n - m`` only, as long
+    as the factorization stays finite; callers treat non-finite vectors as degenerate.
+    """
+    batch, m, n = A.shape
+    lu, pivots, _ = torch.linalg.lu_factor_ex(A.mT)
+    lower = torch.linalg.solve_triangular(lu[:, :m, :m], lu[:, m:, :m], upper=False, left=False, unitriangular=True)
+    eye = torch.eye(n - m, dtype=A.dtype, device=A.device).expand(batch, -1, -1)
+    permutation, _, _ = torch.lu_unpack(lu, pivots, unpack_data=False)
+    return permutation @ torch.cat([-lower.mT, eye], 1)
