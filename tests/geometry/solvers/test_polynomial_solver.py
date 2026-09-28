@@ -378,8 +378,22 @@ class TestCubicSolver(BaseTester):
                 [[-1 / a - 3, 1 + a, 2 - 8 * a], [-1 / a + 1, 0.0, 0.0]], device=device, dtype=dtype
             )
             roots, num_real = _solve_cubic_with_count(rows)
-            self.assert_close(roots.sort(dim=-1).values, expected.sort(dim=-1).values, rtol=tol, atol=0.0)
+            self.assert_close(roots[:1].sort(dim=-1).values, expected[:1].sort(dim=-1).values, rtol=tol, atol=0.0)
+            # Unsorted: the single real root goes to slot 0 and the count marks slots 1 and 2 as padding. The closed
+            # form had put -1 / a in slot 1 here (float32 at a = 1e-8, float64 at a = 1e-30).
+            self.assert_close(roots[1:], expected[1:], rtol=tol, atol=0.0)
             assert num_real.tolist() == [3, 1], num_real
+
+    def test_dominant_root_over_a_double_zero_root_4914(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("1e-30 rounds to 0 in float16, and half-precision rows are solved in float32.")
+        # x^2 (x + b / a): Vieta gives the pair total = product = 0, a zero discriminant, so the double root 0 is real
+        # and counts twice, as solve_quadratic's delta == 0 double root and the D == 0 row of #4862 do.
+        rows = torch.tensor([[1.0, 1.0, 0.0, 0.0], [1e-30, 1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[-1.0, 0.0, 0.0], [-1e30, 0.0, 0.0]], device=device, dtype=dtype)
+        roots, num_real = _solve_cubic_with_count(rows)
+        self.assert_close(roots.sort(dim=-1).values, expected, rtol=8 * torch.finfo(dtype).eps, atol=0.0)
+        assert num_real.tolist() == [3, 3], num_real
 
     def test_dominant_root_gradcheck_4914(self, device):
         # Vieta rows: (x - 1)(x - 2)(x + 1000), (x + 1000)(x^2 + x + 1) and (x - 32)(x - 1)(x + 1). The first and the
