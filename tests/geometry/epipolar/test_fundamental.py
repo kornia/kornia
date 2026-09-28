@@ -21,10 +21,12 @@ import pytest
 import torch
 
 import kornia.geometry.epipolar as epi
+import kornia.geometry.epipolar.fundamental as fundamental_module
 from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.epipolar.fundamental import (
     _eight_point_fundamental,
+    _enforce_rank2,
     _epipolar_design_rows,
     _rank2_projection,
     _seven_point_candidates,
@@ -928,6 +930,18 @@ class TestRankTwoProjection(BaseTester):
         self.assert_close(sp[:2], s[:2], atol=tol, rtol=0)
         assert float(sp[2]) <= tol
         self.assert_close((F - P).norm(), s[2], atol=tol, rtol=0)
+
+    def test_enforce_rank2_keeps_the_svd_without_float64(self, device, monkeypatch):
+        # Without float64 (MPS) the closed form runs in float32, where its error grows like eps (sigma_1 / sigma_2)^2
+        # through F^T F; batches of any size then keep the SVD. Simulated here by patching the solve dtype.
+        monkeypatch.setattr(fundamental_module, "_solve_dtype", lambda device: torch.float32)
+        generator = torch.Generator().manual_seed(4)
+        U = torch.linalg.qr(torch.randn(600, 3, 3, generator=generator, dtype=torch.float64))[0]
+        V = torch.linalg.qr(torch.randn(600, 3, 3, generator=generator, dtype=torch.float64))[0]
+        F = U @ torch.diag(torch.tensor([1.0, 1e-2, 1e-3], dtype=torch.float64)) @ V.mT
+        expected = U[..., :2] @ torch.diag(torch.tensor([1.0, 1e-2], dtype=torch.float64)) @ V[..., :2].mT
+        P = _enforce_rank2(F.to(device, torch.float32)).cpu().double()
+        assert (P - expected).abs().max() < 1e-5
 
     def test_backward_is_finite_at_a_repeated_spectrum(self, device):
         F = torch.eye(3, device=device, dtype=torch.float64)[None].requires_grad_()

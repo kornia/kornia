@@ -252,10 +252,12 @@ _RANK2_CLOSED_FORM_MIN_BATCH_ACCELERATOR = 512
 def _enforce_rank2(F: torch.Tensor) -> torch.Tensor:
     """Remove the smallest singular value of ``(B, 3, 3)`` matrices.
 
-    :func:`_rank2_projection` for large batches, an SVD for small ones, where it is cheaper.
+    :func:`_rank2_projection` for large batches, an SVD for small ones, where it is cheaper. Without float64 (MPS) the
+    closed form would run in float32, where its error grows like ``eps * (sigma_1 / sigma_2)^2`` through ``F^T F``, so
+    the SVD is kept for every batch there.
     """
     threshold = _RANK2_CLOSED_FORM_MIN_BATCH_CPU if F.device.type == "cpu" else _RANK2_CLOSED_FORM_MIN_BATCH_ACCELERATOR
-    if F.shape[0] >= threshold:
+    if F.shape[0] >= threshold and _solve_dtype(F.device) == torch.float64:
         return _rank2_projection(F)
     U, S, V = _torch_svd_cast(F)
     S_new = torch.zeros_like(S)
