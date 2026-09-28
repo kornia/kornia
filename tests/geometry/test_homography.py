@@ -1245,11 +1245,11 @@ class TestHomographySharedKernels(BaseTester):
         dst = convert_points_from_homogeneous(_hom(src) @ H.T) + torch.randn(1, 2000, 2, generator=generator, dtype=f64)
         reference = torch.cat([oneway_transfer_error(src, dst, models[i : i + 1], eps=0.0) for i in range(8)])
         cast = lambda t: t.to(device, dtype)  # noqa: E731
-        shared = oneway_transfer_error(cast(src), cast(dst), cast(models), eps=0.0).double().cpu()
+        shared = oneway_transfer_error(cast(src), cast(dst), cast(models), eps=0.0).cpu().double()
         per_model = (
             torch.cat([oneway_transfer_error(cast(src), cast(dst), cast(models[i : i + 1]), eps=0.0) for i in range(8)])
-            .double()
             .cpu()
+            .double()
         )
         small = reference < 100
         assert (shared - reference)[small].abs().max() <= 2 * (per_model - reference)[small].abs().max() + 1e-6
