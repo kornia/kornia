@@ -1861,15 +1861,15 @@ class TestRANSACLevenbergMarquardt(BaseTester):
     @pytest.mark.parametrize(
         "model_type, max_samples, expected",
         [
-            ("homography", 2000, [512, 1024, 464]),
+            ("homography", 2000, [128, 512, 1360]),
             ("fundamental", 2000, [256, 512, 1024, 208]),
-            ("essential", 2000, [64, 128, 256, 512, 1024, 16]),
+            ("essential", 2000, [32, 64, 128, 256, 512, 1008]),
         ],
     )
     def test_auto_batches_grow_on_cpu_and_cover_the_budget(self, device, model_type, max_samples, expected):
         if device.type != "cpu":
             pytest.skip("the CPU batch schedule")
-        # confidence=1 draws the whole budget: batches double from the first one, the last is cut to the budget.
+        # confidence=1 draws the whole budget: geometric growth, with the last batch cut to the budget.
         kp1, kp2, _, _, _ = _scene(model_type, 100, 30, 0.5, seed=7)
         ransac = RANSAC(model_type, max_samples=max_samples, confidence=1.0, seed=0)
         sizes = []
@@ -1882,7 +1882,7 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         # A five-point sample needs few draws at high inlier ratios: small first batches on every device, the CPU
         # one smallest (tuned on PhotoTourism, where a first batch of 256 doubled the time at equal accuracy).
         ransac = RANSAC("essential", max_samples=100000)
-        assert ransac._lm_batch_range(100, torch.device("cpu")) == (64, 1024)
+        assert ransac._lm_batch_range(100, torch.device("cpu")) == (32, 1024)
         assert ransac._lm_batch_range(100, torch.device("cuda")) == (256, 8192)
         assert ransac._lm_batch_range(100, torch.device("mps")) == (256, 8192)
 
@@ -1958,10 +1958,11 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         E, mask = RANSAC("essential", inl_th=1.0, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
         assert torch.isfinite(E).all() and mask.shape == (100,)
 
-    def test_planar_scene(self, device, dtype):
+    @pytest.mark.parametrize("seed", [0, 1, 2])
+    def test_planar_scene(self, device, dtype, seed):
         self._skip_half(dtype)
-        # Every scene point on one plane: the five-point solver still determines E (a homography does not), and the
-        # pipeline recovers it among outliers.
+        # A calibrated plane admits multiple essential matrices with the same epipolar fit. Check the recovered
+        # consensus and essential manifold, not equality to one generating motion (which depends on sampled ties).
         generator = torch.Generator().manual_seed(12)
         f64 = torch.float64
         XY = (torch.rand(120, 2, generator=generator, dtype=f64) - 0.5) * 4
@@ -1971,13 +1972,15 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         Y = X @ R.T + t
         kp1, kp2 = X[:, :2] / X[:, 2:], Y[:, :2] / Y[:, 2:]
         kp2[:30] = (torch.rand(30, 2, generator=generator, dtype=f64) - 0.5) * 1.2
-        E_true = _skew(t) @ R
-        E_true = E_true / E_true.norm()
-        E, mask = RANSAC("essential", inl_th=1e-4, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        E, mask = RANSAC("essential", inl_th=1e-4, seed=seed)(kp1.to(device, dtype), kp2.to(device, dtype))
         assert torch.equal(mask.cpu(), torch.arange(120) >= 30)
         E = E.cpu().double()
-        tolerance = 1e-6 if dtype == torch.float64 else 1e-3
-        assert torch.minimum((E - E_true).norm(), (E + E_true).norm()) < tolerance
+        tolerance = 1e-9 if dtype == torch.float64 else 1e-6
+        self.assert_close(
+            torch.linalg.svdvals(E), E.new_tensor([0.5**0.5, 0.5**0.5, 0.0]), atol=tolerance, rtol=tolerance
+        )
+        error = sampson_epipolar_distance(kp1[None, 30:], kp2[None, 30:], E[None], eps=0.0)
+        assert error.max() < (1e-16 if dtype == torch.float64 else 1e-10)
 
     def test_batch_of_one_sample(self, device, dtype):
         self._skip_half(dtype)
@@ -2056,3 +2059,48 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
         if model_type != "homography":
             neighbours = _rank2_projection(neighbours)
         assert (cost(neighbours) >= cost(refined) * (1 - 1e-9)).all()
+
+
+class TestRANSACScoring(BaseTester):
+    @pytest.mark.parametrize("model_type", ["homography", "fundamental", "essential"])
+    @pytest.mark.parametrize("score_type", ["ransac", "msac"])
+    @pytest.mark.parametrize("prosac", [False, True])
+    def test_score_and_support_match_full_residuals(self, device, dtype, model_type, score_type, prosac):
+        from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
+        from kornia.geometry.homography import _transfer_basis, _transfer_from_basis
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scoring uses at least float32")
+        generator = torch.Generator().manual_seed(10)
+        x1 = torch.rand(137, 3, generator=generator).to(device, dtype)
+        x2 = torch.rand(137, 3, generator=generator).to(device, dtype)
+        x1[:, 2] = x2[:, 2] = 1
+        x1[0] = float("nan")
+        models = torch.rand(29, 3, 3, generator=generator).to(device, dtype)
+        models[0] = float("nan")
+        planar = model_type == "homography"
+        basis = _transfer_basis(x1, x2[:, :2]) if planar else _sampson_quadratic_basis(x1, x2)
+        residual_fn = _transfer_from_basis if planar else _sampson_from_quadratic_basis
+        errors = residual_fn(models, basis)
+        threshold = 0.1
+        ransac = RANSAC(model_type, score_type=score_type, prosac_sampling=prosac)
+        expected_support = (errors <= threshold).sum(1)
+        expected_scores = ransac._lm_score(errors, threshold)
+        # Force several tiles, including a tail of one model, without allocating huge fixtures.
+        scores, support, masks = ransac._lm_score_models(models, basis, threshold, max_residuals=137 * 7)
+        self.assert_close(scores, expected_scores)
+        self.assert_close(support, expected_support.to(support.dtype), rtol=0, atol=0)
+        assert scores[0] == 0 and support[0] == 0
+        if prosac:
+            assert masks is not None
+            self.assert_close(support, masks.sum(1).to(support.dtype), rtol=0, atol=0)
+        else:
+            assert masks is None
+
+    def test_msac_does_not_mutate_residuals(self, device, dtype):
+        errors = torch.tensor([[0.0, 0.25, 1.0, 2.0, float("nan"), float("inf")]], device=device, dtype=dtype)
+        original = errors.clone()
+        score = RANSAC()._lm_score(errors, 1.0)
+        self.assert_close(score, errors.new_tensor([1.75]))
+        assert torch.equal(errors.isnan(), original.isnan())
+        self.assert_close(errors.nan_to_num(), original.nan_to_num(), rtol=0, atol=0)

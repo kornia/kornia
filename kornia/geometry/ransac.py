@@ -419,16 +419,18 @@ class RANSAC(nn.Module):
         millisecond or so of work, 256 to 2048 hypotheses for homographies and 128 to 512 for the epipolar
         models. Other devices retain the historical 2048-sample batch.
 
-        With ``local_optimization="lm"`` an ``"auto"`` batch instead starts at 256 samples on CPU (512 for
-        homographies) and doubles after every batch, up to 2048 (4096 for homographies), so that inputs with
-        many inliers stop after a small first batch while the rest pay the per-batch overhead a few times only.
-        On CUDA and MPS it is the whole budget up to 8192 samples. Essential matrices start at 64 samples on CPU,
+        With ``local_optimization="lm"`` an ``"auto"`` batch instead starts at 256 samples on CPU (128 for
+        homographies) and doubles after every batch (quadruples for CPU homographies), up to 2048 (4096 for
+        homographies), so that inputs with many inliers stop after a small first batch while the rest pay the
+        per-batch overhead a few times only.
+        On CUDA and MPS it is the whole budget up to 8192 samples. Essential matrices start at 32 samples on CPU,
         up to 1024, and at 256 on CUDA and MPS, up to 8192: a five-point sample needs few draws at high inlier
-        ratios, and its host eigenvalue solve costs the same on every device. All shrink, down to 64 samples, when a
-        batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models
-        of a seven-point sample and the ten candidate slots of a five-point one; scoring holds two or three times
-        that many entries at its peak, about 0.5 GiB in float32 on an accelerator. An integer ``batch_size`` is kept
-        for every batch.
+        ratios, and its host eigenvalue solve costs the same on every device. The upper limits shrink to 64 samples
+        when a batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting three models
+        per seven-point sample and ten candidate slots per five-point sample; scoring holds two or three times
+        that many entries at its peak, about 0.5 GiB in float32 on an accelerator. CPU verification additionally
+        tiles hypotheses at about a million residuals independently of the solver batch. An integer ``batch_size``
+        is kept for every batch.
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
@@ -455,7 +457,7 @@ class RANSAC(nn.Module):
         essential = self.model_type == "essential"
         if device.type == "cpu":
             first, upper, work = (
-                (512, 4096, 1 << 22) if planar else (64, 1024, 1 << 22) if essential else (256, 2048, 1 << 22)
+                (128, 4096, 1 << 22) if planar else (32, 1024, 1 << 22) if essential else (256, 2048, 1 << 22)
             )
         elif device.type in ("cuda", "mps"):
             first, upper, work = (256 if essential else 8192), 8192, 1 << 25
@@ -928,8 +930,39 @@ class RANSAC(nn.Module):
         """MSAC scores ``sum(1 - min(e / threshold, 1))`` or RANSAC support counts ``(M,)`` of squared residuals."""
         if self.score_type == "msac":
             # fmin, unlike clamp, takes the threshold for NaN residuals: a NaN residual is an outlier.
-            return (1.0 - torch.fmin(errors, torch.full_like(errors[:1, :1], threshold)) / threshold).sum(1)
+            # The clipped residuals own their storage: reuse it for the three pointwise score operations.
+            contributions = torch.fmin(errors, torch.full_like(errors[:1, :1], threshold))
+            return contributions.div_(threshold).neg_().add_(1.0).sum(1)
         return (errors <= threshold).sum(1).to(errors.dtype)
+
+    def _lm_score_models(
+        self, models: torch.Tensor, basis: torch.Tensor, threshold: float, max_residuals: int = 1 << 20
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """Score minimal models without retaining the whole model-by-correspondence residual matrix.
+
+        CPU hypothesis tiles bound temporary storage independently of the solver batch. Correspondences are never
+        split, so each score uses the same reduction as full verification. Accelerators keep one tile to amortize
+        launch overhead. Support counts accumulate in the working dtype while they are exactly representable,
+        avoiding the default int64 conversion of every entry of the inlier matrix. Only PROSAC retains the boolean
+        masks: its stopping rule must use the same inlier decisions as the score, including at rounding boundaries.
+        """
+        planar = self.model_type == "homography"
+        n = basis.shape[1] // (3 if planar else 2)
+        tile = max(1, max_residuals // max(n, 1)) if models.device.type == "cpu" else max(len(models), 1)
+        scores, counts, masks = [], [], []
+        count_dtype = models.dtype if n <= 1 << 24 else torch.int64
+        residual_fn = _transfer_from_basis if planar else _sampson_from_quadratic_basis
+        for start in range(0, len(models), tile):
+            errors = residual_fn(models[start : start + tile], basis)
+            inliers = errors <= threshold
+            support = inliers.sum(1, dtype=count_dtype)
+            counts.append(support)
+            scores.append(self._lm_score(errors, threshold) if self.score_type == "msac" else support.to(models.dtype))
+            if self.prosac_sampling:
+                masks.append(inliers)
+        if len(scores) == 1:
+            return scores[0], counts[0], masks[0] if masks else None
+        return torch.cat(scores), torch.cat(counts), torch.cat(masks) if masks else None
 
     def _lm_refine(
         self,
@@ -998,17 +1031,15 @@ class RANSAC(nn.Module):
             indices = self.sample(m, num_tc, current, iteration, device, offset=drawn)
             drawn, iteration = drawn + current, iteration + 1
             if grow:
-                batch = min(2 * batch, largest)
+                batch = min((4 if planar and device.type == "cpu" else 2) * batch, largest)
             models = self._lm_minimal_models(x1[indices], x2[indices])
             if len(models) == 0:
                 continue
-            errors = _transfer_from_basis(models, basis) if planar else _sampson_from_quadratic_basis(models, basis)
             # Reject insufficient support before ranking: high MSAC scores from minimal samples alone must not
             # crowd supported models out of the candidate pool.
-            counts_all = (errors <= threshold).sum(1)
-            scores_all = self._lm_score(errors, threshold).masked_fill(counts_all <= m, -1.0)
+            scores_all, counts_all, masks_all = self._lm_score_models(models, basis, threshold)
+            scores_all = scores_all.masked_fill(counts_all <= m, -1.0)
             top_scores, top = scores_all.topk(min(_LM_CANDIDATES, len(models)))
-            top_inliers = errors[top] <= threshold
             top_counts = counts_all[top]
             # The run's best minimal models so far, refined after sampling.
             candidate_scores, order = torch.cat([top_scores, candidate_scores]).topk(
@@ -1020,8 +1051,8 @@ class RANSAC(nn.Module):
             if scores[best] > best_score:
                 # The bound follows the new incumbent's own support, as with local_optimization="dlt".
                 best_score = scores[best]
-                if self.prosac_sampling:
-                    max_samples = self._prosac_max_samples(top_inliers[best], int(counts[best]))
+                if masks_all is not None:
+                    max_samples = self._prosac_max_samples(masks_all[top[best]], int(counts[best]))
                 else:
                     support = int(counts[best])
                     max_samples = min(budget, self.max_samples_by_conf(support, num_tc, m, self.confidence))
@@ -1042,7 +1073,7 @@ class RANSAC(nn.Module):
         model, inliers = candidates[best], inliers[best]
         if self.refine_iters > 0:
             # A Cauchy scale of a third of the threshold: the threshold as three standard deviations of the noise.
-            mask = inliers.to(torch.float64)[None]
+            mask = inliers[None]
             refined = self._lm_refine(model[None], x1_host, x2_host, mask, "cauchy", threshold / 9, self.refine_iters)
             refined_inliers = self._lm_errors(refined, x1_host, x2_host)[0] <= threshold
             if self._is_supported(int(refined_inliers.sum())):
