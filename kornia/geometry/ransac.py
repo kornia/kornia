@@ -82,22 +82,26 @@ def _normalize_correspondences(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, float, float]:
     r"""Hartley-normalize both images' correspondences with :func:`normalize_points`, once per RANSAC call.
 
-    Statistics use the correspondences finite in both images (weight 1, the others weight 0); the others stay
-    non-finite and so are never counted as inliers. ``shared_scale`` gives both images the scale of the mean of their
-    two mean radii, which keeps the Sampson distance a multiple of the pixel one: :func:`normalize_points` scales by
+    Statistics use the correspondences finite in both images: the others enter :func:`normalize_points` as zero-weight
+    placeholders, since a weight of 0 does not remove a NaN from its weighted sums, and come out as NaN in both images,
+    so they are never counted as inliers. ``shared_scale`` gives both images the scale of the mean of their two mean
+    radii, which keeps the Sampson distance a multiple of the pixel one: :func:`normalize_points` scales by
     :math:`\sqrt{2} / (r + \epsilon)`, so that scale is the harmonic mean of the two.
 
     Returns:
         Homogeneous normalized points ``(N, 3)`` of each image, the ``(3, 3)`` transforms that map pixels to them, and
         the two scales in pixels per normalized unit.
     """
-    finite = (torch.isfinite(kp1).all(1) & torch.isfinite(kp2).all(1)).to(kp1.dtype)
-    points, transforms = normalize_points(torch.stack([kp1, kp2]), weights=finite.expand(2, -1))
+    finite = torch.isfinite(kp1).all(1) & torch.isfinite(kp2).all(1)
+    stacked = torch.stack([kp1, kp2])
+    placeholders = torch.where(finite[None, :, None], stacked, torch.zeros_like(stacked))
+    points, transforms = normalize_points(placeholders, weights=finite.to(kp1.dtype).expand(2, -1))
     if shared_scale:
         scale = transforms[:, 0, 0]
         ratio = (2.0 / (1.0 / scale).sum()) / scale
         points = points * ratio[:, None, None]
         transforms = torch.cat([transforms[:, :2] * ratio[:, None, None], transforms[:, 2:]], 1)
+    points = torch.where(finite[None, :, None], points, torch.full_like(points, float("nan")))
     points = convert_points_to_homogeneous(points)
     s1, s2 = (1.0 / transforms[:, 0, 0]).tolist()
     return points[0], points[1], transforms[0], transforms[1], s1, s2
