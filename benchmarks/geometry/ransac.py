@@ -21,7 +21,11 @@ Run from the checkout being measured (copy this harness to older checkouts).
 Preparation/evaluation require optional h5py and the imc2021-simple package;
 measurement needs only the normal Kornia environment and NumPy. No downloads.
 ``sweep`` runs kornia at its class defaults with and without PROSAC, and the optional
-OpenCV (``cv2``) and PoseLib (``poselib``) reference estimators when installed.
+OpenCV (``cv2``) and PoseLib (``poselib``) reference estimators when installed. With
+``--model essential`` every method estimates E from the pair's intrinsics: kornia and OpenCV
+(``findEssentialMat``) on normalized coordinates with the pixel threshold divided by the mean focal
+length, PoseLib (``estimate_relative_pose``) on pixels with its cameras; each E is stored as the
+fundamental matrix it implies, so ``evaluate`` scores both models alike.
 
     python benchmarks/geometry/ransac.py prepare --data-root ../imc2021-simple/data/phototourism \
         --scenes sacre_coeur,reichstag --cache sift=raw_matches.h5 \
@@ -426,6 +430,42 @@ def base_methods(module: Any, methods: list[str]) -> list[str]:
     return [m for m in methods if prosac or not SWEEP_KORNIA[m].get("prosac_sampling")]
 
 
+class PairCalibration:
+    """Pixel and normalized camera coordinates of one pair, for the essential-matrix sweep.
+
+    Pixel thresholds become calibrated ones through the mean focal length of the two cameras, as OpenCV's
+    ``findEssentialMat`` does for one camera. Every method's essential matrix is stored as the fundamental matrix
+    ``K2^-T E K1^-1``, so ``evaluate`` scores all models alike.
+    """
+
+    def __init__(self, K1: np.ndarray, K2: np.ndarray) -> None:
+        self.K1, self.K2 = K1, K2
+        self.inv1, self.inv2 = np.linalg.inv(K1), np.linalg.inv(K2)
+        self.focal = float(np.mean([K[[0, 1], [0, 1]].mean() for K in (K1, K2)]))
+
+    def normalized(self, points1: np.ndarray, points2: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        return tuple(  # type: ignore[return-value]
+            (np.column_stack((points, np.ones(len(points)))) @ inverse.T)[:, :2]
+            for points, inverse in ((points1, self.inv1), (points2, self.inv2))
+        )
+
+    def fundamental(self, E: Any) -> np.ndarray:
+        return self.inv2.T @ np.asarray(E, dtype=np.float64) @ self.inv1
+
+    def cameras(self, poselib: Any) -> list[Any]:
+        """PoseLib pinhole cameras; the image size, unused by the estimator, from the principal point."""
+        return [
+            poselib.Camera("PINHOLE", [K[0, 0], K[1, 1], K[0, 2], K[1, 2]], int(2 * K[0, 2]), int(2 * K[1, 2]))
+            for K in (self.K1, self.K2)
+        ]
+
+
+def essential_from_pose(R: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """``[t]_x R``."""
+    tx = np.array([[0.0, -t[2], t[1]], [t[2], 0.0, -t[0]], [-t[1], t[0], 0.0]])
+    return tx @ np.asarray(R)
+
+
 def reference_calls(
     args: argparse.Namespace,
     backends: dict[str, Any],
@@ -433,12 +473,19 @@ def reference_calls(
     points1: Any,
     points2: Any,
     ranked: bool,
+    calibration: PairCalibration | None = None,
 ) -> list[tuple[dict[str, Any], Any]]:
-    """One timed call per OpenCV/PoseLib method, iteration budget and threshold for a pair."""
+    """One timed call per OpenCV/PoseLib method, iteration budget and threshold for a pair.
+
+    With a ``calibration``, the essential-matrix estimators: OpenCV's ``findEssentialMat`` on normalized points with
+    the threshold in calibrated units, and PoseLib's ``estimate_relative_pose`` on pixels with its cameras.
+    """
     cv2, poselib = backends.get("cv2"), backends.get("poselib")
     opencv_methods = [m for m in args.opencv.split(",") if m] if cv2 is not None else []
     poselib_methods = [m for m in args.poselib.split(",") if m] if poselib is not None else []
     calls: list[tuple[dict[str, Any], Any]] = []
+    normalized = calibration.normalized(points1, points2) if calibration is not None else None
+    cameras = calibration.cameras(poselib) if calibration is not None and poselib is not None else None
     for name, iters, threshold in itertools.product(
         opencv_methods, [int(x) for x in args.opencv_iters.split(",")], thresholds
     ):
@@ -451,7 +498,11 @@ def reference_calls(
             p2: Any = points2,
         ) -> Any:
             cv2.setRNGSeed(args.seed)
-            return cv2.findFundamentalMat(p1, p2, flag, th, args.confidence, iters)
+            if calibration is None:
+                return cv2.findFundamentalMat(p1, p2, flag, th, args.confidence, iters)
+            n1, n2 = normalized
+            E, mask = cv2.findEssentialMat(n1, n2, np.eye(3), flag, args.confidence, th / calibration.focal, iters)
+            return (E[:3] if E is not None else None), mask
 
         config = {"method": f"opencv {name}", "device": "cpu", "batch": None}
         config.update(sample_budget=iters, threshold_px=threshold)
@@ -473,6 +524,9 @@ def reference_calls(
             # ``min_iterations`` (1000) and ``success_prob`` 0.9999 as in imc2021-simple.
             options = {"max_epipolar_error": th, "progressive_sampling": prosac, "max_iterations": iters}
             options.update(success_prob=POSELIB_SUCCESS_PROB, seed=args.seed)
+            if cameras is not None:
+                pose, info = poselib.estimate_relative_pose(p1, p2, cameras[0], cameras[1], options, {})
+                return essential_from_pose(pose.R, pose.t), info["inliers"]
             matrix, info = poselib.estimate_fundamental(p1, p2, options, {})
             return matrix, info["inliers"]  # a Python list; converted after the timer stops
 
@@ -501,10 +555,9 @@ def sweep(args: argparse.Namespace) -> None:
     Every configuration runs once per pair, all configurations of one pair back to back, so slow
     drift affects every method alike. Each call is timed on its own with device synchronization,
     as in the IMC time-mAA protocol; the curve averages the times over pairs (see the module
-    docstring for why this is not ``time_us``). Kornia's budget is
-    ``batch_size * max_iter`` minimal sets (a budget below ``--batch`` runs as one batch of that
-    size); OpenCV's is ``maxIters``. Predictions are stored with bit-packed inlier masks and scored
-    by ``evaluate``.
+    docstring for why this is not ``time_us``). Kornia's budget is ``max_samples`` minimal sets,
+    drawn in the estimator's own ``"auto"`` batches unless ``--batch`` fixes them; OpenCV's is
+    ``maxIters``. Predictions are stored with bit-packed inlier masks and scored by ``evaluate``.
     """
     kornia_methods = [m for m in args.kornia.split(",") if m]
     device, _, _ = setup_run(args, opencv=any(args.opencv.split(",")))
@@ -547,21 +600,27 @@ def sweep(args: argparse.Namespace) -> None:
             if not ranked:  # PROSAC needs a best-first order; the export order is not one
                 print(f"# NOTE: {key} has no match score or ratio: PROSAC configurations are skipped")
             order = np.argsort(data[field].reshape(-1), kind="stable") if ranked else np.arange(len(a))
-            kp1 = torch.as_tensor(a[order], device=device, dtype=torch.float32)
-            kp2 = torch.as_tensor(b[order], device=device, dtype=torch.float32)
             points1, points2 = a[order].astype(np.float64), b[order].astype(np.float64)
+            calibration = None
+            inputs = points1, points2
+            if args.model == "essential":
+                calibration = PairCalibration(data[f"{key}__a_K"], data[f"{key}__b_K"])
+                inputs = calibration.normalized(points1, points2)
+            kp1, kp2 = (torch.as_tensor(p, device=device, dtype=torch.float32) for p in inputs)
+            units = calibration.focal if calibration is not None else 1.0
             calls: list[tuple[dict[str, Any], Any]] = []
             budgets = [int(x) for x in args.budgets.split(",")]
             for prefix, ransac_class, methods in estimators:
                 for name, budget, threshold in itertools.product(methods, budgets, thresholds):
                     if SWEEP_KORNIA[name].get("prosac_sampling") and not ranked:
                         continue
-                    batch = min(args.batch, budget)
+                    # "auto" leaves the batches to the estimator, as a caller would; the budget is max_samples.
+                    batch = args.batch if args.batch == "auto" else min(int(args.batch), budget)
                     estimator = ransac_class(
-                        model_type="fundamental",
-                        inl_th=threshold,
+                        model_type=args.model,
+                        inl_th=threshold / units,
                         batch_size=batch,
-                        max_iter=budget // batch,
+                        max_samples=budget,
                         confidence=args.confidence,
                         max_lo_iters=args.lo_iters,
                         seed=args.seed,
@@ -570,7 +629,7 @@ def sweep(args: argparse.Namespace) -> None:
                     config = {"method": f"{prefix} {name}", "device": device.type, "batch": batch}
                     config.update(sample_budget=budget, threshold_px=threshold)
                     calls.append((config, partial(estimator, kp1, kp2)))
-            calls.extend(reference_calls(args, backends, thresholds, points1, points2, ranked))
+            calls.extend(reference_calls(args, backends, thresholds, points1, points2, ranked, calibration))
             for config, call in calls:
                 signature = (config["method"], config["sample_budget"], config["threshold_px"])
                 if signature not in warmed:  # first call per configuration: lazy initialization and
@@ -592,7 +651,7 @@ def sweep(args: argparse.Namespace) -> None:
                     "pair": key,
                     "scene": scene,
                     "feature": feature,
-                    "model_type": "fundamental",
+                    "model_type": args.model,
                     "seed": args.seed,
                     "correspondences": len(a),
                     "time_ms": elapsed_ms,
@@ -601,8 +660,10 @@ def sweep(args: argparse.Namespace) -> None:
                 if error is not None:
                     row["error"] = error
                 if torch.is_tensor(matrix):
-                    matrix, mask = matrix.cpu().numpy(), mask.cpu().numpy()
+                    matrix, mask = matrix.cpu().double().numpy(), mask.cpu().numpy()
                 if matrix is not None and np.shape(matrix) == (3, 3) and np.abs(matrix).max() > 0:
+                    if calibration is not None:
+                        matrix = calibration.fundamental(matrix)
                     original = np.zeros(len(a), dtype=bool)
                     original[order] = np.asarray(mask).reshape(-1).astype(bool)
                     packed = base64.b64encode(np.packbits(original).tobytes()).decode()
@@ -928,12 +989,18 @@ def main() -> None:
     sw.add_argument("--device", default="cpu")
     sw.add_argument("--dtype", choices=("float32",), default="float32")
     sw.add_argument("--threads", type=int, default=4)
+    sw.add_argument(
+        "--model",
+        choices=("fundamental", "essential"),
+        default="fundamental",
+        help="essential: calibrated inputs, thresholds in pixels divided by the mean focal length",
+    )
     sw.add_argument("--kornia", default=",".join(SWEEP_KORNIA), help=f"subset of {','.join(SWEEP_KORNIA)}")
     sw.add_argument("--opencv", default=",".join(SWEEP_OPENCV), help=f"subset of {','.join(SWEEP_OPENCV)}")
     sw.add_argument("--poselib", default=",".join(SWEEP_POSELIB), help=f"subset of {','.join(SWEEP_POSELIB)}")
     sw.add_argument("--base-source", type=Path, help="also sweep another revision's ransac.py as 'kornia-base'")
     sw.add_argument("--budgets", default="256,512,1024,2048,4096,8192,16384", help="kornia minimal-sample budgets")
-    sw.add_argument("--batch", type=int, default=256, help="kornia batch size (smaller budgets use one batch)")
+    sw.add_argument("--batch", default="auto", help='kornia batch size, or "auto" (the default) for the estimator\'s')
     sw.add_argument("--opencv-iters", default="10,25,100,400,1600,6400,25600")
     sw.add_argument("--poselib-iters", default="10,25,100,400,1600,6400,25600", help="PoseLib max_iterations")
     sw.add_argument("--thresholds", default="0.25,0.5,0.75,1,1.5,2")
@@ -1007,8 +1074,8 @@ def main() -> None:
         unknown |= set(args.poselib.split(",")) - set(SWEEP_POSELIB)
         if unknown - {""}:
             parser.error(f"unknown --kornia, --opencv or --poselib method: {sorted(unknown - {''})}")
-        if args.batch <= 0 or any(b % min(b, args.batch) for b in (int(x) for x in args.budgets.split(","))):
-            parser.error("every --budgets entry must be a multiple of --batch or smaller than it")
+        if args.batch != "auto" and (not args.batch.isdigit() or int(args.batch) <= 0):
+            parser.error('--batch must be a positive integer or "auto"')
     commands_by_name = {"prepare": prepare, "run": run, "sweep": sweep, "plot": plot}
     commands_by_name.update(compare=compare, evaluate=evaluate)
     commands_by_name[args.command](args)

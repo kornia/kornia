@@ -28,6 +28,7 @@ from kornia.core.exceptions import ValueCheckError
 from kornia.core.utils import _torch_svd_cast, is_compiling, register_module_state
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
+from kornia.geometry.vector import Scalar
 
 __all__ = ["ParametrizedLine", "fit_line"]
 
@@ -109,11 +110,12 @@ class ParametrizedLine(nn.Module):
                 raise ValueCheckError("ParametrizedLine.through requires two distinct points; p0 and p1 coincide.")
         return ParametrizedLine(p0, F.normalize(direction, p=2, dim=-1))
 
-    def point_at(self, t: Union[float, torch.Tensor]) -> torch.Tensor:
+    def point_at(self, t: Union[float, torch.Tensor, Scalar]) -> torch.Tensor:
         """Get the point at :math:`t` along this line.
 
         Args:
-            t: step along the line.
+            t: step along the line: a number or a 0-d tensor for every row, or one step per row of shape
+                :math:`(B,)` or :math:`(B, 1)` for a line of shape :math:`(B, D)`.
 
         Return:
             tensor with the point.
@@ -125,6 +127,10 @@ class ParametrizedLine(nn.Module):
             >>> p2 = l.point_at(0.1)
 
         """
+        if isinstance(t, Scalar):
+            t = t.data
+        if isinstance(t, torch.Tensor) and t.ndim > 0 and t.ndim == self.direction.ndim - 1:
+            t = t[..., None]
         return self.origin + self.direction * t
 
     def projection(self, point: torch.Tensor) -> torch.Tensor:
@@ -134,7 +140,7 @@ class ParametrizedLine(nn.Module):
             point: the point to be projected.
 
         """
-        return self.origin + (self.direction @ (point - self.origin)) * self.direction
+        return self.origin + batched_dot_product(self.direction, point - self.origin)[..., None] * self.direction
 
     def squared_distance(self, point: torch.Tensor) -> torch.Tensor:
         """Return the squared distance of a point to its projection onto the line.
