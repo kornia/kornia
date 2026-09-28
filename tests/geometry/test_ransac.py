@@ -1860,7 +1860,11 @@ class TestRANSACLevenbergMarquardt(BaseTester):
 
     @pytest.mark.parametrize(
         "model_type, max_samples, expected",
-        [("homography", 2000, [512, 1024, 464]), ("fundamental", 2000, [256, 512, 1024, 208])],
+        [
+            ("homography", 2000, [512, 1024, 464]),
+            ("fundamental", 2000, [256, 512, 1024, 208]),
+            ("essential", 2000, [64, 128, 256, 512, 1024, 16]),
+        ],
     )
     def test_auto_batches_grow_on_cpu_and_cover_the_budget(self, device, model_type, max_samples, expected):
         if device.type != "cpu":
@@ -1873,6 +1877,14 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         ransac.sample = lambda m, n, batch, *a, _s=sample, **k: sizes.append(batch) or _s(m, n, batch, *a, **k)
         ransac(kp1.float(), kp2.float())
         assert sizes == expected
+
+    def test_essential_auto_batches_per_device(self):
+        # A five-point sample needs few draws at high inlier ratios: small first batches on every device, the CPU
+        # one smallest (tuned on PhotoTourism, where a first batch of 256 doubled the time at equal accuracy).
+        ransac = RANSAC("essential", max_samples=100000)
+        assert ransac._lm_batch_range(100, torch.device("cpu")) == (64, 1024)
+        assert ransac._lm_batch_range(100, torch.device("cuda")) == (256, 8192)
+        assert ransac._lm_batch_range(100, torch.device("mps")) == (256, 8192)
 
     def test_explicit_batch_size_is_kept(self, device):
         kp1, kp2, _, _, _ = _planar_scene(100, 30, 0.5, seed=8)
@@ -1927,7 +1939,9 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
     def test_small_inputs(self, device, dtype, n):
         self._skip_half(dtype)
         kp1, kp2, _, _, _ = _scene("essential", n, 0, 0.0, seed=3)
-        E, mask = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        E, mask = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0)(
+            kp1.to(device, dtype), kp2.to(device, dtype)
+        )
         assert E.shape == (3, 3) and mask.shape == (n,)
         assert torch.isfinite(E).all()
 
@@ -1942,7 +1956,7 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         self._skip_half(dtype)
         kp1, kp2, _, _, inliers = _scene("essential", 60, 10, 0.0, seed=5)
         ransac = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0, batch_size=1, max_samples=64)
-        E, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
+        _, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
         assert mask.shape == (60,)
         assert torch.equal(mask.cpu(), inliers)
 

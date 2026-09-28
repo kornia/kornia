@@ -31,7 +31,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
-from kornia.geometry.epipolar.essential import _refine_essential_lm
+from kornia.geometry.epipolar.essential import _five_point_candidates, _refine_essential_lm
 from kornia.geometry.epipolar.fundamental import (
     _eight_point_fundamental,
     _epipolar_design_rows,
@@ -447,10 +447,15 @@ class RANSAC(nn.Module):
         # Candidate slots per sample: the cubic's three roots, the degree-ten polynomial's ten for "essential".
         models = {7: 3, 5: 10}.get(self.minimal_sample_size, 1)
         planar = self.model_type == "homography"
+        # A five-point sample needs few draws at high inlier ratios, and the host eigenvalue solve costs about 7 us
+        # per sample on every device: essential matrices start small everywhere (tuned on PhotoTourism).
+        essential = self.model_type == "essential"
         if device.type == "cpu":
-            first, upper, work = (512, 4096, 1 << 22) if planar else (256, 2048, 1 << 22)
+            first, upper, work = (
+                (512, 4096, 1 << 22) if planar else (64, 1024, 1 << 22) if essential else (256, 2048, 1 << 22)
+            )
         elif device.type in ("cuda", "mps"):
-            first, upper, work = 8192, 8192, 1 << 25
+            first, upper, work = (256 if essential else 8192), 8192, 1 << 25
         else:
             first, upper, work = _DEFAULT_BATCH, _DEFAULT_BATCH, 1 << 25
         largest = max(min(upper, work // (models * max(num_tc, 1))), 64)
@@ -898,14 +903,11 @@ class RANSAC(nn.Module):
                 return _four_point_homography(x1, x2)
             models = _four_point_homography(x1, x2)
             return models.masked_fill(~oriented[:, None, None], float("nan"))
-        if self.model_type == "essential":
-            # A sample with a non-finite correspondence becomes a degenerate all-zero one, and its candidates NaN.
-            finite = (torch.isfinite(x1) & torch.isfinite(x2)).flatten(1).all(1)
-            x1, x2 = x1.masked_fill(~finite[:, None, None], 0.0), x2.masked_fill(~finite[:, None, None], 0.0)
-            candidates = find_essential(x1[..., :2], x2[..., :2]).masked_fill(~finite[:, None, None, None], float("nan"))
-            models = candidates.flatten(0, 1)
-            return models[torch.isfinite(models).flatten(1).all(1)] if compact else models
         design = _epipolar_design_rows(x1, x2)
+        if self.model_type == "essential":
+            # Samples with a non-finite correspondence, rank-deficient samples and complex roots give NaN slots.
+            candidates, valid = _five_point_candidates(design)
+            return candidates[valid] if compact else candidates.flatten(0, 1)
         if self.minimal_sample_size == 7:
             candidates, valid = _seven_point_candidates(design)
             models = candidates.masked_fill(~valid[..., None, None], float("nan")).flatten(0, 1)
@@ -970,7 +972,8 @@ class RANSAC(nn.Module):
         if essential:
             # Non-finite correspondences stay NaN, as the normalization leaves them, and are never inliers.
             x1_host, x2_host = (
-                convert_points_to_homogeneous(kp.masked_fill(~finite[:, None], float("nan"))) for kp in (kp1_host, kp2_host)
+                convert_points_to_homogeneous(kp.masked_fill(~finite[:, None], float("nan")))
+                for kp in (kp1_host, kp2_host)
             )
             t1 = t2 = torch.eye(3, dtype=torch.float64)
             threshold = self.inl_th**2
