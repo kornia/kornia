@@ -793,7 +793,10 @@ class TestConventionAugmentationBase2D(BaseTester):
 
     @pytest.mark.parametrize("p", [0.0, 1.0])
     @pytest.mark.parametrize("as_objects", [False, True])
-    def test_convention_container_dispatches_custom_rigid_annotations_4481(self, device, dtype, p, as_objects):
+    @pytest.mark.parametrize("annotations_first", [False, True])
+    def test_convention_container_dispatches_custom_rigid_annotations_4481(
+        self, device, dtype, p, as_objects, annotations_first
+    ):
         # Every handler reads the matrix the container passes, so a handler called with ``transform=None`` fails.
         class ShiftRight(K.RigidAffineAugmentationBase2D):
             def compute_transformation(self, input, params, flags):
@@ -825,7 +828,16 @@ class TestConventionAugmentationBase2D(BaseTester):
         sequence = K.AugmentationSequential(augmentation, data_keys=["input", "mask", "bbox_xyxy", "keypoints"])
         box_input = boxes if as_objects else boxes.to_tensor("xyxy")
         keypoint_input = keypoints if as_objects else keypoints.data
-        output_image, output_mask, output_boxes, output_keypoints = sequence(image, mask, box_input, keypoint_input)
+        if annotations_first:
+            output_mask, output_boxes, output_keypoints, output_image = sequence(
+                mask,
+                box_input,
+                keypoint_input,
+                image,
+                data_keys=["mask", "bbox_xyxy", "keypoints", "input"],
+            )
+        else:
+            output_image, output_mask, output_boxes, output_keypoints = sequence(image, mask, box_input, keypoint_input)
 
         expected_boxes = boxes.to_tensor("xyxy") + torch.tensor([p, 0.0, p, 0.0], device=device, dtype=dtype)
         expected_keypoints = keypoints.data + torch.tensor([p, 0.0], device=device, dtype=dtype)
@@ -845,7 +857,12 @@ class TestConventionAugmentationBase2D(BaseTester):
             augmentation.transform_keypoints(keypoints, params, flags, transform).data, expected_keypoints
         )
         # A list of masks takes the per-entry path, which passes the matrix too.
-        _, output_masks = K.AugmentationSequential(augmentation, data_keys=["input", "mask"])(image, [mask[0]])
+        mask_sequence = K.AugmentationSequential(augmentation, data_keys=["input", "mask"])
+        if annotations_first:
+            output_masks, list_output_image = mask_sequence([mask[0]], image, data_keys=["mask", "input"])
+        else:
+            list_output_image, output_masks = mask_sequence(image, [mask[0]])
+        self.assert_close(list_output_image, output_image)
         self.assert_close(output_masks[0], output_image)
 
     def test_convention_random_erasing_also_erases_container_masks(self, device, dtype):
