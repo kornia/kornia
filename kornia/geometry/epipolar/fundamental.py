@@ -18,7 +18,7 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
 import math
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 
@@ -312,11 +312,14 @@ def _seven_point_candidates(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
     return F.to(A.dtype), valid & torch.isfinite(F).flatten(-2).all(-1)
 
 
-def _robust_loss(r2: torch.Tensor, loss: str, scale2: float) -> Tuple[torch.Tensor, torch.Tensor]:
-    """IRLS weights and costs of a squared residual: Cauchy, or truncated at ``scale2``."""
+def _robust_loss(r2: torch.Tensor, loss: str, scale2: Union[float, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    """IRLS weights and costs of a squared residual: Cauchy, or truncated at ``scale2``.
+
+    ``scale2`` may be a 0-d tensor, which keeps a compiled caller free of a host synchronization.
+    """
     if loss == "cauchy":
         return 1.0 / (1.0 + r2 / scale2), torch.log1p(r2 / scale2)
-    return (r2 < scale2).to(r2.dtype), torch.fmin(r2, torch.full_like(r2[:1, :1], scale2))
+    return (r2 < scale2).to(r2.dtype), torch.fmin(r2, torch.as_tensor(scale2, dtype=r2.dtype, device=r2.device))
 
 
 def _hat_basis(dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -338,7 +341,7 @@ def _sampson_cost(
     quadratic: torch.Tensor,
     mask: Optional[torch.Tensor],
     loss: str,
-    scale2: float,
+    scale2: Union[float, torch.Tensor],
 ) -> torch.Tensor:
     """Robust Sampson costs without constructing trial Jacobians or normal equations."""
     quad1 = F[:, :2, :].mT @ F[:, :2, :]
@@ -346,7 +349,11 @@ def _sampson_cost(
     numerator = F.flatten(1) @ algebraic
     denominator = torch.cat([quad1, quad2], 1).flatten(1) @ quadratic
     r2 = (numerator * denominator.rsqrt()).square()
-    rho = torch.log1p(r2 / scale2) if loss == "cauchy" else torch.fmin(r2, torch.full_like(r2[:1, :1], scale2))
+    rho = (
+        torch.log1p(r2 / scale2)
+        if loss == "cauchy"
+        else torch.fmin(r2, torch.as_tensor(scale2, dtype=r2.dtype, device=r2.device))
+    )
     if mask is not None:
         rho = rho * mask
     return rho.sum(1)
@@ -359,7 +366,7 @@ def _sampson_normal_equations(
     quadratic: torch.Tensor,
     mask: Optional[torch.Tensor],
     loss: str,
-    scale2: float,
+    scale2: Union[float, torch.Tensor],
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Robust Gauss-Newton normal equations ``[J^T W J | J^T W r]`` ``(K, P, P + 1)`` and costs ``(K,)``.
 
@@ -390,7 +397,7 @@ def _refine_fundamental_lm(
     x2: torch.Tensor,
     mask: Optional[torch.Tensor],
     loss: str,
-    scale2: float,
+    scale2: Union[float, torch.Tensor],
     iters: int,
 ) -> torch.Tensor:
     """Levenberg-Marquardt on the Sampson distance, batched over fundamental matrices ``(K, 3, 3)``.

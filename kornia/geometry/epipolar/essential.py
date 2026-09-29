@@ -17,7 +17,7 @@
 
 """Module containing functionalities for the Essential matrix."""
 
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 
 import torch
 
@@ -879,7 +879,7 @@ def _refine_essential_lm(
     x2: torch.Tensor,
     mask: Optional[torch.Tensor],
     loss: str,
-    scale2: float,
+    scale2: Union[float, torch.Tensor],
     iters: int,
 ) -> torch.Tensor:
     """Levenberg-Marquardt on the Sampson distance, batched over essential matrices ``(K, 3, 3)``.

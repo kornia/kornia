@@ -27,6 +27,7 @@ from typing import Callable, Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
@@ -78,6 +79,24 @@ def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, .
     return tuple(ends)
 
 
+def _normalize_correspondences_core(
+    kp1: torch.Tensor, kp2: torch.Tensor, shared_scale: bool
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """:func:`_normalize_correspondences` with the two scales as a ``(2,)`` tensor, without a host synchronization."""
+    finite = torch.isfinite(kp1).all(1) & torch.isfinite(kp2).all(1)
+    stacked = torch.stack([kp1, kp2])
+    placeholders = torch.where(finite[None, :, None], stacked, torch.zeros_like(stacked))
+    points, transforms = normalize_points(placeholders, weights=finite.to(kp1.dtype).expand(2, -1))
+    if shared_scale:
+        scale = transforms[:, 0, 0]
+        ratio = (2.0 / (1.0 / scale).sum()) / scale
+        points = points * ratio[:, None, None]
+        transforms = torch.cat([transforms[:, :2] * ratio[:, None, None], transforms[:, 2:]], 1)
+    points = torch.where(finite[None, :, None], points, torch.full_like(points, float("nan")))
+    points = convert_points_to_homogeneous(points)
+    return points[0], points[1], transforms[0], transforms[1], 1.0 / transforms[:, 0, 0]
+
+
 def _normalize_correspondences(
     kp1: torch.Tensor, kp2: torch.Tensor, shared_scale: bool
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, float, float]:
@@ -93,19 +112,19 @@ def _normalize_correspondences(
         Homogeneous normalized points ``(N, 3)`` of each image, the ``(3, 3)`` transforms that map pixels to them, and
         the two scales in pixels per normalized unit.
     """
-    finite = torch.isfinite(kp1).all(1) & torch.isfinite(kp2).all(1)
-    stacked = torch.stack([kp1, kp2])
-    placeholders = torch.where(finite[None, :, None], stacked, torch.zeros_like(stacked))
-    points, transforms = normalize_points(placeholders, weights=finite.to(kp1.dtype).expand(2, -1))
-    if shared_scale:
-        scale = transforms[:, 0, 0]
-        ratio = (2.0 / (1.0 / scale).sum()) / scale
-        points = points * ratio[:, None, None]
-        transforms = torch.cat([transforms[:, :2] * ratio[:, None, None], transforms[:, 2:]], 1)
-    points = torch.where(finite[None, :, None], points, torch.full_like(points, float("nan")))
-    points = convert_points_to_homogeneous(points)
-    s1, s2 = (1.0 / transforms[:, 0, 0]).tolist()
-    return points[0], points[1], transforms[0], transforms[1], s1, s2
+    x1, x2, t1, t2, scales = _normalize_correspondences_core(kp1, kp2, shared_scale)
+    s1, s2 = scales.tolist()
+    return x1, x2, t1, t2, s1, s2
+
+
+def _check_compile_config(local_optimization: str, prosac_sampling: bool) -> None:
+    """Reject the configurations that ``RANSAC(compile=True)`` does not cover."""
+    if torch_version_lt(2, 14, 0):
+        raise ValueError("compile=True needs torch 2.14 or later")
+    if local_optimization != "lm":
+        raise ValueError('compile=True supports local_optimization="lm" only')
+    if prosac_sampling:
+        raise ValueError("compile=True does not support prosac_sampling")
 
 
 class RANSAC(nn.Module):
@@ -146,6 +165,12 @@ class RANSAC(nn.Module):
           termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
           draws from the global generator.
+        - ``compile=True`` runs the whole ``local_optimization="lm"`` estimation as one ``torch.compile`` graph
+          (torch 2.14 or later, CPU; CUDA untested). The graph is traced once per configuration and does not
+          depend on the number of correspondences, the threshold, the confidence or the budget; it is also saved next
+          to inductor's cache (``TORCHINDUCTOR_CACHE_DIR``), so a later process loads it instead of compiling. It
+          runs the same algorithm with its own random stream: a seeded call is reproducible, but its result is not
+          the eager one. PROSAC sampling is not supported.
 
     Args:
         model_type: "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
@@ -176,6 +201,7 @@ class RANSAC(nn.Module):
             fundamental and essential matrices and ``"dlt"`` for line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
+        compile: run ``local_optimization="lm"`` as one compiled graph, as described above.
 
     """
 
@@ -194,6 +220,7 @@ class RANSAC(nn.Module):
         max_samples: Optional[int] = None,
         local_optimization: Optional[str] = None,
         refine_iters: int = 3,
+        compile: bool = False,
     ) -> None:
         """Initialize the RANSAC estimator.
 
@@ -221,6 +248,7 @@ class RANSAC(nn.Module):
                 final robust refinement) or ``"dlt"`` (refits of each new best model); None picks ``"lm"`` where it
                 is supported, for homographies, fundamental and essential matrices.
             refine_iters: Levenberg-Marquardt iterations of the final refinement on the inliers with ``"lm"``.
+            compile: run ``local_optimization="lm"`` as one compiled graph (torch 2.14 or later).
 
         """
         super().__init__()
@@ -272,6 +300,9 @@ class RANSAC(nn.Module):
         self.lo_sample_size = lo_sample_size
         self.local_optimization = local_optimization
         self.refine_iters = refine_iters
+        if compile:
+            _check_compile_config(local_optimization, prosac_sampling)
+        self.compiled = compile
         # The PROSAC growth schedule as a device tensor, reused across the batches of a call.
         self._prosac_ends: Optional[Tuple[Tuple[int, int, int, torch.device], torch.Tensor]] = None
 
@@ -820,6 +851,8 @@ class RANSAC(nn.Module):
         self.validate_inputs(kp1, kp2, weights)
         if self.local_optimization == "lm":
             with torch.no_grad():
+                if self.compiled:
+                    return self._forward_compiled(kp1, kp2)
                 return self._forward_lm(kp1, kp2)
         best_score_total = -float("inf")
         num_tc: int = len(kp1)
@@ -887,6 +920,28 @@ class RANSAC(nn.Module):
                 best_model_total = torch.zeros_like(best_model_total)
                 inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total
+
+    def _forward_compiled(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """:meth:`_forward_lm` as the compiled program of :mod:`kornia.geometry._ransac_program`."""
+        from kornia.geometry._ransac_program import load_program
+
+        if kp1.device.type not in ("cpu", "cuda"):
+            raise ValueError(f"compile=True runs on CPU and CUDA, not {kp1.device.type}")
+        num_tc = len(kp1)
+        first, largest = self._lm_batch_range(num_tc, kp1.device)
+        if isinstance(self.batch_size, int):
+            first = largest
+        scalars = [torch.tensor(value, dtype=torch.float64) for value in (self.inl_th, self.confidence)]
+        scalars += [torch.tensor(value, dtype=torch.int64) for value in (self.sample_budget, first, largest)]
+        inputs = (kp1, kp2, *scalars)
+        key = (self.model_type, self.score_type, self.max_lo_iters, self.refine_iters, kp1.dtype, kp1.device.type)
+        program = load_program(key, inputs)
+        if self.seed is None:
+            return program(*inputs)
+        devices = [kp1.device] if kp1.device.type == "cuda" else []
+        with torch.random.fork_rng(devices=devices, device_type=kp1.device.type):
+            torch.manual_seed(self.seed)
+            return program(*inputs)
 
     def _lm_minimal_models(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
         """Minimal models ``(M, 3, 3)`` of normalized (for essential matrices, calibrated) samples ``(B, m, 3)``.

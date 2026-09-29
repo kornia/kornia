@@ -16,7 +16,7 @@
 #
 
 import warnings
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -336,7 +336,7 @@ def _refine_homography_lm(
     x2: torch.Tensor,
     mask: Optional[torch.Tensor],
     loss: str,
-    scale2: float,
+    scale2: Union[float, torch.Tensor],
     iters: int,
 ) -> torch.Tensor:
     """Levenberg-Marquardt on the one-way transfer error, batched over homographies ``(K, 3, 3)``.
@@ -386,7 +386,11 @@ def _refine_homography_lm(
             projection = h_new.reshape(K, 3, 3) @ x1.T
             residual = projection[:, :2] / projection[:, 2:3] - x2.T
             r2 = residual.square().sum(1)
-            rho = torch.log1p(r2 / scale2) if loss == "cauchy" else torch.fmin(r2, torch.full_like(r2[:1, :1], scale2))
+            rho = (
+                torch.log1p(r2 / scale2)
+                if loss == "cauchy"
+                else torch.fmin(r2, torch.as_tensor(scale2, dtype=r2.dtype, device=r2.device))
+            )
             cost_new = (rho if mask is None else rho * mask).sum(1)
             accepted = cost_new < cost
             return torch.where(accepted[:, None], h_new, h).reshape(K, 3, 3)

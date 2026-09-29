@@ -17,12 +17,15 @@
 
 
 import math
+import os
+import subprocess
 import sys
 
 import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
 from kornia.geometry import RANSAC, transform_points
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_from_homogeneous
 from kornia.geometry.epipolar import find_fundamental, project_to_essential, sampson_epipolar_distance
@@ -31,7 +34,7 @@ from kornia.geometry.epipolar.fundamental import _rank2_projection, _refine_fund
 from kornia.geometry.homography import _refine_homography_lm, _transfer_errors, oneway_transfer_error
 from kornia.geometry.ransac import _normalize_correspondences
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 from testing.casts import dict_to
 
 # RANSAC's batched minimal solvers take the Metal shader compiler down on the paravirtualized GPU
@@ -2104,3 +2107,123 @@ class TestRANSACScoring(BaseTester):
         self.assert_close(score, errors.new_tensor([1.75]))
         assert torch.equal(errors.isnan(), original.isnan())
         self.assert_close(errors.nan_to_num(), original.nan_to_num(), rtol=0, atol=0)
+
+
+_COMPILED_MODELS = ["homography", "fundamental", "essential"]
+_NO_COMPILED_PROGRAM = torch_version_lt(2, 14, 0) or not dynamo_is_available()
+_NO_COMPILED_PROGRAM_REASON = "RANSAC(compile=True) needs torch 2.14 or later"
+
+
+class TestRANSACCompiled(BaseTester):
+    """``compile=True``: the whole of ``local_optimization="lm"`` as one compiled graph.
+
+    Every test that compiles has ``compile`` in its name, which keeps it to the dynamo CI job.
+    """
+
+    def test_graph_mode_rejects_unsupported_configurations(self):
+        if torch_version_lt(2, 14, 0):
+            with pytest.raises(ValueError, match=r"2\.14"):
+                RANSAC("homography", compile=True)
+            return
+        with pytest.raises(ValueError, match="local_optimization"):
+            RANSAC("homography_from_linesegments", compile=True)
+        with pytest.raises(ValueError, match="local_optimization"):
+            RANSAC("homography", local_optimization="dlt", compile=True)
+        with pytest.raises(ValueError, match="prosac"):
+            RANSAC("homography", prosac_sampling=True, compile=True)
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("model_type", _COMPILED_MODELS)
+    def test_compile_recovers_the_eager_estimate(self, device, dtype, model_type):
+        _cpu_only(device)
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the compiled program is checked in float32 and float64")
+        kp1, kp2, _, _, inliers = _scene(model_type, 300, 120, 0.5, seed=1)
+        kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
+        th = _px(model_type, 1.5)
+        _, eager_mask = RANSAC(model_type, inl_th=th, seed=0)(kp1, kp2)
+        model, mask = RANSAC(model_type, inl_th=th, seed=0, compile=True)(kp1, kp2)
+        assert model.shape == (3, 3) and model.dtype == dtype and model.device == kp1.device
+        assert mask.shape == (300,) and mask.dtype == torch.bool and mask.device == kp1.device
+        # The mask holds the inliers of the returned model, as in eager mode.
+        assert torch.equal(mask.cpu(), _model_errors(model_type, model, kp1, kp2) <= th)
+        # The same algorithm with its own random stream: the same consensus up to borderline correspondences.
+        assert (mask & eager_mask).sum() >= 0.98 * eager_mask.sum()
+        assert (mask.cpu() & ~inliers).sum() <= 2
+        assert (mask.cpu() & inliers).sum() >= 0.9 * inliers.sum()
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("artifact", ["0", "1"])
+    def test_compile_one_graph_for_every_input(self, monkeypatch, artifact):
+        from torch._dynamo.utils import counters
+
+        from kornia.geometry import _ransac_program
+
+        # A fresh program per parametrization: with the on-disk artifact, a guard that an input violates raises.
+        monkeypatch.setenv("KORNIA_RANSAC_AOT", artifact)
+        monkeypatch.setattr(_ransac_program, "_PROGRAMS", {})
+        RANSAC("homography", seed=0, compile=True)(*(kp[:50].float() for kp in _planar_scene(50, 10, 0.5, 0)[:2]))
+        graphs = counters["stats"]["unique_graphs"]
+        # Sizes on both sides of inductor's 4096-element float32 reduction threshold, and every per-call number.
+        for n, inl_th, confidence, max_samples in ((9, 2.0, 0.99, 64), (1500, 1.0, 1.0, 300), (5000, 3.0, 0.9, 2000)):
+            kp1, kp2, _, _, _ = _planar_scene(n, n // 4, 0.3, seed=n)
+            ransac = RANSAC("homography", inl_th=inl_th, confidence=confidence, max_samples=max_samples, compile=True)
+            model, mask = ransac(kp1.float(), kp2.float())
+            assert mask.shape == (n,)
+            assert torch.equal(mask, _model_errors("homography", model, kp1, kp2) <= inl_th)
+        assert counters["stats"]["unique_graphs"] == graphs
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_seeded_calls_repeat_and_keep_the_global_generator(self):
+        kp1, kp2, _, _, _ = _planar_scene(200, 80, 0.5, seed=3)
+        ransac = RANSAC("homography", seed=7, compile=True)
+        state = torch.get_rng_state()
+        first = ransac(kp1.float(), kp2.float())
+        second = ransac(kp1.float(), kp2.float())
+        assert torch.equal(first[0], second[0]) and torch.equal(first[1], second[1])
+        assert torch.equal(torch.get_rng_state(), state)
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_no_consensus_returns_the_failure_result(self):
+        # Every sample maps a triangle onto a single point: sample_is_valid_for_homography rejects them all.
+        points1 = 10.0 * torch.rand(16, 2, generator=torch.Generator().manual_seed(123))
+        points2 = torch.full((16, 2), 5.0)
+        for compile in (False, True):
+            model, mask = RANSAC("homography", inl_th=0.5, seed=0, compile=compile)(points1, points2)
+            assert torch.equal(model, torch.zeros(3, 3))
+            assert not mask.any()
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_non_finite_correspondences_are_never_inliers(self):
+        kp1, kp2, _, _, inliers = _planar_scene(200, 40, 0.3, seed=4)
+        kp1, kp2 = kp1.float(), kp2.float()
+        kp1[50], kp2[60, 1], kp2[70, 0] = float("nan"), float("inf"), float("-inf")
+        _, mask = RANSAC("homography", seed=0, compile=True)(kp1, kp2)
+        assert not mask[[50, 60, 70]].any()
+        expected = inliers.clone()
+        expected[[50, 60, 70]] = False
+        assert (mask & expected).sum() >= 0.95 * expected.sum() and (mask & ~expected).sum() == 0
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_artifact_serves_a_new_process(self, tmp_path):
+        script = (
+            "import torch\n"
+            "from torch._dynamo.utils import counters\n"
+            "from kornia.geometry import RANSAC\n"
+            "g = torch.Generator().manual_seed(0)\n"
+            "kp1 = torch.rand(300, 2, generator=g) * 600\n"
+            "kp2 = kp1 * 1.1 + 5\n"
+            "model, mask = RANSAC('homography', seed=0, compile=True)(kp1, kp2)\n"
+            "print(int(mask.sum()), counters['stats']['unique_graphs'])\n"
+        )
+        env = {**os.environ, "TORCHINDUCTOR_CACHE_DIR": str(tmp_path), "KORNIA_RANSAC_AOT": "1"}
+        outputs = []
+        for _ in range(2):
+            result = subprocess.run(  # noqa: S603 - fixed script and interpreter; no shell or external input.
+                [sys.executable, "-c", script], env=env, capture_output=True, text=True, check=True, timeout=600
+            )
+            outputs.append(result.stdout.split())
+        assert list((tmp_path / "kornia_ransac").glob("*.bin"))
+        # Both processes find every correspondence; the second loads the saved program and traces no graph.
+        assert outputs[0][0] == outputs[1][0] == "300"
+        assert int(outputs[0][1]) >= 1 and outputs[1][1] == "0"
