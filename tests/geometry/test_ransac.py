@@ -2104,3 +2104,68 @@ class TestRANSACScoring(BaseTester):
         self.assert_close(score, errors.new_tensor([1.75]))
         assert torch.equal(errors.isnan(), original.isnan())
         self.assert_close(errors.nan_to_num(), original.nan_to_num(), rtol=0, atol=0)
+
+
+class TestRANSACDegensacOptions(BaseTester):
+    @pytest.mark.parametrize(
+        ("model_type", "expected"),
+        [
+            ("fundamental", True),
+            ("fundamental_7pt", True),
+            ("fundamental_8pt", False),
+            ("homography", False),
+            ("essential", False),
+        ],
+    )
+    def test_default_resolves_per_model(self, model_type, expected):
+        assert RANSAC(model_type).degensac is expected
+
+    def test_default_is_off_with_dlt(self):
+        assert RANSAC("fundamental", local_optimization="dlt").degensac is False
+
+    @pytest.mark.parametrize(
+        ("model_type", "local_optimization"),
+        [
+            ("homography", None),
+            ("essential", None),
+            ("fundamental_8pt", None),
+            ("fundamental", "dlt"),
+            ("homography_from_linesegments", None),
+        ],
+    )
+    def test_true_rejects_unsupported(self, model_type, local_optimization):
+        with pytest.raises(ValueError, match="degensac"):
+            RANSAC(model_type, local_optimization=local_optimization, degensac=True)
+
+    def test_rejects_non_bool(self):
+        with pytest.raises(ValueError, match="degensac"):
+            RANSAC("fundamental", degensac=1)
+
+    def test_raw_record_setters_are_draw_order_prefix_maxima(self):
+        scores = torch.tensor([0.5, 2.0, 1.0, 3.0, 3.0, -1.0, 4.0])
+        assert RANSAC._raw_record_setters(scores, 1.0) == [1, 3, 6]
+        assert RANSAC._raw_record_setters(scores, 5.0) == []
+        assert RANSAC._raw_record_setters(scores, -1.0) == [0, 1, 3, 6]
+
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_8pt", "homography", "essential"])
+    def test_lm_minimal_models_report_their_sample(self, model_type, device, dtype):
+        # Every model fits its own sample far better than the other fifteen, so the reported row identifies it; the
+        # eight-point model is not exact on its sample after the rank-2 projection, hence argmin rather than zero.
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        ransac = RANSAC(model_type)
+        generator = torch.Generator().manual_seed(0)
+        m = ransac.minimal_sample_size
+        x1 = torch.cat([torch.rand(16, m, 2, generator=generator), torch.ones(16, m, 1)], -1)
+        x2 = torch.cat([torch.rand(16, m, 2, generator=generator), torch.ones(16, m, 1)], -1)
+        models, rows = ransac._lm_minimal_models(x1.to(device, work), x2.to(device, work))
+        assert rows.shape == (len(models),) and rows.dtype == torch.long
+        assert bool((rows[1:] >= rows[:-1]).all())  # draw order
+        finite = torch.isfinite(models).flatten(1).all(1)
+        models, rows = models[finite].cpu().double(), rows[finite].cpu()
+        s1, s2 = x1.double(), x2.double()
+        if model_type == "homography":
+            mapped = torch.einsum("mij,snj->msni", models, s1)
+            residual = (mapped[..., :2] / mapped[..., 2:] - s2[None, ..., :2]).norm(dim=-1).amax(-1)
+        else:
+            residual = torch.einsum("sni,mij,snj->msn", s2, models, s1).abs().amax(-1)
+        assert float((residual.argmin(1) == rows).double().mean()) >= 0.9

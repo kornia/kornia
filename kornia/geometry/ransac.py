@@ -22,7 +22,7 @@ from __future__ import annotations
 import math
 import sys
 from functools import lru_cache, partial
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -62,6 +62,8 @@ _DEFAULT_BATCH = 2048
 # Model types that local_optimization="lm" supports, and how many minimal models it refines.
 _LM_MODELS = ("homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential")
 _LM_CANDIDATES = 8
+# Model types that DEGENSAC supports: seven-point fundamental matrices (Chum, Werner and Matas, CVPR 2005).
+_DEGENSAC_MODELS = ("fundamental", "fundamental_7pt")
 
 
 @lru_cache(maxsize=32)
@@ -76,6 +78,18 @@ def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, .
         ends.append(ends[-1] + max(1, math.ceil(next_expected - expected)))
         expected = next_expected
     return tuple(ends)
+
+
+def _resolve_degensac(degensac: Optional[bool], model_type: str, local_optimization: str) -> bool:
+    """The ``degensac`` setting of :class:`RANSAC`: None enables it where it is supported; True requires support."""
+    if degensac is not None and not isinstance(degensac, bool):
+        raise ValueError(f"degensac must be None, True or False, got {degensac!r}")
+    supported = model_type in _DEGENSAC_MODELS and local_optimization == "lm"
+    if degensac and not supported:
+        raise ValueError(
+            'degensac=True requires model_type "fundamental" or "fundamental_7pt" with local_optimization="lm"'
+        )
+    return supported if degensac is None else degensac
 
 
 def _normalize_correspondences(
@@ -176,6 +190,9 @@ class RANSAC(nn.Module):
             fundamental and essential matrices and ``"dlt"`` for line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
+        degensac: run DEGENSAC's dominant-plane recovery, as described above. None enables it for
+            ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``, the only combinations that
+            support it; True with any other raises ``ValueError``.
 
     """
 
@@ -194,6 +211,7 @@ class RANSAC(nn.Module):
         max_samples: Optional[int] = None,
         local_optimization: Optional[str] = None,
         refine_iters: int = 3,
+        degensac: Optional[bool] = None,
     ) -> None:
         """Initialize the RANSAC estimator.
 
@@ -221,6 +239,8 @@ class RANSAC(nn.Module):
                 final robust refinement) or ``"dlt"`` (refits of each new best model); None picks ``"lm"`` where it
                 is supported, for homographies, fundamental and essential matrices.
             refine_iters: Levenberg-Marquardt iterations of the final refinement on the inliers with ``"lm"``.
+            degensac: DEGENSAC's dominant-plane recovery for seven-point fundamental matrices; None enables it where
+                it is supported.
 
         """
         super().__init__()
@@ -258,6 +278,7 @@ class RANSAC(nn.Module):
             raise ValueError(f'local_optimization must be "lm" or "dlt", got {local_optimization!r}')
         if local_optimization == "lm" and model_type not in _LM_MODELS:
             raise ValueError(f'local_optimization="lm" supports {", ".join(_LM_MODELS)}, not {model_type!r}')
+        degensac = _resolve_degensac(degensac, model_type, local_optimization)
         self.score_type = score_type
         self.inl_th = inl_th
         self.max_iter = max_iter
@@ -272,6 +293,7 @@ class RANSAC(nn.Module):
         self.lo_sample_size = lo_sample_size
         self.local_optimization = local_optimization
         self.refine_iters = refine_iters
+        self.degensac = degensac
         # The PROSAC growth schedule as a device tensor, reused across the batches of a call.
         self._prosac_ends: Optional[Tuple[Tuple[int, int, int, torch.device], torch.Tensor]] = None
 
@@ -888,35 +910,57 @@ class RANSAC(nn.Module):
                 inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total
 
-    def _lm_minimal_models(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    def _lm_minimal_models(self, x1: torch.Tensor, x2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Minimal models ``(M, 3, 3)`` of normalized (for essential matrices, calibrated) samples ``(B, m, 3)``.
 
         Samples that :func:`~kornia.geometry.homography.sample_is_valid_for_homography` rejects and absent roots of
         the seven-point cubic are dropped on CPU; on other devices, where dropping would need a synchronization, they
         are NaN models, which score no inliers. The orientation test is unaffected by the normalization, a
         translation and a positive scale.
+
+        Returns:
+            The models and the sample row ``(M,)`` each was solved from, in draw order: sample by sample, and root by
+            root within a sample, as DEGENSAC's record setters need them.
         """
         compact = x1.device.type == "cpu"
+        rows = torch.arange(x1.shape[0], device=x1.device)
         if self.model_type == "homography":
             oriented = sample_is_valid_for_homography(x1[..., :2], x2[..., :2])
             if compact:
-                x1, x2 = x1[oriented], x2[oriented]
+                x1, x2, rows = x1[oriented], x2[oriented], rows[oriented]
                 if len(x1) == 0:
-                    return x1.new_zeros(0, 3, 3)
-                return _four_point_homography(x1, x2)
+                    return x1.new_zeros(0, 3, 3), rows
+                return _four_point_homography(x1, x2), rows
             models = _four_point_homography(x1, x2)
-            return models.masked_fill(~oriented[:, None, None], float("nan"))
+            return models.masked_fill(~oriented[:, None, None], float("nan")), rows
         design = _epipolar_design_rows(x1, x2)
         if self.model_type == "essential":
             # Samples with a non-finite correspondence, rank-deficient samples and complex roots give NaN slots.
             candidates, valid = _five_point_candidates(design)
-            return candidates[valid] if compact else candidates.flatten(0, 1)
+            rows = rows.repeat_interleave(candidates.shape[1])
+            if compact:
+                return candidates[valid], rows[valid.flatten()]
+            return candidates.flatten(0, 1), rows
         if self.minimal_sample_size == 7:
             candidates, valid = _seven_point_candidates(design)
             models = candidates.masked_fill(~valid[..., None, None], float("nan")).flatten(0, 1)
+            rows = rows.repeat_interleave(candidates.shape[1])
         else:
             models = _eight_point_fundamental(design)
-        return models[torch.isfinite(models).flatten(1).all(1)] if compact else models
+        if compact:
+            keep = torch.isfinite(models).flatten(1).all(1)
+            return models[keep], rows[keep]
+        return models, rows
+
+    @staticmethod
+    def _raw_record_setters(scores: torch.Tensor, prior: float) -> List[int]:
+        """Indices of the models, in draw order, whose score beats ``prior`` and every earlier score of the batch.
+
+        The models a sequential loop would find to set a new raw record (Chum's ``maxSs``), found at once with a
+        running maximum over the CPU ``scores``.
+        """
+        earlier = torch.cat([scores.new_full((1,), prior), torch.cummax(scores, 0).values[:-1]])
+        return (scores > earlier.clamp_min(prior)).nonzero().flatten().tolist()
 
     def _lm_errors(self, models: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
         """Squared residuals ``(M, N)`` of normalized models on normalized correspondences (calibrated: essential)."""
@@ -1030,7 +1074,7 @@ class RANSAC(nn.Module):
             drawn, iteration = drawn + current, iteration + 1
             if grow:
                 batch = min(2 * batch, largest)
-            models = self._lm_minimal_models(x1[indices], x2[indices])
+            models, _ = self._lm_minimal_models(x1[indices], x2[indices])
             if len(models) == 0:
                 continue
             # Reject insufficient support before ranking: high MSAC scores from minimal samples alone must not
