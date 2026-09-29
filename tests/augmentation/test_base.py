@@ -807,6 +807,35 @@ class TestConventionAugmentationBase2D(BaseTester):
         _, output_boxes = K.AugmentationSequential(augmentation, data_keys=["input", "bbox_xyxy"])(image, boxes)
         self.assert_close(output_boxes.data, boxes.data)
 
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_convention_intensity_annotation_overrides_in_container_5113(self, device, dtype, p):
+        class Blackout(K.IntensityAugmentationBase2D):
+            def apply_transform(self, input, params, flags, transform=None):
+                return torch.zeros_like(input)
+
+            def apply_transform_mask(self, input, params, flags, transform=None):
+                return torch.zeros_like(input)
+
+            def apply_transform_box(self, input, params, flags, transform=None):
+                return Boxes(torch.zeros_like(input.data), mode=input.mode)
+
+            def apply_transform_keypoint(self, input, params, flags, transform=None):
+                return Keypoints(torch.zeros_like(input.data))
+
+        aug = Blackout(p=p)
+        image = torch.ones(1, 1, 6, 8, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 6, 8, device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 4.0, 3.0]]], device=device, dtype=dtype))
+        keypoints = Keypoints(torch.tensor([[[2.0, 2.0]]], device=device, dtype=dtype))
+
+        seq = K.AugmentationSequential(aug, data_keys=["input", "mask", "bbox_xyxy", "keypoints"])
+        out_img, out_mask, out_boxes, out_kp = seq(image, mask, boxes, keypoints)
+        scale = 0.0 if p == 1.0 else 1.0
+        self.assert_close(out_img, image * scale)
+        self.assert_close(out_mask, mask * scale)
+        self.assert_close(out_boxes.data, boxes.data * scale)
+        self.assert_close(out_kp.data, keypoints.data * scale)
+
     def test_convention_random_erasing_also_erases_container_masks(self, device, dtype):
         image = torch.ones(1, 1, 6, 8, device=device, dtype=dtype)
         mask = torch.ones_like(image)

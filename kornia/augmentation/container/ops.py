@@ -666,6 +666,9 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             # apply_transform_boxes, matching a direct call.
             _input = module.transform_boxes(_input, cls.get_instance_module_param(param), module.flags)
 
+        elif isinstance(module, K.IntensityAugmentationBase2D):
+            _input = module.transform_boxes(_input, cls.get_instance_module_param(param), module.flags, **extra_args)
+
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_boxes(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
@@ -770,6 +773,11 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
             # (matching a direct call) instead of silently returning keypoints.
             out = module.transform_keypoint(_input.data, cls.get_instance_module_param(param), module.flags)
             _input = Keypoints(out, raise_if_not_floating_point=False)
+
+        elif isinstance(module, K.IntensityAugmentationBase2D):
+            _input = module.transform_keypoints(
+                _input, cls.get_instance_module_param(param), module.flags, **extra_args
+            )
 
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_keypoints(
