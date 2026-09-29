@@ -107,7 +107,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         # Subtract before casting: bbox_generator subtracts in the tensor dtype,
         # which changes large half-precision image coordinates.
         if isinstance(x_end, torch.Tensor) or isinstance(y_end, torch.Tensor):
-            # _constant_tensor takes Python scalars only; it would freeze traced sizes at trace time.
+            # _constant_tensor is specified for Python scalars only, so build the corners from the traced sizes.
             x = _as_scalar_tensor(x_end, _device, _dtype)
             y = _as_scalar_tensor(y_end, _device, _dtype)
             zero = torch.zeros((), device=_device, dtype=_dtype)

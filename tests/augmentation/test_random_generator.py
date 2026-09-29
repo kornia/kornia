@@ -704,11 +704,12 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         assert_close(res["start_points"], expected["start_points"])
         assert_close(res["end_points"], expected["end_points"])
 
-    @pytest.mark.parametrize("height,width", [(1, 8), (8, 1), (1, 1)])
+    @pytest.mark.parametrize("height,width", [(1, 8), (8, 1), (1, 1), (2, 5)])
     @pytest.mark.device_agnostic
     def test_traced_singleton_axis_5000(self, height, width):
         # #5000: torch.onnx.export(dynamo=False) traces with 0-d tensor sizes. The size-1 rule must
-        # reach the graph: a unit source extent, and no corner offset along that axis.
+        # reach the graph: a unit source extent, and no corner offset along that axis. Every other
+        # axis keeps the eager extent, so the traced parameters equal the eager ones for the same seed.
         class _Params(torch.nn.Module):
             def __init__(self) -> None:
                 super().__init__()
@@ -722,11 +723,16 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             traced = torch.jit.trace(_Params(), image, check_trace=False)
+        torch.manual_seed(0)
         start, end = traced(image)
+        torch.manual_seed(0)
+        eager = PerspectiveGenerator(torch.tensor(1.0))(image.shape)
 
         x_end, y_end = max(width - 1, 1), max(height - 1, 1)
         expected = torch.tensor([[0.0, 0.0], [x_end, 0.0], [x_end, y_end], [0.0, y_end]]).expand(2, 4, 2)
         assert torch.equal(start, expected)
+        assert torch.equal(start, eager["start_points"])
+        assert torch.equal(end, eager["end_points"])
         for axis, size in ((0, width), (1, height)):
             if size == 1:
                 assert torch.equal(end[..., axis], start[..., axis])
