@@ -170,7 +170,8 @@ class RANSAC(nn.Module):
           agree with it off the plane, so the homography is refined, and fundamental matrices are drawn from it and
           pairs of correspondences off the plane (plane and parallax). The best of them, refined, joins the
           eight-model pool and, when it outscores the incumbent, sets the stopping bound. Thresholds and iteration
-          counts follow Chum's implementation in pydegensac; the draws come from a private host generator.
+          counts follow Chum's implementation in pydegensac; the draws come from a private host generator. A plane
+          already recovered in the call (inlier sets with a Jaccard index of 0.95 or more) is not searched again.
           ``degensac=False`` keeps the
           plain seven-point loop, whose result it reproduces exactly when no record-setting sample is degenerate.
           Chum's tolerance, three times the squared threshold for five of the seven correspondences, also flags
