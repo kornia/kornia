@@ -493,6 +493,41 @@ class TestFitLine(BaseTester):
         with pytest.raises(TypeCheckError, match="weights must be a tensor"):
             fit_line(points_3d, [[1.0, 1.0, 1.0]])
 
+    def test_fit_line_weighted_identical_points_raise_5082(self, device, dtype):
+        # #5082: a point with weight 0 does not count, so weights that are positive on a single point, or only on
+        # copies of one point, leave nothing to fit. Such a row used to return the fallback direction, (0, 1) in 2-D
+        # and (1, 0, 0) in 3-D, whatever the points were.
+        points_3d = torch.tensor([[[0.0, 0.0, 0.3], [1.0, 0.4, -0.2], [2.5, 0.9, 0.1]]], device=device, dtype=dtype)
+        copies_3d = torch.tensor([[[1.0, 2.0, 3.0], [0.0, 5.0, -1.0], [1.0, 2.0, 3.0]]], device=device, dtype=dtype)
+        single = ([1.0, 0.0, 0.0], [0.0, 0.0, 2.0], [-1.0, 0.0, 2.0])
+        for points in (points_3d[..., :2], points_3d):
+            for w in single:
+                weights = torch.tensor([w], device=device, dtype=dtype)
+                with pytest.raises(ValueCheckError, match="two distinct points with positive weight"):
+                    fit_line(points, weights)
+                # a batch is rejected as a whole when one of its rows is degenerate
+                with pytest.raises(ValueCheckError, match="two distinct points with positive weight"):
+                    fit_line(torch.cat([points, points]), torch.cat([torch.ones_like(weights), weights]))
+            # two distinct points with positive weight determine the line through them
+            line = fit_line(points, torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype))
+            expected = fit_line(points[:, [0, 2]])
+            self.assert_close(line.origin, expected.origin)
+            self.assert_close(
+                (line.direction * expected.direction).sum(-1).abs(), torch.ones(1, device=device, dtype=dtype)
+            )
+
+        for points in (copies_3d[..., :2], copies_3d):
+            with pytest.raises(ValueCheckError, match="two distinct points with positive weight"):
+                fit_line(points, torch.tensor([[1.0, 0.0, 3.0]], device=device, dtype=dtype))
+            fit_line(points, torch.tensor([[1.0, 0.5, 3.0]], device=device, dtype=dtype))
+
+        # Two points with positive weight that differ in one coordinate only are distinct: they give the vertical
+        # line in 2-D and the line along z in 3-D.
+        axis_3d = torch.tensor([[[1.0, 2.0, 3.0], [9.0, 9.0, 9.0], [1.0, 2.0, 4.0]]], device=device, dtype=dtype)
+        for points, direction in ((axis_3d[..., [0, 2]], [0.0, 1.0]), (axis_3d, [0.0, 0.0, 1.0])):
+            line = fit_line(points, torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype))
+            self.assert_close(line.direction.abs(), torch.tensor([direction], device=device, dtype=dtype))
+
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
         # on identical points returns what an eager call returns with checks disabled.

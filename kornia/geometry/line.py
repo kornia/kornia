@@ -262,7 +262,9 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
     A line needs at least two points that are not all identical. Comparing every point with
     the first one is exact at any scale; comparing with the mean is not, because its rounding
     leaves a nonzero residual for identical points such as three copies of (0.1, 0.7). With
-    weights, the weighted mean is undefined unless the weight sum of every row is positive.
+    weights, the weighted mean is undefined unless the weight sum of every row is positive,
+    and a point with weight 0 does not count, so the same rule applies to the points with
+    positive weight, compared with the point of largest weight.
 
     The value checks are skipped under ``torch.compile``/export, where they would be a
     data-dependent branch, and by ``disable_checks()``, like every kornia value check.
@@ -280,6 +282,14 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
             raise ValueCheckError(
                 "fit_line requires a positive sum of weights; the given weights do not sum to a positive value."
             )
+        # A point with weight 0 does not count: some point with positive weight must differ from the point of
+        # largest weight, which is positive once the weight sum is.
+        ref = points.gather(-2, weights.argmax(-1)[:, None, None].expand(-1, 1, points.shape[-1]))
+        if not bool(((points != ref).any(-1) & (weights > 0)).any(-1).all()):
+            raise ValueCheckError(
+                "fit_line requires at least two distinct points with positive weight; the points with positive "
+                "weight are all identical."
+            )
 
 
 def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
@@ -296,7 +306,8 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     Raises:
         ValueCheckError: if the points do not determine a line — fewer than two points,
-            all points identical, or (with weights) a zero weight sum.
+            all points identical, or (with weights) a zero weight sum or all points with
+            positive weight identical.
 
     Example:
         >>> points = torch.rand(2, 10, 3)
