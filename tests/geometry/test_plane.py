@@ -184,14 +184,15 @@ class TestHyperplane(BaseTester):
             Hyperplane.through(torch.stack([p0, a]), torch.stack([p1, b]), torch.stack([p2, c]))
 
     @pytest.mark.parametrize("scale", (1.0, 1e-4))
-    def test_through_small_valid_triangle_still_fits(self, device, dtype, scale):
-        # A small triangle is not collinear. In float16 the cross product of the 1e-4 triangle underflows to 0
-        # (1e-8 is below the smallest subnormal), so it reaches the SVD fallback, which must not reject it.
+    def test_through_small_valid_triangle_keeps_orientation_5064(self, device, dtype, scale):
+        # A small triangle is not collinear, and it keeps the (p2 - p0) x (p1 - p0) orientation. In float16 the
+        # cross product of the 1e-4 triangle underflows to 0 (1e-8 is below the smallest subnormal), so it took the
+        # SVD fallback and came back as +z (#5064); the cross product is now computed in float32.
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([scale, 0.0, 0.0], device=device, dtype=dtype)
         p2 = torch.tensor([0.0, scale, 0.0], device=device, dtype=dtype)
         plane = Hyperplane.through(p0, p1, p2)
-        self.assert_close(plane.normal.unwrap().abs(), torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype))
+        self.assert_close(plane.normal.unwrap(), torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype))
 
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call

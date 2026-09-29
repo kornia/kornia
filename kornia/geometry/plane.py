@@ -189,6 +189,11 @@ class Hyperplane(nn.Module):
         KORNIA_CHECK(p1_data.shape == p2_data.shape)
 
         v0, v1 = (p2_data - p0_data), (p1_data - p0_data)
+        # The cross product of a small float16 triangle underflows: edges of 1e-4 give 1e-8, below the smallest
+        # subnormal 6e-8, so the triangle took the SVD fallback, whose sign is arbitrary (#5064). Like the rank check
+        # below, work in float32 for half-precision inputs and cast the unit normal back.
+        work_dtype = torch.float32 if p0_data.dtype in (torch.float16, torch.bfloat16) else p0_data.dtype
+        v0, v1 = v0.to(work_dtype), v1.to(work_dtype)
         normal = torch.linalg.cross(v0, v1, dim=-1)
 
         norm = torch.linalg.vector_norm(normal, dim=-1, keepdim=True)
@@ -222,10 +227,11 @@ class Hyperplane(nn.Module):
                     "the given points do not determine a plane."
                 )
 
-        eps = torch.finfo(p0_data.dtype).eps if p0_data.is_floating_point() else 1e-6
+        eps = torch.finfo(work_dtype).eps if v0.is_floating_point() else 1e-6
         normal_mask = norm <= v0_norm * v1_norm * eps
         norm_safe = torch.where(normal_mask, torch.ones_like(norm), norm)
         normal = torch.where(normal_mask, compute_normal_svd(v0, v1, normal_mask), normal / norm_safe)
+        normal = normal.to(p0_data.dtype)
         offset = -batched_dot_product(p0_data, normal)
 
         return Hyperplane(_wrap(normal, Vector3), _wrap(offset, Scalar))
