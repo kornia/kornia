@@ -935,7 +935,9 @@ class RANSAC(nn.Module):
                 inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total
 
-    def _lm_minimal_models(self, x1: torch.Tensor, x2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _lm_minimal_models(
+        self, x1: torch.Tensor, x2: torch.Tensor, track_origins: bool = False
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Minimal models ``(M, 3, 3)`` of normalized (for essential matrices, calibrated) samples ``(B, m, 3)``.
 
         Samples that :func:`~kornia.geometry.homography.sample_is_valid_for_homography` rejects and absent roots of
@@ -945,14 +947,17 @@ class RANSAC(nn.Module):
 
         Returns:
             The models and the sample row ``(M,)`` each was solved from, in draw order: sample by sample, and root by
-            root within a sample, as DEGENSAC's record setters need them.
+            root within a sample, as DEGENSAC's record setters need them. The sample rows are None unless
+            ``track_origins=True``, avoiding this bookkeeping for plain RANSAC.
         """
         compact = x1.device.type == "cpu"
-        rows = torch.arange(x1.shape[0], device=x1.device)
+        rows = torch.arange(x1.shape[0], device=x1.device) if track_origins else None
         if self.model_type == "homography":
             oriented = sample_is_valid_for_homography(x1[..., :2], x2[..., :2])
             if compact:
-                x1, x2, rows = x1[oriented], x2[oriented], rows[oriented]
+                x1, x2 = x1[oriented], x2[oriented]
+                if rows is not None:
+                    rows = rows[oriented]
                 if len(x1) == 0:
                     return x1.new_zeros(0, 3, 3), rows
                 return _four_point_homography(x1, x2), rows
@@ -962,19 +967,21 @@ class RANSAC(nn.Module):
         if self.model_type == "essential":
             # Samples with a non-finite correspondence, rank-deficient samples and complex roots give NaN slots.
             candidates, valid = _five_point_candidates(design)
-            rows = rows.repeat_interleave(candidates.shape[1])
+            if rows is not None:
+                rows = rows.repeat_interleave(candidates.shape[1])
             if compact:
-                return candidates[valid], rows[valid.flatten()]
+                return candidates[valid], rows[valid.flatten()] if rows is not None else None
             return candidates.flatten(0, 1), rows
         if self.minimal_sample_size == 7:
             candidates, valid = _seven_point_candidates(design)
             models = candidates.masked_fill(~valid[..., None, None], float("nan")).flatten(0, 1)
-            rows = rows.repeat_interleave(candidates.shape[1])
+            if rows is not None:
+                rows = rows.repeat_interleave(candidates.shape[1])
         else:
             models = _eight_point_fundamental(design)
         if compact:
             keep = torch.isfinite(models).flatten(1).all(1)
-            return models[keep], rows[keep]
+            return models[keep], rows[keep] if rows is not None else None
         return models, rows
 
     @staticmethod
@@ -1276,7 +1283,7 @@ class RANSAC(nn.Module):
             drawn, iteration = drawn + current, iteration + 1
             if grow:
                 batch = min(2 * batch, largest)
-            models, origin = self._lm_minimal_models(x1[indices], x2[indices])
+            models, origin = self._lm_minimal_models(x1[indices], x2[indices], track_origins=degensac)
             if len(models) == 0:
                 continue
             # Reject insufficient support before ranking: high MSAC scores from minimal samples alone must not
@@ -1293,7 +1300,7 @@ class RANSAC(nn.Module):
                 # The bound follows the new incumbent's own support, as with local_optimization="dlt".
                 best_score = scores[best]
                 max_samples = self._lm_stopping_bound(masks_all, top[best], int(counts[best]), num_tc)
-            if not degensac or scores[best] <= best_minimal_score:
+            if origin is None or scores[best] <= best_minimal_score:
                 continue
             recoveries = self._degensac_batch(
                 models,

@@ -2141,6 +2141,20 @@ class TestRANSACDegensacOptions(BaseTester):
         with pytest.raises(ValueError, match="degensac"):
             RANSAC("fundamental", degensac=1)
 
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_8pt", "homography", "essential"])
+    def test_minimal_models_omit_unused_origins(self, model_type, device, dtype):
+        ransac = RANSAC(model_type)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        x1 = torch.cat([torch.rand(8, ransac.minimal_sample_size, 2), torch.ones(8, ransac.minimal_sample_size, 1)], -1)
+        x2 = torch.cat([torch.rand_like(x1[..., :2]), torch.ones_like(x1[..., :1])], -1)
+        x1, x2 = x1.to(device, work), x2.to(device, work)
+        models, origin = ransac._lm_minimal_models(x1, x2)
+        assert origin is None
+        tracked_models, tracked_origin = ransac._lm_minimal_models(x1, x2, track_origins=True)
+        assert tracked_origin is not None and len(tracked_origin) == len(models)
+        assert torch.equal(models.isnan(), tracked_models.isnan())
+        self.assert_close(models.nan_to_num(), tracked_models.nan_to_num(), atol=0, rtol=0)
+
     def test_raw_record_setters_are_draw_order_prefix_maxima(self):
         scores = torch.tensor([0.5, 2.0, 1.0, 3.0, 3.0, -1.0, 4.0])
         assert RANSAC._raw_record_setters(scores, 1.0) == [1, 3, 6]
@@ -2157,7 +2171,8 @@ class TestRANSACDegensacOptions(BaseTester):
         m = ransac.minimal_sample_size
         x1 = torch.cat([torch.rand(16, m, 2, generator=generator), torch.ones(16, m, 1)], -1)
         x2 = torch.cat([torch.rand(16, m, 2, generator=generator), torch.ones(16, m, 1)], -1)
-        models, rows = ransac._lm_minimal_models(x1.to(device, work), x2.to(device, work))
+        models, rows = ransac._lm_minimal_models(x1.to(device, work), x2.to(device, work), track_origins=True)
+        assert rows is not None
         assert rows.shape == (len(models),) and rows.dtype == torch.long
         assert bool((rows[1:] >= rows[:-1]).all())  # draw order
         finite = torch.isfinite(models).flatten(1).all(1)
@@ -2286,7 +2301,8 @@ class TestRANSACDegensacRecovery(BaseTester):
         x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
         generator = torch.Generator().manual_seed(4)
         samples = torch.stack([_degenerate_sample(labels, generator) for _ in range(8)]).to(device)
-        models, rows = ransac._lm_minimal_models(x1[samples], x2[samples])
+        models, rows = ransac._lm_minimal_models(x1[samples], x2[samples], track_origins=True)
+        assert rows is not None
         scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
         scores = scores.masked_fill(counts <= 7, -1.0)
         state = torch.get_rng_state()
@@ -2344,7 +2360,8 @@ class TestRANSACDegensacRecovery(BaseTester):
         x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
         generator = torch.Generator().manual_seed(4)
         samples = torch.stack([_degenerate_sample(labels, generator) for _ in range(8)]).to(device)
-        models, rows = ransac._lm_minimal_models(x1[samples], x2[samples])
+        models, rows = ransac._lm_minimal_models(x1[samples], x2[samples], track_origins=True)
+        assert rows is not None
         scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
         scores = scores.masked_fill(counts <= 7, -1.0)
         records = [
