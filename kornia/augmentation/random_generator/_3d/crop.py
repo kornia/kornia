@@ -21,7 +21,12 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _check_positive_int_or_traced,
+    _common_param_check,
+    _truncate_to_start,
+)
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype, is_exporting
 from kornia.geometry.bbox import bbox_generator3d
@@ -113,13 +118,11 @@ class CropGenerator3D(RandomGeneratorBase):
                 "dst": torch.zeros([0, 8, 3], device=_device, dtype=_dtype),
             }
 
-        x_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-        y_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-        z_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-
-        x_start = (x_start * x_diff).floor()
-        y_start = (y_start * y_diff).floor()
-        z_start = (z_start * z_diff).floor()
+        # The draw is scaled and floored in the draw's dtype when that is the wider one: cast to a half ``size``
+        # dtype first, a draw close to 1 rounds up to 1.0 and the start lands one past the last valid position.
+        x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff)
+        y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff)
+        z_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), z_diff)
 
         crop_src = bbox_generator3d(
             x_start.view(-1), y_start.view(-1), z_start.view(-1), size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1

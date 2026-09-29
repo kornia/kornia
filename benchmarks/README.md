@@ -35,7 +35,7 @@ Deeper, single-topic scripts:
 | Directory | Contents |
 | --- | --- |
 | [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
-| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. [`ransac.py`](geometry/ransac.py): batched RANSAC runtime and IMC pose accuracy on cached correspondences. [`heb.py`](geometry/heb.py): homography RANSAC time versus reprojection mAA on a HEB scene. |
+| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. [`ransac.py`](geometry/ransac.py): batched RANSAC runtime and IMC pose accuracy on cached correspondences. [`ransac_cpu.py`](geometry/ransac_cpu.py): repeatable CPU base/branch comparison of H/F/E latency and geometric quality on HEB and PhotoTourism. [`heb.py`](geometry/heb.py): homography RANSAC time versus reprojection mAA on a HEB scene. |
 | [`morphology/`](morphology/) | [`flagship.py`](morphology/flagship.py): representative morphology ops vs torchmorph, albumentations, scikit-image and OpenCV. [`engines.py`](morphology/engines.py): dilation engine comparison across explicit public engines. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL/scikit-image. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions (`*_test.py`). |
@@ -46,6 +46,36 @@ Deeper, single-topic scripts:
 [`feature/sift_scale_space.py`](feature/sift_scale_space.py) compares complete SIFT
 extraction, matching and homography quality on CPU, CUDA or MPS;
 [device results and usage](feature/sift_summary.md).
+
+### CPU RANSAC base/branch comparison
+
+Run the same harness from each checkout, using a PhotoTourism NPZ prepared by
+[`ransac.py prepare`](geometry/ransac.py) and a HEB scene HDF5 file:
+
+```bash
+python benchmarks/geometry/ransac_cpu.py --npz /data/phototourism-7x10.npz \
+    --heb /data/NYC_Library_homographies.h5 --pairs 10 --h-pairs 30 \
+    --models H,F,E --budgets 256,4096 --seeds 0,1,2 --threads 4 --json /tmp/cpu.json
+```
+
+The default `--pairs 2` selects two pairs per scene/feature; `--pairs 10` uses up to
+70 pairs per feature in a seven-scene, ten-pair export (fewer if a feature is missing
+from some scenes). Timings are repeated public
+`RANSAC.forward` calls at seed zero (median and IQR, `--min-run-time 0.1`); geometric
+quality uses every requested seed. H measures ground-truth-inlier reprojection mAA
+at 1–20 pixels; F/E measure recovered-pose mAA at 1–10 degrees, with scenes and seeds
+weighted equally. Failures count as misses. JSON records every pair and an aggregate
+summary. Use `--no-timing` for a quality-only run. PR #5095's measured base/branch comparison and
+rejected batch experiments are in its [archived report](https://github.com/kornia/kornia/blob/7730b96647e7dc517c44ebb6ab4e81c92f239a86/benchmarks/geometry/ransac_cpu.md).
+
+Sampling, scoring, batching, and local optimization use the class defaults;
+`--confidence` defaults to 0.999. Pixel inlier thresholds default to H=8,
+SIFT F/E=0.75, SIFT8k=0.5, and
+ALIKED-LightGlue=1.5. Override with `--h-threshold` or repeatable
+`--epi-threshold FEATURE=PX`. PhotoTourism correspondence order is preserved by
+default (`--sort-matches` sorts scores/ratios); HEB uses the same seeded selection,
+SNN<0.8 filter, and stable ratio ordering as `heb.py`. Optional `h5py` reads HEB;
+OpenCV provides pose recovery for F/E. Neither PoseLib nor an IMC package is needed.
 
 ## Methodology contract
 
