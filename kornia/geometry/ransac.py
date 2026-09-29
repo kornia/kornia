@@ -158,6 +158,17 @@ class RANSAC(nn.Module):
           model from its inliers: with the default ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on
           32-inlier subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers
           iteratively.
+        - ``degensac``, on by default for ``"fundamental"`` and ``"fundamental_7pt"`` with
+          ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
+          sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
+          correspondences related by one homography. Such a model fits the dominant plane and whatever happens to
+          agree with it off the plane, so the homography is refined, and fundamental matrices are drawn from it and
+          pairs of correspondences off the plane (plane and parallax). The best of them join the eight-model pool and,
+          when they outscore the incumbent, set the stopping bound. Thresholds and iteration counts follow Chum's
+          implementation in pydegensac; the draws come from a private host generator. ``degensac=False`` keeps the
+          plain seven-point loop, whose result it reproduces exactly when no record-setting sample is degenerate.
+          Chum's tolerance, three times the squared threshold for five of the seven correspondences, also flags
+          samples in many scenes without a dominant plane; there the recovered models only join the competition.
         - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
           termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``

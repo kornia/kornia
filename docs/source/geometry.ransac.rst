@@ -173,5 +173,22 @@ non-minimal solver's sample size (eight for fundamental/essential matrices).
 On PhotoTourism fundamental matrices the subset refits match or beat full-inlier
 refitting at a lower cost on both CPU and CUDA.
 
+Dominant planes
+---------------
+
+A seven-point sample with five correspondences on one plane yields a fundamental
+matrix consistent with the whole plane, whatever its two other correspondences
+are (Chum, Werner and Matas, CVPR 2005). When most inliers lie on one plane, such
+a wrong model can have the most support and stop the sampling, and no refinement
+recovers the off-plane inliers it never counted. ``"fundamental"`` and
+``"fundamental_7pt"`` therefore run DEGENSAC by default: record-setting samples
+are tested for this degeneracy, and a degenerate one hands its plane homography
+to a plane-and-parallax search over the correspondences off the plane, whose
+best models compete with the minimal ones.
+:func:`~kornia.geometry.homography.sampson_homography_distance` measures the
+plane. The test's tolerance, taken from Chum's implementation, also flags samples
+in scenes without a dominant plane, so the estimate for a given seed can change
+there too. ``degensac=False`` turns it off.
+
 .. autoclass:: RANSAC
    :members: forward, resolve_batch_size
