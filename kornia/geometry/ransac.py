@@ -31,6 +31,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry._degensac import (
     _h_degenerate_sample,
     _inner_homography,
+    _inside_plane,
     _plane_parallax_search,
     _repeats_plane,
 )
@@ -171,15 +172,17 @@ class RANSAC(nn.Module):
           pairs of correspondences off the plane (plane and parallax). The best of them, refined, joins the
           eight-model pool and, when it outscores the incumbent, sets the stopping bound. Thresholds and iteration
           counts follow Chum's implementation in pydegensac; the draws come from a private host generator. A plane
-          already recovered in the call (inlier sets with a Jaccard index of 0.95 or more) is not searched again.
-          ``degensac=False`` keeps the
-          plain seven-point loop, whose result it reproduces exactly when no record-setting sample is degenerate.
+          already searched in the call is not searched again: a sample whose homography's inliers lie 95% or more
+          inside it is skipped before refinement, and a refined plane whose inliers match it (Jaccard index 0.95 or
+          more) before the search. ``degensac=False`` keeps the plain seven-point loop, whose result it reproduces
+          exactly when no record-setting sample is degenerate.
           Chum's tolerance, three times the squared threshold for five of the seven correspondences, also flags
           samples in many scenes without a dominant plane; there the recovered models only join the competition.
         - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
           termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
-          draws from the global generator.
+          draws the minimal samples from the global generator. DEGENSAC's recovery draws always come from a private
+          host generator, which an unseeded call seeds from the sample that triggers the recovery.
 
     Args:
         model_type: "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
@@ -1084,9 +1087,9 @@ class RANSAC(nn.Module):
         p1, p2 = x1_host[rows, :2], x2_host[rows, :2]
         errors = sampson_homography_distance(p1[None], p2[None], homography[None])[0]
         planes = [] if seen_planes is None else seen_planes
-        # A plane already recovered in this call is skipped before its refinement when the sample's own homography
-        # shows it, and after when only the refined one does.
-        if int((errors < 3 * threshold).sum()) < 8 or _repeats_plane(errors <= 16 * threshold, planes):
+        # A plane already searched in this call is skipped before its refinement when the sample's own homography
+        # falls inside it, and after when the refined plane matches it.
+        if int((errors < 3 * threshold).sum()) < 8 or _inside_plane(errors <= 16 * threshold, planes):
             return None
         homography, errors = _inner_homography(homography, p1, p2, 16 * threshold, generator)
         plane, off_plane = errors <= 16 * threshold, errors > 100 * threshold
@@ -1168,16 +1171,24 @@ class RANSAC(nn.Module):
         """DEGENSAC's recoveries of a batch's raw record setters, in draw order (:meth:`_raw_record_setters`).
 
         ``models`` ``(M, 3, 3)`` were solved from ``samples`` ``(M, 7)`` and scored ``scores``; ``prior`` is the raw
-        record before the batch. Every recovery draw comes from one private host generator per batch, seeded
-        ``seed + 2 * sample_budget + iteration`` (``seed`` 0 when None): a device generator cannot draw on the host,
-        and the global one, which an unseeded call's minimal samples come from, must not advance, or every later
-        sample of the call would differ from ``degensac=False``.
+        record before the batch. Every recovery draw comes from one private host generator per batch: a device
+        generator cannot draw on the host, and the global one, which an unseeded call's minimal samples come from,
+        must not advance, or every later sample of the call would differ from ``degensac=False``. A seeded call seeds
+        it ``seed + 2 * sample_budget + iteration``; an unseeded one from the first record setter's sample, drawn from
+        the global generator, so that its draws still differ between calls.
         """
+        records = self._raw_record_setters(scores.cpu(), prior)
+        if not records:
+            return []
         generator = torch.Generator()
-        generator.manual_seed((self.seed or 0) + 2 * self.sample_budget + iteration)
+        if self.seed is not None:
+            generator.manual_seed(self.seed + 2 * self.sample_budget + iteration)
+        else:
+            # Python hashes a tuple of ints the same in every process.
+            generator.manual_seed(hash(tuple(samples[records[0]].tolist())) & 0x7FFFFFFFFFFFFFFF)
         planes = [] if seen_planes is None else seen_planes
         recoveries = []
-        for record in self._raw_record_setters(scores.cpu(), prior):
+        for record in records:
             recovered = self._degensac_recover(
                 models[record], samples[record], x1, x2, x1_host, x2_host, basis, threshold, generator, planes
             )

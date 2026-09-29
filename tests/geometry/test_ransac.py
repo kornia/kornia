@@ -2266,6 +2266,28 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert recoveries  # the recovery drew
         assert torch.equal(torch.get_rng_state(), state)
 
+    def test_unseeded_recovery_draws_follow_the_samples(self, device, dtype, monkeypatch):
+        # An unseeded call seeds its private recovery generator from the sample that triggered the recovery, which
+        # comes from the global generator: the draws differ between calls without advancing it. A constant seed
+        # would repeat the same draws, and so the same luck, on every unseeded call.
+        _skip_half(dtype)
+        seeds = []
+        original = RANSAC._degensac_recover
+
+        def spy(self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator, seen_planes=None):
+            seeds.append(generator.initial_seed())
+            return original(self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator, seen_planes)
+
+        monkeypatch.setattr(RANSAC, "_degensac_recover", spy)
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        per_call = []
+        for global_seed in (0, 1):
+            seeds.clear()
+            torch.manual_seed(global_seed)
+            RANSAC("fundamental", inl_th=1.0)(kp1, kp2)
+            per_call.append(set(seeds))
+        assert per_call[0] and per_call[1] and per_call[0] != per_call[1]
+
     def test_repeated_plane_is_searched_once(self, device, dtype, monkeypatch):
         # Every degenerate record setter of a dominant plane finds the same plane (the refined planes of repeated
         # recoveries have Jaccard index 0.997-1.0 on these scenes), and nine searches of it per call made DEGENSAC
@@ -2299,6 +2321,20 @@ class TestRANSACDegensacRecovery(BaseTester):
             models, samples[rows], scores, -1.0, x1, x2, x1_host, x2_host, basis, threshold, 0
         )
         assert len(calls) == 1 and len(recoveries) == 1
+
+    def test_dominant_plane_is_refined_once_per_call(self, device, dtype, monkeypatch):
+        # A later record setter's homography is noisier than the refined plane (Jaccard index 0.03-1.0 against it at
+        # N=4000), so a Jaccard test before innerH let one to five repeated refinements through per call; its inliers
+        # lie inside the refined plane (98.3-100% of them in every repeat measured), which a containment test sees.
+        _skip_half(dtype)
+        refinements = []
+        original = ransac_module._inner_homography
+        monkeypatch.setattr(ransac_module, "_inner_homography", lambda *a: refinements.append(1) or original(*a))
+        for seed in range(3):
+            refinements.clear()
+            kp1, kp2, _, _, _ = create_dominant_plane_scene(4000, 0.6, 0.95, seed, device=device, dtype=dtype)
+            RANSAC("fundamental", inl_th=1.0, seed=seed)(kp1, kp2)
+            assert len(refinements) == 1, f"seed {seed}"
 
     def test_dominant_plane_is_searched_at_most_twice_per_call(self, device, dtype, monkeypatch):
         _skip_half(dtype)
@@ -2443,7 +2479,9 @@ class TestRANSACDegensac(BaseTester):
         assert not bool(mask[:10].any())
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
 
-    # Review focus 2: a fully planar scene has no off-plane set.
+    # Review focus 2: a fully planar scene. Its off-plane set is the outliers, so the pair search runs on them and may
+    # return a model consistent with the plane plus a few outliers (as Chum's code does; VSAC's DEGENSAC+ adds a
+    # randomness check against that). Every model consistent with the plane is valid here: the plane must stay in.
     def test_fully_planar_scene(self, device, dtype):
         _skip_half(dtype)
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 1.0, 0, device=device, dtype=dtype)
@@ -2460,12 +2498,31 @@ class TestRANSACDegensac(BaseTester):
         assert F.shape == (3, 3) and mask.shape == (num_points,) and mask.dtype == torch.bool
 
     # Review focus 4: PROSAC's stopping rule takes the recovered incumbent's mask.
-    def test_prosac(self, device, dtype):
+    def test_prosac(self, device, dtype, monkeypatch):
+        # The raw degenerate incumbent already certifies itself after the first batch here, so the final model alone
+        # cannot show which mask set the recovered incumbent's bound: spy on PROSAC's termination test instead.
         _skip_half(dtype)
+        recovered, tested = [], []
+        original_recover, original_prosac = RANSAC._degensac_recover, RANSAC._prosac_max_samples
+
+        def spy_recover(self, *args):
+            result = original_recover(self, *args)
+            if result is not None:
+                recovered.append(result[3][0].clone())
+            return result
+
+        def spy_prosac(self, inliers, num_inliers):
+            tested.append(inliers.clone())
+            return original_prosac(self, inliers, num_inliers)
+
+        monkeypatch.setattr(RANSAC, "_degensac_recover", spy_recover)
+        monkeypatch.setattr(RANSAC, "_prosac_max_samples", spy_prosac)
         kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         order = torch.argsort(labels.cpu(), stable=True).to(device)  # inliers first, a best-first ranking
         F, _ = RANSAC("fundamental", inl_th=1.0, seed=0, prosac_sampling=True)(kp1[order], kp2[order])
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+        # The recovered incumbent's stopping bound is PROSAC's test on its own inlier mask.
+        assert recovered and any(torch.equal(mask, inliers) for mask in recovered for inliers in tested)
 
     # Review focus 5: half-precision correspondences run the float64 host recovery and float32 device scoring.
     def test_half_precision_smoke(self, device):

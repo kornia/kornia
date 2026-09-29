@@ -218,6 +218,16 @@ def _repeats_plane(plane: torch.Tensor, seen: List[torch.Tensor]) -> bool:
     return any(float((plane & other).sum()) >= _SAME_PLANE * float((plane | other).sum()) for other in seen)
 
 
+def _inside_plane(inliers: torch.Tensor, seen: List[torch.Tensor]) -> bool:
+    """Whether 95% or more of the inlier mask ``inliers`` lies inside one plane of ``seen``.
+
+    The test for a sample's own, noisier homography before its refinement: its inliers are a subset of a plane already
+    refined in the call rather than a match of it. Another plane's correspondences are inliers of the first plane only
+    near the line where the two meet.
+    """
+    return any(float((inliers & plane).sum()) >= _SAME_PLANE * float(inliers.sum()) for plane in seen)
+
+
 def _pair_draws(support: int, total: int, confidence: float) -> int:
     """Two-point samples needed for ``confidence`` with ``support`` inliers among ``total`` correspondences.
 

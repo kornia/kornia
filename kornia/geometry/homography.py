@@ -196,7 +196,8 @@ def sampson_homography_distance(
           of ``H``.
         - For an affine ``H`` the constraint is linear in the coordinates, and the distance is the exact geometric
           error.
-        - An exact correspondence scores 0; a correspondence whose :math:`J J^\top` is singular scores ``inf``.
+        - An exact correspondence scores 0; a correspondence whose :math:`J J^\top` is singular scores ``inf``; a
+          non-finite correspondence or homography gives NaN.
         - Computed in at least float32 and returned in the promoted dtype of the inputs.
 
     Args:
@@ -234,15 +235,14 @@ def sampson_homography_distance(
     det = a * c - b.square()
     num = c * e1.square() - 2 * b * e1 * e2 + a * e2.square()
     # A singular J J^T has no finite correction. The division takes a safe denominator inside the where, so the
-    # inf branch leaves finite gradients (#4229); rounding can make the quadratic form slightly negative.
-    invertible = det > 0
-    d2 = torch.where(
-        invertible, num / torch.where(invertible, det, torch.ones_like(det)), torch.full_like(det, math.inf)
-    )
-    d2 = torch.where(d2 > 0, d2, torch.zeros_like(d2))
+    # inf branch leaves finite gradients (#4229); rounding can make the quadratic form slightly negative. NaN fails
+    # every comparison below and passes through, as in oneway_transfer_error.
+    d2 = num / torch.where(det > 0, det, torch.ones_like(det))
+    d2 = torch.where(det <= 0, torch.full_like(det, math.inf), d2)
+    d2 = torch.where(d2 < 0, torch.zeros_like(d2), d2)
     if not squared:
         positive = d2 > 0
-        d2 = torch.where(positive, torch.where(positive, d2, torch.ones_like(d2)).sqrt(), torch.zeros_like(d2))
+        d2 = torch.where(positive, torch.where(positive, d2, torch.ones_like(d2)).sqrt(), d2)
     return d2.to(dtype)
 
 

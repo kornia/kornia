@@ -341,6 +341,18 @@ class TestSampsonHomographyDistance(BaseTester):
             sampson_homography_distance(pts1, pts2, H).sqrt(),
         )
 
+    def test_non_finite_inputs_give_nan(self, device, dtype):
+        # As with oneway_transfer_error, a non-finite correspondence or homography scores NaN; inf is kept for a
+        # singular J J^T, a well-defined input without a finite correction.
+        pts = torch.rand(1, 3, 2, device=device, dtype=dtype)
+        pts[0, 1] = float("nan")
+        H = torch.eye(3, device=device, dtype=dtype)[None]
+        for squared in (True, False):
+            distances = sampson_homography_distance(pts, pts + 0.1, H, squared=squared)
+            assert bool(torch.isnan(distances[0, 1])) and bool(torch.isfinite(distances[0, [0, 2]]).all())
+        nan_homography = torch.full((1, 3, 3), float("nan"), device=device, dtype=dtype)
+        assert bool(torch.isnan(sampson_homography_distance(pts[:, :1], pts[:, :1], nan_homography)).all())
+
     def test_singular_jacobian_is_inf(self, device, dtype):
         # The zero matrix makes both residual rows and the Jacobian vanish: no finite correction exists.
         pts = torch.rand(1, 3, 2, device=device, dtype=dtype)

@@ -184,7 +184,8 @@ recovers the off-plane inliers it never counted. ``"fundamental"`` and
 ``"fundamental_7pt"`` therefore run DEGENSAC by default: record-setting samples
 are tested for this degeneracy, and a degenerate one hands its plane homography
 to a plane-and-parallax search over the correspondences off the plane, whose
-best models compete with the minimal ones.
+best model, refined, competes with the minimal ones. Each plane is searched once
+per call.
 :func:`~kornia.geometry.homography.sampson_homography_distance` measures the
 plane. The test's tolerance, taken from Chum's implementation, also flags samples
 in scenes without a dominant plane, so the estimate for a given seed can change
