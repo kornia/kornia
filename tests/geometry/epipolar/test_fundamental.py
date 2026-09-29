@@ -715,8 +715,6 @@ class TestConventionFundamental(BaseTester):
 
     def test_convention_fundamental_from_projections_direction_and_scale(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        if dtype == torch.float16:
-            pytest.skip("float16 overflows to inf on pixel-unit projection matrices (#4877)")
         _skip_half(dtype, _HALF_PIXEL_F)
         x1, x2 = two_view["x1"], two_view["x2"]
         F = epi.fundamental_from_projections(two_view["P1"], two_view["P2"])
@@ -862,14 +860,20 @@ class TestConventionFundamental(BaseTester):
         F_dropped = epi.find_fundamental(x1, x2)
         self.assert_close(F_weighted, F_dropped, rtol=1e-3, atol=1e-3)
 
-    def test_fundamental_from_projections_float16_no_overflow_4877(self, device):
+    def test_convention_fundamental_from_projections_float16_unit_max_4877(self, device):
+        # #4877: pixel-unit projection matrices give entries of ~1e10, above float16's maximum, so a float16 F is
+        # divided by its own largest absolute entry. Three batch rows on different scales: pixel units, normalised
+        # cameras (largest entry negative, below 1) and coincident camera centres (F = 0, which stays 0).
         two_view = two_view_scene(device, torch.float16)
-
-        F = epi.fundamental_from_projections(two_view["P1"], two_view["P2"])
-
+        eye = torch.eye(3, 4, device=device, dtype=torch.float16)[None]
+        P1 = torch.cat([two_view["P1"], eye, two_view["P1"]])
+        P2 = torch.cat([two_view["P2"], torch.cat([two_view["R"], two_view["t"]], -1), two_view["P1"]])
+        F = epi.fundamental_from_projections(P1, P2)
         assert F.dtype == torch.float16
-        assert torch.isfinite(F).all()
-        assert F.abs().amax() <= 1
+        F_ref = epi.fundamental_from_projections(P1.cpu().double(), P2.cpu().double())
+        assert F_ref[:2].abs().amax() > 1e9 and F_ref[1].abs().amax() < 1 and (F_ref[2] == 0).all()
+        F_ref[:2] = F_ref[:2] / F_ref[:2].abs().amax(dim=(-2, -1), keepdim=True)
+        self.assert_close(F.cpu().double(), F_ref, rtol=0.0, atol=1e-3)
 
 
 def _rotation(axis_angle):
