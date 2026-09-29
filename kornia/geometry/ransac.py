@@ -931,7 +931,7 @@ class RANSAC(nn.Module):
         first, largest = self._lm_batch_range(num_tc, kp1.device)
         if largest > MAX_BATCH:
             raise ValueError(f"compile=True supports batches of at most {MAX_BATCH} samples")
-        scalars = [torch.tensor(value, dtype=torch.float64) for value in (self.inl_th, self.confidence)]
+        scalars = [torch.tensor([value], dtype=torch.float64) for value in (self.inl_th, self.confidence)]
         scalars += [torch.tensor(value, dtype=torch.int64) for value in (self.sample_budget, first, largest)]
         inputs = (kp1, kp2, *scalars)
         key = (self.model_type, self.score_type, self.max_lo_iters, self.refine_iters, kp1.dtype, str(kp1.device))

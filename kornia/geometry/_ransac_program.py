@@ -179,8 +179,8 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
     """Return the tensor program of ``RANSAC(model_type, score_type=..., local_optimization="lm")``.
 
     The program maps ``(kp1, kp2, inl_th, confidence, budget, first_batch, largest_batch)`` -- the correspondences
-    ``(N, 2)`` and five 0-d tensors (float64 threshold and confidence, int64 sample budget and first and largest batch,
-    all on the host) -- to the model ``(3, 3)`` and the inlier mask ``(N,)`` that
+    ``(N, 2)``, the threshold and confidence as float64 tensors ``(1,)`` and the sample budget and first and largest
+    batch as 0-d int64 tensors, all on the host -- to the model ``(3, 3)`` and the inlier mask ``(N,)`` that
     :meth:`~kornia.geometry.ransac.RANSAC._forward_lm` returns for them. Batches double from ``first_batch`` up to
     ``largest_batch``; equal values keep a fixed batch.
     """
@@ -198,6 +198,9 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
         first_batch: torch.Tensor,
         largest_batch: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # One-element threshold and confidence: dynamo would trace 0-d float inputs as Python scalars, which it cannot
+        # keep symbolic here, and restart its analysis once with them as tensors.
+        inl_th, confidence = inl_th[0], confidence[0]
         device, dtype = kp1.device, kp1.dtype
         work = torch.float64 if dtype == torch.float64 else torch.float32
         num_tc = kp1.shape[0]
