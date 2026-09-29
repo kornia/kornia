@@ -2346,6 +2346,38 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
         assert 1 <= len(calls) <= 2  # one plane; nine searches before deduplication
 
+    def _recover_once(self, max_lo_iters, score_type, scene_seed, device, dtype):
+        """Recover the scene's first degenerate sample (5 plane + 2 outliers) with a fixed recovery generator."""
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, scene_seed, device=device, dtype=dtype)
+        x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        sample = _degenerate_sample(labels, torch.Generator().manual_seed(scene_seed)).to(device)
+        ransac = RANSAC("fundamental", inl_th=1.0, score_type=score_type, max_lo_iters=max_lo_iters)
+        models, _ = ransac._lm_minimal_models(x1[sample][None], x2[sample][None])
+        models = models[torch.isfinite(models).flatten(1).all(1)]
+        scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
+        model = models[int(scores.masked_fill(counts <= 7, -1.0).argmax())]
+        generator = torch.Generator().manual_seed(999)
+        return ransac._degensac_recover(model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator)
+
+    def test_refinement_never_lowers_the_recovered_score(self, device, dtype):
+        # With score_type="ransac" the truncated LM can trade inliers: on this sample it took the recovered model from
+        # 568 to 566. The recovery keeps the better of its raw and refined models.
+        _skip_half(dtype)
+        raw = self._recover_once(0, "ransac", 5, device, dtype)
+        refined = self._recover_once(5, "ransac", 5, device, dtype)
+        assert raw is not None and refined is not None
+        assert float(refined[1][0]) >= float(raw[1][0])
+
+    def test_worse_refinement_keeps_the_raw_model(self, device, dtype, monkeypatch):
+        _skip_half(dtype)
+        raw = self._recover_once(0, "msac", 0, device, dtype)
+        # A "refinement" that returns a scrambled model scores far below the raw one.
+        monkeypatch.setattr(RANSAC, "_lm_refine", lambda self, models, *args: models.roll(1, dims=-1))
+        kept = self._recover_once(5, "msac", 0, device, dtype)
+        assert raw is not None and kept is not None
+        assert torch.equal(kept[0], raw[0]) and torch.equal(kept[1], raw[1])
+
     def test_non_degenerate_sample_returns_none(self, device, dtype):
         # Seven off-plane correspondences are not always in general position at the test's tolerance: a five-point
         # homography fit leaves two redundant constraints, and five of the first seven here fit one within 2.2 px^2

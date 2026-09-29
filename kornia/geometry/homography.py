@@ -198,7 +198,8 @@ def sampson_homography_distance(
           error.
         - An exact correspondence scores 0; a correspondence whose :math:`J J^\top` is singular scores ``inf``; a
           non-finite correspondence or homography gives NaN.
-        - Computed in at least float32 and returned in the promoted dtype of the inputs.
+        - Computed in at least float32 and returned in the promoted dtype of the inputs, or in float32 when they are
+          all integers.
 
     Args:
         pts1: points in the first image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
@@ -215,13 +216,21 @@ def sampson_homography_distance(
     KORNIA_CHECK(pts1.shape[-1] in (2, 3) and pts2.shape[-1] in (2, 3), "points must have 2 or 3 coordinates")
     dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), H.dtype)
     work = torch.promote_types(dtype, torch.float32)
+    # Integer coordinates give a floating distance. Everything runs in at least float32, the dehomogenization too:
+    # x / w of a small w overflows float16.
+    out_dtype = dtype if dtype.is_floating_point else work
+    pts1, pts2 = pts1.to(work), pts2.to(work)
     if pts1.shape[-1] == 3:
         pts1 = convert_points_from_homogeneous(pts1)
     if pts2.shape[-1] == 3:
         pts2 = convert_points_from_homogeneous(pts2)
-    x, y = pts1[..., 0].to(work), pts1[..., 1].to(work)
-    u, v = pts2[..., 0].to(work), pts2[..., 1].to(work)
-    h = H.to(work)[..., None]
+    x, y = pts1[..., 0], pts1[..., 1]
+    u, v = pts2[..., 0], pts2[..., 1]
+    # The distance does not depend on the scale of H, but its quadratic is of fourth order in H: dividing by the
+    # largest entry keeps tiny and huge finite scales in range. A zero H stays zero, and non-finite entries give NaN.
+    H = H.to(work)
+    scale = H.abs().amax(dim=(-2, -1), keepdim=True)
+    h = (H / torch.where(scale > 0, scale, torch.ones_like(scale)))[..., None]
     p = h[..., 0, 0, :] * x + h[..., 0, 1, :] * y + h[..., 0, 2, :]
     q = h[..., 1, 0, :] * x + h[..., 1, 1, :] * y + h[..., 1, 2, :]
     w = h[..., 2, 0, :] * x + h[..., 2, 1, :] * y + h[..., 2, 2, :]
@@ -243,7 +252,7 @@ def sampson_homography_distance(
     if not squared:
         positive = d2 > 0
         d2 = torch.where(positive, torch.where(positive, d2, torch.ones_like(d2)).sqrt(), d2)
-    return d2.to(dtype)
+    return d2.to(out_dtype)
 
 
 def line_segment_transfer_error_one_way(

@@ -1068,9 +1068,9 @@ class RANSAC(nn.Module):
         with more than 6 plane inliers at ``16 t`` and at least 4 correspondences beyond ``100 t``, plane-and-parallax
         models are drawn from those (:mod:`kornia.geometry._degensac`), unless ``seen_planes``, the refined planes'
         inlier masks of the call's earlier recoveries, already holds the plane (:func:`_repeats_plane`); a new plane
-        is appended to it. The best-scoring model is refined like the pool,
-        with ``max_lo_iters`` truncated Levenberg-Marquardt iterations, Chum's ``innerFH`` role, and returned alone,
-        as ``rFtH`` returns one model: near-duplicates from one search would crowd the eight-model pool.
+        is appended to it. The best-scoring model is refined like the pool, with ``max_lo_iters`` truncated
+        Levenberg-Marquardt iterations, Chum's ``innerFH`` role, and the better of it and its refinement is returned
+        alone, as ``rFtH`` returns one model: near-duplicates from one search would crowd the eight-model pool.
 
         Returns:
             The recovered model ``(1, 3, 3)`` with its score, support and, with PROSAC, inlier mask, as
@@ -1115,20 +1115,20 @@ class RANSAC(nn.Module):
         if float(scores.max()) < 0:
             return None
         best = int(scores.argmax())
+        raw = models[best : best + 1], scores[best : best + 1], counts[best : best + 1]
+        raw_mask = None if masks is None else masks[best : best + 1]
         if self.max_lo_iters == 0:
-            mask = None if masks is None else masks[best : best + 1]
-            return models[best : best + 1], scores[best : best + 1], counts[best : best + 1], mask
+            return (*raw, raw_mask)
         refined = self._lm_refine(
-            models[best : best + 1].cpu().double(),
-            x1_host[rows],
-            x2_host[rows],
-            None,
-            "truncated",
-            threshold,
-            self.max_lo_iters,
+            raw[0].cpu().double(), x1_host[rows], x2_host[rows], None, "truncated", threshold, self.max_lo_iters
         ).to(x1.device, x1.dtype)
         scores, counts, masks = self._lm_score_models(refined, basis, threshold)
-        return refined, scores.masked_fill(counts <= m, -1.0), counts, masks
+        scores = scores.masked_fill(counts <= m, -1.0)
+        # The truncated loss is not the score: with score_type="ransac" a step can trade inliers (568 -> 566 on one
+        # dominant-plane sample). Keep the better model, the refit on ties.
+        if float(scores[0]) < float(raw[1][0]):
+            return (*raw, raw_mask)
+        return refined, scores, counts, masks
 
     @staticmethod
     def _lm_pool(

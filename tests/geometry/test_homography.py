@@ -353,6 +353,32 @@ class TestSampsonHomographyDistance(BaseTester):
         nan_homography = torch.full((1, 3, 3), float("nan"), device=device, dtype=dtype)
         assert bool(torch.isnan(sampson_homography_distance(pts[:, :1], pts[:, :1], nan_homography)).all())
 
+    def test_extreme_homography_scales(self, device, dtype):
+        # The quadratic has terms of fourth order in H, which underflow or overflow the working precision for tiny or
+        # huge finite scales; the distance does not depend on the scale.
+        if dtype == torch.float16:
+            pytest.skip("scales that overflow the float32 working precision are not representable in float16")
+        finfo = torch.finfo(torch.float64 if dtype == torch.float64 else torch.float32)
+        pts1 = torch.zeros(1, 1, 2, device=device, dtype=dtype)
+        pts2 = torch.tensor([[[1.0, 0.0]]], device=device, dtype=dtype)
+        for scale in (finfo.tiny**0.3, finfo.max**0.3):
+            H = scale * torch.eye(3, device=device, dtype=torch.float64 if device.type != "mps" else torch.float32)
+            actual = sampson_homography_distance(pts1, pts2, H.to(dtype)[None])
+            self.assert_close(actual, torch.full_like(actual, 0.5))
+
+    def test_homogeneous_points_convert_in_working_precision(self, device, dtype):
+        # x / w of a small w overflows float16 when it is formed in the input dtype; an exact correspondence is 0.
+        pts = torch.tensor([[[1.0, 0.0, 1e-5]]], device=device, dtype=dtype)
+        distance = sampson_homography_distance(pts, pts, torch.eye(3, device=device, dtype=dtype)[None])
+        assert distance.tolist() == [[0.0]]
+
+    def test_integer_inputs_give_a_floating_distance(self, device):
+        # Pixel coordinates may be integers; the distance is computed in float32 and must not be cast back.
+        pts1 = torch.tensor([[[0, 0]]], device=device)
+        pts2 = torch.tensor([[[1, 0]]], device=device)
+        distance = sampson_homography_distance(pts1, pts2, torch.eye(3, dtype=torch.long, device=device)[None])
+        assert distance.dtype == torch.float32 and distance.tolist() == [[0.5]]
+
     def test_singular_jacobian_is_inf(self, device, dtype):
         # The zero matrix makes both residual rows and the Jacobian vanish: no finite correction exists.
         pts = torch.rand(1, 3, 2, device=device, dtype=dtype)
