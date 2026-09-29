@@ -98,6 +98,19 @@ class Homography(BaseModel):
 class Similarity(BaseModel):
     """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
 
+    Convention:
+        - ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]`` in the normalized :math:`[-1, 1]` coordinates of
+          :class:`ImageRegistrator` (``align_corners=False``), where ``R`` comes from
+          :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` of ``rot`` in degrees.
+        - After :meth:`set_image_shape` with the image height ``H`` and width ``W``, ``R`` is
+          ``diag(H / W, 1) @ angle_to_rotation_matrix(rot) @ diag(W / H, 1)``. The normalized frame scales x by
+          ``2 / W`` and y by ``2 / H``, so in pixels the linear part is then ``scale * angle_to_rotation_matrix(rot)``
+          about the image centre, for any aspect ratio. :meth:`ImageRegistrator.register` sets the shape of
+          ``dst_img``. ``shift`` stays in normalized units.
+        - Without an image shape, ``R`` is ``angle_to_rotation_matrix(rot)``, which rotates the pixels only on a
+          square image. The shape is not part of ``state_dict()``: after ``load_state_dict``, call
+          :meth:`set_image_shape` again before using the model on a non-square image.
+
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
         scale: if True, the scale is optimizable, else constant zero.
@@ -107,6 +120,8 @@ class Similarity(BaseModel):
 
     def __init__(self, rotation: bool = True, scale: bool = True, shift: bool = True) -> None:
         super().__init__()
+        self.height: Optional[int] = None
+        self.width: Optional[int] = None
         if rotation:
             self.rot = nn.Parameter(torch.zeros(1))
         else:
@@ -132,6 +147,17 @@ class Similarity(BaseModel):
         torch.nn.init.zeros_(self.shift)
         torch.nn.init.ones_(self.scale)
 
+    def set_image_shape(self, height: int, width: int) -> None:
+        """Set the image size in pixels, which makes ``rot`` and ``scale`` a rotation and scaling of the pixels.
+
+        Args:
+            height: image height ``H``.
+            width: image width ``W``.
+
+        """
+        self.height = height
+        self.width = width
+
     def forward(self) -> torch.Tensor:
         r"""Single-batch similarity transform".
 
@@ -140,6 +166,11 @@ class Similarity(BaseModel):
 
         """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
+        if self.height is not None and self.width is not None:
+            # diag(H / W, 1) @ rot @ diag(W / H, 1): the pixel rotation in the normalized frame, whose x unit is W / 2
+            # pixels and y unit H / 2 pixels. Only the off-diagonal entries change, so the diagonal stays exact.
+            aspect = self.height / self.width
+            rot = rot * rot.new_tensor([[1.0, aspect], [1.0 / aspect, 1.0]])
         return convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
 
     def forward_inverse(self) -> torch.Tensor:
@@ -290,6 +321,10 @@ class ImageRegistrator(nn.Module):
         aux_models = []
         if len(img_dst_pyr) != len(img_src_pyr):
             raise ValueError("Cannot register images of different sizes")
+        if isinstance(self.model, Similarity):
+            # every pyramid level spans the same image, so the full-resolution shape is the pixel aspect ratio of each
+            # level; a level's own rounded shape is not
+            self.model.set_image_shape(dst_img.shape[-2], dst_img.shape[-1])
         for img_src_level, img_dst_level in zip(img_src_pyr, img_dst_pyr):
             # tolerance compares successive losses of one level; a loss from the coarser level is not one of them
             prev_loss: Optional[float] = None
