@@ -265,3 +265,66 @@ class TestSpatialExpectation2d(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data, True), op_optimized(data, True))
+
+
+class TestConventionsDsnt(BaseTester):
+    def test_convention_spatial_soft_argmax2d_is_xy_corner_aligned(self, device, dtype):
+        # The output is (x, y) = (column, row): pixel coordinates of the input grid, or normalized corner-aligned
+        # ones (pixel centres 0 and W - 1 at -1 and +1). H != W and an off-centre peak, so neither a (y, x) output
+        # nor a half-pixel grid can pass; the transposed map is the relabel control. A logit of 30 makes the softmax
+        # one-hot at every dtype.
+        heatmap = torch.zeros(1, 1, 4, 7, device=device, dtype=dtype)
+        heatmap[0, 0, 1, 5] = 30.0
+        pixel = kornia.geometry.subpix.spatial_soft_argmax2d(heatmap, normalized_coordinates=False)
+        self.assert_close(pixel, torch.tensor([[[5.0, 1.0]]], device=device, dtype=dtype))
+        transposed = heatmap.transpose(-2, -1).contiguous()
+        pixel = kornia.geometry.subpix.spatial_soft_argmax2d(transposed, normalized_coordinates=False)
+        self.assert_close(pixel, torch.tensor([[[1.0, 5.0]]], device=device, dtype=dtype))
+
+        normalized = kornia.geometry.subpix.spatial_soft_argmax2d(heatmap)
+        self.assert_close(normalized, torch.tensor([[[2 / 3, -1 / 3]]], device=device, dtype=dtype))
+        corner = torch.zeros(1, 1, 4, 7, device=device, dtype=dtype)
+        corner[0, 0, 0, 6] = 30.0
+        # corner-aligned: the last column is +1 and the first row -1; a half-pixel grid gives (6/7, -3/4)
+        normalized = kornia.geometry.subpix.spatial_soft_argmax2d(corner)
+        self.assert_close(normalized, torch.tensor([[[1.0, -1.0]]], device=device, dtype=dtype))
+
+    def test_convention_render_gaussian2d_mean_std_are_xy(self, device, dtype):
+        # mean and std are (x, y) = (column, row) and size is (H, W): an anisotropic Gaussian off the centre of a
+        # 25 x 21 canvas has a column marginal with mean 10 and std 2 and a row marginal with mean 12 and std 1.
+        mean = torch.tensor([[10.0, 12.0]], device=device, dtype=dtype)
+        std = torch.tensor([[2.0, 1.0]], device=device, dtype=dtype)
+        heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (25, 21), False)
+        assert heatmap.shape == (1, 25, 21)
+
+        # Measure the rendered distribution's moments in float64.
+        h = heatmap[0].cpu().double()
+        total = h.sum()
+        cols = torch.arange(21, dtype=torch.float64)
+        rows = torch.arange(25, dtype=torch.float64)
+        mean_x = float((h.sum(0) * cols).sum() / total)
+        mean_y = float((h.sum(1) * rows).sum() / total)
+        std_x = float(((h.sum(0) * (cols - mean_x) ** 2).sum() / total).sqrt())
+        std_y = float(((h.sum(1) * (rows - mean_y) ** 2).sum() / total).sqrt())
+        tol = 5e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        assert abs(mean_x - 10.0) < tol, mean_x
+        assert abs(mean_y - 12.0) < tol, mean_y
+        assert abs(std_x - 2.0) < tol, std_x
+        assert abs(std_y - 1.0) < tol, std_y
+
+        # relabel: swapping the (x, y) components and the (H, W) size renders the transpose
+        swapped = kornia.geometry.subpix.render_gaussian2d(mean.flip(-1), std.flip(-1), (21, 25), False)
+        self.assert_close(swapped[0], heatmap[0].T)
+
+    def test_convention_spatial_expectation2d_uses_the_input_as_given(self, device, dtype):
+        # The heatmap is not renormalized: a map summing to s scales the expected (x, y) by s, in pixels and in
+        # normalized coordinates alike. Mass 0.75 at (row 0, col 4) and 0.25 at (row 2, col 1) of a 3 x 5 map gives
+        # (x, y) = (3.25, 0.5) in pixels and (0.625, -0.5) normalized; doubling the map doubles both.
+        probs = torch.zeros(1, 1, 3, 5, device=device, dtype=dtype)
+        probs[0, 0, 0, 4] = 0.75
+        probs[0, 0, 2, 1] = 0.25
+        for scale in (1.0, 2.0):
+            pixel = kornia.geometry.subpix.spatial_expectation2d(scale * probs, normalized_coordinates=False)
+            self.assert_close(pixel, scale * torch.tensor([[[3.25, 0.5]]], device=device, dtype=dtype))
+            normalized = kornia.geometry.subpix.spatial_expectation2d(scale * probs)
+            self.assert_close(normalized, scale * torch.tensor([[[0.625, -0.5]]], device=device, dtype=dtype))

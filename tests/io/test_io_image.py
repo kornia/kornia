@@ -132,6 +132,18 @@ class TestIoImage:
         assert img.shape[0] == expected_channels
         assert img.dtype == expected_type
 
+    @pytest.mark.parametrize("channels,mode", [(1, "mono"), (3, "rgb")])
+    def test_load_opaque_image_as_rgba(self, tmp_path: Path, channels: int, mode: str) -> None:
+        pixels = np.full((2, 2, channels), 64, dtype=np.uint8)
+        path = tmp_path / "image.png"
+        kornia_rs.io.write_image_png_u8(str(path), pixels, mode=mode)
+
+        rgba = load_image(path, ImageLoadType.RGBA8)
+
+        assert rgba.shape == (4, 2, 2)
+        assert torch.equal(rgba[:3], torch.full((3, 2, 2), 64, dtype=torch.uint8))
+        assert torch.equal(rgba[3], torch.full((2, 2), 255, dtype=torch.uint8))
+
     @pytest.mark.parametrize("ext", ["jpg"])
     @pytest.mark.parametrize("channels", [3])
     def test_write_image(self, device, tmp_path, ext, channels):
