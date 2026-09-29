@@ -98,6 +98,18 @@ class Homography(BaseModel):
 class Similarity(BaseModel):
     """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
 
+    The rotation parameter is defined in an isotropic coordinate frame.
+    When the image is not square, it is converted to the anisotropic
+    normalized image coordinate system using the image aspect ratio.
+
+    Convention:
+        - image shape: ``(B, C, H, W)``
+        - rotation angle: degrees, using the convention of
+          :func:`angle_to_rotation_matrix`
+        - the rotation is conjugated by ``diag(W / H, 1)`` so that the
+          parameter represents the same pixel-space rotation for any aspect
+          ratio.
+
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
         scale: if True, the scale is optimizable, else constant zero.
@@ -107,6 +119,8 @@ class Similarity(BaseModel):
 
     def __init__(self, rotation: bool = True, scale: bool = True, shift: bool = True) -> None:
         super().__init__()
+        self.height: Optional[int] = None
+        self.width: Optional[int] = None
         if rotation:
             self.rot = nn.Parameter(torch.zeros(1))
         else:
@@ -132,6 +146,11 @@ class Similarity(BaseModel):
         torch.nn.init.zeros_(self.shift)
         torch.nn.init.ones_(self.scale)
 
+    def set_image_shape(self, height: int, width: int) -> None:
+        """Set the image shape used to build the similarity transform."""
+        self.height = height
+        self.width = width
+
     def forward(self) -> torch.Tensor:
         r"""Single-batch similarity transform".
 
@@ -140,6 +159,11 @@ class Similarity(BaseModel):
 
         """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
+        if self.height is not None and self.width is not None:
+            aspect = self.width / self.height
+            scale = rot.new_tensor([[aspect, 0.0], [0.0, 1.0]])
+            scale_inv = rot.new_tensor([[1.0 / aspect, 0.0], [0.0, 1.0]])
+            rot = scale @ rot @ scale_inv
         return convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
 
     def forward_inverse(self) -> torch.Tensor:
@@ -293,6 +317,9 @@ class ImageRegistrator(nn.Module):
         for img_src_level, img_dst_level in zip(img_src_pyr, img_dst_pyr):
             # tolerance compares successive losses of one level; a loss from the coarser level is not one of them
             prev_loss: Optional[float] = None
+            if isinstance(self.model, Similarity):
+                _height, _width = img_dst_level.shape[-2:]
+                self.model.set_image_shape(_height, _width)
             for i in range(self.num_iterations):
                 # compute gradient and update optimizer parameters
                 opt.zero_grad()

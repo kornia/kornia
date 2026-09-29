@@ -58,6 +58,48 @@ class TestSimilarity(BaseTester):
             s = kornia.geometry.transform.Similarity(r, sc, sh).to(device, dtype)
             assert s is not None
 
+    @pytest.mark.parametrize(
+        "height, width, expected",
+        [
+            (
+                32,
+                48,
+                [
+                    [0.9945219, 0.1567927, 0.0],
+                    [-0.0696856, 0.9945219, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+            ),
+            (
+                48,
+                32,
+                [
+                    [0.9945219, 0.0696856, 0.0],
+                    [-0.1567927, 0.9945219, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+            ),
+            (
+                40,
+                40,
+                [
+                    [0.9945219, 0.1045285, 0.0],
+                    [-0.1045285, 0.9945219, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+            ),
+        ],
+    )
+    def test_anisotropic_rotation(self, device, dtype, height, width, expected):
+        sim = kornia.geometry.transform.Similarity(True, False, False).to(device, dtype)
+        with torch.no_grad():
+            sim.rot.fill_(6.0)
+
+        sim.set_image_shape(height, width)
+
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+        self.assert_close(sim(), expected, atol=1e-5, rtol=1e-5)
+
 
 class TestHomography(BaseTester):
     def test_smoke(self, device, dtype):
