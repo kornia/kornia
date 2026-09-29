@@ -246,7 +246,11 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
 
 def draw_rectangle(
-    image: torch.Tensor, rectangle: torch.Tensor, color: Optional[torch.Tensor] = None, fill: Optional[bool] = None
+    image: torch.Tensor,
+    rectangle: torch.Tensor,
+    color: Optional[torch.Tensor] = None,
+    fill: Optional[bool] = None,
+    line_width: int = 1,
 ) -> torch.Tensor:
     r"""Draw N rectangles on a batch of image tensors.
 
@@ -258,6 +262,9 @@ def draw_rectangle(
         color: a 0-d, size 1, size 3, BxNx1, or BxNx3 tensor.
             If C is 3, and color is 1 channel it will be broadcasted.
         fill: is a flag used to fill the boxes with color if True.
+        line_width: thickness of the rectangle outline in pixels, drawn inward from each edge.
+            Must be a positive integer. Has no effect on the filled result when ``fill=True``.
+            Defaults to 1 pixel.
 
     Corners may come in either order. Coordinates are rounded to the nearest pixel centre (a coordinate exactly
     halfway rounds up), and the rectangle includes both corners. A side outside the image is not drawn and a fill is
@@ -275,8 +282,12 @@ def draw_rectangle(
         >>> img = torch.rand(2, 3, 10, 12)
         >>> rect = torch.tensor([[[0, 0, 4, 4]], [[4, 4, 10, 10]]])
         >>> out = draw_rectangle(img, rect)
+        >>> thick_out = draw_rectangle(img.clone(), rect, line_width=2)
 
     """
+    if not isinstance(line_width, int) or isinstance(line_width, bool) or line_width < 1:
+        raise ValueError("line_width must be a positive integer")
+
     KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
     batch, c, h, w = image.shape
     batch_rect, num_rectangle, num_points = rectangle.shape
@@ -305,7 +316,7 @@ def draw_rectangle(
         color = color.expand(batch, num_rectangle, c)
 
     # one host read for the bands of every rectangle
-    bands = _rectangle_bands(x1, y1, x2, y2, h, w, 1, fill).tolist()
+    bands = _rectangle_bands(x1, y1, x2, y2, h, w, line_width, fill).tolist()
     for b in range(batch):
         for n in range(num_rectangle):
             for r0, r1, c0, c1 in bands[b][n]:
