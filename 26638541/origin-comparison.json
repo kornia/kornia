@@ -1,0 +1,30 @@
+{
+  "cpu-default": {
+    "comparisons": 2040,
+    "different_hashes": 0,
+    "before_mean_median_ms": 5.717305647483847,
+    "after_mean_median_ms": 5.5711410383497855,
+    "time_ratio": 0.9744347043614177
+  },
+  "cpu-on": {
+    "comparisons": 2040,
+    "different_hashes": 0,
+    "before_mean_median_ms": 16.65707378598253,
+    "after_mean_median_ms": 16.468101888774125,
+    "time_ratio": 0.9886551563836242
+  },
+  "cuda-default": {
+    "comparisons": 2040,
+    "different_hashes": 0,
+    "before_mean_median_ms": 7.233570432825432,
+    "after_mean_median_ms": 7.171439306521814,
+    "time_ratio": 0.9914107249137063
+  },
+  "cuda-on": {
+    "comparisons": 2040,
+    "different_hashes": 0,
+    "before_mean_median_ms": 31.81267663513983,
+    "after_mean_median_ms": 32.30765157316294,
+    "time_ratio": 1.0155590472219609
+  }
+}
