@@ -714,9 +714,9 @@ class TestAffine2d(BaseTester):
             kornia.geometry.transform.Affine()
 
     def test_affine_batch_size_mismatch(self, device, dtype):
+        angle = torch.rand(1, device=device, dtype=dtype)
+        translation = torch.rand(2, 2, device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
-            angle = torch.rand(1, device=device, dtype=dtype)
-            translation = torch.rand(2, 2, device=device, dtype=dtype)
             kornia.geometry.transform.Affine(angle, translation)
 
     def test_affine_rotate(self, device, dtype):

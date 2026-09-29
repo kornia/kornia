@@ -27,7 +27,7 @@ from kornia.geometry import transform_points
 from kornia.geometry.conversions import denormalize_homography
 from kornia.geometry.transform import ImageRegistrator
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_2d_grid_sample_backward, supports_reflect_padding
 from testing.casts import dict_to
 
 
@@ -166,3 +166,27 @@ class TestImageRegistrator(BaseTester):
         with pytest.warns(DeprecationWarning, match="`warp_dst_inro_src` is deprecated in favor of"):
             via_alias = ir.warp_dst_inro_src(dst)
         self.assert_close(via_alias, into_src)
+
+    def test_tolerance_is_per_level_5073(self, device, dtype):
+        # #5073: tolerance compares successive losses within one pyramid level, so every level takes its first
+        # optimizer step even when its first loss equals the coarser level's final loss (identical images make every
+        # loss equal). Comparing across levels stopped every finer level before its first update.
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"torch has no {dtype} reflection padding kernel on {device.type}")
+        steps = []
+
+        class CountingAdam(torch.optim.Adam):
+            def step(self, *args, **kwargs):
+                steps.append(1)
+                return super().step(*args, **kwargs)
+
+        image = torch.zeros(1, 1, 32, 48, device=device, dtype=dtype)
+        for levels in (1, 2, 3):
+            steps.clear()
+            ir = ImageRegistrator(
+                "translation", optimizer=CountingAdam, num_iterations=1, pyramid_levels=levels, tolerance=1e-4
+            ).to(device, dtype)
+            ir.register(image, image)
+            assert len(steps) == levels

@@ -156,9 +156,9 @@ def _convert_image_type(image: torch.Tensor, desired_type: ImageLoadType) -> tor
         case (ImageLoadType.RGBA8, 4):
             return image
         case (ImageLoadType.RGBA8, 3):
-            return _to_uint8(kornia.color.rgb_to_rgba(_to_float32(image), 0.0))
+            return _to_uint8(kornia.color.rgb_to_rgba(_to_float32(image), 1.0))
         case (ImageLoadType.RGBA8, 1):
-            return _to_uint8(kornia.color.rgb_to_rgba(kornia.color.grayscale_to_rgb(_to_float32(image)), 0.0))
+            return _to_uint8(kornia.color.rgb_to_rgba(kornia.color.grayscale_to_rgb(_to_float32(image)), 1.0))
         case (ImageLoadType.GRAY32, 1):
             return _to_float32(image)
         case (ImageLoadType.GRAY32, 3):

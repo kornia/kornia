@@ -43,6 +43,7 @@ from kornia.augmentation.random_generator import (
     ResizedCropGenerator,
     center_crop_generator,
 )
+from kornia.augmentation.utils import _truncate_to_start
 
 from testing.base import assert_close
 
@@ -1515,10 +1516,9 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, bits, device, dtype):
         with pytest.raises(Exception):
-            if isinstance(bits, Tensor):
-                PosterizeGenerator(bits.to(device=device, dtype=dtype))(torch.Size([3]))
-            else:
-                PosterizeGenerator(bits)(torch.Size([3]))
+            PosterizeGenerator(bits.to(device=device, dtype=dtype) if isinstance(bits, Tensor) else bits)(
+                torch.Size([3])
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(9)
@@ -1918,6 +1918,31 @@ _POSITION_SAMPLER_CASES = [
 ]
 
 
+# The three crop generators with a half-precision ``size``, ``scale`` or ``ratio`` tensor. The parameter dtype
+# follows the tensor while the draw stays float32, so the start used to be computed in half precision.
+_HALF_PARAMETER_CASES = [
+    pytest.param(
+        lambda device, dtype: CropGenerator(torch.full((1 << 16, 2), 4.0, device=device, dtype=dtype)),
+        torch.Size([1 << 16, 1, 8, 8]),
+        id="crop",
+    ),
+    pytest.param(
+        lambda device, dtype: ResizedCropGenerator(
+            (4, 4),
+            torch.tensor([0.25, 0.25], device=device, dtype=dtype),
+            torch.tensor([1.0, 1.0], device=device, dtype=dtype),
+        ),
+        torch.Size([1 << 16, 1, 8, 8]),
+        id="resized_crop",
+    ),
+    pytest.param(
+        lambda device, dtype: CropGenerator3D(torch.full((1 << 16, 3), 4.0, device=device, dtype=dtype)),
+        torch.Size([1 << 16, 1, 8, 8, 8]),
+        id="crop3d",
+    ),
+]
+
+
 class TestHalfPrecisionPositionSamplers:
     # The half dtypes are named rather than taken from the fixture so the pins run on the default float32
     # legs too; the device comes from the fixture so the MPS leg draws on MPS.
@@ -1961,3 +1986,57 @@ class TestHalfPrecisionPositionSamplers:
             last_covered = params["src"]
         assert int(last_covered.min()) >= 0
         assert int(last_covered.max()) < 8
+
+    # A half ``size``, ``scale`` or ``ratio`` tensor makes the parameter dtype half while the draw stays float32.
+    # Cast to half before it was scaled, about 30 (float16) or 270 (bfloat16) of 2**16 draws rounded up to 1.0 and
+    # put the start one past the last valid position (#5052).
+    @pytest.mark.parametrize("make_generator,batch_shape", _HALF_PARAMETER_CASES)
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_parameters_keep_starts_in_range(self, make_generator, batch_shape, device, half_dtype):
+        generator = make_generator(device, half_dtype)
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        torch.manual_seed(0)
+        src = generator(batch_shape)["src"]
+        assert src.dtype == half_dtype
+        assert int(src.min()) >= 0
+        assert int(src.max()) < 8
+
+    # With ``same_on_batch`` the batch shares one draw, so a large batch never reaches the rare draw above. Pin the
+    # draw to the largest float32 below 1 instead: rounded to half precision it is 1.0, and the start was 5, not 4.
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_draw_below_one_keeps_the_last_start(self, device, half_dtype, same_on_batch, ndim):
+        if ndim == 2:
+            generator = CropGenerator(torch.full((2, 2), 4.0, device=device, dtype=half_dtype))
+        else:
+            generator = CropGenerator3D(torch.full((2, 3), 4.0, device=device, dtype=half_dtype))
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        draw = torch.tensor(1.0 - 2.0**-24, device=device, dtype=torch.float32)
+        generator.rand_sampler = torch.distributions.Uniform(draw, draw, validate_args=False)
+        src = generator(torch.Size([2, 1, *([8] * ndim)]), same_on_batch)["src"]
+        assert src[:, 0].tolist() == [[4.0] * ndim] * 2
+
+
+class TestTruncateToStart:
+    # The largest float32 below 1 rounds to 1.0 in float16 and in bfloat16, the largest float64 below 1 rounds to
+    # 1.0 in float32. The start has to stay at the last valid position and come back in the extent's dtype.
+    @pytest.mark.parametrize(
+        "draw_dtype,extent_dtype",
+        [(torch.float32, torch.float16), (torch.float32, torch.bfloat16), (torch.float64, torch.float32)],
+    )
+    def test_draw_below_one_stays_in_range(self, device, draw_dtype, extent_dtype):
+        if device.type == "mps" and draw_dtype == torch.float64:
+            pytest.skip("MPS has no float64.")
+        draw = torch.tensor([0.0, 0.5, 1.0 - torch.finfo(draw_dtype).eps / 2], device=device, dtype=draw_dtype)
+        extent = torch.tensor(5.0, device=device, dtype=extent_dtype)
+        start = _truncate_to_start(draw, extent)
+        assert start.dtype == extent_dtype
+        assert start.device.type == device.type
+        assert start.tolist() == [0.0, 2.0, 4.0]
+
+    def test_same_dtype_matches_the_plain_formula(self, device, dtype):
+        torch.manual_seed(0)
+        draw = torch.rand(1 << 12, device=device, dtype=dtype)
+        extent = torch.randint(1, 100, (1 << 12,), device=device).to(dtype)
+        assert torch.equal(_truncate_to_start(draw, extent), (draw * extent).floor())

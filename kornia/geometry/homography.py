@@ -348,6 +348,9 @@ def _refine_homography_lm(
     """
     K = H.shape[0]
     dtype, device = H.dtype, H.device
+    cpu = K > 0 and device.type == "cpu" and not torch.is_grad_enabled()
+    if cpu and K == 1 and mask is not None and mask.dtype == torch.bool:
+        x1, x2, mask = x1[mask[0]], x2[mask[0]], None
     eye8 = torch.eye(8, dtype=dtype, device=device)
     eye9 = torch.eye(9, dtype=dtype, device=device)
     last = eye9[8]
@@ -375,10 +378,18 @@ def _refine_homography_lm(
         return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1), tangent
 
     system, cost, tangent = normal_equations(h)
-    for _ in range(iters):
+    for iteration in range(iters):
         delta = -torch.linalg.solve_ex(system[..., :8] + damping * eye8, system[..., 8:])[0]
         h_new = h + (tangent @ delta)[..., 0]
         h_new = h_new * h_new.square().sum(1, keepdim=True).rsqrt()
+        if cpu and iteration + 1 == iters:
+            projection = h_new.reshape(K, 3, 3) @ x1.T
+            residual = projection[:, :2] / projection[:, 2:3] - x2.T
+            r2 = residual.square().sum(1)
+            rho = torch.log1p(r2 / scale2) if loss == "cauchy" else torch.fmin(r2, torch.full_like(r2[:1, :1], scale2))
+            cost_new = (rho if mask is None else rho * mask).sum(1)
+            accepted = cost_new < cost
+            return torch.where(accepted[:, None], h_new, h).reshape(K, 3, 3)
         system_new, cost_new, tangent_new = normal_equations(h_new)
         accept = (cost_new < cost)[:, None, None]
         h, cost = torch.where(accept[:, :, 0], h_new, h), torch.where(accept[:, 0, 0], cost_new, cost)
