@@ -65,8 +65,8 @@ from some scenes). Timings are repeated public
 quality uses every requested seed. H measures ground-truth-inlier reprojection mAA
 at 1–20 pixels; F/E measure recovered-pose mAA at 1–10 degrees, with scenes and seeds
 weighted equally. Failures count as misses. JSON records every pair and an aggregate
-summary. Use `--no-timing` for a quality-only run. See the [CPU efficiency report](geometry/ransac_cpu.md)
-for the measured base/branch comparison and rejected batch experiments.
+summary. Use `--no-timing` for a quality-only run. PR #5095's measured base/branch comparison and
+rejected batch experiments are in its [archived report](https://github.com/kornia/kornia/blob/7730b96647e7dc517c44ebb6ab4e81c92f239a86/benchmarks/geometry/ransac_cpu.md).
 
 Sampling, scoring, batching, and local optimization use the class defaults;
 `--confidence` defaults to 0.999. Pixel inlier thresholds default to H=8,
