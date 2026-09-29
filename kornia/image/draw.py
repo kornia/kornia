@@ -186,7 +186,11 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
 
 def draw_rectangle(
-    image: torch.Tensor, rectangle: torch.Tensor, color: Optional[torch.Tensor] = None, fill: Optional[bool] = None
+    image: torch.Tensor,
+    rectangle: torch.Tensor,
+    color: Optional[torch.Tensor] = None,
+    fill: Optional[bool] = None,
+    line_width: int = 1,
 ) -> torch.Tensor:
     r"""Draw N rectangles on a batch of image tensors.
 
@@ -198,6 +202,9 @@ def draw_rectangle(
         color: a 0-d, size 1, size 3, BxNx1, or BxNx3 tensor.
             If C is 3, and color is 1 channel it will be broadcasted.
         fill: is a flag used to fill the boxes with color if True.
+        line_width: thickness of the rectangle outline in pixels, drawn inward from each edge.
+            Must be a positive integer. Has no effect on the filled result when ``fill=True``.
+            Defaults to 1 pixel.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -207,8 +214,12 @@ def draw_rectangle(
         >>> img = torch.rand(2, 3, 10, 12)
         >>> rect = torch.tensor([[[0, 0, 4, 4]], [[4, 4, 10, 10]]])
         >>> out = draw_rectangle(img, rect)
+        >>> thick_out = draw_rectangle(img.clone(), rect, line_width=2)
 
     """
+    if not isinstance(line_width, int) or isinstance(line_width, bool) or line_width < 1:
+        raise ValueError("line_width must be a positive integer")
+
     batch, c, h, w = image.shape
     batch_rect, num_rectangle, num_points = rectangle.shape
     if batch != batch_rect:
@@ -245,7 +256,7 @@ def draw_rectangle(
                     int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1),
                     int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1),
                 ] = color[b, n, :, None, None]
-            else:
+            elif line_width == 1:
                 image[b, :, int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1), rectangle[b, n, 0]] = color[
                     b, n, :, None
                 ]
@@ -258,6 +269,12 @@ def draw_rectangle(
                 image[b, :, rectangle[b, n, 3], int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1)] = color[
                     b, n, :, None
                 ]
+            else:
+                x1, y1, x2, y2 = (int(v) for v in rectangle[b, n])
+                image[b, :, y1 : min(y1 + line_width, y2 + 1), x1 : x2 + 1] = color[b, n, :, None, None]
+                image[b, :, max(y1, y2 - line_width + 1) : y2 + 1, x1 : x2 + 1] = color[b, n, :, None, None]
+                image[b, :, y1 : y2 + 1, x1 : min(x1 + line_width, x2 + 1)] = color[b, n, :, None, None]
+                image[b, :, y1 : y2 + 1, max(x1, x2 - line_width + 1) : x2 + 1] = color[b, n, :, None, None]
 
     return image
 
