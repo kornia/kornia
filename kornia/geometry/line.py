@@ -262,7 +262,9 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
     A line needs at least two points that are not all identical. Comparing every point with
     the first one is exact at any scale; comparing with the mean is not, because its rounding
     leaves a nonzero residual for identical points such as three copies of (0.1, 0.7). With
-    weights, the weighted mean is undefined unless the weight sum of every row is positive.
+    weights, the weighted mean is undefined unless the weight sum of every row is positive, and
+    every weight must be non-negative: a negative weight can make the weighted scatter indefinite,
+    and then the 2-D and the D >= 3 branches disagree.
 
     The value checks are skipped under ``torch.compile``/export, where they would be a
     data-dependent branch, and by ``disable_checks()``, like every kornia value check.
@@ -282,8 +284,7 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
             )
         if bool((weights < 0).any()):
             raise ValueCheckError(
-                "fit_line requires non-negative weights; a negative weight makes the weighted scatter "
-                "indefinite and the fit ill-defined."
+                "fit_line requires non-negative weights; a negative weight can make the weighted scatter indefinite."
             )
 
 
@@ -301,7 +302,7 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     Raises:
         ValueCheckError: if the points do not determine a line — fewer than two points,
-            all points identical, or (with weights) a zero weight sum.
+            all points identical, or (with weights) a zero weight sum or a negative weight.
 
     Example:
         >>> points = torch.rand(2, 10, 3)
