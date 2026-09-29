@@ -103,12 +103,12 @@ class TestBottomHat(BaseTester):
         with pytest.raises(TypeError):
             assert bottom_hat(sample, [0.0])
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert bottom_hat(test, kernel)
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert bottom_hat(sample, test)
 
     def test_jit(self, device, dtype):

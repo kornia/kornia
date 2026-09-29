@@ -133,12 +133,12 @@ class TestErode(BaseTester):
         with pytest.raises(TypeError):
             assert erosion(tensor, [0.0])
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert erosion(test, kernel)
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert erosion(tensor, test)
 
         with pytest.raises(ValueError, match="Unknown `border_type`"):
