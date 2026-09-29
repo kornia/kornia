@@ -329,6 +329,20 @@ def _run_onnx(module: torch.nn.Module, x: torch.Tensor) -> Any:
     return sess.run(["output"], {"input": x.numpy()})[0]
 
 
+@pytest.mark.parametrize("shape", [(1, 1, 1, 8), (1, 1, 8, 1), (1, 1, 1, 1)])
+@pytest.mark.device_agnostic
+def test_onnx_random_perspective_singleton_axis_is_identity_5000(shape: Tuple[int, ...]) -> None:
+    """A size-1 axis exported through the legacy tracer is the identity at zero distortion, as in eager."""
+    # Start at 1: an all-zero 1x1 image cannot tell the identity from the zeros the broken export returned.
+    image = torch.arange(1, shape[-2] * shape[-1] + 1, dtype=torch.float32).reshape(shape)
+    aug = K.RandomPerspective(0.0, p=1.0).eval()
+    eager = aug(image).numpy()
+    onnx_out = _run_onnx(aug, image)
+    assert eager.shape == onnx_out.shape
+    assert float(np.abs(eager - image.numpy()).max()) < 1e-5
+    assert float(np.abs(onnx_out - eager).max()) < 1e-5
+
+
 @pytest.mark.parametrize("name,factory", ONNX_NUMERICAL_EQUIVALENT, ids=[n for n, _ in ONNX_NUMERICAL_EQUIVALENT])
 @pytest.mark.device_agnostic
 def test_onnx_export_numerically_matches_eager(name: str, factory: Callable[[], torch.nn.Module]) -> None:
