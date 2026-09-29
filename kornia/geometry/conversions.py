@@ -743,10 +743,10 @@ def _normalize_last_dim(x: torch.Tensor, eps: float) -> torch.Tensor:
 
     The arithmetic of :func:`normalize_quaternion`, shared with :meth:`kornia.geometry.vector.Vector3.normalized`,
     :meth:`kornia.geometry.vector.Vector2.normalized` and :meth:`kornia.geometry.line.ParametrizedLine.through`.
-    It matches ``torch.nn.functional.normalize(x, p=2, dim=-1, eps=eps)`` wherever the norm is nonzero. Their
+    Its values match ``torch.nn.functional.normalize(x, p=2, dim=-1, eps=eps)`` wherever the norm is nonzero. Their
     default ``eps=1e-12`` rounds to ``0`` in float16, where ``normalize`` turns a zero vector into ``0 / 0 = NaN``
-    (#4021, #5062); here a positive ``eps`` is floored at the smallest float16 subnormal (#4162), so the zero vector
-    stays zero in every dtype.
+    (#4021, #5062); here a row whose norm is exactly zero takes a separate arm (``x / eps``, or a constant zero where
+    float16 cannot hold ``1 / eps``), so with a positive ``eps`` the zero vector stays zero in every dtype.
     """
     safe_eps: float = max(eps, 5.960464477539063e-08) if x.dtype == torch.float16 and eps > 0.0 else eps
     norm = torch.linalg.vector_norm(x, ord=2, dim=-1, keepdim=True)
