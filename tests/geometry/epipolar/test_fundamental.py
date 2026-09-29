@@ -862,14 +862,15 @@ class TestConventionFundamental(BaseTester):
         F_dropped = epi.find_fundamental(x1, x2)
         self.assert_close(F_weighted, F_dropped, rtol=1e-3, atol=1e-3)
 
-    def test_wart_fundamental_from_projections_float16_overflow_4877(self, device, dtype):
-        two_view = two_view_scene(device, dtype)
-        if dtype != torch.float16:
-            pytest.skip("the overflow is float16's: bfloat16, float32 and float64 hold pixel-unit 4x4 determinants")
-        # #4877: the 4x4 determinants of pixel-unit projection matrices exceed float16's range, so F holds inf.
+    def test_fundamental_from_projections_float16_no_overflow_4877(self, device):
+        two_view = two_view_scene(device, torch.float16)
+
         F = epi.fundamental_from_projections(two_view["P1"], two_view["P2"])
+
         assert F.dtype == torch.float16
-        assert torch.isinf(F).any()
+        assert torch.isfinite(F).all()
+        assert F.abs().amax() <= 1
+
 
 
 def _rotation(axis_angle):

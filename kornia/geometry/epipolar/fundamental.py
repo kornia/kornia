@@ -758,4 +758,9 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
         dim=1,
     )
 
-    return F_vec.view(*P1.shape[:-2], 3, 3).to(input_dtype)
+    F = F_vec.view(*P1.shape[:-2], 3, 3)
+
+    if input_dtype == torch.float16:
+        F = F / F.abs().amax(dim=(-2, -1), keepdim=True)
+
+    return F.to(input_dtype)
