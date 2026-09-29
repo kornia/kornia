@@ -425,6 +425,69 @@ class TestFitLine(BaseTester):
         assert line.direction.dtype == dtype
         self.assert_close(line.direction, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
 
+    def test_fit_line_2d_is_total_least_squares_5040(self, device, dtype):
+        # #5040: the 2-D branch used to fit y-on-x ordinary least squares, several degrees off
+        # a near-vertical set that the D >= 3 branch fits correctly.
+        t = torch.tensor([-2.0, -1.3, -0.2, 0.4, 1.1, 2.7, 3.5], device=device, dtype=dtype)
+        off = torch.tensor([0.21, -0.35, 0.12, 0.30, -0.27, 0.05, -0.18], device=device, dtype=dtype)
+        u = torch.tensor([0.1, 1.0], device=device, dtype=dtype)
+        u = u / u.norm()
+        n = torch.stack([-u[1], u[0]])
+        points = torch.tensor([2.0, 0.0], device=device, dtype=dtype) + t[:, None] * u + off[:, None] * n
+
+        fit_2d = fit_line(points[None]).direction
+        points_3d = torch.cat([points, torch.zeros(len(points), 1, device=device, dtype=dtype)], -1)
+        fit_3d = fit_line(points_3d[None]).direction[..., :2]
+
+        # same line up to the arbitrary SVD sign
+        self.assert_close(fit_2d.abs(), fit_3d.abs())
+
+        if dtype == torch.float64:
+            # scaling the input must not change the fit (the old absolute 1e-8 vertical test
+            # crossed at 1e-5); below float64 the scaled input itself is not representable
+            scaled = fit_line((points * 1e-5)[None]).direction
+            self.assert_close(scaled.abs(), fit_2d.abs())
+
+    def test_fit_line_2d_symmetric_in_coordinates_5040(self, device, dtype):
+        # #5040: swapping x and y must mirror the direction, not rotate it
+        t = torch.tensor([-2.0, -1.3, -0.2, 0.4, 1.1, 2.7, 3.5], device=device, dtype=dtype)
+        off = torch.tensor([0.21, -0.35, 0.12, 0.30, -0.27, 0.05, -0.18], device=device, dtype=dtype)
+        u = torch.tensor([0.1, 1.0], device=device, dtype=dtype)
+        u = u / u.norm()
+        n = torch.stack([-u[1], u[0]])
+        points = torch.tensor([2.0, 0.0], device=device, dtype=dtype) + t[:, None] * u + off[:, None] * n
+
+        fit_2d = fit_line(points[None]).direction
+        fit_swapped = fit_line(points.flip(-1)[None]).direction
+        self.assert_close(fit_swapped, fit_2d.flip(-1))
+
+    def test_fit_line_weighted_2d_total_least_squares_5040(self, device, dtype):
+        # #5040: the weighted 2-D branch used to fit a weighted y-on-x slope; it must instead
+        # use the weighted centroid and weighted second moments like the weighted D >= 3 branch.
+        t = torch.tensor([-2.0, -1.3, -0.2, 0.4, 1.1, 2.7, 3.5], device=device, dtype=dtype)
+        off = torch.tensor([0.21, -0.35, 0.12, 0.30, -0.27, 0.05, -0.18], device=device, dtype=dtype)
+        u = torch.tensor([0.1, 1.0], device=device, dtype=dtype)
+        u = u / u.norm()
+        n = torch.stack([-u[1], u[0]])
+        points = torch.tensor([2.0, 0.0], device=device, dtype=dtype) + t[:, None] * u + off[:, None] * n
+        weights = torch.tensor([1.0, 2.0, 0.5, 1.5, 1.0, 2.0, 1.0], device=device, dtype=dtype)
+
+        line = fit_line(points[None], weights[None])
+
+        w = weights
+        x_mean = (w * points[:, 0]).sum() / w.sum()
+        y_mean = (w * points[:, 1]).sum() / w.sum()
+        dx = points[:, 0] - x_mean
+        dy = points[:, 1] - y_mean
+        sxx = (w * dx * dx).sum()
+        syy = (w * dy * dy).sum()
+        sxy = (w * dx * dy).sum()
+        theta = 0.5 * torch.atan2(2 * sxy, sxx - syy)
+        expected_direction = torch.stack([theta.cos(), theta.sin()])[None]
+
+        self.assert_close(line.direction, expected_direction)
+        self.assert_close(line.origin, torch.stack([x_mean, y_mean])[None])
+
     def test_fit_line_degenerate_raises_5041(self, device, dtype):
         # #5041: a single point, identical points, or all-zero weights used to return an
         # arbitrary-looking line ((0, 1) / (1, 0, 0) directions, a NaN origin for zero weights).

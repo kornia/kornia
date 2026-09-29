@@ -201,7 +201,17 @@ class ParametrizedLine(nn.Module):
         return res_lambda, res_point
 
 
-def _fit_line_ols_2d(points: torch.Tensor) -> ParametrizedLine:
+def _fit_line_tls_2d(points: torch.Tensor) -> ParametrizedLine:
+    """Fit a 2-D line by total least squares (#5040).
+
+    The direction is the principal axis of the centred scatter, in closed form:
+    ``theta = 0.5 * atan2(2 * sxy, sxx - syy)``, so ``theta`` lies in
+    ``[-pi / 2, pi / 2]`` and the returned direction always has a non-negative x
+    component. An exactly vertical line therefore returns ``(0, 1)``: its ``sxy``
+    is ``+0``, and ``atan2(+0, negative) = pi``. Unlike the previous ordinary
+    least squares slope, the result does not depend on which coordinate is called
+    x, and there is no absolute vertical threshold to cross by scaling the input.
+    """
     x = points[..., 0]
     y = points[..., 1]
     x_mean = x.mean(dim=-1, keepdim=True)
@@ -209,22 +219,19 @@ def _fit_line_ols_2d(points: torch.Tensor) -> ParametrizedLine:
     dx = x - x_mean
     dy = y - y_mean
 
-    denom = (dx * dx).sum(dim=-1, keepdim=True)  # (B, 1)
-    slope = torch.where(denom > 1e-8, (dx * dy).sum(dim=-1, keepdim=True) / denom, torch.zeros_like(denom))
+    sxx = (dx * dx).sum(dim=-1, keepdim=True)
+    syy = (dy * dy).sum(dim=-1, keepdim=True)
+    sxy = (dx * dy).sum(dim=-1, keepdim=True)
 
-    # For vertical lines, fallback to [0,1] direction
-    direction = torch.where(
-        denom > 1e-8,
-        torch.cat([torch.ones_like(slope), slope], dim=-1),
-        torch.tensor([0.0, 1.0], device=points.device, dtype=points.dtype).expand(points.shape[0], 2),
-    )
+    theta = 0.5 * torch.atan2(2 * sxy, sxx - syy)  # (B, 1)
+    direction = torch.cat([theta.cos(), theta.sin()], dim=-1)
 
-    direction = direction / direction.norm(dim=-1, keepdim=True)
     origin = torch.cat([x_mean, y_mean], dim=-1)
     return ParametrizedLine(origin, direction)
 
 
-def _fit_line_weighted_ols_2d(points: torch.Tensor, weights: torch.Tensor) -> ParametrizedLine:
+def _fit_line_weighted_tls_2d(points: torch.Tensor, weights: torch.Tensor) -> ParametrizedLine:
+    """Weighted 2-D total least squares: weighted centroid and weighted moments (#5040)."""
     x = points[..., 0]  # (B, N)
     y = points[..., 1]  # (B, N)
 
@@ -235,24 +242,14 @@ def _fit_line_weighted_ols_2d(points: torch.Tensor, weights: torch.Tensor) -> Pa
     dx = x - x_mean  # (B, N)
     dy = y - y_mean  # (B, N)
 
-    weighted_dx2 = weights * dx * dx
-    weighted_dxdy = weights * dx * dy
+    sxx = (weights * dx * dx).sum(dim=-1, keepdim=True)
+    syy = (weights * dy * dy).sum(dim=-1, keepdim=True)
+    sxy = (weights * dx * dy).sum(dim=-1, keepdim=True)
 
-    denom = weighted_dx2.sum(dim=-1, keepdim=True)  # (B, 1)
-    slope = weighted_dxdy.sum(dim=-1, keepdim=True) / denom  # (B, 1)
+    theta = 0.5 * torch.atan2(2 * sxy, sxx - syy)  # (B, 1)
+    direction = torch.cat([theta.cos(), theta.sin()], dim=-1)
 
-    # Replace NaNs or infs from division by zero
-    slope = torch.where(torch.isfinite(slope), slope, torch.zeros_like(slope))
-
-    # direction = F.normalize([1, slope]) or [0,1] if vertical
-    is_vertical = denom <= 1e-8
-    direction = torch.cat([torch.ones_like(slope), slope], dim=-1)  # (B, 2)
-    replacement = torch.tensor([0.0, 1.0], device=points.device, dtype=points.dtype)
-    direction[is_vertical.squeeze(-1)] = replacement
-
-    direction = direction / direction.norm(dim=-1, keepdim=True)
     origin = torch.cat([x_mean, y_mean], dim=-1)
-
     return ParametrizedLine(origin, direction)
 
 
@@ -283,7 +280,11 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
 
 
 def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
-    """Fit a line from a set of points.
+    """Fit a line from a set of points by total least squares.
+
+    The line minimises the perpendicular distances to the points, for every dimensionality.
+    For 2-D inputs the direction is computed in closed form and always has a non-negative
+    x component; higher-dimensional inputs take the principal direction of the scatter matrix.
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The expected
@@ -312,14 +313,14 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     _reject_degenerate_line(points, weights)
 
-    # Fast path: use OLS for unweighted 2D case
+    # Fast path: closed-form total least squares for the 2D case
     if D == 2:
         if weights is not None:
             KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
             KORNIA_CHECK_SHAPE(weights, ["B", "N"])
             KORNIA_CHECK(points.shape[0] == weights.shape[0])
-            return _fit_line_weighted_ols_2d(points, weights)
-        return _fit_line_ols_2d(points)
+            return _fit_line_weighted_tls_2d(points, weights)
+        return _fit_line_tls_2d(points)
 
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
