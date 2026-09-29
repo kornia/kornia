@@ -26,6 +26,7 @@ from kornia.augmentation.utils import (
     _check_positive_int_or_traced,
     _common_param_check,
     _joint_range_check,
+    _truncate_to_start,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
@@ -113,17 +114,15 @@ class CropGenerator(RandomGeneratorBase):
         x_diff = x_diff.clamp(0)
         y_diff = y_diff.clamp(0)
 
+        # The draw is scaled and floored in the draw's dtype when that is the wider one: cast to a half ``size``
+        # dtype first, a draw close to 1 rounds up to 1.0 and the start lands one past the last valid position.
         if same_on_batch:
             # If same_on_batch, select the first then repeat.
-            x_start = (
-                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(x_diff) * x_diff[0]
-            ).floor()
-            y_start = (
-                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(y_diff) * y_diff[0]
-            ).floor()
+            x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff[0])
+            y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff[0])
         else:
-            x_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(x_diff) * x_diff).floor()
-            y_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(y_diff) * y_diff).floor()
+            x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff)
+            y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff)
         crop_src = bbox_generator(
             x_start.view(-1).to(device=_device, dtype=_dtype),
             y_start.view(-1).to(device=_device, dtype=_dtype),
