@@ -689,7 +689,8 @@ def _solve_cramer_sym3x3_cuda(
     a, b, c, d, e, f, g, h, i = system.index_select(1, indices).reshape(-1, 4, 9).unbind(2)
     determinants = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     det = determinants[:, 0:1]
-    solved = det.abs() > eps
+    scale = system[:, :6].abs().amax(1, keepdim=True)
+    solved = det.abs() > eps * scale * scale * scale
     shifts = determinants[:, 1:] / torch.where(solved, det, torch.ones_like(det))
     sx, sy, ss = shifts.unbind(1)
     return sx, sy, ss, solved[:, 0]
@@ -736,12 +737,14 @@ def _solve_cramer_sym3x3(
         r0: right-hand side component along x.
         r1: right-hand side component along y.
         r2: right-hand side component along s.
-        eps: determinant magnitude below which the system is treated as singular.
+        eps: relative determinant floor. The system is treated as singular when
+            ``|det| <= eps * m**3``, where ``m`` is the largest magnitude among the
+            Hessian entries, so the test does not depend on the response amplitude.
             Near-singular systems can produce numerically unstable (huge) shifts.
 
     Returns:
         (sx, sy, ss, solved) where ``solved`` is a bool mask for well-conditioned
-        systems (``|det| > eps``).  Outputs for unsolved entries are numerically
+        systems (``|det| > eps * m**3``).  Outputs for unsolved entries are numerically
         meaningless and should be discarded by the caller.
     """
     # The packed solve indexes one batch dimension, while the scalar code below
@@ -752,7 +755,7 @@ def _solve_cramer_sym3x3(
 
     # float16 cannot carry this solve. The determinant is a product of three
     # second derivatives, so for a [0, 1] response it lands around 1e-4 and
-    # below — still above ``eps``, so ``solved`` admits it. The forward divides
+    # far below, and the relative floor admits it. The forward divides
     # by it once and stays finite, but the backward of ``num / safe_det``
     # scales by ``1 / safe_det**2``, and that square is not representable in
     # float16 (finfo.tiny is 6.1e-5), so the gradient becomes inf and reduces
@@ -767,7 +770,10 @@ def _solve_cramer_sym3x3(
     cf01 = dxy * dss - dys * dxs  # cofactor M01
     cf02 = dxy * dys - dyy * dxs  # cofactor M02
     det = dxx * cf00 - dxy * cf01 + dxs * cf02
-    solved = det.abs() > eps
+    # The determinant is cubic in the response amplitude, so the floor is relative to the largest Hessian entry:
+    # an absolute floor rejected every well-conditioned fit of a low-amplitude response.
+    scale = torch.stack((dxx.abs(), dyy.abs(), dss.abs(), dxy.abs(), dxs.abs(), dys.abs())).amax(0)
+    solved = det.abs() > eps * scale * scale * scale
     # Avoid division by zero for singular/near-singular cases; outputs are discarded via solved.
     safe_det = torch.where(solved, det, torch.ones_like(det))
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
@@ -816,14 +822,11 @@ def conv_quad_interp3d(
           indices of the input: only refined maxima move off their own grid index. At a refined maximum ``y_max`` is
           the quadratic fit's value at the refined point; non-maxima keep their input value.
         - A maximum is not refined, and keeps its grid coordinates, when the determinant of its fit's Hessian is at
-          most ``1e-7`` in magnitude, when a move would reach the border voxels, when its centre leaves the voxels
-          precomputed for ``dilation_radius``, when the final shift exceeds ``1.5`` voxels on any axis, or when it
-          still requires an integer-centre move on the last iteration. A volume with a side shorter than 3 is returned
-          unrefined.
-        - Known defect: the ``1e-7`` determinant floor is absolute while the determinant is cubic in the response
-          amplitude, so low-amplitude maxima stay unrefined, among them most keypoints of the default
-          :class:`~kornia.feature.ScaleSpaceDetector` on a ``[0, 1]`` image
-          (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
+          most ``1e-7 * m**3`` in magnitude, where ``m`` is the largest magnitude among the Hessian entries (so the
+          test does not depend on the response amplitude), when a move would reach the border voxels, when its centre
+          leaves the voxels precomputed for ``dilation_radius``, when the final shift exceeds ``1.5`` voxels on any
+          axis, or when it still requires an integer-centre move on the last iteration. A volume with a side shorter
+          than 3 is returned unrefined.
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.

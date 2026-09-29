@@ -428,7 +428,7 @@ def _quadratic_dog(
 
 
 class TestSIFTScaleSpaceDetector(BaseTester):
-    @pytest.mark.parametrize("case", ["random", "quadratic", "singular", "outside"])
+    @pytest.mark.parametrize("case", ["random", "quadratic", "singular", "outside", "ramp", "flat_scale", "saddle"])
     def test_cuda_refinement_matches_reference(self, device, dtype, case):
         if device.type not in ("cpu", "cuda"):
             pytest.skip("CUDA implementation; CPU checks its arithmetic against the reference")
@@ -448,6 +448,18 @@ class TestSIFTScaleSpaceDetector(BaseTester):
             # fixed-trip CUDA iterations must not introduce NaNs in backward.
             dog.fill_(float("nan"))
             s = index * 0 - 1
+        elif case in ("ramp", "flat_scale", "saddle"):
+            # A steep x ramp under a shallow cap: normalised by the gradient, the Hessian is small, and its tiny scale
+            # curvature puts the determinant on the other side of the relative floor of #5065 from a variant rule.
+            # "ramp" is solved where an absolute floor, or a floor on m**2, rejects it; "flat_scale" and "saddle" are
+            # rejected where a floor that leaves the diagonal or the (largest) off-diagonal term out of m solves them.
+            # float64 resolves these determinants; in float32 the scale curvature rounds away on both paths alike.
+            yy, xx = torch.meshgrid(torch.arange(32, dtype=dtype), torch.arange(32, dtype=dtype), indexing="ij")
+            scale_curvature = {"ramp": 1e-5, "flat_scale": 1e-8, "saddle": 5e-8}[case]
+            dog = _quadratic_dog(torch.device("cpu"), dtype, 1e-3, (scale_curvature, 1.0, 1.0)) + xx
+            if case == "saddle":
+                dog = dog + 8e-3 * (xx - 11.2) * (yy - 10.3)
+            s, y, x = index * 0 + 2, index % 3 + 9, index % 4 + 10
         reference_image = dog.clone().requires_grad_()
         image = dog.to(device).requires_grad_()
         detector = _SIFTScaleSpaceDetector(24, nn.Identity())
