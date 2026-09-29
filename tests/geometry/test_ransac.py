@@ -2266,6 +2266,50 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert recoveries  # the recovery drew
         assert torch.equal(torch.get_rng_state(), state)
 
+    def test_repeated_plane_is_searched_once(self, device, dtype, monkeypatch):
+        # Every degenerate record setter of a dominant plane finds the same plane (the refined planes of repeated
+        # recoveries have Jaccard index 0.997-1.0 on these scenes), and nine searches of it per call made DEGENSAC
+        # eleven times slower than plain RANSAC; VSAC skips a model whose inliers repeat (Jaccard index 0.95).
+        _skip_half(dtype)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0, seed=0)
+        x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        generator = torch.Generator().manual_seed(4)
+        samples = torch.stack([_degenerate_sample(labels, generator) for _ in range(8)]).to(device)
+        models, rows = ransac._lm_minimal_models(x1[samples], x2[samples])
+        scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
+        scores = scores.masked_fill(counts <= 7, -1.0)
+        records = [
+            record
+            for record in RANSAC._raw_record_setters(scores.cpu(), -1.0)
+            if _h_degenerate_sample(
+                models[record].cpu().double(),
+                x1_host[samples[rows][record].cpu()],
+                x2_host[samples[rows][record].cpu()],
+                3 * threshold,
+            )
+            is not None
+        ]
+        assert len(records) >= 2  # several degenerate record setters of the same plane
+        calls = []
+        original = ransac_module._plane_parallax_search
+        monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
+        recoveries = ransac._degensac_batch(
+            models, samples[rows], scores, -1.0, x1, x2, x1_host, x2_host, basis, threshold, 0
+        )
+        assert len(calls) == 1 and len(recoveries) == 1
+
+    def test_dominant_plane_is_searched_at_most_twice_per_call(self, device, dtype, monkeypatch):
+        _skip_half(dtype)
+        calls = []
+        original = ransac_module._plane_parallax_search
+        monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
+        kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0)(kp1, kp2)
+        assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+        assert 1 <= len(calls) <= 2  # one plane; nine searches before deduplication
+
     def test_non_degenerate_sample_returns_none(self, device, dtype):
         # Seven off-plane correspondences are not always in general position at the test's tolerance: a five-point
         # homography fit leaves two redundant constraints, and five of the first seven here fit one within 2.2 px^2
@@ -2355,7 +2399,7 @@ class TestRANSACDegensac(BaseTester):
         _skip_half(dtype)
         batches = []
 
-        def stub(self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator):
+        def stub(self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator, seen_planes=None):
             batches.append(generator.initial_seed())
             models = model[None].clone()
             huge = torch.full((1,), 1e9, dtype=x1.dtype, device=x1.device)

@@ -51,6 +51,8 @@ _PP_CONFIDENCE = 0.999
 _PP_MAX_DRAWS = 20000
 _PP_MIN_SUPPORT = 4
 _PP_KEEP = 8
+# Two planes are the same when their inlier sets have a Jaccard index of at least this (VSAC's criterion for models).
+_SAME_PLANE = 0.95
 
 
 def _left_epipole(F: torch.Tensor) -> torch.Tensor:
@@ -205,6 +207,15 @@ def _inner_homography(
         return H, base
     winner = torch.stack(candidates, 1).flatten(0, 1)[best]
     return winner, errors_of(winner[None])[0]
+
+
+def _repeats_plane(plane: torch.Tensor, seen: List[torch.Tensor]) -> bool:
+    """Whether the inlier mask ``plane`` matches one in ``seen``: a Jaccard index of at least 0.95.
+
+    Every degenerate record setter of a dominant plane finds that plane again; VSAC likewise skips the local
+    optimization of a model whose inliers repeat the best one's (Ivashechkin, Barath and Matas, ICCV 2021).
+    """
+    return any(float((plane & other).sum()) >= _SAME_PLANE * float((plane | other).sum()) for other in seen)
 
 
 def _pair_draws(support: int, total: int, confidence: float) -> int:

@@ -28,7 +28,12 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry._degensac import _h_degenerate_sample, _inner_homography, _plane_parallax_search
+from kornia.geometry._degensac import (
+    _h_degenerate_sample,
+    _inner_homography,
+    _plane_parallax_search,
+    _repeats_plane,
+)
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
@@ -1048,6 +1053,7 @@ class RANSAC(nn.Module):
         basis: torch.Tensor,
         threshold: float,
         generator: Optional[torch.Generator],
+        seen_planes: Optional[List[torch.Tensor]] = None,
     ) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
         """DEGENSAC's recovery of a raw record setter (Chum, Werner and Matas, CVPR 2005; Chum's ``exp_ranF.c``).
 
@@ -1056,7 +1062,9 @@ class RANSAC(nn.Module):
         float64, NaN where not finite; ``threshold`` is the squared threshold ``t`` of that frame. When the sample is
         H-degenerate and its homography has at least 8 inliers at ``3 t``, the homography is refined (``innerH``), and
         with more than 6 plane inliers at ``16 t`` and at least 4 correspondences beyond ``100 t``, plane-and-parallax
-        models are drawn from those (:mod:`kornia.geometry._degensac`). The best-scoring one is refined like the pool,
+        models are drawn from those (:mod:`kornia.geometry._degensac`), unless ``seen_planes``, the refined planes'
+        inlier masks of the call's earlier recoveries, already holds the plane (:func:`_repeats_plane`); a new plane
+        is appended to it. The best-scoring model is refined like the pool,
         with ``max_lo_iters`` truncated Levenberg-Marquardt iterations, Chum's ``innerFH`` role, and returned alone,
         as ``rFtH`` returns one model: near-duplicates from one search would crowd the eight-model pool.
 
@@ -1073,11 +1081,18 @@ class RANSAC(nn.Module):
             return None
         rows = (torch.isfinite(x1_host).all(1) & torch.isfinite(x2_host).all(1)).nonzero().flatten()
         p1, p2 = x1_host[rows, :2], x2_host[rows, :2]
-        if int((sampson_homography_distance(p1[None], p2[None], homography[None])[0] < 3 * threshold).sum()) < 8:
+        errors = sampson_homography_distance(p1[None], p2[None], homography[None])[0]
+        planes = [] if seen_planes is None else seen_planes
+        # A plane already recovered in this call is skipped before its refinement when the sample's own homography
+        # shows it, and after when only the refined one does.
+        if int((errors < 3 * threshold).sum()) < 8 or _repeats_plane(errors <= 16 * threshold, planes):
             return None
         homography, errors = _inner_homography(homography, p1, p2, 16 * threshold, generator)
-        off_plane = errors > 100 * threshold
-        if int((errors <= 16 * threshold).sum()) <= 6 or int(off_plane.sum()) < 4:
+        plane, off_plane = errors <= 16 * threshold, errors > 100 * threshold
+        if _repeats_plane(plane, planes):
+            return None
+        planes.append(plane)
+        if int(plane.sum()) <= 6 or int(off_plane.sum()) < 4:
             return None
         off_rows = rows[off_plane].to(x1.device)
         found = _plane_parallax_search(
@@ -1147,6 +1162,7 @@ class RANSAC(nn.Module):
         basis: torch.Tensor,
         threshold: float,
         iteration: int,
+        seen_planes: Optional[List[torch.Tensor]] = None,
     ) -> List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
         """DEGENSAC's recoveries of a batch's raw record setters, in draw order (:meth:`_raw_record_setters`).
 
@@ -1158,10 +1174,11 @@ class RANSAC(nn.Module):
         """
         generator = torch.Generator()
         generator.manual_seed((self.seed or 0) + 2 * self.sample_budget + iteration)
+        planes = [] if seen_planes is None else seen_planes
         recoveries = []
         for record in self._raw_record_setters(scores.cpu(), prior):
             recovered = self._degensac_recover(
-                models[record], samples[record], x1, x2, x1_host, x2_host, basis, threshold, generator
+                models[record], samples[record], x1, x2, x1_host, x2_host, basis, threshold, generator, planes
             )
             if recovered is not None:
                 recoveries.append(recovered)
@@ -1215,6 +1232,7 @@ class RANSAC(nn.Module):
         # best_score is the incumbent's, over raw and recovered models (maxS).
         degensac = self.degensac and m == 7
         best_minimal_score = -1.0
+        seen_planes: List[torch.Tensor] = []
         max_samples, drawn, iteration = budget, 0, 0
         while drawn < max_samples:
             current = min(batch, max_samples - drawn)
@@ -1254,6 +1272,7 @@ class RANSAC(nn.Module):
                 basis,
                 threshold,
                 batch_iteration,
+                seen_planes,
             )
             best_minimal_score = scores[best]
             for recovered_models, recovered_scores, recovered_counts, recovered_masks in recoveries:
