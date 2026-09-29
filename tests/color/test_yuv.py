@@ -531,13 +531,16 @@ class TestRgbToYuv422(BaseTester):
 
     @pytest.mark.parametrize("height", [1, 3, 5])
     def test_odd_height(self, device, dtype, height):
-        rgb = _seeded_rand(2, 3, height, 4, seed=4224).to(device=device, dtype=dtype)
-        full = kornia.color.rgb_to_yuv(rgb)
-        expected_uv = full[..., 1:, :, :].unfold(-1, 2, 2).mean(-1)
+        # 4:2:2 pairs columns within a row, so an odd height is valid. Oracle as in test_unit_subsampling.
+        rgb = _seeded_rand(2, 3, height, 4, seed=4224)
+        reference = _rgb_to_yuv_reference(rgb)
+        expected_uv = reference[..., 1:, :, :].reshape(2, 2, height, 2, 2).mean(-1)
+        atol = _unit_atol(_FORWARD_ATOL, dtype)
+        rgb = rgb.to(device=device, dtype=dtype)
 
         y, uv = kornia.color.rgb_to_yuv422(rgb)
-        self.assert_close(y, full[..., :1, :, :])
-        self.assert_close(uv, expected_uv)
+        self.assert_close(y, reference[..., :1, :, :].to(device=device, dtype=dtype), atol=atol, rtol=0.0)
+        self.assert_close(uv, expected_uv.to(device=device, dtype=dtype), atol=atol, rtol=0.0)
         module_y, module_uv = kornia.color.RgbToYuv422()(rgb)
         self.assert_close(module_y, y)
         self.assert_close(module_uv, uv)
@@ -937,13 +940,15 @@ class TestYuv422ToRgb(BaseTester):
 
     @pytest.mark.parametrize("height", [1, 3, 5])
     def test_odd_height(self, device, dtype, height):
-        y = _seeded_yuv(2, 3, height, 4, seed=4225)[:, :1].to(device=device, dtype=dtype)
-        uv = _seeded_yuv(2, 3, height, 2, seed=4226)[:, 1:].to(device=device, dtype=dtype)
-        full = torch.cat([y, uv.repeat_interleave(2, dim=-1)], dim=-3)
-        expected = kornia.color.yuv_to_rgb(full)
+        # Chroma column k covers luma columns 2k and 2k + 1 of its own row. Oracle as in test_unit_upsampling.
+        y = _seeded_yuv(2, 3, height, 4, seed=4225)[:, :1]
+        uv = _seeded_yuv(2, 3, height, 2, seed=4226)[:, 1:]
+        expected = _yuv_to_rgb_reference(torch.cat([y, uv[..., torch.arange(4) // 2]], dim=-3))
+        y, uv = y.to(device=device, dtype=dtype), uv.to(device=device, dtype=dtype)
 
         rgb = kornia.color.yuv422_to_rgb(y, uv)
-        self.assert_close(rgb, expected)
+        atol = _unit_atol(_INVERSE_ATOL, dtype)
+        self.assert_close(rgb, expected.to(device=device, dtype=dtype), atol=atol, rtol=0.0)
         self.assert_close(kornia.color.Yuv422ToRgb()(y, uv), rgb)
 
     def test_forth_and_back(self, device, dtype):
