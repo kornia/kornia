@@ -392,6 +392,28 @@ class TestConvSoftArgmax2d(BaseTester):
         expected = torch.tensor([float(col), float(row)], device=device, dtype=dtype)[:, None]
         self.assert_close(coords[0, 0][:, holds_peak], expected.expand(2, n), atol=1e-4, rtol=1e-4)
 
+    def test_window_centre_rounds_once_on_wide_maps(self, device, dtype):
+        # On a flat map every full window reports its own centre. The padded centre grid is offset before its cast,
+        # so a bfloat16 column is rounded once, as on an unpadded grid: offsetting after the cast rounded twice and
+        # moved columns above 256 by one bfloat16 step (column 256 read 255).
+        data = torch.zeros(1, 1, 3, 600, device=device, dtype=dtype)
+        coords = kornia.geometry.subpix.conv_soft_argmax2d(data, (3, 3), (1, 1), (1, 1), normalized_coordinates=False)
+        expected = torch.arange(1, 599, device=device, dtype=torch.float32).to(dtype)
+        self.assert_close(coords[0, 0, 0, 1, 1:-1], expected, rtol=0, atol=0)
+
+    def test_int_padding_matches_tuple(self, device, dtype):
+        data = torch.zeros(1, 1, 5, 9, device=device, dtype=dtype)
+        data[0, 0, 2, 8] = 5.0
+        data[0, 0, 0, 0] = 3.0
+        for kernel_size, padding in (((4, 4), 2), ((3, 3), 1)):
+            expected = kornia.geometry.subpix.conv_soft_argmax2d(
+                data, kernel_size, (1, 1), (padding, padding), normalized_coordinates=False
+            )
+            actual = kornia.geometry.subpix.conv_soft_argmax2d(
+                data, kernel_size, (1, 1), padding, normalized_coordinates=False
+            )
+            self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("temperature", [0.0, float("nan"), "tensor"])
     @pytest.mark.parametrize(
         "op, shape", [("conv_soft_argmax2d", (1, 1, 3, 3)), ("conv_soft_argmax3d", (1, 1, 3, 3, 3))]
@@ -608,6 +630,18 @@ class TestConvSoftArgmax3d(BaseTester):
         # channels are (depth, x, y)
         expected = torch.tensor([float(lev), float(col), float(row)], device=device, dtype=dtype)[:, None]
         self.assert_close(coords[0, 0][:, holds_peak], expected.expand(3, n), atol=1e-4, rtol=1e-4)
+
+    def test_int_padding_matches_tuple(self, device, dtype):
+        if not supports_avg_pool3d(device, dtype):
+            pytest.skip(f"torch has no avg_pool3d kernel for {device.type} {dtype}")
+        data = torch.zeros(1, 1, 4, 5, 7, device=device, dtype=dtype)
+        data[0, 0, 3, 4, 6] = 5.0
+        data[0, 0, 0, 0, 0] = 3.0
+        for kernel_size, padding in (((2, 2, 2), 1), ((3, 3, 3), 1)):
+            expected = kornia.geometry.subpix.conv_soft_argmax3d(data, kernel_size, (1, 1, 1), (padding,) * 3)
+            actual = kornia.geometry.subpix.conv_soft_argmax3d(data, kernel_size, (1, 1, 1), padding)
+            for got, want in zip(actual, expected):
+                self.assert_close(got, want, rtol=0, atol=0)
 
 
 class TestConvQuadInterp3dModule(BaseTester):

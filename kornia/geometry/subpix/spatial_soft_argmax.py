@@ -411,10 +411,12 @@ def conv_soft_argmax2d(
     # We need to output also coordinates
     # Pooled window center coordinates. The grid covers the padded input and carries the coordinates on into the
     # padding: with an even kernel_size and padding = k / 2, a border window's centre straddles a padded pixel,
-    # and a zero-padded grid would average 0 into it instead of -1 or W.
+    # and a zero-padded grid would average 0 into it instead of -1 or W. The offset is applied before the cast, so a
+    # float16 or bfloat16 coordinate is rounded once, as on an unpadded grid.
     py, px = (padding, padding) if isinstance(padding, int) else padding
-    grid_global: torch.Tensor = create_meshgrid(h + 2 * py, w + 2 * px, False, device).to(dtype)
-    grid_global = (grid_global - torch.tensor([px, py], device=device, dtype=dtype)).permute(0, 3, 1, 2)
+    grid_global: torch.Tensor = create_meshgrid(h + 2 * py, w + 2 * px, False, device)
+    grid_global = grid_global - torch.tensor([px, py], device=device, dtype=grid_global.dtype)
+    grid_global = grid_global.to(dtype).permute(0, 3, 1, 2)
 
     grid_global_pooled = F.conv2d(grid_global, center_kernel, stride=stride)
 
@@ -540,9 +542,10 @@ def conv_soft_argmax3d(
     # We need to output also coordinates
     # Pooled window center coordinates, over the padded input as in conv_soft_argmax2d
     pz, py, px = (padding, padding, padding) if isinstance(padding, int) else padding
-    grid_global: torch.Tensor = create_meshgrid3d(d + 2 * pz, h + 2 * py, w + 2 * px, False, device=device).to(dtype)
+    grid_global: torch.Tensor = create_meshgrid3d(d + 2 * pz, h + 2 * py, w + 2 * px, False, device=device)
     # channels are (depth, x, y)
-    grid_global = (grid_global - torch.tensor([pz, px, py], device=device, dtype=dtype)).permute(0, 4, 1, 2, 3)
+    grid_global = grid_global - torch.tensor([pz, px, py], device=device, dtype=grid_global.dtype)
+    grid_global = grid_global.to(dtype).permute(0, 4, 1, 2, 3)
 
     grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride)
 
