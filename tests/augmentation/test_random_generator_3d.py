@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from unittest.mock import patch
 
 import pytest
@@ -201,6 +202,50 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys()
         assert_close(res["start_points"], expected["start_points"], atol=1e-4, rtol=1e-4)
         assert_close(res["end_points"], expected["end_points"], atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("depth,height,width", [(1, 4, 4), (4, 1, 4), (4, 4, 1), (1, 1, 1), (2, 3, 5)])
+    @pytest.mark.device_agnostic
+    def test_traced_singleton_axis_5110(self, depth, height, width):
+        # #5110: torch.jit.trace passes the sizes as 0-d tensors, so the size-1 rule of #5071 has to be tensor
+        # arithmetic to reach the graph: a unit source extent and no corner offset along that axis. Every other axis
+        # keeps the eager extent, so the traced parameters equal the eager ones for the same seed.
+        class _Params(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.generator = PerspectiveGenerator3D(torch.tensor(1.0))
+
+            def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                params = self.generator(x.shape)
+                return params["start_points"], params["end_points"]
+
+        volume = torch.zeros(2, 1, depth, height, width)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(_Params(), volume, check_trace=False)
+        torch.manual_seed(0)
+        start, end = traced(volume)
+        torch.manual_seed(0)
+        eager = PerspectiveGenerator3D(torch.tensor(1.0))(volume.shape)
+
+        x_end, y_end, z_end = max(width - 1, 1), max(height - 1, 1), max(depth - 1, 1)
+        expected = torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [x_end, 0.0, 0.0],
+                [x_end, y_end, 0.0],
+                [0.0, y_end, 0.0],
+                [0.0, 0.0, z_end],
+                [x_end, 0.0, z_end],
+                [x_end, y_end, z_end],
+                [0.0, y_end, z_end],
+            ]
+        ).expand(2, 8, 3)
+        assert torch.equal(start, expected)
+        assert torch.equal(start, eager["start_points"])
+        assert torch.equal(end, eager["end_points"])
+        for axis, size in ((0, width), (1, height), (2, depth)):
+            if size == 1:
+                assert torch.equal(end[..., axis], start[..., axis])
 
 
 class TestRandomAffineGen3D(RandomGeneratorBaseTests):

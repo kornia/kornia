@@ -20,6 +20,7 @@ from typing import Dict, Tuple, Union
 import torch
 from torch.distributions import Uniform
 
+from kornia.augmentation.random_generator._2d.perspective import _as_scalar_tensor, _source_end_and_extent
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
@@ -73,35 +74,49 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
 
         # Coincident source corners make the perspective solve singular. Give singleton axes a
-        # unit extent and no offset, as in the 2D generator.
-        flat_x = isinstance(width, int) and width == 1
-        flat_y = isinstance(height, int) and height == 1
-        flat_z = isinstance(depth, int) and depth == 1
-        x_end = 1 if flat_x else width - 1
-        y_end = 1 if flat_y else height - 1
-        z_end = 1 if flat_z else depth - 1
+        # unit extent and no offset, as in the 2D generator. torch.jit.trace passes the sizes as
+        # 0-d tensors, and the helper keeps the rule as tensor arithmetic there (#5110).
+        x_end, x_extent = _source_end_and_extent(width)
+        y_end, y_extent = _source_end_and_extent(height)
+        z_end, z_extent = _source_end_and_extent(depth)
 
-        start_points: torch.Tensor = _constant_tensor(
-            [
+        if isinstance(x_end, torch.Tensor) or isinstance(y_end, torch.Tensor) or isinstance(z_end, torch.Tensor):
+            # _constant_tensor is specified for Python scalars only, so build the corners from the traced sizes.
+            x = _as_scalar_tensor(x_end, _device, _dtype)
+            y = _as_scalar_tensor(y_end, _device, _dtype)
+            z = _as_scalar_tensor(z_end, _device, _dtype)
+            zero = torch.zeros((), device=_device, dtype=_dtype)
+            start_points = torch.stack(
                 [
-                    [0, 0, 0],
-                    [x_end, 0, 0],
-                    [x_end, y_end, 0],
-                    [0, y_end, 0],
-                    [0, 0, z_end],
-                    [x_end, 0, z_end],
-                    [x_end, y_end, z_end],
-                    [0, y_end, z_end],
-                ]
-            ],
-            device=_device,
-            dtype=_dtype,
-        ).expand(batch_size, -1, -1)
+                    torch.stack([zero, x, x, zero, zero, x, x, zero]),
+                    torch.stack([zero, zero, y, y, zero, zero, y, y]),
+                    torch.stack([zero, zero, zero, zero, z, z, z, z]),
+                ],
+                dim=-1,
+            ).unsqueeze(0)
+        else:
+            start_points = _constant_tensor(
+                [
+                    [
+                        [0, 0, 0],
+                        [x_end, 0, 0],
+                        [x_end, y_end, 0],
+                        [0, y_end, 0],
+                        [0, 0, z_end],
+                        [x_end, 0, z_end],
+                        [x_end, y_end, z_end],
+                        [0, y_end, z_end],
+                    ]
+                ],
+                device=_device,
+                dtype=_dtype,
+            )
+        start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        fx = self._distortion_scale * (0 if flat_x else width) / 2
-        fy = self._distortion_scale * (0 if flat_y else height) / 2
-        fz = self._distortion_scale * (0 if flat_z else depth) / 2
+        fx = self._distortion_scale * x_extent / 2
+        fy = self._distortion_scale * y_extent / 2
+        fz = self._distortion_scale * z_extent / 2
 
         factor = torch.stack([fx, fy, fz], 0).view(-1, 1, 3).to(device=_device, dtype=_dtype)
 
