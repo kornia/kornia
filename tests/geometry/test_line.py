@@ -491,6 +491,13 @@ class TestFitLine(BaseTester):
                 fit_line(points, torch.tensor([[1.0, 0.0, 3.0]], device=device, dtype=dtype))
             fit_line(points, torch.tensor([[1.0, 0.5, 3.0]], device=device, dtype=dtype))
 
+        # Two points with positive weight that differ in one coordinate only are distinct: they give the vertical
+        # line in 2-D and the line along z in 3-D.
+        axis_3d = torch.tensor([[[1.0, 2.0, 3.0], [9.0, 9.0, 9.0], [1.0, 2.0, 4.0]]], device=device, dtype=dtype)
+        for points, direction in ((axis_3d[..., [0, 2]], [0.0, 1.0]), (axis_3d, [0.0, 0.0, 1.0])):
+            line = fit_line(points, torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype))
+            self.assert_close(line.direction.abs(), torch.tensor([direction], device=device, dtype=dtype))
+
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
         # on identical points returns what an eager call returns with checks disabled.
