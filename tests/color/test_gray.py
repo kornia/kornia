@@ -244,6 +244,24 @@ class TestRgbToGrayscale(BaseTester):
         gray_fcn = kornia.color.rgb_to_grayscale
         assert_close(gray_ops(img), gray_fcn(img))
 
+    def test_module_default_weights_are_the_functional_defaults_5109(self, device, dtype):
+        # The module stored float32 default weights and passed them explicitly, so rgb_to_grayscale cast them to the
+        # image: a float64 image got float32-rounded weights (up to 1.2e-8 off). It now leaves None to the functional,
+        # so the two outputs are identical (#5109).
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        assert torch.equal(kornia.color.RgbToGrayscale()(img), kornia.color.rgb_to_grayscale(img))
+        rgb_weights = torch.tensor([0.5, 0.25, 0.25], device=device, dtype=dtype)
+        out = kornia.color.RgbToGrayscale(rgb_weights)(img)
+        assert torch.equal(out, kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights))
+
+    def test_module_uint8_is_not_all_zeros_5109(self, device):
+        # The float32 default weights cast to uint8 were [0, 0, 0], so every uint8 image came back all zeros (#5109).
+        img = torch.arange(120, device=device, dtype=torch.uint8).reshape(2, 3, 4, 5)
+        out = kornia.color.RgbToGrayscale()(img)
+        assert out.dtype == torch.uint8
+        assert torch.equal(out, kornia.color.rgb_to_grayscale(img))
+        assert out.count_nonzero() > 0
+
 
 class TestBgrToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
