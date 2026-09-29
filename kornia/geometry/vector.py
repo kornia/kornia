@@ -18,10 +18,10 @@
 from typing import Optional, Tuple, Union, cast
 
 import torch
-import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.tensor_wrapper import TensorWrapper, _wrap  # type: ignore[attr-defined]
+from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
 
 __all__ = ["Scalar", "Vector2", "Vector3"]
@@ -71,7 +71,7 @@ class Vector3(TensorWrapper):
             The last dimension is normalized with the L2 norm, so each
             ``(x, y, z)`` vector has length one when the input norm is nonzero.
         """
-        return Vector3(F.normalize(self.data, p=2, dim=-1))
+        return Vector3(_normalize_last_dim(self.data, 1e-12))
 
     def dot(self, right: "Vector3") -> Scalar:
         """Compute dot products with another 3D vector wrapper.
@@ -204,7 +204,7 @@ class Vector2(TensorWrapper):
             The last dimension is normalized so each ``(x, y)`` vector has
             length one when the input norm is nonzero.
         """
-        return Vector2(F.normalize(self.data, p=2, dim=-1))
+        return Vector2(_normalize_last_dim(self.data, 1e-12))
 
     def dot(self, right: "Vector2") -> Scalar:
         """Compute dot products with another 2D vector wrapper.
