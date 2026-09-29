@@ -466,9 +466,7 @@ class TestFitLine(BaseTester):
         # #5106: a negative weight is accepted by the sum check but makes the weighted scatter indefinite, so
         # the 2-D and the D >= 3 branches disagree by 90 degrees. Rejected like any other degenerate row.
         negative = torch.tensor([[1.0, -3.0, 1.0, 2.0]], device=device, dtype=dtype)
-        points_5106 = torch.tensor(
-            [[[0.0, 0.0], [1.0, 0.4], [2.5, 0.9], [3.0, 2.0]]], device=device, dtype=dtype
-        )
+        points_5106 = torch.tensor([[[0.0, 0.0], [1.0, 0.4], [2.5, 0.9], [3.0, 2.0]]], device=device, dtype=dtype)
         with pytest.raises(ValueCheckError, match="non-negative weights"):
             fit_line(points_5106, negative)
 
