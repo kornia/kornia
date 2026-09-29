@@ -33,6 +33,7 @@ import kornia
 from kornia.core._compat import torch_version_lt
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.epipolar.numeric import matrix_cofactor_tensor
+from kornia.geometry.line import fit_line
 
 # Every tensor here is created device-free and fed to onnxruntime as numpy: the work is CPU-bound
 # whatever ``--device`` says, so the accelerator legs must not repeat it.
@@ -146,6 +147,26 @@ def _cases():
                 torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]]),
             ),
             id="depth_from_plane_equation_grazing",
+        ),
+        pytest.param(
+            # An exactly vertical row: the exported atan2 returns -pi for atan2(+0, negative), where eager returns
+            # +pi, so the fit computes theta from atan2(-0, negative), which both return as -pi (#5040). The eager
+            # line stores its origin and direction as parameters, hence the detach.
+            _Fn(
+                lambda p, w: tuple(
+                    t.detach() for line in (fit_line(p), fit_line(p, w)) for t in (line.origin, line.direction)
+                )
+            ),
+            (
+                torch.stack(
+                    [
+                        torch.stack([torch.full((7,), 0.7), torch.linspace(0.1, 0.7, 7)], -1),
+                        torch.stack([torch.linspace(0.0, 3.0, 7), torch.linspace(1.0, -1.0, 7) ** 2], -1),
+                    ]
+                ),
+                torch.rand(2, 7) + 0.5,
+            ),
+            id="fit_line_2d_vertical",
         ),
     ]
 
