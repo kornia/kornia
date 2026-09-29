@@ -754,7 +754,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         ):
             with pytest.raises(NotImplementedError):
                 handler(data, aug._params, aug.flags, transform=aug.transform_matrix)
-        for key, data in (("bbox_xyxy", boxes), ("keypoints", keypoints)):
+        for key, data in (("mask", image), ("bbox_xyxy", boxes), ("keypoints", keypoints)):
             with pytest.raises(NotImplementedError):
                 K.AugmentationSequential(aug, data_keys=["input", key])(image, data)
 
@@ -793,7 +793,8 @@ class TestConventionAugmentationBase2D(BaseTester):
 
     @pytest.mark.parametrize("p", [0.0, 1.0])
     @pytest.mark.parametrize("as_objects", [False, True])
-    def test_container_dispatches_custom_rigid_annotations_4481(self, device, dtype, p, as_objects):
+    def test_convention_container_dispatches_custom_rigid_annotations_4481(self, device, dtype, p, as_objects):
+        # Every handler reads the matrix the container passes, so a handler called with ``transform=None`` fails.
         class ShiftRight(K.RigidAffineAugmentationBase2D):
             def compute_transformation(self, input, params, flags):
                 matrix = self.identity_matrix(input).clone()
@@ -803,6 +804,12 @@ class TestConventionAugmentationBase2D(BaseTester):
             def apply_transform(self, input, params, flags, transform=None):
                 return input.roll(1, dims=-1)
 
+            def apply_non_transform_mask(self, input, params, flags, transform=None):
+                return input
+
+            def apply_transform_mask(self, input, params, flags, transform=None):
+                return input.roll(int(transform[0, 0, 2]), dims=-1)
+
             def apply_transform_box(self, input, params, flags, transform=None):
                 return input.transform_boxes_(transform)
 
@@ -811,21 +818,35 @@ class TestConventionAugmentationBase2D(BaseTester):
 
         image = torch.zeros(1, 1, 4, 5, device=device, dtype=dtype)
         image[0, 0, 1, 1] = 1.0
+        mask = image.clone()
         boxes = Boxes.from_tensor(torch.tensor([[[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
         keypoints = Keypoints(torch.tensor([[[1.0, 1.0]]], device=device, dtype=dtype))
         augmentation = ShiftRight(p=p)
-        sequence = K.AugmentationSequential(augmentation, data_keys=["input", "bbox_xyxy", "keypoints"])
+        sequence = K.AugmentationSequential(augmentation, data_keys=["input", "mask", "bbox_xyxy", "keypoints"])
         box_input = boxes if as_objects else boxes.to_tensor("xyxy")
         keypoint_input = keypoints if as_objects else keypoints.data
-        output_image, output_boxes, output_keypoints = sequence(image, box_input, keypoint_input)
+        output_image, output_mask, output_boxes, output_keypoints = sequence(image, mask, box_input, keypoint_input)
 
         expected_boxes = boxes.to_tensor("xyxy") + torch.tensor([p, 0.0, p, 0.0], device=device, dtype=dtype)
+        expected_keypoints = keypoints.data + torch.tensor([p, 0.0], device=device, dtype=dtype)
         actual_boxes = output_boxes.to_tensor("xyxy") if isinstance(output_boxes, Boxes) else output_boxes
         actual_keypoints = output_keypoints.data if isinstance(output_keypoints, Keypoints) else output_keypoints
         self.assert_close(output_image, image.roll(int(p), dims=-1))
+        self.assert_close(output_mask, output_image)
         self.assert_close(actual_boxes, expected_boxes)
-        self.assert_close(actual_keypoints, keypoints.data + torch.tensor([p, 0.0], device=device, dtype=dtype))
+        self.assert_close(actual_keypoints, expected_keypoints)
         self.assert_close(sequence.transform_matrix[:, 0, 2], torch.tensor([p], device=device, dtype=dtype))
+        # A direct call with the same parameters and matrix agrees with the container.
+        params, flags, transform = augmentation._params, augmentation.flags, augmentation.transform_matrix
+        self.assert_close(
+            augmentation.transform_boxes(boxes, params, flags, transform).to_tensor("xyxy"), expected_boxes
+        )
+        self.assert_close(
+            augmentation.transform_keypoints(keypoints, params, flags, transform).data, expected_keypoints
+        )
+        # A list of masks takes the per-entry path, which passes the matrix too.
+        _, output_masks = K.AugmentationSequential(augmentation, data_keys=["input", "mask"])(image, [mask[0]])
+        self.assert_close(output_masks[0], output_image)
 
     def test_convention_random_erasing_also_erases_container_masks(self, device, dtype):
         image = torch.ones(1, 1, 6, 8, device=device, dtype=dtype)

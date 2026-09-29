@@ -427,7 +427,9 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if extra_args is None:
             extra_args = {}
 
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+            module, K.IntensityAugmentationBase2D
+        ):
             extra_args = cls._mask_extra_args(module, extra_args)
             input = module.transform_masks(
                 input,
@@ -482,7 +484,9 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         """
         if extra_args is None:
             extra_args = {}
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+            module, K.IntensityAugmentationBase2D
+        ):
             extra_args = cls._mask_extra_args(module, extra_args)
             tfm_input = []
             params = cls.get_instance_module_param(param)
