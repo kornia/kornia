@@ -657,6 +657,7 @@ class TestQuarticSolver(BaseTester):
 
     def test_random(self, device, dtype):
         # Generate random roots and construct coefficients to ensure valid solutions exist
+        torch.manual_seed(0)
         B = 10
         true_roots = torch.randn(B, 4, device=device, dtype=dtype)
 
@@ -692,6 +693,31 @@ class TestQuarticSolver(BaseTester):
         # Since we synthesized the coefficients from real roots, we expect
         # to recover exactly those roots (no complex outputs).
         self.assert_close(computed_roots_sorted, true_roots_sorted, atol=1e-3, rtol=1e-3)
+
+    def test_wart_close_real_roots_float32_precision_4906(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("float64 recovers this row exactly; only float32 loses resolvent-cubic precision here")
+        # #4906: from torch.manual_seed(95); torch.randn(10, 4) (see the issue repro), the worst row of that
+        # batch. Its resolvent cubic (Ferrari's method) has a discriminant of ~2.3e-11 -- close enough to the
+        # real/complex-pair boundary that the ~1e-6-level rounding in computing the resolvent coefficients in
+        # float32 (not inside solve_cubic, which solves whichever cubic it's given correctly either way) flips
+        # which side of that boundary it lands on: float64 finds 3 close real resolvent roots, float32 only 1.
+        # This is inherent conditioning near a near-repeated root, not a fixable branch in the solver, so the
+        # bound here is wide and documents today's ceiling rather than asserting numerical precision.
+        # Measured max error vs the true roots: ~3e-4 on Linux/Windows CPU, ~1.6e-2 on macOS arm64 (#4906's own
+        # report) -- the tolerance is set well above the worse of the two, not the locally-measured value.
+        coeffs = torch.tensor(
+            [[1.0, 4.462162017822266, 7.442312240600586, 5.498605728149414, 1.5184011459350586]],
+            device=device,
+            dtype=dtype,
+        )
+        true_roots = torch.tensor(
+            [[-1.2491413354873657, -1.192849040031433, -1.0452626943588257, -0.9749088287353516]],
+            device=device,
+            dtype=dtype,
+        )
+        out = solver.solve_quartic(coeffs).sort(-1).values
+        self.assert_close(out, true_roots.sort(-1).values, atol=0.1, rtol=0.1)
 
     @pytest.mark.parametrize(
         "coeffs, expected_solutions",
