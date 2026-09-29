@@ -1869,7 +1869,7 @@ class TestRANSACLevenbergMarquardt(BaseTester):
     def test_auto_batches_grow_on_cpu_and_cover_the_budget(self, device, model_type, max_samples, expected):
         if device.type != "cpu":
             pytest.skip("the CPU batch schedule")
-        # confidence=1 draws the whole budget: geometric growth, with the last batch cut to the budget.
+        # confidence=1 draws the whole budget: batches double from the first one, the last is cut to the budget.
         kp1, kp2, _, _, _ = _scene(model_type, 100, 30, 0.5, seed=7)
         ransac = RANSAC(model_type, max_samples=max_samples, confidence=1.0, seed=0)
         sizes = []

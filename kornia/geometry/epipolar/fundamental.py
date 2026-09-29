@@ -401,9 +401,10 @@ def _refine_fundamental_lm(
     iteration takes the residuals and their Jacobian from two matrix products with per-correspondence monomials.
     ``x1`` and ``x2`` are homogeneous ``(N, 3)`` points, normalized by the caller. ``loss`` is ``"truncated"`` or
     ``"cauchy"`` with squared scale ``scale2``; ``mask`` (``(K, N)``) restricts each model to its correspondences. A
-    step is kept only if it lowers the cost. For RANSAC, under ``torch.no_grad``. On CPU, a singleton boolean mask
-    compacts its correspondences, and the last trial evaluates only the cost: its Jacobian and updated optimizer
-    state would not be used. Earlier iterations keep fused residual and Jacobian evaluation for small model batches.
+    step is kept only if it lowers the cost. For RANSAC, under ``torch.no_grad``. On CPU with gradients disabled, a
+    singleton boolean mask compacts its correspondences, and the last trial evaluates only the cost: its Jacobian and
+    updated optimizer state would not be used. Earlier iterations keep fused residual and Jacobian evaluation for small
+    model batches.
     """
     K = F.shape[0]
     dtype, device = F.dtype, F.device

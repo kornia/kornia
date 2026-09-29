@@ -62,11 +62,18 @@ class TestRANSACRefinementCPU(BaseTester):
     @pytest.mark.parametrize("iterations", [1, 3, 20])
     def test_matches_differentiable_refinement(self, device, dtype, model, loss, iterations):
         refine, matrix, x1, x2 = self.scene(device, dtype, model)
+        # Sixteen starts, perturbed from the scene's model with per-entry deviations from 0.01 to 1. From the far ones
+        # some last trials raise the cost and the reference rejects them, so a shortcut that accepted its last trial
+        # unconditionally fails here for the fundamental and essential matrices. The homography steps rejected here
+        # are too small to tell apart from rounding.
+        generator = torch.Generator(device=device).manual_seed(0)
+        scales = torch.logspace(-2, 0, 16, device=device, dtype=dtype)[:, None, None]
+        models = matrix + scales * torch.randn(16, 3, 3, generator=generator, device=device, dtype=dtype)
         # The differentiable path retains the fully vectorized implementation as a reference.
         with torch.enable_grad():
-            expected = refine(matrix, x1, x2, None, loss, 0.01, iterations)
+            expected = refine(models, x1, x2, None, loss, 0.01, iterations)
         with torch.no_grad():
-            actual = refine(matrix, x1, x2, None, loss, 0.01, iterations)
+            actual = refine(models, x1, x2, None, loss, 0.01, iterations)
         tolerance = 5e-4 if dtype == torch.float32 else 2e-6
         self.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
 

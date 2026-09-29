@@ -424,12 +424,11 @@ class RANSAC(nn.Module):
         many inliers stop after a small first batch while the rest pay the per-batch overhead a few times only.
         On CUDA and MPS it is the whole budget up to 8192 samples. Essential matrices start at 64 samples on CPU,
         up to 1024, and at 256 on CUDA and MPS, up to 8192: a five-point sample needs few draws at high inlier
-        ratios, and its host eigenvalue solve costs the same on every device. The upper limits shrink to 64 samples
-        when a batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting three models
-        per seven-point sample and ten candidate slots per five-point sample; scoring holds two or three times
-        that many entries at its peak, about 0.5 GiB in float32 on an accelerator. CPU verification additionally
-        tiles hypotheses at about a million residuals independently of the solver batch. An integer ``batch_size``
-        is kept for every batch.
+        ratios, and its host eigenvalue solve costs the same on every device. All shrink, down to 64 samples, when a
+        batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models
+        of a seven-point sample and the ten candidate slots of a five-point one. On accelerators scoring holds two or
+        three times that many entries at its peak, about 0.5 GiB in float32; on CPU it scores tiles of about a million
+        residuals, independently of the batch. An integer ``batch_size`` is kept for every batch.
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
