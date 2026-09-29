@@ -150,9 +150,8 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     Convention:
         - a subclass implements :meth:`compute_transformation`, which returns the ``(B, 3, 3)`` matrix of the
           sampled transform, and ``apply_transform`` for images. Direct mask, box, and keypoint handlers are
-          incomplete on this base; inherit the geometric base for its matrix-based handlers. Container dispatch
-          recognizes geometric children, so custom rigid subclasses need integration work of their own. See
-          `#4481 <https://github.com/kornia/kornia/issues/4481>`_.
+          incomplete on this base; inherit the geometric base for its matrix-based handlers. Forward container
+          dispatch calls the subclass's mask, box and keypoint handlers when their data keys are registered.
         - the matrix of the last call is readable as ``transform_matrix``. Subclasses opt into lazy construction
           with ``_compute_matrix_lazily``; a lazy matrix keeps only the input's shape, dtype and device, unless the
           subclass overrides ``transform_tensor``, ``generate_transformation_matrix``, ``compute_transformation``

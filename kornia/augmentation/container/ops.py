@@ -646,7 +646,9 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             extra_args = {}
         _input = input.clone()
 
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+            module, K.IntensityAugmentationBase2D
+        ):
             _input = module.transform_boxes(
                 _input,
                 cls.get_instance_module_param(param),
@@ -749,7 +751,9 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
             extra_args = {}
         _input = input.clone()
 
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+            module, K.IntensityAugmentationBase2D
+        ):
             _input = module.transform_keypoints(
                 _input,
                 cls.get_instance_module_param(param),
