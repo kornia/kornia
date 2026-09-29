@@ -2296,7 +2296,9 @@ _SCENES = {"frontal": {}, "zoom": {"zoom": 3.0}, "skew": {"skew": 0.5}}
 class TestRANSACDegensac(BaseTester):
     @pytest.mark.parametrize("scene", sorted(_SCENES))
     def test_recovers_dominant_plane(self, device, dtype, scene):
-        # On main (a7d177cbf) plain seven-point RANSAC fails every one of these seeds on every scene.
+        # On main (a7d177cbf) plain seven-point RANSAC fails every one of these seeds on every scene on CPU, so the
+        # default's assertions fail there. Accelerators sample differently (MPS: plain succeeds on one seed of the
+        # frontal and zoomed scenes), so the plain count only asserts that the scenes stay hard for it.
         _skip_half(dtype)
         plain_failures = 0
         for seed in range(5):
@@ -2309,7 +2311,7 @@ class TestRANSACDegensac(BaseTester):
             assert float((mask & off_plane).sum()) >= 0.8 * float(off_plane.sum()), f"seed {seed}"
             F_plain, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=seed, degensac=False)(kp1, kp2)
             plain_failures += int(not _explains_off_plane(F_plain.cpu(), clean1.cpu(), clean2.cpu()))
-        assert plain_failures == 5
+        assert plain_failures >= 3
 
     @pytest.mark.parametrize("score_type", ["msac", "ransac"])
     def test_both_score_types(self, device, dtype, score_type):
