@@ -2131,6 +2131,9 @@ class TestRANSACCompiled(BaseTester):
             RANSAC("homography", local_optimization="dlt", compile=True)
         with pytest.raises(ValueError, match="prosac"):
             RANSAC("homography", prosac_sampling=True, compile=True)
+        # Checked before anything is compiled.
+        with pytest.raises(ValueError, match="batches of at most"):
+            RANSAC("homography", batch_size=1 << 21, compile=True)(torch.rand(8, 2), torch.rand(8, 2))
 
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("model_type", _COMPILED_MODELS)
@@ -2190,6 +2193,10 @@ class TestRANSACCompiled(BaseTester):
         points2 = torch.full((16, 2), 5.0)
         for compile in (False, True):
             model, mask = RANSAC("homography", inl_th=0.5, seed=0, compile=compile)(points1, points2)
+            assert torch.equal(model, torch.zeros(3, 3))
+            assert not mask.any()
+            # A minimal sample alone is never a consensus.
+            model, mask = RANSAC("homography", seed=0, compile=compile)(points1[:4], 2 * points1[:4])
             assert torch.equal(model, torch.zeros(3, 3))
             assert not mask.any()
 

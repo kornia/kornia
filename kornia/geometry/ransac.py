@@ -923,18 +923,18 @@ class RANSAC(nn.Module):
 
     def _forward_compiled(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """:meth:`_forward_lm` as the compiled program of :mod:`kornia.geometry._ransac_program`."""
-        from kornia.geometry._ransac_program import load_program
+        from kornia.geometry._ransac_program import MAX_BATCH, load_program
 
         if kp1.device.type not in ("cpu", "cuda"):
             raise ValueError(f"compile=True runs on CPU and CUDA, not {kp1.device.type}")
         num_tc = len(kp1)
         first, largest = self._lm_batch_range(num_tc, kp1.device)
-        if isinstance(self.batch_size, int):
-            first = largest
+        if largest > MAX_BATCH:
+            raise ValueError(f"compile=True supports batches of at most {MAX_BATCH} samples")
         scalars = [torch.tensor(value, dtype=torch.float64) for value in (self.inl_th, self.confidence)]
         scalars += [torch.tensor(value, dtype=torch.int64) for value in (self.sample_budget, first, largest)]
         inputs = (kp1, kp2, *scalars)
-        key = (self.model_type, self.score_type, self.max_lo_iters, self.refine_iters, kp1.dtype, kp1.device.type)
+        key = (self.model_type, self.score_type, self.max_lo_iters, self.refine_iters, kp1.dtype, str(kp1.device))
         program = load_program(key, inputs)
         if self.seed is None:
             return program(*inputs)

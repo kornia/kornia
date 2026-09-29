@@ -22,14 +22,14 @@ score to decide whether to stop, and returns early when no model is supported. H
 :func:`torch.while_loop` whose state is a fixed-size pool of the best minimal models, the stopping bound is computed
 in tensors, and every early return is a :func:`torch.where`. The sizes that depend on the data, the batch of each
 iteration and the number of models that survive the degeneracy tests, are unbacked, so a single graph serves every
-number of correspondences, threshold, confidence and sample budget. The program also runs eagerly, where
-:func:`torch.while_loop` is a Python loop; ``RANSAC(compile=True)`` compiles it once per configuration and keeps the
-compiled function on disk (:func:`load_program`).
+number of correspondences, threshold, confidence and sample budget. ``RANSAC(compile=True)`` compiles it once per
+configuration and keeps the compiled function on disk (:func:`load_program`).
 """
 
 from __future__ import annotations
 
 import contextlib
+import functools
 import hashlib
 import inspect
 import os
@@ -43,6 +43,7 @@ import torch
 
 import kornia
 from kornia.geometry import homography as _homography
+from kornia.geometry import ransac as _ransac
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import _metrics as _epipolar_metrics
 from kornia.geometry.epipolar import essential as _essential
@@ -64,13 +65,14 @@ from kornia.geometry.homography import (
     _transfer_from_basis,
     sample_is_valid_for_homography,
 )
+from kornia.geometry.ransac import _LM_CANDIDATES, _normalize_correspondences_core
 
-__all__ = ["build_lm_program", "load_program"]
+__all__ = ["MAX_BATCH", "build_lm_program", "load_program"]
 
 # The candidate pool: as many minimal models as RANSAC(local_optimization="lm") refines.
-_POOL = 8
-# Upper bound of any batch the host picks (RANSAC._lm_batch_range); unbacked sizes need an explicit range.
-_MAX_BATCH = 1 << 13
+_POOL = _LM_CANDIDATES
+# Upper bound of a batch; RANSAC(compile=True) rejects a larger integer batch_size.
+MAX_BATCH = 1 << 20
 
 _SAMPLE_SIZES = {"homography": 4, "fundamental": 7, "fundamental_7pt": 7, "fundamental_8pt": 8, "essential": 5}
 
@@ -196,13 +198,10 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
         first_batch: torch.Tensor,
         largest_batch: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Imported here: ransac imports this module lazily, from RANSAC.forward.
-        from kornia.geometry.ransac import _normalize_correspondences_core
-
         device, dtype = kp1.device, kp1.dtype
         work = torch.float64 if dtype == torch.float64 else torch.float32
         num_tc = kp1.shape[0]
-        torch._check(num_tc > m)
+        torch._check(num_tc >= m)
         host = torch.device("cpu")
         # Moved first, then cast: a single .to(host, torch.float64) out of MPS returns zeros (pytorch/pytorch#197715).
         kp1_host, kp2_host = kp1.detach().to(host).double(), kp2.detach().to(host).double()
@@ -232,7 +231,7 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
             current = torch.minimum(batch, max_samples - drawn)
             size = current.item()
             torch._check(size >= 1)
-            torch._check(size <= _MAX_BATCH)
+            torch._check(size <= MAX_BATCH)
             indices = _draw_samples(m, num_tc, size, device)
             models = _minimal_models(model_type, x1[indices], x2[indices])
             scores, counts = _scores(models, basis, threshold_work, planar, msac)
@@ -329,8 +328,14 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
 _LOCK = threading.Lock()
 _PROGRAMS: Dict[Tuple, Callable[..., Tuple]] = {}
 
-# Modules whose source the compiled graph embeds: a change to any of them must not load a stale artifact.
-_SOURCE_MODULES = (sys.modules[__name__], _homography, _fundamental, _essential, _epipolar_metrics)
+
+@functools.cache
+def _source_digest() -> str:
+    """Digest of the modules whose code the compiled graph embeds, read once: an edit must not load a stale artifact."""
+    digest = hashlib.sha256()
+    for module in (sys.modules[__name__], _homography, _fundamental, _essential, _epipolar_metrics, _ransac):
+        digest.update(inspect.getsource(module).encode())
+    return digest.hexdigest()
 
 
 @contextlib.contextmanager
@@ -353,18 +358,19 @@ def _dynamo_config() -> Iterator[None]:
 
 
 def _artifact_path(key: Tuple) -> str:
+    from torch._inductor.cpu_vec_isa import pick_vec_isa
     from torch._inductor.runtime.cache_dir_utils import cache_dir
 
     digest = hashlib.sha256()
-    for part in (torch.__version__, kornia.__version__, sys.version, platform.platform(), platform.machine(), key):
+    # The generated CPU kernels target this machine's vector instructions, which a shared cache directory may not.
+    machine = (platform.platform(), platform.machine(), str(pick_vec_isa()))
+    for part in (torch.__version__, kornia.__version__, sys.version, machine, key, _source_digest()):
         digest.update(repr(part).encode())
-    for module in _SOURCE_MODULES:
-        digest.update(inspect.getsource(module).encode())
     return os.path.join(cache_dir(), "kornia_ransac", f"{digest.hexdigest()[:32]}.bin")
 
 
 def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callable[..., Tuple]:
-    """Return the compiled program of ``key`` = ``(model_type, score_type, max_lo_iters, refine_iters, dtype, device)``.
+    """Return the compiled program of ``key``: ``(model_type, score_type, max_lo_iters, refine_iters, dtype, device)``.
 
     Compiled once per process. The compiled function is also saved next to inductor's own cache
     (``TORCHINDUCTOR_CACHE_DIR``) and loaded from there by later processes, which then skip tracing. The number of
@@ -391,7 +397,8 @@ def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callab
 def _mark_dynamic(inputs: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
     """The inputs with the correspondence dimension marked dynamic, on new tensors: the caller's stay unmarked.
 
-    Only tracing reads the marks. A loaded artifact rejects marked tensors, so they are made per trace, not per call.
+    The traced program is called with marked inputs, as its guards expect; an artifact loaded by another process is
+    called with the plain ones, since its guards reject marked tensors.
     """
     kp1, kp2 = inputs[0].detach(), inputs[1].detach()
     torch._dynamo.mark_dynamic(kp1, 0)
