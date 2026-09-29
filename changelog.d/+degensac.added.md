@@ -1,0 +1,1 @@
+`kornia.geometry.homography.sampson_homography_distance` returns the Sampson distance of correspondences to homographies, the first-order geometric error over both images (Hartley and Zisserman, section 4.2.6): unlike `oneway_transfer_error`, it accounts for noise in both images and does not depend on the scale of `H`, and an exact correspondence scores 0.

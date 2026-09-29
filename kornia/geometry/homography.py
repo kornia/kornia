@@ -15,12 +15,13 @@
 # limitations under the License.
 #
 
+import math
 import warnings
 from typing import Optional, Tuple
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
@@ -37,6 +38,7 @@ __all__ = [
     "line_segment_transfer_error_one_way",
     "oneway_transfer_error",
     "sample_is_valid_for_homography",
+    "sampson_homography_distance",
     "symmetric_transfer_error",
 ]
 
@@ -175,6 +177,73 @@ def symmetric_transfer_error(
         out = (out + eps).sqrt()
     max_tensor = torch.full_like(out, max_num)
     return torch.where(good_H_reshape, out, max_tensor)
+
+
+def sampson_homography_distance(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True
+) -> torch.Tensor:
+    r"""Return the Sampson distance of correspondences to homographies.
+
+    The first-order approximation of the geometric error: the squared distance by which ``pts1`` and ``pts2``
+    together must move for :math:`x_2 \sim H x_1` to hold (Hartley and Zisserman, *Multiple View Geometry*, 2nd ed.,
+    section 4.2.6). With :math:`x_1 = (x, y, 1)`, :math:`x_2 = (u, v, 1)` and :math:`H x_1 = (p, q, w)`, the
+    algebraic residuals :math:`\epsilon = (v w - q, p - u w)` and their Jacobian :math:`J` with respect to
+    :math:`(x, y, u, v)` give :math:`d^2 = \epsilon^\top (J J^\top)^{-1} \epsilon`.
+
+    Convention:
+        - Argument order and direction as :func:`oneway_transfer_error`: ``H`` maps ``pts1`` to ``pts2``. Unlike the
+          one-way transfer error, the distance accounts for noise in both images and does not depend on the scale
+          of ``H``.
+        - For an affine ``H`` the constraint is linear in the coordinates, and the distance is the exact geometric
+          error.
+        - An exact correspondence scores 0; a correspondence whose :math:`J J^\top` is singular scores ``inf``.
+        - Computed in at least float32 and returned in the promoted dtype of the inputs.
+
+    Args:
+        pts1: points in the first image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
+        pts2: points in the second image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
+        H: homographies with shape :math:`(B, 3, 3)`. Points with a leading dimension of 1 are scored against every
+            homography.
+        squared: if True (default), the squared distance is returned, else the distance.
+
+    Returns:
+        the computed distance with shape :math:`(B, N)`.
+
+    """
+    KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
+    KORNIA_CHECK(pts1.shape[-1] in (2, 3) and pts2.shape[-1] in (2, 3), "points must have 2 or 3 coordinates")
+    dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), H.dtype)
+    work = torch.promote_types(dtype, torch.float32)
+    if pts1.shape[-1] == 3:
+        pts1 = convert_points_from_homogeneous(pts1)
+    if pts2.shape[-1] == 3:
+        pts2 = convert_points_from_homogeneous(pts2)
+    x, y = pts1[..., 0].to(work), pts1[..., 1].to(work)
+    u, v = pts2[..., 0].to(work), pts2[..., 1].to(work)
+    h = H.to(work)[..., None]
+    p = h[..., 0, 0, :] * x + h[..., 0, 1, :] * y + h[..., 0, 2, :]
+    q = h[..., 1, 0, :] * x + h[..., 1, 1, :] * y + h[..., 1, 2, :]
+    w = h[..., 2, 0, :] * x + h[..., 2, 1, :] * y + h[..., 2, 2, :]
+    e1, e2 = v * w - q, p - u * w
+    # Jacobian rows over (x, y, u, v): (v h20 - h10, v h21 - h11, 0, w) and (h00 - u h20, h01 - u h21, -w, 0).
+    jx1, jy1 = v * h[..., 2, 0, :] - h[..., 1, 0, :], v * h[..., 2, 1, :] - h[..., 1, 1, :]
+    jx2, jy2 = h[..., 0, 0, :] - u * h[..., 2, 0, :], h[..., 0, 1, :] - u * h[..., 2, 1, :]
+    a = jx1.square() + jy1.square() + w.square()
+    c = jx2.square() + jy2.square() + w.square()
+    b = jx1 * jx2 + jy1 * jy2
+    det = a * c - b.square()
+    num = c * e1.square() - 2 * b * e1 * e2 + a * e2.square()
+    # A singular J J^T has no finite correction. The division takes a safe denominator inside the where, so the
+    # inf branch leaves finite gradients (#4229); rounding can make the quadratic form slightly negative.
+    invertible = det > 0
+    d2 = torch.where(
+        invertible, num / torch.where(invertible, det, torch.ones_like(det)), torch.full_like(det, math.inf)
+    )
+    d2 = torch.where(d2 > 0, d2, torch.zeros_like(d2))
+    if not squared:
+        positive = d2 > 0
+        d2 = torch.where(positive, torch.where(positive, d2, torch.ones_like(d2)).sqrt(), torch.zeros_like(d2))
+    return d2.to(dtype)
 
 
 def line_segment_transfer_error_one_way(
