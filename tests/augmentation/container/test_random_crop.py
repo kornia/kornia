@@ -283,3 +283,90 @@ class TestRandomCropAnnotations(BaseTester):
 
         for actual, expected in zip(output, inputs):
             self.assert_close(actual, expected, rtol=0, atol=0)
+
+
+class TestRandomCropPaddingMatrix(BaseTester):
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("size", [(4, 8), (6, 10)])
+    def test_dynamo_mixed_padding_4801(self, device, dtype, torch_optimizer, size):
+        image = torch.zeros(2, 1, 6, 10, device=device, dtype=dtype)
+        image[:, 0, 1, 3] = 1
+        crop = K.RandomCrop(size, padding=(1, 2), p=0.5, cropping_mode="resample", resample="nearest")
+        params = crop.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0, 1])
+        params["src"] = (
+            image.new_tensor([[[1, 1], [size[1], 1], [size[1], size[0]], [1, size[0]]]]).expand(2, -1, -1).clone()
+        )
+        output = torch_optimizer(crop)(image, params=params)
+        padded = torch.nn.functional.pad(image, (1, 1, 2, 2))
+        expected = padded[..., 1 : size[0] + 1, 1 : size[1] + 1].clone()
+        expected[0] = image[0] if size == image.shape[-2:] else padded[0, :, : size[0], : size[1]]
+        self.assert_close(output, expected, rtol=0, atol=0)
+        matrix = image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 1], [0, 0, 1]]])
+        self.assert_close(crop.transform_matrix, matrix, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize(
+        "padding,automatic,size",
+        [(None, False, (4, 6)), ((2, 1, 3, 2), False, (6, 9)), (None, True, (6, 9)), ((3, 0, 1, 2), True, (6, 9))],
+    )
+    def test_original_coordinates_match_pixels_and_annotations_4801(
+        self, mode, same_on_batch, padding, automatic, size, device, dtype
+    ):
+        torch.manual_seed(4)
+        image = torch.zeros(2, 1, 5, 7, device=device, dtype=dtype)
+        image[..., 2, 3] = 1
+        points = image.new_tensor([[[3, 2]]]).expand(2, -1, -1).clone()
+        boxes = image.new_tensor([[[[2, 1], [3, 1], [3, 2], [2, 2]]]]).expand(2, -1, -1, -1).clone()
+        crop = K.RandomCrop(
+            size,
+            padding=padding,
+            pad_if_needed=automatic,
+            cropping_mode=mode,
+            same_on_batch=same_on_batch,
+            resample="nearest",
+            p=1.0,
+        )
+        seq = K.AugmentationSequential(crop, K.RandomHorizontalFlip(p=1.0), data_keys=["input", "keypoints", "bbox"])
+        output, out_points, out_boxes = seq(image, points, boxes)
+        matrix = seq.transform_matrix.clone()
+        params = deepcopy(seq._params)
+        homogeneous = torch.cat([points, torch.ones_like(points[..., :1])], -1)
+        mapped = (homogeneous @ matrix.transpose(-1, -2))[..., :2]
+        self.assert_close(out_points, mapped)
+        box_homogeneous = torch.cat([boxes[:, 0], torch.ones_like(boxes[:, 0, :, :1])], -1)
+        mapped_boxes = (box_homogeneous @ matrix.transpose(-1, -2))[..., :2]
+        # Tensor-form boxes reorder corners after a flip; compare their coordinate bounds.
+        self.assert_close(out_boxes[:, 0].amin(1), mapped_boxes.amin(1))
+        self.assert_close(out_boxes[:, 0].amax(1), mapped_boxes.amax(1))
+        for row in range(2):
+            y, x = divmod(output[row, 0].argmax().item(), size[1])
+            self.assert_close(mapped[row, 0], image.new_tensor([x, y]), rtol=0, atol=0)
+            assert output[row, 0, y, x] == 1
+        if same_on_batch:
+            self.assert_close(crop.transform_matrix[0], crop.transform_matrix[1], rtol=0, atol=0)
+        replay = seq(image, points, boxes, params=params)
+        for actual, expected in zip(replay, (output, out_points, out_boxes)):
+            self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(seq.transform_matrix, matrix, rtol=0, atol=0)
+        if mode == "resample":
+            restored, restored_points, restored_boxes = seq.inverse(*replay, params=params)
+            assert restored.shape == image.shape
+            self.assert_close(restored_points, points)
+            self.assert_close(restored_boxes, boxes)
+            self.assert_close(restored[..., 2, 3], image[..., 2, 3])
+
+    @pytest.mark.parametrize("resample", ["bilinear", "nearest"])
+    def test_full_padded_image_inverse_4801(self, device, dtype, resample):
+        image = torch.arange(20, device=device, dtype=dtype).reshape(1, 1, 4, 5) / 20
+        crop = K.RandomCrop((9, 10), padding=(2, 1, 3, 4), cropping_mode="resample", resample=resample, p=1.0)
+        output = crop(image)
+        if resample == "nearest":
+            self.assert_close(crop.inverse(output), image, rtol=0, atol=0)
+        else:
+            # Float16 normalized grids lose subpixel precision even for the upstream
+            # identity warp. Budget one epsilon over the padded extent; keep the
+            # default tolerances for other dtypes and the exact nearest control above.
+            atol = torch.finfo(dtype).eps * max(output.shape[-2:]) if dtype == torch.float16 else None
+            self.assert_close(crop.inverse(output), image, rtol=0 if atol is not None else None, atol=atol)
