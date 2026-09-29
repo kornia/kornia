@@ -44,6 +44,36 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(l1.origin, p0)
         self.assert_close(l1.direction, direction_expected)
 
+    def test_through_coincident_points_direction_is_zero_5062(self, device, dtype):
+        # #5062: through(p, p) normalizes the zero vector p1 - p0, which gave a NaN direction in float16 and zeros in
+        # every other dtype. Coincident points are degenerate input that a value check may reject (#5041), so this
+        # pins the arithmetic with the checks disabled: zeros in every dtype.
+        p = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        p1 = p.clone().requires_grad_(True)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            line = ParametrizedLine.through(p, p1)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        assert line.direction.dtype == dtype
+        assert torch.equal(line.direction, torch.zeros(2, device=device, dtype=dtype))
+        # The gradient at the zero direction is I / eps with eps = 1e-12, as with F.normalize, except in float16,
+        # where I / eps overflows and the gradient is zero instead of inf.
+        line.direction.sum().backward()
+        expected = torch.zeros_like(p) if dtype == torch.float16 else torch.full_like(p, 1e12)
+        self.assert_close(p1.grad, expected)
+
+    def test_through_short_direction_is_unit(self, device, dtype):
+        # A direction of norm 5 * 2**-20 (about 4.8e-6, exact float16 subnormals) is normalized as by
+        # F.normalize(p=2, dim=-1): the 1e-12 norm floor stays below it.
+        p0 = torch.zeros(2, device=device, dtype=dtype)
+        p1 = torch.tensor([3.0 * 2**-20, -4.0 * 2**-20], device=device, dtype=dtype)
+        line = ParametrizedLine.through(p0, p1)
+        assert torch.equal(line.direction, torch.nn.functional.normalize(p1, p=2, dim=-1))
+        self.assert_close(line.direction, torch.tensor([0.6, -0.8], device=device, dtype=dtype))
+
     def test_point_at(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
