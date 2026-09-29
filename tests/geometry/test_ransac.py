@@ -2111,17 +2111,10 @@ class TestRANSACScoring(BaseTester):
 
 class TestRANSACDegensacOptions(BaseTester):
     @pytest.mark.parametrize(
-        ("model_type", "expected"),
-        [
-            ("fundamental", False),
-            ("fundamental_7pt", False),
-            ("fundamental_8pt", False),
-            ("homography", False),
-            ("essential", False),
-        ],
+        "model_type", ["fundamental", "fundamental_7pt", "fundamental_8pt", "homography", "essential"]
     )
-    def test_default_resolves_per_model(self, model_type, expected):
-        assert RANSAC(model_type).degensac is expected
+    def test_default_is_off(self, model_type):
+        assert RANSAC(model_type).degensac is False
 
     @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_7pt"])
     def test_explicit_opt_in(self, model_type):

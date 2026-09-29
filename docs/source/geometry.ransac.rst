@@ -189,7 +189,7 @@ per call.
 :func:`~kornia.geometry.homography.sampson_homography_distance` measures the
 plane. The test's tolerance, taken from Chum's implementation, also flags samples
 in scenes without a dominant plane, so the estimate for a given seed can change
-there too. ``degensac=None`` (the default) and ``degensac=False`` leave it off,
+there too. ``degensac=False`` (the default) and ``degensac=None`` leave it off,
 retaining the plain seven-point behavior.
 
 .. autoclass:: RANSAC

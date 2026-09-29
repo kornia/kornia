@@ -175,7 +175,7 @@ class RANSAC(nn.Module):
           counts follow Chum's implementation in pydegensac; the draws come from a private host generator. A plane
           already searched in the call is not searched again: a sample whose homography's inliers lie 95% or more
           inside it is skipped before refinement, and a refined plane whose inliers match it (Jaccard index 0.95 or
-          more) before the search. The default, ``degensac=None`` (or False), keeps the plain seven-point loop.
+          more) before the search. The default, ``degensac=False``, keeps the plain seven-point loop.
           Explicit recovery reproduces that result exactly when no record-setting sample is degenerate.
           Chum's tolerance, three times the squared threshold for five of the seven correspondences, also flags
           samples in many scenes without a dominant plane; there the recovered models only join the competition.
@@ -214,8 +214,8 @@ class RANSAC(nn.Module):
             fundamental and essential matrices and ``"dlt"`` for line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
-        degensac: run DEGENSAC's dominant-plane recovery, as described above. None and False leave it off.
-            True enables it for ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``,
+        degensac: run DEGENSAC's dominant-plane recovery, as described above. Defaults to False; None also leaves
+            it off. True enables it for ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``,
             the only supported combinations; True with any other raises ``ValueError``.
 
     """
@@ -235,7 +235,7 @@ class RANSAC(nn.Module):
         max_samples: Optional[int] = None,
         local_optimization: Optional[str] = None,
         refine_iters: int = 3,
-        degensac: Optional[bool] = None,
+        degensac: Optional[bool] = False,
     ) -> None:
         """Initialize the RANSAC estimator.
 
@@ -264,7 +264,8 @@ class RANSAC(nn.Module):
                 is supported, for homographies, fundamental and essential matrices.
             refine_iters: Levenberg-Marquardt iterations of the final refinement on the inliers with ``"lm"``.
             degensac: opt-in DEGENSAC dominant-plane recovery for seven-point fundamental matrices.
-                None and False leave it off; True requires seven-point matrices with local_optimization="lm".
+                Defaults to False; None also leaves it off. True requires seven-point matrices with
+                local_optimization="lm".
 
         """
         super().__init__()
