@@ -719,51 +719,51 @@ class TestYuv420ToRgb(BaseTester):
         with pytest.raises((TypeError, AttributeError)):
             kornia.color.yuv420_to_rgb([0.0], [0.0])
 
+        imgy = torch.ones(1, 1, device=device, dtype=dtype)
+        imguv = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 1, device=device, dtype=dtype)
-            imguv = torch.ones(1, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
         # Luma H and W must both be even.
+        imgy = torch.ones(1, 3, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 3, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 1, 2, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        imgy = torch.ones(1, 4, 3, device=device, dtype=dtype)
+        imguv = torch.ones(2, 2, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 3, device=device, dtype=dtype)
-            imguv = torch.ones(2, 2, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
         # Chroma must be exactly half the luma in both axes.
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 4, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 4, 2, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 2, 4, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 2, 4, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
         # Luma must be single-channel. (1, 2, 2) / (2, 1, 1) is the accepted shape; the same
         # sizes with a 2-channel luma are rejected by the channel slot of the shape spec, which
         # the rank case above does not reach.
+        imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
-            imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
         # Regression for #4056: a zero-sized chroma dimension is still a shape violation and must
         # be reported as ShapeError, not the bare ZeroDivisionError the old ratio guard threw.
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 2, 0, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 2, 0, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 0, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 0, 2, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
     def test_empty_input(self, device, dtype):
@@ -865,42 +865,42 @@ class TestYuv422ToRgb(BaseTester):
         with pytest.raises((TypeError, AttributeError)):
             kornia.color.yuv422_to_rgb([0.0], [0.0])
 
+        imgy = torch.ones(1, 1, device=device, dtype=dtype)
+        imguv = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 1, device=device, dtype=dtype)
-            imguv = torch.ones(1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # Luma W must be even.
+        imgy = torch.ones(1, 4, 3, device=device, dtype=dtype)
+        imguv = torch.ones(2, 4, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 3, device=device, dtype=dtype)
-            imguv = torch.ones(2, 4, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # Chroma must be exactly half the luma width.
+        imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.ones(2, 4, 4, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
-            imguv = torch.ones(2, 4, 4, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # Luma must be single-channel: rejected by the channel slot of the shape spec, which the
         # rank case above does not reach. Note this is *not* a width-relation case -- 2/1 == 2
         # holds.
+        imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
-            imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # 4:2:2 subsamples width only, so chroma keeps the full luma height.
+        imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
-            imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # Regression for #4056: a zero-sized chroma width is still a shape violation and must be
         # reported as ShapeError, not the bare ZeroDivisionError the old ratio guard threw.
+        imgy = torch.ones(1, 4, 6, device=device, dtype=dtype)
+        imguv = torch.ones(2, 4, 0, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            imgy = torch.ones(1, 4, 6, device=device, dtype=dtype)
-            imguv = torch.ones(2, 4, 0, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
     def test_empty_input(self, device, dtype):

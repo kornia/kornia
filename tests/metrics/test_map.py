@@ -94,3 +94,38 @@ class TestMeanAveragePrecision(BaseTester):
 
         with pytest.raises(AssertionError):
             _ = kornia.metrics.mean_average_precision(boxes[0], [labels], [scores], [gt_boxes], [gt_labels], 2)
+
+    def test_recall_on_an_exact_tenth_reaches_its_threshold_5083(self, device, dtype):
+        # 10 objects, ranked detections TP, FP, then 9 TP: recall passes through every tenth, precision drops at the FP.
+        gt_boxes = torch.tensor([[i * 20.0, 0.0, i * 20.0 + 10.0, 10.0] for i in range(10)], device=device, dtype=dtype)
+        gt_labels = torch.ones(10, device=device, dtype=torch.long)
+        boxes = torch.cat(
+            [gt_boxes[:1], torch.tensor([[500.0, 500.0, 510.0, 510.0]], device=device, dtype=dtype), gt_boxes[1:]]
+        )
+        labels = torch.ones(11, device=device, dtype=torch.long)
+        scores = torch.linspace(1.0, 0.5, 11, device=device, dtype=dtype)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
+
+        # Precision 1 at the recall thresholds 0 and 0.1, then 10/11 at the nine others: (2 + 9 * 10 / 11) / 11
+        expected = torch.tensor(112.0 / 121.0, device=device, dtype=dtype)
+        self.assert_close(mean_ap, expected)
+        self.assert_close(torch.tensor(ap[1], device=device, dtype=dtype), expected)
+
+    def test_recall_on_every_tenth_reaches_its_threshold_5083(self, device, dtype):
+        # 20 objects, ranked detections TP, then (FP, TP) 19 times: the j-th TP has recall j / 20 and precision
+        # j / (2j - 1), above every later precision. Recall 2i / 20 is the first to reach the threshold i / 10, exactly,
+        # so each of the 11 thresholds sets its own term, and a threshold it misses takes the next TP's lower precision.
+        gt_boxes = torch.tensor([[i * 20.0, 0.0, i * 20.0 + 10.0, 10.0] for i in range(20)], device=device, dtype=dtype)
+        gt_labels = torch.ones(20, device=device, dtype=torch.long)
+        fp_box = torch.tensor([[500.0, 500.0, 510.0, 510.0]], device=device, dtype=dtype)
+        boxes = torch.cat([gt_boxes[:1]] + [torch.cat([fp_box, gt_boxes[j : j + 1]]) for j in range(1, 20)])
+        labels = torch.ones(39, device=device, dtype=torch.long)
+        scores = torch.linspace(1.0, 0.5, 39, device=device, dtype=dtype)
+
+        mean_ap, ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
+
+        # Precision 1 at the threshold 0, then 2i / (4i - 1) at the threshold i / 10.
+        expected = torch.tensor((1.0 + sum(2 * i / (4 * i - 1) for i in range(1, 11))) / 11, device=device, dtype=dtype)
+        self.assert_close(mean_ap, expected)
+        self.assert_close(torch.tensor(ap[1], device=device, dtype=dtype), expected)

@@ -664,6 +664,32 @@ class TestFitLine(BaseTester):
             line = fit_line(points, torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype))
             self.assert_close(line.direction.abs(), torch.tensor([direction], device=device, dtype=dtype))
 
+    def test_fit_line_negative_weights_raise_5106(self, device, dtype):
+        # #5106: a negative weight passes the weight-sum check, but it can make the weighted scatter indefinite. The
+        # D >= 3 branch then takes the axis of the largest |eigenvalue| and a 2-D total least squares fit the axis of
+        # the largest eigenvalue: 90 degrees apart for weights (1, -3, 1, 2) on these points. Any negative weight is
+        # rejected, also one such as -0.01 that leaves the scatter without a negative eigenvalue.
+        points_2d = torch.tensor([[[0.0, 0.0], [1.0, 0.4], [2.5, 0.9], [3.0, 2.0]]], device=device, dtype=dtype)
+        points_3d = torch.nn.functional.pad(points_2d, (0, 1))
+        ones = torch.ones(1, 4, device=device, dtype=dtype)
+        for points in (points_2d, points_3d):
+            for w in ([1.0, -3.0, 1.0, 2.0], [1.0, -0.01, 1.0, 1.0]):
+                weights = torch.tensor([w], device=device, dtype=dtype)
+                with pytest.raises(ValueCheckError, match="non-negative weights"):
+                    fit_line(points, weights)
+                # a batch is rejected as a whole when one of its rows has a negative weight
+                with pytest.raises(ValueCheckError, match="non-negative weights"):
+                    fit_line(torch.cat([points, points]), torch.cat([ones, weights]))
+
+            # A zero weight, +0.0 or -0.0, is not negative: it drops its point.
+            expected = fit_line(points[:, [0, 2, 3]])
+            for zero in (0.0, -0.0):
+                line = fit_line(points, torch.tensor([[1.0, zero, 1.0, 1.0]], device=device, dtype=dtype))
+                self.assert_close(line.origin, expected.origin)
+                self.assert_close(
+                    (line.direction * expected.direction).sum(-1).abs(), torch.ones(1, device=device, dtype=dtype)
+                )
+
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
         # on identical points returns what an eager call returns with checks disabled.
