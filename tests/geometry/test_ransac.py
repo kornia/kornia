@@ -24,15 +24,17 @@ import torch
 
 import kornia
 from kornia.geometry import RANSAC, transform_points
+from kornia.geometry._degensac import _h_degenerate_sample
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_from_homogeneous
 from kornia.geometry.epipolar import find_fundamental, project_to_essential, sampson_epipolar_distance
-from kornia.geometry.epipolar._metrics import _sampson_errors
+from kornia.geometry.epipolar._metrics import _sampson_errors, _sampson_quadratic_basis
 from kornia.geometry.epipolar.fundamental import _rank2_projection, _refine_fundamental_lm
 from kornia.geometry.homography import _refine_homography_lm, _transfer_errors, oneway_transfer_error
 from kornia.geometry.ransac import _normalize_correspondences
 
 from testing.base import BaseTester
 from testing.casts import dict_to
+from testing.geometry.create import create_dominant_plane_scene
 
 # RANSAC's batched minimal solvers take the Metal shader compiler down on the paravirtualized GPU
 # of the hosted macOS runners, and the next MPS allocation aborts the pytest process (SIGABRT).
@@ -2169,3 +2171,93 @@ class TestRANSACDegensacOptions(BaseTester):
         else:
             residual = torch.einsum("sni,mij,snj->msn", s2, models, s1).abs().amax(-1)
         assert float((residual.argmin(1) == rows).double().mean()) >= 0.9
+
+
+def _degensac_inputs(kp1, kp2, inl_th, device, work):
+    """The normalized inputs ``_forward_lm`` builds for a seven-point fundamental matrix."""
+    x1_host, x2_host, t1, t2, s1, _ = _normalize_correspondences(kp1.cpu().double(), kp2.cpu().double(), True)
+    x1, x2 = x1_host.to(device, work), x2_host.to(device, work)
+    return x1, x2, x1_host, x2_host, t1, t2, _sampson_quadratic_basis(x1, x2), (inl_th / s1) ** 2
+
+
+def _degenerate_sample(labels, generator):
+    """Five plane correspondences and two outliers, an H-degenerate seven-point sample."""
+    plane = (labels == 0).nonzero().flatten().cpu()
+    outliers = (labels == 2).nonzero().flatten().cpu()
+    return torch.cat(
+        [
+            plane[torch.randperm(len(plane), generator=generator)[:5]],
+            outliers[torch.randperm(len(outliers), generator=generator)[:2]],
+        ]
+    )
+
+
+def _skip_half(dtype):
+    if dtype in (torch.float16, torch.bfloat16):
+        pytest.skip("the scene's pixel coordinates quantize at the noise scale in half precision")
+
+
+def _explains_off_plane(F, clean1, clean2):
+    """Whether F puts the noise-free off-plane correspondences within 2 px of their epipolar lines (median)."""
+    if not bool(F.abs().sum() > 0):
+        return False
+    distances = sampson_epipolar_distance(clean1[None].double(), clean2[None].double(), F[None].double(), squared=False)
+    return bool(distances[0].median() < 2.0)
+
+
+class TestRANSACDegensacRecovery(BaseTester):
+    @pytest.mark.parametrize("max_lo_iters", [0, 5])
+    def test_degenerate_samples_are_recovered(self, device, dtype, max_lo_iters):
+        # Every sample the degeneracy test flags must come back as a model that explains the off-plane geometry;
+        # a sample it does not flag must come back as None.
+        _skip_half(dtype)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0, max_lo_iters=max_lo_iters, seed=0)
+        x1, x2, x1_host, x2_host, t1, t2, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        generator = torch.Generator().manual_seed(1)
+        flagged = 0
+        for _ in range(10):
+            sample = _degenerate_sample(labels, generator)
+            models, _ = ransac._lm_minimal_models(x1[sample.to(device)][None], x2[sample.to(device)][None])
+            models = models[torch.isfinite(models).flatten(1).all(1)]
+            scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
+            model = models[int(scores.masked_fill(counts <= 7, -1.0).argmax())]
+            result = ransac._degensac_recover(
+                model, sample.to(device), x1, x2, x1_host, x2_host, basis, threshold, torch.Generator().manual_seed(2)
+            )
+            degenerate = _h_degenerate_sample(model.cpu().double(), x1_host[sample], x2_host[sample], 3 * threshold)
+            if degenerate is None:
+                assert result is None
+                continue
+            flagged += 1
+            assert result is not None
+            out_models, scores, counts, masks = result
+            assert masks is None
+            assert out_models.shape[1:] == (3, 3) and scores.shape == counts.shape == (len(out_models),)
+            best = out_models[int(scores.argmax())].cpu().double()
+            assert _explains_off_plane(t2.mT @ best @ t1, clean1.cpu(), clean2.cpu())
+        assert flagged >= 5
+
+    def test_non_degenerate_sample_returns_none(self, device, dtype):
+        # Seven off-plane correspondences are not always in general position at the test's tolerance: a five-point
+        # homography fit leaves two redundant constraints, and five of the first seven here fit one within 2.2 px^2
+        # < 3 t. The contract is the implication: a sample the test does not flag is not recovered.
+        _skip_half(dtype)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.5, 0, device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0, seed=0)
+        x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        off_plane = (labels == 1).nonzero().flatten().cpu()
+        unflagged = 0
+        for group in range(6):
+            sample = off_plane[7 * group : 7 * group + 7]
+            models, _ = ransac._lm_minimal_models(x1[sample.to(device)][None], x2[sample.to(device)][None])
+            for model in models[torch.isfinite(models).flatten(1).all(1)]:
+                if _h_degenerate_sample(model.cpu().double(), x1_host[sample], x2_host[sample], 3 * threshold) is None:
+                    unflagged += 1
+                    recovered = ransac._degensac_recover(
+                        model, sample.to(device), x1, x2, x1_host, x2_host, basis, threshold, None
+                    )
+                    assert recovered is None
+        assert unflagged >= 3

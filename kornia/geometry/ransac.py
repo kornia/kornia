@@ -28,6 +28,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.geometry._degensac import _h_degenerate_sample, _inner_homography, _plane_parallax_search
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
@@ -52,6 +53,7 @@ from kornia.geometry.homography import (
     find_homography_lines_dlt_iterated,
     oneway_transfer_error,
     sample_is_valid_for_homography,
+    sampson_homography_distance,
 )
 
 __all__ = ["RANSAC"]
@@ -1022,6 +1024,85 @@ class RANSAC(nn.Module):
         if self.model_type == "essential":
             return _refine_essential_lm(models, x1, x2, mask, loss, scale2, iters)
         return _refine_fundamental_lm(models, x1, x2, mask, loss, scale2, iters)
+
+    def _degensac_recover(
+        self,
+        model: torch.Tensor,
+        sample: torch.Tensor,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        x1_host: torch.Tensor,
+        x2_host: torch.Tensor,
+        basis: torch.Tensor,
+        threshold: float,
+        generator: Optional[torch.Generator],
+    ) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
+        """DEGENSAC's recovery of a raw record setter (Chum, Werner and Matas, CVPR 2005; Chum's ``exp_ranF.c``).
+
+        ``model`` ``(3, 3)`` is a seven-point model of ``sample`` ``(7,)``, both on the device of the normalized
+        correspondences ``x1``, ``x2`` ``(N, 3)``; ``x1_host``, ``x2_host`` are the same correspondences on the host in
+        float64, NaN where not finite; ``threshold`` is the squared threshold ``t`` of that frame. When the sample is
+        H-degenerate and its homography has at least 8 inliers at ``3 t``, the homography is refined (``innerH``), and
+        with more than 6 plane inliers at ``16 t`` and at least 4 correspondences beyond ``100 t``, plane-and-parallax
+        models are drawn from those (:mod:`kornia.geometry._degensac`). The best is refined like the pool, with
+        ``max_lo_iters`` truncated Levenberg-Marquardt iterations, Chum's ``innerFH`` role, and replaces its raw model.
+
+        Returns:
+            The recovered models ``(K, 3, 3)`` with their scores, supports and, with PROSAC, inlier masks, as
+            :meth:`_lm_score_models` returns them, the refined model first; None when the sample is not H-degenerate
+            or nothing is recovered.
+        """
+        m = self.minimal_sample_size
+        sample_host = sample.cpu()
+        homography = _h_degenerate_sample(
+            model.detach().cpu().double(), x1_host[sample_host], x2_host[sample_host], 3 * threshold
+        )
+        if homography is None:
+            return None
+        rows = (torch.isfinite(x1_host).all(1) & torch.isfinite(x2_host).all(1)).nonzero().flatten()
+        p1, p2 = x1_host[rows, :2], x2_host[rows, :2]
+        if int((sampson_homography_distance(p1[None], p2[None], homography[None])[0] < 3 * threshold).sum()) < 8:
+            return None
+        homography, errors = _inner_homography(homography, p1, p2, 16 * threshold, generator)
+        off_plane = errors > 100 * threshold
+        if int((errors <= 16 * threshold).sum()) <= 6 or int(off_plane.sum()) < 4:
+            return None
+        off_rows = rows[off_plane].to(x1.device)
+        found = _plane_parallax_search(
+            homography.to(x1.device, x1.dtype),
+            x1[off_rows],
+            x2[off_rows],
+            2 * threshold,
+            256 if x1.device.type == "cpu" else 2048,
+            generator,
+        )
+        if found is None:
+            return None
+        models = found[0]
+        scores, counts, masks = self._lm_score_models(models, basis, threshold)
+        scores = scores.masked_fill(counts <= m, -1.0)
+        if float(scores.max()) < 0:
+            return None
+        best = int(scores.argmax())
+        if self.max_lo_iters > 0:
+            refined = self._lm_refine(
+                models[best : best + 1].cpu().double(),
+                x1_host[rows],
+                x2_host[rows],
+                None,
+                "truncated",
+                threshold,
+                self.max_lo_iters,
+            ).to(x1.device, x1.dtype)
+            refined_scores, refined_counts, refined_masks = self._lm_score_models(refined, basis, threshold)
+            refined_scores = refined_scores.masked_fill(refined_counts <= m, -1.0)
+            others = torch.arange(len(models), device=models.device) != best
+            models = torch.cat([refined, models[others]])
+            scores = torch.cat([refined_scores, scores[others]])
+            counts = torch.cat([refined_counts, counts[others]])
+            if masks is not None and refined_masks is not None:
+                masks = torch.cat([refined_masks, masks[others]])
+        return models, scores, counts, masks
 
     def _forward_lm(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """RANSAC with batched minimal solvers and Levenberg-Marquardt local optimization and refinement.
