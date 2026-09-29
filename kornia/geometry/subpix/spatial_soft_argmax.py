@@ -334,14 +334,12 @@ def conv_soft_argmax2d(
         - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. This function defaults to
           normalized, corner-aligned coordinates.
           :func:`conv_soft_argmax3d` defaults to pixel coordinates and ``output_value=True`` instead.
-        - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: with an odd
-          ``kernel_size``, a window that overhangs the border averages over its in-image pixels only.
-        - Known defects: the exponent is shifted by the maximum of the whole map and ``eps`` is added to each
+        - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: a window that
+          overhangs the border averages over its in-image pixels only.
+        - Known defect: the exponent is shifted by the maximum of the whole map and ``eps`` is added to each
           window's denominator, so a window whose values sit far below that maximum, in units of ``temperature``, is
           pulled toward its centre with a value near ``0``, or is ``NaN`` in float16
-          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_); with an even ``kernel_size`` and
-          ``padding = k // 2`` the border windows average a zero-padded coordinate into their centre and report a
-          point far inside the image (`#5066 <https://github.com/kornia/kornia/issues/5066>`_).
+          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_).
 
     Args:
         input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
@@ -411,10 +409,16 @@ def conv_soft_argmax2d(
     x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3))
 
     # We need to output also coordinates
-    # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid(h, w, False, device).to(dtype).permute(0, 3, 1, 2)
+    # Pooled window center coordinates. The grid covers the padded input and carries the coordinates on into the
+    # padding: with an even kernel_size and padding = k / 2, a border window's centre straddles a padded pixel,
+    # and a zero-padded grid would average 0 into it instead of -1 or W. The offset is applied before the cast, so a
+    # float16 or bfloat16 coordinate is rounded once, as on an unpadded grid.
+    py, px = (padding, padding) if isinstance(padding, int) else padding
+    grid_global: torch.Tensor = create_meshgrid(h + 2 * py, w + 2 * px, False, device)
+    grid_global = grid_global - torch.tensor([px, py], device=device, dtype=grid_global.dtype)
+    grid_global = grid_global.to(dtype).permute(0, 3, 1, 2)
 
-    grid_global_pooled = F.conv2d(grid_global, center_kernel, stride=stride, padding=padding)
+    grid_global_pooled = F.conv2d(grid_global, center_kernel, stride=stride)
 
     # Coordinates of maxima residual to window center
     # prepare kernel
@@ -460,9 +464,8 @@ def conv_soft_argmax3d(
     :math:`v_p` the heatmap value there and :math:`T` the temperature.
 
     Convention:
-        - See the convention block of :func:`conv_soft_argmax2d`, including its known defects
-          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_,
-          `#5066 <https://github.com/kornia/kornia/issues/5066>`_). Coordinates follow
+        - See the convention block of :func:`conv_soft_argmax2d`, including its known defect
+          (`#5020 <https://github.com/kornia/kornia/issues/5020>`_). Coordinates follow
           :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to pixel coordinates.
 
     Args:
@@ -537,10 +540,14 @@ def conv_soft_argmax3d(
     den = pool_coef * F.avg_pool3d(x_exp.view_as(input), kernel_size, stride=stride, padding=padding) + eps
 
     # We need to output also coordinates
-    # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid3d(d, h, w, False, device=device).to(dtype).permute(0, 4, 1, 2, 3)
+    # Pooled window center coordinates, over the padded input as in conv_soft_argmax2d
+    pz, py, px = (padding, padding, padding) if isinstance(padding, int) else padding
+    grid_global: torch.Tensor = create_meshgrid3d(d + 2 * pz, h + 2 * py, w + 2 * px, False, device=device)
+    # channels are (depth, x, y)
+    grid_global = grid_global - torch.tensor([pz, px, py], device=device, dtype=grid_global.dtype)
+    grid_global = grid_global.to(dtype).permute(0, 4, 1, 2, 3)
 
-    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride, padding=padding)
+    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride)
 
     # Coordinates of maxima residual to window center
     # prepare kernel
@@ -682,7 +689,8 @@ def _solve_cramer_sym3x3_cuda(
     a, b, c, d, e, f, g, h, i = system.index_select(1, indices).reshape(-1, 4, 9).unbind(2)
     determinants = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     det = determinants[:, 0:1]
-    solved = det.abs() > eps
+    scale = system[:, :6].abs().amax(1, keepdim=True)
+    solved = det.abs() > eps * scale * scale * scale
     shifts = determinants[:, 1:] / torch.where(solved, det, torch.ones_like(det))
     sx, sy, ss = shifts.unbind(1)
     return sx, sy, ss, solved[:, 0]
@@ -729,12 +737,14 @@ def _solve_cramer_sym3x3(
         r0: right-hand side component along x.
         r1: right-hand side component along y.
         r2: right-hand side component along s.
-        eps: determinant magnitude below which the system is treated as singular.
+        eps: relative determinant floor. The system is treated as singular when
+            ``|det| <= eps * m**3``, where ``m`` is the largest magnitude among the
+            Hessian entries, so the test does not depend on the response amplitude.
             Near-singular systems can produce numerically unstable (huge) shifts.
 
     Returns:
         (sx, sy, ss, solved) where ``solved`` is a bool mask for well-conditioned
-        systems (``|det| > eps``).  Outputs for unsolved entries are numerically
+        systems (``|det| > eps * m**3``).  Outputs for unsolved entries are numerically
         meaningless and should be discarded by the caller.
     """
     # The packed solve indexes one batch dimension, while the scalar code below
@@ -745,7 +755,7 @@ def _solve_cramer_sym3x3(
 
     # float16 cannot carry this solve. The determinant is a product of three
     # second derivatives, so for a [0, 1] response it lands around 1e-4 and
-    # below — still above ``eps``, so ``solved`` admits it. The forward divides
+    # far below, and the relative floor admits it. The forward divides
     # by it once and stays finite, but the backward of ``num / safe_det``
     # scales by ``1 / safe_det**2``, and that square is not representable in
     # float16 (finfo.tiny is 6.1e-5), so the gradient becomes inf and reduces
@@ -760,7 +770,10 @@ def _solve_cramer_sym3x3(
     cf01 = dxy * dss - dys * dxs  # cofactor M01
     cf02 = dxy * dys - dyy * dxs  # cofactor M02
     det = dxx * cf00 - dxy * cf01 + dxs * cf02
-    solved = det.abs() > eps
+    # The determinant is cubic in the response amplitude, so the floor is relative to the largest Hessian entry:
+    # an absolute floor rejected every well-conditioned fit of a low-amplitude response.
+    scale = torch.stack((dxx.abs(), dyy.abs(), dss.abs(), dxy.abs(), dxs.abs(), dys.abs())).amax(0)
+    solved = det.abs() > eps * scale * scale * scale
     # Avoid division by zero for singular/near-singular cases; outputs are discarded via solved.
     safe_det = torch.where(solved, det, torch.ones_like(det))
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
@@ -809,14 +822,11 @@ def conv_quad_interp3d(
           indices of the input: only refined maxima move off their own grid index. At a refined maximum ``y_max`` is
           the quadratic fit's value at the refined point; non-maxima keep their input value.
         - A maximum is not refined, and keeps its grid coordinates, when the determinant of its fit's Hessian is at
-          most ``1e-7`` in magnitude, when a move would reach the border voxels, when its centre leaves the voxels
-          precomputed for ``dilation_radius``, when the final shift exceeds ``1.5`` voxels on any axis, or when it
-          still requires an integer-centre move on the last iteration. A volume with a side shorter than 3 is returned
-          unrefined.
-        - Known defect: the ``1e-7`` determinant floor is absolute while the determinant is cubic in the response
-          amplitude, so low-amplitude maxima stay unrefined, among them most keypoints of the default
-          :class:`~kornia.feature.ScaleSpaceDetector` on a ``[0, 1]`` image
-          (`#5065 <https://github.com/kornia/kornia/issues/5065>`_).
+          most ``1e-7 * m**3`` in magnitude, where ``m`` is the largest magnitude among the Hessian entries (so the
+          test does not depend on the response amplitude), when a move would reach the border voxels, when its centre
+          leaves the voxels precomputed for ``dilation_radius``, when the final shift exceeds ``1.5`` voxels on any
+          axis, or when it still requires an integer-centre move on the last iteration. A volume with a side shorter
+          than 3 is returned unrefined.
 
     Args:
         input: response pyramid with shape :math:`(B, C, D, H, W)`.

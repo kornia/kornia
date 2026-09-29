@@ -159,7 +159,7 @@ def mean_average_precision(
         cumul_precision = cumul_gt_positives / (
             cumul_gt_positives + cumul_false_positives + 1e-10
         )  # (n_class_detections)
-        cumul_recall = cumul_gt_positives / _gt_boxes.size(0)  # (n_class_detections)
+        cumul_recall = cumul_gt_positives / gt_class_images.size(0)  # (n_class_detections)
 
         # Find the mean of the maximum of the precisions corresponding to recalls above the threshold 't'
         recall_thresholds = torch.arange(start=0, end=1.1, step=0.1).tolist()  # (11)
