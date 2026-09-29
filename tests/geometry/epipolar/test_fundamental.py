@@ -872,7 +872,6 @@ class TestConventionFundamental(BaseTester):
         assert F.abs().amax() <= 1
 
 
-
 def _rotation(axis_angle):
     return axis_angle_to_rotation_matrix(torch.tensor([axis_angle], dtype=torch.float64))[0]
 
