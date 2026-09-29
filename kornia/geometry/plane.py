@@ -188,12 +188,14 @@ class Hyperplane(nn.Module):
         KORNIA_CHECK(p0_data.shape == p1_data.shape)
         KORNIA_CHECK(p1_data.shape == p2_data.shape)
 
-        v0, v1 = (p2_data - p0_data), (p1_data - p0_data)
-        # The cross product of a small float16 triangle underflows: edges of 1e-4 give 1e-8, below the smallest
-        # subnormal 6e-8, so the triangle took the SVD fallback, whose sign is arbitrary (#5064). Like the rank check
-        # below, work in float32 for half-precision inputs and cast the unit normal back.
+        # Half-precision points are converted to float32 before the edges are taken. In float16 the cross product of
+        # a small triangle underflows (edges of 1e-4 give 1e-8, below the smallest subnormal 6e-8), that of a large
+        # one overflows (edges of 300 give 9e4, above the largest float16 65504), and so can the edges themselves.
+        # The triangle then took the SVD fallback, whose sign is arbitrary, or came back as nan (#5064). The unit
+        # normal is cast back to the input dtype.
         work_dtype = torch.float32 if p0_data.dtype in (torch.float16, torch.bfloat16) else p0_data.dtype
-        v0, v1 = v0.to(work_dtype), v1.to(work_dtype)
+        p0_work = p0_data.to(work_dtype)
+        v0, v1 = (p2_data.to(work_dtype) - p0_work), (p1_data.to(work_dtype) - p0_work)
         normal = torch.linalg.cross(v0, v1, dim=-1)
 
         norm = torch.linalg.vector_norm(normal, dim=-1, keepdim=True)
@@ -215,13 +217,14 @@ class Hyperplane(nn.Module):
         # Collinear or coincident points do not determine a plane: raise instead of taking the SVD
         # fallback, which returns an arbitrary valid-looking normal. The test is on the rank of
         # (v0, v1), as in fit_plane, from singular values that ``_torch_linalg_svdvals`` computes in
-        # float32 or float64. It is relative and scaled by the input's machine epsilon, so a small
-        # or thin valid triangle keeps working (also one whose cross product underflows in
-        # float16), and it does not depend on the fallback threshold below.
+        # float32 or float64. It is relative and scaled by the machine epsilon of the input, not of
+        # the float32 edges of a half-precision input, since the points carry the input's rounding.
+        # So a small or thin valid triangle keeps working, points that are collinear up to that
+        # rounding are rejected, and the test does not depend on the fallback threshold below.
         # Skipped under torch.compile/export and by disable_checks(), like every kornia value check.
         if not torch.jit.is_scripting() and not is_compiling() and are_checks_enabled():
             sv = _torch_linalg_svdvals(torch.stack((_unwrap(v0), _unwrap(v1)), -2))
-            if bool((sv[..., 1] <= sv[..., 0] * _rank_tolerance(sv.dtype)).any()):
+            if bool((sv[..., 1] <= sv[..., 0] * _rank_tolerance(p0_data.dtype)).any()):
                 raise ValueCheckError(
                     "Hyperplane.through requires three points that are not collinear; "
                     "the given points do not determine a plane."

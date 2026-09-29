@@ -194,6 +194,47 @@ class TestHyperplane(BaseTester):
         plane = Hyperplane.through(p0, p1, p2)
         self.assert_close(plane.normal.unwrap(), torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype))
 
+    @pytest.mark.parametrize("size", (300.0, 4e4))
+    def test_through_large_triangle_keeps_orientation_5064(self, device, dtype, size):
+        # The normal is (p2 - p0) x (p1 - p0) = (size, size, 0) x (2 size, 0, 0) = (0, 0, -2 size^2). In float16 that
+        # overflows for size 300 (-1.8e5 is beyond 65504), and for size 4e4 the edge p1 - p0 = 8e4 overflows too: the
+        # first took the SVD fallback and came back as +z, the second as nan. Both are now computed in float32.
+        p0 = torch.tensor([-size, 0.0, 1.0], device=device, dtype=dtype)
+        p1 = torch.tensor([size, 0.0, 1.0], device=device, dtype=dtype)
+        p2 = torch.tensor([0.0, size, 1.0], device=device, dtype=dtype)
+        plane = Hyperplane.through(p0, p1, p2)
+        self.assert_close(plane.normal.unwrap(), torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype))
+        self.assert_close(plane.offset.data, torch.tensor(1.0, device=device, dtype=dtype))
+
+    def test_through_points_collinear_up_to_rounding_raise(self, device, dtype):
+        # The origin, (0.1, 0.2, 0.3) and (0.3, 0.6, 0.9) are collinear, but their rounded coordinates are not
+        # exactly. The collinearity tolerance scales with the input dtype, also for a float16 or bfloat16 input whose
+        # edges are taken in float32, so through() rejects these points in every dtype, as fit_plane does, instead
+        # of returning a normal fitted to the rounding error ((0.89, -0.45, 0) in float16).
+        points = torch.tensor([[0.0, 0.0, 0.0], [0.1, 0.2, 0.3], [0.3, 0.6, 0.9]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            Hyperplane.through(points[0], points[1], points[2])
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            fit_plane(points)
+
+    def test_through_thin_triangle_keeps_orientation_without_checks(self, device, dtype):
+        # Without the value checks, as under torch.compile, only the fallback threshold decides. For a float16 or
+        # bfloat16 input it uses the float32 epsilon, so this triangle, whose cross product is 2^-11 of the product of
+        # its edge lengths, below the float16 and bfloat16 epsilons, keeps the (p2 - p0) x (p1 - p0) orientation in
+        # every dtype instead of taking the SVD fallback. Both point orders are checked: the normal follows the order.
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+            p1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+            p2 = torch.tensor([0.5, 2.0**-12, 0.0], device=device, dtype=dtype)
+            expected = torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype)
+            self.assert_close(Hyperplane.through(p0, p1, p2).normal.unwrap(), expected)
+            self.assert_close(Hyperplane.through(p0, p2, p1).normal.unwrap(), -expected)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
         # on collinear points returns what an eager call returns with checks disabled.
@@ -351,9 +392,8 @@ class TestHyperplane(BaseTester):
     def test_through_batched_threshold_is_per_row(self, device, dtype):
         # The fallback threshold compares each row's cross product with that row's own edge lengths. Measured
         # against the whole batch, the 1e-4 triangle would fall below it next to the 1e4 one and take the SVD
-        # fallback, whose sign differs from the cross product's for this triangle.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the 1e4 triangle's cross product overflows float16")
+        # fallback, whose sign differs from the cross product's for this triangle. The 1e4 triangle's cross product
+        # overflows float16, so half-precision points are taken to float32 first (#5064).
         base = [
             torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype),
             torch.tensor([0.0, 2.0, 0.0], device=device, dtype=dtype),
