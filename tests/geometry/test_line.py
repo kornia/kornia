@@ -463,6 +463,15 @@ class TestFitLine(BaseTester):
         with pytest.raises(TypeCheckError, match="weights must be a tensor"):
             fit_line(points_3d, [[1.0, 1.0, 1.0]])
 
+        # #5106: a negative weight is accepted by the sum check but makes the weighted scatter indefinite, so
+        # the 2-D and the D >= 3 branches disagree by 90 degrees. Rejected like any other degenerate row.
+        negative = torch.tensor([[1.0, -3.0, 1.0, 2.0]], device=device, dtype=dtype)
+        points_5106 = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.4], [2.5, 0.9], [3.0, 2.0]]], device=device, dtype=dtype
+        )
+        with pytest.raises(ValueCheckError, match="non-negative weights"):
+            fit_line(points_5106, negative)
+
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
         # on identical points returns what an eager call returns with checks disabled.

@@ -280,6 +280,11 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
             raise ValueCheckError(
                 "fit_line requires a positive sum of weights; the given weights do not sum to a positive value."
             )
+        if bool((weights < 0).any()):
+            raise ValueCheckError(
+                "fit_line requires non-negative weights; a negative weight makes the weighted scatter "
+                "indefinite and the fit ill-defined."
+            )
 
 
 def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
