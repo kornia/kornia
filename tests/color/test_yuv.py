@@ -542,6 +542,14 @@ class TestRgbToYuv422(BaseTester):
         self.assert_close(module_y, y)
         self.assert_close(module_uv, uv)
 
+    def test_odd_height_round_trip(self, device, dtype):
+        # Repeating each horizontal pixel makes the 4:2:2 chroma subsample lossless.
+        rgb = _seeded_rand(2, 3, 3, 2, seed=4227).repeat_interleave(2, dim=-1).to(device=device, dtype=dtype)
+        rtol, atol = _round_trip_tol(dtype)
+
+        y, uv = kornia.color.rgb_to_yuv422(rgb)
+        self.assert_close(kornia.color.yuv422_to_rgb(y, uv), rgb, atol=atol, rtol=rtol)
+
     def test_forth_and_back(self, device, dtype):
         # 1x2-constant input, so the horizontal chroma subsample is lossless.
         rtol, atol = _round_trip_tol(dtype)
