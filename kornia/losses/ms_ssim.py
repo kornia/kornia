@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -41,6 +41,10 @@ class MS_SSIMLoss(nn.Module):
         - :math:`\mathcal{L_{MSSIM}}` is the MS-SSIM loss.
         - :math:`G_\alpha` is the sigma values for computing multi-scale SSIM.
         - :math:`\mathcal{L_1}` is the L1 loss.
+
+    Each channel is filtered at every scale. :math:`\mathcal{L_{MSSIM}}` is one minus the product, over the channels,
+    of the luminance at the coarsest scale and the contrast-structure at every scale, so a single-channel input gives
+    the plain MS-SSIM of [1]. The L1 term is filtered at the coarsest scale and averaged over the channels.
 
     Reference:
         [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
@@ -90,17 +94,32 @@ class MS_SSIMLoss(nn.Module):
         self.compensation: float = compensation
         self.reduction: str = reduction
 
-        # Set filter size
+        self.num_scales: int = len(sigmas)
+
+        # One mask per scale; forward repeats them for every channel of the input.
         filter_size = int(4 * sigmas[-1] + 1)
-        g_masks = torch.zeros((3 * len(sigmas), 1, filter_size, filter_size))
+        g_masks = torch.stack([self._fspecial_gauss_2d(filter_size, sigma) for sigma in sigmas]).unsqueeze(1)
 
-        # Compute mask at different scales
-        for idx, sigma in enumerate(sigmas):
-            g_masks[3 * idx + 0, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
-            g_masks[3 * idx + 1, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
-            g_masks[3 * idx + 2, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
+        # The masks are derived from ``sigmas``, so they are not persisted; see ``_load_from_state_dict``.
+        self.register_buffer("_g_masks", g_masks, persistent=False)
 
-        self.register_buffer("_g_masks", g_masks)
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        # Older releases persisted three scale-major copies of every mask, a layout that paired channels with the
+        # wrong scales. Accept the key for strict loading, including when nested in another module, and keep the
+        # masks built from ``sigmas``.
+        state_dict.pop(prefix + "_g_masks", None)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def _fspecial_gauss_1d(
         self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
@@ -161,9 +180,12 @@ class MS_SSIMLoss(nn.Module):
         if not len(img1.shape) == len(img2.shape):
             raise ValueError(f"Input shapes should be same. Got {type(img1)} and {type(img2)}.")
 
-        g_masks: torch.Tensor = torch.jit.annotate(torch.Tensor, self._g_masks)
-
         CH: int = img1.shape[-3]
+        S: int = self.num_scales
+        # A grouped convolution gives each input channel a contiguous block of output channels, so the masks are
+        # repeated channel-major: output ``c * S + s`` is channel ``c`` filtered at scale ``s``.
+        g_masks: torch.Tensor = torch.jit.annotate(torch.Tensor, self._g_masks).repeat(CH, 1, 1, 1)
+
         mux = F.conv2d(img1, g_masks, groups=CH, padding=self.pad)
         muy = F.conv2d(img2, g_masks, groups=CH, padding=self.pad)
         mux2 = mux * mux
@@ -176,7 +198,8 @@ class MS_SSIMLoss(nn.Module):
 
         lc = (2 * muxy + self.C1) / (mux2 + muy2 + self.C1)
         cs = (2 * sigmaxy + self.C2) / (sigmax2 + sigmay2 + self.C2)
-        lM = lc[:, -1, :, :] * lc[:, -2, :, :] * lc[:, -3, :, :]
+        # Luminance at the coarsest scale and contrast-structure at every scale, multiplied over the channels.
+        lM = lc[:, S - 1 :: S].prod(dim=1)
         PIcs = cs.prod(dim=1)
 
         # Compute MS-SSIM loss
@@ -186,8 +209,8 @@ class MS_SSIMLoss(nn.Module):
         # Compute L1 loss
         loss_l1 = F.l1_loss(img1, img2, reduction="none")
 
-        # Compute average l1 loss in 3 channels
-        gaussian_l1 = F.conv2d(loss_l1, g_masks[-CH:], groups=CH, padding=self.pad).mean(1)
+        # Average over the channels of the l1 loss filtered at the coarsest scale
+        gaussian_l1 = F.conv2d(loss_l1, g_masks[S - 1 :: S], groups=CH, padding=self.pad).mean(1)
 
         # Compute MS-SSIM + L1 loss
         loss = self.alpha * loss_ms_ssim + (1 - self.alpha) * gaussian_l1 / self.DR
