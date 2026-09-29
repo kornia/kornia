@@ -354,9 +354,10 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
     A10, b10 = coeffs[..., :10], coeffs[..., 10:]
     lu, pivots, info = torch.linalg.lu_factor_ex(A10)
     singular = info > 0
-    if bool(singular.any()):
-        eye10 = torch.eye(10, device=device, dtype=dtype).expand(B, 10, 10)
-        lu, pivots, _ = torch.linalg.lu_factor_ex(torch.where(singular[:, None, None], eye10, A10))
+    # The factorization of the identity is the identity without row exchanges: substituting it costs no second
+    # factorization, and no host synchronization, which would split a compiled graph.
+    lu = torch.where(singular[:, None, None], torch.eye(10, device=device, dtype=dtype), lu)
+    pivots = torch.where(singular[:, None], torch.arange(1, 11, device=device, dtype=pivots.dtype), pivots)
     eliminated = torch.linalg.lu_solve(lu, pivots, b10)  # (B, 10, 10)
 
     # ---- hidden-variable matrix (B, 3, 13) and its determinant, a polynomial of degree ten in z ----
