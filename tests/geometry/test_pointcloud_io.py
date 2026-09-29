@@ -224,9 +224,9 @@ class TestPointCloudFilenames(BaseTester):
     @pytest.mark.parametrize("name", ["points.txt", "points", "points.ply.txt"])
     def test_invalid_filename_extension(self, tmp_path, saver, loader, filename_type, name):
         filename = filename_type(str(tmp_path / name))
-        with pytest.raises(TypeError, match="extension"):
+        with pytest.raises(TypeError, match=r"os\.PathLike\[str\] with the \.ply extension"):
             saver(filename, torch.ones(1, 3))
-        with pytest.raises(TypeError, match="extension"):
+        with pytest.raises(TypeError, match=r"os\.PathLike\[str\] with the \.ply extension"):
             loader(filename)
 
     def test_missing_file(self, tmp_path, saver, loader, filename_type):

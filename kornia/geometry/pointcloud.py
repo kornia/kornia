@@ -48,7 +48,7 @@ def save_pointcloud_ply(filename: str | os.PathLike[str], pointcloud: torch.Tens
     """
     filename = os.fspath(filename)
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
 
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
@@ -100,7 +100,7 @@ def save_pointcloud_ply_binary(filename: str | os.PathLike[str], pointcloud: tor
     """
     filename = os.fspath(filename)
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
 
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
@@ -271,7 +271,7 @@ def _warn_header_size(header_size: Optional[int]) -> None:
 
 def _check_ply_filename(filename: str) -> None:
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
     if not os.path.isfile(filename):
         raise ValueError("Input filename is not an existing file.")
 
