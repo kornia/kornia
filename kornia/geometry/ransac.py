@@ -30,6 +30,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry._degensac import (
     _h_degenerate_sample,
+    _h_degenerate_samples,
     _inner_homography,
     _inside_plane,
     _plane_parallax_search,
@@ -89,7 +90,7 @@ def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, .
 
 
 def _resolve_degensac(degensac: Optional[bool], model_type: str, local_optimization: str) -> bool:
-    """The ``degensac`` setting of :class:`RANSAC`: None enables it where it is supported; True requires support."""
+    """The ``degensac`` setting of :class:`RANSAC`: None leaves it off; True requires support."""
     if degensac is not None and not isinstance(degensac, bool):
         raise ValueError(f"degensac must be None, True or False, got {degensac!r}")
     supported = model_type in _DEGENSAC_MODELS and local_optimization == "lm"
@@ -97,7 +98,7 @@ def _resolve_degensac(degensac: Optional[bool], model_type: str, local_optimizat
         raise ValueError(
             'degensac=True requires model_type "fundamental" or "fundamental_7pt" with local_optimization="lm"'
         )
-    return supported if degensac is None else degensac
+    return False if degensac is None else degensac
 
 
 def _normalize_correspondences(
@@ -164,7 +165,7 @@ class RANSAC(nn.Module):
           model from its inliers: with the default ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on
           32-inlier subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers
           iteratively.
-        - ``degensac``, on by default for ``"fundamental"`` and ``"fundamental_7pt"`` with
+        - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
           correspondences related by one homography. Such a model fits the dominant plane and whatever happens to
@@ -174,8 +175,8 @@ class RANSAC(nn.Module):
           counts follow Chum's implementation in pydegensac; the draws come from a private host generator. A plane
           already searched in the call is not searched again: a sample whose homography's inliers lie 95% or more
           inside it is skipped before refinement, and a refined plane whose inliers match it (Jaccard index 0.95 or
-          more) before the search. ``degensac=False`` keeps the plain seven-point loop, whose result it reproduces
-          exactly when no record-setting sample is degenerate.
+          more) before the search. The default, ``degensac=None`` (or False), keeps the plain seven-point loop.
+          Explicit recovery reproduces that result exactly when no record-setting sample is degenerate.
           Chum's tolerance, three times the squared threshold for five of the seven correspondences, also flags
           samples in many scenes without a dominant plane; there the recovered models only join the competition.
         - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
@@ -213,9 +214,9 @@ class RANSAC(nn.Module):
             fundamental and essential matrices and ``"dlt"`` for line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
-        degensac: run DEGENSAC's dominant-plane recovery, as described above. None enables it for
-            ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``, the only combinations that
-            support it; True with any other raises ``ValueError``.
+        degensac: run DEGENSAC's dominant-plane recovery, as described above. None and False leave it off.
+            True enables it for ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``,
+            the only supported combinations; True with any other raises ``ValueError``.
 
     """
 
@@ -262,8 +263,8 @@ class RANSAC(nn.Module):
                 final robust refinement) or ``"dlt"`` (refits of each new best model); None picks ``"lm"`` where it
                 is supported, for homographies, fundamental and essential matrices.
             refine_iters: Levenberg-Marquardt iterations of the final refinement on the inliers with ``"lm"``.
-            degensac: DEGENSAC's dominant-plane recovery for seven-point fundamental matrices; None enables it where
-                it is supported.
+            degensac: opt-in DEGENSAC dominant-plane recovery for seven-point fundamental matrices.
+                None and False leave it off; True requires seven-point matrices with local_optimization="lm".
 
         """
         super().__init__()
@@ -1058,6 +1059,7 @@ class RANSAC(nn.Module):
         threshold: float,
         generator: Optional[torch.Generator],
         seen_planes: Optional[List[torch.Tensor]] = None,
+        homography: Optional[torch.Tensor] = None,
     ) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
         """DEGENSAC's recovery of a raw record setter (Chum, Werner and Matas, CVPR 2005; Chum's ``exp_ranF.c``).
 
@@ -1072,15 +1074,18 @@ class RANSAC(nn.Module):
         Levenberg-Marquardt iterations, Chum's ``innerFH`` role, and the better of it and its refinement is returned
         alone, as ``rFtH`` returns one model: near-duplicates from one search would crowd the eight-model pool.
 
+        ``homography``, when supplied, is the result of the batch's degeneracy check in float64 on the host.
+
         Returns:
             The recovered model ``(1, 3, 3)`` with its score, support and, with PROSAC, inlier mask, as
             :meth:`_lm_score_models` returns them; None when the sample is not H-degenerate or nothing is recovered.
         """
         m = self.minimal_sample_size
-        sample_host = sample.cpu()
-        homography = _h_degenerate_sample(
-            model.detach().cpu().double(), x1_host[sample_host], x2_host[sample_host], 3 * threshold
-        )
+        if homography is None:
+            sample_host = sample.cpu()
+            homography = _h_degenerate_sample(
+                model.detach().cpu().double(), x1_host[sample_host], x2_host[sample_host], 3 * threshold
+            )
         if homography is None:
             return None
         rows = (torch.isfinite(x1_host).all(1) & torch.isfinite(x2_host).all(1)).nonzero().flatten()
@@ -1177,6 +1182,7 @@ class RANSAC(nn.Module):
         it ``seed + 2 * sample_budget + iteration``; an unseeded one from the first record setter's sample, drawn from
         the global generator, so that its draws still differ between calls.
         """
+        # Transfer and test all record setters together; only the subsequent recovery depends on earlier planes.
         records = self._raw_record_setters(scores.cpu(), prior)
         if not records:
             return []
@@ -1188,9 +1194,25 @@ class RANSAC(nn.Module):
             generator.manual_seed(hash(tuple(samples[records[0]].tolist())) & 0x7FFFFFFFFFFFFFFF)
         planes = [] if seen_planes is None else seen_planes
         recoveries = []
-        for record in records:
+        samples_host = samples[records].cpu()
+        homographies = _h_degenerate_samples(
+            models[records].detach().cpu().double(), x1_host[samples_host], x2_host[samples_host], 3 * threshold
+        )
+        for record, homography in zip(records, homographies):
+            if homography is None:
+                continue
             recovered = self._degensac_recover(
-                models[record], samples[record], x1, x2, x1_host, x2_host, basis, threshold, generator, planes
+                models[record],
+                samples[record],
+                x1,
+                x2,
+                x1_host,
+                x2_host,
+                basis,
+                threshold,
+                generator,
+                planes,
+                homography,
             )
             if recovered is not None:
                 recoveries.append(recovered)

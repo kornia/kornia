@@ -221,9 +221,11 @@ def sampson_homography_distance(
     out_dtype = dtype if dtype.is_floating_point else work
     pts1, pts2 = pts1.to(work), pts2.to(work)
     if pts1.shape[-1] == 3:
-        pts1 = convert_points_from_homogeneous(pts1)
+        finite = torch.isfinite(pts1).all(-1, keepdim=True)
+        pts1 = convert_points_from_homogeneous(pts1).masked_fill(~finite, float("nan"))
     if pts2.shape[-1] == 3:
-        pts2 = convert_points_from_homogeneous(pts2)
+        finite = torch.isfinite(pts2).all(-1, keepdim=True)
+        pts2 = convert_points_from_homogeneous(pts2).masked_fill(~finite, float("nan"))
     x, y = pts1[..., 0], pts1[..., 1]
     u, v = pts2[..., 0], pts2[..., 1]
     # The distance does not depend on the scale of H, but its quadratic is of fourth order in H: dividing by the

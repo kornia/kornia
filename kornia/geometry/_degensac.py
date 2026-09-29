@@ -65,20 +65,20 @@ def _left_epipole(F: torch.Tensor) -> torch.Tensor:
 
 
 def _homographies_from_fundamental(F: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    """Plane homographies ``(T, 3, 3)`` compatible with ``F`` ``(3, 3)`` through triplets ``x1``, ``x2`` ``(T, 3, 3)``.
+    """Plane homographies ``(..., T, 3, 3)`` through triplets ``x1``, ``x2`` for ``F`` ``(..., 3, 3)``.
 
     ``H = A - e' (M^{-1} b)^T`` with ``A = [e']_x F``, ``M`` the triplet's homogeneous first-image points as rows and
     ``b_i = (x'_i x A x_i)^T (x'_i x e') / |x'_i x e'|^2`` (Hartley and Zisserman, result 13.6; the paper's eq. 4).
     A collinear triplet gives a NaN homography.
     """
-    e = _left_epipole(F[None])[0]
+    e = _left_epipole(F.reshape(-1, 3, 3)).reshape(*F.shape[:-2], 3)
     A = cross_product_matrix(e) @ F
-    c1 = torch.linalg.cross(x2, x1 @ A.T)
-    c2 = torch.linalg.cross(x2, e.expand_as(x2))
+    c1 = torch.linalg.cross(x2, x1 @ A[..., None, :, :].mT)
+    c2 = torch.linalg.cross(x2, e[..., None, None, :].expand_as(x2))
     b = (c1 * c2).sum(-1) / c2.square().sum(-1)
     v, info = torch.linalg.solve_ex(x1, b)
-    v = v.masked_fill((info != 0)[:, None], float("nan"))
-    return A - e[None, :, None] * v[:, None, :]
+    v = v.masked_fill((info != 0)[..., None], float("nan"))
+    return A[..., None, :, :] - e[..., None, :, None] * v[..., None, :]
 
 
 def _h_degenerate_sample(
@@ -104,6 +104,37 @@ def _h_degenerate_sample(
     if not bool(degenerate.any()):
         return None
     return refit[int(degenerate.nonzero()[0, 0])]
+
+
+def _h_degenerate_samples(
+    F: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, threshold: float
+) -> List[Optional[torch.Tensor]]:
+    """Batch the deterministic degeneracy tests of ``F`` ``(B, 3, 3)`` and samples ``(B, 7, 3)``.
+
+    Return the first qualifying triplet's refitted homography per sample, or None, as
+    :func:`_h_degenerate_sample` does. RANSAC still recovers these samples in draw order; batching only their
+    independent checks preserves the private generator and the previously searched planes.
+    """
+    result: List[Optional[torch.Tensor]] = [None] * len(F)
+    if len(F) == 0:
+        return result
+    index = torch.tensor(_TRIPLETS, device=x1.device)
+    H = _homographies_from_fundamental(F, x1[:, index], x2[:, index]).flatten(0, 1)
+    rows = torch.isfinite(H).flatten(1).all(1).nonzero().flatten()
+    if len(rows) == 0:
+        return result
+    owners = rows // len(_TRIPLETS)
+    p1, p2 = x1[owners, :, :2], x2[owners, :, :2]
+    errors = sampson_homography_distance(p1, p2, H[rows])
+    closest = errors.argsort(1)[:, :5, None].expand(-1, -1, 2)
+    refit = find_homography_dlt(p1.gather(1, closest), p2.gather(1, closest), solver="svd")
+    errors = sampson_homography_distance(p1, p2, refit)
+    degenerate = ((errors < threshold).sum(1) >= 5) & torch.isfinite(refit).flatten(1).all(1)
+    for row in degenerate.nonzero().flatten().tolist():
+        owner = int(owners[row])
+        if result[owner] is None:
+            result[owner] = refit[row]
+    return result
 
 
 def _plane_parallax_fundamentals(

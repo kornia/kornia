@@ -144,6 +144,30 @@ class TestHDegenerateSample:
             if bool(valid[0, root]):
                 assert _h_degenerate_sample(candidates[0, root], x1, x2, self.THRESHOLD) is None
 
+    def test_batched_checks_keep_sample_order_and_invalid_entries(self):
+        K, R, t, _, F = _two_view_geometry()
+        generator = torch.Generator().manual_seed(3)
+        plane1, plane2 = _points(K, R, t, 7, True, generator)
+        general1, general2 = _points(K, R, t, 7, False, generator)
+        models = torch.stack([F, torch.zeros_like(F), F, torch.full_like(F, float("nan")), F])
+        x1 = torch.stack([plane1, plane1, general1, plane1, plane1.flip(0)])
+        x2 = torch.stack([plane2, plane2, general2, plane2, plane2.flip(0)])
+        expected = [_h_degenerate_sample(f, a, b, self.THRESHOLD) for f, a, b in zip(models, x1, x2)]
+        assert [h is not None for h in expected] == [True, False, False, False, True]
+        actual = degensac_module._h_degenerate_samples(models, x1, x2, self.THRESHOLD)
+        assert len(actual) == len(expected)
+        for result, reference in zip(actual, expected):
+            if reference is None:
+                assert result is None
+            else:
+                assert result is not None and torch.equal(result, reference)
+
+    @pytest.mark.parametrize("count", [0, 3])
+    def test_empty_or_invalid_batch(self, count):
+        models = torch.zeros(count, 3, 3, dtype=F64)
+        samples = torch.ones(count, 7, 3, dtype=F64)
+        assert degensac_module._h_degenerate_samples(models, samples, samples, self.THRESHOLD) == [None] * count
+
 
 class TestPlaneParallax:
     def test_two_off_plane_pairs_give_the_fundamental_matrix(self):

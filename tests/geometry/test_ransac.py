@@ -2113,8 +2113,8 @@ class TestRANSACDegensacOptions(BaseTester):
     @pytest.mark.parametrize(
         ("model_type", "expected"),
         [
-            ("fundamental", True),
-            ("fundamental_7pt", True),
+            ("fundamental", False),
+            ("fundamental_7pt", False),
             ("fundamental_8pt", False),
             ("homography", False),
             ("essential", False),
@@ -2122,6 +2122,10 @@ class TestRANSACDegensacOptions(BaseTester):
     )
     def test_default_resolves_per_model(self, model_type, expected):
         assert RANSAC(model_type).degensac is expected
+
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_7pt"])
+    def test_explicit_opt_in(self, model_type):
+        assert RANSAC(model_type, degensac=True).degensac is True
 
     def test_default_is_off_with_dlt(self):
         assert RANSAC("fundamental", local_optimization="dlt").degensac is False
@@ -2217,7 +2221,7 @@ class TestRANSACDegensacRecovery(BaseTester):
         _skip_half(dtype)
         work = torch.float64 if dtype == torch.float64 else torch.float32
         kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
-        ransac = RANSAC("fundamental", inl_th=1.0, max_lo_iters=max_lo_iters, seed=0)
+        ransac = RANSAC("fundamental", inl_th=1.0, max_lo_iters=max_lo_iters, seed=0, degensac=True)
         x1, x2, x1_host, x2_host, t1, t2, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
         generator = torch.Generator().manual_seed(1)
         flagged = 0
@@ -2245,6 +2249,39 @@ class TestRANSACDegensacRecovery(BaseTester):
             assert _explains_off_plane(t2.mT @ best @ t1, clean1.cpu(), clean2.cpu())
         assert flagged >= 5
 
+    def test_record_checks_are_batched(self, device, dtype, monkeypatch):
+        _skip_half(dtype)
+        sizes = []
+        original = ransac_module._h_degenerate_samples
+
+        def check(models, *args):
+            sizes.append(len(models))
+            return original(models, *args)
+
+        def scalar_check(*args):
+            raise AssertionError("a record's already batched degeneracy test must not run again")
+
+        monkeypatch.setattr(ransac_module, "_h_degenerate_samples", check)
+        monkeypatch.setattr(ransac_module, "_h_degenerate_sample", scalar_check)
+        kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        F, _ = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
+        assert sizes and max(sizes) > 1
+        assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+
+    @pytest.mark.parametrize("score_type", ["msac", "ransac"])
+    def test_batched_recovery_matches_scalar_checks(self, device, dtype, score_type, monkeypatch):
+        _skip_half(dtype)
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 5, device=device, dtype=dtype)
+        estimator = RANSAC("fundamental", inl_th=1.0, seed=5, degensac=True, score_type=score_type)
+        batched = estimator(kp1, kp2)
+
+        def scalar_checks(models, x1, x2, threshold):
+            return [_h_degenerate_sample(f, a, b, threshold) for f, a, b in zip(models, x1, x2)]
+
+        monkeypatch.setattr(ransac_module, "_h_degenerate_samples", scalar_checks)
+        scalar = estimator(kp1, kp2)
+        assert torch.equal(batched[0], scalar[0]) and torch.equal(batched[1], scalar[1])
+
     def test_unseeded_recoveries_leave_the_global_generator(self, device, dtype):
         # The minimal samples of an unseeded call come from the global generator. Recoveries drawing from it too
         # would shift every later sample, so an unseeded call with a recovery would sample a different sequence than
@@ -2252,7 +2289,7 @@ class TestRANSACDegensacRecovery(BaseTester):
         _skip_half(dtype)
         work = torch.float64 if dtype == torch.float64 else torch.float32
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
-        ransac = RANSAC("fundamental", inl_th=1.0)
+        ransac = RANSAC("fundamental", inl_th=1.0, degensac=True)
         x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
         generator = torch.Generator().manual_seed(4)
         samples = torch.stack([_degenerate_sample(labels, generator) for _ in range(8)]).to(device)
@@ -2274,9 +2311,24 @@ class TestRANSACDegensacRecovery(BaseTester):
         seeds = []
         original = RANSAC._degensac_recover
 
-        def spy(self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator, seen_planes=None):
+        def spy(
+            self,
+            model,
+            sample,
+            x1,
+            x2,
+            x1_host,
+            x2_host,
+            basis,
+            threshold,
+            generator,
+            seen_planes=None,
+            homography=None,
+        ):
             seeds.append(generator.initial_seed())
-            return original(self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator, seen_planes)
+            return original(
+                self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator, seen_planes, homography
+            )
 
         monkeypatch.setattr(RANSAC, "_degensac_recover", spy)
         kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
@@ -2284,7 +2336,7 @@ class TestRANSACDegensacRecovery(BaseTester):
         for global_seed in (0, 1):
             seeds.clear()
             torch.manual_seed(global_seed)
-            RANSAC("fundamental", inl_th=1.0)(kp1, kp2)
+            RANSAC("fundamental", inl_th=1.0, degensac=True)(kp1, kp2)
             per_call.append(set(seeds))
         assert per_call[0] and per_call[1] and per_call[0] != per_call[1]
 
@@ -2295,7 +2347,7 @@ class TestRANSACDegensacRecovery(BaseTester):
         _skip_half(dtype)
         work = torch.float64 if dtype == torch.float64 else torch.float32
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
-        ransac = RANSAC("fundamental", inl_th=1.0, seed=0)
+        ransac = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)
         x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
         generator = torch.Generator().manual_seed(4)
         samples = torch.stack([_degenerate_sample(labels, generator) for _ in range(8)]).to(device)
@@ -2333,7 +2385,7 @@ class TestRANSACDegensacRecovery(BaseTester):
         for seed in range(3):
             refinements.clear()
             kp1, kp2, _, _, _ = create_dominant_plane_scene(4000, 0.6, 0.95, seed, device=device, dtype=dtype)
-            RANSAC("fundamental", inl_th=1.0, seed=seed)(kp1, kp2)
+            RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=True)(kp1, kp2)
             assert len(refinements) == 1, f"seed {seed}"
 
     def test_dominant_plane_is_searched_at_most_twice_per_call(self, device, dtype, monkeypatch):
@@ -2342,7 +2394,7 @@ class TestRANSACDegensacRecovery(BaseTester):
         original = ransac_module._plane_parallax_search
         monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
         kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
-        F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0)(kp1, kp2)
+        F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0, degensac=True)(kp1, kp2)
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
         assert 1 <= len(calls) <= 2  # one plane; nine searches before deduplication
 
@@ -2352,7 +2404,7 @@ class TestRANSACDegensacRecovery(BaseTester):
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, scene_seed, device=device, dtype=dtype)
         x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
         sample = _degenerate_sample(labels, torch.Generator().manual_seed(scene_seed)).to(device)
-        ransac = RANSAC("fundamental", inl_th=1.0, score_type=score_type, max_lo_iters=max_lo_iters)
+        ransac = RANSAC("fundamental", inl_th=1.0, score_type=score_type, max_lo_iters=max_lo_iters, degensac=True)
         models, _ = ransac._lm_minimal_models(x1[sample][None], x2[sample][None])
         models = models[torch.isfinite(models).flatten(1).all(1)]
         scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
@@ -2385,7 +2437,7 @@ class TestRANSACDegensacRecovery(BaseTester):
         _skip_half(dtype)
         work = torch.float64 if dtype == torch.float64 else torch.float32
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.5, 0, device=device, dtype=dtype)
-        ransac = RANSAC("fundamental", inl_th=1.0, seed=0)
+        ransac = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)
         x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
         off_plane = (labels == 1).nonzero().flatten().cpu()
         unflagged = 0
@@ -2409,15 +2461,15 @@ class TestRANSACDegensac(BaseTester):
     @pytest.mark.parametrize("scene", sorted(_SCENES))
     def test_recovers_dominant_plane(self, device, dtype, scene):
         # On main (a7d177cbf) plain seven-point RANSAC fails every one of these seeds on every scene on CPU, so the
-        # default's assertions fail there. Accelerators sample differently (MPS: plain succeeds on one seed of the
-        # frontal and zoomed scenes), so the plain count only asserts that the scenes stay hard for it.
+        # explicit recovery's assertions fail there. Accelerators sample differently (MPS: plain succeeds on one
+        # frontal and zoomed seed), so the plain count only asserts that the scenes stay hard for it.
         _skip_half(dtype)
         plain_failures = 0
         for seed in range(5):
             kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(
                 1000, 0.6, 0.95, seed, device=device, dtype=dtype, **_SCENES[scene]
             )
-            F, mask = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=seed)(kp1, kp2)
+            F, mask = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=seed, degensac=True)(kp1, kp2)
             assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu()), f"seed {seed}"
             off_plane = labels == 1
             assert float((mask & off_plane).sum()) >= 0.8 * float(off_plane.sum()), f"seed {seed}"
@@ -2429,16 +2481,18 @@ class TestRANSACDegensac(BaseTester):
     def test_both_score_types(self, device, dtype, score_type):
         _skip_half(dtype)
         kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
-        F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0, score_type=score_type)(kp1, kp2)
+        F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0, score_type=score_type, degensac=True)(
+            kp1, kp2
+        )
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
 
     def test_never_degenerate_is_bitwise_plain(self, device, dtype, monkeypatch):
         # With the test stubbed to find no degenerate sample, the record tracking, sample rows and host transfers
         # must leave the result bit for bit the same, even where recoveries would fire.
         _skip_half(dtype)
-        monkeypatch.setattr(ransac_module, "_h_degenerate_sample", lambda *args: None)
+        monkeypatch.setattr(ransac_module, "_h_degenerate_samples", lambda models, *args: [None] * len(models))
         kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
-        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0)(kp1, kp2)
+        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
         F_plain, mask_plain = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=False)(kp1, kp2)
         assert torch.equal(F, F_plain) and torch.equal(mask, mask_plain)
 
@@ -2453,7 +2507,7 @@ class TestRANSACDegensac(BaseTester):
         # plane_fraction=0 puts every inlier at a random depth: no dominant plane.
         for seed in range(6):
             kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.0, seed, device=device, dtype=dtype)
-            F, mask = RANSAC("fundamental", inl_th=1.0, seed=seed)(kp1, kp2)
+            F, mask = RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=True)(kp1, kp2)
             F_plain, mask_plain = RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=False)(kp1, kp2)
 
             error, error_plain = _off_plane_error(F, clean1, clean2), _off_plane_error(F_plain, clean1, clean2)
@@ -2467,7 +2521,20 @@ class TestRANSACDegensac(BaseTester):
         _skip_half(dtype)
         batches = []
 
-        def stub(self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator, seen_planes=None):
+        def stub(
+            self,
+            model,
+            sample,
+            x1,
+            x2,
+            x1_host,
+            x2_host,
+            basis,
+            threshold,
+            generator,
+            seen_planes=None,
+            homography=None,
+        ):
             batches.append(generator.initial_seed())
             models = model[None].clone()
             huge = torch.full((1,), 1e9, dtype=x1.dtype, device=x1.device)
@@ -2475,7 +2542,7 @@ class TestRANSACDegensac(BaseTester):
 
         monkeypatch.setattr(RANSAC, "_degensac_recover", stub)
         kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
-        RANSAC("fundamental", inl_th=1.0, batch_size=64, max_iter=20, confidence=1.0, seed=0)(kp1, kp2)
+        RANSAC("fundamental", inl_th=1.0, batch_size=64, max_iter=20, confidence=1.0, seed=0, degensac=True)(kp1, kp2)
         assert len(set(batches)) >= 2
 
     def test_seeded_calls_are_reproducible_and_private(self, device, dtype, monkeypatch):
@@ -2493,8 +2560,8 @@ class TestRANSACDegensac(BaseTester):
         original = ransac_module._plane_parallax_search
         monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
         cpu_state, accelerator_state = torch.get_rng_state(), device_state()
-        first = RANSAC("fundamental", inl_th=1.0, seed=3)(kp1, kp2)
-        second = RANSAC("fundamental", inl_th=1.0, seed=3)(kp1, kp2)
+        first = RANSAC("fundamental", inl_th=1.0, seed=3, degensac=True)(kp1, kp2)
+        second = RANSAC("fundamental", inl_th=1.0, seed=3, degensac=True)(kp1, kp2)
         assert calls  # the recovery drew
         assert torch.equal(first[0], second[0]) and torch.equal(first[1], second[1])
         assert torch.equal(torch.get_rng_state(), cpu_state)
@@ -2507,7 +2574,7 @@ class TestRANSACDegensac(BaseTester):
         kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         kp1[:5] = float("nan")
         kp2[5:10] = float("inf")
-        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0)(kp1, kp2)
+        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
         assert not bool(mask[:10].any())
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
 
@@ -2517,7 +2584,7 @@ class TestRANSACDegensac(BaseTester):
     def test_fully_planar_scene(self, device, dtype):
         _skip_half(dtype)
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 1.0, 0, device=device, dtype=dtype)
-        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0)(kp1, kp2)
+        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
         assert F.shape == (3, 3) and bool(F.abs().sum() > 0)
         plane = labels == 0
         assert float((mask & plane).sum()) >= 0.9 * float(plane.sum())
@@ -2526,7 +2593,7 @@ class TestRANSACDegensac(BaseTester):
     @pytest.mark.parametrize("num_points", [7, 10, 20])
     def test_tiny_inputs(self, device, dtype, num_points):
         kp1, kp2, _, _, _ = create_dominant_plane_scene(num_points, 0.8, 0.9, 0, device=device, dtype=dtype)
-        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0)(kp1, kp2)
+        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
         assert F.shape == (3, 3) and mask.shape == (num_points,) and mask.dtype == torch.bool
 
     # Review focus 4: PROSAC's stopping rule takes the recovered incumbent's mask.
@@ -2551,7 +2618,7 @@ class TestRANSACDegensac(BaseTester):
         monkeypatch.setattr(RANSAC, "_prosac_max_samples", spy_prosac)
         kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         order = torch.argsort(labels.cpu(), stable=True).to(device)  # inliers first, a best-first ranking
-        F, _ = RANSAC("fundamental", inl_th=1.0, seed=0, prosac_sampling=True)(kp1[order], kp2[order])
+        F, _ = RANSAC("fundamental", inl_th=1.0, seed=0, prosac_sampling=True, degensac=True)(kp1[order], kp2[order])
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
         # The recovered incumbent's stopping bound is PROSAC's test on its own inlier mask.
         assert recovered and any(torch.equal(mask, inliers) for mask in recovered for inliers in tested)
@@ -2562,5 +2629,5 @@ class TestRANSACDegensac(BaseTester):
             pytest.skip("the half-precision RANSAC legs run on CPU; accelerator half kernels are covered elsewhere")
         for dtype in (torch.float16, torch.bfloat16):
             kp1, kp2, _, _, _ = create_dominant_plane_scene(500, 0.6, 0.95, 0, device=device, dtype=dtype)
-            F, mask = RANSAC("fundamental", inl_th=2.0, seed=0)(kp1, kp2)
+            F, mask = RANSAC("fundamental", inl_th=2.0, seed=0, degensac=True)(kp1, kp2)
             assert F.shape == (3, 3) and F.dtype == dtype and mask.shape == (500,)

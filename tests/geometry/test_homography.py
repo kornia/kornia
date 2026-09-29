@@ -353,6 +353,20 @@ class TestSampsonHomographyDistance(BaseTester):
         nan_homography = torch.full((1, 3, 3), float("nan"), device=device, dtype=dtype)
         assert bool(torch.isnan(sampson_homography_distance(pts[:, :1], pts[:, :1], nan_homography)).all())
 
+    @pytest.mark.parametrize("squared", [True, False])
+    @pytest.mark.parametrize("invalid_input", [0, 1])
+    def test_nonfinite_homogeneous_coordinates_give_nan(self, device, dtype, squared, invalid_input):
+        points = torch.tensor([[[1.0, 2.0, 1.0]]], device=device, dtype=dtype).expand(1, 4, 3).clone()
+        invalid = points.clone()
+        invalid[0, 1:, 2] = invalid.new_tensor([float("nan"), float("inf"), -float("inf")])
+        inputs = [points[..., :2], points[..., :2]]
+        inputs[invalid_input] = invalid
+        H = torch.eye(3, device=device, dtype=dtype)[None].expand(2, -1, -1)
+        distances = sampson_homography_distance(*inputs, H, squared=squared)
+        assert distances.shape == (2, 4)
+        assert torch.isnan(distances[:, 1:]).all()
+        self.assert_close(distances[:, 0], torch.zeros_like(distances[:, 0]))
+
     def test_extreme_homography_scales(self, device, dtype):
         # The quadratic has terms of fourth order in H, which underflow or overflow the working precision for tiny or
         # huge finite scales; the distance does not depend on the scale.
@@ -399,12 +413,19 @@ class TestSampsonHomographyDistance(BaseTester):
         self.gradcheck(sampson_homography_distance, (pts1, pts2, H))
         self.gradcheck(lambda a, b, h: sampson_homography_distance(a, b, h, squared=False), (pts1, pts2, H))
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("homogeneous", [False, True])
+    def test_dynamo(self, device, dtype, torch_optimizer, homogeneous):
         pts1 = torch.rand(2, 5, 2, device=device, dtype=dtype)
         pts2 = torch.rand(2, 5, 2, device=device, dtype=dtype)
         H = create_random_homography(pts1, 3)
+        if homogeneous:
+            pts1 = torch.cat([pts1, torch.ones_like(pts1[..., :1])], -1)
+            pts2 = torch.cat([pts2, torch.ones_like(pts2[..., :1])], -1)
+            pts1[0, 0, 2] = float("nan")
         op = sampson_homography_distance
-        self.assert_close(torch_optimizer(op)(pts1, pts2, H), op(pts1, pts2, H))
+        actual, expected = torch_optimizer(op)(pts1, pts2, H), op(pts1, pts2, H)
+        assert torch.equal(actual.isnan(), expected.isnan())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
 
 
 class TestFindHomographyDLT(BaseTester):

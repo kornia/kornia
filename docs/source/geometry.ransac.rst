@@ -181,7 +181,7 @@ matrix consistent with the whole plane, whatever its two other correspondences
 are (Chum, Werner and Matas, CVPR 2005). When most inliers lie on one plane, such
 a wrong model can have the most support and stop the sampling, and no refinement
 recovers the off-plane inliers it never counted. ``"fundamental"`` and
-``"fundamental_7pt"`` therefore run DEGENSAC by default: record-setting samples
+``"fundamental_7pt"`` support opt-in DEGENSAC (``degensac=True``): record-setting samples
 are tested for this degeneracy, and a degenerate one hands its plane homography
 to a plane-and-parallax search over the correspondences off the plane, whose
 best model, refined, competes with the minimal ones. Each plane is searched once
@@ -189,7 +189,8 @@ per call.
 :func:`~kornia.geometry.homography.sampson_homography_distance` measures the
 plane. The test's tolerance, taken from Chum's implementation, also flags samples
 in scenes without a dominant plane, so the estimate for a given seed can change
-there too. ``degensac=False`` turns it off.
+there too. ``degensac=None`` (the default) and ``degensac=False`` leave it off,
+retaining the plain seven-point behavior.
 
 .. autoclass:: RANSAC
    :members: forward, resolve_batch_size
