@@ -20,14 +20,22 @@ import math
 import pytest
 import torch
 
+import kornia.geometry._degensac as degensac_module
 from kornia.geometry._degensac import (
+    _best_candidate,
     _h_degenerate_sample,
     _homographies_from_fundamental,
+    _inner_homography,
     _left_epipole,
+    _msac_gain,
+    _pair_draws,
     _plane_parallax_fundamentals,
+    _plane_parallax_search,
 )
 from kornia.geometry.epipolar.fundamental import _epipolar_design_rows, _seven_point_candidates
 from kornia.geometry.epipolar.numeric import cross_product_matrix
+from kornia.geometry.homography import oneway_transfer_error, sampson_homography_distance
+from kornia.geometry.ransac import RANSAC
 
 # The kernels run on the host in float64 by design (RANSAC moves one sample there), so these tests do not take the
 # device and dtype fixtures; RANSAC's own tests cover the device paths.
@@ -152,3 +160,116 @@ class TestPlaneParallax:
         x2 = torch.tensor([[150.0, 120.0, 1.0]], dtype=F64)
         models = _plane_parallax_fundamentals(H, x1, x2, torch.tensor([0]), torch.tensor([0]))
         assert torch.isnan(models).all()
+
+
+def _plane_with_outliers(H, generator, noise=1.0, count=300, outliers=200):
+    clean = torch.rand(count, 2, generator=generator, dtype=F64) * 100
+    mapped = torch.cat([clean, torch.ones(count, 1, dtype=F64)], 1) @ H.T
+    p1 = clean + noise * torch.randn(count, 2, generator=generator, dtype=F64)
+    p2 = mapped[:, :2] / mapped[:, 2:] + noise * torch.randn(count, 2, generator=generator, dtype=F64)
+    o1 = torch.rand(outliers, 2, generator=generator, dtype=F64) * 100
+    o2 = torch.rand(outliers, 2, generator=generator, dtype=F64) * 400
+    return torch.cat([p1, o1]), torch.cat([p2, o2])
+
+
+class TestInnerHomography:
+    THRESHOLD = 16.0  # 16 t with t = 1 px^2
+
+    def test_zoom_keeps_plane_inliers_a_transfer_cutoff_drops(self):
+        # At a 4x zoom the one-way transfer error is about 17 times the Sampson one along the zoom, so the fixed
+        # 32 t transfer cutoff the first design used would drop a third of the plane; innerH keeps it.
+        H = torch.tensor([[4.0, 0.3, 10.0], [0.1, 4.0, -5.0], [1e-4, 0.0, 1.0]], dtype=F64)
+        generator = torch.Generator().manual_seed(0)
+        x1, x2 = _plane_with_outliers(H, generator)
+        start = H * (1 + 1e-3 * torch.randn(3, 3, generator=generator, dtype=F64))
+        _, errors = _inner_homography(start, x1, x2, self.THRESHOLD, torch.Generator().manual_seed(1))
+        assert int((errors[:300] <= self.THRESHOLD).sum()) >= 297
+        assert int((errors[300:] <= self.THRESHOLD).sum()) <= 5
+        transfer = oneway_transfer_error(x1[None], x2[None], H[None])[0]
+        assert int((transfer[:300] <= 2 * self.THRESHOLD).sum()) < 250
+
+    def test_shear_keeps_plane_inliers(self):
+        H = torch.tensor([[1.0, 1.5, 3.0], [0.0, 1.0, 2.0], [0.0, 0.0, 1.0]], dtype=F64)
+        generator = torch.Generator().manual_seed(2)
+        x1, x2 = _plane_with_outliers(H, generator)
+        start = H * (1 + 1e-3 * torch.randn(3, 3, generator=generator, dtype=F64))
+        _, errors = _inner_homography(start, x1, x2, self.THRESHOLD, torch.Generator().manual_seed(3))
+        assert int((errors[:300] <= self.THRESHOLD).sum()) >= 297
+
+    def test_seeded_generator_is_reproducible(self):
+        H = torch.tensor([[1.1, 0.1, 3.0], [0.0, 0.9, 2.0], [1e-4, 0.0, 1.0]], dtype=F64)
+        x1, x2 = _plane_with_outliers(H, torch.Generator().manual_seed(4))
+        first = _inner_homography(H, x1, x2, self.THRESHOLD, torch.Generator().manual_seed(5))
+        second = _inner_homography(H, x1, x2, self.THRESHOLD, torch.Generator().manual_seed(5))
+        assert torch.equal(first[0], second[0]) and torch.equal(first[1], second[1])
+
+    def test_repetitions_without_inliers_contribute_nothing(self, monkeypatch):
+        # When every subset model h0 has fewer than 4 inliers, iterH returns an empty score, h0 included, so innerH
+        # keeps the homography it was given. Were h0 kept as a candidate, its finite gain of 0 would win instead.
+        H = torch.tensor([[1.1, 0.1, 3.0], [0.0, 0.9, 2.0], [1e-4, 0.0, 1.0]], dtype=F64)
+        x1, x2 = _plane_with_outliers(H, torch.Generator().manual_seed(11))
+        far = torch.tensor([[1.0, 0.0, 1e4], [0.0, 1.0, 1e4], [0.0, 0.0, 1.0]], dtype=F64)
+        monkeypatch.setattr(
+            degensac_module,
+            "find_homography_dlt",
+            lambda p1, p2, weights=None, solver="svd": far.expand(p1.shape[0], 3, 3).clone(),
+        )
+        homography, _ = _inner_homography(H, x1, x2, self.THRESHOLD, torch.Generator().manual_seed(12))
+        assert torch.equal(homography, H)
+
+    def test_too_few_inliers_keep_the_homography(self):
+        H = torch.eye(3, dtype=F64)
+        x1 = torch.rand(20, 2, generator=torch.Generator().manual_seed(6), dtype=F64) * 100
+        x2 = x1 + 50.0  # no inliers of H at 16 t
+        homography, errors = _inner_homography(H, x1, x2, self.THRESHOLD, None)
+        assert torch.equal(homography, H)
+        assert torch.equal(errors, sampson_homography_distance(x1[None], x2[None], H[None])[0])
+
+
+class TestCandidateRanking:
+    def test_gain_not_count_decides(self):
+        # Candidate 0 has more inliers at the threshold but larger errors; SC_M's gain prefers candidate 1.
+        threshold = 1.0
+        errors = torch.tensor([[0.9, 0.9, 0.9, 0.9], [0.0, 0.0, 0.0, 5.0]], dtype=F64)
+        assert (errors <= threshold).sum(1).tolist() == [4, 3]
+        gains = _msac_gain(errors, threshold)
+        assert float(gains[1]) > float(gains[0])
+        assert _best_candidate(gains, torch.tensor([True, True])) == 1
+
+    def test_ties_keep_the_first_and_dead_candidates_never_win(self):
+        gains = torch.tensor([1.0, 3.0, 3.0, 5.0], dtype=F64)
+        assert _best_candidate(gains, torch.tensor([True, True, True, False])) == 1
+        assert _best_candidate(gains, torch.zeros(4, dtype=torch.bool)) is None
+        assert _best_candidate(torch.tensor([float("nan"), 2.0], dtype=F64), torch.tensor([True, True])) == 1
+
+
+class TestPlaneParallaxSearch:
+    def test_pair_draws_match_ransac_bound(self):
+        for support, total in [(5, 100), (30, 430), (99, 100), (2, 50)]:
+            assert _pair_draws(support, total, 0.999) == RANSAC.max_samples_by_conf(support, total, 2, 0.999)
+
+    def test_finds_the_epipolar_geometry_among_outliers(self):
+        K, R, t, H, F = _two_view_geometry()
+        generator = torch.Generator().manual_seed(7)
+        o1, o2 = _points(K, R, t, 40, False, generator)
+        r1 = torch.cat([torch.rand(200, 2, generator=generator, dtype=F64) * 640, torch.ones(200, 1, dtype=F64)], 1)
+        r2 = torch.cat([torch.rand(200, 2, generator=generator, dtype=F64) * 480, torch.ones(200, 1, dtype=F64)], 1)
+        x1, x2 = torch.cat([o1, r1]), torch.cat([o2, r2])
+        # Unit-norm models on pixel coordinates lose accuracy in the quadratic Sampson basis; normalize like RANSAC.
+        scale = 1.0 / 300.0
+        T = torch.tensor([[scale, 0.0, -320 * scale], [0.0, scale, -240 * scale], [0.0, 0.0, 1.0]], dtype=F64)
+        y1, y2 = x1 @ T.T, x2 @ T.T
+        H_normalized = T @ H @ torch.linalg.inv(T)
+        found = _plane_parallax_search(H_normalized, y1, y2, 2.0 * scale**2, 256, torch.Generator().manual_seed(8))
+        assert found is not None
+        models, support = found
+        assert len(models) <= 8 and bool((support > 4).all()) and int(support[0]) >= 38
+        best = T.T @ models[0] @ T  # y = T x, so y2^T F y1 = x2^T (T^T F T) x1
+        assert _same_up_to_scale(best, F) < 1e-6
+
+    def test_no_consensus_returns_none(self):
+        generator = torch.Generator().manual_seed(9)
+        x1 = torch.cat([torch.rand(6, 2, generator=generator, dtype=F64), torch.ones(6, 1, dtype=F64)], 1)
+        x2 = torch.cat([torch.rand(6, 2, generator=generator, dtype=F64), torch.ones(6, 1, dtype=F64)], 1)
+        found = _plane_parallax_search(torch.eye(3, dtype=F64), x1, x2, 1e-12, 4096, torch.Generator().manual_seed(10))
+        assert found is None

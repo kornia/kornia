@@ -26,15 +26,31 @@ frame.
 
 from __future__ import annotations
 
-from typing import Optional
+import math
+import sys
+from typing import List, Optional, Tuple
 
 import torch
 
+from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
 from kornia.geometry.epipolar.numeric import cross_product_matrix
 from kornia.geometry.homography import find_homography_dlt, sampson_homography_distance
 
 # Every five-element subset of seven correspondences contains one of these triplets (paper, section 3).
 _TRIPLETS = ((0, 1, 2), (3, 4, 5), (0, 1, 6), (3, 4, 6), (2, 5, 6))
+# innerH (ranH.c, rtools.h): repetitions, least-squares steps, initial selection multiple, points per fit, subset cap.
+_RAN_REP = 10
+_ILSQ_ITERS = 4
+_TC = 4
+_INL_LIMIT = 10
+_SUBSET_CAP = 12
+# SC_M scoring (rtools.h, the compiled __SCORE__): the MSAC gain truncates at 9/4 of the threshold.
+_GAIN_SCALE = 9.0 / 4.0
+# rFtH (DegUtils.c): stopping confidence, draw cap, support a kept model must exceed (sam_sizO), models kept.
+_PP_CONFIDENCE = 0.999
+_PP_MAX_DRAWS = 20000
+_PP_MIN_SUPPORT = 4
+_PP_KEEP = 8
 
 
 def _left_epipole(F: torch.Tensor) -> torch.Tensor:
@@ -106,3 +122,142 @@ def _plane_parallax_fundamentals(
     epipoles = epipoles.masked_fill(parallel[:, None], float("nan"))
     F = cross_product_matrix(epipoles) @ H
     return F * F.square().sum((-2, -1), keepdim=True).rsqrt()
+
+
+def _msac_gain(errors: torch.Tensor, threshold: float) -> torch.Tensor:
+    """Chum's ``SC_M`` score ``(C,)`` of squared errors ``(C, N)``: ``sum(max(0, 1 - e / (9/4 threshold)))``."""
+    return (1.0 - errors / (_GAIN_SCALE * threshold)).clamp_min(0.0).sum(1)
+
+
+def _best_candidate(gains: torch.Tensor, alive: torch.Tensor) -> Optional[int]:
+    """Index of the first largest finite gain among live candidates, or None.
+
+    Candidates are in the order Chum's loops visit them; ``scoreLess`` is strict, so a tie keeps the earlier one, which
+    is also the index ``argmax`` returns.
+    """
+    gains = torch.where(alive & torch.isfinite(gains), gains, torch.full_like(gains, -math.inf))
+    if not bool(torch.isfinite(gains).any()):
+        return None
+    return int(gains.argmax())
+
+
+def _inner_homography(
+    H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, threshold: float, generator: Optional[torch.Generator]
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Chum's ``innerH``: the local optimization of ``H`` ``(3, 3)``, scored with the homography Sampson distance.
+
+    ``x1``, ``x2`` are ``(N, 2)`` float64 host points and ``threshold`` is ``16 t``. ``inHrani`` runs
+    :data:`_RAN_REP` repetitions, batched here: each fits a DLT to a random subset of ``min(n / 2, 12)`` of the ``n``
+    inliers of ``H`` and refines it with ``iterH``: a fit to that model's inliers, then :data:`_ILSQ_ITERS` refits with
+    the selection threshold lowered from ``4 * threshold`` by ``3 * threshold / 4`` after each, every fit using at most
+    :data:`_INL_LIMIT` selected points, a random subset when there are more. A repetition whose subset model has fewer
+    than 4 inliers contributes nothing; one whose selection falls below 4 points stops. Every evaluated model is a
+    candidate, ranked by :func:`_msac_gain`. ``innerH`` passes 10 as the argument it calls ``iters``, which
+    ``inHrani`` receives as ``inlLimit``; the repetition count is the constant ``RAN_REP``, also 10.
+
+    Returns:
+        The best candidate, or ``H`` when no repetition produced one (``inHrani`` leaves it unchanged), and its squared
+        Sampson distances ``(N,)``.
+    """
+    n_points = x1.shape[0]
+    pts1, pts2 = x1[None], x2[None]
+
+    def errors_of(models: torch.Tensor) -> torch.Tensor:
+        return sampson_homography_distance(pts1, pts2, models)
+
+    def fit(selected: torch.Tensor, cap: int) -> torch.Tensor:
+        # A uniform random subset of at most ``cap`` selected points per row; zero weights pad the rest.
+        keys = torch.rand(selected.shape, generator=generator, dtype=x1.dtype).masked_fill(~selected, -1.0)
+        top = keys.topk(min(cap, n_points), dim=1)
+        weights = (top.values >= 0).to(x1.dtype)
+        return find_homography_dlt(x1[top.indices], x2[top.indices], weights, solver="svd")
+
+    base = errors_of(H[None])[0]
+    inliers = base <= threshold
+    count = int(inliers.sum())
+    if count < 8:
+        return H, base
+    models = fit(inliers.expand(_RAN_REP, -1), min(count // 2, _SUBSET_CAP))
+    errors = errors_of(models)
+    selected = errors <= threshold
+    alive = selected.sum(1) >= 4
+    candidates: List[torch.Tensor] = [models]
+    gains: List[torch.Tensor] = [_msac_gain(errors, threshold)]
+    live: List[torch.Tensor] = [alive]
+    models = fit(selected, _INL_LIMIT)
+    selection = _TC * threshold
+    step = (selection - threshold) / _ILSQ_ITERS
+    for _ in range(_ILSQ_ITERS):
+        errors = errors_of(models)
+        candidates.append(models)
+        gains.append(_msac_gain(errors, threshold))
+        live.append(alive)
+        selected = errors <= selection
+        alive = alive & (selected.sum(1) >= 4)
+        models = fit(selected, _INL_LIMIT)
+        selection -= step
+    errors = errors_of(models)
+    candidates.append(models)
+    gains.append(_msac_gain(errors, threshold))
+    live.append(alive)
+    best = _best_candidate(torch.stack(gains, 1).flatten(), torch.stack(live, 1).flatten())
+    if best is None:
+        return H, base
+    winner = torch.stack(candidates, 1).flatten(0, 1)[best]
+    return winner, errors_of(winner[None])[0]
+
+
+def _pair_draws(support: int, total: int, confidence: float) -> int:
+    """Two-point samples needed for ``confidence`` with ``support`` inliers among ``total`` correspondences.
+
+    :meth:`~kornia.geometry.ransac.RANSAC.max_samples_by_conf` for a sample of two, which this module cannot import.
+    """
+    if support >= total:
+        return 1
+    probability = support * (support - 1) / (total * (total - 1))
+    if probability <= 0.0:
+        return sys.maxsize
+    return min(sys.maxsize, math.ceil(math.log1p(-confidence) / math.log1p(-probability)))
+
+
+def _plane_parallax_search(
+    H: torch.Tensor,
+    x1: torch.Tensor,
+    x2: torch.Tensor,
+    threshold: float,
+    batch: int,
+    generator: Optional[torch.Generator],
+) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+    """Chum's ``rFtH``: plane-and-parallax RANSAC over pairs of off-plane correspondences.
+
+    ``x1``, ``x2`` ``(n, 3)`` are the off-plane correspondences, normalized, on their device; ``H`` is the plane
+    homography there and ``threshold`` is ``2 t``. Pairs are drawn on the host from ``generator`` (a device's generator
+    cannot draw on the host) in batches of ``batch`` and moved to the device. A model's support counts the off-plane
+    correspondences with a squared Sampson distance below ``threshold``; drawing stops at twice the two-point bound for
+    the best support at confidence 0.999, as ``rFtH``'s loop runs to ``2 * max_sam``, or after 20000 draws.
+
+    Returns:
+        Up to eight models with more than four off-plane inliers and their support, best first, or None.
+    """
+    n = x1.shape[0]
+    basis = _sampson_quadratic_basis(x1, x2)
+    kept = x1.new_zeros(0, 3, 3)
+    kept_support = torch.zeros(0, dtype=torch.long, device=x1.device)
+    best, drawn, limit = 0, 0, _PP_MAX_DRAWS
+    while drawn < limit:
+        size = min(batch, limit - drawn)
+        first = (torch.rand(size, generator=generator, dtype=torch.float64) * n).long()
+        second = (torch.rand(size, generator=generator, dtype=torch.float64) * (n - 1)).long()
+        second = second + (second >= first).long()
+        models = _plane_parallax_fundamentals(H, x1, x2, first.to(x1.device), second.to(x1.device))
+        support = (_sampson_from_quadratic_basis(models, basis) < threshold).sum(1)
+        kept_support, order = torch.cat([kept_support, support]).topk(min(_PP_KEEP, len(kept_support) + size))
+        kept = torch.cat([kept, models])[order]
+        drawn += size
+        best = max(best, int(kept_support[0]))
+        if best > _PP_MIN_SUPPORT:
+            limit = min(limit, 2 * _pair_draws(best, n, _PP_CONFIDENCE))
+    qualifying = kept_support > _PP_MIN_SUPPORT
+    if not bool(qualifying.any()):
+        return None
+    return kept[qualifying], kept_support[qualifying]
