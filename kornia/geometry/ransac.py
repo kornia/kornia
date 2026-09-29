@@ -163,9 +163,10 @@ class RANSAC(nn.Module):
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
           correspondences related by one homography. Such a model fits the dominant plane and whatever happens to
           agree with it off the plane, so the homography is refined, and fundamental matrices are drawn from it and
-          pairs of correspondences off the plane (plane and parallax). The best of them join the eight-model pool and,
-          when they outscore the incumbent, set the stopping bound. Thresholds and iteration counts follow Chum's
-          implementation in pydegensac; the draws come from a private host generator. ``degensac=False`` keeps the
+          pairs of correspondences off the plane (plane and parallax). The best of them, refined, joins the
+          eight-model pool and, when it outscores the incumbent, sets the stopping bound. Thresholds and iteration
+          counts follow Chum's implementation in pydegensac; the draws come from a private host generator.
+          ``degensac=False`` keeps the
           plain seven-point loop, whose result it reproduces exactly when no record-setting sample is degenerate.
           Chum's tolerance, three times the squared threshold for five of the seven correspondences, also flags
           samples in many scenes without a dominant plane; there the recovered models only join the competition.
@@ -1055,13 +1056,13 @@ class RANSAC(nn.Module):
         float64, NaN where not finite; ``threshold`` is the squared threshold ``t`` of that frame. When the sample is
         H-degenerate and its homography has at least 8 inliers at ``3 t``, the homography is refined (``innerH``), and
         with more than 6 plane inliers at ``16 t`` and at least 4 correspondences beyond ``100 t``, plane-and-parallax
-        models are drawn from those (:mod:`kornia.geometry._degensac`). The best is refined like the pool, with
-        ``max_lo_iters`` truncated Levenberg-Marquardt iterations, Chum's ``innerFH`` role, and replaces its raw model.
+        models are drawn from those (:mod:`kornia.geometry._degensac`). The best-scoring one is refined like the pool,
+        with ``max_lo_iters`` truncated Levenberg-Marquardt iterations, Chum's ``innerFH`` role, and returned alone,
+        as ``rFtH`` returns one model: near-duplicates from one search would crowd the eight-model pool.
 
         Returns:
-            The recovered models ``(K, 3, 3)`` with their scores, supports and, with PROSAC, inlier masks, as
-            :meth:`_lm_score_models` returns them, the refined model first; None when the sample is not H-degenerate
-            or nothing is recovered.
+            The recovered model ``(1, 3, 3)`` with its score, support and, with PROSAC, inlier mask, as
+            :meth:`_lm_score_models` returns them; None when the sample is not H-degenerate or nothing is recovered.
         """
         m = self.minimal_sample_size
         sample_host = sample.cpu()
@@ -1095,25 +1096,20 @@ class RANSAC(nn.Module):
         if float(scores.max()) < 0:
             return None
         best = int(scores.argmax())
-        if self.max_lo_iters > 0:
-            refined = self._lm_refine(
-                models[best : best + 1].cpu().double(),
-                x1_host[rows],
-                x2_host[rows],
-                None,
-                "truncated",
-                threshold,
-                self.max_lo_iters,
-            ).to(x1.device, x1.dtype)
-            refined_scores, refined_counts, refined_masks = self._lm_score_models(refined, basis, threshold)
-            refined_scores = refined_scores.masked_fill(refined_counts <= m, -1.0)
-            others = torch.arange(len(models), device=models.device) != best
-            models = torch.cat([refined, models[others]])
-            scores = torch.cat([refined_scores, scores[others]])
-            counts = torch.cat([refined_counts, counts[others]])
-            if masks is not None and refined_masks is not None:
-                masks = torch.cat([refined_masks, masks[others]])
-        return models, scores, counts, masks
+        if self.max_lo_iters == 0:
+            mask = None if masks is None else masks[best : best + 1]
+            return models[best : best + 1], scores[best : best + 1], counts[best : best + 1], mask
+        refined = self._lm_refine(
+            models[best : best + 1].cpu().double(),
+            x1_host[rows],
+            x2_host[rows],
+            None,
+            "truncated",
+            threshold,
+            self.max_lo_iters,
+        ).to(x1.device, x1.dtype)
+        scores, counts, masks = self._lm_score_models(refined, basis, threshold)
+        return refined, scores.masked_fill(counts <= m, -1.0), counts, masks
 
     @staticmethod
     def _lm_pool(
@@ -1155,13 +1151,13 @@ class RANSAC(nn.Module):
         """DEGENSAC's recoveries of a batch's raw record setters, in draw order (:meth:`_raw_record_setters`).
 
         ``models`` ``(M, 3, 3)`` were solved from ``samples`` ``(M, 7)`` and scored ``scores``; ``prior`` is the raw
-        record before the batch. Every recovery draw comes from one host generator per batch, seeded
-        ``seed + 2 * sample_budget + iteration``: a device generator cannot draw on the host.
+        record before the batch. Every recovery draw comes from one private host generator per batch, seeded
+        ``seed + 2 * sample_budget + iteration`` (``seed`` 0 when None): a device generator cannot draw on the host,
+        and the global one, which an unseeded call's minimal samples come from, must not advance, or every later
+        sample of the call would differ from ``degensac=False``.
         """
-        generator = None
-        if self.seed is not None:
-            generator = torch.Generator()
-            generator.manual_seed(self.seed + 2 * self.sample_budget + iteration)
+        generator = torch.Generator()
+        generator.manual_seed((self.seed or 0) + 2 * self.sample_budget + iteration)
         recoveries = []
         for record in self._raw_record_setters(scores.cpu(), prior):
             recovered = self._degensac_recover(

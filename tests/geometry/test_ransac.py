@@ -2238,10 +2238,33 @@ class TestRANSACDegensacRecovery(BaseTester):
             assert result is not None
             out_models, scores, counts, masks = result
             assert masks is None
-            assert out_models.shape[1:] == (3, 3) and scores.shape == counts.shape == (len(out_models),)
+            # One model per recovery, as Chum's rFtH returns one: near-duplicates from one search would crowd the
+            # eight-model pool (on the loftr_fund pair they cost test_real_dirty_7pt its margin in 2 of 20 seeds).
+            assert out_models.shape == (1, 3, 3) and scores.shape == counts.shape == (1,)
             best = out_models[int(scores.argmax())].cpu().double()
             assert _explains_off_plane(t2.mT @ best @ t1, clean1.cpu(), clean2.cpu())
         assert flagged >= 5
+
+    def test_unseeded_recoveries_leave_the_global_generator(self, device, dtype):
+        # The minimal samples of an unseeded call come from the global generator. Recoveries drawing from it too
+        # would shift every later sample, so an unseeded call with a recovery would sample a different sequence than
+        # degensac=False (on the loftr_fund pair: 9 of 20 global seeds with 2+ gross errors instead of 5).
+        _skip_half(dtype)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0)
+        x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        generator = torch.Generator().manual_seed(4)
+        samples = torch.stack([_degenerate_sample(labels, generator) for _ in range(8)]).to(device)
+        models, rows = ransac._lm_minimal_models(x1[samples], x2[samples])
+        scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
+        scores = scores.masked_fill(counts <= 7, -1.0)
+        state = torch.get_rng_state()
+        recoveries = ransac._degensac_batch(
+            models, samples[rows], scores, -1.0, x1, x2, x1_host, x2_host, basis, threshold, 0
+        )
+        assert recoveries  # the recovery drew
+        assert torch.equal(torch.get_rng_state(), state)
 
     def test_non_degenerate_sample_returns_none(self, device, dtype):
         # Seven off-plane correspondences are not always in general position at the test's tolerance: a five-point
