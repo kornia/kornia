@@ -1104,6 +1104,62 @@ class RANSAC(nn.Module):
                 masks = torch.cat([refined_masks, masks[others]])
         return models, scores, counts, masks
 
+    @staticmethod
+    def _lm_pool(
+        candidates: torch.Tensor, candidate_scores: torch.Tensor, models: torch.Tensor, scores: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """The pool's ``_LM_CANDIDATES`` best models and scores after adding ``models``, placed first for ties."""
+        candidate_scores, order = torch.cat([scores, candidate_scores]).topk(
+            min(_LM_CANDIDATES, len(scores) + len(candidate_scores))
+        )
+        return torch.cat([models, candidates])[order], candidate_scores
+
+    def _lm_stopping_bound(
+        self, masks: Optional[torch.Tensor], row: Union[int, torch.Tensor], support: int, num_tc: int
+    ) -> int:
+        """Samples to draw for an incumbent with ``support`` inliers, as in OpenCV's USAC.
+
+        PROSAC's termination test on ``masks[row]`` when PROSAC keeps masks, else the classic bound.
+        """
+        if masks is not None:
+            return self._prosac_max_samples(masks[row], support)
+        return min(
+            self.sample_budget, self.max_samples_by_conf(support, num_tc, self.minimal_sample_size, self.confidence)
+        )
+
+    def _degensac_batch(
+        self,
+        models: torch.Tensor,
+        samples: torch.Tensor,
+        scores: torch.Tensor,
+        prior: float,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        x1_host: torch.Tensor,
+        x2_host: torch.Tensor,
+        basis: torch.Tensor,
+        threshold: float,
+        iteration: int,
+    ) -> List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
+        """DEGENSAC's recoveries of a batch's raw record setters, in draw order (:meth:`_raw_record_setters`).
+
+        ``models`` ``(M, 3, 3)`` were solved from ``samples`` ``(M, 7)`` and scored ``scores``; ``prior`` is the raw
+        record before the batch. Every recovery draw comes from one host generator per batch, seeded
+        ``seed + 2 * sample_budget + iteration``: a device generator cannot draw on the host.
+        """
+        generator = None
+        if self.seed is not None:
+            generator = torch.Generator()
+            generator.manual_seed(self.seed + 2 * self.sample_budget + iteration)
+        recoveries = []
+        for record in self._raw_record_setters(scores.cpu(), prior):
+            recovered = self._degensac_recover(
+                models[record], samples[record], x1, x2, x1_host, x2_host, basis, threshold, generator
+            )
+            if recovered is not None:
+                recoveries.append(recovered)
+        return recoveries
+
     def _forward_lm(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """RANSAC with batched minimal solvers and Levenberg-Marquardt local optimization and refinement.
 
@@ -1148,14 +1204,19 @@ class RANSAC(nn.Module):
         grow = not isinstance(self.batch_size, int)
         candidates, candidate_scores = x1.new_zeros(0, 3, 3), x1.new_zeros(0)
         best_score = -1.0
+        # DEGENSAC tests the models that set a new raw record (Chum's maxSs), which recovered models never raise;
+        # best_score is the incumbent's, over raw and recovered models (maxS).
+        degensac = self.degensac and m == 7
+        best_minimal_score = -1.0
         max_samples, drawn, iteration = budget, 0, 0
         while drawn < max_samples:
             current = min(batch, max_samples - drawn)
             indices = self.sample(m, num_tc, current, iteration, device, offset=drawn)
+            batch_iteration = iteration
             drawn, iteration = drawn + current, iteration + 1
             if grow:
                 batch = min(2 * batch, largest)
-            models, _ = self._lm_minimal_models(x1[indices], x2[indices])
+            models, origin = self._lm_minimal_models(x1[indices], x2[indices])
             if len(models) == 0:
                 continue
             # Reject insufficient support before ranking: high MSAC scores from minimal samples alone must not
@@ -1165,20 +1226,39 @@ class RANSAC(nn.Module):
             top_scores, top = scores_all.topk(min(_LM_CANDIDATES, len(models)))
             top_counts = counts_all[top]
             # The run's best minimal models so far, refined after sampling.
-            candidate_scores, order = torch.cat([top_scores, candidate_scores]).topk(
-                min(_LM_CANDIDATES, len(top_scores) + len(candidate_scores))
-            )
-            candidates = torch.cat([models[top], candidates])[order]
+            candidates, candidate_scores = self._lm_pool(candidates, candidate_scores, models[top], top_scores)
             scores, counts = torch.stack([top_scores, top_counts.to(top_scores.dtype)]).tolist()
             best = max(range(len(scores)), key=scores.__getitem__)
             if scores[best] > best_score:
                 # The bound follows the new incumbent's own support, as with local_optimization="dlt".
                 best_score = scores[best]
-                if masks_all is not None:
-                    max_samples = self._prosac_max_samples(masks_all[top[best]], int(counts[best]))
-                else:
-                    support = int(counts[best])
-                    max_samples = min(budget, self.max_samples_by_conf(support, num_tc, m, self.confidence))
+                max_samples = self._lm_stopping_bound(masks_all, top[best], int(counts[best]), num_tc)
+            if not degensac or scores[best] <= best_minimal_score:
+                continue
+            recoveries = self._degensac_batch(
+                models,
+                indices[origin],
+                scores_all,
+                best_minimal_score,
+                x1,
+                x2,
+                x1_host,
+                x2_host,
+                basis,
+                threshold,
+                batch_iteration,
+            )
+            best_minimal_score = scores[best]
+            for recovered_models, recovered_scores, recovered_counts, recovered_masks in recoveries:
+                candidates, candidate_scores = self._lm_pool(
+                    candidates, candidate_scores, recovered_models, recovered_scores
+                )
+                winner = int(recovered_scores.argmax())
+                if float(recovered_scores[winner]) > best_score:
+                    best_score = float(recovered_scores[winner])
+                    max_samples = self._lm_stopping_bound(
+                        recovered_masks, winner, int(recovered_counts[winner]), num_tc
+                    )
         x1_host, x2_host = x1_host[finite], x2_host[finite]
         candidates = candidates.to(host).double()[candidate_scores.to(host) >= 0]
         if len(candidates) == 0:
