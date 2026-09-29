@@ -84,9 +84,12 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     if rgb_weights is None:
-        # 8 bit images
+        # 8 bit images. 76 + 150 + 29 = 255. A uint8 multiply wraps, so white
+        # came back as 1 and pure red as 180. Accumulate in int32 and scale back.
         if image.dtype == torch.uint8:
-            rgb_weights = torch.tensor([76, 150, 29], device=image.device, dtype=torch.uint8)
+            r, g, b = image.unbind(dim=-3)
+            acc = r.to(torch.int32) * 76 + g.to(torch.int32) * 150 + b.to(torch.int32) * 29
+            return ((acc + 127) // 255).to(dtype=torch.uint8).unsqueeze(-3)
         # floating point images
         elif image.dtype in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
             rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)

@@ -136,6 +136,16 @@ class TestRgbToGrayscale(BaseTester):
         assert out.device == img.device
         assert out.dtype == img.dtype
 
+    def test_uint8_primaries(self, device):
+        white = torch.full((3, 1, 1), 255, device=device, dtype=torch.uint8)
+        red = torch.tensor([[[255]], [[0]], [[0]]], device=device, dtype=torch.uint8)
+        green = torch.tensor([[[0]], [[255]], [[0]]], device=device, dtype=torch.uint8)
+        blue = torch.tensor([[[0]], [[0]], [[255]]], device=device, dtype=torch.uint8)
+        assert kornia.color.rgb_to_grayscale(white).item() == 255
+        assert kornia.color.rgb_to_grayscale(red).item() == 76
+        assert kornia.color.rgb_to_grayscale(green).item() == 150
+        assert kornia.color.rgb_to_grayscale(blue).item() == 29
+
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 3, height, width, device=device, dtype=dtype)
