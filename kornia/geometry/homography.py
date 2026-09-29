@@ -26,7 +26,7 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.epipolar._metrics import _shares_points
 from kornia.geometry.epipolar.fundamental import _robust_loss
-from kornia.geometry.linalg import transform_points
+from kornia.geometry.linalg import _inf_where, _nonzero, _sqrt_or_zero, transform_points
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 __all__ = [
@@ -56,9 +56,8 @@ def oneway_transfer_error(
           per-homography computation to roundoff.
         - ``squared=True``, the default here and in :func:`symmetric_transfer_error`, returns the squared
           distance; :func:`line_segment_transfer_error_one_way` defaults to ``squared=False``.
-        - Known defects: ``eps`` is added to the projective denominator and inside the square root, so the error
-          depends on the scale of ``H``, and an exact match scores ``sqrt(eps)``, not 0, with ``squared=False``
-          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+        - The error does not depend on the scale of ``H``, and an exact match scores exactly 0, with a zero
+          gradient, with ``squared=False``. A point that ``H`` maps to infinity (:math:`w' = 0`) has error ``inf``.
 
     Args:
         pts1: correspondences from the left images with shape
@@ -67,7 +66,9 @@ def oneway_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
-        eps: added to the projective denominator and, with ``squared=False``, inside the square root.
+        eps: unused; it was added to the projective denominator and inside the square root, which made the error
+            depend on the scale of ``H`` and an exact match score ``sqrt(eps)`` (#4881). The singular case is
+            guarded exactly instead. Accepted so that existing calls keep working.
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
@@ -75,7 +76,7 @@ def oneway_transfer_error(
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
     if H.shape[0] >= 2 and _shares_points(pts1, pts2):
-        return _oneway_transfer_error_shared_impl_(pts1, pts2, H, squared, eps)
+        return _oneway_transfer_error_shared_impl_(pts1, pts2, H, squared)
 
     if pts1.shape[-1] == 3:
         x1y1 = convert_points_from_homogeneous(pts1)
@@ -112,14 +113,14 @@ def oneway_transfer_error(
     y_num = h10 * x1 + h11 * y1 + h12
     w_den = h20 * x1 + h21 * y1 + h22
 
-    u1in2 = x_num / (w_den + eps)
-    v1in2 = y_num / (w_den + eps)
+    # A point mapped to infinity (w' = 0) is singular (#4881).
+    w_safe = _nonzero(w_den)
+    u1in2 = x_num / w_safe
+    v1in2 = y_num / w_safe
 
     # ---- Squared transfer error in image 2 ----
-    err2 = (u1in2 - u2).pow(2) + (v1in2 - v2).pow(2)
-    if squared:
-        return err2
-    return (err2 + eps).sqrt()
+    err2 = _inf_where((u1in2 - u2).pow(2) + (v1in2 - v2).pow(2), w_den == 0)
+    return err2 if squared else _sqrt_or_zero(err2)
 
 
 def symmetric_transfer_error(
@@ -130,8 +131,8 @@ def symmetric_transfer_error(
     Convention:
         - Argument order as :func:`oneway_transfer_error`. The squared value is the image-2 error of ``H`` plus
           the image-1 error of ``H^-1``, and ``squared=False`` returns the square root of that sum.
-        - Known defects: the ``eps`` defect of :func:`oneway_transfer_error` applies here too
-          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+        - As :func:`oneway_transfer_error`, the error does not depend on the scale of ``H`` and an exact match
+          scores exactly 0 with ``squared=False``.
 
     Args:
         pts1: correspondences from the left images with shape
@@ -140,7 +141,7 @@ def symmetric_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
-        eps: added to the projective denominator and, with ``squared=False``, inside the square root.
+        eps: unused, as in :func:`oneway_transfer_error` (#4881).
 
     Returns:
         the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
@@ -166,13 +167,13 @@ def symmetric_transfer_error(
     H_safe = torch.where(good_H.view(-1, 1, 1), H, eye)
     H_inv_safe, _ = safe_inverse_with_mask(H_safe)
 
-    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H_safe, True, eps)
-    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True, eps)
+    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H_safe, True)
+    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True)
     good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
 
     out = there + back
     if not squared:
-        out = (out + eps).sqrt()
+        out = _sqrt_or_zero(out)
     max_tensor = torch.full_like(out, max_num)
     return torch.where(good_H_reshape, out, max_tensor)
 
@@ -268,21 +269,22 @@ def _four_point_homography(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     return (h * h.square().sum(-1, keepdim=True).rsqrt()).reshape(-1, 3, 3).to(x1.dtype)
 
 
-def _transfer_errors(H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, eps: float) -> torch.Tensor:
+def _transfer_errors(H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     """Squared one-way transfer errors ``(M, N)`` of homographies ``(M, 3, 3)`` on one set of correspondences.
 
     ``x1`` is homogeneous ``(N, 3)`` with unit last coordinate and ``x2`` ``(N, 2)``. ``H x1`` of every model is one
-    ``(3M, 3) @ (3, N)`` product; the rest is :func:`oneway_transfer_error`'s formula, ``eps`` in the projective
-    denominator included.
+    ``(3M, 3) @ (3, N)`` product; the rest is :func:`oneway_transfer_error`'s formula, with its guard of ``w' = 0``.
     """
     m, n = H.shape[0], x1.shape[0]
     projected = (H.reshape(3 * m, 3) @ x1.T).view(m, 3, n)
-    w = projected[:, 2] + eps
-    return (projected[:, 0] / w - x2[:, 0]).square() + (projected[:, 1] / w - x2[:, 1]).square()
+    w = projected[:, 2]
+    w_safe = _nonzero(w)
+    err2 = (projected[:, 0] / w_safe - x2[:, 0]).square() + (projected[:, 1] / w_safe - x2[:, 1]).square()
+    return _inf_where(err2, w == 0)
 
 
 def _oneway_transfer_error_shared_impl_(
-    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool, eps: float
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool
 ) -> torch.Tensor:
     """One-way transfer errors of many homographies on one set of correspondences, by :func:`_transfer_errors`.
 
@@ -298,8 +300,8 @@ def _oneway_transfer_error_shared_impl_(
         x1 = convert_points_from_homogeneous(x1)
     if x2.shape[-1] == 3:
         x2 = convert_points_from_homogeneous(x2)
-    err2 = _transfer_errors(H.to(work), convert_points_to_homogeneous(x1), x2, eps)
-    out = err2 if squared else (err2 + eps).sqrt()
+    err2 = _transfer_errors(H.to(work), convert_points_to_homogeneous(x1), x2)
+    out = err2 if squared else _sqrt_or_zero(err2)
     shape = torch.broadcast_shapes(pts1.shape[:-2], pts2.shape[:-2], H.shape[:-2])
     return out.reshape(*shape, num_points).to(dtype)
 

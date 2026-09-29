@@ -657,25 +657,19 @@ class TestLinalgConventions(BaseTester):
         # control: the same-order call is off by more than 1 on this pair
         assert (kgl.relative_transformation(e1, e2)[:3] - expected).abs().max() > 0.5
 
-    def test_wart_point_line_distance_eps_bias_4881(self, device, dtype):
-        # https://github.com/kornia/kornia/issues/4881: eps is added to the line norm,
-        # |ax + by + c| / (||(a, b)|| + eps), so the distance depends on the scale of the line. The point (1.5, -0.7)
-        # is 2.34 from 3x + 4y + 10 = 0 at every scale (11.7 / 5); at scale 1e-9 the norm is 5e-9 and the result is
-        # 2.34 * 5 / 6 = 1.95 (-16.7 %).
+    def test_point_line_distance_does_not_depend_on_the_scale_of_the_line_4881(self, device, dtype):
+        # #4881: eps = 1e-9 was added to the line norm, |ax + by + c| / (||(a, b)|| + eps), so the point (1.5, -0.7)
+        # was 1.95 from 1e-9 * (3x + 4y + 10 = 0) instead of 2.34 (11.7 / 5), and a line with a = b = 0 scored
+        # |c| / eps. The distance is the same at every scale, and such a line is at distance inf.
         point = torch.tensor([[1.5, -0.7]], device=device, dtype=dtype)
         line = torch.tensor([[3.0, 4.0, 10.0]], device=device, dtype=dtype)
         exact = torch.tensor([2.34], device=device, dtype=dtype)
-        self.assert_close(kgl.point_line_distance(point, line), exact)
-        degenerate = kgl.point_line_distance(point, torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype))
-        zero_line = kgl.point_line_distance(point, torch.zeros(1, 3, device=device, dtype=dtype))
-        if dtype == torch.float16:
-            # The default eps=1e-9 rounds to zero in float16 (and a 1e-9-scaled line underflows), so the degenerate
-            # line gives inf and the all-zero line 0 / 0 = nan.
-            assert torch.isinf(degenerate).all() and torch.isnan(zero_line).all()
-            return
-        scaled = kgl.point_line_distance(point, 1e-9 * line)
-        assert ((scaled - exact) / exact).max() < -0.1
-        # A degenerate line (0, 0, 1) returns |c| / eps = 1e9 instead of flagging the singular case, and the all-zero
-        # line returns 0 / eps = 0.
-        assert torch.isfinite(degenerate).all() and (degenerate > 1e8).all()
-        assert torch.equal(zero_line, torch.zeros_like(zero_line))
+        # A 1e-9-scaled line flushes to zero in float16, and the squared norm of a 1e3-scaled one overflows it.
+        scales = (1.0, 1e-3, 10.0) if dtype == torch.float16 else (1.0, 1e-9, 1e3)
+        for scale in scales:
+            self.assert_close(kgl.point_line_distance(point, scale * line), exact)
+        singular = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        distance = kgl.point_line_distance(point, singular)
+        assert distance.isposinf().all(), distance
+        distance.sum().backward()
+        assert torch.isfinite(singular.grad).all(), singular.grad

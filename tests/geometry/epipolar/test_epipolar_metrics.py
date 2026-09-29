@@ -28,6 +28,8 @@ from kornia.geometry.epipolar._metrics import (
     _sampson_errors,
     _sampson_from_quadratic_basis,
     _sampson_quadratic_basis,
+    _symmetrical_epipolar_distance_manual_impl_,
+    _symmetrical_epipolar_distance_matmul_impl_,
 )
 from kornia.geometry.epipolar.fundamental import _rank2_projection
 
@@ -319,30 +321,78 @@ class TestConventionEpipolarMetrics(BaseTester):
             self.assert_close(fn(_hom(x1), _hom(x2), F), fn(x1, x2, F))
             assert ((fn(2.0 * _hom(x1), _hom(x2), F) - fn(x1, x2, F)).abs() / fn(x1, x2, F)).min() > 0.25
 
-    def test_wart_metrics_eps_scale_dependence_4881(self, device, dtype):
+    def test_metrics_do_not_depend_on_the_scale_of_F_4881(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip(_HALF_PIXEL_F)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
         F = _pixel_F_unit_norm(two_view)
-        # #4881: eps is added inside the denominators, so the distance depends on the scale of F: the same F at
-        # ||F|| = 1e-3 scores much lower than at ||F|| = 1. Once fixed the two agree.
-        # Select Sampson's manual path on every device; its CUDA matmul path omits denominator eps.
-        for fn in (
+        # #4881: eps was added inside the denominators, so the same F at ||F|| = 1e-3 scored 90% lower than at
+        # ||F|| = 1, and 1e-6 F moved the one-way distances by a few percent. Every path on every device: the manual,
+        # matmul and shared-point (two models) Sampson implementations, both symmetrical ones and the one-way
+        # distances. The tolerance is float32 roundoff of the cancelling residual, as in the convention test above.
+        paths = (
             partial(epi.sampson_epipolar_distance, use_matmul_at_less_than_points=0),
-            epi.symmetrical_epipolar_distance,
+            _sampson_epipolar_distance_matmul_impl_,
+            lambda a, b, F: _sampson_epipolar_distance_shared_impl_(a, b, F.expand(2, 3, 3), True)[:1],
+            _symmetrical_epipolar_distance_manual_impl_,
+            _symmetrical_epipolar_distance_matmul_impl_,
+            epi.left_to_right_epipolar_distance,
+            epi.right_to_left_epipolar_distance,
+        )
+        for fn in paths:
+            unit = fn(x1, x2, F)
+            for scale in (1e-6, 1e-3, 1e3):
+                self.assert_close(fn(x1, x2, scale * F), unit, rtol=1e-3, atol=0.0)
+
+    def test_exact_match_is_zero_with_a_zero_gradient_4881(self, device, dtype):
+        # #4881: squared=False returned sqrt(d^2 + eps), 1e-4 for an exact match, and eps=0 returned 0 with a NaN
+        # gradient. The first pts2 lies on the epiline of its pts1 (the fixture of test_shift), exact in every dtype.
+        Fm = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
+        pts1 = torch.zeros(1, 3, 2, device=device, dtype=dtype)
+        pts2 = torch.tensor([[[2.0, 0.0], [2.0, 1.0], [2.0, 2.0]]], device=device, dtype=dtype, requires_grad=True)
+        sampson, symmetrical = [0.0, 0.5, 2.0], [0.0, 2.0, 8.0]
+        for fn, expected in (
+            (partial(epi.sampson_epipolar_distance, use_matmul_at_less_than_points=0), sampson),
+            (_sampson_epipolar_distance_matmul_impl_, sampson),
+            (
+                lambda a, b, F, squared: _sampson_epipolar_distance_shared_impl_(a, b, F.expand(2, 3, 3), squared)[:1],
+                sampson,
+            ),
+            (_symmetrical_epipolar_distance_manual_impl_, symmetrical),
+            (_symmetrical_epipolar_distance_matmul_impl_, symmetrical),
         ):
-            unit, small = fn(x1, x2, F), fn(x1, x2, 1e-3 * F)
-            assert ((unit - small).abs() / unit).min() > 0.5
-            # squared=False returns sqrt(d^2 + eps), so an exact match scores about sqrt(eps) = 1e-4, not 0.
-            exact = fn(x1, two_view["x2"], F, squared=False)
-            assert (exact > 0.9e-4).all()
-        # The one-way distances go through point_line_distance, which adds eps to the line norm: at ||F|| = 1e-6 the
-        # value moves by a few percent.
-        for fn in (epi.left_to_right_epipolar_distance, epi.right_to_left_epipolar_distance):
-            unit, tiny = fn(x1, x2, F), fn(x1, x2, 1e-6 * F)
-            assert ((unit - tiny).abs() / unit).min() > 1e-2
+            out = fn(pts1, pts2, Fm, squared=False)
+            self.assert_close(out, torch.tensor([expected], device=device, dtype=dtype).sqrt())
+            assert out[0, 0] == 0
+            (grad,) = torch.autograd.grad(out.sum(), pts2)
+            assert torch.isfinite(grad).all()
+            assert torch.equal(grad[0, 0], torch.zeros_like(grad[0, 0]))
+
+    def test_degenerate_epilines_are_inf_4881(self, device, dtype):
+        # F = diag(0, 0, 1): every epiline has a = b = 0. The manual Sampson path returned residual^2 / eps = 1e8 there
+        # and the matmul path inf (#4881). Every path returns inf, with a finite gradient.
+        pts1 = torch.rand(1, 5, 2, device=device, dtype=dtype, requires_grad=True)
+        pts2 = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        Fm = torch.zeros(1, 3, 3, device=device, dtype=dtype)
+        Fm[:, 2, 2] = 1.0
+        paths = (
+            partial(epi.sampson_epipolar_distance, use_matmul_at_less_than_points=0),
+            _sampson_epipolar_distance_matmul_impl_,
+            lambda a, b, F, squared: _sampson_epipolar_distance_shared_impl_(a, b, F.expand(2, 3, 3), squared)[:1],
+            _symmetrical_epipolar_distance_manual_impl_,
+            _symmetrical_epipolar_distance_matmul_impl_,
+        )
+        outputs = [fn(pts1, pts2, Fm, squared=squared) for fn in paths for squared in (True, False)]
+        outputs += [
+            epi.left_to_right_epipolar_distance(pts1, pts2, Fm),
+            epi.right_to_left_epipolar_distance(pts1, pts2, Fm),
+        ]
+        for out in outputs:
+            assert out.isposinf().all(), out
+            (grad,) = torch.autograd.grad(out.sum(), pts1)
+            assert torch.isfinite(grad).all(), grad
 
 
 def _near_epipole_scene(n: int, seed: int):
@@ -365,24 +415,22 @@ class TestSampsonSharedPoints(BaseTester):
     """One point set scored against many fundamental matrices: two matrix products instead of per-model broadcasting."""
 
     @pytest.mark.parametrize("squared", [True, False])
-    def test_public_dispatch_and_eps_4881(self, device, dtype, squared):
+    def test_public_dispatch_and_paths_agree_4881(self, device, dtype, squared):
         if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("eps = 1e-8 is below half precision's resolution")
-        # 256 matrices x 300 points reach the shared path on every device. At 1e-4 of unit scale, eps moves the
-        # distances by tens of percent, so the comparison tells the CPU rule (eps in the denominator) from the CUDA
-        # matmul one (no eps in the denominator, #4881).
+            pytest.skip("compared at float32 and float64 accuracy")
+        # 256 matrices x 300 points reach the shared path on every device. At 1e-4 of unit scale the eps that the
+        # manual path added to the denominator moved the distances by tens of percent against the CUDA matmul path
+        # (#4881); the three implementations agree to roundoff.
         generator = torch.Generator().manual_seed(5)
         pts1 = torch.rand(1, 300, 2, generator=generator).to(device, dtype)
         pts2 = torch.rand(1, 300, 2, generator=generator).to(device, dtype)
         Fm = 1e-4 * create_random_fundamental_matrix(256, dtype=dtype, device=device)
         out = epi.sampson_epipolar_distance(pts1, pts2, Fm, squared=squared)
-        matmul = device.type == "cuda"
-        shared = _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm, squared, 1e-8, 0.0 if matmul else 1e-8)
-        assert torch.equal(out, shared)
-        reference = _sampson_epipolar_distance_matmul_impl_ if matmul else _sampson_epipolar_distance_manual_impl_
-        expected = reference(pts1, pts2, Fm, squared, 1e-8)
-        # Roundoff on the near-zero distances aside, eps in or out of the denominator is a 20-60% difference.
-        self.assert_close(out, expected, rtol=1e-3, atol=1e-3 * float(expected.abs().median()))
+        assert torch.equal(out, _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm, squared))
+        for reference in (_sampson_epipolar_distance_manual_impl_, _sampson_epipolar_distance_matmul_impl_):
+            expected = reference(pts1, pts2, Fm, squared)
+            # Roundoff on the near-zero distances aside.
+            self.assert_close(out, expected, rtol=1e-3, atol=1e-3 * float(expected.abs().median()))
 
     def test_single_matrix_without_batch_dimension(self, device, dtype):
         if device.type != "cuda":
@@ -409,7 +457,7 @@ class TestSampsonSharedPoints(BaseTester):
             else _sampson_epipolar_distance_manual_impl_
         )
         work = torch.promote_types(dtype, torch.float32)
-        expected = other(pts1.to(work), pts2.to(work), Fm.to(work), squared, 1e-8).to(dtype)
+        expected = other(pts1.to(work), pts2.to(work), Fm.to(work), squared).to(dtype)
         assert out.dtype == dtype
         self.assert_close(out, expected)
 
@@ -419,19 +467,19 @@ class TestSampsonSharedPoints(BaseTester):
             [torch.rand(1, 7, 2, device=device, dtype=dtype), torch.ones(1, 7, 1, device=device, dtype=dtype)], -1
         )
         Fm = create_random_fundamental_matrix(6, dtype=dtype, device=device).reshape(2, 3, 3, 3)
-        assert _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm, True, 1e-8, 1e-8).shape == (2, 3, 7)
-        assert _sampson_epipolar_distance_shared_impl_(pts1[0, 0], pts2[0], Fm[0], True, 1e-8, 1e-8).shape == (3, 7)
+        assert _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm, True).shape == (2, 3, 7)
+        assert _sampson_epipolar_distance_shared_impl_(pts1[0, 0], pts2[0], Fm[0], True).shape == (3, 7)
         empty = torch.zeros(1, 0, 2, device=device, dtype=dtype)
-        assert _sampson_epipolar_distance_shared_impl_(empty, empty, Fm[0], True, 1e-8, 1e-8).shape == (3, 0)
+        assert _sampson_epipolar_distance_shared_impl_(empty, empty, Fm[0], True).shape == (3, 0)
 
     def test_homogeneous_points_are_used_as_given(self, device, dtype):
         pts1 = torch.rand(1, 9, 2, device=device, dtype=dtype)
         pts2 = torch.rand(1, 9, 2, device=device, dtype=dtype)
         Fm = create_random_fundamental_matrix(3, dtype=dtype, device=device)
         scaled = 2.0 * _hom(pts1)
-        out = _sampson_epipolar_distance_shared_impl_(scaled, pts2, Fm, True, 1e-8, 1e-8)
+        out = _sampson_epipolar_distance_shared_impl_(scaled, pts2, Fm, True)
         work = torch.promote_types(dtype, torch.float32)
-        expected = _sampson_epipolar_distance_manual_impl_(scaled.to(work), pts2.to(work), Fm.to(work), True, 1e-8)
+        expected = _sampson_epipolar_distance_manual_impl_(scaled.to(work), pts2.to(work), Fm.to(work), True)
         self.assert_close(out, expected.to(dtype))
 
     def test_non_contiguous_and_mixed_dtype_models(self, device, dtype):
@@ -440,13 +488,11 @@ class TestSampsonSharedPoints(BaseTester):
         pts1 = torch.rand(1, 11, 2, device=device, dtype=torch.float64)
         pts2 = torch.rand(1, 11, 2, device=device, dtype=torch.float64)
         Fm = create_random_fundamental_matrix(4, dtype=dtype, device=device)
-        out = _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm.mT, True, 1e-8, 1e-8)
+        out = _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm.mT, True)
         assert out.dtype == torch.promote_types(torch.float64, dtype)
-        self.assert_close(
-            out, _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm.mT.contiguous(), True, 1e-8, 1e-8)
-        )
+        self.assert_close(out, _sampson_epipolar_distance_shared_impl_(pts1, pts2, Fm.mT.contiguous(), True))
         one = Fm[:1].expand(5, 3, 3)
-        expanded = _sampson_epipolar_distance_shared_impl_(pts1, pts2, one, True, 1e-8, 1e-8)
+        expanded = _sampson_epipolar_distance_shared_impl_(pts1, pts2, one, True)
         self.assert_close(expanded, expanded[:1].expand_as(expanded))
 
     def test_residual_order_regression(self, device, dtype):
@@ -460,10 +506,10 @@ class TestSampsonSharedPoints(BaseTester):
         x1 = torch.tensor([[[1000.1, 1000.2]]], device=device, dtype=dtype)
         x2 = torch.tensor([[[1000.3, 1000.4]]], device=device, dtype=dtype)
         models = F.expand(64, 3, 3)
-        shared = _sampson_epipolar_distance_shared_impl_(x1, x2, models, True, 0.0, 0.0)[:, 0].cpu().double()
-        manual = _sampson_epipolar_distance_manual_impl_(x1, x2, F[None], True, 0.0)[0, 0].cpu().double()
+        shared = _sampson_epipolar_distance_shared_impl_(x1, x2, models, True)[:, 0].cpu().double()
+        manual = _sampson_epipolar_distance_manual_impl_(x1, x2, F[None], True)[0, 0].cpu().double()
         reference = _sampson_epipolar_distance_manual_impl_(
-            x1.cpu().double(), x2.cpu().double(), F[None].cpu().double(), True, 0.0
+            x1.cpu().double(), x2.cpu().double(), F[None].cpu().double(), True
         )
         reference = reference[0, 0].cpu()
         self.assert_close(shared, manual.expand_as(shared), rtol=1e-4, atol=0.0)
@@ -476,10 +522,10 @@ class TestSampsonSharedPoints(BaseTester):
         x1, x2, F = _near_epipole_scene(2000, seed=seed)
         perturb = 1 + 1e-4 * torch.randn(7, 3, 3, generator=torch.Generator().manual_seed(1), dtype=torch.float64)
         models = torch.cat([F[None], F[None] * perturb])
-        reference = _sampson_epipolar_distance_manual_impl_(x1[None], x2[None], models, True, 0.0)
+        reference = _sampson_epipolar_distance_manual_impl_(x1[None], x2[None], models, True)
         cast = lambda t: t.to(device, dtype)  # noqa: E731
-        shared = _sampson_epipolar_distance_shared_impl_(cast(x1[None]), cast(x2[None]), cast(models), True, 0.0, 0.0)
-        manual = _sampson_epipolar_distance_manual_impl_(cast(x1[None]), cast(x2[None]), cast(models), True, 0.0)
+        shared = _sampson_epipolar_distance_shared_impl_(cast(x1[None]), cast(x2[None]), cast(models), True)
+        manual = _sampson_epipolar_distance_manual_impl_(cast(x1[None]), cast(x2[None]), cast(models), True)
         shared, manual = shared.cpu().double(), manual.cpu().double()
         assert torch.isfinite(shared).all()
         assert (shared >= 0).all()
@@ -505,7 +551,7 @@ class TestSampsonSharedPoints(BaseTester):
         perturbed = Fn + 1e-3 * torch.randn(7, 3, 3, generator=generator, dtype=torch.float64)
         models = torch.cat([Fn[None], _rank2_projection(perturbed)])
         models = models / models.flatten(1).norm(dim=1)[:, None, None]
-        reference = _sampson_errors(models, h1, h2, 0.0)
+        reference = _sampson_errors(models, h1, h2)
         cast = lambda t: t.to(device, torch.float32)  # noqa: E731
         errors = _sampson_from_quadratic_basis(cast(models), _sampson_quadratic_basis(cast(h1), cast(h2)))
         errors = errors.cpu().double()
@@ -525,6 +571,4 @@ class TestSampsonSharedPoints(BaseTester):
         pts1 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
         pts2 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
         Fm = create_random_fundamental_matrix(3, dtype=torch.float64, device=device)
-        self.gradcheck(
-            lambda a, b, F: _sampson_epipolar_distance_shared_impl_(a, b, F, True, 1e-8, 1e-8), (pts1, pts2, Fm)
-        )
+        self.gradcheck(lambda a, b, F: _sampson_epipolar_distance_shared_impl_(a, b, F, True), (pts1, pts2, Fm))

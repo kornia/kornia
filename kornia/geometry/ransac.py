@@ -1090,7 +1090,7 @@ class RANSAC(nn.Module):
         # Casting (especially to half precision) changes the model. Classify that exact returned matrix in pixel
         # coordinates, in float64 so metric arithmetic does not add another round of low-precision error. The public
         # line/transfer forms also avoid cancellation in the normalized quadratic sampling basis near epipoles.
-        errors = self.error_fn(kp1_host[None], kp2_host[None], model[None].to(torch.float64), eps=0.0)[0]
+        errors = self.error_fn(kp1_host[None], kp2_host[None], model[None].to(torch.float64))[0]
         mask = finite & (errors <= self.inl_th**2)
         if not self._is_supported(int(mask.sum())):
             return failure
