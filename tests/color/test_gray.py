@@ -146,6 +146,22 @@ class TestRgbToGrayscale(BaseTester):
         assert kornia.color.rgb_to_grayscale(green).item() == 150
         assert kornia.color.rgb_to_grayscale(blue).item() == 29
 
+    def test_uint8_opencv(self, device):
+        # Generated with OpenCV 4.10.0 and 5.0.0 (identical):
+        #   cv2.cvtColor(np.array(rgb, dtype=np.uint8), cv2.COLOR_RGB2GRAY) on the HxWx3 rows below.
+        # (12, 250, 9) is 151 in OpenCV but 152 with the 8-bit weights 76/150/29 over 255; (0, 1, 1) and
+        # (100, 150, 50) need round-to-nearest rather than floor.
+        rgb = [
+            [[[255, 255, 255], [255, 0, 0], [0, 255, 0]], [[0, 0, 255], [0, 1, 1], [12, 250, 9]]],
+            [[[100, 150, 50], [33, 66, 99], [12, 0, 8]], [[37, 14, 37], [0, 12, 4], [12, 37, 28]]],
+        ]
+        expected = [[[[255, 76, 150], [29, 1, 151]]], [[[124, 60, 5], [23, 8, 28]]]]
+        img = torch.tensor(rgb, device=device, dtype=torch.uint8).permute(0, 3, 1, 2)
+        out = kornia.color.rgb_to_grayscale(img)
+        assert out.shape == (2, 1, 2, 3)
+        assert out.dtype == torch.uint8
+        assert torch.equal(out, torch.tensor(expected, device=device, dtype=torch.uint8))
+
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 3, height, width, device=device, dtype=dtype)
