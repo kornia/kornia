@@ -42,6 +42,31 @@ def test_generate_two_view_random_scene_is_deterministic():
     assert torch.equal(actual_next, expected_next)
 
 
+class TestScaledPolynomialPowers(BaseTester):
+    def test_values(self, device, dtype):
+        # The five-point Newton correction evaluates z**d / max(1, abs(z))**10.
+        # Both signs, z=0, and the boundary |z|=1 must retain all eleven coefficients.
+        values = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0]
+        roots = torch.tensor([values], device=device, dtype=dtype)
+        # Integer powers of these binary fractions are exact; CUDA's general tensor pow can round them.
+        expected = torch.tensor(
+            [[[z**d / max(1.0, abs(z)) ** 10 for d in range(11)] for z in values]], device=device, dtype=dtype
+        )
+        actual = epi.essential._scaled_polynomial_powers(roots)
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    def test_large_roots_remain_finite(self, device, dtype):
+        # Direct z**10 would overflow. The highest two powers still have values 1 and 1/z,
+        # including the sign of the derivative term at a negative root.
+        large = torch.finfo(dtype).max ** 0.2 / 2
+        roots = torch.tensor([[-large, large]], device=device, dtype=dtype)
+        actual = epi.essential._scaled_polynomial_powers(roots)
+        assert torch.isfinite(actual).all()
+        assert bool((actual.abs() <= 1).all())
+        self.assert_close(actual[..., -1], torch.ones_like(roots), atol=0.0, rtol=0.0)
+        self.assert_close(actual[..., -2], roots.reciprocal(), atol=0.0, rtol=0.0)
+
+
 class TestFindEssential(BaseTester):
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 5, 2, device=device, dtype=dtype)
