@@ -1002,6 +1002,34 @@ class TestPackedQuadraticFit(BaseTester):
             assert got.shape == (2, 5)
             self.assert_close(got.reshape(-1), want, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
+    @pytest.mark.parametrize("amplitude", [1e-3, 1.0, 1e3])
+    def test_cramer_relative_floor_5065(self, device, dtype, solver, amplitude):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
+        # Rows are (dxx, dyy, dss, dxy, dxs, dys). A fit is singular when |det| <= 1e-7 * m**3, with m the largest
+        # Hessian magnitude, so each row keeps its status at every amplitude. The first row sits a decade above that
+        # floor and the second a decade below. Each later singular row has its unique largest entry in a different
+        # slot and would be solved if that slot were left out of m; the last row is all zero.
+        e, t = -1e-4, -1e-8
+        hessians = [
+            (-1.0, -1.0, -1e-6, 0.0, 0.0, 0.0),
+            (-1.0, -1.0, -1e-8, 0.0, 0.0, 0.0),
+            (-1.0, e, e, 0.0, 0.0, 0.0),
+            (e, -1.0, e, 0.0, 0.0, 0.0),
+            (e, e, -1.0, 0.0, 0.0, 0.0),
+            (e, e, t, 1.0, 0.0, 0.0),
+            (e, t, e, 0.0, 1.0, 0.0),
+            (t, e, e, 0.0, 0.0, 1.0),
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        ]
+        # The right-hand side is larger than the Hessian and must not enter m.
+        system = torch.tensor([h + (10.0, 10.0, 10.0) for h in hessians], device=device, dtype=dtype).T * amplitude
+        solved = getattr(subpix, solver)(*system)[3]
+        assert solved.tolist() == [True] + [False] * 8
+
     @pytest.mark.parametrize("count", [0, 19])
     def test_patch_derivatives(self, device, dtype, count):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
