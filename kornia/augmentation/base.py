@@ -59,10 +59,6 @@ class _BasicAugmentationBase(nn.Module):
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
-    ``set_rng_device_and_dtype`` updates RNG-related state, but sampler migration and returned parameter
-    placement are not uniform across generators. See :doc:`/get-started/conventions` and the limitations
-    tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
-
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
     put all static parameters inside ``self.flags``. You may take the advantage of ``PlainUniformGenerator`` to

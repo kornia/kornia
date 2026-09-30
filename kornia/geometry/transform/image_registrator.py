@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 
+from kornia.core._compat import deprecated
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
 
@@ -97,6 +98,19 @@ class Homography(BaseModel):
 class Similarity(BaseModel):
     """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
 
+    Convention:
+        - ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]`` in the normalized :math:`[-1, 1]` coordinates of
+          :class:`ImageRegistrator` (``align_corners=False``), where ``R`` comes from
+          :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` of ``rot`` in degrees.
+        - After :meth:`set_image_shape` with the image height ``H`` and width ``W``, ``R`` is
+          ``diag(H / W, 1) @ angle_to_rotation_matrix(rot) @ diag(W / H, 1)``. The normalized frame scales x by
+          ``2 / W`` and y by ``2 / H``, so in pixels the linear part is then ``scale * angle_to_rotation_matrix(rot)``
+          about the image centre, for any aspect ratio. :meth:`ImageRegistrator.register` sets the shape of
+          ``dst_img``. ``shift`` stays in normalized units.
+        - Without an image shape, ``R`` is ``angle_to_rotation_matrix(rot)``, which rotates the pixels only on a
+          square image. The shape is not part of ``state_dict()``: after ``load_state_dict``, call
+          :meth:`set_image_shape` again before using the model on a non-square image.
+
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
         scale: if True, the scale is optimizable, else constant zero.
@@ -106,6 +120,8 @@ class Similarity(BaseModel):
 
     def __init__(self, rotation: bool = True, scale: bool = True, shift: bool = True) -> None:
         super().__init__()
+        self.height: Optional[int] = None
+        self.width: Optional[int] = None
         if rotation:
             self.rot = nn.Parameter(torch.zeros(1))
         else:
@@ -131,6 +147,17 @@ class Similarity(BaseModel):
         torch.nn.init.zeros_(self.shift)
         torch.nn.init.ones_(self.scale)
 
+    def set_image_shape(self, height: int, width: int) -> None:
+        """Set the image size in pixels, which makes ``rot`` and ``scale`` a rotation and scaling of the pixels.
+
+        Args:
+            height: image height ``H``.
+            width: image width ``W``.
+
+        """
+        self.height = height
+        self.width = width
+
     def forward(self) -> torch.Tensor:
         r"""Single-batch similarity transform".
 
@@ -139,6 +166,11 @@ class Similarity(BaseModel):
 
         """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
+        if self.height is not None and self.width is not None:
+            # diag(H / W, 1) @ rot @ diag(W / H, 1): the pixel rotation in the normalized frame, whose x unit is W / 2
+            # pixels and y unit H / 2 pixels. Only the off-diagonal entries change, so the diagonal stays exact.
+            aspect = self.height / self.width
+            rot = rot * rot.new_tensor([[1.0, aspect], [1.0 / aspect, 1.0]])
         return convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
 
     def forward_inverse(self) -> torch.Tensor:
@@ -286,18 +318,23 @@ class ImageRegistrator(nn.Module):
         # [::-1] because we have to register from coarse to fine
         img_src_pyr = build_pyramid(src_img, self.pyramid_levels)[::-1]
         img_dst_pyr = build_pyramid(dst_img, self.pyramid_levels)[::-1]
-        prev_loss = 1e10
         aux_models = []
         if len(img_dst_pyr) != len(img_src_pyr):
             raise ValueError("Cannot register images of different sizes")
+        if isinstance(self.model, Similarity):
+            # every pyramid level spans the same image, so the full-resolution shape is the pixel aspect ratio of each
+            # level; a level's own rounded shape is not
+            self.model.set_image_shape(dst_img.shape[-2], dst_img.shape[-1])
         for img_src_level, img_dst_level in zip(img_src_pyr, img_dst_pyr):
+            # tolerance compares successive losses of one level; a loss from the coarser level is not one of them
+            prev_loss: Optional[float] = None
             for i in range(self.num_iterations):
                 # compute gradient and update optimizer parameters
                 opt.zero_grad()
                 loss = self.get_single_level_loss(img_src_level, img_dst_level, self.model())
                 loss += self.get_single_level_loss(img_dst_level, img_src_level, self.model.forward_inverse())
                 current_loss = loss.item()
-                if abs(current_loss - prev_loss) < self.tolerance:
+                if prev_loss is not None and abs(current_loss - prev_loss) < self.tolerance:
                     break
                 prev_loss = current_loss
                 loss.backward()
@@ -316,8 +353,13 @@ class ImageRegistrator(nn.Module):
         warper = self.warper(_height, _width)
         return warper(src_img, self.model())
 
-    def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
-        r"""Warp src_img with inverted estimated model."""
+    def warp_dst_into_src(self, dst_img: torch.Tensor) -> torch.Tensor:
+        r"""Warp dst_img with inverted estimated model."""
         _height, _width = dst_img.shape[-2:]
         warper = self.warper(_height, _width)
         return warper(dst_img, self.model.forward_inverse())
+
+    @deprecated(replace_with="ImageRegistrator.warp_dst_into_src", version="0.9.0")
+    def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
+        r"""Deprecated alias for :meth:`warp_dst_into_src`."""
+        return self.warp_dst_into_src(dst_img)

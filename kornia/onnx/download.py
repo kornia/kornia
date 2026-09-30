@@ -55,8 +55,8 @@ class CachedDownloader:
             file_name = f"{os.path.split(model_name)[-1]}{suffix}"
         else:
             file_name = os.path.split(model_name)[-1]
-        file_path = os.path.join(*cache_dir.split(os.sep), *model_name.split(os.sep)[:-1], file_name)
-        return file_path
+
+        return os.path.join(*cache_dir.split(os.sep), *model_name.split(os.sep)[:-1], file_name)
 
     @classmethod
     def download_to_cache(cls, url: str, name: str, download: bool = True, **kwargs: Any) -> str:

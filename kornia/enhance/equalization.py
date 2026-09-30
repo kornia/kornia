@@ -64,8 +64,19 @@ def _compute_tiles(
     pad_horz = kernel_horz * grid_size[1] - w
 
     # add the padding in the last coluns and rows
-    if pad_vert > batch.shape[-2] or pad_horz > batch.shape[-1]:
-        raise ValueError("Cannot compute tiles on the image according to the given grid size")
+    # reflect padding needs the pad strictly below the axis it reflects, so >= is the bound: an
+    # 8 x 8 image on an 8 x 8 grid pads by 8 on an axis of 8 and fails inside F.pad otherwise.
+    if pad_vert >= batch.shape[-2] or pad_horz >= batch.shape[-1]:
+        # An even tile has to cover more than one grid cell, so the axis must exceed the grid;
+        # an odd one only has to exceed half of it.
+        min_vert = grid_size[0] + 1 if even_tile_size else grid_size[0] // 2 + 1
+        min_horz = grid_size[1] + 1 if even_tile_size else grid_size[1] // 2 + 1
+        raise ValueError(
+            "Cannot compute tiles on the image according to the given grid size. "
+            f"Got image size ({h}, {w}) and grid size {tuple(grid_size)}, which needs "
+            f"({pad_vert}, {pad_horz}) of reflect padding, more than the image has to reflect. "
+            f"The smallest image this grid admits is ({min_vert}, {min_horz})."
+        )
 
     if pad_vert > 0 or pad_horz > 0:
         batch = F.pad(batch, [0, pad_horz, 0, pad_vert], mode="reflect")  # B x C x H' x W'
@@ -199,8 +210,9 @@ def _compute_luts(
     if isinstance(clip, torch.Tensor):
         # Match Python scalar arithmetic before rounding each image's threshold, then broadcast
         # over its tiles and channels. Keeping the limits in tensors avoids compile guards on draws.
-        # MPS cannot store doubles; compute its thresholds on CPU before copying them with the LUTs.
-        limits = clip.to(device="cpu", dtype=torch.float64) if clip.device.type == "mps" else clip.double()
+        # MPS cannot store doubles; compute its thresholds on CPU before copying them with the LUTs. Move first,
+        # then cast: a single clip.to("cpu", torch.float64) from MPS raises on torch 2.5.1 and returns zeros on 2.14.
+        limits = clip.cpu().double() if clip.device.type == "mps" else clip.double()
         max_vals = (limits * pixels).div(num_bins, rounding_mode="floor").clamp(min=1)
         max_vals = max_vals.to(histos).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
         limited = histos.clamp(max=max_vals)
@@ -385,7 +397,8 @@ def equalize_clahe(
     Args:
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
-        grid_size: number of tiles to be cropped in each direction (GH, GW).
+        grid_size: number of tiles to be cropped in each direction (GH, GW). Each image axis must be larger
+            than its grid size; otherwise a ``ValueError`` names the smallest image the grid admits.
         slow_and_differentiable: flag to select implementation
 
     Returns:

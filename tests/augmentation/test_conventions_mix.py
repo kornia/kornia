@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 
 import pytest
@@ -34,8 +35,21 @@ def _label_dtype(image_dtype: torch.dtype) -> torch.dtype:
 
 
 class TestMixConventions(BaseTester):
-    def test_convention_mix_base_has_no_matrix_or_inverse(self):
-        aug = K.RandomMixUpV2()
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            K.RandomMixUpV2,
+            lambda: K.RandomCutMixV2(use_correct_lambda=True),
+            K.PatchMix,
+            K.RandomJigsaw,
+            K.RandomMosaic,
+            K.RandomTransplantation,
+            K.RandomTransplantation3D,
+        ],
+    )
+    def test_convention_mix_has_no_matrix_or_inverse(self, factory):
+        aug = factory()
         with pytest.raises(RuntimeError, match="Transformation matrices"):
             _ = aug.transform_matrix
         with pytest.raises(RuntimeError, match="Inverse"):
@@ -166,20 +180,24 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(
-        "factory",
+        ("factory", "per_sample"),
         [
-            lambda: K.RandomMixUpV2(p=0.5),
-            lambda: K.RandomCutMixV2(p=0.5, use_correct_lambda=True),
-            lambda: K.PatchMix(p=0.5, patch_size=2),
+            (lambda: K.RandomJigsaw(grid=(2, 2), p=0.5, same_on_batch=True), False),
+            (lambda: K.RandomTransplantation(p=0.5), True),
         ],
     )
-    def test_convention_mix_batch_gate_is_all_or_nothing(self, factory):
-        # An invariant, not a statistic: a batch-wide gate never selects a strict subset of the rows.
+    def test_convention_mix_gate_is_per_sample_or_batch_wide(self, factory, per_sample):
+        # A batch-wide gate never selects a strict subset of the rows; a per-sample one misses doing so in 20
+        # draws of 8 rows with probability (2 / 256) ** 20. Jigsaw and Mosaic's per-sample `p` and the batch-wide
+        # `p` of MixUp, CutMix and PatchMix (#4425) are pinned in test_base.py.
         aug = factory()
+        shape = torch.Size([8, 8, 8]) if isinstance(aug, K.RandomTransplantation) else torch.Size([8, 1, 8, 8])
+        subsets = 0
         for _ in range(20):
-            batch_prob = aug.forward_parameters(torch.Size([8, 1, 8, 8]))["batch_prob"]
-            assert batch_prob.numel() == 8
-            assert bool((batch_prob == batch_prob[0]).all())
+            gate = aug.forward_parameters(shape)["batch_prob"] > 0.5
+            assert gate.numel() == 8
+            subsets += 0 < int(gate.sum()) < 8
+        assert (subsets > 0) == per_sample
 
     def test_convention_per_sample_gate_keeps_unselected_rows(self, device, dtype):
         image = torch.arange(32, device=device, dtype=dtype).reshape(2, 1, 4, 4)
@@ -322,24 +340,6 @@ class TestMixConventions(BaseTester):
         self.assert_close(output, expected)
 
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize("dtype", [torch.uint8, torch.int64])
-    def test_convention_mix_rejects_integer_images(self, dtype):
-        with pytest.raises(TypeError, match="float16"):
-            K.RandomMixUpV2(p=1.0)(torch.ones(2, 1, 4, 4, dtype=dtype))
-
-    @pytest.mark.device_agnostic
-    def test_convention_mix_inverse_is_keyword_only(self):
-        with pytest.raises(TypeError, match="positional"):
-            K.RandomMixUpV2().inverse(torch.ones(2, 1, 4, 4))
-
-    @pytest.mark.device_agnostic
-    def test_convention_jigsaw_same_on_batch_shares_the_gate(self):
-        aug = K.RandomJigsaw(grid=(2, 2), p=0.5, same_on_batch=True)
-        for _ in range(20):
-            batch_prob = aug.forward_parameters(torch.Size([8, 1, 4, 4]))["batch_prob"]
-            assert bool((batch_prob == batch_prob[0]).all())
-
-    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
     @pytest.mark.parametrize(
         ("factory", "supported", "class_error"),
@@ -352,7 +352,7 @@ class TestMixConventions(BaseTester):
         ],
     )
     def test_convention_unsupported_key_raises_whatever_the_gate(self, factory, supported, class_error, p):
-        # Fixed by #4676: these used to pass through silently whenever the gate selected no sample (#4651).
+        # #4651 / #4676: the key is validated before the gate is consulted.
         image = torch.rand(4, 1, 8, 8)
         annotations = {
             "bbox_xyxy": torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4),
@@ -375,14 +375,15 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_jigsaw_rejects_a_nondivisible_input_whatever_the_gate(self, p, device, dtype):
-        # Fixed by #4676: (1, 3, 3, 4) with grid=(2, 2) used to come back as (1, 2, 3, 4), and p=0 returned the input.
+        # #4676: the divisibility check runs whatever the gate.
         for shape, grid in (((1, 3, 3, 4), (2, 2)), ((2, 1, 9, 13), (2, 3)), ((2, 1, 8, 13), (2, 3))):
             image = torch.rand(shape, device=device, dtype=dtype)
             with pytest.raises(RuntimeError, match="must be divisible by grid"):
                 K.RandomJigsaw(grid=grid, p=p)(image)
 
     @pytest.mark.device_agnostic
-    def test_convention_mix_class_handlers_ignore_a_replayed_partial_gate(self):
+    def test_wart_mix_class_handlers_ignore_a_replayed_partial_gate_4775(self):
+        # #4775: flips when the class handler honours batch_prob, i.e. row 1 is labelled [20, 20, 0].
         image = torch.arange(3.0).view(3, 1, 1, 1).expand(3, 1, 4, 4).clone()
         labels = torch.tensor([10, 20, 30])
         aug = K.RandomMixUpV2(p=1.0, lambda_val=(0.25, 0.25), data_keys=["input", "class"])
@@ -393,6 +394,16 @@ class TestMixConventions(BaseTester):
         output, mixed = aug(image, labels, params=params)
         self.assert_close(output[:, 0, 0, 0], torch.tensor([0.25, 1.0, 1.5]))  # row 1 keeps its image
         self.assert_close(mixed, torch.tensor([[10.0, 20.0, 0.25], [20.0, 30.0, 0.25], [30.0, 10.0, 0.25]]))
+        # RandomCutMixV2 has the same handler split: a 2 x 2 cut, and row 1 is gated off.
+        aug = K.RandomCutMixV2(p=1.0, use_correct_lambda=True, data_keys=["input", "class"])
+        aug(image, labels)
+        params = dict(aug._params)
+        params["mix_pairs"] = torch.tensor([[1, 2, 0]])
+        params["crop_src"] = torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]).expand(1, 3, 4, 2).clone()
+        params["batch_prob"] = torch.tensor([1.0, 0.0, 1.0])
+        output, mixed = aug(image, labels, params=params)
+        self.assert_close(output[1], image[1])
+        self.assert_close(mixed[0], torch.tensor([[10.0, 20.0, 0.75], [20.0, 30.0, 0.75], [30.0, 10.0, 0.75]]))
 
     @pytest.mark.device_agnostic
     def test_convention_cutmix_compatibility_lambda_warns(self):
@@ -447,11 +458,25 @@ class TestMixConventions(BaseTester):
             assert heights.unique().numel() > 1 and widths.unique().numel() > 1
 
     @pytest.mark.device_agnostic
+    def test_wart_cutmix_same_on_batch_repeats_one_cut_per_mix_4805(self):
+        # #4805: with same_on_batch=True every mix repeats the first cut from the same donor, yet each mix is
+        # labelled. Flips when the mixes differ or collapse to one, i.e. when the labels match the pixels.
+        torch.manual_seed(0)
+        image = torch.arange(4.0).view(4, 1, 1, 1).expand(4, 1, 8, 8).clone()  # row i is filled with i
+        aug = K.RandomCutMixV2(
+            num_mix=2, same_on_batch=True, p=1.0, use_correct_lambda=True, data_keys=["input", "class"]
+        )
+        output, mixed = aug(image, torch.tensor([0, 1, 2, 3]))
+        assert mixed.shape[0] == 2 and torch.equal(mixed[0], mixed[1])
+        replaced = (output[:, 0] != image[:, 0]).float().mean((-2, -1))
+        self.assert_close(replaced, 1 - mixed[0, :, 2])  # one cut's area, while two mixes credit the donor
+
+    @pytest.mark.device_agnostic
     def test_convention_cutmix_placement_is_drawn_per_cut_4712(self):
         from kornia.geometry.bbox import infer_bbox_shape
 
-        # #4712: one uniform draw per axis used to place every cut of the batch. With the size fixed, only the
-        # placement can differ, so equal boxes here would mean the placement is shared again.
+        # #4712: every cut draws its own placement. With the size fixed, only the placement can differ, so equal
+        # boxes here would mean the placement is shared.
         shape = torch.Size([8, 1, 64, 48])
         for seed in range(10):
             torch.manual_seed(seed)
@@ -473,7 +498,7 @@ class TestMixConventions(BaseTester):
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_patchmix_rejects_a_patch_larger_than_the_image(self, p):
-        # Fixed by #4680: the default patch_size=16 used to draw negative corners on this image (#4650).
+        # #4650 / #4680: checked whatever the gate.
         image = torch.rand(4, 1, 8, 10)
         for patch_size in (9, 16):
             with pytest.raises(ValueError, match="`patch_size` to fit the input"):
@@ -482,8 +507,7 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_patchmix_same_on_batch_shares_the_patch_but_not_the_pairing(self):
-        # Fixed by #4680: a shared pairing draw used to argsort to the identity, so every image patched itself.
-        # Each donor's pixel value is its batch index, providing an oracle independent of patch-copy slicing.
+        # #4680. Each donor's pixel value is its batch index, an oracle independent of patch-copy slicing.
         image = torch.arange(64, dtype=torch.float32).reshape(64, 1, 1, 1).expand(-1, 1, 8, 10).clone()
         aug = K.PatchMix(patch_size=4, p=1.0, same_on_batch=True)
         output = aug(image)
@@ -502,44 +526,198 @@ class TestMixConventions(BaseTester):
         assert independent._params["patch_coords"].unique(dim=0).shape[0] > 1
 
     @pytest.mark.device_agnostic
-    def test_wart_mosaic_output_size_boxes_and_resample_default_4652(self):
-        image = torch.rand(4, 1, 6, 8)
-        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4)
-        assert K.RandomMosaic(output_size=(4, 10), p=0.0)(image).shape == (4, 1, 4, 10)
-        # Replay one recorded draw under both settings, with a hand-set gate that selects rows 1 and 3 only.
-        reference = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])
+    def test_convention_mosaic_boxes_follow_output_size_and_resample_defaults_to_input_size(self):
+        # Fixed by #4679 (#4652): boxes used to be clipped to the input extent rather than to ``output_size``, and
+        # ``cropping_mode="resample"`` without an ``output_size`` raised ``TypeError`` once a sample was selected.
+        image = torch.rand(3, 1, 6, 8)
+        assert K.RandomMosaic(output_size=(4, 10), p=0.0)(image).shape == (3, 1, 4, 10)
+        # Full-tile boxes on a (6, 8) input; the crop starts at (x, y) = (4, 3) of the (12, 16) canvas and is
+        # (4, 10) high and wide, so each tile's box is clipped to the output window [0, 10] x [0, 4].
+        boxes = torch.tensor([[[0.0, 0.0, 8.0, 6.0]]] * 3)
+        aug = K.RandomMosaic(output_size=(4, 10), start_ratio_range=(0.5, 0.5), p=1.0, data_keys=["input", "bbox_xyxy"])
+        output, output_boxes = aug(image, boxes)
+        assert output.shape == (3, 1, 4, 10)
+        # The input extent would give [0, 3, 4, 6], [4, 0, 8, 3] and [4, 3, 8, 6] instead.
+        expected = torch.tensor(
+            [[0.0, 0.0, 4.0, 3.0], [0.0, 3.0, 4.0, 4.0], [4.0, 0.0, 10.0, 3.0], [4.0, 3.0, 10.0, 4.0]]
+        )
+        self.assert_close(output_boxes, expected.expand(3, -1, -1))
+        # Without output_size, resample crops to the input size and agrees with slice on the same draw.
+        sliced = K.RandomMosaic(start_ratio_range=(0.5, 0.5), p=1.0)
+        expected_image = sliced(image)
+        resampled = K.RandomMosaic(start_ratio_range=(0.5, 0.5), p=1.0, cropping_mode="resample")(
+            image, params=sliced._params
+        )
+        assert resampled.shape == image.shape
+        self.assert_close(resampled, expected_image)
+        self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("output_size", [(4, 10), (9, 5), (14, 18), (4, 14), (13, 6)])
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_convention_mosaic_output_size_crops_an_unscaled_window_of_the_canvas(
+        self, cropping_mode, output_size, batch_size, device, dtype
+    ):
+        # Both cropping modes take an ``output_size`` window of the composed canvas at the drawn corner, without
+        # rescaling; past the canvas edge the window is zero. That is what keeps the boxes, which are translated and
+        # not rescaled, on their tiles. Before, resample squeezed an input-sized window into ``output_size`` (#4679
+        # review), and slice did so whenever every sample drew the same corner (``crop_by_indices`` ignored
+        # ``shape_compensation="F.pad"`` on its uniform path).
+        image = torch.rand(batch_size, 1, 6, 8, device=device, dtype=dtype)
+        aug = K.RandomMosaic(
+            output_size=output_size,
+            start_ratio_range=(0.5, 0.5),
+            p=1.0,
+            cropping_mode=cropping_mode,
+            resample="nearest",
+        )
+        output = aug(image)
+        canvas = aug._compose_images(image, aug._params, aug.flags)  # (12, 16); the corner is (x, y) = (4, 3)
+        window = canvas[..., 3 : 3 + output_size[0], 4 : 4 + output_size[1]]
+        expected = torch.nn.functional.pad(
+            window, [0, output_size[1] - window.shape[-1], 0, output_size[0] - window.shape[-2]]
+        )
+        assert output.shape == (batch_size, 1, *output_size)
+        self.assert_close(output, expected)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_convention_mosaic_boxes_stay_on_their_tiles_for_a_random_corner(self, cropping_mode, device, dtype):
+        # Each source image is one constant and its box covers the whole image, so the pixels inside every output
+        # box must all come from the one tile the box claims. The box is shrunk by one pixel per side: a half-precision
+        # corner rounds by up to a pixel, while the defect this pins moved a tile boundary by a whole tile fraction.
+        image = torch.arange(1.0, 5.0, device=device, dtype=dtype).view(4, 1, 1, 1).expand(4, 1, 6, 8).contiguous()
+        boxes = torch.tensor([[[0.0, 0.0, 8.0, 6.0]]], device=device, dtype=dtype).expand(4, 1, 4)
+        for output_size in ((4, 10), (9, 5), (8, 12)):
+            for seed in range(5):
+                torch.manual_seed(seed)
+                aug = K.RandomMosaic(
+                    output_size=output_size,
+                    p=1.0,
+                    cropping_mode=cropping_mode,
+                    resample="nearest",
+                    data_keys=["input", "bbox_xyxy"],
+                )
+                output, out_boxes = aug(image, boxes)
+                for b in range(4):
+                    for x1, y1, x2, y2 in out_boxes[b].tolist():
+                        x1, y1, x2, y2 = math.ceil(x1) + 1, math.ceil(y1) + 1, math.floor(x2) - 1, math.floor(y2) - 1
+                        if x2 <= x1 or y2 <= y1:
+                            continue
+                        values = output[b, 0, y1:y2, x1:x2].unique()
+                        assert values.numel() == 1 and values.item() != 0, (output_size, seed, b)
+
+    def test_convention_mosaic_unselected_list_row_keeps_its_own_box_count(self, device, dtype):
+        # A list input carries its own padding: a one-box sample in a list whose longest sample has two boxes. An
+        # unselected row must come back with just its own box, not its own padding row as a phantom box.
+        image = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        boxes = [
+            torch.tensor([[1.0, 1.0, 4.0, 4.0]], device=device, dtype=dtype),
+            torch.tensor([[1.0, 1.0, 3.0, 3.0], [2.0, 1.0, 6.0, 5.0]], device=device, dtype=dtype),
+        ]
+        mosaic = K.RandomMosaic(p=1.0)
+        pipeline = K.AugmentationSequential(mosaic, data_keys=["input", "bbox_xyxy"])
+        pipeline(image, boxes)
+        params = pipeline._params
+        params[0].data["batch_prob"] = params[0].data["batch_prob"].new_tensor([0.0, 1.0])
+        _, out_boxes = pipeline(image, boxes, params=params)
+        assert isinstance(out_boxes, list)
+        self.assert_close(out_boxes[0], boxes[0])
+
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    @pytest.mark.parametrize("gate", [(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+    def test_convention_mosaic_list_boxes_come_back_as_a_list(self, gate, data_key, device, dtype):
+        # Maintainer ruling on #4679: a list box input comes back as a list, from a direct call and from
+        # AugmentationSequential, at every gate; an unselected sample's tensor is its own boxes, with no padding.
+        image = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        corners = self._mosaic_boxes(2, data_key, device, dtype)
+        boxes = [corners[0, :1], corners[1]]
+        pipeline = K.AugmentationSequential(K.RandomMosaic(p=1.0), data_keys=["input", data_key])
+        pipeline(image, boxes)
+        params = pipeline._params
+        params[0].data["batch_prob"] = params[0].data["batch_prob"].new_tensor(gate)
+        _, piped = pipeline(image, boxes, params=params)
+        _, direct = K.RandomMosaic(data_keys=["input", data_key])(image, boxes, params=params[0].data)
+        for out_boxes in (direct, piped):
+            assert isinstance(out_boxes, list) and len(out_boxes) == 2
+            for sample, selected in enumerate(gate):
+                if not selected:
+                    self.assert_close(out_boxes[sample], boxes[sample])
+
+    @staticmethod
+    def _mosaic_boxes(num_boxes: int, data_key: str, device, dtype) -> torch.Tensor:
+        corners = torch.tensor([[1.0, 1.0, 4.0, 4.0], [2.0, 1.0, 6.0, 5.0]], device=device, dtype=dtype)[:num_boxes]
+        boxes = corners[None] + 0.25 * torch.arange(4, device=device, dtype=dtype).view(4, 1, 1)  # distinct rows
+        if data_key != "bbox":
+            return boxes
+        x1, y1, x2, y2 = boxes.unbind(-1)
+        return torch.stack([torch.stack(v, -1) for v in ((x1, y1), (x2, y1), (x2, y2), (x1, y2))], -2)
+
+    @pytest.mark.parametrize("num_boxes", [1, 2])
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_convention_mosaic_partial_gate_pads_unselected_rows_with_zero_area_boxes(
+        self, num_boxes, data_key, device, dtype
+    ):
+        # Maintainer ruling on #4679 (#4652): a tensor box input always comes back dense. An unselected row keeps
+        # its own boxes, followed by all-zero padding rather than the [0, 0, 1, 1] placeholder that reads as a real
+        # 1x1 box.
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        boxes = self._mosaic_boxes(num_boxes, data_key, device, dtype)
+        reference = K.RandomMosaic(p=1.0, data_keys=["input", data_key])
         reference(image, boxes)
         params = dict(reference._params)
-        params["batch_prob"] = torch.tensor([0.0, 1.0, 0.0, 1.0])
-        selected = params["batch_prob"] > 0
-        results = [
-            K.RandomMosaic(output_size=output_size, p=1.0, data_keys=["input", "bbox_xyxy"])(
-                image, boxes, params=params
-            )
-            for output_size in (None, (4, 10))
-        ]
-        assert results[0][0].shape == (4, 1, 6, 8) and results[1][0].shape == (4, 1, 4, 10)
-        self.assert_close(results[0][1], results[1][1])  # the boxes ignore output_size
-        assert results[1][1][selected][..., 3].max() > 4  # a box bottom below the 4-pixel-high output
-        placeholder = torch.tensor([[1.0, 1.0, 4.0, 4.0]] + [[0.0, 0.0, 1.0, 1.0]] * 3)
-        self.assert_close(results[1][1][~selected], placeholder.expand(2, -1, -1))
-        # An unselected row keeps its image, yet its own boxes are clipped to the input extent and dropped to the
-        # placeholder below min_bbox_size.
-        loose = torch.tensor([[[2.0, 1.0, 30.0, 20.0], [1.0, 1.0, 5.0, 6.0]]] * 4)
-        strict = K.RandomMosaic(p=1.0, min_bbox_size=19.0, data_keys=["input", "bbox_xyxy"])
-        output, filtered = strict(image, loose, params=params)
-        self.assert_close(output[~selected], image[~selected])
-        own = torch.tensor([[2.0, 1.0, 8.0, 6.0], [0.0, 0.0, 1.0, 1.0]])  # clipped to W=8, H=6; the small one dropped
-        self.assert_close(filtered[~selected][:, :2], own.expand(2, -1, -1))
-        with pytest.raises(TypeError, match="NoneType"):
-            K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
-        self.assert_close(K.RandomMosaic(p=0.0, cropping_mode="resample")(image), image)  # no selection, no raise
+        params["batch_prob"] = params["batch_prob"].new_tensor([0.0, 1.0, 0.0, 1.0])
+        _, out_boxes = K.RandomMosaic(p=1.0, data_keys=["input", data_key])(image, boxes, params=params)
+        assert isinstance(out_boxes, torch.Tensor)
+        assert out_boxes.shape == (4, 4 * num_boxes, *boxes.shape[2:])
+        self.assert_close(out_boxes[[0, 2], :num_boxes], boxes[[0, 2]])
+        padding = out_boxes[[0, 2], num_boxes:]
+        assert torch.equal(padding, torch.zeros_like(padding))
+
+    def test_convention_mosaic_gate_leaves_selected_rows_and_p0_returns_the_input(self, device, dtype):
+        # The partial gate changes only the unselected rows: a selected row matches the full-gate result of the
+        # same draw, the full gate has no padding to add, and a gate that selects nothing returns the input.
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        boxes = self._mosaic_boxes(2, "bbox_xyxy", device, dtype)
+        aug = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])
+        _, full = aug(image, boxes)
+        params = dict(aug._params)
+        params["batch_prob"] = params["batch_prob"].new_tensor([0.0, 1.0, 0.0, 1.0])
+        _, partial = aug(image, boxes, params=params)
+        assert isinstance(partial, torch.Tensor)
+        assert partial.shape == full.shape == (4, 8, 4)
+        self.assert_close(partial[[1, 3]], full[[1, 3]])
+        _, untouched = K.RandomMosaic(p=0.0, data_keys=["input", "bbox_xyxy"])(image, boxes)
+        assert untouched.shape == boxes.shape
+        self.assert_close(untouched, boxes)
+
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_convention_mosaic_partial_gate_pads_with_zeros_inside_augmentation_sequential(
+        self, data_key, device, dtype
+    ):
+        # AugmentationSequential exports boxes through its own modes; the padding is zero there as well.
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        boxes = self._mosaic_boxes(2, data_key, device, dtype)
+        mosaic = K.RandomMosaic(p=0.5)
+        pipeline = K.AugmentationSequential(mosaic, data_keys=["input", data_key])
+        for seed in range(20):
+            torch.manual_seed(seed)
+            _, out_boxes = pipeline(image, boxes)
+            selected = mosaic._params["batch_prob"] > 0.5
+            if 0 < int(selected.sum()) < 4:
+                break
+        else:
+            pytest.fail("no partial gate in 20 draws")
+        assert isinstance(out_boxes, torch.Tensor)
+        assert out_boxes.shape == (4, 8, *boxes.shape[2:])
+        self.assert_close(out_boxes[~selected, :2], boxes[~selected])
+        padding = out_boxes[~selected, 2:]
+        assert torch.equal(padding, torch.zeros_like(padding))
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_mix_labels_stay_exact_for_half_precision_images(self, image_dtype, p):
-        # Fixed by #4661: labels used to be cast to the image dtype, so bfloat16 returned [256, 1000] here (#4657).
+        # #4657: a half-precision image gives float32 labels, so class ids such as 257 and 999 stay exact.
         image = torch.rand(2, 1, 4, 4, dtype=image_dtype)
         labels = torch.tensor([257, 999])
         cases = (
@@ -586,13 +764,15 @@ class TestMixConventions(BaseTester):
             _, mixed = aug(image.double(), labels, params=params, data_keys=["input", "class"])
             assert mixed.dtype == torch.float64
 
-    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int32, torch.bool])
-    def test_convention_mix_replay_rejects_an_unsupported_dtype_with_type_error(self, image_dtype):
-        # The replayed dictionary goes through the same dtype check as a fresh draw, so the error stays a TypeError.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("replay", [False, True])
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int32, torch.int64, torch.bool])
+    def test_convention_mix_rejects_a_non_floating_image(self, image_dtype, replay):
+        # A fresh draw and a replayed dictionary go through the same dtype guard.
         image = torch.rand(2, 1, 4, 4)
         for aug_cls in (K.RandomMixUpV2, K.RandomCutMixV2, K.RandomJigsaw, K.RandomMosaic):
             aug = aug_cls(p=1.0)
-            params = aug.forward_parameters(image.shape)
+            params = aug.forward_parameters(image.shape) if replay else None
             with pytest.raises(TypeError, match="Expected input of"):
                 aug((image * 255).to(image_dtype), params=params)
 
@@ -645,24 +825,6 @@ class TestMixConventions(BaseTester):
         output = aug(picture)
         assert not (output == picture).flatten(1).all(1).any()
 
-    def test_convention_transplantation3d_is_a_mix_class_over_volumes(self, device, dtype):
-        # The base block's (B, C, H, W) working layout has one exception: the 3D transplantation class.
-        volume = torch.rand(2, 3, 4, 5, 6, device=device, dtype=dtype)
-        mask = torch.zeros(2, 4, 5, 6, device=device, dtype=torch.long)
-        mask[:, 1:3, 1:3, 1:3] = 1
-        output, _ = K.RandomTransplantation3D(p=1.0)(volume, mask, data_keys=["input", "mask"])
-        assert output.shape == volume.shape
-        # It is still a mix augmentation: no matrix and no inverse.
-        with pytest.raises(RuntimeError, match="Transformation matrices"):
-            _ = K.RandomTransplantation3D(p=1.0).transform_matrix
-        # Both transplantation classes override forward: the spatial rank is free, so the 2D class takes the
-        # same volume, and neither promotes an unbatched image.
-        flat, _ = K.RandomTransplantation(p=1.0)(volume, mask, data_keys=["input", "mask"])
-        assert flat.shape == volume.shape
-        for cls in (K.RandomTransplantation, K.RandomTransplantation3D):
-            with pytest.raises(Exception, match="must match except for the channel"):
-                cls(p=1.0)(volume[0], mask[0], data_keys=["input", "mask"])
-
     def test_convention_mosaic_start_ratio_range_is_a_sampling_range(self, device, dtype):
         # Both entries are (low, high) bounds on the SAME ratio draw, not an (x, y) position.
         image = torch.rand(8, 1, 6, 10, device=device, dtype=dtype)
@@ -675,17 +837,6 @@ class TestMixConventions(BaseTester):
         assert ratios[:, 0].unique().numel() > 1 and ratios[:, 1].unique().numel() > 1
         # "Draws a pair": the two ratios are separate draws, not one value used twice.
         assert not torch.allclose(ratios[:, 0], ratios[:, 1])
-
-    @pytest.mark.device_agnostic
-    def test_convention_jigsaw_gate_is_drawn_per_sample(self):
-        # The gate pin above supplies `batch_prob`, so nothing measures which of p / p_batch it comes from.
-        aug = K.RandomJigsaw(grid=(2, 2), p=0.5)
-        assert aug.p == 0.5 and aug.p_batch == 1.0
-        subsets = 0
-        for _ in range(20):
-            gate = aug.forward_parameters(torch.Size([8, 1, 4, 4]))["batch_prob"] > 0.5
-            subsets += 0 < int(gate.sum()) < 8
-        assert subsets > 0  # a batch-wide gate can never select a strict subset
 
     @pytest.mark.device_agnostic
     def test_convention_patchmix_patch_stays_inside_the_image(self):

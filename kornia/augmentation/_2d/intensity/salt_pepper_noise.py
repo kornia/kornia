@@ -44,9 +44,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - ``amount`` is a per-*pixel* rewrite probability, not a per-scalar one, so it sets the expected
-          fraction of pixels rewritten: a chosen pixel is rewritten in every channel, so the rewrite mask is
-          the same in each one.
+        - ``amount`` is a per-*pixel* rewrite probability: a chosen pixel is rewritten in every channel.
         - ``salt_vs_pepper`` is the probability that a rewritten pixel becomes salt rather than pepper, and
           the poles are the literals ``1.0`` and ``0.0`` whatever the input's range is -- on an image scaled
           to ``[0, 2]`` the salt is darker than every pixel above ``1``.

@@ -73,8 +73,7 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
 
     # NOTE: we add epsilon so that samples that are neither in the
     # prediction or ground truth are taken into account.
-    ious = (conf_mat_diag + eps) / (denominator + eps)
-    return ious
+    return (conf_mat_diag + eps) / (denominator + eps)
 
 
 def _convert_boxes_to_xyxy(boxes: torch.Tensor, box_format: str) -> torch.Tensor:

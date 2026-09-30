@@ -167,12 +167,12 @@ class TestEdgeAwareBlurPool(BaseTester):
     def test_exception(self):
         from kornia.core.exceptions import BaseError, ShapeError
 
+        data = torch.rand(1, 3, 3)
         with pytest.raises(ShapeError) as errinfo:
-            data = torch.rand(1, 3, 3)
             edge_aware_blur_pool2d(data, 3)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
+        data = torch.rand(1, 1, 3, 3)
         with pytest.raises(BaseError) as errinfo:
-            data = torch.rand(1, 1, 3, 3)
             edge_aware_blur_pool2d(data, 3, edge_threshold=-1)
         assert "edge threshold should be positive, but got" in str(errinfo.value)
 

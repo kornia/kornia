@@ -74,10 +74,12 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.epipolar``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 58 / 56
-     - ``find_fundamental``, ``find_essential``, ``decompose_essential_matrix``, ``motion_from_essential*``
-       and ``KRt_from_projection`` raise ``NotImplementedError``: they call ``lu``, ``eigh`` or QR, which have
-       no CPU half-precision kernels.
+     - 42 / 40
+     - ``decompose_essential_matrix``, ``motion_from_essential*``, ``KRt_from_projection`` and the weighted
+       eight-point ``find_fundamental`` raise ``NotImplementedError``: they call ``lu``, ``eigh`` or QR, which have
+       no CPU half-precision kernels. ``find_essential`` solves in float64, and the unweighted eight-point and the
+       seven-point ``find_fundamental`` factorize in float32 or float64; they return half-precision results, whose
+       accuracy the half-precision inputs limit.
    * - ``kornia.geometry.homography``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -110,13 +112,13 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.ransac``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 4 / 4
-     - The essential and fundamental models raise through the epipolar solvers.
+     - 2 / 2
+     - Essential matrices with ``local_optimization="dlt"`` raise in its eight-point refits, which call ``eigh``.
    * - ``kornia.geometry`` (other)
      - ⚠️ Partial
      - ⚠️ Partial
      - 8 / 17
-     - Accuracy in boxes, depth and line utilities; bfloat16 ``NamedPose`` construction raises.
+     - Accuracy in boxes, depth and line utilities; a bfloat16 ``NamedPose`` of an ``Se2`` pose cannot be built (``So2`` stores a complex number).
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -166,16 +168,14 @@ Test Results
 ------------
 
 Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed); skipped tests and tests marked ``xfail`` in
-the source are excluded. The CPU rows come from the nightly ``main`` CI jobs at commit ``ca5021eb``
+the source are excluded. The CPU rows come from the scheduled ``main`` CI jobs at commit ``ca5021eb``
 (2026-09-14; Linux x86_64, Python 3.11, PyTorch 2.9.1). In the half-precision jobs, *Failed* is the manifest's entry
 count: CI reports those tests as strict xfails and turns red if any of them passes or fails differently. The CUDA
 rows are a local run at commit ``f8449854`` (2026-09-23; RTX 4090, Python 3.11, PyTorch 2.14.0+cu130), not CI. Every
 CUDA failure is re-run on its own (with ``--isolate-half-precision`` for the half dtypes) and counted by that result.
 Eight of the CUDA float32 failures are cuDNN TF32 accuracy misses in convolutions
 (`#4778 <https://github.com/kornia/kornia/issues/4778>`_); the other 14 are tests that assume CPU behavior
-(`#4779 <https://github.com/kornia/kornia/issues/4779>`_). The CUDA rows deselect
-``TestFindHomographyDLT::test_nocrash`` and ``test_nocrash_lu``, which hang on CUDA
-(`#4770 <https://github.com/kornia/kornia/issues/4770>`_).
+(`#4779 <https://github.com/kornia/kornia/issues/4779>`_).
 
 Reproduce a CPU half-precision row in that environment (the manifest header pins the OS, architecture, Python and
 PyTorch versions) with:

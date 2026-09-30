@@ -27,7 +27,7 @@ from kornia.enhance.adjust import adjust_gamma
 class RandomGamma(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the gamma of a torch.Tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The formula is torchvision's ``adjust_gamma`` for a float image: ``clamp(gain * input ** gamma, 0, 1)``.
 
     .. image:: _static/img/RandomGamma.png
 
@@ -45,21 +45,16 @@ class RandomGamma(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the output is ``clamp(gain * input ** gamma, 0, 1)``. The clamp is not optional, so unlike
-          :class:`RandomBrightness` and :class:`RandomContrast` this class has no ``clip_output`` escape
-          hatch for keeping a value the power produced outside ``[0, 1]``.
-        - ``gamma`` and ``gain`` must both be non-negative, and neither is bounded at construction: both
-          checks live inside :func:`kornia.enhance.adjust_gamma` and so run on the forward pass. A negative
-          ``gain`` raises ``Gain must be non-negative``, exactly as a negative ``gamma`` raises
-          ``Gamma must be non-negative``. kornia skips that check for an MPS image, so there
-          a negative ``gamma`` is evaluated using the same power, gain and clamp formula above. Its output
-          depends on both the input and ``gain``.
+        - the clamp is not optional: unlike :class:`RandomBrightness` and :class:`RandomContrast` this class has
+          no ``clip_output``.
+        - ``gamma`` and ``gain`` must be non-negative. Neither is checked at construction: the check is in
+          :func:`kornia.enhance.adjust_gamma`, so a negative value raises a ``RuntimeError`` on the forward pass.
+          It is not run for an MPS image, where a negative value goes through the same formula unchecked.
 
     .. warning::
-        On an input with negative values the power itself is NaN unless ``gamma`` is an integer, and the
-        clamp does not remove the NaN. At an integer ``gamma`` the output is finite instead, and at the
-        class default ``gamma=1.0`` the clamp floors the negative product, so every negative value comes
-        back as ``0``. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        On a negative input the power is NaN unless ``gamma`` is an integer, and the clamp keeps the NaN; at the
+        default ``gamma=1.0`` every negative value comes back as ``0``. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_gamma`

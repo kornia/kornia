@@ -82,8 +82,7 @@ class SmallSRNet(nn.Module):
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
-        x = self.pixel_shuffle(self.conv4(x))
-        return x
+        return self.pixel_shuffle(self.conv4(x))
 
 
 def weight_init(module: nn.Module) -> None:

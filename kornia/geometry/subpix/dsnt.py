@@ -28,6 +28,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_compiling
 from kornia.geometry.grid import create_meshgrid
 
 
@@ -36,7 +37,21 @@ def _validate_batched_image_tensor_input(tensor: torch.Tensor) -> None:
     KORNIA_CHECK_SHAPE(tensor, ["B", "C", "H", "W"])
 
 
-def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] = None) -> torch.Tensor:
+def _check_positive_temperature(temperature: torch.Tensor | float) -> None:
+    """Raise ``ValueError`` unless ``temperature`` is positive; ``NaN`` is rejected as well.
+
+    A tensor is read only outside graph capture: under ``torch.compile`` or export, reading its value would be a
+    data-dependent branch, so a tensor temperature is not checked there.
+    """
+    if isinstance(temperature, torch.Tensor):
+        if is_compiling() or bool((temperature > 0).all()):
+            return
+    elif temperature > 0:
+        return
+    raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+
+
+def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None) -> torch.Tensor:
     r"""Apply the Softmax function over features in each image channel.
 
     Note that this function behaves differently to :py:class:`torch.nn.Softmax2d`, which
@@ -44,7 +59,8 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
 
     Args:
         input: the input torch.Tensor with shape :math:`(B, N, H, W)`.
-        temperature: factor to apply to input, adjusting the "smoothness" of the output distribution.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
 
     Returns:
        a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
@@ -64,11 +80,13 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
 
     batch_size, channels, height, width = input.shape
     if temperature is None:
-        temperature = torch.tensor(1.0)
-    temperature = temperature.to(device=input.device, dtype=input.dtype)
+        temperature = 1.0
+    _check_positive_temperature(temperature)
+    if isinstance(temperature, torch.Tensor):
+        temperature = temperature.to(device=input.device, dtype=input.dtype)
     x = input.reshape(batch_size, channels, -1)
 
-    x_soft = F.softmax(x * temperature, dim=-1)
+    x_soft = F.softmax(x / temperature, dim=-1)
 
     return x_soft.view(batch_size, channels, height, width)
 
@@ -76,8 +94,10 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
 def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = True) -> torch.Tensor:
     r"""Compute the expectation of coordinate values using spatial probabilities.
 
-    The input heatmap is assumed to represent a valid spatial probability distribution,
-    which can be achieved using :func:`~kornia.geometry.subpixel.spatial_softmax2d`.
+    Convention:
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. The input is used as given, not
+          renormalized, so each map should sum to one, as the output of
+          :func:`~kornia.geometry.subpix.spatial_softmax2d` does: a map summing to ``s`` scales the result by ``s``.
 
     Args:
         input: the input torch.Tensor representing dense spatial probabilities with shape :math:`(B, N, H, W)`.
@@ -100,8 +120,10 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
 
     batch_size, channels, height, width = input.shape
 
-    # Create coordinates grid.
-    grid = create_meshgrid(height, width, normalized_coordinates, input.device)
+    # Create coordinates grid in the input dtype, so float64 coordinates carry no float32 rounding. float16 and
+    # bfloat16 still build it in float32 and round once in the cast below, which keeps their results unchanged.
+    grid_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
+    grid = create_meshgrid(height, width, normalized_coordinates, input.device, grid_dtype)
     grid = grid.to(input.dtype)
 
     pos_x = grid[..., 0].reshape(-1)
@@ -122,6 +144,13 @@ def render_gaussian2d(
     mean: torch.Tensor, std: torch.Tensor, size: tuple[int, int], normalized_coordinates: bool = True
 ) -> torch.Tensor:
     r"""Render the PDF of a 2D Gaussian distribution.
+
+    Each axis is normalised over the grid, so the heatmap sums to one. A mean outside the grid renders the part of
+    the Gaussian that falls on the grid, rescaled to sum to one; far outside, that mass sits on the nearest border.
+
+    Convention:
+        - ``mean`` and ``std`` follow :ref:`Coordinates and sizes <coordinate-conventions>`; ``size`` is
+          ``(height, width)``. The default normalized coordinates are corner-aligned.
 
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.
@@ -170,13 +199,11 @@ def render_gaussian2d(
     k_x = -0.5 * torch.reciprocal(sigma_x**2)
     k_y = -0.5 * torch.reciprocal(sigma_y**2)
 
-    # Assemble the 2D Gaussian.
-    gauss_x = torch.exp(dist_x_sq * k_x)
-    gauss_y = torch.exp(dist_y_sq * k_y)
-
-    # Rescale so that values sum to one.
-    gauss_x = gauss_x / (gauss_x.sum(dim=-1, keepdim=True) + 1e-8)
-    gauss_y = gauss_y / (gauss_y.sum(dim=-1, keepdim=True) + 1e-8)
+    # Assemble each axis normalised to sum to one: softmax(dists * ks) = exp(dists * ks) / sum(exp(dists * ks)).
+    # Softmax subtracts the largest exponent first, so the normaliser is at least 1: no bias term is needed, a mean
+    # far off the grid cannot underflow the sum to 0, and the gradient stays finite at any distance.
+    gauss_x = torch.softmax(dist_x_sq * k_x, dim=-1)
+    gauss_y = torch.softmax(dist_y_sq * k_y, dim=-1)
 
     # Cast the 1-D vectors, not the (*, H, W) outer product, to avoid a full-size float32 intermediate.
     return gauss_y.to(dtype).unsqueeze(-1) * gauss_x.to(dtype).unsqueeze(-2)

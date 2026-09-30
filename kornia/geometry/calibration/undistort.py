@@ -42,28 +42,20 @@ def undistort_points(
     distortion models are considered in this function.
 
     Convention:
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera-intrinsics and
-        integer pixel-centre conventions used here.
-
-        - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result. Pixel centres lie at
-          integer coordinates: the top-left centre is ``(0, 0)``.
-        - ``dist`` follows the coefficient layout documented on
-          :func:`~kornia.geometry.calibration.distort_points`, which is the forward map this function inverts;
-          the accepted lengths and the internal zero-padding are the same.
-        - ``K`` and ``new_K`` play the mirror image of their roles in the forward map: ``K`` maps the incoming
-          pixel onto the normalized plane and ``new_K`` maps the undistorted normalized point back to pixels.
-        - the inverse is a fixed-point iteration of ``num_iters`` steps, not a closed form, so the round trip
-          through :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy that
-          iteration has reached. Within its convergence region, increasing ``num_iters`` can improve the
-          result until it reaches the working dtype's rounding floor; ``float16`` can reach that floor at the
-          default count, while ``float32`` and ``float64`` can continue to improve.
-        - Matching leading dimensions are preserved with or without tilt. Compilation and ONNX export always apply
-          the tilt branch, including for zero tilt, and the legacy unbatched form remains supported there as well.
+        - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result (integer pixel centres;
+          see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
+        - ``dist`` follows the layout of :func:`~kornia.geometry.calibration.distort_points`, the forward map
+          this function inverts; ``K`` maps the incoming pixel onto the normalized plane and ``new_K`` maps the
+          undistorted point back to pixels.
+        - the inverse is a fixed-point iteration of ``num_iters`` steps, so the round trip through
+          :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy the iteration reaches;
+          within its convergence region more steps improve it down to the dtype's rounding.
+        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
 
     .. warning::
-        The iteration has no convergence test and no valid-radius guard. Outside the iteration
-        convergence region it can enter a two-point cycle, so the answer depends on whether ``num_iters``
-        is odd or even and no count converges. Tracked as `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
+        The iteration has no convergence test and no valid-radius guard: outside the convergence region it can
+        enter a two-point cycle, so the answer depends on the parity of ``num_iters``.
+        `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -178,23 +170,13 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     distortion models are considered in this function.
 
     Convention:
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for pixel centres and camera
-        intrinsics, and :doc:`Conventions & Pitfalls </get-started/conventions>` for sampling and
-        ``align_corners`` guidance.
-
-        - The leading dimensions of ``image`` (everything in front of ``C, H, W``), of ``K`` (in front of its
-          :math:`3 \times 3` block) and of ``dist`` (in front of its ``n`` coefficients) must match exactly.
-          They may be empty, a single batch axis, or several axes deep, including with non-zero tilt and under
-          compilation or ONNX export. The one exception is the legacy unbatched call -- a :math:`(1, C, H, W)`
-          image with a :math:`(3, 3)` ``K`` and an :math:`(n,)` ``dist``.
-        - the sampling map is built by applying :func:`~kornia.geometry.calibration.distort_points` to the
-          grid of integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid` enumerates: the
-          top-left centre is ``(0, 0)``.
-        - the map is resampled with ``align_corners=True``; the flag is baked in and the function exposes no
-          way to change it.
-        - with every coefficient zero the map is the pixel grid up to floating-point rounding, but the image
-          still goes through the bilinear sampler, so the output is equal to the input at the working dtype's
-          tolerance and is not bit-identical to it.
+        - the leading dimensions of ``image`` (in front of ``C, H, W``), ``K`` (in front of :math:`3 \times 3`)
+          and ``dist`` (in front of its ``n`` coefficients) must match exactly; the one exception is the
+          legacy unbatched call, a :math:`(1, C, H, W)` image with a :math:`(3, 3)` ``K`` and an :math:`(n,)`
+          ``dist``.
+        - the sampling map applies :func:`~kornia.geometry.calibration.distort_points` to the integer pixel
+          centres (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) and is resampled bilinearly with
+          a fixed ``align_corners=True``, so all-zero coefficients return the input only to rounding.
 
     Args:
         image: Input image with shape :math:`(*, C, H, W)`.

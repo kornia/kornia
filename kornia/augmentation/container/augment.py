@@ -24,6 +24,7 @@ from torch import nn
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_autocast_enabled, is_exporting
@@ -94,90 +95,55 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     that uses the base mask path the ``resample`` entry is honoured in both directions, and a
                     dict without one resamples masks with nearest neighbour. ``align_corners`` is
                     handler-dependent: some warps honor it, but resize mask paths replace it.
-                    With :class:`~kornia.augmentation.RandomResizedCrop`,
-                    boolean ``align_corners`` overrides raise ``ValueError`` in the default ``cropping_mode='slice'``
-                    mask path; ``cropping_mode='resample'`` accepts them. ``None`` works in both modes.
+                    :class:`~kornia.augmentation.RandomResizedCrop` in the default ``cropping_mode='slice'``
+                    ignores it for nearest resampling.
                     :class:`~kornia.augmentation.RandomElasticTransform` has its own mask path and honours
-                    both entries, but requires a ``kornia.constants.Resample`` member rather than a
-                    string.
+                    both entries. As in the constructors, ``resample`` may be a string, an int or a
+                    ``kornia.constants.Resample`` member.
 
     Convention:
-        - consult each child's base and concrete class for its contract; mix and 3D children do not inherit
-          every :class:`~kornia.augmentation.AugmentationBase2D` convention.
-        - ``data_keys`` names one entry per positional argument, case-insensitively, out of ``input``,
-          ``image``, ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints``, ``label`` and ``class``
-          (``input`` is an alias of ``image``, ``class`` of ``label``). Any other spelling -- ``boxes``,
-          ``points``, ``bboxes``, ``keypoint`` -- raises ``KeyError``. With ``data_keys=None`` the call takes a
-          dict instead. Dictionary names match these same names, optionally followed by an underscore or
-          hyphen suffix, with the longest name taking precedence. Unrecognized names (for example,
-          ``imagenet_id``, ``images``, ``masks``, ``labels``, ``bboxes``, ``inputs`` and ``keypoint``) are
-          returned unchanged as metadata, without a warning; unlike positional mode, dict mode does not
-          reject these names. Use recognized names such as ``mask_2`` and ``keypoints`` for augmentation.
-          ``class`` and any key beginning with ``class_`` or ``class-`` (for example, ``class_id`` or
-          ``class_weights``) route to labels and inherit label limitations, including unsupported
-          label-changing mix augmentations. A coordinate-box name must be followed by ``_``
-          or ``-`` to retain its format: ``bbox_xyxy2`` instead matches ``bbox`` and requires vertex boxes.
-          The input dictionary is not modified.
+        - each child keeps the contract of its own base and class; mix and 3D children do not inherit every
+          :class:`~kornia.augmentation.AugmentationBase2D` convention.
+        - ``data_keys`` names one entry per positional argument, case-insensitively: ``input`` (alias
+          ``image``), ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints`` and ``label`` (alias
+          ``class``); any other name raises ``KeyError``. With ``data_keys=None`` the call takes a dict whose
+          keys are these names, optionally followed by a ``_`` or ``-`` suffix (``mask_2``, ``class_id``). The
+          longest matching name wins and a suffix needs its separator: ``bbox_xyxy2`` is a ``bbox`` key and must
+          hold vertices. Unrecognized keys (``images``, ``masks``, ``labels``) are returned unchanged, without a
+          warning. The input dict is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
-          ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
-          For 3D augmentations, inputs must be ``(D, H, W)`` or ``(B, C, D, H, W)``; rank-4 input is rejected
-          because ``(C, D, H, W)`` and ``(B, C, H, W)`` are ambiguous. Feeding a coordinate layout under another
-          coordinate key raises ``ValueError`` naming the expected shape. ``N = 0`` is
-          accepted on every one of them. A ``mask`` is the one key whose rank changes: a ``(B, H, W)`` mask is
-          accepted and returned as ``(B, 1, H, W)``. A wrong input *rank* raises ``RuntimeError`` here rather than
-          the ``ValueError`` a bare augmentation raises.
-        - boxes are read and written in the inclusive ``xyxy_plus`` convention of
-          :class:`~kornia.geometry.boxes.Boxes`, which is one unit wider per axis than the exclusive ``xyxy``
-          of torchvision and COCO. Flips follow the same inclusive, integer-centre rule as
-          :func:`~kornia.geometry.transform.hflip`: ``x' = W - 1 - x`` and ``y' = H - 1 - y``, for the image,
-          the mask, the keypoints and all three box spellings alike, and ``bbox_xywh`` keeps its ``w`` and
-          ``h``. Labels are passed through untouched by a geometric step.
-        - mask resampling normally uses nearest interpolation, but this does not guarantee label preservation:
-          padding can introduce a fill value. Masks are converted to the image working dtype: that of the most
-          recent image argument before the mask, or of the call's first image when none precedes it, which can
-          happen in dictionary insertion order (a list ``data_keys`` must start with the image). Each mask output
-          comes back in the dtype of its own argument (per element for a list), ``bool`` included, so masks of
-          different dtypes do not affect each other. The conversion through the image working dtype can still
-          round integer labels that dtype cannot represent exactly, for example ``2049`` through ``float16``.
-          Tracked in `#4478 <https://github.com/kornia/kornia/issues/4478>`_.
+          ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``;
+          ``N = 0`` is accepted. 3D inputs are ``(D, H, W)`` or ``(B, C, D, H, W)``; rank 4 is rejected as
+          ambiguous. A ``(B, H, W)`` mask is returned as ``(B, 1, H, W)``, or as ``(B, H, W)`` under
+          ``keepdim=True``. A wrong input rank raises ``RuntimeError`` here rather than the ``ValueError`` of a
+          bare augmentation (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
+        - boxes use the inclusive ``xyxy_plus`` convention of :class:`~kornia.geometry.boxes.Boxes`. Flips map
+          ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
+          does. Labels pass through geometric steps untouched.
+        - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
+          fill value) in the image's working dtype and come back in their own dtype; integer labels that the
+          working dtype cannot represent are rounded (`#4478 <https://github.com/kornia/kornia/issues/4478>`_).
         - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
           has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
           children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
           list can become desynchronized from the image when the gate differs across samples. A list longer
           than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
-          Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
+          ``.inverse()`` takes the list the forward pass returned and inverts it element by element with the
+          same per-entry gate. A flip round-trips each entry, subject to the working-dtype rounding above; other
+          warps lose the pixels they move out of the frame and, when they resample, restore the rest only
+          approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
         - supported geometric data-key handlers share the recorded transform, subject to the mask limitations
           above. Custom rigid subclasses are not dispatched solely because they supply a matrix
-          (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid child has no transform matrix,
-          so the coordinate
-          keys drop out of that draw: :class:`~kornia.augmentation.RandomElasticTransform` warps the image and
-          a ``mask`` key through the same displacement field, while the keypoints and the boxes come
-          back unchanged; :class:`~kornia.augmentation.RandomThinPlateSpline` and
-          :class:`~kornia.augmentation.RandomFisheye` leave keypoints and boxes unchanged too and raise
-          ``NotImplementedError`` on a ``mask`` key (see the warning below).
-        - ``.inverse()`` undoes applicable 2D geometric steps and leaves intensity and non-rigid steps applied.
-          Slice-mode crop inverses raise ``NotImplementedError``; resample-mode crops can be inverted. Tensor box
-          outputs take axis-aligned enclosures, so a non-axis-aligned rotation can lose the corners needed
-          to recover the original boxes. Retaining a ``Boxes`` object preserves its transformed corners.
-          Inverse resampling cannot recover image or mask information lost through cropping, padding or
-          interpolation. A 3D geometric child has no inverse and raises ``NotImplementedError``; 3D intensity
-          children are skipped.
-        - ``same_on_batch`` and ``keepdim`` are three-state here: ``None``, the default, keeps whatever each
-          child was built with, while ``True`` and ``False`` overwrite the child's own setting in both
-          directions.
-        - ``random_apply`` selects children per call in random order, with replacement when necessary.
-          Mix children use a separate selection path inherited from ``ImageSequential``;
-          ``transformation_matrix_mode`` decides
-          what ``.transform_matrix`` does with a non-rigid child. ``silent``, the default (and its
-          alias ``silence``), skips a direct non-rigid child and keeps accumulating the rigid
-          ones, so a chain with no rigid child at all leaves ``.transform_matrix`` at ``None``. A nested
-          container is an order-sensitive exception even when it contains only rigid children: a rigid
-          child followed by a nested container can raise ``TypeError``, while the reverse order can omit the
-          nested transform. A nested container called previously may also contribute a stale matrix. Do not
-          rely on a nested container's matrix. Tracked in `#4476 <https://github.com/kornia/kornia/issues/4476>`_.
-          ``rigid`` raises ``RuntimeError`` during forward after a direct non-rigid child runs; it does not
-          inspect nested children. ``skip`` leaves
-          ``.transform_matrix`` at ``None`` whatever the chain.
+          (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid warp child has no matrix, so
+          the coordinate keys are left unchanged; see the warning below.
+        - ``.inverse()`` undoes the 2D geometric steps and leaves intensity and non-rigid steps applied. Slice-mode
+          crops and 3D geometric children raise ``NotImplementedError``, mix children ``RuntimeError``. Tensor
+          boxes come back as axis-aligned enclosures; pass :class:`~kornia.geometry.boxes.Boxes` to keep rotated
+          corners. Content lost to cropping, padding or interpolation is not recovered.
+        - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
+          ``True`` or ``False`` overrides it.
+        - ``.transform_matrix`` of a chain holding a nested container is unreliable: it can raise, omit the
+          nested transform or return a stale one (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 
     .. warning::
         A non-rigid child silently desynchronizes the coordinate data keys:
@@ -188,12 +154,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
     .. note::
-        Inside this container a mix child (e.g. RandomMixUpV2, RandomCutMixV2, RandomMosaic) dispatches
-        ``mask``, box and ``keypoints`` keys to the child's own handlers, using the same parameters as the
-        mixed image. Keys the child does not implement raise ``NotImplementedError``, matching a direct call
-        (for example ``RandomMosaic`` transforms boxes and refuses masks/keypoints). A ``class``/``label`` key
-        still raises ``NotImplementedError`` from the container. Fixed in
-        `#4493 <https://github.com/kornia/kornia/issues/4493>`_.
+        A mix child (e.g. RandomMixUpV2, RandomCutMixV2, RandomMosaic) receives ``mask``, box and ``keypoints``
+        keys with the image's parameters; keys it does not implement raise ``NotImplementedError``, as in a
+        direct call. A ``class``/``label`` key raises ``NotImplementedError`` from the container.
 
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_augmentation_sequential.html>`__.
@@ -347,6 +310,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             keepdim=keepdim,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
+            # `inverse` below leaves a plain `nn.Module` child applied; keep that when nested in another container.
+            if_unsupported_ops="skip",
         )
 
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
@@ -385,7 +350,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
         self._transform_matrix = None
-        self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
+        extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
+        # Normalize a ``resample`` override as the constructors do, so a string or int works like a member.
+        self.extra_args = {
+            key: {**value, "resample": Resample.get(value["resample"])} if "resample" in value else value
+            for key, value in extra_args.items()
+        }
 
     def clear_state(self) -> None:
         """Reset cached params and transformation-matrix state."""
@@ -656,34 +626,44 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if not self._disable_features:
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
-            decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type
-            )(super(ImageSequential, self).__call__)
-            _output_image = decorated_forward(*inputs, **kwargs)
+            self._check_output_type(output_type)
+            # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
+            # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
+            decorated_forward = self.convert_input_output(input_names_to_handle=input_names_to_handle)(
+                super(ImageSequential, self).__call__
+            )
+            tensor_output = decorated_forward(*inputs, **kwargs)
 
             in_data_keys: Optional[List[DataKey]]
+            original_keys: Optional[Tuple[str, ...]] = None
             if len(inputs) == 1 and isinstance(inputs[0], dict):
                 original_keys, in_data_keys, inputs, _invalid_data = self._preproc_dict_data(inputs[0])
             else:
                 in_data_keys = kwargs.get("data_keys", self.data_keys)
             data_keys = self.transform_op.preproc_datakeys(in_data_keys)
 
+            # cache a detached view of the augmented image for ``.show()`` / ``.save()``, which move it to the
+            # CPU themselves, so the forward pass pays no device-to-host copy or sync
             if not is_exporting():
-                if len(data_keys) > 1 and DataKey.INPUT in data_keys:
-                    idx = data_keys.index(DataKey.INPUT)
-                    if output_type == "pt":
-                        # ``self._output_image`` already holds ``_output_image`` here, so the old
-                        # per-key rebind was a no-op; just store the whole output.
-                        self._output_image = _output_image
-                    elif isinstance(_output_image, dict):
-                        self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
-                    else:
-                        self._output_image[idx] = _output_image[idx]
-                else:
-                    self._output_image = _output_image
+                image = self._select_output_image(tensor_output, data_keys, original_keys)
+                self._output_image = image.detach() if isinstance(image, torch.Tensor) else image
+            _output_image = self._convert_output(tensor_output, output_type)
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
+
+    def _select_output_image(
+        self, output: Any, data_keys: List[DataKey], original_keys: Optional[Tuple[str, ...]]
+    ) -> Any:
+        # ``forward`` returns the image itself, a list ordered like ``data_keys``, or a dict keyed like the input
+        if DataKey.INPUT not in data_keys:
+            return None
+        idx = data_keys.index(DataKey.INPUT)
+        if isinstance(output, dict):
+            return output[original_keys[idx]]
+        if len(data_keys) > 1 and isinstance(output, list | tuple):
+            return output[idx]
+        return output
 
     def _preproc_dict_data(
         self, data: Dict[str, DataType]
@@ -773,6 +753,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # TODO: handle 3d scenarios
         if isinstance(in_arg, Boxes):
             return out_arg
+        if isinstance(in_arg, torch.Tensor) and not isinstance(out_arg, VideoBoxes):
+            # A dense input stays dense; padding added by an augmentation (e.g. RandomMosaic) is exported as zeros.
+            return _boxes_to_padded_tensor(out_arg, mode)
 
         return out_arg.to_tensor(mode=mode)
 

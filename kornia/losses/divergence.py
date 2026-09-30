@@ -29,8 +29,8 @@ def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     unsummed_kl = F.kl_div(
         q.reshape(batch * chans, height * width).log(), p.reshape(batch * chans, height * width), reduction="none"
     )
-    kl_values = unsummed_kl.sum(-1).view(batch, chans)
-    return kl_values
+
+    return unsummed_kl.sum(-1).view(batch, chans)
 
 
 def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:

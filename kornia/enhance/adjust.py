@@ -511,7 +511,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     if image.shape[-3] == 3:
         img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
     else:
-        img_mean = image.mean()
+        img_mean = image.mean((-3, -2, -1), True)
 
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
@@ -1252,7 +1252,7 @@ class AdjustSaturation(nn.Module):
 class AdjustSaturationWithGraySubtraction(nn.Module):
     r"""Adjust color saturation of an image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    It blends the image with its grayscale, ``factor * image + (1 - factor) * gray``, as torchvision and PIL do.
     The input image is expected to be in the range of [0, 1].
 
     The input image is expected to be an RGB or gray image in the range of [0, 1].
@@ -1313,7 +1313,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
 class AdjustHue(nn.Module):
     r"""Adjust hue of an image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    ``factor`` is in radians: it matches torchvision's ``adjust_hue`` with ``hue_factor = factor / (2 * pi)``.
     The input image is expected to be in the range of [0, 1].
 
     The input image is expected to be an RGB image in the range of [0, 1].
@@ -1467,7 +1467,8 @@ class AdjustContrast(nn.Module):
 class AdjustContrastWithMeanSubtraction(nn.Module):
     r"""Adjust Contrast of an image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    For an RGB image it blends the image with its grayscale mean, ``factor * image + (1 - factor) * mean``, as
+    torchvision and PIL do.
     The input image is expected to be in the range of [0, 1].
 
     Args:
@@ -1645,7 +1646,7 @@ class AdjustLog(nn.Module):
 class AdjustBrightnessAccumulative(nn.Module):
     r"""Adjust Brightness of an image accumulatively.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    It multiplies the image by ``factor``, as torchvision's and PIL's brightness does.
     The input image is expected to be in the range of [0, 1].
 
     Args:

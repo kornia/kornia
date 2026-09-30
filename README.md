@@ -102,8 +102,8 @@ covers CUDA or MPS half precision.
 | `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | `solve_pnp_dlt` rejects half inputs (float32/float64 only); `undistort_points` misses its OpenCV reference values |
 | `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 58 / 56 | `find_fundamental`, `find_essential`, `decompose_essential_matrix`, `motion_from_essential*` and `KRt_from_projection` raise `NotImplementedError`: CPU `lu`, `eigh` and QR have no half kernels |
 | `kornia.geometry.homography` | ⚠️ | ⚠️ | 11 / 16 | The DLT solvers run (SVD is cast to float32) but miss the clean-point accuracy checks |
-| `kornia.geometry.liegroup` | ⚠️ | ⚠️ | 36 / 130 | `So2`/`Se2` use complex tensors: float16 hits missing `ComplexHalf` kernels, and most bfloat16 `So2`/`Se2` tests raise (119 entries); `So3`/`Se3` nearly all pass |
-| `kornia.geometry.solvers` | ⚠️ | ⚠️ | 2 / 2 | `solve_quartic` accuracy on random and one reference quartic |
+| `kornia.geometry.liegroup` | ⚠️ | ⚠️ | 35 / 129 | `So2`/`Se2` use complex tensors: float16 hits missing `ComplexHalf` kernels, and most bfloat16 `So2`/`Se2` tests raise (119 entries); `So3`/`Se3` nearly all pass |
+| `kornia.geometry.solvers` | ⚠️ | ⚠️ | 1 / 1 | `solve_quartic` accuracy on random quartics |
 | `kornia.geometry.subpix` | ⚠️ | ⚠️ | 14 / 12 | `ConvSoftArgmax3d` raises (CPU `avg_pool3d` has no half kernel); the rest are accuracy |
 | `kornia.geometry.conversions` | ⚠️ | ⚠️ | 72 / 60 | Angle-axis, quaternion and rotation-matrix round trips lose accuracy |
 | `kornia.geometry.ransac` | ⚠️ | ⚠️ | 4 / 4 | The essential and fundamental models raise through the epipolar solvers |
@@ -128,7 +128,7 @@ covers CUDA or MPS half precision.
 | CUDA float16 | 11738 | 451 | 3983 | **96.3%** | `f8449854`, 2026-09-23 |
 | CUDA bfloat16 | 11736 | 500 | 3936 | **95.9%** | `f8449854`, 2026-09-23 |
 
-Pass% = passed ÷ (passed + failed). The CPU rows are the nightly `main` CI jobs (Linux x86_64, Python 3.11,
+Pass% = passed ÷ (passed + failed). The CPU rows are the scheduled `main` CI jobs (Linux x86_64, Python 3.11,
 PyTorch 2.9.1, no `--runslow`). In the half jobs, *Failed* is the manifest's entry count: CI reports those tests as
 strict xfails, and it fails if any of them passes or fails differently. Tests marked `xfail` in the source are
 excluded from every row. Reproduce a CPU half row in that environment with

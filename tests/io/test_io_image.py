@@ -17,7 +17,6 @@
 
 import io
 from pathlib import Path
-from urllib.request import urlopen
 
 import kornia_rs
 import numpy as np
@@ -35,26 +34,12 @@ def create_random_img8_torch(height: int, width: int, channels: int, device=None
     return (torch.rand(channels, height, width, device=device) * 255).to(torch.uint8)
 
 
-def _download_image(url: str, filename: str = "") -> Path:
-    # TODO: move this to testing
-
-    filename = url.rsplit("/", maxsplit=1)[-1] if len(filename) == 0 else filename
-    # Download
-    # url is a fixed https:// literal defined by each fixture above.
-    with urlopen(url, timeout=60) as resp:  # noqa: S310
-        bytesio = io.BytesIO(resp.read())
-    # Save file
-    with open(filename, "wb") as outfile:
-        outfile.write(bytesio.getbuffer())
-
-    return Path(filename)
-
-
 @pytest.fixture(scope="session")
 def png_image(tmp_path_factory):
-    url = "https://github.com/kornia/data/raw/main/simba.png"
+    """RGB PNG written locally so load tests do not depend on the network."""
     filename = tmp_path_factory.mktemp("data") / "image.png"
-    filename = _download_image(url, str(filename))
+    img_rgb = np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8)  # noqa: NPY002
+    kornia_rs.io.write_image_png_u8(str(filename), img_rgb, mode="rgb")
     return filename
 
 
@@ -69,9 +54,9 @@ def rgba_png_image(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def jpg_image(tmp_path_factory):
-    url = "https://github.com/kornia/data/raw/main/crowd.jpg"
+    """RGB JPEG written locally so load tests do not depend on the network."""
     filename = tmp_path_factory.mktemp("data") / "image.jpg"
-    filename = _download_image(url, str(filename))
+    write_image(str(filename), create_random_img8_torch(32, 32, 3))
     return filename
 
 
@@ -146,6 +131,18 @@ class TestIoImage:
         img = load_image(rgba_png_image, load_type)
         assert img.shape[0] == expected_channels
         assert img.dtype == expected_type
+
+    @pytest.mark.parametrize("channels,mode", [(1, "mono"), (3, "rgb")])
+    def test_load_opaque_image_as_rgba(self, tmp_path: Path, channels: int, mode: str) -> None:
+        pixels = np.full((2, 2, channels), 64, dtype=np.uint8)
+        path = tmp_path / "image.png"
+        kornia_rs.io.write_image_png_u8(str(path), pixels, mode=mode)
+
+        rgba = load_image(path, ImageLoadType.RGBA8)
+
+        assert rgba.shape == (4, 2, 2)
+        assert torch.equal(rgba[:3], torch.full((3, 2, 2), 64, dtype=torch.uint8))
+        assert torch.equal(rgba[3], torch.full((2, 2), 255, dtype=torch.uint8))
 
     @pytest.mark.parametrize("ext", ["jpg"])
     @pytest.mark.parametrize("channels", [3])

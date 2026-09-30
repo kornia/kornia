@@ -17,9 +17,11 @@
 
 import importlib
 
+import numpy as np
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.filters import MedianBlur, median_blur
 from kornia.filters.kernels import get_binary_kernel2d
 
@@ -52,6 +54,21 @@ class TestMedianBlur(BaseTester):
         with pytest.raises(ShapeError) as errinfo:
             median_blur(torch.ones(1, 1, device=device, dtype=dtype), 1)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
+
+    @pytest.mark.parametrize("kernel_size", [4, (3, 4), (4, 3), 0, (3, -1)])
+    @pytest.mark.parametrize("shape", [(1, 1, 4, 4), (0, 1, 4, 4)])
+    def test_exception_kernel_size(self, kernel_size, shape, device, dtype):
+        # (#4781) an even or non-positive entry has no centred window; it is named, not left to torch's reshape.
+        with pytest.raises(BaseError) as errinfo:
+            median_blur(torch.ones(*shape, device=device, dtype=dtype), kernel_size)
+        assert "Kernel size must be an odd integer" in str(errinfo.value)
+
+    @pytest.mark.parametrize("kernel_size", [(3.0, 3.0), (np.int64(3), np.int64(5))])
+    def test_kernel_size_entries_are_cast_to_int(self, kernel_size, device, dtype):
+        # The odd-size check runs on the int-cast entries, so integral floats and numpy ints keep working.
+        img = torch.arange(35, device=device, dtype=dtype).reshape(1, 1, 5, 7)
+        ky, kx = (int(k) for k in kernel_size)
+        self.assert_close(median_blur(img, kernel_size), median_blur(img, (ky, kx)))
 
     def test_kernel_3x3(self, device, dtype):
         inp = torch.tensor(

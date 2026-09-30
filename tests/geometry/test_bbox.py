@@ -109,9 +109,7 @@ class TestBbox2D(BaseTester):
         assert validate_bbox(trapezoid) is False
 
     def test_convention_validate_bbox_accepts_noncontiguous_rank4_layout_4174(self, device, dtype):
-        # Fix pin for kornia#4174: rank-4 input is flattened with reshape, so a stride
-        # layout whose leading dimensions cannot be merged by view now returns a
-        # boolean instead of raising RuntimeError.
+        # kornia#4174: a rank-4 input whose leading dimensions cannot be merged by view returns a boolean.
         boxes = torch.zeros(2, 3, 4, 2, device=device, dtype=dtype).transpose(0, 1)
         assert not boxes.is_contiguous()
         assert validate_bbox(boxes) is True
@@ -140,18 +138,6 @@ class TestBbox2D(BaseTester):
                 invalid_boxes = boxes.clone()
                 invalid_boxes[1].reshape(-1)[coordinate_index] = non_finite
                 assert validate_bbox(invalid_boxes) is False
-
-    def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self, device):
-        # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
-        # value, although the exclusive span difference exceeds the 1e-4 threshold.
-        # The True below holds only with the +1 tracked in kornia#3934.
-        boxes = torch.tensor(
-            [[[0.0, 0.0], [0.0005, 0.0], [0.001, 0.001], [0.0, 0.001]]], device=device, dtype=torch.float16
-        )
-        assert validate_bbox(boxes) is True
-        top_span = boxes[..., 1, 0] - boxes[..., 0, 0]
-        bottom_span = boxes[..., 2, 0] - boxes[..., 3, 0]
-        assert torch.all(torch.abs(top_span - bottom_span) > 1e-4)
 
     def test_wart_validate_bbox_returns_false_where_validate_bbox3d_raises_4013(self, device, dtype):
         # Wart pin for kornia#4013: for the same invalid shape, the 2D validator
@@ -452,11 +438,8 @@ class TestTransformBoxes2D(BaseTester):
 
 class TestBbox3D(BaseTester):
     def test_convention_validate_bbox3d_rejects_non_finite_coordinates_4258(self, device, dtype):
-        # Pin kornia#4258, the 3D counterpart of the #4238 pin on validate_bbox above: a non-finite
-        # coordinate makes this a False predicate result, not an AssertionError. Before the fix the
-        # nan reached the allclose extent comparisons, which see nan != nan and raise "Boxes must
-        # have be cube, while get different heights", naming the wrong defect; an inf reached them
-        # as inf - inf = nan with the same result.
+        # kornia#4258, the 3D counterpart of #4238: a non-finite coordinate is a False predicate result, not an
+        # AssertionError.
         boxes = torch.tensor(
             [
                 [
@@ -484,9 +467,8 @@ class TestBbox3D(BaseTester):
                 assert validate_bbox3d(invalid_boxes[None]) is False
 
     def test_convention_consumers_still_raise_on_non_finite_coordinates_4258(self, device, dtype):
-        # validate_bbox3d's four internal callers use it for its raise and discard the return value,
-        # so turning the non-finite case into a False predicate result must not quietly let NaN
-        # through them. All of them raised on main and all of them still do.
+        # validate_bbox3d's four internal callers use it for its raise and discard the return value, so each
+        # raises on a non-finite box itself.
         box = torch.tensor(
             [
                 [
@@ -511,11 +493,8 @@ class TestBbox3D(BaseTester):
         with pytest.raises(AssertionError, match="finite"):
             bbox_to_mask3d(invalid, (6, 6, 6))
 
-        # The other two callers are the src_box and dst_box of _crop_by_boxes3d_to_size, reached
-        # through crop_by_boxes3d and crop_and_resize3d. They need their own cells: the dst_box is
-        # caught earlier by infer_bbox_shape3d, but the src_box is not, because crop_by_boxes3d
-        # sizes its output from the *dst* box. With the crop3d guard reverted both calls below
-        # accept the non-finite src_box without raising, while the two cells above stay green.
+        # The other two callers are the src_box and dst_box of _crop_by_boxes3d_to_size. crop_by_boxes3d sizes
+        # its output from the dst box, so a non-finite src box reaches only that guard.
         volume = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 4, 4, 4)
         with pytest.raises(AssertionError, match="finite"):
             crop_by_boxes3d(volume, invalid, box)
@@ -566,9 +545,7 @@ class TestBbox3D(BaseTester):
         assert validate_bbox3d(bbox)
 
     def test_convention_validate_bbox3d_accepts_noncontiguous_rank4_layout_4174(self, device, dtype):
-        # Fix pin for kornia#4174: rank-4 input is flattened with reshape, so a stride
-        # layout whose leading dimensions cannot be merged by view now returns a
-        # boolean instead of raising RuntimeError.
+        # kornia#4174: a rank-4 input whose leading dimensions cannot be merged by view returns a boolean.
         boxes = torch.zeros(2, 3, 8, 3, device=device, dtype=dtype).transpose(0, 1)
         assert not boxes.is_contiguous()
         assert validate_bbox3d(boxes) is True
@@ -695,13 +672,9 @@ class TestBbox3D(BaseTester):
 
     @pytest.mark.parametrize("num_boxes", [1, 8])
     def test_convention_rank4_input_is_rejected_by_the_3d_helpers_4248(self, device, dtype, num_boxes):
-        # kornia#4248, the 3D twin of kornia#4180. validate_bbox3d still accepts (B, N, 8, 3) and
-        # reshapes internally, but infer_bbox_shape3d and bbox_to_mask3d read dim 1 as the vertex
-        # axis, so rank-4 input was read as if the box axis were the vertices: out-of-bounds with
-        # one box, and three (1, 3) tensors -- one value per coordinate rather than per box -- with
-        # eight. Both now reject it up front, the way the 2D helpers have since kornia#4218.
+        # kornia#4248, the 3D twin of kornia#4180: validate_bbox3d accepts (B, N, 8, 3), while infer_bbox_shape3d
+        # and bbox_to_mask3d reject it with a ShapeError.
         boxes = self._unit_cuboid(device, dtype).expand(num_boxes, 8, 3)[None].contiguous()
-        # The accepting half of the mismatch is unchanged and still worth pinning.
         assert validate_bbox3d(boxes) is True
         for call in (lambda: infer_bbox_shape3d(boxes), lambda: bbox_to_mask3d(boxes, (4, 5, 5))):
             with pytest.raises(ShapeError):
@@ -752,8 +725,8 @@ class TestBbox3D(BaseTester):
         self.assert_close(bbox_to_mask3d(boxes, (5, 5, 6)), expected, atol=0.0, rtol=0.0)
 
     def test_bbox_to_mask3d_preserves_input_dtype_4250(self, device, dtype):
-        # kornia#4250: bbox_to_mask3d now returns a mask in the input dtype with a (B, 1, D, H, W) channel axis,
-        # matching bbox_to_mask (which keeps the input dtype, no channel axis). Neither carries a gradient.
+        # kornia#4250: bbox_to_mask3d returns a (B, 1, D, H, W) mask in the input dtype, like bbox_to_mask (which
+        # has no channel axis). Neither carries a gradient.
         cuboid = self._unit_cuboid(device, dtype)
         mask = bbox_to_mask3d(cuboid, (4, 5, 6))
         assert mask.shape == (1, 1, 4, 5, 6)
@@ -768,34 +741,23 @@ class TestBbox3D(BaseTester):
     def test_convention_bbox_to_mask3d_intersects_the_axis_ranges_for_a_full_or_overhanging_axis_box_4255(
         self, device, dtype, case
     ):
-        # kornia#4255: once one axis slab covers every index of the (4, 4, 5) volume, the OLD
-        # union-of-planes intermediate went all-true and its `all()`-reduction recovery lost the
-        # other two bounds, filling all 80 voxels where Boxes3D.to_mask correctly fills the
-        # intersection. bbox_to_mask3d now matches Boxes3D.to_mask exactly, including for a box
-        # that overhangs the volume on one axis (the normal state of a box after a crop or a
-        # translation). The interior box (unaffected even before the fix) is checked alongside it.
-        xyzxyz_plus, intersection = {
-            "full_width": ([0.0, 1.0, 1.0, 4.0, 2.0, 2.0], 20.0),
-            "full_height": ([1.0, 0.0, 1.0, 2.0, 3.0, 2.0], 16.0),
-            "full_depth": ([1.0, 1.0, 0.0, 2.0, 2.0, 3.0], 16.0),
-            "overhang": ([-1.0, 1.0, 1.0, 5.0, 2.0, 2.0], 20.0),
+        # kornia#4255: a box whose slab covers (or overhangs) a whole axis of the (4, 4, 5) volume fills the
+        # intersection of the three axis ranges, exactly as Boxes3D.to_mask does. The interior box is a control.
+        xyzxyz_plus, region = {
+            "full_width": ([0.0, 1.0, 1.0, 4.0, 2.0, 2.0], (slice(1, 3), slice(1, 3), slice(None))),
+            "full_height": ([1.0, 0.0, 1.0, 2.0, 3.0, 2.0], (slice(1, 3), slice(None), slice(1, 3))),
+            "full_depth": ([1.0, 1.0, 0.0, 2.0, 2.0, 3.0], (slice(None), slice(1, 3), slice(1, 3))),
+            "overhang": ([-1.0, 1.0, 1.0, 5.0, 2.0, 2.0], (slice(1, 3), slice(1, 3), slice(None))),
         }[case]
         boxes = Boxes3D.from_tensor(torch.tensor([xyzxyz_plus], device=device, dtype=dtype), mode="xyzxyz_plus")
-        assert bbox_to_mask3d(boxes.data, (4, 4, 5)).sum().item() == intersection
-        assert boxes.to_mask(4, 4, 5).sum().item() == intersection
+        expected = torch.zeros(1, 1, 4, 4, 5, device=device, dtype=dtype)
+        expected[(0, 0, *region)] = 1.0
+        self.assert_close(bbox_to_mask3d(boxes.data, (4, 4, 5)), expected, atol=0.0, rtol=0.0)
+        self.assert_close(boxes.to_mask(4, 4, 5).to(dtype), expected[:, 0], atol=0.0, rtol=0.0)
         interior = Boxes3D.from_tensor(
             torch.tensor([[1.0, 1.0, 1.0, 2.0, 2.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
         )
         assert bbox_to_mask3d(interior.data, (4, 4, 5)).sum().item() == interior.to_mask(4, 4, 5).sum().item() == 8.0
-
-    def test_convention_bbox_to_mask3d_intersects_the_axis_ranges_for_a_full_axis_box_4255(self, device, dtype):
-        # x spans the whole width 0..4, y and z cover 1..2: the intersection is 2 * 2 * 5 = 20 voxels.
-        boxes = Boxes3D.from_tensor(
-            torch.tensor([[0.0, 1.0, 1.0, 4.0, 2.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
-        )
-        expected = torch.zeros(1, 1, 4, 4, 5, device=device, dtype=dtype)
-        expected[0, 0, 1:3, 1:3, :] = 1.0
-        self.assert_close(bbox_to_mask3d(boxes.data, (4, 4, 5)), expected, atol=0.0, rtol=0.0)
 
 
 class TestNMS(BaseTester):

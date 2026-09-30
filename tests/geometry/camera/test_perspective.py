@@ -67,14 +67,9 @@ class TestProjectPoints(BaseTester):
         self.assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
 
     def test_wart_project_points_skips_the_divide_at_z_zero_4267(self, device, dtype):
-        # Wart pin for kornia#4267: convert_points_from_homogeneous masks
-        # |z| <= 1e-8 to a divisor of 1 and project_points applies K AFTER that divide, so a point on the camera
-        # plane projects to fx*x + cx = 104, fy*y + cy = 203 instead of raising or returning inf. Four other
-        # entry points answer differently at the same input: PinholeCamera.project gives [[100, 200]],
-        # project_points_z1 and Z1Projection.project give inf, cam2pixel gives a finite 1e14.
-        # A point BEHIND the camera is projected just as silently: z = -4 gives [[-21, -47]].
-        # Snippet used to generate expected: project_points([[1., 2., 0.]], K3) executed 2026-09-05 (torch 2.14.0,
-        # cpu and mps, every dtype). Pins the CURRENT value; NOT a contract; delete when #4267 is repaired.
+        # Wart pin for #4267: the masked |z| <= 1e-8 divide skips the divide and K is applied after it, so a point
+        # on the camera plane projects to (fx*x + cx, fy*y + cy) = (104, 203); a point behind the camera projects
+        # silently too. Delete when #4267 is repaired.
         camera_matrix = torch.tensor(
             [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
@@ -87,18 +82,10 @@ class TestProjectPoints(BaseTester):
         self.assert_close(behind, torch.tensor([[-21.0, -47.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_integer_pixel_centres_put_the_principal_point_at_w_minus_one_half(self, device, dtype):
-        # Convention pin for the anchor block on PinholeCamera: pixel
-        # coordinates are (u, v) = (column, row) with INTEGER pixel centres -- create_meshgrid enumerates
-        # [0, 0] for the first pixel and [W - 1, H - 1] for the last -- so a centred image has its principal
-        # point at cx = (W - 1) / 2, cy = (H - 1) / 2, and NOT at (W / 2, H / 2), the half-pixel/COLMAP value.
-        # The pin uses H = 2 != W = 3 so a transposed reading of the convention changes every literal, and
-        # checks the definition of "centred" directly: under cx = 1, cy = 0.5 the first and the last pixel
-        # unproject to exact negatives of each other, and the principal point itself is where the optical axis
-        # (0, 0, 1) lands. A half-pixel cx = 1.5, cy = 1.0 would put neither of those where they are here.
-        # Snippet used to generate expected: create_meshgrid(2, 3, normalized_coordinates=False) and the three
-        # calls below executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype)
-        # -> grid [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]], unproject [[-1, -0.5, 1]] and [[1, 0.5, 1]],
-        # project [[1.0, 0.5]]. Every literal is a dyadic rational, so the comparisons are exact.
+        # Integer pixel centres: create_meshgrid enumerates (0, 0) .. (W - 1, H - 1), so a centred image has
+        # cx = (W - 1) / 2, cy = (H - 1) / 2 (not the half-pixel W / 2, H / 2). H = 2 != W = 3; under cx = 1,
+        # cy = 0.5 the first and last pixels unproject to negatives of each other and the optical axis lands on
+        # the principal point. Every literal is dyadic, so the comparisons are exact.
         grid = kornia.geometry.create_meshgrid(2, 3, normalized_coordinates=False, device=device, dtype=dtype)
         assert grid.shape == (1, 2, 3, 2)
         flat = grid.reshape(-1, 2)
@@ -189,12 +176,8 @@ class TestUnprojectPoints(BaseTester):
         self.assert_close(op(*args), op_jit(*args))
 
     def test_convention_normalize_makes_depth_the_ray_length(self, device, dtype):
-        # Convention pin: ``depth`` is the CAMERA-frame z by default, so pixel
-        # (29, 53) at depth 2 unprojects to (0.5, 1, 2); with ``normalize=True`` the same depth is the length of
-        # the ray instead, so the result has norm 2 and its z component is strictly below 2. The pixel is off the
-        # principal point (cx = 4 != cy = 3) so the two readings differ; a centred pixel would not discriminate.
-        # Snippet used to generate expected: hand arithmetic ((29-4)/100*2, (53-3)/100*2, 2), re-executed
-        # 2026-09-05 (torch 2.14.0, cpu and mps) -> [[0.5, 1.0, 2.0]] and [[0.43643576, 0.87287152, 1.74574304]].
+        # depth is the camera-frame z by default ((29, 53) at depth 2 -> (0.5, 1, 2)); with normalize=True it is
+        # the ray length, so the result has norm 2 and z < 2. The pixel is off the principal point on purpose.
         camera_matrix = torch.tensor(
             [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )

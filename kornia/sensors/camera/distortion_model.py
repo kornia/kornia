@@ -38,15 +38,9 @@ class AffineTransform:
 
         Convention:
             - ``points`` is on the **normalized** :math:`z = 1` plane and the result is in **pixels**:
-              ``u = fx * x + cx`` and ``v = fy * y + cy``, with ``params`` laid out as ``[fx, fy, cx, cy]``.
-              Those pixels are on the integer-centre grid described in the Convention block on
-              :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
-            - it computes the same values as :func:`~kornia.geometry.camera.distort_points_affine`, which
-              takes plain tensors where this method takes ``Vector2``; the two camera type systems are kept
-              separate by design, which is recorded in
-              `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
-            - :meth:`undistort` is the closed-form inverse, one subtraction and one division per axis with no
-              iteration.
+              ``u = fx * x + cx`` and ``v = fy * y + cy``, with ``params`` laid out as ``[fx, fy, cx, cy]``;
+              the ``Vector2`` counterpart of :func:`~kornia.geometry.camera.distort_points_affine`.
+            - :meth:`undistort` is the closed-form inverse.
 
         Args:
             params: torch.Tensor representing the affine transform parameters.

@@ -182,31 +182,15 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(patch_src[..., -1, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
 
     def test_convention_align_corners_default_false(self, device, dtype):
-        # HomographyWarper's bare default align_corners=False (every HomographyWarper construction in
-        # this file passes align_corners=True explicitly; this exercises the bare default). An identity
-        # homography must reproduce the input under either convention: the internal sampling grid is
-        # built to match align_corners, so the two agree rather than differing by half a pixel (#3904).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
-        # Snippet used to generate the pre-#3945 literal (the call under test, verbatim):
-        #   height, width = 4, 5
-        #   patch_src = torch.arange(float(height * width)).view(1, 1, height, width)
-        #   warper = kornia.geometry.transform.HomographyWarper(height, width)  # no align_corners passed
-        #   expected = warper(patch_src, torch.eye(3)[None])
-        # Pre-#3945 literal, i.e. what an *identity* warp returned under the bare default:
-        #   [[[[0.0000, 0.3750, 1.0000, 1.6250, 1.0000],
-        #      [2.0833, 4.9167, 6.1667, 7.4167, 4.0833],
-        #      [5.4167, 11.5833, 12.8333, 14.0833, 7.4167],
-        #      [3.7500, 7.8750, 8.5000, 9.1250, 4.7500]]]]
-        # The corrected expectation is the input itself, so it needs no literal.
+        # At HomographyWarper's bare default align_corners=False, an identity homography reproduces
+        # the input: the sampling grid is built under the same convention it samples with (#3904).
         height, width = 4, 5
         patch_src = torch.arange(float(height * width), device=device, dtype=dtype).view(1, 1, height, width)
         dst_homo_src = eye_like(3, patch_src)
         warper = kornia.geometry.transform.HomographyWarper(height, width)
         patch_dst = warper(patch_src, dst_homo_src)
         self.assert_close(patch_dst, patch_src, atol=1e-3, rtol=1e-3)
-        # the literal above cannot distinguish False from None (grid_sample treats them alike), so
-        # the documented defaults are additionally pinned on the signatures of both APIs
+        # the identity holds under either setting, so the default itself is pinned on the signatures
         import inspect
 
         assert (
@@ -455,6 +439,72 @@ class TestHomographyNormalTransform(BaseTester):
         )
         output = kornia.geometry.linalg.transform_points(transform, input)
         self.assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+
+class TestHomographyNormalizePrecision(BaseTester):
+    """The normalization matrices must be built in the caller's dtype, not in float32 and then cast.
+
+    The oracle is the documented contract of each op, evaluated natively in float64 with the same
+    public helper: ``normalize_homography`` chains ``normal_transform_pixel(dst)`` with the inverse
+    of ``normal_transform_pixel(src)``. Every size is picked so that ``2 / (size - 1)`` is not
+    exactly representable in binary -- the 2-D pins use 2/3 and 2/5, the 3-D pin 2/3, 2/5, 2/7 and
+    2/9 across all six axes -- which is what exposes the float32 rounding. A size whose
+    ``size - 1`` is a power of two (2/1, 2/2, 2/4, 2/8 ...) is exact in every dtype and pins
+    nothing here, so do not "simplify" these numbers.
+    """
+
+    @staticmethod
+    def _skip_if_no_float64(device):
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+
+    def test_normalize_homography_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(3, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.normalize_homography(dst_pix_trans_src_pix, (4, 4), (6, 6))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel(4, 4, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel(6, 6, device=device, dtype=f64)
+        expected = dst_norm @ _torch_inverse_cast(src_norm)
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    def test_denormalize_homography_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(3, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.denormalize_homography(dst_pix_trans_src_pix, (4, 4), (6, 6))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel(4, 4, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel(6, 6, device=device, dtype=f64)
+        expected = _torch_inverse_cast(dst_norm) @ src_norm
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    def test_normalize_homography3d_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(4, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.normalize_homography3d(dst_pix_trans_src_pix, (4, 4, 6), (6, 8, 10))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel3d(4, 4, 6, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel3d(6, 8, 10, device=device, dtype=f64)
+        expected = dst_norm @ _torch_inverse_cast(src_norm)
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    def test_dtype_device_preserved(self, device, dtype):
+        homo_2d = torch.eye(3, device=device, dtype=dtype)[None]
+        homo_3d = torch.eye(4, device=device, dtype=dtype)[None]
+
+        for out in (
+            kornia.geometry.conversions.normalize_homography(homo_2d, (4, 4), (6, 6)),
+            kornia.geometry.conversions.denormalize_homography(homo_2d, (4, 4), (6, 6)),
+            kornia.geometry.conversions.normalize_homography3d(homo_3d, (2, 4, 5), (3, 8, 9)),
+        ):
+            assert out.dtype == dtype
+            assert out.device.type == device.type
 
 
 class TestHomographyWarper3D(BaseTester):

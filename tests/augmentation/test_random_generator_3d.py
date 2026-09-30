@@ -68,8 +68,9 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, depth, height, width, distortion_scale, device, dtype):
         with pytest.raises(Exception):
-            param_gen = PerspectiveGenerator3D(distortion_scale=distortion_scale.to(device=device, dtype=dtype))
-            param_gen(batch_shape=torch.Size((2, depth, height, width)))
+            PerspectiveGenerator3D(distortion_scale=distortion_scale.to(device=device, dtype=dtype))(
+                batch_shape=torch.Size((2, depth, height, width))
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -236,7 +237,6 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             (100, 100, -100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
             # (100, 100, 100, torch.tensor([0, 9]), None, None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1, 0.2]), None, None),
-            (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1, 0.2]), None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1]), None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, torch.tensor([[0.2, 0.2, 0.2]]), None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, torch.tensor([0.2]), None),
@@ -255,8 +255,9 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             shear.to(dtype=dtype, device=device)
 
         with pytest.raises(Exception):
-            param_gen = AffineGenerator3D(degrees=degrees, translate=translate, scale=scale, shears=shear)
-            param_gen(batch_shape=torch.Size((2, depth, height, width)))
+            AffineGenerator3D(degrees=degrees, translate=translate, scale=scale, shears=shear)(
+                batch_shape=torch.Size((2, depth, height, width))
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -353,8 +354,7 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, degrees, device, dtype):
         with pytest.raises(Exception):
-            param_gen = RotationGenerator3D(degrees=degrees.to(device=device, dtype=dtype))
-            param_gen(torch.Size((2,)))
+            RotationGenerator3D(degrees=degrees.to(device=device, dtype=dtype))(torch.Size((2,)))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -413,11 +413,10 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         with pytest.raises(Exception):
-            param_gen = CropGenerator3D(
+            CropGenerator3D(
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
                 resize_to=resize_to,
-            )
-            param_gen(batch_shape=torch.Size((2, 1, *input_size)))
+            )(batch_shape=torch.Size((2, 1, *input_size)))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -646,13 +645,11 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
         with pytest.raises(Exception):
-            param_gen = MotionBlurGenerator3D(
+            MotionBlurGenerator3D(
                 kernel_size=kernel_size,
                 angle=angle.to(device=device, dtype=dtype),
                 direction=direction.to(device=device, dtype=dtype),
-            )
-
-            param_gen(batch_shape=torch.Size((2,)))
+            )(batch_shape=torch.Size((2,)))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)

@@ -151,6 +151,7 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "torch_num_threads": torch.get_num_threads(),
         "opencv_num_threads": opencv_num_threads,
         "opencv": _optional_version("cv2"),
+        "poselib": _optional_version("poselib"),
         "torchvision": _optional_version("torchvision"),
         "numpy": _optional_version("numpy"),
         "albumentations": _optional_version("albumentations"),

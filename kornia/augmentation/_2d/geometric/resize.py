@@ -42,21 +42,16 @@ class Resize(GeometricAugmentationBase2D):
             to the batch form (False).
 
     Convention:
-        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
-        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
-        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
         A tuple ``size`` is the exact ``(height, width)`` output.
         With an integer, ``side`` selects which input side is set to that value while preserving aspect ratio:
         ``"short"`` (the default) selects the shortest side, ``"long"`` the longest, ``"vert"`` the height, and
         ``"horz"`` the width. The derived side is truncated toward zero; if it becomes zero, the resize raises
         ``AssertionError`` (for example, ``Resize(4, side="long")`` or ``LongestMaxSize(4)`` on a 1-by-10 image).
-        This class uses
-        :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and bicubic sampling,
-        and ``antialias`` affects downscaling only. The operation has a fixed, whole-batch resize whenever it is
-        selected.
-
-        :meth:`inverse` resamples to the prior canvas with zero padding through ``crop_by_transform_mat``. It
-        restores the shape but cannot recover values discarded by a resize.
+        This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
+        bicubic sampling, and at ``align_corners=False`` the image does not follow ``transform_matrix``
+        (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). :meth:`inverse` resamples to the prior canvas
+        and cannot recover values discarded by a resize.
 
     """
 

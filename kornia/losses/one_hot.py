@@ -66,7 +66,6 @@ def one_hot(
 
     # Convert to desired dtype and device, then apply eps for numerical stability
     one_hot_tensor = one_hot_tensor.to(dtype=dtype, device=device)
-    # Apply eps: multiply by (1-eps) and add eps to all elements
-    one_hot_tensor = one_hot_tensor * (1.0 - eps) + eps
 
-    return one_hot_tensor
+    # Apply eps: multiply by (1-eps) and add eps to all elements
+    return one_hot_tensor * (1.0 - eps) + eps

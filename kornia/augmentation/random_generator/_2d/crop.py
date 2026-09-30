@@ -26,6 +26,7 @@ from kornia.augmentation.utils import (
     _check_positive_int_or_traced,
     _common_param_check,
     _joint_range_check,
+    _truncate_to_start,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
@@ -66,8 +67,12 @@ class CropGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # The draw is truncated to a start position, so keep it in float32: half-precision
+        # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
+        sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
+            torch.tensor(0.0, device=device, dtype=sampler_dtype),
+            torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
@@ -109,17 +114,15 @@ class CropGenerator(RandomGeneratorBase):
         x_diff = x_diff.clamp(0)
         y_diff = y_diff.clamp(0)
 
+        # The draw is scaled and floored in the draw's dtype when that is the wider one: cast to a half ``size``
+        # dtype first, a draw close to 1 rounds up to 1.0 and the start lands one past the last valid position.
         if same_on_batch:
             # If same_on_batch, select the first then repeat.
-            x_start = (
-                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(x_diff) * x_diff[0]
-            ).floor()
-            y_start = (
-                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(y_diff) * y_diff[0]
-            ).floor()
+            x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff[0])
+            y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff[0])
         else:
-            x_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(x_diff) * x_diff).floor()
-            y_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(y_diff) * y_diff).floor()
+            x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff)
+            y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff)
         crop_src = bbox_generator(
             x_start.view(-1).to(device=_device, dtype=_dtype),
             y_start.view(-1).to(device=_device, dtype=_dtype),
@@ -231,8 +234,12 @@ class ResizedCropGenerator(CropGenerator):
         ratio = torch.as_tensor(self.ratio, device=device, dtype=dtype)
         _joint_range_check(scale, "scale")
         _joint_range_check(ratio, "ratio")
+        # The draw is truncated to a start position, so keep it in float32: half-precision
+        # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
+        sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
+            torch.tensor(0.0, device=device, dtype=sampler_dtype),
+            torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
         self.log_ratio_sampler = Uniform(torch.log(ratio[0]), torch.log(ratio[1]), validate_args=False)
 
@@ -264,8 +271,8 @@ class ResizedCropGenerator(CropGenerator):
 
         w = torch.sqrt(area * aspect_ratio).round().floor()
         h = torch.sqrt(area / aspect_ratio).round().floor()
-        # Element-wise w, h condition
-        cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
+        # Element-wise w, h condition. A candidate may equal the input size, as in torchvision's get_params.
+        cond = ((0 < w) * (w <= size[1]) * (0 < h) * (h <= size[0])).int()
 
         # torch.argmax is not reproducible across devices: https://github.com/pytorch/pytorch/issues/17738
         # Here, we will select the first occurrence of the duplicated elements.
@@ -275,19 +282,22 @@ class ResizedCropGenerator(CropGenerator):
         h_out = h[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
         w_out = w[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
 
-        # Center-crop fallback for samples where no candidate crop fit (``cond_bool`` False). The
+        # Fallback crop size for samples where no candidate crop fit (``cond_bool`` False). The
         # fallback size is a compile-time constant (from ``size`` and ``self.ratio``), so compute it
         # unconditionally and select branchlessly with ``torch.where`` — dropping the
         # ``if not cond_bool.all()`` device sync keeps the generator torch.compile fullgraph. When
         # every candidate fit, ``where`` returns ``h_out``/``w_out`` unchanged (byte-identical).
-        in_ratio = float(size[0]) / float(size[1])
+        # As in torchvision's get_params: ``ratio`` is width / height, so an input narrower than min(ratio) keeps
+        # its full width, one wider than max(ratio) keeps its full height, and one in range is kept whole.
+        in_ratio = float(size[1]) / float(size[0])
         _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
+        _max = float(self.ratio.max()) if isinstance(self.ratio, torch.Tensor) else max(self.ratio)
         if in_ratio < _min:
-            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
-            w_ct = torch.round(h_ct / _min)
-        elif in_ratio > _min:
             w_ct = torch.full((), size[1], device=_device, dtype=_dtype)
-            h_ct = torch.round(w_ct * _min)
+            h_ct = torch.round(w_ct / _min)
+        elif in_ratio > _max:
+            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
+            w_ct = torch.round(h_ct * _max)
         else:  # whole image
             h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
             w_ct = torch.full((), size[1], device=_device, dtype=_dtype)

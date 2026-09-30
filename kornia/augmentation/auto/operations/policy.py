@@ -42,10 +42,9 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         - its transformation matrix is the ordered product of its geometric wrapped operations. Intensity
           operations do not contribute to that matrix.
         - ``forward_parameters`` samples each child through
-          :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`, so a policy entry gets
-          the operation's magnitude and magnitude mapping, including the random sign of a symmetric magnitude,
-          as it does under :class:`~kornia.augmentation.auto.RandAugment`. The gate comes from the wrapped
-          augmentation's ``p``. Policy augmentations use their own samplers where needed.
+          :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`, so the operation's
+          magnitude, magnitude mapping and symmetric sign apply; the gate comes from the wrapped augmentation's
+          ``p``.
 
     Args:
         operations: the operations to perform, passed as positional arguments rather than as one list.

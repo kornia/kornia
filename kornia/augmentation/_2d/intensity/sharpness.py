@@ -52,10 +52,8 @@ class RandomSharpness(IntensityAugmentationBase2D):
         - the factor blends between the fully blurred image at ``0`` and the input at ``1``, and values
           above ``1`` sharpen. The one-pixel border is copied from the input at every factor, so it is never
           blurred or sharpened, although the final clamp into ``[0, 1]`` applies to it as to the rest.
-        - a scalar argument is the upper bound of ``[0, x]`` -- the centred ``[-x, x]`` with its lower end
-          floored at the non-negative bound -- so the default ``sharpness=0.5`` never reaches the identity
-          and therefore never sharpens -- it blurs by a random amount.
-        - the result is kept inside ``[0, 1]``.
+        - a scalar argument is the upper bound of ``[0, x]``, so the default ``sharpness=0.5`` never reaches the
+          identity and only blurs.
 
     .. warning::
         An input whose values are all negative comes back as an all-zero image. Tracked in

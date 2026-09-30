@@ -127,17 +127,15 @@ class TestZCA(BaseTester):
         self.gradcheck(zca, (data,))
 
     def test_not_fitted(self, device, dtype):
+        data = torch.rand(10, 2, device=device, dtype=dtype)
+        zca = kornia.enhance.ZCAWhitening()
         with pytest.raises(RuntimeError):
-            data = torch.rand(10, 2, device=device, dtype=dtype)
-
-            zca = kornia.enhance.ZCAWhitening()
             zca(data)
 
     def test_not_fitted_inv(self, device, dtype):
+        data = torch.rand(10, 2, device=device, dtype=dtype)
+        zca = kornia.enhance.ZCAWhitening()
         with pytest.raises(RuntimeError):
-            data = torch.rand(10, 2, device=device, dtype=dtype)
-
-            zca = kornia.enhance.ZCAWhitening()
             zca.inverse_transform(data)
 
     def test_jit(self, device, dtype):

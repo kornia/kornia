@@ -92,19 +92,19 @@ class TestInRange(BaseTester):
         ):
             InRange(lower=(0.2,), upper=(0.2,))(input_tensor)
 
+        lower = torch.tensor([0.2, 0.2, 0.2])
+        upper = torch.tensor([0.6, 0.6, 0.6])
         with pytest.raises(
             ValueError,
             match=re.escape(
                 "`lower` and `upper` bounds as Tensors must have compatible shapes with the input (B, C, 1, 1)."
             ),
         ):
-            lower = torch.tensor([0.2, 0.2, 0.2])
-            upper = torch.tensor([0.6, 0.6, 0.6])
             InRange(lower=lower, upper=upper)(input_tensor)
 
+        lower = torch.tensor([0.2, 0.2, 0.2])
+        upper = torch.tensor([0.6, 0.6, 0.6])
         with pytest.raises(Exception, match=r"Invalid `return_mask` format. Should be boolean."):
-            lower = torch.tensor([0.2, 0.2, 0.2])
-            upper = torch.tensor([0.6, 0.6, 0.6])
             InRange(lower=lower, upper=upper, return_mask=2)(input_tensor)
 
     def test_tensor_bounds_return_masked_input(self, device, dtype):

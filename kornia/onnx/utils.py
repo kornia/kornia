@@ -61,8 +61,7 @@ class ONNXLoader(CachedDownloader):
                 **kwargs,
             )
             with open(file_path) as f:
-                json_data = json.load(f)
-                return json_data
+                return json.load(f)
 
         if not download:
             raise RuntimeError(f"File `{url}` not found. You may set `download=True`.")

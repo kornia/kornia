@@ -91,7 +91,7 @@ class TestAddWeighted(BaseTester):
         with pytest.raises(Exception):
             TestAddWeighted.fcn(src1, 1.0, src2, 1.0, 0.0)
 
-    @pytest.mark.parametrize("size1, size2", [((2, 3, 5, 5), (2, 3, 5, 5)), ((2, 3, 5, 5), (2, 3, 5, 5))])
+    @pytest.mark.parametrize("size1, size2", [((2, 3, 5, 5), (2, 3, 5, 5))])
     @pytest.mark.parametrize("alpha", [torch.randn(2, 3, 5, 5), 1.0])
     @pytest.mark.parametrize("beta", [torch.randn(2, 3, 5, 5), 1.0])
     @pytest.mark.parametrize("gamma", [torch.randn(2, 3, 5, 5), 1.0])

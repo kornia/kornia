@@ -21,6 +21,7 @@ from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.filters import median_blur
+from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 
 
 class RandomMedianBlur(IntensityAugmentationBase2D):
@@ -38,19 +39,12 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
-          :func:`kornia.filters.median_blur`.
-        - the output is not clamped. The window is zero-padded by :func:`kornia.filters.median_blur` under
-          every implementation it selects -- the ``F.conv2d`` window extraction and the selection network it
-          uses instead for a 3x3 or 5x5 inference pass alike -- so a border median is taken over zeros as well
+        - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.median_blur`. An
+          even entry is rejected at construction with that function's odd-size error.
+        - the output is not clamped. The window is zero-padded, so a border median is taken over zeros as well
           as image values, and a border pixel can come back as ``0`` even when no input value is near it.
-        - this class has no ``border_type``, and with an odd ``kernel_size`` an image smaller than the kernel
-          is accepted, down to ``1 x 1``; :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise at their
-          default ``border_type="reflect"`` once a spatial axis is no longer than half the kernel's extent along
-          it. An even entry in ``kernel_size`` raises on the forward pass for every image, but not always with
-          the same error: a raw reshape error once the zero-padded image is at least as large as the kernel, and
-          torch's ``Kernel size can't be greater than actual input size`` from ``F.conv2d`` below that -- an even
-          ``4 x 4`` kernel raises the reshape error at ``2 x 2`` and the conv2d error at ``1 x 1``.
+        - this class has no ``border_type``, and with an odd ``kernel_size`` an image smaller than the kernel is
+          accepted, down to ``1 x 1``.
 
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.
@@ -78,6 +72,7 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
         self, kernel_size: Tuple[int, int] = (3, 3), same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        _check_kernel_size(_unpack_2d_ks(kernel_size), 0)
         self.flags = {"kernel_size": kernel_size}
 
     def apply_transform(

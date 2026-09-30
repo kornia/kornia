@@ -21,14 +21,14 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType
 from kornia.filters import gaussian_blur2d
 from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 
 
-class RandomGaussianBlur(IntensityAugmentationBase2D):
+class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
 
     The standard deviation is sampled for each instance.
@@ -53,23 +53,21 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
-          :func:`kornia.filters.gaussian_blur2d`. An even entry is not rounded up -- the forward pass raises
-          the primitive's own "odd integer" error.
-        - ``sigma`` is drawn once per sample, as a single scalar used for both axes. Both axes get that sigma
-          even when a rectangular ``kernel_size`` gives them different supports, and a support short enough to
-          truncate the Gaussian narrows the blur along its axis.
+        - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.gaussian_blur2d`. An
+          even entry is not rounded up: the forward pass raises that function's odd-size error.
+        - ``sigma`` is drawn once per sample, as a single scalar used for both axes, and a drawn ``0`` raises on
+          the forward pass. Both axes get that sigma even when a rectangular ``kernel_size`` gives them different
+          supports, and a support short enough to truncate the Gaussian narrows the blur along its axis.
         - the defaults ``separable=True`` and ``border_type="reflect"`` are the function's own defaults.
         - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
-          average of input values and stays between the input's own extremes, up to the rounding of the kernel
-          weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
-          the input's minimum for a positive image, and above its maximum for a negative one.
+          mean of input values and stays between the input's extremes, up to the rounding of the kernel weights;
+          ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``.
 
     .. note::
-        The padding sets a minimum image size. At the default ``border_type="reflect"`` each spatial axis must be
-        longer than the kernel's radius along it, and ``"circular"`` needs at least that radius; both raise a
-        ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` invent
-        their padding and run down to a single pixel.
+        The padding sets a minimum image size: at ``border_type="reflect"`` each spatial axis must be longer than
+        the kernel's radius along it, and at ``"circular"`` at least that long; a smaller image raises a
+        ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` run
+        down to a single pixel.
 
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.
@@ -154,6 +152,17 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "RandomGaussianBlur":
+        self._record_compile(
+            ["_gaussian_blur2d_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
         self._gaussian_blur2d_fn = torch.compile(
             self._gaussian_blur2d_fn,
             fullgraph=fullgraph,

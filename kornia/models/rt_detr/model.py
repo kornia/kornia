@@ -268,9 +268,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             # Backbone renaming
             new_name = re.sub(".branch2b.", ".convs.branch2b.", new_name)
             new_name = re.sub(".branch2a.", ".convs.branch2a.", new_name)
-            new_name = re.sub(".branch2c.", ".convs.branch2c.", new_name)
-
-            return new_name
+            return re.sub(".branch2c.", ".convs.branch2c.", new_name)
 
         def _state_dict_proc(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
             state_dict = state_dict["ema"]["module"]  # type:ignore
@@ -297,8 +295,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             num_classes: number of classes to detect.
 
         """
-        model = RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
-        return model
+        return RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
 
     def to_onnx(
         self,

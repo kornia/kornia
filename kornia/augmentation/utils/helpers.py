@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch.distributions import Beta, Uniform
 
 from kornia.core.utils import _extract_device_dtype
+from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -65,6 +66,26 @@ def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int
             _flatten_constant(value, shape, leaves, depth + 1)
     else:
         leaves.append(data)
+
+
+def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
+    """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
+
+    :class:`~kornia.geometry.boxes.Boxes` records per-sample trailing padding in ``_N`` and its default export
+    returns a ragged list for such an object. The padding rows are zeroed after the export rather than stored as
+    zeros, because a zero stored box exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and
+    ``'vertices'`` modes, which reads as a real one-pixel box.
+    """
+    out = boxes.to_tensor(mode, as_padded_sequence=True)
+    if not isinstance(out, torch.Tensor):
+        raise TypeError(f"Expected a padded tensor export. Got {type(out)}.")
+    if boxes._N is None:
+        return out
+    num_boxes = out.shape[1]
+    real = torch.tensor([num_boxes - n for n in boxes._N], device=out.device)
+    valid = torch.arange(num_boxes, device=out.device)[None] < real[:, None]
+    valid = valid.reshape(valid.shape + (1,) * (out.dim() - 2))
+    return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
 
 
 def _constant_tensor(
@@ -391,6 +412,17 @@ def _adapted_rsampling(
         rsample = dist.rsample(rsample_size)
         return rsample.repeat(shape[0], *[1] * (len(rsample.shape) - 1))
     return dist.rsample(shape)
+
+
+def _truncate_to_start(draw: torch.Tensor, extent: torch.Tensor) -> torch.Tensor:
+    r"""Turn a ``[0, 1)`` draw into an integer start in ``[0, extent)`` for a crop or patch.
+
+    The product and the floor are taken in the wider of the two dtypes and the result is cast to the dtype of
+    ``extent``. Casting the draw to a narrower ``extent`` dtype first rounds a draw close to 1 up to 1.0, which
+    puts the start one past the last valid position (#5052).
+    """
+    dtype = torch.promote_types(draw.dtype, extent.dtype)
+    return (draw.to(device=extent.device, dtype=dtype) * extent.to(dtype)).floor().to(extent.dtype)
 
 
 def _adapted_sampling(

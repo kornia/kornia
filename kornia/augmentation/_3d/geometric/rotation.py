@@ -58,14 +58,11 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
         - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
-          roll turns a displayed ``H x W`` slice clockwise, as :func:`kornia.geometry.transform.rotate3d` and the
-          2D :class:`~kornia.augmentation.RandomAffine` do. :class:`RandomAffine3D`, the 2D
-          :class:`~kornia.augmentation.RandomRotation`, and :func:`kornia.geometry.transform.rotate` turn it
-          counter-clockwise (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-        - the default interpolation is bilinear with ``align_corners=False``; zero angles reproduce the input
-          up to floating-point roundoff in ``float32`` and ``float64``. In half precision the sampling grid
-          itself is rounded, so the error grows with the volume size (about ``0.5`` for a ``32 x 48 x 96``
-          volume in ``bfloat16``).
+          roll turns a displayed ``H x W`` slice clockwise, as :func:`kornia.geometry.transform.rotate3d` does;
+          :class:`RandomAffine3D`, the 2D :class:`~kornia.augmentation.RandomRotation` and
+          :func:`kornia.geometry.transform.rotate` turn it counter-clockwise
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - the default interpolation is bilinear with ``align_corners=False``.
 
     Examples:
         >>> import torch

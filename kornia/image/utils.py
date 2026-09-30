@@ -298,9 +298,8 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
     # crop trailing right/bottom padding to match original
     combined_H = n_row * padded_H - padding
     combined_W = n_col * padded_W - padding
-    combined = combined[:, :combined_H, :combined_W]
 
-    return combined
+    return combined[:, :combined_H, :combined_W]
 
 
 def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:

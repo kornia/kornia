@@ -196,9 +196,11 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     # Under tracing/export (legacy ONNX / jit.trace / dynamo ONNX) stick to the plain scalar
     # adjugate. NOTE the original rationale here -- "whereas ``cross`` may not [lower]" -- does not
     # hold on the torch versions CI runs: measured, ``torch.linalg.cross`` lowers on 2.5.1 (legacy
-    # exporter) and on 2.9.1 (both exporters). The split is kept because it is still the safer
-    # capture path (scalar arithmetic needs no per-dtype kernel at all, and ``cross`` has real
-    # kernel gaps -- no bfloat16 on MPS in torch 2.5.1), not because ``cross`` fails to export.
+    # exporter) and 2.9.1 and 2.14.0 (both exporters). The legacy exporter emits
+    # ``Slice``/``Mul``/``Sub``/``Concat``; the dynamo exporter emits ``Split`` in place of ``Slice``,
+    # on 2.9.1 as on 2.14.0. The split is kept because it is still the safer capture path (scalar
+    # arithmetic needs no per-dtype kernel at all, and ``cross`` has real kernel gaps -- no bfloat16
+    # on MPS in torch 2.5.1), not because ``cross`` fails to export.
     # Collapsing the two branches is a behavior change and belongs in its own PR.
     return _inverse_3x3_scalar(input)
 
@@ -468,17 +470,19 @@ def is_exporting() -> bool:
 def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -> None:
     """Store tensor ``x`` on ``module`` as ``name`` so it is optimizable, movable and serializable.
 
-    A leaf tensor (user-provided data or an existing parameter) becomes an ``nn.Parameter``, as
-    before. ``nn.Parameter(x)`` would re-root a tensor that already carries a ``grad_fn`` as a new
-    leaf, so a group built from ``Se3.exp(v)`` would stop propagating gradients to ``v``; such a
-    tensor is registered as a buffer instead, which keeps its history while ``.to()``,
+    An existing ``nn.Parameter`` is kept, and a tensor that takes no part in autograd (no
+    ``grad_fn`` and ``requires_grad=False``) becomes an ``nn.Parameter``, so the module is
+    optimizable. ``nn.Parameter(x)`` would re-root any other tensor as a new leaf: a group built
+    from ``Se3.exp(v)`` would stop propagating gradients to ``v``, and a group built from the
+    caller's own leaf that requires grad would take its gradient away from that leaf. Such a
+    tensor is registered as a buffer instead, which keeps it and its history while ``.to()``,
     ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph
     capture (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX
     exporter) neither a parameter nor a buffer can be created inside the traced region, so the
     tensor is kept as a plain attribute of the module being built.
     """
     if isinstance(x, torch.nn.Parameter) or not (torch.jit.is_tracing() or is_compiling() or is_exporting()):
-        if x.grad_fn is None or isinstance(x, torch.nn.Parameter):
+        if isinstance(x, torch.nn.Parameter) or (x.grad_fn is None and not x.requires_grad):
             x = x if isinstance(x, torch.nn.Parameter) else torch.nn.Parameter(x)
         else:
             module.register_buffer(name, x)

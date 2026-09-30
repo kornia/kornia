@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 import array
 import os
 import struct
@@ -24,18 +26,29 @@ from typing import BinaryIO, Dict, List, NamedTuple, Optional, Tuple
 
 import torch
 
+__all__ = [
+    "load_pointcloud_ply",
+    "load_pointcloud_ply_binary",
+    "save_pointcloud_ply",
+    "save_pointcloud_ply_binary",
+]
 
-def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
+
+def save_pointcloud_ply(filename: str | os.PathLike[str], pointcloud: torch.Tensor) -> None:
     r"""Save to disk a pointcloud in PLY format.
 
     Args:
-        filename: the path to save the pointcloud.
+        filename: the path to save the pointcloud, as a string or ``os.PathLike[str]``.
+          Must end in ``.ply`` (case-insensitive).
         pointcloud: tensor containing the pointcloud to save.
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
+          Every row is written, so the vertex count is the number of points and
+          row order is kept; non-finite coordinates are written as ``nan`` / ``inf``.
     """
+    filename = os.fspath(filename)
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
 
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
@@ -43,12 +56,10 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     if pointcloud.ndim < 2 or pointcloud.shape[-1] != 3:
         raise TypeError(f"Input pointcloud must have shape (..., 3). Got {tuple(pointcloud.shape)}")
 
-    # Flatten points
+    # Flatten points. Every row is written, non-finite ones included, so row ``i`` of the file is
+    # row ``i`` of the flattened input.
     xyz = pointcloud.reshape(-1, 3)
-
-    valid_mask = torch.isfinite(xyz).any(dim=1)
-    valid_points = xyz[valid_mask]
-    valid_count = valid_points.shape[0]
+    num_points = xyz.shape[0]
 
     with open(filename, "w", encoding="utf-8") as f:
         # Write PLY header
@@ -57,7 +68,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
                 "ply\n",
                 "format ascii 1.0\n",
                 "comment arraiy generated\n",
-                f"element vertex {valid_count}\n",
+                f"element vertex {num_points}\n",
                 "property double x\n",
                 "property double y\n",
                 "property double z\n",
@@ -65,25 +76,31 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
             ]
         )
 
-        if valid_count > 0:
+        if num_points > 0:
             # Move to CPU, convert to float64 for matching 'double' in header
-            arr = valid_points.detach().cpu().to(torch.float64)
-            # Write each row as space-separated floats
+            arr = xyz.detach().cpu().to(torch.float64)
+            # Write each row as space-separated floats. repr of a Python float is the
+            # shortest string that round-trips it exactly, which a 'double' property
+            # needs; a fixed significant-digit count silently loses float64 precision.
             for x, y, z in arr.tolist():
-                f.write(f"{x:.9g} {y:.9g} {z:.9g}\n")
+                f.write(f"{x!r} {y!r} {z!r}\n")
 
 
-def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
+def save_pointcloud_ply_binary(filename: str | os.PathLike[str], pointcloud: torch.Tensor) -> None:
     r"""Save to disk a pointcloud in binary PLY format.
 
     Args:
-        filename: the path to save the pointcloud.
+        filename: the path to save the pointcloud, as a string or ``os.PathLike[str]``.
+          Must end in ``.ply`` (case-insensitive).
         pointcloud: tensor containing the pointcloud to save.
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
+          Every row is written, so the vertex count is the number of points and
+          row order is kept; non-finite coordinates are written as IEEE values.
     """
+    filename = os.fspath(filename)
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
 
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
@@ -91,12 +108,10 @@ def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
     if pointcloud.ndim < 2 or pointcloud.shape[-1] != 3:
         raise TypeError(f"Input pointcloud must have shape (..., 3). Got {tuple(pointcloud.shape)}")
 
-    # Flatten points
+    # Flatten points. Every row is written, non-finite ones included, so row ``i`` of the file is
+    # row ``i`` of the flattened input.
     xyz = pointcloud.reshape(-1, 3)
-
-    valid_mask = torch.isfinite(xyz).any(dim=1)
-    valid_points = xyz[valid_mask]
-    valid_count = valid_points.shape[0]
+    num_points = xyz.shape[0]
 
     with open(filename, "wb") as f:
         # Write PLY header : Binary version
@@ -104,7 +119,7 @@ def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
             "ply\n",
             "format binary_little_endian 1.0\n",
             "comment kornia generated\n",
-            f"element vertex {valid_count}\n",
+            f"element vertex {num_points}\n",
             "property double x\n",
             "property double y\n",
             "property double z\n",
@@ -112,9 +127,9 @@ def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
         ]
         f.writelines(s.encode("utf-8") for s in header)
 
-        if valid_count > 0:
+        if num_points > 0:
             # Move to CPU, convert to float64 for matching 'double' in header
-            arr = valid_points.detach().cpu().to(torch.float64).reshape(-1)
+            arr = xyz.detach().cpu().to(torch.float64).reshape(-1)
 
             # Convert to array.array for efficient byte-level handling
             data_array = array.array("d", arr.tolist())
@@ -256,12 +271,12 @@ def _warn_header_size(header_size: Optional[int]) -> None:
 
 def _check_ply_filename(filename: str) -> None:
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
     if not os.path.isfile(filename):
         raise ValueError("Input filename is not an existing file.")
 
 
-def load_pointcloud_ply(filename: str, header_size: Optional[int] = None) -> torch.Tensor:
+def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:
     r"""Load from disk a pointcloud in ASCII PLY format.
 
     The header is parsed up to ``end_header``; the number of points comes from the
@@ -271,13 +286,15 @@ def load_pointcloud_ply(filename: str, header_size: Optional[int] = None) -> tor
     tokens and would shift every column after it.
 
     Args:
-        filename: the path to the pointcloud.
+        filename: the path to the pointcloud, as a string or ``os.PathLike[str]``.
+          Must end in ``.ply`` (case-insensitive).
         header_size: deprecated and ignored; the header is parsed instead of skipped.
 
     Return:
         tensor containing the loaded points with shape :math:`(N, 3)` in ``float32``, where
         :math:`N` is the declared vertex count.
     """
+    filename = os.fspath(filename)
     _check_ply_filename(filename)
     _warn_header_size(header_size)
 
@@ -320,7 +337,7 @@ def load_pointcloud_ply(filename: str, header_size: Optional[int] = None) -> tor
     return torch.tensor(points, dtype=torch.float32).reshape(-1, 3)
 
 
-def load_pointcloud_ply_binary(filename: str, header_size: Optional[int] = None) -> torch.Tensor:
+def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:
     r"""Load from disk a pointcloud in binary PLY format.
 
     The header is parsed up to ``end_header``; the number of points comes from the
@@ -332,13 +349,15 @@ def load_pointcloud_ply_binary(filename: str, header_size: Optional[int] = None)
     parsing it, so such a file is rejected.
 
     Args:
-        filename: the path to the pointcloud.
+        filename: the path to the pointcloud, as a string or ``os.PathLike[str]``.
+          Must end in ``.ply`` (case-insensitive).
         header_size: deprecated and ignored; the header is parsed instead of skipped.
 
     Return:
         tensor containing the loaded points with shape :math:`(N, 3)` in ``float32``, where
         :math:`N` is the declared vertex count.
     """
+    filename = os.fspath(filename)
     _check_ply_filename(filename)
     _warn_header_size(header_size)
 

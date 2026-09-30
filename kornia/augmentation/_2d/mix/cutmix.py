@@ -57,6 +57,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             This flag will not maintain permutation order.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
+        data_keys: list of keys to apply the mix augmentation to.
         use_correct_lambda: if True, compute lambda according to the CutMix paper
             (`lam = 1 - area_ratio`). Defaults to False (`lam = area_ratio`) for backward compatibility,
             but will raise a deprecation warning when False.
@@ -78,15 +79,14 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           ``2 ** 24`` stay exact.
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
-        - ``p`` is a batch-wide gate and is applied once: one draw per call selects the whole batch with probability
-          ``p``, so ``_params["batch_prob"]`` is all ones or all zeros. Every row and mix of a selected batch receives
-          a cut and none is dropped again. With ``same_on_batch=False`` each row and mix draws its own cut size and
-          its own placement; ``same_on_batch=True`` shares both, so all rows and mixes receive one geometry. A cut
-          can still leave the image unchanged through self-pairing or a zero-sized cut.
-          At ``p=0`` the image is unchanged and each class row contains the original
-          label twice with lambda zero. The current ``cut_size`` interpretation and its rejection of a minimum of
-          ``1`` are described in its argument above; this is the repaired behavior from
-          `#4439 <https://github.com/kornia/kornia/issues/4439>`_.
+        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`
+          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_): ``_params["batch_prob"]`` is all ones or all zeros,
+          and every row and mix of a selected batch receives a cut, though self-pairing or a zero-sized cut can
+          leave a row unchanged. With ``same_on_batch=False`` each row and mix draws its own cut size and placement;
+          ``same_on_batch=True`` shares one geometry, and with ``num_mix > 1`` one pairing too, so every mix
+          repeats the first cut while the labels credit the donor once per mix
+          (`#4805 <https://github.com/kornia/kornia/issues/4805>`_). At ``p=0`` the image is unchanged and each
+          class row contains the original label twice with lambda zero.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.

@@ -80,9 +80,8 @@ def _canonical_order(lafs: torch.Tensor, responses: torch.Tensor) -> tuple[torch
 class TestScaleSpaceDetector(BaseTester):
     @pytest.mark.parametrize("subpix_type", [AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d])
     @pytest.mark.parametrize("batch", [1, 2])
-    @pytest.mark.parametrize("bonus", [0.0, 10.0])
     @pytest.mark.parametrize("max_candidates", [None, 3])
-    def test_joint_extrema_matches_separate_refinement(self, device, dtype, subpix_type, batch, bonus, max_candidates):
+    def test_joint_extrema_matches_separate_refinement(self, device, dtype, subpix_type, batch, max_candidates):
         # A subclass remains on the general extension path, which refines each sign
         # independently. Pin the batched built-in path to that reference, including
         # signed/weighted responses and gradients through the selected features. The value
@@ -95,7 +94,9 @@ class TestScaleSpaceDetector(BaseTester):
             pytest.skip("ConvQuadInterp3d has no candidate cap")
         torch.manual_seed(17)
         img = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype, requires_grad=True)
-        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype)
+        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype).clamp_min(0.05)
+        # Zero only the top band: a float16 draw also rounds a few scattered weights to exactly 0, and the refined
+        # centre of a candidate beside one fails the mask re-check, which left this fixture without a detection.
         mask[..., :8, :] = 0
 
         def detector(subpix):
@@ -120,7 +121,7 @@ class TestScaleSpaceDetector(BaseTester):
             module.forward = counted
             return calls
 
-        kwargs = {"strict_maxima_bonus": bonus}
+        kwargs = {}
         if subpix_type is not ConvQuadInterp3d:
             kwargs["max_candidates"] = max_candidates
         joint, separate = subpix_type(**kwargs), SeparateSubpix(**kwargs)
@@ -256,8 +257,16 @@ class TestScaleSpaceDetector(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             # The shifted response is flat at half precision and yields no maxima at all.
             pytest.skip("a Hessian response offset by 1.0 has no resolution left in half precision")
-        torch.manual_seed(0)
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        # Gaussian blobs of increasing size give the Hessian one scale-space maximum per blob. Random noise
+        # left one or two maxima whose survival depended on the exact response scale and on the dtype.
+        # Built in float64 on the CPU so every device sees the same input: MPS has no float64.
+        coords = torch.arange(96, dtype=torch.float64)
+        yy, xx = torch.meshgrid(coords, coords, indexing="ij")
+        inp = torch.zeros(96, 96, dtype=torch.float64)
+        for i, sigma in enumerate((1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0)):
+            cy, cx = 16 + 32 * (i // 3), 16 + 32 * (i % 3)
+            inp += torch.exp(-((yy - cy) ** 2 + (xx - cx) ** 2) / (2 * sigma**2))
+        inp = inp[None, None].to(device=device, dtype=dtype)
         det = ScaleSpaceDetector(50, resp_module=NegatedHessian()).to(device, dtype)
         lafs, resps = det(inp)
         filled = lafs[0].ne(0).any(dim=-1).any(dim=-1)

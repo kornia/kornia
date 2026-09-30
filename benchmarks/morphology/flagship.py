@@ -194,9 +194,11 @@ def main() -> None:
         device,
         units="img/s",
         regimes=[
-            f"{KERNEL_SIZE}x{KERNEL_SIZE} square element; kornia: batched float BCHW; "
-            "torchmorph: batched float32 BCHW (CUDA only); "
-            "opencv/albumentations: uint8 HWC per-image loop (CPU); scikit-image: uint8 per-image, per-channel loop"
+            (
+                f"{KERNEL_SIZE}x{KERNEL_SIZE} square element; kornia: batched float BCHW; "
+                "torchmorph: batched float32 BCHW (CUDA only); "
+                "opencv/albumentations: uint8 HWC per-image loop (CPU); scikit-image: uint8 per-image, per-channel loop"
+            )
         ],
         missing=[(name, err) for lib, name, err in libs if lib is None],
     )

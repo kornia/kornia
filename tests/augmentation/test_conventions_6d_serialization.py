@@ -100,29 +100,25 @@ class TestConventionMix3DSerialization(BaseTester):
             replayed, _ = restored(image, mask, params=restored._params, data_keys=["input", "mask"])
             self.assert_close(replayed, expected, rtol=0, atol=0)
 
-    @pytest.mark.parametrize("name", ["AutoAugment", "RandAugment", "TrivialAugment"])
-    def test_wart_auto_policies_cannot_be_pickled_4469(self, name):
-        kwargs = {"n": 2, "m": 15} if name == "RandAugment" else {}
-        augmentation = getattr(A, name)(**kwargs)
-        with pytest.raises(AttributeError, match="local object"):
-            pickle.dumps(augmentation)
-
-    @pytest.mark.parametrize("name", ["AutoAugment", "RandAugment", "TrivialAugment"])
-    def test_convention_a_posterize_only_policy_can_be_pickled(self, name):
-        # A policy pickles when every wrapper in it does; Posterize passes a named mapping and no sign flip.
-        entry = ("posterize", 1.0, 3) if name == "AutoAugment" else ("posterize", 0.0, 4)
+    @pytest.mark.parametrize(
+        "name,policy",
+        [
+            ("AutoAugment", [[("posterize", 1.0, 3)]]),
+            ("RandAugment", [[("posterize", 0.0, 4)]]),
+            ("TrivialAugment", [[("posterize", 0.0, 4)]]),
+            ("AutoAugment", [[]]),
+        ],
+        ids=["autoaugment-posterize", "randaugment-posterize", "trivialaugment-posterize", "autoaugment-empty"],
+    )
+    def test_convention_a_closure_free_policy_can_be_pickled(self, name, policy):
+        # A policy pickles when every wrapper in it does: Posterize has a named mapping and no sign flip, and an
+        # empty sub-policy has no wrapper at all.
         kwargs = {"n": 1, "m": 15} if name == "RandAugment" else {}
-        augmentation = getattr(A, name)(policy=[[entry]], **kwargs)
+        augmentation = getattr(A, name)(policy=policy, **kwargs)
         image = torch.rand(2, 3, 4, 4)
         expected = augmentation(image)
         restored = pickle.loads(pickle.dumps(augmentation))  # noqa: S301
         self.assert_close(restored(image, params=restored._params), expected, rtol=0, atol=0)
-
-    def test_convention_empty_autoaugment_policy_can_be_pickled(self):
-        # With no operation wrappers, there is no local magnitude function blocking pickle.
-        augmentation = A.AutoAugment(policy=[[]])
-        image = torch.rand(2, 1, 4, 4)
-        augmentation(image)
-        restored = pickle.loads(pickle.dumps(augmentation))  # noqa: S301
-        self.assert_close(restored(image, params=restored._params), image, rtol=0, atol=0)
-        assert restored.transform_matrix is None
+        if policy == [[]]:
+            self.assert_close(expected, image, rtol=0, atol=0)
+            assert restored.transform_matrix is None
