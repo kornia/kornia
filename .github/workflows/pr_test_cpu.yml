@@ -183,7 +183,7 @@ jobs:
         model-weights-
 
   # Single blocking MPS leg: newest Python, float32, on an Apple-silicon image.
-  # The exact known-failure baseline is pinned as strict xfails (see #4159): a new failure,
+  # The exact known-failure baseline is pinned as strict xfails (history in #4159): a new failure,
   # changed failure, skipped pin, or fixed pin makes the job red and requires review. The
   # torch pin tracks the newest pin of the CPU matrix so the leg resolves the locked
   # dependency set; changing it means re-recording the manifest in the same change, because

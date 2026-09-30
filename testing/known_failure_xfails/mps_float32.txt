@@ -4,7 +4,8 @@
 # 43 xfailed, 9 xpassed in 425.15s. It recorded 12 entries; #5078 fixed them all, so the manifest is empty.
 # macos-15-arm64, Python 3.13.11, PyTorch 2.14.0, MPS float32, no CPU fallback,
 # one pytest process for the full suite (tests marked device_agnostic are deselected on an mps-only run).
-# Remove an entry when it becomes a strict XPASS; fix or explicitly add any new failure. Tracked in #4159.
+# Remove an entry when it becomes a strict XPASS; fix any new failure, or add it with a comment naming its own
+# tracking issue. #4159 tracked the baseline from 605 entries to none and is closed.
 # torch 2.14.0 added MPS kernels for the eigen/QR/LU/SVD family and for both grid_sample backward
 # passes, which took the baseline from 200 entries to 14. #4185 then fixed the two YUV420/YUV422
 # empty-input failures, leaving 12 entries, all from aten::_linalg_eigvals, which has no MPS kernel: the
