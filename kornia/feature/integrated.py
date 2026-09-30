@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 import warnings
 from typing import ClassVar, Dict, List, Literal, Optional, Tuple, Union
 
@@ -22,7 +23,6 @@ import torch
 from torch import nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
 from kornia.core.utils import is_exporting
 from kornia.geometry.subpix import ConvQuadInterp3d
@@ -733,9 +733,9 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         else:
             hw2_ = torch.tensor(hw2, device=dev)
         ori0 = torch.deg2rad(get_laf_orientation(lafs1).reshape(1, -1))
-        ori0[ori0 < 0] += 2.0 * pi
+        ori0[ori0 < 0] += 2.0 * math.pi
         ori1 = torch.deg2rad(get_laf_orientation(lafs2).reshape(1, -1))
-        ori1[ori1 < 0] += 2.0 * pi
+        ori1[ori1 < 0] += 2.0 * math.pi
         input_dict = {
             "image0": {
                 "keypoints": keypoints1,

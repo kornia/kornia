@@ -15,12 +15,12 @@
 # limitations under the License.
 #
 
+import math
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from torch import nn
 
-from kornia.constants import pi
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.utils import _l2_normalize
 from kornia.filters import GaussianBlur2d, SpatialGradient
@@ -257,7 +257,7 @@ class EmbedGradients(nn.Module):
 
 def spatial_kernel_embedding(kernel_type: str, grids: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute embeddings for cartesian and polar parametrizations."""
-    factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
+    factors = {"phi": 1.0, "rho": math.pi / sqrt2, "x": math.pi / 2, "y": math.pi / 2}
     if kernel_type == "cart":
         coeffs_ = "xy"
         params_ = ["x", "y"]

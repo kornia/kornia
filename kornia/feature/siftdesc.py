@@ -22,7 +22,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
@@ -67,7 +66,7 @@ def _gradient_magnitude_orientation(
     sq = gx * gx + gy * gy
     nonzero = sq > 0
     mag = torch.where(nonzero, torch.sqrt(sq + eps), torch.zeros_like(sq))
-    ori = torch.where(nonzero, torch.atan2(gy, gx + eps) + 2.0 * pi, torch.full_like(sq, 2.0 * pi))
+    ori = torch.where(nonzero, torch.atan2(gy, gx + eps) + 2.0 * math.pi, torch.full_like(sq, 2.0 * math.pi))
     return mag.to(dtype), ori.to(dtype)
 
 
@@ -82,7 +81,7 @@ def _dense_sift_histograms_from_gradients(
     descriptor tensor.
     """
     mag, ori = _gradient_magnitude_orientation(gx, gy, eps)
-    o_big = float(num_ang_bins) * ori / (2.0 * pi)
+    o_big = float(num_ang_bins) * ori / (2.0 * math.pi)
     bo0 = torch.floor(o_big)
     w1 = o_big - bo0
     bo0 = bo0 % num_ang_bins
@@ -246,7 +245,7 @@ class SIFTDescriptor(nn.Module):
 
         mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         mag = mag * self.gk.expand_as(mag).type_as(mag).to(mag.device)
-        o_big = float(self.num_ang_bins) * ori / (2.0 * pi)
+        o_big = float(self.num_ang_bins) * ori / (2.0 * math.pi)
 
         bo0_big_ = torch.floor(o_big)
         wo1_big_ = o_big - bo0_big_
