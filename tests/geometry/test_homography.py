@@ -137,6 +137,18 @@ class TestLineSegmentOneWayError(BaseTester):
         expected = torch.tensor([0.0, 0.70710678, 0.70710678], device=device, dtype=dtype)[None]
         self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected, atol=1e-4, rtol=1e-4)
 
+    def test_zero_length_segment(self, device, dtype):
+        # A zero-length image-2 segment defines no line: its (a, b) is zero, so the line is left unscaled and the
+        # error reads 0 instead of 0 / 0, with finite gradients. The next segment is 1 px from its line.
+        ls1 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]], [[0.0, 0.0], [1.0, 0.0]]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[2.0, 3.0], [2.0, 3.0]], [[0.0, 1.0], [1.0, 1.0]]]], device=device, dtype=dtype)
+        ls2.requires_grad_()
+        H = torch.eye(3, device=device, dtype=dtype)[None]
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        self.assert_close(error, torch.tensor([[0.0, 1.0]], device=device, dtype=dtype))
+        error.sum().backward()
+        assert torch.isfinite(ls2.grad).all()
+
 
 class TestSymmetricTransferError(BaseTester):
     def test_smoke(self, device, dtype):
@@ -1256,7 +1268,7 @@ class TestConventionHomography(BaseTester):
         weights[0, 3] = 0.0
         assert _transfer_max(find_homography_lines_dlt(ls1, ls2_out, weights), p1, p2) < tol
 
-    def test_wart_line_segment_error_scales_with_length_4867(self, device, dtype):
+    def test_convention_line_segment_error_is_pixel_distance_4867(self, device, dtype):
         _skip_half(dtype, _HALF_LINES)
         p1, _, H = _planar(device, dtype)
         short = p1[:, [1, 7]].reshape(1, 1, 2, 2)
