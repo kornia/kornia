@@ -540,7 +540,7 @@ class TestAngleAxisToQuaternion(BaseTester):
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert quaternion.shape == (4,)
 
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         axis_angle = torch.zeros(batch_size, 3, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
@@ -594,7 +594,7 @@ class TestAngleAxisToQuaternion(BaseTester):
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("input_dtype", (torch.int16, torch.int32, torch.int64, torch.uint8))
+    @pytest.mark.parametrize("input_dtype", [torch.int16, torch.int32, torch.int64, torch.uint8])
     def test_convention_integer_input_is_promoted_to_float_3948(self, input_dtype, device):
         # Convention, and the answer kornia#3948 settled: an integer axis-angle is PROMOTED, not
         # rejected. The output buffer used to be allocated with dtype=axis_angle.dtype, so an
@@ -621,7 +621,7 @@ class TestAngleAxisToQuaternion(BaseTester):
         expected = torch.tensor((np.cos(0.5), np.sin(0.5), 0.0, 0.0), device=device, dtype=quaternion.dtype)
         self.assert_close(quaternion, expected, atol=1.0e-4, rtol=1.0e-4)
 
-    @pytest.mark.parametrize("input_dtype", (torch.float16, torch.bfloat16, torch.float32, torch.float64))
+    @pytest.mark.parametrize("input_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_convention_float_input_keeps_its_dtype_3948(self, input_dtype, device):
         # The other side of the #3948 buffer change, and the regression it could have introduced:
         # taking the buffer dtype from the computed values must NOT widen a float input. float16
@@ -910,7 +910,7 @@ class TestQuaternionToAngleAxis(BaseTester):
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         assert axis_angle.shape == (3,)
 
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
@@ -1040,7 +1040,7 @@ class TestQuaternionToAngleAxis(BaseTester):
 
 
 class TestRotationMatrixToQuaternion(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         matrix = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
@@ -1324,7 +1324,7 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
 
 class TestQuaternionToRotationMatrix(BaseTester):
-    @pytest.mark.parametrize("batch_dims", ((), (1,), (3,), (8,), (1, 1), (5, 6)))
+    @pytest.mark.parametrize("batch_dims", [(), (1,), (3,), (8,), (1, 1), (5, 6)])
     def test_smoke_batch(self, batch_dims, device, dtype):
         quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
@@ -1638,7 +1638,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
 
 
 class TestQuaternionLogToExp(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         quaternion_log = torch.zeros(batch_size, 3, device=device, dtype=dtype)
         quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log)
@@ -1791,7 +1791,7 @@ class TestQuaternionLogToExp(BaseTester):
 
 
 class TestQuaternionExpToLog(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.zeros(batch_size, 4, device=device, dtype=dtype)
@@ -2056,7 +2056,7 @@ class TestQuaternionExpToLog(BaseTester):
 
 
 class TestAngleAxisToRotationMatrix(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rand_axis_angle_gradcheck(self, batch_size, device, atol, rtol):
         dtype = torch.float64
         # generate input data
@@ -2417,7 +2417,7 @@ class TestAngleAxisToRotationMatrix(BaseTester):
 
 
 class TestRotationMatrixToAngleAxis(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rand_quaternion_gradcheck(self, batch_size, device, dtype, atol, rtol):
         # generate input data
         quaternion = torch.rand(batch_size, 4, device=device, dtype=dtype)
@@ -5438,7 +5438,7 @@ class TestEulerFromQuaternion(BaseTester):
         assert roll.shape == pitch.shape
         assert pitch.shape == yaw.shape
 
-    @pytest.mark.parametrize("batch_size", ((1, 3, 4)))
+    @pytest.mark.parametrize("batch_size", ([1, 3, 4]))
     def test_cardinality(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size=batch_size)
         q = q.to(device, dtype)
@@ -5780,7 +5780,7 @@ class TestQuaternionFromEuler(BaseTester):
         assert qx.shape == qy.shape
         assert qy.shape == qz.shape
 
-    @pytest.mark.parametrize("batch_size", ((1, 3, 4)))
+    @pytest.mark.parametrize("batch_size", ([1, 3, 4]))
     def test_cardinality(self, device, dtype, batch_size):
         roll, pitch, yaw = torch.rand(3, batch_size, device=device, dtype=dtype)
         qw, qx, qy, qz = quaternion_from_euler(roll, pitch, yaw)
@@ -5927,7 +5927,7 @@ class TestQuaternionFromEuler(BaseTester):
         assert (rot - rot_x @ rot_z @ rot_y).abs().max() > 0.2
 
 
-@pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+@pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
 def test_vector_to_skew_symmetric_matrix(batch_size, device, dtype):
     if batch_size is None:
         vector = torch.rand(3, device=device, dtype=dtype)
