@@ -554,6 +554,7 @@ class TestAugmentationAudit(BaseTester):
         [
             ((4, 8), None, False),
             ((4, 8), (1, 2), False),
+            ((4, 8), (1, 2, 3, 0), False),
             ((6, 10), (1, 2, 3, 0), False),
             ((8, 12), None, True),
         ],
