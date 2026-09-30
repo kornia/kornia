@@ -79,8 +79,9 @@ def laplacian(
 
           - ``kernel_size=1`` passes validation, and the normalised :math:`1 \times 1` kernel is ``0 / 0``, so the
             output is all NaN (`#5175 <https://github.com/kornia/kornia/issues/5175>`_).
-          - a uint8 input builds the kernel in uint8, where the centre ``1 - 9`` wraps to ``248``, so the result
-            is wrong (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+          - an integer input casts the kernel to its dtype, as :func:`~kornia.filters.filter2d` does, so the
+            normalised kernel truncates to 0 and the output is all zeros
+            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
           - ``border_type`` is checked case-insensitively but used as given, so ``'REFLECT'`` raises
             (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
 
@@ -91,10 +92,6 @@ def laplacian(
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         normalized: if True, L1 norm of the kernel is set to 1.
-
-    Note:
-        Ordinary eager CPU execution uses convolution for extreme input ranges.
-        Captured graphs and function transforms retain their selected arithmetic.
 
     Return:
         the Laplacian response with shape :math:`(B, C, H, W)`.

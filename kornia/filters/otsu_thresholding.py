@@ -217,16 +217,15 @@ def otsu_threshold(
           - the minimum and maximum are taken over the whole input, so every plane is histogrammed on the joint
             range and its threshold depends on the other images and channels in the call
             (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
-          - the threshold is read from ``linspace(min, max, nbins)`` instead of the histogram's bin edges, so it
-            sits up to one bin above the chosen split: at ``nbins=2`` it is the data maximum and nothing is kept
+          - the threshold is read from ``linspace(min, max, nbins)``, not the histogram's bin edges, so it sits up to
+            one bin above the split; at ``nbins=2`` nothing is kept
             (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
           - a constant plane, which has no split, gets the threshold 0 whatever its value
             (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
           - ``return_mask=True`` returns ``result > 0``, so foreground pixels of value 0 or below are reported as
             background (`#5173 <https://github.com/kornia/kornia/issues/5173>`_).
-          - ``slow_and_differentiable=True`` only replaces the histogram with a kernel density estimate of fixed
-            bandwidth ``1e-3`` in input units: the threshold still has no gradient, and the estimate misses the
-            pixels lying more than a few bandwidths from each of its ``nbins`` sample points
+          - ``slow_and_differentiable=True`` only swaps in a kernel density estimate of fixed bandwidth ``1e-3``: the
+            threshold still has no gradient, and pixels far from the ``nbins`` sample points are missed
             (`#5174 <https://github.com/kornia/kornia/issues/5174>`_).
 
     Args:

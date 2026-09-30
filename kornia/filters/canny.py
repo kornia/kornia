@@ -96,12 +96,10 @@ def canny(
           nothing changes, and returns edges of 0 and 1.
         - Known defects:
 
-          - suppression needs a pixel strictly greater than both neighbours, so the two equal pixels on either
-            side of a step between two constant regions are both dropped and the step yields no edge; with the
-            blur, rounding decides whether one survives (`#5170 <https://github.com/kornia/kornia/issues/5170>`_).
-          - both thresholds must lie in :math:`(0, 1)`, although without the blur a unit step reaches a magnitude
-            of 4, so every step higher than 0.25 passes any threshold that can be set
-            (`#5171 <https://github.com/kornia/kornia/issues/5171>`_).
+          - a step between two constant regions yields no edge: suppression drops both of its equal-magnitude
+            pixels, and after the blur rounding decides (`#5170 <https://github.com/kornia/kornia/issues/5170>`_).
+          - both thresholds must lie in :math:`(0, 1)`, so without the blur no threshold can reject a step higher
+            than 0.25, whose magnitude exceeds 1 (`#5171 <https://github.com/kornia/kornia/issues/5171>`_).
           - a channel count other than 1 or 3 is not validated and fails with a raw torch error
             (`#5171 <https://github.com/kornia/kornia/issues/5171>`_).
 
