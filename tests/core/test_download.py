@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import warnings
+from collections.abc import Callable
 from email.message import Message
 from email.utils import formatdate
 from pathlib import Path
@@ -1183,6 +1184,18 @@ class _CreatesMarkerOnLoad:
         return (_create_marker, (str(self.marker),))
 
 
+def _load_without_running_payload(marker: Path, load: Callable[[], object]) -> object:
+    """Return ``load()``, failing if *marker* exists afterwards, whether ``load`` returned or raised.
+
+    Checking in ``finally`` puts the payload having run ahead of whatever the loader then
+    returns or raises, so a loader that executes it fails on exactly that.
+    """
+    try:
+        return load()
+    finally:
+        assert not marker.exists(), "loading the checkpoint ran a callable pickled into it"
+
+
 @pytest.fixture
 def local_server(monkeypatch):
     """Serve in-memory files over HTTP from a thread bound to 127.0.0.1.
@@ -1252,20 +1265,18 @@ class TestWeightsOnly(BaseTester):
         marker = tmp_path / "marker"
         files["/model.pth"] = _checkpoint_bytes({"weight": torch.zeros(2), "extra": _CreatesMarkerOnLoad(marker)})
 
+        urls = [url(s) for s in sources]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # the dead primary's "Trying next source"
             with pytest.raises(RuntimeError) as excinfo:
-                try:
-                    load_state_dict_from_url([url(s) for s in sources], model_dir=str(tmp_path / "cache"))
-                finally:
-                    # Checked before the exception, so a loader that runs the payload fails
-                    # on that -- the property under test -- whatever it goes on to do.
-                    assert not marker.exists(), "loading the checkpoint ran a callable pickled into it"
+                _load_without_running_payload(
+                    marker, lambda: load_state_dict_from_url(urls, model_dir=str(tmp_path / "cache"))
+                )
 
         assert isinstance(excinfo.value.__cause__, pickle.UnpicklingError)
 
     def test_a_poisoned_cache_entry_is_refused_and_refetched(self, local_server, tmp_path, dtype) -> None:
-        """The cache is a second way in: anything that can write it chooses what gets loaded."""
+        """A cached file is loaded under the same rule as a downloaded one, and a refused entry is refetched."""
         files, url, hits = local_server
         marker = tmp_path / "marker"
         good = {"weight": torch.arange(6, dtype=dtype).reshape(2, 3)}
@@ -1274,9 +1285,10 @@ class TestWeightsOnly(BaseTester):
         cache.mkdir()
         (cache / "model.pth").write_bytes(_checkpoint_bytes({"extra": _CreatesMarkerOnLoad(marker)}))
 
-        result = load_state_dict_from_url(url("/model.pth"), model_dir=str(cache))
+        result = _load_without_running_payload(
+            marker, lambda: load_state_dict_from_url(url("/model.pth"), model_dir=str(cache))
+        )
 
-        assert not marker.exists(), "loading the cached checkpoint ran a callable pickled into it"
         self.assert_close(result["weight"], good["weight"])
         assert hits["/model.pth"] == 1
 

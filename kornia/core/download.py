@@ -600,15 +600,15 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     attempt before the next source is tried.
 
     The checkpoint is loaded with ``weights_only=True`` unless the caller passes
-    ``weights_only=False``. This differs from the torch function, whose default is
-    ``False`` on every torch version kornia supports: ``torch.load`` then restricts
-    unpickling to tensors, primitive types and plain containers, so loading a
-    checkpoint cannot execute code stored in it, as ``torch.load`` does by default
-    since torch 2.6. A checkpoint that stores another type fails to load with a
-    :class:`RuntimeError` chained to ``torch.load``'s :class:`pickle.UnpicklingError`
-    naming that type. Allowlist the type for the call with
-    ``torch.serialization.safe_globals([...])``, or pass ``weights_only=False`` --
-    and only for a file you trust, because unpickling it can run arbitrary code.
+    ``weights_only=False``; the torch function defaults to ``False`` on every torch
+    version kornia supports. ``torch.load`` then unpickles only tensors, primitive
+    types and plain containers, so loading a checkpoint does not execute code
+    stored in it, which is also ``torch.load``'s own default since torch 2.6. A
+    checkpoint that stores any other type fails with a :class:`RuntimeError`
+    chained to the :class:`pickle.UnpicklingError` that names the type. Allowlist
+    the type for the call with ``torch.serialization.safe_globals([...])``, or pass
+    ``weights_only=False``, but only for a file you trust, because unpickling it
+    can run arbitrary code.
 
     Progress reporting is written to :data:`sys.stderr`. This is the one
     deliberate deviation from the torch function, which since torch 2.x writes

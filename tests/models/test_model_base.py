@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import pickle
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import patch
 
@@ -229,6 +230,14 @@ class _CreatesMarkerOnLoad:
         return (_create_marker, (str(self.marker),))
 
 
+def _load_without_running_payload(marker: Path, load: Callable[[], object]) -> object:
+    """Return ``load()``, failing if *marker* exists afterwards, whether ``load`` returned or raised."""
+    try:
+        return load()
+    finally:
+        assert not marker.exists(), "loading the checkpoint ran a callable pickled into it"
+
+
 class _TinyModel(ModelBase[None]):
     def __init__(self) -> None:
         super().__init__()
@@ -247,12 +256,9 @@ class TestModelBaseLoadCheckpoint(BaseTester):
         path = tmp_path / "model.pth"
         torch.save({**_TinyModel().state_dict(), "extra": _CreatesMarkerOnLoad(marker)}, path)
 
+        model = _TinyModel()
         with pytest.raises(pickle.UnpicklingError):
-            try:
-                _TinyModel().load_checkpoint(str(path))
-            finally:
-                # Checked before the exception, so a loader that runs the payload fails on that.
-                assert not marker.exists(), "loading the checkpoint ran a callable pickled into it"
+            _load_without_running_payload(marker, lambda: model.load_checkpoint(str(path)))
 
     def test_a_local_state_dict_loads(self, tmp_path, dtype) -> None:
         source = _TinyModel().to(dtype)
