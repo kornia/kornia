@@ -283,7 +283,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         padding_size: Optional[List[int]] = None
-        if is_exporting():
+        if is_exporting() or is_compiling():
             # ``padding_size`` is a function of the input shape (see ``forward_parameters``), so let
             # ``precrop_padding`` recompute it from the static shape instead of reading the tensor back.
             padding_size = None

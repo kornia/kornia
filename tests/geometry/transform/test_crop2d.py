@@ -558,15 +558,23 @@ class TestCropByIndices(BaseTester):
         self.assert_close(kornia.geometry.transform.crop_by_indices(inp, indices), expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        # Define script
         op = kornia.geometry.transform.crop_by_indices
-        op_script = torch_optimizer(op)
-        # Define input
-        img = torch.ones(1, 2, 5, 4, device=device, dtype=dtype)
+        img = torch.randn(4, 3, 64, 64, device=device, dtype=dtype)
+        src_box = torch.tensor(
+            [
+                [[0, 0], [32, 0], [32, 32], [0, 32]],
+                [[8, 4], [40, 4], [40, 36], [8, 36]],
+                [[16, 8], [48, 8], [48, 40], [16, 40]],
+                [[4, 16], [36, 16], [36, 48], [4, 48]],
+            ],
+            device=device,
+            dtype=torch.int64,
+        )
 
-        actual = op_script(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
-        expected = op(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
-        self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+        expected = op(img, src_box, size=(32, 32))
+        actual = torch_optimizer(op, fullgraph=True)(img, src_box, size=(32, 32))
+
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
 
     @pytest.mark.parametrize("size", [(2, 3), None])
     def test_crop_by_indices_empty_batch(self, size, device, dtype):

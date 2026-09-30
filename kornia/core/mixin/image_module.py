@@ -18,7 +18,6 @@
 import datetime
 import math
 import os
-from functools import wraps
 from typing import Any, Callable, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -56,7 +55,6 @@ class ImageModuleMixIn:
         self._check_output_type(output_type)
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
-            @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
                 # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:

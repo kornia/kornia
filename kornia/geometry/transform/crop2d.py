@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.constants import Resample
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
 
 from .affwarp import resize
@@ -486,6 +486,8 @@ def crop_by_indices(
 
     if size is not None and is_exporting():
         return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
+    if size is not None and is_compiling():
+        return _crop_by_indices_compile(input_tensor, src_box, size, interpolation)
 
     # Move the four coordinate columns to Python in a single device sync (one ``tolist`` over a
     # stacked tensor) instead of a ``unique`` per column plus a device-to-host ``int(...)`` inside
@@ -565,6 +567,57 @@ def _crop_by_indices_export(
     ).expand(src_box.shape[0], -1, -1)
     return _crop_by_boxes_to_size(
         input_tensor, src_box.to(input_tensor), points_dst, size, interpolation, "zeros", align_corners=True
+    )
+
+
+def _crop_by_indices_compile(
+    input_tensor: torch.Tensor,
+    src_box: torch.Tensor,
+    size: Tuple[int, int],
+    interpolation: str,
+) -> torch.Tensor:
+    # Compile path: reproduce the eager integer slice followed by resize without
+    # converting tensor coordinates to Python values. crop_by_indices uses inclusive
+    # bottom/right coordinates, so the effective slice size is (y2-y1+1, x2-x1+1).
+    if interpolation not in ("bilinear", "nearest", "bicubic"):
+        raise ValueError(
+            f"`crop_by_indices` can compile with bilinear, nearest or bicubic interpolation. Got {interpolation}."
+        )
+
+    dst_h, dst_w = size
+    src = src_box.to(input_tensor)
+
+    x1 = src[:, 0, 0]
+    y1 = src[:, 0, 1]
+    x2 = src[:, 1, 0] + 1
+    y2 = src[:, 3, 1] + 1
+
+    crop_h = y2 - y1
+    crop_w = x2 - x1
+
+    yy = (torch.arange(dst_h, device=input_tensor.device, dtype=input_tensor.dtype) + 0.5).view(1, dst_h, 1)
+    xx = (torch.arange(dst_w, device=input_tensor.device, dtype=input_tensor.dtype) + 0.5).view(1, 1, dst_w)
+
+    src_y = y1[:, None, None] + yy * crop_h[:, None, None] / dst_h - 0.5
+    src_x = x1[:, None, None] + xx * crop_w[:, None, None] / dst_w - 0.5
+
+    grid_x = 2.0 * (src_x + 0.5) / input_tensor.shape[-1] - 1.0
+    grid_y = 2.0 * (src_y + 0.5) / input_tensor.shape[-2] - 1.0
+
+    grid = torch.stack(
+        [
+            grid_x.expand(-1, dst_h, -1),
+            grid_y.expand(-1, -1, dst_w),
+        ],
+        dim=-1,
+    )
+
+    return F.grid_sample(
+        input_tensor,
+        grid,
+        mode=interpolation,
+        padding_mode="zeros",
+        align_corners=False,
     )
 
 

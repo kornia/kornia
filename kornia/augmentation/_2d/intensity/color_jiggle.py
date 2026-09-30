@@ -110,6 +110,57 @@ def _dispatch_color_steps(
     return output.clone() if output is input else output
 
 
+def _apply_sampled_order_cond(
+    order: torch.Tensor, input: torch.Tensor, factors: Tuple[torch.Tensor, ...]
+) -> torch.Tensor:
+    """Apply sampled color operations without tensor-to-Python conversion."""
+
+    brightness_factor, contrast_factor, saturation_factor, hue_factor = factors
+
+    def apply_step(index: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+        operands = (value, brightness_factor, contrast_factor, saturation_factor, hue_factor)
+
+        def apply_brightness(
+            value: torch.Tensor,
+            brightness: torch.Tensor,
+            contrast: torch.Tensor,
+            saturation: torch.Tensor,
+            hue: torch.Tensor,
+        ) -> torch.Tensor:
+            return adjust_brightness(value, brightness - 1)
+
+        def apply_other(
+            value: torch.Tensor,
+            brightness: torch.Tensor,
+            contrast: torch.Tensor,
+            saturation: torch.Tensor,
+            hue: torch.Tensor,
+        ) -> torch.Tensor:
+            return torch.cond(
+                index == 1,
+                lambda value, brightness, contrast, saturation, hue: adjust_contrast(value, contrast),
+                lambda value, brightness, contrast, saturation, hue: torch.cond(
+                    index == 2,
+                    lambda value, brightness, contrast, saturation, hue: adjust_saturation(value, saturation),
+                    lambda value, brightness, contrast, saturation, hue: adjust_hue(value, hue * 2 * math.pi),
+                    (value, brightness, contrast, saturation, hue),
+                ),
+                (value, brightness, contrast, saturation, hue),
+            )
+
+        return torch.cond(
+            index == 0,
+            apply_brightness,
+            apply_other,
+            operands,
+        )
+
+    for i in range(4):
+        input = apply_step(order[i], input)
+
+    return input
+
+
 def _brightness_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
     return adjust_brightness(input, factor - 1)
 
@@ -242,6 +293,16 @@ class ColorJiggle(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # A random order is stored as a tensor. Avoid converting it to Python values while compiling.
+        if torch.compiler.is_compiling() and self._fixed_order is None and input.shape[-3] == 3:
+            factors = (
+                params["brightness_factor"],
+                params["contrast_factor"],
+                params["saturation_factor"],
+                params["hue_factor"],
+            )
+            return _apply_sampled_order_cond(params["order"], input, factors)
+
         # A fixed order runs the same torch.cond dispatcher in eager and compiled mode. Every torch.cond
         # branch is traced, including branches that are not selected at runtime, so the dispatcher is
         # restricted to RGB inputs: tracing the hue/saturation branches would otherwise reject the neutral
