@@ -16,6 +16,7 @@
 #
 
 import copy
+import pickle
 
 import pytest
 import torch
@@ -24,7 +25,7 @@ from kornia.core.check import BaseError
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector2, Vector3
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestVector3(BaseTester):
@@ -293,9 +294,9 @@ class TestConventionsVector(BaseTester):
         expected_squared_norm = [5.0, 41.0] if dim == 2 else [14.0, 77.0]
         self.assert_close(squared_norm.data, torch.tensor(expected_squared_norm, device=device, dtype=dtype))
 
-    def test_wart_vector3_call_path_type_split_5022(self, device, dtype):
-        # Wart pin (#5022): deepcopy and tensor methods lose the wrapper, while torch functions rewrap their result.
-        # A shape-changing torch function then fails Vector3 validation. Each part flips when its path is fixed.
+    def test_convention_vector_deepcopy_keeps_the_class_5022(self, device, dtype):
+        # copy.deepcopy, copy.copy and pickle all return the wrapper's own class, so a deep-copied Hyperplane keeps
+        # a Vector3 normal and a Scalar offset and measures the same distances.
         wrapped = (
             Vector3(torch.tensor([[0.3, -1.2, 2.5]], device=device, dtype=dtype)),
             Vector2(torch.tensor([[0.3, -1.2]], device=device, dtype=dtype)),
@@ -304,8 +305,55 @@ class TestConventionsVector(BaseTester):
         for obj in wrapped:
             assert type(copy.copy(obj)) is type(obj)
             deep = copy.deepcopy(obj)
-            assert type(deep) is torch.Tensor
-            self.assert_close(deep, obj.data)
+            assert type(deep) is type(obj)
+            self.assert_close(deep.data, obj.data, rtol=0, atol=0)
+            assert deep.data.data_ptr() != obj.data.data_ptr()
+            assert type(pickle.loads(pickle.dumps(obj))) is type(obj)  # noqa: S301
+
+        normal = Vector3(torch.tensor([2.0, 1.0, -2.0], device=device, dtype=dtype) / 3.0)
+        point = Vector3(torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype))
+        plane = Hyperplane.from_vector(normal, point)
+        copied = copy.deepcopy(plane)
+        assert type(copied.normal) is Vector3
+        assert type(copied.offset) is Scalar
+        self.assert_close(copied.normal.x, plane.normal.x, rtol=0, atol=0)
+        query = Vector3(torch.tensor([[0.0, 0.0, 1.0], [2.0, -1.0, 0.5]], device=device, dtype=dtype))
+        self.assert_close(copied.signed_distance(query).data, plane.signed_distance(query).data, rtol=0, atol=0)
+
+    def test_convention_vector_operators_keep_the_class(self, device, dtype):
+        # Reflected and in-place operators follow TensorWrapper's rule: the result is wrapped in the class of the
+        # operand that handled it, and an in-place operator updates the wrapped tensor, so an alias sees it.
+        data = torch.tensor([[0.5, 1.5, 2.0], [1.0, 3.0, 0.75]], device=device, dtype=dtype)
+        v = Vector3(data.clone())
+        reflected = 2 / v
+        assert type(reflected) is Vector3
+        self.assert_close(reflected.data, 2 / data, rtol=0, atol=0)
+        alias = v
+        v += 1
+        assert v is alias
+        assert type(v) is Vector3
+        self.assert_close(alias.data, data + 1, rtol=0, atol=0)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_eager_backend_traces_vector_arithmetic(self, device, dtype):
+        def fn(t):
+            v = Vector3(t.clone())
+            v += 1
+            return (2 / v + v**2 + Vector3(t)).data
+
+        torch._dynamo.reset()
+        data = torch.tensor([[0.5, 1.5, 2.0], [1.0, 3.0, 0.75]], device=device, dtype=dtype)
+        self.assert_close(torch.compile(fn, backend="eager", fullgraph=True)(data), fn(data))
+
+    def test_wart_vector3_call_path_type_split_5022(self, device, dtype):
+        # Wart pin (#5022): tensor methods lose the wrapper, while torch functions rewrap their result. A
+        # shape-changing torch function then fails Vector3 validation. Each part flips when its path is fixed.
+        wrapped = (
+            Vector3(torch.tensor([[0.3, -1.2, 2.5]], device=device, dtype=dtype)),
+            Vector2(torch.tensor([[0.3, -1.2]], device=device, dtype=dtype)),
+            Scalar(torch.tensor([2.5], device=device, dtype=dtype)),
+        )
+        for obj in wrapped:
             assert type(obj.clone()) is torch.Tensor
             assert type(torch.clone(obj)) is type(obj)
 
@@ -316,17 +364,6 @@ class TestConventionsVector(BaseTester):
         reduced = torch.linalg.norm(lucky_shape, dim=-1)
         assert type(reduced) is Vector3
         assert reduced.data.shape == (3,)
-
-        normal = Vector3(torch.tensor([2.0, 1.0, -2.0], device=device, dtype=dtype) / 3.0)
-        point = Vector3(torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype))
-        plane = Hyperplane.from_vector(normal, point)
-        assert isinstance(plane.normal, Vector3)
-        assert isinstance(plane.offset, Scalar)
-        copied = copy.deepcopy(plane)
-        assert type(copied.normal) is torch.Tensor
-        assert type(copied.offset) is torch.Tensor
-        with pytest.raises(AttributeError):
-            _ = copied.normal.x
 
     def test_wart_vector3_normalized_scales_below_eps_3952(self, device, dtype):
         # Wart pin (#3952): normalized() divides by max(norm, 1e-12), so a vector shorter than 1e-12 is scaled by 1e12

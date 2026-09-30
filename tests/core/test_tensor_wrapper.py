@@ -15,13 +15,17 @@
 # limitations under the License.
 #
 
+import copy
+import operator
+import pickle
+
 import pytest
 import torch
 
 from kornia.core.exceptions import TypeCheckError
 from kornia.core.tensor_wrapper import TensorWrapper, _unwrap, _wrap
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestTensorWrapper(BaseTester):
@@ -278,6 +282,215 @@ class TestTensorWrapper(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
-        pass
+        # No entry is an integer, where ``% 1.0`` jumps.
+        x = torch.tensor([[0.5, 1.25, 2.5], [1.75, 3.5, 0.75]], device=device)
+
+        def fn(t):
+            w = TensorWrapper(t)
+            return (2 / w + w**2 - abs(-w) % 1.0 + (w @ w.T).sum()).unwrap()
+
+        self.gradcheck(fn, (x,))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        x = torch.tensor([[0.5, 1.5, 2.0], [1.0, 3.0, 0.75]], device=device, dtype=dtype)
+        compiled = torch_optimizer(_build_and_update)
+        self.assert_close(compiled(x), _build_and_update(x))
+
+
+def _build_and_update(t):
+    w = TensorWrapper(t.clone())
+    w += 1
+    w *= 2
+    return (2 / w + w**2 - abs(w) % 1.5).unwrap()
+
+
+class TestTensorWrapperProtocol(BaseTester):
+    """Attribute ownership, copying and the operator protocol (#5189, #5190)."""
+
+    def test_uninitialized_instance_raises_attribute_error(self):
+        # An instance made by ``__new__`` alone has no slots set, and Dynamo looks up ``__dict__`` on one while it
+        # traces the constructor: every lookup must raise AttributeError instead of recursing through __getattr__.
+        blank = TensorWrapper.__new__(TensorWrapper)
+        for name in ("anything", "shape", "data", "_data", "used_attrs", "used_calls", "__dict__", "__deepcopy__"):
+            with pytest.raises(AttributeError):
+                getattr(blank, name)
+
+    def test_owned_names_are_not_forwarded(self, device, dtype):
+        wrapper = TensorWrapper(torch.zeros(2, device=device, dtype=dtype))
+        for name in ("__dict__", "__copy__", "__deepcopy__", "__getnewargs__", "__getnewargs_ex__"):
+            assert not hasattr(wrapper, name)
+        assert wrapper.used_attrs == set()
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    @pytest.mark.parametrize(
+        "fn, fullgraph",
+        [
+            (lambda t: TensorWrapper(t).data, True),
+            (lambda t: TensorWrapper(t).unwrap(), True),
+            (lambda t: (TensorWrapper(t) + 1).unwrap(), True),
+            (_build_and_update, True),
+            # torch 2.5.1's Dynamo breaks the graph here, cleanly: it cannot build the wrapper inside
+            # __torch_function__ or __getitem__, look up a forwarded method, or send ``@`` to a user class.
+            (lambda t: torch.add(TensorWrapper(t), 1).unwrap(), False),
+            (lambda t: TensorWrapper(t)[0].unwrap(), False),
+            (lambda t: TensorWrapper(t).sum(), False),
+            (lambda t: (TensorWrapper(t) @ TensorWrapper(t.T)).unwrap(), False),
+        ],
+        ids=["data", "unwrap", "add", "inplace_and_reflected", "torch_add", "getitem", "method", "matmul"],
+    )
+    def test_eager_backend_traces_a_function_that_builds_a_wrapper(self, device, dtype, fn, fullgraph):
+        # The eager backend keeps this in the ordinary jobs; test_dynamo covers the optimizer backends.
+        torch._dynamo.reset()
+        x = torch.tensor([[0.5, 1.5, 2.0], [1.0, 3.0, 0.75]], device=device, dtype=dtype)
+        out = torch.compile(fn, backend="eager", fullgraph=fullgraph)(x)
+        assert type(out) is torch.Tensor
+        self.assert_close(out, fn(x))
+
+    def test_deepcopy_copy_and_pickle_keep_the_class(self, device, dtype):
+        data = torch.tensor([[0.3, -1.2, 2.5]], device=device, dtype=dtype)
+        wrapper = TensorWrapper(data)
+        _ = wrapper.shape
+
+        deep = copy.deepcopy(wrapper)
+        assert type(deep) is TensorWrapper
+        self.assert_close(deep.data, data, rtol=0, atol=0)
+        assert deep.data.data_ptr() != data.data_ptr()
+        assert deep.used_attrs == {"shape"}
+        assert deep.used_attrs is not wrapper.used_attrs
+
+        shallow = copy.copy(wrapper)
+        assert type(shallow) is TensorWrapper
+        assert shallow.data is data
+
+        restored = pickle.loads(pickle.dumps(wrapper))  # noqa: S301
+        assert type(restored) is TensorWrapper
+        self.assert_close(restored.data, data, rtol=0, atol=0)
+
+    def test_array_protocols_still_reach_the_tensor(self):
+        # Only the wrapper's own names stop at __getattr__: the DLPack and array-interface dunders are still
+        # forwarded, so converting a wrapper keeps going through the wrapped tensor's buffer.
+        data = torch.tensor([[0.3, -1.2, 2.5]])
+        wrapper = TensorWrapper(data)
+        self.assert_close(torch.from_dlpack(wrapper), data, rtol=0, atol=0)
+        assert wrapper.__array__().tolist() == data.tolist()
+
+    @pytest.mark.parametrize(
+        "op",
+        [operator.add, operator.sub, operator.mul, operator.truediv, operator.floordiv, operator.mod, operator.pow],
+    )
+    def test_arithmetic_operators_match_the_tensor(self, device, dtype, op):
+        a = torch.tensor([[1.0, 2.0, 4.0], [0.5, 3.0, 5.0]], device=device, dtype=dtype)
+        b = torch.tensor([[2.0, 0.5, 3.0], [1.5, 2.0, 0.25]], device=device, dtype=dtype)
+        wa, wb = TensorWrapper(a), TensorWrapper(b)
+        for lhs, rhs, expected in [
+            (wa, wb, op(a, b)),
+            (wa, b, op(a, b)),
+            (a, wb, op(a, b)),
+            (wa, 3, op(a, 3)),
+            (3, wa, op(3, a)),
+        ]:
+            out = op(lhs, rhs)
+            assert type(out) is TensorWrapper
+            self.assert_close(out.data, expected, rtol=0, atol=0)
+
+    def test_matmul_unary_and_conversions_match_the_tensor(self, device, dtype):
+        a = torch.tensor([[1.0, -2.0, 4.0], [0.5, 3.0, -5.0]], device=device, dtype=dtype)
+        wa = TensorWrapper(a)
+        m = torch.tensor([[1.0, 2.0], [0.5, -1.0]], device=device, dtype=dtype)
+        for out, expected in [
+            (wa @ wa.T, a @ a.T),
+            (wa @ TensorWrapper(a.T), a @ a.T),
+            (a.T @ wa, a.T @ a),
+            (wa.__rmatmul__(m), m @ a),
+            (abs(wa), abs(a)),
+            (+wa, +a),
+            (-wa, -a),
+        ]:
+            assert type(out) is TensorWrapper
+            self.assert_close(out.data, expected, rtol=0, atol=0)
+
+        element = TensorWrapper(a[1, 1])
+        assert float(element) == float(a[1, 1])
+        assert complex(element) == complex(a[1, 1])
+        assert int(element) == int(a[1, 1])
+        index = TensorWrapper(torch.tensor(2, device=device))
+        assert operator.index(index) == 2
+        assert [10, 20, 30][index] == 30
+
+    @pytest.mark.parametrize(
+        "op",
+        [operator.and_, operator.or_, operator.xor, operator.lshift, operator.rshift],
+    )
+    def test_bitwise_operators_match_the_tensor(self, device, op):
+        a = torch.tensor([12, 5, 3], device=device)
+        b = torch.tensor([10, 1, 2], device=device)
+        wa, wb = TensorWrapper(a), TensorWrapper(b)
+        for lhs, rhs, expected in [(wa, wb, op(a, b)), (wa, 1, op(a, 1)), (1, wa, op(1, a))]:
+            out = op(lhs, rhs)
+            assert type(out) is TensorWrapper
+            self.assert_close(out.data, expected, rtol=0, atol=0)
+
+        mask = TensorWrapper(a > 4)
+        out = ~mask & (wa < 13)
+        assert type(out) is TensorWrapper
+        assert out.data.tolist() == (~(a > 4) & (a < 13)).tolist()
+
+    @pytest.mark.parametrize(
+        "op, iop",
+        [
+            (operator.add, operator.iadd),
+            (operator.sub, operator.isub),
+            (operator.mul, operator.imul),
+            (operator.truediv, operator.itruediv),
+            (operator.floordiv, operator.ifloordiv),
+            (operator.mod, operator.imod),
+            (operator.pow, operator.ipow),
+        ],
+    )
+    def test_inplace_operators_update_the_wrapped_tensor(self, device, dtype, op, iop):
+        a = torch.tensor([[1.0, 2.0, 4.0], [0.5, 3.0, 5.0]], device=device, dtype=dtype)
+        for other in (3, torch.full_like(a, 2.0), TensorWrapper(torch.full_like(a, 2.0))):
+            data = a.clone()
+            wrapper = TensorWrapper(data)
+            alias = wrapper
+            out = iop(wrapper, other)
+            assert out is alias
+            assert out.data is data
+            self.assert_close(alias.data, op(a, _unwrap(other)), rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "op, iop",
+        [
+            (operator.and_, operator.iand),
+            (operator.or_, operator.ior),
+            (operator.xor, operator.ixor),
+            (operator.lshift, operator.ilshift),
+            (operator.rshift, operator.irshift),
+        ],
+    )
+    def test_inplace_bitwise_operators_update_the_wrapped_tensor(self, device, op, iop):
+        a = torch.tensor([12, 5, 3], device=device)
+        data = a.clone()
+        wrapper = TensorWrapper(data)
+        alias = wrapper
+        out = iop(wrapper, 1)
+        assert out is alias
+        assert out.data is data
+        assert alias.data.tolist() == op(a, 1).tolist()
+
+    def test_inplace_matmul_rebinds_as_on_the_tensor(self, device, dtype):
+        # A tensor has no ``__imatmul__``, so ``t @= m`` rebinds ``t`` to ``t @ m``; the wrapper does the same.
+        a = torch.tensor([[1.0, 2.0], [0.5, 3.0]], device=device, dtype=dtype)
+        m = torch.tensor([[0.0, 1.0], [1.0, 0.0]], device=device, dtype=dtype)
+        tensor = a.clone()
+        tensor_alias = tensor
+        tensor @= m
+        assert tensor is not tensor_alias
+        wrapper = TensorWrapper(a.clone())
+        alias = wrapper
+        wrapper @= m
+        assert wrapper is not alias
+        assert type(wrapper) is TensorWrapper
+        self.assert_close(wrapper.data, a @ m, rtol=0, atol=0)
+        self.assert_close(alias.data, a, rtol=0, atol=0)
