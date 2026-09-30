@@ -24,6 +24,64 @@ from testing.base import BaseTester
 
 
 class TestSSIM3d(BaseTester):
+    def test_dynamo_dynamic_range(self, device, dtype, torch_optimizer):
+        img = torch.full((1, 1) + (8,) * 3, 128.0, device=device, dtype=dtype)
+        optimized = torch_optimizer(kornia.metrics.ssim3d)
+        actual = optimized(img, img, 3, max_val=255.0)
+        assert actual.dtype == dtype
+        self.assert_close(actual, torch.ones_like(actual))
+
+    def test_mixed_input_dtypes(self, device, dtype):
+        first = torch.full((1, 1) + (8,) * 3, 128.0, device=device, dtype=dtype)
+        second = torch.full_like(first, 64.0, dtype=torch.float32)
+        actual = kornia.metrics.ssim3d(first, second, 3, max_val=255.0)
+        output_dtype = torch.promote_types(dtype, torch.float32)
+        assert actual.dtype == output_dtype
+        c1 = (0.01 * 255.0) ** 2
+        expected = torch.full_like(actual, (2 * 128 * 64 + c1) / (128**2 + 64**2 + c1))
+        self.assert_close(actual, expected)
+
+    def test_pixel_range_gradients(self, device, dtype):
+        if device.type == "mps":
+            pytest.skip("Float64 reference is unsupported on MPS")
+        img1 = torch.arange(5**3, device=device, dtype=dtype).reshape((1, 1) + (5,) * 3) % 17 * 15
+        img2 = (img1.flip(-1) * 0.8).detach().requires_grad_()
+        img1 = img1.detach().requires_grad_()
+        ref1, ref2 = img1.detach().double().requires_grad_(), img2.detach().double().requires_grad_()
+        actual = kornia.metrics.ssim3d(img1, img2, 3, max_val=255.0)
+        reference = kornia.metrics.ssim3d(ref1, ref2, 3, max_val=255.0)
+        self.assert_close(actual, reference.to(dtype))
+        actual_grads = torch.autograd.grad(actual.sum(), (img1, img2))
+        reference_grads = torch.autograd.grad(reference.sum(), (ref1, ref2))
+        for actual_grad, reference_grad in zip(actual_grads, reference_grads):
+            assert torch.isfinite(actual_grad).all()
+            self.assert_close(actual_grad, reference_grad.to(dtype), rtol=2e-2, atol=1e-5)
+
+    def test_autocast_dynamic_range(self, device, dtype):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("Autocast regression covers CPU and CUDA backends")
+        img = torch.full((1, 1) + (8,) * 3, 128.0, device=device, dtype=dtype)
+        autocast_dtype = torch.float16 if device.type == "cuda" else torch.bfloat16
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype):
+            actual = kornia.metrics.ssim3d(img, img, 3, max_val=255.0)
+        assert actual.dtype == dtype
+        self.assert_close(actual, torch.ones_like(actual))
+
+    @pytest.mark.parametrize("values", [(128.0, 128.0, 255.0), (128.0, 64.0, 255.0), (0.0, 0.0, 0.5)])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_constant_image_dynamic_range(self, device, dtype, values, padding):
+        first, second, max_val = values
+        shape = (1, 2) + (8,) * 3
+        img1 = torch.full(shape, first, device=device, dtype=dtype)
+        img2 = torch.full(shape, second, device=device, dtype=dtype)
+        actual = kornia.metrics.ssim3d(img1, img2, 3, max_val=max_val, padding=padding)
+        # Constant images have zero local variance/covariance in the SSIM formula.
+        c1, c2 = (0.01 * max_val) ** 2, (0.03 * max_val) ** 2
+        expected_value = (2 * first * second + c1) * c2 / ((first**2 + second**2 + c1) * c2 + 1e-12)
+        expected = torch.full_like(actual, expected_value)
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize(
         "shape,padding,window_size,max_value",
         [
