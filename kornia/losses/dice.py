@@ -78,6 +78,11 @@ def dice_loss(
     Return:
         One-element torch.Tensor of the computed loss.
 
+    Note:
+        Spatial reductions use float32 for float16 and bfloat16 inputs to avoid
+        overflow on large images. The returned loss retains the usual dtype
+        promotion between the inputs and class weights.
+
     Example:
         >>> N = 5  # num_classes
         >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)
@@ -128,6 +133,8 @@ def dice_loss(
     else:
         weight = pred.new_ones(pred.shape[1])
 
+    output_dtype = torch.promote_types(pred.dtype, weight.dtype)
+
     # set dimensions for the appropriate averaging
     dims: tuple[int, ...] = (2, 3)
 
@@ -138,8 +145,10 @@ def dice_loss(
         pred_soft = pred_soft * weight
         target_one_hot = target_one_hot * weight
 
-    intersection = torch.sum(pred_soft * target_one_hot, dims)
-    cardinality = torch.sum(pred_soft + target_one_hot, dims)
+    # Half-precision pixel counts can overflow before the Dice ratio is formed.
+    reduction_dtype = torch.float32 if pred_soft.dtype in (torch.float16, torch.bfloat16) else pred_soft.dtype
+    intersection = torch.sum(pred_soft * target_one_hot, dims, dtype=reduction_dtype)
+    cardinality = torch.sum(pred_soft + target_one_hot, dims, dtype=reduction_dtype)
 
     dice_score = 2.0 * intersection / (cardinality + eps)
     dice_loss = -dice_score + 1.0
@@ -148,7 +157,7 @@ def dice_loss(
     if average == "macro":
         dice_loss = (dice_loss * weight).sum(-1) / weight.sum()
 
-    return torch.mean(dice_loss)
+    return torch.mean(dice_loss).to(output_dtype)
 
 
 class DiceLoss(nn.Module):

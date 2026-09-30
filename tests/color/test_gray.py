@@ -136,6 +136,32 @@ class TestRgbToGrayscale(BaseTester):
         assert out.device == img.device
         assert out.dtype == img.dtype
 
+    def test_uint8_primaries(self, device):
+        white = torch.full((3, 1, 1), 255, device=device, dtype=torch.uint8)
+        red = torch.tensor([[[255]], [[0]], [[0]]], device=device, dtype=torch.uint8)
+        green = torch.tensor([[[0]], [[255]], [[0]]], device=device, dtype=torch.uint8)
+        blue = torch.tensor([[[0]], [[0]], [[255]]], device=device, dtype=torch.uint8)
+        assert kornia.color.rgb_to_grayscale(white).item() == 255
+        assert kornia.color.rgb_to_grayscale(red).item() == 76
+        assert kornia.color.rgb_to_grayscale(green).item() == 150
+        assert kornia.color.rgb_to_grayscale(blue).item() == 29
+
+    def test_uint8_opencv(self, device):
+        # Generated with OpenCV 4.10.0 and 5.0.0 (identical):
+        #   cv2.cvtColor(np.array(rgb, dtype=np.uint8), cv2.COLOR_RGB2GRAY) on the HxWx3 rows below.
+        # (12, 250, 9) is 151 in OpenCV but 152 with the 8-bit weights 76/150/29 over 255; (0, 1, 1) and
+        # (100, 150, 50) need round-to-nearest rather than floor.
+        rgb = [
+            [[[255, 255, 255], [255, 0, 0], [0, 255, 0]], [[0, 0, 255], [0, 1, 1], [12, 250, 9]]],
+            [[[100, 150, 50], [33, 66, 99], [12, 0, 8]], [[37, 14, 37], [0, 12, 4], [12, 37, 28]]],
+        ]
+        expected = [[[[255, 76, 150], [29, 1, 151]]], [[[124, 60, 5], [23, 8, 28]]]]
+        img = torch.tensor(rgb, device=device, dtype=torch.uint8).permute(0, 3, 1, 2)
+        out = kornia.color.rgb_to_grayscale(img)
+        assert out.shape == (2, 1, 2, 3)
+        assert out.dtype == torch.uint8
+        assert torch.equal(out, torch.tensor(expected, device=device, dtype=torch.uint8))
+
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 3, height, width, device=device, dtype=dtype)
@@ -243,6 +269,31 @@ class TestRgbToGrayscale(BaseTester):
         gray_ops = kornia.color.RgbToGrayscale().to(device, dtype)
         gray_fcn = kornia.color.rgb_to_grayscale
         assert_close(gray_ops(img), gray_fcn(img))
+
+    def test_module_default_weights_are_the_functional_defaults_5109(self, device, dtype):
+        # The module stored float32 default weights and passed them explicitly, so rgb_to_grayscale cast them to the
+        # image: a float64 image got float32-rounded weights (up to 1.2e-8 off). It now leaves None to the functional,
+        # so the two outputs are identical (#5109).
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        assert torch.equal(kornia.color.RgbToGrayscale()(img), kornia.color.rgb_to_grayscale(img))
+        rgb_weights = torch.tensor([0.5, 0.25, 0.25], device=device, dtype=dtype)
+        out = kornia.color.RgbToGrayscale(rgb_weights)(img)
+        assert torch.equal(out, kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights))
+
+    def test_module_uint8_is_not_all_zeros_5109(self, device):
+        # The float32 default weights cast to uint8 were [0, 0, 0], so every uint8 image came back all zeros (#5109).
+        img = torch.arange(120, device=device, dtype=torch.uint8).reshape(2, 3, 4, 5)
+        out = kornia.color.RgbToGrayscale()(img)
+        assert out.dtype == torch.uint8
+        assert torch.equal(out, kornia.color.rgb_to_grayscale(img))
+        assert out.count_nonzero() > 0
+
+    def test_module_other_integer_dtype_raises_like_the_functional_5109(self, device):
+        # Default weights exist for uint8 and floating images only. The module used to return all zeros here.
+        img = torch.arange(120, device=device, dtype=torch.int32).reshape(2, 3, 4, 5)
+        gray = kornia.color.RgbToGrayscale()
+        with pytest.raises(TypeError, match="Unknown data type"):
+            gray(img)
 
 
 class TestBgrToGrayscale(BaseTester):

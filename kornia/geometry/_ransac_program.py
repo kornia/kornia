@@ -320,9 +320,9 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
         model64 = torch.where(failed, torch.eye(3, dtype=torch.float64), model.to(torch.float64))
         p1 = convert_points_to_homogeneous(kp1_host)
         if planar:
-            pixel_errors = _transfer_errors(model64[None], p1, kp2_host, 0.0)[0]
+            pixel_errors = _transfer_errors(model64[None], p1, kp2_host)[0]
         else:
-            pixel_errors = _sampson_errors(model64[None], p1, convert_points_to_homogeneous(kp2_host), 0.0)[0]
+            pixel_errors = _sampson_errors(model64[None], p1, convert_points_to_homogeneous(kp2_host))[0]
         mask = finite & (pixel_errors <= inl_th.square())
         failed = failed | (mask.sum() <= m)
         model = torch.where(failed, torch.zeros_like(model), model)

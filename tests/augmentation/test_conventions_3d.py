@@ -418,8 +418,8 @@ class Test3DAugmentationConventions(BaseTester):
         "padding,size,marker",
         [(1, (5, 5, 5), (2, 2, 2)), ((1, 2, 3), (9, 7, 5), (4, 3, 2))],
     )
-    def test_wart_random_crop3d_matrix_uses_the_padded_source_frame_4801(self, padding, size, marker, device, dtype):
-        # #4801: flips when the recorded matrix includes the padding offset.
+    def test_convention_random_crop3d_matrix_maps_original_coordinates_4801(self, padding, size, marker, device, dtype):
+        # #4801: the recorded matrix includes the left, top, and front padding.
         if not supports_nearest_3d_grid_sample(device, dtype):
             pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
         volume = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
@@ -430,8 +430,8 @@ class Test3DAugmentationConventions(BaseTester):
         expected = torch.zeros_like(output)
         expected[..., marker[0], marker[1], marker[2]] = 1
         self.assert_close(output, expected)
-        # Taking the whole padded canvas records identity, despite moving the original marker by the padding.
-        self.assert_close(augmentation.transform_matrix, torch.eye(4, device=device, dtype=dtype)[None])
+        mapped = augmentation.transform_matrix[0] @ volume.new_tensor([1, 1, 1, 1])
+        self.assert_close(mapped[:3], volume.new_tensor(marker[::-1]), rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_convention_motion_blur3d_kernel_range_is_drawn_once_per_call_bounds_included(self):

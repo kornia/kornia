@@ -2040,14 +2040,14 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
             refine, scale2, x2_arg = _refine_homography_lm, (2.0 / s2) ** 2, x2[:, :2]
 
             def errors(models):
-                return _transfer_errors(models, x1, x2[:, :2], 0.0)
+                return _transfer_errors(models, x1, x2[:, :2])
 
         else:
             start = torch.linalg.inv(t2).mT @ truth @ torch.linalg.inv(t1)
             refine, scale2, x2_arg = _refine_fundamental_lm, (2.0 / s1) ** 2, x2
 
             def errors(models):
-                return _sampson_errors(models, x1, x2, 0.0)
+                return _sampson_errors(models, x1, x2)
 
         start = start / start.norm()
         start = start + 1e-2 * torch.randn(3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64)

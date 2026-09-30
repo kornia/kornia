@@ -1330,20 +1330,53 @@ class TestConventionHomography(BaseTester):
         self.assert_close(calls[1][0][0, k], torch.full((), 0.5, device=device, dtype=dtype).neg().exp())
         assert (calls[1][0] - torch.exp(-e / (2.0 * sigma**2)))[0, k].abs() > 0.1
 
-    def test_wart_transfer_error_exact_match_is_sqrt_eps_4881(self, device, dtype):
-        _skip_half(
-            dtype,
-            "eps=1e-8 is below float16's subnormal range, and in bfloat16 the fixture's matches are 2 px from exact",
-        )
+    def test_transfer_error_does_not_depend_on_the_scale_of_H_4881(self, device, dtype):
+        _skip_half(dtype, "1e-8 H flushes to zero in float16; compared at float32 and float64 accuracy")
         p1, p2, H = _planar(device, dtype)
-        # #4881: eps is added inside the square root, so an exact match scores sqrt(1e-8) = 1e-4, not 0 ...
-        assert oneway_transfer_error(p1, p2, H, squared=False).min() > 5e-5
-        assert symmetric_transfer_error(p1, p2, H, squared=False).min() > 5e-5
-        if dtype == torch.float64:
-            assert oneway_transfer_error(p1, p2, H, squared=False, eps=0.0).max() < 1e-9
-        # ... and to the projective denominator, so the error depends on the scale of H: 1e-8 H scores tens of
-        # pixels on the same exact matches.
-        assert oneway_transfer_error(p1, p2, 1e-8 * H, squared=False).min() > 1.0
+        p2 = p2 + torch.tensor([1.5, -2.0], device=device, dtype=dtype)
+        # #4881: eps was added to the projective denominator, so 1e-8 H scored tens of pixels on exact matches. The
+        # per-homography and the shared-point (several homographies) paths, and the symmetric error.
+        for fn in (
+            oneway_transfer_error,
+            lambda a, b, H, **kw: oneway_transfer_error(a, b, H.expand(2, 3, 3), **kw)[:1],
+            symmetric_transfer_error,
+        ):
+            unit = fn(p1, p2, H, squared=False)
+            for scale in (1e-8, 1e-3, 1e6):
+                self.assert_close(fn(p1, p2, scale * H, squared=False), unit)
+
+    def test_transfer_error_exact_match_is_zero_with_a_zero_gradient_4881(self, device, dtype):
+        # #4881: eps was added inside the square root, so an exact match scored sqrt(1e-8) = 1e-4, not 0, with
+        # squared=False, and eps=0 gave a NaN gradient. A translation of integer points is exact in every dtype.
+        H = torch.tensor([[[1.0, 0.0, 3.0], [0.0, 1.0, -2.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        p1 = torch.tensor([[[0.0, 0.0], [4.0, 1.0], [-2.0, 5.0]]], device=device, dtype=dtype)
+        p2 = (p1 + torch.tensor([3.0, -2.0], device=device, dtype=dtype)).requires_grad_(True)
+        for fn in (
+            oneway_transfer_error,
+            lambda a, b, H, **kw: oneway_transfer_error(a, b, H.expand(2, 3, 3), **kw)[:1],
+            symmetric_transfer_error,
+        ):
+            out = fn(p1, p2, H, squared=False)
+            assert torch.equal(out, torch.zeros_like(out)), out
+            (grad,) = torch.autograd.grad(out.sum(), p2)
+            assert torch.equal(grad, torch.zeros_like(grad)), grad
+
+    def test_transfer_error_of_a_point_mapped_to_infinity_is_inf_4881(self, device, dtype):
+        # H maps x = -1 to w' = 0. The error there used to be x' / eps squared (#4881); it is inf, with a finite
+        # gradient, and the other point is untouched.
+        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        p1 = torch.tensor([[[-1.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype, requires_grad=True)
+        p2 = torch.tensor([[[5.0, 5.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        for fn in (
+            oneway_transfer_error,
+            lambda a, b, H, **kw: oneway_transfer_error(a, b, H.expand(2, 3, 3), **kw)[:1],
+            symmetric_transfer_error,
+        ):
+            for squared in (True, False):
+                out = fn(p1, p2, H, squared=squared)
+                assert bool(out[0, 0].isposinf()) and out[0, 1] == 0, out
+                (grad,) = torch.autograd.grad(out.sum(), p1)
+                assert torch.isfinite(grad).all(), grad
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_h22_eps_divisor_4874(self, model, device, dtype):
@@ -1434,7 +1467,7 @@ class TestHomographySharedKernels(BaseTester):
         H = torch.eye(3) + 0.1 * (2 * torch.rand(3, 3, 3, generator=generator) - 1)
         H = H.to(device, dtype)
         out = oneway_transfer_error(pts1, pts2, H)
-        assert torch.equal(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H, True, 1e-8))
+        assert torch.equal(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H, True))
         per_model = torch.cat([oneway_transfer_error(pts1, pts2, H[i : i + 1]) for i in range(3)])
         self.assert_close(out, per_model)
 
@@ -1443,11 +1476,11 @@ class TestHomographySharedKernels(BaseTester):
         pts1 = torch.rand(1, 7, 2, device=device, dtype=dtype)
         pts2 = torch.rand(1, 7, 2, device=device, dtype=dtype)
         # Homogeneous points are dehomogenized, whatever their w.
-        out = _oneway_transfer_error_shared_impl_(2.0 * _hom(pts1), 3.0 * _hom(pts2), H, True, 1e-8)
-        self.assert_close(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H, True, 1e-8))
-        self.assert_close(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H.mT.contiguous().mT, True, 1e-8))
+        out = _oneway_transfer_error_shared_impl_(2.0 * _hom(pts1), 3.0 * _hom(pts2), H, True)
+        self.assert_close(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H, True))
+        self.assert_close(out, _oneway_transfer_error_shared_impl_(pts1, pts2, H.mT.contiguous().mT, True))
         empty = torch.zeros(1, 0, 2, device=device, dtype=dtype)
-        assert _oneway_transfer_error_shared_impl_(empty, empty, H, True, 1e-8).shape == (4, 0)
+        assert _oneway_transfer_error_shared_impl_(empty, empty, H, True).shape == (4, 0)
 
     def test_pixel_scale_accuracy(self, device, dtype):
         if dtype != torch.float32:
@@ -1479,7 +1512,7 @@ class TestHomographySharedKernels(BaseTester):
         models = torch.randn(6, 3, 3, device=device, dtype=dtype)
         self.assert_close(
             _transfer_from_basis(models, _transfer_basis(x1, x2)),
-            _transfer_errors(models, x1, x2, 0.0),
+            _transfer_errors(models, x1, x2),
             rtol=1e-3,
             atol=1e-5,
         )
@@ -1488,4 +1521,4 @@ class TestHomographySharedKernels(BaseTester):
         pts1 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
         pts2 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
         H = create_random_homography(torch.zeros(3, 1, device=device, dtype=torch.float64), 3, std_val=0.1)
-        self.gradcheck(lambda a, b, h: _oneway_transfer_error_shared_impl_(a, b, h, True, 1e-8), (pts1, pts2, H))
+        self.gradcheck(lambda a, b, h: _oneway_transfer_error_shared_impl_(a, b, h, True), (pts1, pts2, H))

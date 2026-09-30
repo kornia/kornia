@@ -259,13 +259,15 @@ def _crop_matrix(
         # The shape-changing blend returns every transformed row, but slice uses
         # src indices even where the cached per-row matrix is the identity.
         return None, "mixed-application slice crop has no reliable per-row image matrix after changing shape"
-    if static or changed_shape:
-        # These paths return the entire transformed branch, including prepadding.
-        applied = torch.ones_like(applied)
+    if static or not changed_shape:
+        return matrix, None
+    # Selected matrices already map original coordinates, including padding.
+    # A shape-changing resample still returns padded pixels for skipped rows whose
+    # public matrix is identity. Only those rows need the image-only correction.
     padding = params["padding_size"].to(matrix)
     translation = torch.eye(3, device=matrix.device, dtype=matrix.dtype).expand_as(matrix).clone()
-    translation[:, 0, 2] = padding[:, 0] * applied.to(matrix)
-    translation[:, 1, 2] = padding[:, 2] * applied.to(matrix)
+    translation[:, 0, 2] = padding[:, 0] * (~applied).to(matrix)
+    translation[:, 1, 2] = padding[:, 2] * (~applied).to(matrix)
     return matrix @ translation, None
 
 

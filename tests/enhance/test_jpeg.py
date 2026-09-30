@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -24,6 +26,55 @@ from testing.base import BaseTester
 
 
 class TestDiffJPEG(BaseTester):
+    def test_float64_dct_basis_uses_full_precision_pi(self) -> None:
+        from kornia.enhance.jpeg import _get_dct8_basis_scale
+
+        dct_basis, _ = _get_dct8_basis_scale(torch.float64, "cpu")
+        index = torch.arange(8, dtype=torch.float64)
+        basis_1d = torch.cos((2.0 * index + 1.0)[:, None] * index[None, :] * (math.pi / 16.0))
+        expected = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
+        torch.testing.assert_close(dct_basis, expected, rtol=0.0, atol=0.0)
+
+    def test_float64_idct_uses_full_precision_pi(self) -> None:
+        from kornia.enhance.jpeg import _idct_8x8
+
+        # A non-symmetric block, so a transposed basis fails too.
+        coefficients = (torch.arange(64, dtype=torch.float64) * 37 % 64 - 31.5).view(1, 1, 8, 8)
+        basis = torch.tensor(
+            [[math.cos((2 * s + 1) * f * math.pi / 16) for s in range(8)] for f in range(8)], dtype=torch.float64
+        )
+        alpha = torch.tensor([1.0 / math.sqrt(2.0)] + [1.0] * 7, dtype=torch.float64)
+        expected = 0.25 * basis.T @ (coefficients[0, 0] * alpha[:, None] * alpha[None, :]) @ basis + 128.0
+        # A float32 pi puts the result about 3e-5 off.
+        self.assert_close(_idct_8x8(coefficients)[0, 0], expected, rtol=0.0, atol=1e-10)
+
+    def test_strict_torch_export(self) -> None:
+        from kornia.enhance.jpeg import _DCT8_CACHE, JPEGCodecDifferentiable
+
+        image = torch.rand(1, 3, 16, 16)
+        quality = torch.tensor([50.0])
+        codec = JPEGCodecDifferentiable()
+        cache = _DCT8_CACHE.copy()
+        try:
+            for warm_cache in (False, True):
+                _DCT8_CACHE.clear()
+                if warm_cache:
+                    expected = codec(image, quality)
+                try:
+                    exported = torch.export.export(codec, (image, quality), strict=True).module()
+                except RuntimeError as e:
+                    # torch 2.5.1 routes strict export through Dynamo, which rejects Python 3.13+.
+                    if "Python 3.13+ not yet supported for torch.compile" in str(e):
+                        pytest.skip(f"strict torch.export is unavailable in this environment: {e}")
+                    raise
+                _DCT8_CACHE.clear()
+                if not warm_cache:
+                    expected = codec(image, quality)
+                self.assert_close(exported(image, quality), expected)
+        finally:
+            _DCT8_CACHE.clear()
+            _DCT8_CACHE.update(cache)
+
     def test_smoke(self, device, dtype) -> None:
         """This test standard usage."""
         B, H, W = 2, 32, 32

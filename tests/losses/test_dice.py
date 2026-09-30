@@ -24,6 +24,41 @@ from testing.base import BaseTester
 
 
 class TestDiceLoss(BaseTester):
+    @pytest.mark.parametrize("height", [256, 512])
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_large_image_reduction(self, device, dtype, height, average, weighted):
+        logits = torch.full((1, 2, height, 256), -2.0, device=device, dtype=dtype, requires_grad=True)
+        with torch.no_grad():
+            logits[:, 0] = 2.0
+        labels = torch.zeros((1, height, 256), device=device, dtype=torch.int64)
+        weight = torch.tensor([1.0, 2.0], device=device, dtype=dtype) if weighted else None
+        criterion = kornia.losses.DiceLoss(average=average, weight=weight)
+
+        loss = criterion(logits, labels)
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        reference = kornia.losses.dice_loss(
+            logits.to(reference_dtype),
+            labels,
+            average=average,
+            weight=weight.to(reference_dtype) if weight is not None else None,
+        ).to(dtype)
+
+        assert loss.dtype == dtype
+        assert loss.device == device
+        assert torch.isfinite(loss)
+        self.assert_close(loss, reference)
+        loss.backward()
+        assert torch.isfinite(logits.grad).all()
+
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    def test_weight_dtype_promotion(self, device, dtype, average):
+        logits = torch.tensor([2.0, -2.0], device=device, dtype=dtype).reshape(1, 2, 1, 1)
+        labels = torch.zeros((1, 1, 1), device=device, dtype=torch.int64)
+        weight = torch.tensor([1.0, 2.0], device=device, dtype=torch.float32)
+        loss = kornia.losses.dice_loss(logits, labels, average=average, weight=weight)
+        assert loss.dtype == torch.promote_types(dtype, weight.dtype)
+
     def test_smoke(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
