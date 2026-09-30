@@ -712,15 +712,16 @@ def get_gaussian_kernel1d(
           sum 1; :ref:`Filtering <filtering-conventions>` names the matching scipy and OpenCV kernels.
           :func:`~kornia.filters.get_gaussian_erf_kernel1d` integrates the Gaussian over each pixel instead, and
           :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is the discrete Gaussian.
-        - ``force_even=True`` also accepts an even ``kernel_size``, and the kernel is then symmetric about the middle
-          of the window, ``(kernel_size - 1) / 2``.
+        - ``force_even=True`` also accepts an even ``kernel_size``, and in a floating ``dtype`` the kernel is then
+          symmetric about the middle of the window, ``(kernel_size - 1) / 2``.
         - A tensor ``sigma`` of shape :math:`(B, 1)` gives one kernel per row.
         - Known defects:
 
           - a Python ``int`` ``sigma`` raises, while the 2d and 3d builders accept integers
             (`#5157 <https://github.com/kornia/kornia/issues/5157>`_).
-          - an integer ``dtype`` truncates a fractional ``sigma``, and an unsigned one also wraps the negative
-            offsets, zeroing every tap before the centre (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+          - an integer ``dtype`` truncates a fractional ``sigma``, and uint8 also wraps the negative offsets, so the
+            taps before the centre are wrong, exactly 0 for a ``sigma`` below about 15
+            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -986,9 +987,10 @@ def get_laplacian_kernel1d(
     r"""Return the coefficients of a 1D Laplacian filter.
 
     Convention:
-        - In a signed ``dtype`` the kernel is all ones with the centre tap set to ``1 - kernel_size``, so it sums
-          to 0. Size 3 is the second difference ``[1, -2, 1]``; a larger size is not a wider second difference, and
-          size 5 answers 5 to a unit second derivative.
+        - In a floating ``dtype``, or a signed integer one wide enough to hold ``1 - kernel_size``, the kernel is
+          all ones with the centre tap set to ``1 - kernel_size``, so it sums to 0. Size 3 is the second difference
+          ``[1, -2, 1]``; a larger size is not a wider second difference, and size 5 answers 5 to a unit second
+          derivative.
         - The negative centre makes the response positive where the values curve upwards.
         - Known defect: an unsigned ``dtype`` wraps the negative centre, to 252 for size 5 in uint8
           (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
@@ -1024,11 +1026,12 @@ def get_laplacian_kernel2d(
     r"""Return Laplacian filter matrix coefficients.
 
     Convention:
-        See the Convention block on :func:`~kornia.filters.get_laplacian_kernel1d`: in a signed ``dtype``, all ones
-        with the centre set to :math:`1 - k_y k_x` for ``kernel_size=(k_y, k_x)``. Size 3 is the 8-neighbour
-        stencil, which answers 3 to a unit :math:`\partial_{xx}` or :math:`\partial_{yy}`, so it estimates
-        :math:`3 \nabla^2`; size 5 estimates :math:`25 \nabla^2`. :ref:`Filtering <filtering-conventions>` compares
-        it with the scipy, OpenCV and scikit-image Laplacians.
+        See the Convention block on :func:`~kornia.filters.get_laplacian_kernel1d`: in a floating ``dtype``, or a
+        signed integer one wide enough to hold :math:`1 - k_y k_x`, all ones with the centre set to
+        :math:`1 - k_y k_x` for ``kernel_size=(k_y, k_x)``. Size 3 is the 8-neighbour stencil, which answers 3 to a
+        unit :math:`\partial_{xx}` or :math:`\partial_{yy}`, so it estimates :math:`3 \nabla^2`; size 5 estimates
+        :math:`25 \nabla^2`. :ref:`Filtering <filtering-conventions>` compares it with the scipy, OpenCV and
+        scikit-image Laplacians.
 
     Args:
         kernel_size: filter size should be odd.
