@@ -394,6 +394,38 @@ class TestConventionEpipolarMetrics(BaseTester):
             (grad,) = torch.autograd.grad(out.sum(), pts1)
             assert torch.isfinite(grad).all(), grad
 
+    def test_one_singular_epiline_4881(self, device, dtype):
+        # F = [[1, 0, 0], [0, 0, 0], [0, 0, 1]] (rank 2) maps (0, 5) to the line at infinity (0, 0, 1): row 0's
+        # epiline F x in image 2 and row 1's F^T x' in image 1; the other epiline of both is (2, 0, 1) and the residual
+        # 1. Row 2 is regular: F x = (2, 0, 1), F^T x' = (1, 0, 1), residual 3. The symmetrical distance is inf when
+        # either epiline is singular, the Sampson distance only when both are (#4881), so it stays 1 / (0 + 4) there.
+        Fm = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        pts1 = torch.tensor([[[0.0, 5.0], [2.0, 3.0], [2.0, 3.0]]], device=device, dtype=dtype, requires_grad=True)
+        pts2 = torch.tensor([[[2.0, 3.0], [0.0, 5.0], [1.0, 1.0]]], device=device, dtype=dtype)
+        inf = float("inf")
+        sampson, symmetrical = [0.25, 0.25, 1.8], [inf, inf, 11.25]
+        for fn, expected in (
+            (partial(epi.sampson_epipolar_distance, use_matmul_at_less_than_points=0), sampson),
+            (_sampson_epipolar_distance_matmul_impl_, sampson),
+            (
+                lambda a, b, F, squared: _sampson_epipolar_distance_shared_impl_(a, b, F.expand(2, 3, 3), squared)[:1],
+                sampson,
+            ),
+            (_symmetrical_epipolar_distance_manual_impl_, symmetrical),
+            (_symmetrical_epipolar_distance_matmul_impl_, symmetrical),
+        ):
+            for squared in (True, False):
+                out = fn(pts1, pts2, Fm, squared=squared)
+                target = torch.tensor([expected], device=device, dtype=dtype)
+                self.assert_close(out, target if squared else target.sqrt())
+                (grad,) = torch.autograd.grad(out.sum(), pts1)
+                assert torch.isfinite(grad).all(), grad
+        # The one-way distances: |ax + by + c| / ||(a, b)|| to the epiline of the other point.
+        expected = torch.tensor([[inf, 0.5, 1.5]], device=device, dtype=dtype)
+        self.assert_close(epi.left_to_right_epipolar_distance(pts1, pts2, Fm), expected)
+        expected = torch.tensor([[0.5, inf, 3.0]], device=device, dtype=dtype)
+        self.assert_close(epi.right_to_left_epipolar_distance(pts1, pts2, Fm), expected)
+
 
 def _near_epipole_scene(n: int, seed: int):
     """Pixel correspondences 0.01-1000 px from both epipoles, which lie inside a 1920x1080 image, and their F."""
