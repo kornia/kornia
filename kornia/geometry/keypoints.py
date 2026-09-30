@@ -26,7 +26,10 @@ __all__ = ["Keypoints", "Keypoints3D"]
 
 
 def _merge_keypoint_list(keypoints: List[torch.torch.Tensor]) -> torch.torch.Tensor:
-    raise NotImplementedError
+    raise NotImplementedError(
+        "Building `Keypoints` or `Keypoints3D` from a list of tensors is not implemented; pass one tensor of "
+        "shape `(N, 2)` or `(B, N, 2)` for `Keypoints`, `(N, 3)` or `(B, N, 3)` for `Keypoints3D` (kornia#5023)."
+    )
 
 
 class Keypoints:
@@ -244,7 +247,11 @@ class Keypoints:
 
         """
         if as_padded_sequence:
-            raise NotImplementedError
+            raise NotImplementedError(
+                "`Keypoints.to_tensor(as_padded_sequence=True)` is not implemented; it needs the keypoint-list "
+                "input that `Keypoints` does not support. Call `to_tensor()` for the `(N, 2)` or `(B, N, 2)` "
+                "tensor instead (kornia#5023)."
+            )
         return self._data
 
     def clone(self) -> "Keypoints":
@@ -374,7 +381,7 @@ class Keypoints3D:
             padding_size: (B, 6)
 
         """
-        raise NotImplementedError
+        raise NotImplementedError("`Keypoints3D.pad` is not implemented (kornia#5023).")
 
     def unpad(self, padding_size: torch.torch.Tensor) -> "Keypoints3D":
         """Pad a bounding keypoints.
@@ -383,20 +390,24 @@ class Keypoints3D:
             padding_size: (B, 6)
 
         """
-        raise NotImplementedError
+        raise NotImplementedError("`Keypoints3D.unpad` is not implemented (kornia#5023).")
 
     def transform_keypoints(self, M: torch.Tensor, inplace: bool = False) -> "Keypoints3D":
         r"""Apply a transformation matrix to the 2D keypoints.
 
         Args:
-            M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
+            M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`.
             inplace: do transform in-place and return self.
 
         Returns:
             The transformed keypoints.
 
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "`Keypoints3D.transform_keypoints` is not implemented; use "
+            "`kornia.geometry.linalg.transform_points(M, keypoints.data)` with `M` of shape `(B, 4, 4)` matching "
+            "the batch of `data`, or `(1, 4, 4)` when `data` is `(N, 3)` (kornia#5023)."
+        )
 
     def transform_keypoints_(self, M: torch.Tensor) -> "Keypoints3D":
         """Inplace version of :func:`Keypoints.transform_keypoints`."""
@@ -429,7 +440,11 @@ class Keypoints3D:
 
         """
         if as_padded_sequence:
-            raise NotImplementedError
+            raise NotImplementedError(
+                "`Keypoints3D.to_tensor(as_padded_sequence=True)` is not implemented; it needs the keypoint-list "
+                "input that `Keypoints3D` does not support. Call `to_tensor()` for the `(N, 3)` or `(B, N, 3)` "
+                "tensor instead (kornia#5023)."
+            )
         return self._data
 
     def clone(self) -> "Keypoints3D":
