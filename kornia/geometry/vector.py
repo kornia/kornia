@@ -49,12 +49,13 @@ class Vector3(TensorWrapper):
         - :meth:`random` draws vectors uniformly in the unit cube from torch's global generator, so every vector
           lies in the first octant: it is not a random direction.
         - ``copy.deepcopy``, ``copy.copy`` and pickle return a ``Vector3``. An in-place operator such as ``v += 1``
-          updates the wrapped tensor, so an alias sees the change; the operator rules are those of
-          :class:`~kornia.core.TensorWrapper`.
+          updates the wrapped tensor, so an alias and the tensor the vector was built from see the change; the
+          operator rules are those of :class:`~kornia.core.TensorWrapper`.
         - Known defect: the returned type depends on the call path (``v.clone()`` is a plain tensor, while a torch
           function rewraps its result as a ``Vector3``, so ``torch.linalg.norm(v, dim=-1)`` raises unless its
-          result happens to end in 3), and a tuple index such as ``v[..., 0]`` raises
-          (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
+          result happens to end in 3), an operator with a :class:`Scalar` on the left returns a ``Scalar`` that
+          holds the vectors (``s * v``, while ``v * s`` is a ``Vector3``), and a tuple index such as ``v[..., 0]``
+          raises (`#5022 <https://github.com/kornia/kornia/issues/5022>`_).
     """
 
     def __init__(self, vector: torch.Tensor) -> None:

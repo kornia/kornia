@@ -365,6 +365,19 @@ class TestConventionsVector(BaseTester):
         assert type(reduced) is Vector3
         assert reduced.data.shape == (3,)
 
+    def test_wart_vector3_scalar_left_operand_wins_5022(self, device, dtype):
+        # Wart pin (#5022): an operator wraps its result in the left operand's class, so a Scalar on the left
+        # returns a Scalar that holds the (2, 3) vectors, while the same product with the Vector3 on the left is a
+        # Vector3. A fix that returns a Vector3 whichever side the Scalar is on flips it.
+        data = torch.tensor([[0.3, -1.2, 2.5], [1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        scale = torch.tensor([[2.0], [3.0]], device=device, dtype=dtype)
+        v, s = Vector3(data), Scalar(scale)
+        for out, expected in [(s * v, scale * data), (s / v, scale / data), (s + v, scale + data)]:
+            assert type(out) is Scalar
+            assert out.data.shape == (2, 3)
+            self.assert_close(out.data, expected, rtol=0, atol=0)
+        assert type(v * s) is Vector3
+
     def test_wart_vector3_normalized_scales_below_eps_3952(self, device, dtype):
         # Wart pin (#3952): normalized() divides by max(norm, 1e-12), so a vector shorter than 1e-12 is scaled by 1e12
         # instead of normalized: (1e-13, 0, 0) comes back with length 0.1. A fix that raises or returns a unit

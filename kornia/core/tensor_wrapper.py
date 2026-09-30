@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import collections.abc
+import pickle
 from typing import Any, Optional, Self
 
 import torch
@@ -41,6 +42,15 @@ def _wrap(v: Any, cls: type[TensorWrapper]) -> Any:
         return type(v)(_wrap(vi, cls) for vi in v)
 
     return cls(v) if isinstance(v, Tensor) else v
+
+
+def _is_picklable(obj: Any) -> bool:
+    """Return whether pickle can store ``obj``."""
+    try:
+        pickle.dumps(obj)
+    except (pickle.PicklingError, AttributeError, TypeError):
+        return False
+    return True
 
 
 def _unwrap(v: Any) -> Any:
@@ -77,7 +87,10 @@ class TensorWrapper:
           of the right operand (``2 / w``, ``t + w``).
         - An in-place operator (``+=``, ``-=``, ``*=``, ``/=``, ``//=``, ``%=``, ``**=``, ``&=``, ``|=``, ``^=``,
           ``<<=``, ``>>=``) updates the wrapped tensor in place and returns the same wrapper, so an alias sees the
-          change. ``w @= x`` rebinds ``w`` to ``w @ x``, as ``@=`` does for a tensor.
+          change. The wrapper does not copy the tensor it is built from, so the update also changes that tensor,
+          and it raises where the tensor's in-place operator raises: on a leaf that requires grad, or when the
+          result would change the dtype or the shape. ``w @= x`` rebinds ``w`` to ``w @ x``, as ``@=`` does for
+          a tensor.
         - ``bool``, ``int``, ``float``, ``complex``, ``operator.index`` and ``len`` return Python values.
 
     Attributes:
@@ -135,11 +148,16 @@ class TensorWrapper:
         return self._data
 
     def __getstate__(self) -> dict[str, Any]:
-        """Support for pickle serialization."""
+        """Support for pickle serialization.
+
+        ``used_calls`` keeps only the functions pickle can store. A few torch functions cannot be pickled, such as
+        ``torch.unique`` or the ``Tensor.__pow__`` that ``tensor ** wrapper`` dispatches, and they are left out of the
+        state, so pickling, ``torch.save`` and ``copy.deepcopy`` still work after them.
+        """
         return {
             "_data": self._data,
             "used_attrs": self.used_attrs,
-            "used_calls": self.used_calls,
+            "used_calls": {func for func in self.used_calls if _is_picklable(func)},
         }
 
     def __setstate__(self, state: dict[str, Any]) -> None:
@@ -264,7 +282,7 @@ class TensorWrapper:
 
     def __pow__(self, other: Any) -> TensorWrapper:
         """Power operation."""
-        return self.__binary_op__(Tensor.__pow__, other)
+        return self.__binary_op__(torch.pow, other)
 
     def __rpow__(self, other: Any) -> TensorWrapper:
         """Right-side power operation."""
@@ -344,7 +362,7 @@ class TensorWrapper:
 
     def __ipow__(self, other: Any) -> Self:
         """In-place power operation."""
-        return self.__inplace_op__(Tensor.__ipow__, other)
+        return self.__inplace_op__(Tensor.pow_, other)
 
     def __iand__(self, other: Any) -> Self:
         """In-place bitwise and operation."""
@@ -455,12 +473,10 @@ class TensorWrapper:
             other: The other operand.
 
         Returns:
-            This wrapper, whose tensor ``func`` updated in place; ``NotImplemented`` when the tensor declines the
-            operand, so that Python falls back to the binary operator.
+            This wrapper, whose tensor ``func`` updated in place. Whatever ``func`` raises propagates.
         """
         self.used_calls.add(func)
-        if func(self._data, _unwrap(other)) is NotImplemented:
-            return NotImplemented
+        func(self._data, _unwrap(other))
         return self
 
     def __unary_op__(self, func: Any) -> TensorWrapper:

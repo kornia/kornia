@@ -19,6 +19,7 @@ import copy
 import operator
 import pickle
 
+import numpy as np
 import pytest
 import torch
 
@@ -292,6 +293,15 @@ class TestTensorWrapper(BaseTester):
 
         self.gradcheck(fn, (x,))
 
+        def inplace_fn(t):
+            w = TensorWrapper(t * 1)
+            w *= t
+            w += 1
+            w **= 2
+            return (2 / w).unwrap()
+
+        self.gradcheck(inplace_fn, (x,))
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         x = torch.tensor([[0.5, 1.5, 2.0], [1.0, 3.0, 0.75]], device=device, dtype=dtype)
         compiled = torch_optimizer(_build_and_update)
@@ -303,6 +313,65 @@ def _build_and_update(t):
     w += 1
     w *= 2
     return (2 / w + w**2 - abs(w) % 1.5).unwrap()
+
+
+_PICKLE_FLOAT_CASES_WITH_IDS = [
+    ("add", True, lambda w, x: w + x),
+    ("radd", True, lambda w, x: 2 + w),
+    ("sub", True, lambda w, x: w - x),
+    ("rsub", True, lambda w, x: 2 - w),
+    ("mul", True, lambda w, x: w * x),
+    ("rmul", True, lambda w, x: 2 * w),
+    ("truediv", True, lambda w, x: w / x),
+    ("rtruediv", True, lambda w, x: 2 / w),
+    ("floordiv", True, lambda w, x: w // x),
+    ("rfloordiv", True, lambda w, x: 2 // w),
+    ("mod", True, lambda w, x: w % x),
+    ("rmod", True, lambda w, x: 2 % w),
+    ("pow", True, lambda w, x: w**2),
+    ("pow_tensor", True, lambda w, x: w**x),
+    ("rpow", True, lambda w, x: 2**w),
+    ("matmul", True, lambda w, x: w @ x.T),
+    ("rmatmul", True, lambda w, x: w.__rmatmul__(x.T)),
+    ("lt", True, lambda w, x: w < x),
+    ("le", True, lambda w, x: w <= x),
+    ("gt", True, lambda w, x: w > x),
+    ("ge", True, lambda w, x: w >= x),
+    ("eq", True, lambda w, x: w == x),
+    ("ne", True, lambda w, x: w != x),
+    ("neg", True, lambda w, x: -w),
+    ("pos", True, lambda w, x: +w),
+    ("abs", True, lambda w, x: abs(w)),
+    ("iadd", True, operator.iadd),
+    ("isub", True, operator.isub),
+    ("imul", True, operator.imul),
+    ("itruediv", True, operator.itruediv),
+    ("ifloordiv", True, operator.ifloordiv),
+    ("imod", True, operator.imod),
+    ("ipow", True, operator.ipow),
+    ("tensor_pow", False, lambda w, x: x**w),
+    ("torch_unique", False, lambda w, x: torch.unique(w)),
+]
+_PICKLE_FLOAT_CASES = [(own, fn) for _, own, fn in _PICKLE_FLOAT_CASES_WITH_IDS]
+_PICKLE_INT_CASES_WITH_IDS = [
+    ("and", True, lambda w, x: w & x),
+    ("rand", True, lambda w, x: 1 & w),
+    ("or", True, lambda w, x: w | x),
+    ("ror", True, lambda w, x: 1 | w),
+    ("xor", True, lambda w, x: w ^ x),
+    ("rxor", True, lambda w, x: 1 ^ w),
+    ("lshift", True, lambda w, x: w << x),
+    ("rlshift", True, lambda w, x: 1 << w),
+    ("rshift", True, lambda w, x: w >> x),
+    ("rrshift", True, lambda w, x: 64 >> w),
+    ("invert", True, lambda w, x: ~w),
+    ("iand", True, operator.iand),
+    ("ior", True, operator.ior),
+    ("ixor", True, operator.ixor),
+    ("ilshift", True, operator.ilshift),
+    ("irshift", True, operator.irshift),
+]
+_PICKLE_INT_CASES = [(own, fn) for _, own, fn in _PICKLE_INT_CASES_WITH_IDS]
 
 
 class TestTensorWrapperProtocol(BaseTester):
@@ -330,8 +399,9 @@ class TestTensorWrapperProtocol(BaseTester):
             (lambda t: TensorWrapper(t).unwrap(), True),
             (lambda t: (TensorWrapper(t) + 1).unwrap(), True),
             (_build_and_update, True),
-            # torch 2.5.1's Dynamo breaks the graph here, cleanly: it cannot build the wrapper inside
-            # __torch_function__ or __getitem__, look up a forwarded method, or send ``@`` to a user class.
+            # torch 2.5.1's Dynamo breaks the graph here, cleanly: it does not send unary ``-`` or ``~``, a
+            # comparison, ``@`` or a binary or in-place operator with a tensor operand to a user class, and it cannot
+            # trace a torch function on a wrapper, ``__getitem__`` or a forwarded method.
             (lambda t: torch.add(TensorWrapper(t), 1).unwrap(), False),
             (lambda t: TensorWrapper(t)[0].unwrap(), False),
             (lambda t: TensorWrapper(t).sum(), False),
@@ -347,8 +417,8 @@ class TestTensorWrapperProtocol(BaseTester):
         assert type(out) is torch.Tensor
         self.assert_close(out, fn(x))
 
-    def test_deepcopy_copy_and_pickle_keep_the_class(self, device, dtype):
-        data = torch.tensor([[0.3, -1.2, 2.5]], device=device, dtype=dtype)
+    def test_deepcopy_copy_and_pickle_keep_the_class(self, device, dtype, tmp_path):
+        data = torch.tensor([[0.3, -1.2, 2.5]], device=device, dtype=dtype, requires_grad=True)
         wrapper = TensorWrapper(data)
         _ = wrapper.shape
 
@@ -364,8 +434,14 @@ class TestTensorWrapperProtocol(BaseTester):
         assert shallow.data is data
 
         restored = pickle.loads(pickle.dumps(wrapper))  # noqa: S301
-        assert type(restored) is TensorWrapper
-        self.assert_close(restored.data, data, rtol=0, atol=0)
+        torch.save(wrapper, tmp_path / "wrapper.pt")
+        loaded = torch.load(tmp_path / "wrapper.pt", weights_only=False)
+        for copied in (deep, restored, loaded):
+            assert type(copied) is TensorWrapper
+            self.assert_close(copied.data, data, rtol=0, atol=0)
+            assert copied.data.requires_grad
+            assert copied.data.is_leaf
+            assert copied.data.device == data.device
 
     def test_array_protocols_still_reach_the_tensor(self):
         # Only the wrapper's own names stop at __getattr__: the DLPack and array-interface dunders are still
@@ -373,7 +449,9 @@ class TestTensorWrapperProtocol(BaseTester):
         data = torch.tensor([[0.3, -1.2, 2.5]])
         wrapper = TensorWrapper(data)
         self.assert_close(torch.from_dlpack(wrapper), data, rtol=0, atol=0)
-        assert wrapper.__array__().tolist() == data.tolist()
+        array = np.asarray(wrapper)
+        assert array.dtype == np.float32
+        assert array.tolist() == data.tolist()
 
     @pytest.mark.parametrize(
         "op",
@@ -494,3 +572,62 @@ class TestTensorWrapperProtocol(BaseTester):
         assert type(wrapper) is TensorWrapper
         self.assert_close(wrapper.data, a @ m, rtol=0, atol=0)
         self.assert_close(alias.data, a, rtol=0, atol=0)
+
+    def test_inplace_operators_raise_where_the_tensor_raises(self, device, dtype):
+        # Wrapping does not copy, so an in-place operator writes into the caller's tensor, and it raises where the
+        # tensor's in-place operator raises: on a leaf that requires grad, and for a dtype or shape change.
+        leaf = torch.ones(2, 3, device=device, dtype=dtype, requires_grad=True)
+        integer = torch.tensor([1, 2, 3], device=device)
+        for target in (leaf, TensorWrapper(leaf)):
+            with pytest.raises(RuntimeError, match="leaf Variable"):
+                target += 1
+        for target in (integer.clone(), TensorWrapper(integer.clone())):
+            with pytest.raises(RuntimeError, match="can't be cast"):
+                target /= 2
+        for target in (leaf.detach().clone(), TensorWrapper(leaf.detach().clone())):
+            with pytest.raises(RuntimeError):
+                target += torch.ones(4, 2, 3, device=device, dtype=dtype)
+
+        caller = leaf.detach().clone()
+        wrapper = TensorWrapper(caller)
+        wrapper += 1
+        self.assert_close(caller, torch.full_like(caller, 2.0), rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "own, fn",
+        _PICKLE_FLOAT_CASES,
+        ids=[label for label, _, _ in _PICKLE_FLOAT_CASES_WITH_IDS],
+    )
+    def test_pickle_and_torch_save_after_each_operator(self, device, dtype, tmp_path, own, fn):
+        w = TensorWrapper(torch.tensor([[1.0, 2.0, 4.0], [0.5, 3.0, 5.0]], device=device, dtype=dtype))
+        x = torch.tensor([[2.0, 0.5, 3.0], [1.5, 2.0, 0.25]], device=device, dtype=dtype)
+        fn(w, x)
+        self._check_round_trips(w, own, tmp_path)
+
+    @pytest.mark.parametrize(
+        "own, fn",
+        _PICKLE_INT_CASES,
+        ids=[label for label, _, _ in _PICKLE_INT_CASES_WITH_IDS],
+    )
+    def test_pickle_and_torch_save_after_each_integer_operator(self, device, tmp_path, own, fn):
+        w = TensorWrapper(torch.tensor([12, 5, 3], device=device))
+        x = torch.tensor([10, 1, 2], device=device)
+        fn(w, x)
+        self._check_round_trips(w, own, tmp_path)
+
+    def _check_round_trips(self, w, own, tmp_path):
+        assert len(w.used_calls) > 0
+        torch.save(w, tmp_path / "wrapper.pt")
+        for restored in (
+            pickle.loads(pickle.dumps(w)),  # noqa: S301
+            torch.load(tmp_path / "wrapper.pt", weights_only=False),
+        ):
+            assert type(restored) is TensorWrapper
+            self.assert_close(restored.data, w.data, rtol=0, atol=0)
+            assert restored.used_attrs == w.used_attrs
+            # The wrapper's own operators record picklable functions; a torch function that pickle cannot store
+            # (``torch.unique``, or the ``Tensor.__pow__`` that ``t ** w`` dispatches) is left out of the state.
+            if own:
+                assert restored.used_calls == w.used_calls
+            else:
+                assert restored.used_calls < w.used_calls
