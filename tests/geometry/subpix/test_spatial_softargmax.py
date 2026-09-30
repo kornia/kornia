@@ -1305,10 +1305,10 @@ class TestConventionsConvSoftArgmax(BaseTester):
         heatmap = torch.zeros(1, 1, 7, 15, device=device, dtype=dtype)
         heatmap[0, 0, 3, 10] = 1.0
         heatmap[0, 0, 3, 11] = 0.8  # pulls the window's soft-argmax right of its centre
-        window = heatmap[0, 0, 2:5, 9:12].double().flatten()
+        window = heatmap[0, 0, 2:5, 9:12].cpu().double().flatten()  # float64 reference on CPU, MPS has no float64
         weights = torch.softmax(window, 0)
-        expected_x = (weights * torch.arange(9, 12, device=device, dtype=torch.float64).repeat(3)).sum().to(dtype)
-        expected_value = (weights * window).sum().to(dtype)
+        expected_x = (weights * torch.arange(9, 12, dtype=torch.float64).repeat(3)).sum().to(device=device, dtype=dtype)
+        expected_value = (weights * window).sum().to(device=device, dtype=dtype)
         for far_maximum in (0.0, 20.0, 40.0, 1000.0):
             heatmap[0, 0, 3, 2] = far_maximum  # eight columns from the window under test
             for eps in (1e-8, 0.0):
