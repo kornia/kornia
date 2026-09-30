@@ -21,6 +21,7 @@ import torch
 from kornia.feature.siftdesc import (
     DenseSIFTDescriptor,
     SIFTDescriptor,
+    _dense_sift_histograms_from_gradients,
     get_sift_bin_ksize_stride_pad,
     get_sift_pooling_kernel,
 )
@@ -385,3 +386,17 @@ class TestDenseSIFTDescriptor(BaseTester):
         batch_size, channels, height, width = 1, 1, 16, 16
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), nondet_tol=1e-4)
+
+    def test_float64_bin_centre_gradient_votes_in_one_bin_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        bins = 8
+        angle = torch.arange(bins, device=device, dtype=torch.float64) * (2 * torch.pi / bins)
+        # Unit gradients at the bin centres, plus one zero gradient that votes nowhere.
+        gx = torch.cat([torch.cos(angle), angle.new_zeros(1)]).view(1, 1, 1, bins + 1)
+        gy = torch.cat([torch.sin(angle), angle.new_zeros(1)]).view(1, 1, 1, bins + 1)
+        histograms = _dense_sift_histograms_from_gradients(gx, gy, bins, eps=0.0)
+        expected = torch.zeros(bins, bins + 1, device=device, dtype=torch.float64)
+        expected[:, :bins] = torch.eye(bins, device=device, dtype=torch.float64)
+        # The float32 pi in the orientation offset and the bin scale leaked up to 1e-7 into the lower bin.
+        self.assert_close(histograms[0, :, 0], expected, rtol=0.0, atol=1e-12)

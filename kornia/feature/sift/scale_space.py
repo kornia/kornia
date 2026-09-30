@@ -37,7 +37,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
 from kornia.feature.laf import _grid_sample_patches, laf_from_center_scale_ori, laf_is_valid, rotate_laf
@@ -610,7 +609,7 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
 
     @staticmethod
     def _angular_histogram(mag: torch.Tensor, angle: torch.Tensor, bins: int) -> torch.Tensor:
-        position = (angle % (2.0 * pi)) * bins / (2.0 * pi)
+        position = (angle % (2.0 * math.pi)) * bins / (2.0 * math.pi)
         lower = position.floor().long() % bins
         weight1 = position - position.floor()
         output = mag.new_zeros(*mag.shape[:-1], bins)
@@ -638,7 +637,7 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         denominator = left + right - 2 * center
         safe = torch.where(denominator != 0, denominator, torch.ones_like(denominator))
         offset = torch.where(denominator != 0, 0.5 * (left - right) / safe, torch.zeros_like(denominator))
-        return (-2.0 * pi * (index.to(lafs.dtype) + offset) / 36.0).reshape(lafs.shape[:2])
+        return (-2.0 * math.pi * (index.to(lafs.dtype) + offset) / 36.0).reshape(lafs.shape[:2])
 
     def _describe(
         self, gradients: torch.Tensor, lafs: torch.Tensor, layer_indices: torch.Tensor, level_height: int
@@ -664,7 +663,7 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         """Accumulate the two angular votes per sample into the 4 x 4 spatial cells."""
         b, n, _ = mag.shape
         weight = torch.exp(-0.78125 * (xx.square() + yy.square())).to(mag.dtype)
-        angular = (angle % (2 * pi)) * 8 / (2 * pi)
+        angular = (angle % (2 * math.pi)) * 8 / (2 * math.pi)
         lower = angular.floor()
         fraction = angular - lower
         lower = lower.long().bitwise_and(7)

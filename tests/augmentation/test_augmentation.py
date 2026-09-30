@@ -2592,6 +2592,17 @@ class TestRandomHue(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
+    def test_float64_half_turn_uses_full_precision_pi_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
+        hue = kornia.color.rgb_to_hsv(image)[:, 0]
+        shifted = kornia.color.rgb_to_hsv(RandomHue(hue=(0.5, 0.5), p=1.0)(image))[:, 0]
+        # Circular distance of the shift from pi; the float32 pi left it 8.7e-8 short.
+        error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
+        self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
+
     def test_same_on_batch(self, device, dtype):
         f = RandomHue(hue=(-0.5, 0.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)

@@ -55,6 +55,14 @@ class TestSharedSIFTScaleSpace(BaseTester):
         expected[2, 1:3, 2:4] = 0.5
         self.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
 
+    def test_float64_bin_centre_angles_fill_one_bin_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        angle = torch.arange(36, device=device, dtype=torch.float64).view(1, 36, 1) * (2 * torch.pi / 36)
+        histogram = _SIFTScaleSpaceDescriptor._angular_histogram(torch.ones_like(angle), angle, 36)
+        # The float32 pi in the bin scale leaked up to 9.7e-7 of the upper bins into their lower neighbour.
+        self.assert_close(histogram[0], torch.eye(36, device=device, dtype=torch.float64), rtol=0.0, atol=1e-12)
+
     def test_histogram_gradcheck(self, device):
         if device.type == "mps":
             pytest.skip("MPS does not support float64 gradcheck")

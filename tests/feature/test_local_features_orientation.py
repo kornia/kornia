@@ -123,6 +123,17 @@ class TestPatchDominantGradientOrientation(BaseTester):
         model_jit = torch.jit.script(PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval())
         self.assert_close(model(patches), model_jit(patches))
 
+    def test_float64_rotation_by_pi_shifts_angle_by_pi_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # Rotating a patch by 180 degrees negates every gradient, so the angular histogram is the same
+        # histogram shifted by half its bins and the two angles differ by exactly pi. The float32 pi
+        # in the bin-to-angle mapping put that difference about 1e-7 off in float64.
+        patches = torch.rand(6, 1, 32, 32, device=device, dtype=torch.float64)
+        model = PatchDominantGradientOrientation(32, eps=1e-14).to(device, torch.float64)
+        difference = torch.remainder(model(patches) - model(patches.flip(-1, -2)), 2 * torch.pi)
+        self.assert_close(difference, torch.full_like(difference, torch.pi), rtol=0.0, atol=1e-9)
+
 
 class TestOrientationHalfPrecisionIsFinite(BaseTester):
     """A flat patch has a zero gradient; `sqrt(gx*gx + gy*gy + eps)` must not give NaN in float16.

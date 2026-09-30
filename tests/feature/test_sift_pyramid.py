@@ -40,6 +40,15 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         assert empty_lafs.shape == (2, 0, 2, 3)
         assert empty_descriptors.shape == (2, 0, 128)
 
+    def test_float64_identity_remap_keeps_histogram_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        histograms = torch.rand(1, 3, 8, 5, device=device, dtype=torch.float64)
+        affine = torch.eye(2, device=device, dtype=torch.float64).expand(1, 3, 2, 2)
+        remapped = SIFTDescriptorFromPyramid._remap_angles(histograms, affine, 8)
+        # The float32 pi moved 2.2e-7 of every bin past pi into its lower neighbour.
+        self.assert_close(remapped, histograms, rtol=0.0, atol=1e-12)
+
     def test_horizontal_gradient_keeps_orientation(self, device, dtype):
         image = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 1, 64).expand(1, 1, 64, 64)
         xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
