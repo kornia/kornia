@@ -107,16 +107,16 @@ def gaussian(
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`, which validates the size and
-        calls this function; ``gaussian`` does not validate it. For an even ``window_size`` the samples sit half a
-        sample off the mean and the peak is at ``mean - 0.5``: the default ``mean`` centres the kernel on the middle
-        of the window, and an explicit ``mean=m`` centres it at ``m - 0.5``.
+        calls this function; ``gaussian`` does not validate it. For an even ``window_size`` the Gaussian is centred at
+        ``mean - 0.5``, halfway between two samples: the default ``mean`` centres the kernel on the middle of the
+        window, and an explicit ``mean=m`` centres it at ``m - 0.5``.
 
     Args:
         window_size: the size which drives the filter amount.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`.
-        mean: Mean of the Gaussian function (center) for an odd ``window_size``; an even one
-            centres at ``mean - 0.5``. If not provided, it defaults to
-            ``window_size // 2``. If a tensor, should be in a shape :math:`(B, 1)`.
+        mean: Mean of the Gaussian function (center); see the Convention block for an even
+            ``window_size``. If not provided, it defaults to ``window_size // 2``. If a tensor,
+            should be in a shape :math:`(B, 1)`.
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
@@ -341,7 +341,7 @@ def laplacian_1d(
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_laplacian_kernel1d`, which validates the size and
-        calls this function. ``laplacian_1d`` accepts any size; an even one puts the negative tap at
+        calls this function. ``laplacian_1d`` accepts any positive size; an even one puts the negative tap at
         ``window_size // 2``, off the middle of the kernel.
 
     Args:
@@ -611,8 +611,9 @@ def get_spatial_gradient_kernel2d(
     Convention:
         - ``order=1`` stacks :math:`(\partial_x, \partial_y)` along the first axis and ``order=2`` stacks
           :math:`(\partial_{xx}, \partial_{xy}, \partial_{yy})`. Correlated with an image, as
-          :func:`~kornia.filters.filter2d` does, each channel is positive where the values increase with the
-          column (x) or the row (y).
+          :func:`~kornia.filters.filter2d` does, an ``order=1`` channel is positive where the values increase with
+          the column (x) or the row (y), and an ``order=2`` channel is positive on :math:`x^2`, :math:`xy` and
+          :math:`y^2` respectively.
         - The kernels are raw integer stencils, not derivative estimates. Per unit slope Sobel answers 8 and
           ``'diff'`` answers 2; per unit second derivative Sobel answers 64 on all three channels, while ``'diff'``
           answers 1 on :math:`\partial_{xx}` and :math:`\partial_{yy}` and 4 on :math:`\partial_{xy}`.
@@ -697,10 +698,11 @@ def get_gaussian_kernel1d(
     r"""Return Gaussian filter coefficients.
 
     Convention:
-        - The kernel samples :math:`\exp(-n^2 / 2\sigma^2)` at the integer offsets :math:`n` from its centre and is
-          normalized to sum 1; :ref:`Filtering <filtering-conventions>` names the matching scipy and OpenCV
-          kernels. :func:`~kornia.filters.get_gaussian_erf_kernel1d` integrates the Gaussian over each pixel
-          instead, and :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is the discrete Gaussian.
+        - The kernel samples :math:`\exp(-n^2 / 2\sigma^2)` at the offsets :math:`n` of its taps from its centre,
+          integers for an odd size and half-integers for an even one, and is normalized to sum 1;
+          :ref:`Filtering <filtering-conventions>` names the matching scipy and OpenCV kernels.
+          :func:`~kornia.filters.get_gaussian_erf_kernel1d` integrates the Gaussian over each pixel instead, and
+          :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is the discrete Gaussian.
         - ``force_even=True`` also accepts an even ``kernel_size``, and the kernel is then symmetric about the middle
           of the window, ``(kernel_size - 1) / 2``.
         - A tensor ``sigma`` of shape :math:`(B, 1)` gives one kernel per row.
@@ -756,9 +758,13 @@ def get_gaussian_discrete_kernel1d(
         - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. This kernel is Lindeberg's
           discrete Gaussian :math:`e^{-\sigma^2} I_{|n|}(\sigma^2)`, with :math:`I_n` the modified Bessel function
           of the first kind, normalized over the window: the smoothing kernel of discrete scale space.
-        - Known defect: the tap count is not always ``kernel_size``: ``kernel_size=1`` gives 3 taps, and an even
-          size with ``force_even=True`` gives one more than asked
-          (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
+        - Known defects:
+
+          - the tap count is not always ``kernel_size``: ``kernel_size=1`` gives 3 taps, and an even size with
+            ``force_even=True`` gives one more than asked (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
+          - the Bessel terms are computed unscaled and overflow, so the kernel is all NaN for a large ``sigma``
+            (from about 7 in float32) and for any ``sigma`` in float16
+            (`#5227 <https://github.com/kornia/kornia/issues/5227>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -769,7 +775,7 @@ def get_gaussian_discrete_kernel1d(
 
     Returns:
         1D tensor with gaussian filter coefficients. With shape :math:`(B, \text{kernel_size})` for an odd
-        ``kernel_size`` greater than 1 (see the known defect).
+        ``kernel_size`` greater than 1 (see the known defects).
 
     Examples:
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
@@ -801,8 +807,8 @@ def get_gaussian_erf_kernel1d(
     Convention:
         - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. This kernel integrates the
           Gaussian over each pixel, :math:`\Phi((n + 1/2) / \sigma) - \Phi((n - 1/2) / \sigma)` with :math:`\Phi`
-          the normal CDF, so it blurs slightly more than the sampled kernel: on a window wide enough for the tails
-          its variance is :math:`\sigma^2 + 1/12`.
+          the normal CDF, so it blurs slightly more than the sampled kernel: for :math:`\sigma` of about 1 or more,
+          on a window wide enough for the tails, its variance is :math:`\sigma^2 + 1/12`.
         - Known defect: with ``force_even=True`` an even kernel is centred on tap ``kernel_size // 2`` instead of
           the middle of the window, so it is not symmetric (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
 
@@ -1215,7 +1221,7 @@ def get_hanning_kernel2d(
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_hanning_kernel1d`. For ``kernel_size=(k_y, k_x)``
-        the kernel is the outer product of the 1d windows of sizes ``k_y`` (along the rows) and ``k_x``.
+        the kernel is the outer product of the 1d windows of sizes ``k_y`` (along ``H``) and ``k_x`` (along ``W``).
 
     Args:
         kernel_size: The size of the kernel for the filter, an integer or ``(k_y, k_x)``, each greater than 2.

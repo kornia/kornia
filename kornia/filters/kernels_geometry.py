@@ -41,11 +41,14 @@ def get_motion_kernel2d(
         - Because :func:`~kornia.filters.filter2d` correlates, the streak that the kernel draws from a bright point
           is heaviest on the side opposite the kernel's heavy end: to the point's right at ``angle=0``,
           ``direction=1``.
-        - The rotation resamples the line with ``mode``: ``'nearest'`` drops taps that fall between pixels, leaving
-          3 of 5 at 45 degrees, and ``'bilinear'`` spreads the weight off the line.
+        - The rotation resamples the line with ``mode``: ``'nearest'`` copies each pixel from the nearest tap, so the
+          number of taps changes with the angle (3 at 45 degrees, 7 at 30 for a size-5 line), and ``'bilinear'``
+          spreads the weight off the line.
         - A tensor ``angle`` of shape :math:`(B,)` needs a ``direction`` of the same length and gives
-          :math:`(B, k, k)` in the angle's dtype; a float ``direction`` is not broadcast and raises.
-        - Known defect: on MPS some angles give a different kernel than on the CPU
+          :math:`(B, k, k)` in the angle's dtype; a float ``direction`` is not broadcast, so it raises for
+          ``B > 1``.
+        - Known defect: a tensor ``angle`` builds the kernel on its own device, and on MPS some angles give a
+          different kernel than the CPU or the same float angle
           (`#5181 <https://github.com/kornia/kornia/issues/5181>`_).
 
     Args:
@@ -131,9 +134,10 @@ def get_motion_kernel3d(
     Convention:
         See the Convention block on :func:`~kornia.filters.get_motion_kernel2d` for ``direction`` and ``mode``.
         ``angle`` is ``(yaw, pitch, roll)`` in degrees, the rotations about the x, y and z axes applied by
-        :func:`~kornia.geometry.transform.rotate3d`. The unrotated line lies along x, so yaw alone leaves the kernel
-        unchanged; a positive pitch moves the heavy end to +z, and a positive roll turns the line clockwise as
-        displayed, the opposite of the 2d ``angle``.
+        :func:`~kornia.geometry.transform.rotate3d`. The unrotated line lies along x, so with the default
+        ``mode='nearest'`` yaw alone leaves the kernel unchanged (``'bilinear'`` resamples it off the line); a
+        positive pitch moves the heavy end to +z, and a positive roll turns the line clockwise as displayed, the
+        opposite of the 2d ``angle``.
 
     Args:
         kernel_size: motion kernel width, height and depth, an odd integer of at least 3.

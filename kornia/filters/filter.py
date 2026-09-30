@@ -87,8 +87,9 @@ def filter2d(
           - a kernel batch that divides the input batch without matching it is not rejected: with 2 kernels for 4
             samples, sample ``i`` is filtered with kernel ``i % 2``
             (`#5154 <https://github.com/kornia/kornia/issues/5154>`_).
-          - an integer input casts the kernel to its dtype, so a fractional kernel truncates to 0 and a uint8 image
-            filtered with a box kernel comes back as zeros (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+          - an integer input casts the kernel to its dtype, so a fractional kernel truncates to 0: a uint8 image
+            filtered with a box kernel comes back as zeros, or the call raises where torch has no integer
+            convolution (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
           - ``padding`` and ``border_type`` are checked case-insensitively but used as given: ``padding='SAME'``
             returns the ``'valid'`` output and ``border_type='REFLECT'`` raises
             (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
@@ -258,7 +259,7 @@ def filter3d(
           anchor ``((kD - 1) // 2, (kH - 1) // 2, (kW - 1) // 2)``.
         - The default ``border_type`` is ``'replicate'``, where :func:`~kornia.filters.filter2d` defaults to
           ``'reflect'``. There is no ``padding`` argument: the output always has the input's shape.
-        - Known defect: ``normalized=True`` raises for a non-contiguous kernel, such as a permuted one
+        - Known defect: ``normalized=True`` raises for some non-contiguous kernels, such as a permuted one
           (`#5159 <https://github.com/kornia/kornia/issues/5159>`_).
 
     Args:
@@ -379,12 +380,9 @@ def fft_conv(
     (`'valid'`). Boundary handling is performed in the spatial domain prior
     to the FFT.
 
-    This function is recommended when the kernel size is larger than
-    approximately (20 x 20). For large kernels, FFT-based convolution is
-    computationally more efficient than direct spatial convolution,
-    reducing complexity from O(H * W * kH * kW) to approximately
-    O(H * W log(H * W)). For small kernels, however, direct convolution
-    is usually faster due to lower constant overhead.
+    Unlike :func:`~kornia.filters.filter2d`'s, its cost barely grows with the
+    kernel size, so it pays off only for large kernels; the crossover depends
+    on the device and the image size.
 
     Convention:
         - See the Convention block on :func:`~kornia.filters.filter2d`: for the same arguments ``fft_conv`` returns
@@ -394,7 +392,8 @@ def fft_conv(
           - one input sample with a batch of kernels is broadcast, one output per kernel, where
             :func:`~kornia.filters.filter2d` raises (`#5154 <https://github.com/kornia/kornia/issues/5154>`_).
           - an integer input truncates a fractional kernel to 0, as in :func:`~kornia.filters.filter2d`, and the
-            result is float32 (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+            result is in torch's default floating dtype (float32) instead of the input's
+            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.
