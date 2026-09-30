@@ -194,12 +194,11 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         return input
 
-    def _padding_offset(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
-    ) -> torch.Tensor:
+    def _padding_offset(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         padding = params.get("padding_size")
         if is_exporting() or not isinstance(padding, torch.Tensor):
-            padding = _constant_tensor(tuple(self.compute_padding(tuple(input.shape), flags)), dtype=torch.long)[None]
+            # Recompute the canvas from the module flags, as ``precrop_padding`` does for the pixels.
+            padding = _constant_tensor(tuple(self.compute_padding(tuple(input.shape))), dtype=torch.long)[None]
         return padding[:, ::2].to(input)
 
     def compute_transformation(
@@ -207,7 +206,7 @@ class RandomCrop(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         transform = self._compute_crop_transformation(input, params, flags)
         # Column vectors: M = crop @ padding, including the existing oversized-crop scale.
-        offset = self._padding_offset(input, params, flags)
+        offset = self._padding_offset(input, params)
         transform[:, :2, 2] += (transform[:, :2, :2] @ offset[..., None]).squeeze(-1)
         return transform
 
@@ -292,7 +291,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
         if flags["cropping_mode"] == "resample" and isinstance(transform, torch.Tensor):
             # Pixels are padded below; sample with the padded-canvas crop matrix.
-            offset = self._padding_offset(input, params, flags)
+            offset = self._padding_offset(input, params)
             if not (self.p == 1.0 and self.p_batch == 1.0):
                 # Only selected matrices include padding. Keep skipped rows as identity,
                 # including when a shape-changing blend returns the whole transformed image.

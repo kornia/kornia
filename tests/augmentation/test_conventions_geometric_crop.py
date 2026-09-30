@@ -195,14 +195,19 @@ class TestGeometricCropConventions(BaseTester):
         expected = image.new_tensor([[[[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]]]) / 8
         self.assert_close(output, expected)
 
+    @pytest.mark.parametrize("override", [{}, {"padding": 0}, {"padding": 2}])
     @pytest.mark.parametrize("mode", ["slice", "resample"])
-    def test_random_crop_explicit_padding_recomputes_static_canvas_without_saved_padding(self, device, dtype, mode):
+    def test_random_crop_explicit_padding_recomputes_static_canvas_without_saved_padding(
+        self, device, dtype, mode, override
+    ):
         image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3) / 8
         crop = K.RandomCrop((4, 4), padding=1, cropping_mode=mode, p=1.0)
         params = crop.forward_parameters(image.shape)
         params["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 3], [0, 3]]])
         params.pop("padding_size")
-        output = crop(image, params=params)
+        # The canvas is recomputed from the module's own padding; the matrix must follow the pixels even when the
+        # call overrides the padding flag (#4801).
+        output = crop(image, params=params, **override)
         self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 1], [0, 1, 1], [0, 0, 1]]]))
         expected = image.new_tensor([[[[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]]]) / 8
         self.assert_close(output, expected)
