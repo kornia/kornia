@@ -18,6 +18,7 @@
 import os
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Optional
 
 __all__ = ["InstallationMode", "kornia_config"]
 
@@ -30,14 +31,15 @@ class InstallationMode(StrEnum):
 
     Set the mode with ``kornia_config.lazyloader.installation_mode = "<mode>"`` or, before kornia is imported, with
     the ``KORNIA_INSTALLATION_MODE`` environment variable. Both accept ``"raise"``, ``"ask"`` and ``"auto"`` in any
-    case. Members compare equal to their upper-case values (``InstallationMode.RAISE == "RAISE"``).
+    case; an invalid environment value raises a ``ValueError`` when a lazy loader first handles a missing module.
+    Members compare equal to their upper-case values (``InstallationMode.RAISE == "RAISE"``).
 
     - ``RAISE`` (the default): raise an ``ImportError`` that names the kornia extra to install, for example
       ``pip install "kornia[onnx]"``.
     - ``ASK``: on an interactive terminal, ask whether to install that extra. When stdin is not a terminal (a CI job
       or a DataLoader worker, for example), behave as ``RAISE``.
-    - ``AUTO``: run ``pip install "kornia[<extra>]"`` for the declared kornia extra (instead of the import name) with
-      the running interpreter, and raise an ``ImportError`` if pip fails.
+    - ``AUTO``: install the declared kornia extra instead of the import name, with the running interpreter's
+      ``pip install "kornia[<extra>]"`` (for example ``kornia[image]``), and raise an ``ImportError`` if pip fails.
 
     A dependency that declares no kornia extra is never installed: ``ASK`` and ``AUTO`` raise the same
     ``ImportError`` as ``RAISE`` for it.
@@ -78,25 +80,37 @@ class LazyLoaderConfig:
     """Configure lazy loading behavior for external dependencies.
 
     The initial ``installation_mode`` is read from the ``KORNIA_INSTALLATION_MODE`` environment variable when it is
-    set and not empty, and is :attr:`InstallationMode.RAISE` otherwise.
+    set and not empty, and is :attr:`InstallationMode.RAISE` otherwise. An invalid value does not stop kornia from
+    importing: reading ``installation_mode`` raises a ``ValueError`` that names the variable, the value and the valid
+    modes, which happens the first time a lazy loader handles a missing module, until a valid mode is set in code.
     """
 
     def __init__(self) -> None:
+        self._installation_mode = InstallationMode.RAISE
+        self._invalid_env_value: Optional[str] = None
         env_value = os.environ.get(_INSTALLATION_MODE_ENV_VAR, "")
-        self._installation_mode = (
-            _parse_installation_mode(env_value, _INSTALLATION_MODE_ENV_VAR)
-            if env_value.strip()
-            else InstallationMode.RAISE
-        )
+        if env_value.strip():
+            try:
+                self._installation_mode = _parse_installation_mode(env_value, _INSTALLATION_MODE_ENV_VAR)
+            except ValueError as e:
+                self._invalid_env_value = str(e)
 
     @property
     def installation_mode(self) -> InstallationMode:
-        """How a missing optional dependency is handled; see :class:`InstallationMode`."""
+        """How a missing optional dependency is handled; see :class:`InstallationMode`.
+
+        Raises:
+            ValueError: if ``KORNIA_INSTALLATION_MODE`` held an invalid value and no mode was set since.
+
+        """
+        if self._invalid_env_value is not None:
+            raise ValueError(self._invalid_env_value)
         return self._installation_mode
 
     @installation_mode.setter
     def installation_mode(self, value: str) -> None:
         self._installation_mode = _parse_installation_mode(value, "installation_mode")
+        self._invalid_env_value = None
 
 
 @dataclass

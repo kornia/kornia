@@ -90,9 +90,10 @@ class LazyLoader:
 
     def _should_install(self) -> bool:
         """Decide, from the installation mode, whether to install the declared extra of a missing module."""
+        # Read the mode first, so that an invalid KORNIA_INSTALLATION_MODE is reported for every missing module.
+        mode = kornia_config.lazyloader.installation_mode
         if self.extra is None:
             return False
-        mode = kornia_config.lazyloader.installation_mode
         if mode == InstallationMode.AUTO:
             return True
         if mode == InstallationMode.ASK:
@@ -162,6 +163,7 @@ class LazyLoader:
 
         Raises:
             ImportError: if the module is missing and is not installed.
+            ValueError: if the module is missing and ``KORNIA_INSTALLATION_MODE`` holds an invalid value.
 
         """
         if self.module is not None:

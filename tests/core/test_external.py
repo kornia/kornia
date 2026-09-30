@@ -199,15 +199,79 @@ class TestInstallationModeConfig:
         monkeypatch.setenv(ENV_VAR, value)
         assert LazyLoaderConfig().installation_mode is InstallationMode.RAISE
 
-    def test_invalid_env_var_is_a_clear_error(self, monkeypatch):
-        monkeypatch.setenv(ENV_VAR, "maybe")
-        with pytest.raises(ValueError) as excinfo:
-            LazyLoaderConfig()
-        message = str(excinfo.value)
+    @staticmethod
+    def _assert_names_the_bad_value(message, value):
         assert ENV_VAR in message
-        assert "'maybe'" in message
+        assert repr(value) in message
         for choice in ("'raise'", "'ask'", "'auto'"):
             assert choice in message
+
+    def test_invalid_env_var_is_reported_when_the_mode_is_needed(self, monkeypatch):
+        monkeypatch.setenv(ENV_VAR, "maybe")
+        config = LazyLoaderConfig()  # creating the config, as `import kornia` does, does not raise
+        with pytest.raises(ValueError) as excinfo:
+            _ = config.installation_mode
+        self._assert_names_the_bad_value(str(excinfo.value), "maybe")
+        # A mode set in code replaces the invalid value.
+        config.installation_mode = "raise"
+        assert config.installation_mode is InstallationMode.RAISE
+
+    @pytest.mark.parametrize("extra", [None, "image"])
+    def test_invalid_env_var_is_reported_by_a_loader_for_a_missing_module(
+        self, monkeypatch, commands, no_prompt, extra
+    ):
+        monkeypatch.setenv(ENV_VAR, "maybe")
+        monkeypatch.setattr(kornia_config, "lazyloader", LazyLoaderConfig())
+        assert LazyLoader("math").pi == pytest.approx(3.141592653589793)  # an installed module does not need the mode
+        with pytest.raises(ValueError) as excinfo:
+            _ = LazyLoader(MISSING, extra=extra).attr
+        self._assert_names_the_bad_value(str(excinfo.value), "maybe")
+        assert commands == []
+
+    def test_invalid_env_var_does_not_break_import_kornia(self):
+        env = {**{k: v for k, v in os.environ.items() if k != ENV_VAR}, ENV_VAR: "bogus"}
+        code = textwrap.dedent(
+            f"""
+            import os
+            import subprocess
+
+            import kornia
+            from kornia.core.external import LazyLoader
+
+            def refuse(*args, **kwargs):
+                raise RuntimeError("process start refused")
+
+            for name in ("run", "call", "check_call", "check_output", "Popen"):
+                setattr(subprocess, name, refuse)
+            os.system = refuse
+
+            print("IMPORTED", kornia.__name__, flush=True)
+            print("INSTALLED", LazyLoader("math").pi, flush=True)
+            try:
+                LazyLoader({MISSING!r}, extra="image").attr
+            except BaseException as e:
+                print("MISSING", type(e).__name__, str(e), flush=True)
+            """
+        )
+        # S603: this interpreter and a literal program; cwd is the repo root so the child imports this tree.
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", code],
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            timeout=300,
+        )
+        assert result.returncode == 0, result.stderr
+        lines = result.stdout.splitlines()
+        assert "IMPORTED kornia" in lines, result.stdout
+        assert "INSTALLED 3.141592653589793" in lines, result.stdout
+        missing = [line for line in lines if line.startswith("MISSING ")]
+        assert len(missing) == 1, result.stdout
+        assert missing[0].startswith("MISSING ValueError "), missing[0]
+        self._assert_names_the_bad_value(missing[0], "bogus")
 
     @pytest.mark.parametrize(("value", "expected"), [(None, "RAISE"), ("auto", "AUTO")])
     def test_global_config_reads_the_env_var_at_import(self, value, expected):
