@@ -1298,26 +1298,25 @@ class TestConventionsConvSoftArgmax(BaseTester):
         expected = torch.tensor([1 / 3, 5 / 7, -0.5], device=device, dtype=dtype)
         self.assert_close(coords[0, 0, :, 2, 1, 6], expected)
 
-    def test_wart_conv_soft_argmax_eps_erases_far_windows_5020(self, device, dtype):
-        # #5020: global stabilization and per-window eps erase a local peak far below the map maximum.
+    def test_convention_conv_soft_argmax_far_window_is_its_own_softmax_5020(self, device, dtype):
+        # #5020: each window is shifted by its own maximum, so a local peak far below the map maximum keeps the
+        # softmax of its own 3 x 3 window and its value, in float16 too, and `eps` plays no part. The map-wide shift
+        # used to send this window to (10, 0) from a gap of 40 and to NaN in float16 from a gap of 20.
         heatmap = torch.zeros(1, 1, 7, 15, device=device, dtype=dtype)
-        heatmap[0, 0, 3, 2] = 40.0  # the map maximum, eight columns from the window under test
         heatmap[0, 0, 3, 10] = 1.0
         heatmap[0, 0, 3, 11] = 0.8  # pulls the window's soft-argmax right of its centre
-        coords, values = kornia.geometry.subpix.conv_soft_argmax2d(
-            heatmap, (3, 3), normalized_coordinates=False, output_value=True
-        )
-        x, value = coords[0, 0, 0, 3, 10], values[0, 0, 3, 10]
-        if dtype == torch.float16:
-            assert bool(x.isnan()) and bool(value.isnan())
-        else:
-            assert abs(float(x) - 10.0) < 1e-6
-            assert abs(float(value)) < 1e-6
-            coords, values = kornia.geometry.subpix.conv_soft_argmax2d(
-                heatmap, (3, 3), normalized_coordinates=False, output_value=True, eps=0.0
-            )
-            assert float(coords[0, 0, 0, 3, 10]) > 10.05
-            assert float(values[0, 0, 3, 10]) > 0.3
+        window = heatmap[0, 0, 2:5, 9:12].double().flatten()
+        weights = torch.softmax(window, 0)
+        expected_x = (weights * torch.arange(9, 12, device=device, dtype=torch.float64).repeat(3)).sum().to(dtype)
+        expected_value = (weights * window).sum().to(dtype)
+        for far_maximum in (0.0, 20.0, 40.0, 1000.0):
+            heatmap[0, 0, 3, 2] = far_maximum  # eight columns from the window under test
+            for eps in (1e-8, 0.0):
+                coords, values = kornia.geometry.subpix.conv_soft_argmax2d(
+                    heatmap, (3, 3), normalized_coordinates=False, output_value=True, eps=eps
+                )
+                self.assert_close(coords[0, 0, 0, 3, 10], expected_x)
+                self.assert_close(values[0, 0, 3, 10], expected_value)
 
     def test_convention_conv_soft_argmax2d_even_window_border_centre_5066(self, device, dtype):
         # #5066: an even border window whose centre straddles the padding reports its hot pixel, as an odd one does.
