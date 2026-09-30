@@ -233,6 +233,37 @@ def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype
     assert_close(actual.sum(), expected.sum())
 
 
+class TestGaussianDiscreteStability(BaseTester):
+    @pytest.mark.parametrize("window_size,sigma", [(19, 3.0), (43, 7.0), (121, 20.0), (5, 100.0)])
+    def test_finite_normalized(self, window_size, sigma, device, dtype):
+        actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+        assert actual.shape == (1, window_size)
+        assert actual.device == device
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual).all()
+        assert (actual >= 0).all()
+        self.assert_close(actual, actual.flip(-1))
+        self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(
+        "sigma,expected",
+        [
+            (1.0, [0.00817354616137807, 0.050050459106933266, 0.208375382589111, 0.4668012242851553]),
+            (7.0, [0.1355957850107771, 0.14276597314552686, 0.14725015016551396, 0.1487761833563642]),
+            (20.0, [0.1419646295228945, 0.1428557999903338, 0.14339318752279784, 0.14357276592794782]),
+        ],
+    )
+    def test_reference(self, sigma, expected, device, dtype):
+        # scipy.special.ive(abs(arange(-3, 4)), sigma**2), divided by its sum.
+        expected = torch.tensor([expected + expected[-2::-1]], device=device, dtype=dtype)
+        actual = get_gaussian_discrete_kernel1d(7, sigma, device=device, dtype=dtype)
+        self.assert_close(actual, expected, atol=1e-6, rtol=1e-5)
+
+    def test_gradcheck(self, device):
+        sigma = torch.tensor([[1.5], [7.0], [20.0]], device=device, dtype=torch.float64)
+        self.gradcheck(get_gaussian_discrete_kernel1d, (7, sigma))
+
+
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
 @pytest.mark.parametrize("sigma", [(1.5, 1.5), (2.1, 2.1)])

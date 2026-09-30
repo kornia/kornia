@@ -202,7 +202,7 @@ def gaussian_discrete_erf(
     return gauss / gauss.sum(-1, keepdim=True)
 
 
-def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
+def _modified_bessel_0(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
     """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Both polynomial branches are evaluated on the full tensor and merged with ``torch.where`` (instead
@@ -212,7 +212,8 @@ def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
     idx_a = ax < 3.75
 
     # small-argument branch (|x| < 3.75)
-    y = (x / 3.75) * (x / 3.75)
+    x_a = torch.where(idx_a, x, torch.zeros_like(x))
+    y = (x_a / 3.75) * (x_a / 3.75)
     out_a = 1.0 + y * (
         3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.360768e-1 + y * 0.45813e-2))))
     )
@@ -222,12 +223,14 @@ def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
     y = 3.75 / ax_b
     ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
     coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
-    out_b = (ax_b.exp() / ax_b.sqrt()) * coef
+    out_b = coef / ax_b.sqrt() if scaled else (ax_b.exp() / ax_b.sqrt()) * coef
+    if scaled:
+        out_a = out_a * (-x_a.abs()).exp()
 
     return torch.where(idx_a, out_a, out_b)
 
 
-def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
+def _modified_bessel_1(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
     """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Branch-free like :func:`_modified_bessel_0`.
@@ -236,29 +239,34 @@ def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
     idx_a = ax < 3.75
 
     # small-argument branch (|x| < 3.75)
-    y = (x / 3.75) * (x / 3.75)
+    x_a = torch.where(idx_a, x, torch.zeros_like(x))
+    y = (x_a / 3.75) * (x_a / 3.75)
     ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
-    out_a = ax * (0.5 + y * (0.87890594 + y * ans))
+    out_a = x_a.abs() * (0.5 + y * (0.87890594 + y * ans))
 
     # large-argument branch; clamp keeps the unused lanes finite (|x| = 0 would divide by zero)
     ax_b = torch.where(idx_a, torch.full_like(ax, 3.75), ax)
     y = 3.75 / ax_b
     ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
     ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
-    ans = ans * ax_b.exp() / ax_b.sqrt()
+    ans = ans / ax_b.sqrt() if scaled else ans * ax_b.exp() / ax_b.sqrt()
+    if scaled:
+        out_a = out_a * (-x_a.abs()).exp()
     out_b = torch.where(x < 0, -ans, ans)
 
     return torch.where(idx_a, out_a, out_b)
 
 
-def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
+def _modified_bessel_i(n: int, x: torch.Tensor, scaled: bool = False, max_order: Optional[int] = None) -> torch.Tensor:
     """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
     # I_n(0) = 0 for n >= 1. The zero lanes are computed on a safe placeholder and masked out at the
     # end instead of being compacted away, so the recurrence has no data-dependent control flow.
     is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
-    x_nz = torch.where(is_zero_mask, torch.ones_like(x), x)
+    order = n if max_order is None else max_order
+    use_forward = x.abs() > order * order / 4 if scaled else torch.zeros_like(x, dtype=torch.bool)
+    x_nz = torch.where(is_zero_mask | use_forward, torch.ones_like(x), x)
 
     tox = 2.0 / x_nz.abs()
 
@@ -266,7 +274,7 @@ def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
     bip = torch.zeros_like(x)
     bi = torch.ones_like(x)
 
-    m = int(2 * (n + int(math.sqrt(40.0 * n))))
+    m = int(2 * (order + int(math.sqrt(40.0 * order))))
     for j in range(m, 0, -1):
         bim = torch.addcmul(bip, tox, bi, value=j)
         bip, bi = bi, bim
@@ -280,9 +288,20 @@ def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
         if j == n:
             ans = bip
 
-    out = ans * _modified_bessel_0(x_nz) / bi
+    out = ans * _modified_bessel_0(x_nz, scaled=scaled) / bi
     if (n % 2) == 1:
         out = torch.where(x_nz < 0.0, -out, out)
+
+    if scaled:
+        # Upward recurrence is stable when all requested orders are small relative to sqrt(x).
+        x_up = torch.where(use_forward, x.abs(), torch.full_like(x, order * order / 4))
+        previous = _modified_bessel_0(x_up, scaled=True)
+        current = _modified_bessel_1(x_up, scaled=True)
+        for k in range(1, n):
+            previous, current = current, previous - (2.0 * k / x_up) * current
+        if (n % 2) == 1:
+            current = torch.where(x < 0, -current, current)
+        out = torch.where(use_forward, current, out)
 
     return torch.where(is_zero_mask, torch.zeros_like(x), out)
 
@@ -313,18 +332,20 @@ def gaussian_discrete(
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
 
+    output_dtype = sigma.dtype
+    if sigma.dtype in (torch.float16, torch.bfloat16):
+        sigma = sigma.float()
     sigma2 = sigma * sigma
     tail = int(window_size // 2) + 1
     bessels = [
-        _modified_bessel_0(sigma2),
-        _modified_bessel_1(sigma2),
-        *(_modified_bessel_i(k, sigma2) for k in range(2, tail)),
+        _modified_bessel_0(sigma2, scaled=True),
+        _modified_bessel_1(sigma2, scaled=True),
+        *(_modified_bessel_i(k, sigma2, scaled=True, max_order=tail) for k in range(2, tail)),
     ]
-    # NOTE: on monain is exp(-sig)
-    # https://github.com/Project-MONAI/MONAI/blob/dev/monai/networks/layers/convutils.py#L128
-    out = torch.cat(bessels[:0:-1] + bessels, -1) * sigma2.exp()
+    # The exp(-sigma²) factor is already included in the scaled Bessel terms.
+    out = torch.cat(bessels[:0:-1] + bessels, -1)
 
-    return out / out.sum(-1, keepdim=True)
+    return (out / out.sum(-1, keepdim=True)).to(output_dtype)
 
 
 def laplacian_1d(
