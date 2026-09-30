@@ -865,6 +865,29 @@ class TestConventionAugmentationBase2D(BaseTester):
         self.assert_close(list_output_image, output_image)
         self.assert_close(output_masks[0], output_image)
 
+    @pytest.mark.parametrize("key", ["mask", "bbox_xyxy", "keypoints"])
+    def test_convention_container_transforms_image_first_for_geometric_children(self, device, dtype, key):
+        # Annotation handlers read the matrix the image call records. With the annotation listed before the image,
+        # a built-in geometric child used to raise on the first call and reuse the previous call's matrix after it.
+        image = torch.linspace(0, 1, 2 * 3 * 16 * 20, device=device, dtype=dtype).reshape(2, 3, 16, 20)
+        annotations = {
+            "mask": (image[:, :1] > 0.5).to(dtype),
+            "bbox_xyxy": torch.tensor([[[2.0, 3.0, 8.0, 9.0]], [[4.0, 1.0, 12.0, 7.0]]], device=device, dtype=dtype),
+            "keypoints": torch.tensor(
+                [[[3.0, 4.0], [10.0, 6.0]], [[5.0, 5.0], [15.0, 12.0]]], device=device, dtype=dtype
+            ),
+        }
+        annotation = annotations[key]
+        reference = K.AugmentationSequential(RandomAffine(30.0, p=1.0))
+        sequence = K.AugmentationSequential(RandomAffine(30.0, p=1.0))
+        for seed in (0, 1):
+            torch.manual_seed(seed)
+            expected_image, expected = reference(image, annotation, data_keys=["input", key])
+            torch.manual_seed(seed)
+            output, output_image = sequence(annotation, image, data_keys=[key, "input"])
+            self.assert_close(output_image, expected_image)
+            self.assert_close(output, expected)
+
     def test_convention_random_erasing_also_erases_container_masks(self, device, dtype):
         image = torch.ones(1, 1, 6, 8, device=device, dtype=dtype)
         mask = torch.ones_like(image)
