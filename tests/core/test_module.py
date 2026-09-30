@@ -23,7 +23,10 @@ import pytest
 import torch
 from PIL import Image as PILImage
 
-from kornia.core.module import ImageModule, ImageModuleMixIn
+from kornia.augmentation import ImageSequential as AugmentationImageSequential
+from kornia.core.module import ImageModule, ImageModuleMixIn, ImageSequential
+
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestImageModuleMixIn:
@@ -159,21 +162,18 @@ class TestImageModuleMixIn:
         with pytest.raises(ValueError, match="No pre-computed images found"):
             img_module.save(name=tmpdir.join("test_image.jpg"))
 
-    def test_detach_tensor_to_cpu_tensor(self, img_module, sample_tensor):
-        result = img_module._detach_tensor_to_cpu(sample_tensor)
-        assert isinstance(result, torch.Tensor)
-        assert result.device.type == "cpu"
-
-    def test_detach_tensor_to_cpu_list(self, img_module):
-        tensors = [torch.rand(3, 4, 4), torch.rand(3, 4, 4)]
-        result = img_module._detach_tensor_to_cpu(tensors)
-        assert isinstance(result, list)
-        assert all(t.device.type == "cpu" for t in result)
-
-    def test_detach_tensor_to_cpu_tuple(self, img_module):
-        tensors = (torch.rand(3, 4, 4), torch.rand(3, 4, 4))
-        result = img_module._detach_tensor_to_cpu(tensors)
-        assert isinstance(result, tuple)
+    @pytest.mark.parametrize("container", [list, tuple])
+    def test_store_output_image_sequence_4957(self, img_module, container, device, dtype):
+        tensors = container(torch.rand(3, 4, 4, device=device, dtype=dtype, requires_grad=True) for _ in range(2))
+        img_module._store_output_image(tensors, "pt")
+        result = img_module._output_image
+        assert isinstance(result, container)
+        assert len(result) == len(tensors)
+        for cached, output in zip(result, tensors):
+            assert cached.device == output.device
+            assert not cached.requires_grad
+            assert cached.grad_fn is None
+            torch.testing.assert_close(cached, output.detach())
 
 
 class TestImageModule:
@@ -200,3 +200,77 @@ class TestImageModule:
         output = image_module(sample_tensor)
         assert output is sample_tensor
         mock_forward.assert_called_once()
+
+
+class TestLazyOutputCache(BaseTester):
+    @pytest.fixture(params=["module", "core_sequential", "augmentation_sequential"])
+    def module(self, request):
+        class Sigmoid(ImageModule):
+            def forward(self, x):
+                return x.sigmoid()
+
+        if request.param == "module":
+            return Sigmoid()
+        if request.param == "core_sequential":
+            return ImageSequential(torch.nn.Sigmoid())
+        return AugmentationImageSequential(torch.nn.Sigmoid())
+
+    def test_forward_cache_stays_on_device_4957(self, module, device, dtype):
+        image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        output = module(image)
+        cached = module._output_image
+        # Restoring an eager .cpu() must fail this assertion on CUDA/MPS.
+        assert cached.device == output.device == image.device
+        assert not cached.requires_grad
+        assert cached.grad_fn is None
+        self.assert_close(cached, output.detach())
+        output.sum().backward()
+        self.assert_close(image.grad, output.detach() * (1 - output.detach()))
+
+    def test_show_save_lazy_cache_4957(self, module, device, dtype, tmp_path):
+        image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        output = module(image)
+        cached = module._output_image
+        expected = (output[0].detach().cpu().permute(1, 2, 0) * 255).byte().numpy()
+        if dtype != torch.bfloat16:  # NumPy does not support bfloat16.
+            rendered = module.show(display=False)
+            assert isinstance(rendered, PILImage.Image)
+            np.testing.assert_array_equal(np.asarray(rendered), expected)
+        path = tmp_path / "cached.png"
+        module.save(name=str(path))
+        with PILImage.open(path) as saved:
+            np.testing.assert_array_equal(np.asarray(saved), expected)
+        assert module._output_image is cached
+        assert cached.device == image.device
+
+    @pytest.mark.parametrize("output_type", ["numpy", "pil"])
+    def test_requested_output_conversion_4957(self, module, output_type, device, dtype):
+        if dtype == torch.bfloat16 and output_type == "numpy":
+            pytest.skip("NumPy does not support bfloat16")
+        image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        output = module(image, output_type=output_type)
+        expected = image.sigmoid().detach().cpu()
+        if output_type == "numpy":
+            assert isinstance(output, np.ndarray)
+            np.testing.assert_array_equal(output, expected.numpy())
+        else:
+            assert isinstance(output, list)
+            assert len(output) == 1
+            assert isinstance(output[0], PILImage.Image)
+            np.testing.assert_array_equal(np.asarray(output[0]), (expected[0].permute(1, 2, 0) * 255).byte().numpy())
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_export_preserves_cache_4957(self, device, dtype):
+        class CacheModule(torch.nn.Module, ImageModuleMixIn):
+            def forward(self, x):
+                output = x.sigmoid()
+                self._store_output_image(output, "pt")
+                return output
+
+        module = CacheModule()
+        image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
+        expected = module(image)
+        cached = module._output_image
+        exported = torch.export.export(module, (image,), strict=True)
+        self.assert_close(exported.module()(image), expected)
+        assert module._output_image is cached

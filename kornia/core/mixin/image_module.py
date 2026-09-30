@@ -204,24 +204,24 @@ class ImageModuleMixIn:
             return x
         raise TypeError("Input type not supported")
 
-    def _detach_tensor_to_cpu(
+    def _detach_tensor(
         self, output_image: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]
     ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
         if isinstance(output_image, torch.Tensor):
-            return output_image.detach().cpu()
+            return output_image.detach()
         if isinstance(output_image, list | tuple):
-            return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])  # type: ignore
+            return type(output_image)([self._detach_tensor(out) for out in output_image])  # type: ignore
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 
     def _store_output_image(self, output_image: Any, output_type: str) -> None:
-        """Cache the forward output for the ``.plot()`` / ``.show()`` helpers.
+        """Cache detached outputs on their device; ``.show()`` / ``.save()`` move them to CPU on use.
 
         Skipped inside a ``torch.export`` capture: caching mutates module state in ``forward``,
         which ``torch.export`` (torch <= 2.9) rejects. The captured output is unaffected.
         """
         if is_exporting():
             return
-        self._output_image = self._detach_tensor_to_cpu(output_image) if output_type == "pt" else output_image
+        self._output_image = self._detach_tensor(output_image) if output_type == "pt" else output_image
 
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
         """Return PIL images.
