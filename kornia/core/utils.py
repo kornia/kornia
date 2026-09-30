@@ -277,11 +277,11 @@ def _torch_histc_cast(input: torch.Tensor, bins: int, min: Union[float, bool], m
 
     The counts are returned in that compute dtype, **not** cast back to the input dtype. A count grows
     with the number of values, not with their range: float16 holds integers exactly only up to 2048 and
-    overflows past 65504, bfloat16 only up to 256, and an integer dtype can wrap (uint8 past 255).
-    They stay floating rather than becoming int64: ``torch.histc`` counts in the floating dtype it bins
-    in (on the CPU, 2**25 + 3 equal float32 values come back as a count of 2**25), so an int64 result
-    would be no more exact, and a float64 input keeps float64 counts for float64 arithmetic downstream.
-    float32 counts are exact up to 2**24 per bin.
+    rounds them to ``inf`` from 65520, bfloat16 only up to 256, and an integer dtype can wrap (uint8 past
+    255). They stay floating rather than becoming int64: ``torch.histc`` counts in the floating dtype it
+    bins in, so a float32 count stops being exact past 2**24 per accumulating thread (single-threaded on
+    the CPU, 2**25 + 3 equal values come back as 2**24), an int64 result would be no more exact, and a
+    float64 input keeps float64 counts for float64 arithmetic downstream.
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)

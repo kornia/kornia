@@ -1,6 +1,6 @@
-`otsu_threshold` / `OtsuThreshold` no longer return a threshold of 0 for a `float16` image plane of more
-than 65504 pixels (256 x 256 and up): the histogram counts were cast back to the image dtype, so their
-sum overflowed to `inf`, and `bfloat16` counts were rounded to 8 bits. The counts are now kept in
+`otsu_threshold` / `OtsuThreshold` no longer return a threshold of 0 for a `float16` image plane of 65520
+pixels or more (256 x 256 and up): the histogram counts were cast back to the image dtype, so their sum
+overflowed to `inf`, and `bfloat16` counts were rounded to 8 bits. The counts are now kept in
 `float32` (`float64` for a `float64` image). `normalize_homography`, and the `warp_perspective` and
 `warp_affine` calls built on it, now invert `float16` and `bfloat16` matrices in `float32` and cast the
 result back: the `float16` determinant of a large image's pixel-normalization matrix is subnormal, so a

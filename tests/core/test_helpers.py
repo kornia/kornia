@@ -204,9 +204,9 @@ class TestHistcCast(BaseTester):
         self.assert_close(y, y_expected)
 
     def test_counts_above_the_half_precision_integer_range_are_exact(self, device, dtype):
-        # #5196: float16 holds integers exactly only up to 2048 and overflows past 65504, bfloat16 only up to 256.
-        # With the counts cast back to the input dtype, 70000 equal values came back as inf in float16 and as 70144
-        # in bfloat16.
+        # #5196: float16 holds integers exactly only up to 2048 and rounds them to inf from 65520, bfloat16 only up
+        # to 256. With the counts cast back to the input dtype, 70000 equal values came back as inf in float16 and as
+        # 70144 in bfloat16.
         x = torch.zeros(70001, device=device, dtype=dtype)
         x[0] = 1.0
 
@@ -217,8 +217,9 @@ class TestHistcCast(BaseTester):
 
 
 class TestInverse3x3ClosedForm(BaseTester):
+    @pytest.mark.parametrize("capture", [False, True], ids=["eager", "capture"])
     @pytest.mark.parametrize("side", [3000, 11600])
-    def test_pixel_normalization_matrix_of_a_large_image(self, device, dtype, side):
+    def test_pixel_normalization_matrix_of_a_large_image(self, device, dtype, side, capture, monkeypatch):
         # #5197: the pixel-normalization matrix of a `side`-pixel image, [[s, 0, -1], [0, s, -1], [0, 0, 1]] with
         # s = 2 / (side - 1), has determinant s**2: 4.4e-7 at 3000 px, which float16 holds only as a subnormal
         # (4.2e-7, 6 % off), and 3.0e-8 at 11600 px, which rounds to zero in float16 (half its smallest subnormal).
@@ -227,7 +228,9 @@ class TestInverse3x3ClosedForm(BaseTester):
         # Oracle: the exact inverse of the dtype-rounded matrix, [[r, 0, r], [0, r, r], [0, 0, 1]] with r = 1 / s, in
         # float64 (not torch.linalg.inv, whose float64 result on torch 2.5.1 is 2e-13 off at an exact zero). The
         # result is off it by the final rounding to `dtype` (half an ulp) plus the few roundings of the adjugate
-        # formula.
+        # formula. `capture` takes the scalar kernel that tracing and export use, which promotes the same way.
+        if capture:
+            monkeypatch.setattr("kornia.core.utils._is_tracing_or_exporting", lambda: True)
         s = 2.0 / (side - 1)
         matrix = torch.tensor([[[s, 0.0, -1.0], [0.0, s, -1.0], [0.0, 0.0, 1.0]]], dtype=torch.float64)
         matrix = matrix.to(device=device, dtype=dtype)
