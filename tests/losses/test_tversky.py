@@ -64,6 +64,21 @@ class TestTverskyLoss(BaseTester):
         if ignored_rows:
             assert torch.count_nonzero(logits.grad[:, :, :ignored_rows]) == 0
 
+    def test_small_loss_ratio_in_float32(self, device, dtype):
+        # Half of the pixels have a logit gap of 20 and half a gap of 6, so the loss is about 1e-3 to 2e-3.
+        # A ratio formed in bfloat16 has a step of 2**-8 near 1 and returns 0 or 2**-8 instead.
+        logits = torch.zeros(1, 2, 128, 128, device=device, dtype=dtype)
+        logits[:, 0, :, ::2] = 20.0
+        logits[:, 0, :, 1::2] = 6.0
+        labels = torch.zeros(1, 128, 128, device=device, dtype=torch.int64)
+
+        p_true = logits.softmax(dim=1)[:, 0].cpu().double()
+        expected = 1.0 - p_true.sum() / (p_true.numel() + 1e-8)
+        actual = kornia.losses.tversky_loss(logits, labels, alpha=0.5, beta=0.5)
+
+        assert actual.dtype == dtype
+        self.assert_close(actual.cpu().double(), expected, rtol=1e-2, atol=1e-6)
+
     def test_smoke(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
