@@ -35,6 +35,19 @@ class TestDiffJPEG(BaseTester):
         expected = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
         torch.testing.assert_close(dct_basis, expected, rtol=0.0, atol=0.0)
 
+    def test_float64_idct_uses_full_precision_pi(self) -> None:
+        from kornia.enhance.jpeg import _idct_8x8
+
+        # A non-symmetric block, so a transposed basis fails too.
+        coefficients = (torch.arange(64, dtype=torch.float64) * 37 % 64 - 31.5).view(1, 1, 8, 8)
+        basis = torch.tensor(
+            [[math.cos((2 * s + 1) * f * math.pi / 16) for s in range(8)] for f in range(8)], dtype=torch.float64
+        )
+        alpha = torch.tensor([1.0 / math.sqrt(2.0)] + [1.0] * 7, dtype=torch.float64)
+        expected = 0.25 * basis.T @ (coefficients[0, 0] * alpha[:, None] * alpha[None, :]) @ basis + 128.0
+        # A float32 pi puts the result about 3e-5 off.
+        self.assert_close(_idct_8x8(coefficients)[0, 0], expected, rtol=0.0, atol=1e-10)
+
     def test_strict_torch_export(self) -> None:
         from kornia.enhance.jpeg import _DCT8_CACHE, JPEGCodecDifferentiable
 
