@@ -48,9 +48,10 @@ matches its failure: :exc:`TypeCheckError` is also a :exc:`TypeError`, and
 :exc:`ImageError` are each also a :exc:`ValueError`. Many functions validate
 their inputs themselves and raise the built-in :exc:`ValueError` or
 :exc:`TypeError`, so ``except ValueError`` or ``except TypeError`` catches those
-and the matching kornia errors alike. :exc:`BaseError` itself derives only from
-:exc:`Exception`: a failed ``KORNIA_CHECK(condition)`` raises it, and neither of
-those two clauses catches it.
+and the matching kornia errors alike; ``except BaseError`` does not catch those
+built-ins. :exc:`BaseError` itself derives only from :exc:`Exception`: a failed
+``KORNIA_CHECK(condition)`` raises it, and neither of those two clauses catches
+it.
 
 .. autoexception:: BaseError
     :show-inheritance:

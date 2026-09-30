@@ -102,41 +102,32 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
         [torch.device, torch.dtype]
 
     Raises:
-        DeviceError: if two tensors are on different devices.
-        TypeCheckError: if two tensors are on the same device and have different dtypes.
+        DeviceError: if two tensors are on different devices. Every device is checked before any dtype, so this
+            error wins when the devices and the dtypes both differ, wherever the mismatches sit in the list.
+        TypeCheckError: if all the tensors share one device and two of them have different dtypes.
 
     """
-    device, dtype = None, None
-    for tensor in tensor_list:
-        if tensor is not None:
-            if not isinstance(tensor, torch.Tensor):
-                continue
-            _device = tensor.device
-            _dtype = tensor.dtype
-            if device is None and dtype is None:
-                device = _device
-                dtype = _dtype
-            elif device != _device:
-                raise DeviceError(
-                    f"Passed values are not in the same device and dtype. "
-                    f"Got ({device}, {dtype}) and ({_device}, {_dtype}).",
-                    actual_devices=[device, _device],
-                    expected_device=device,
-                )
-            elif dtype != _dtype:
-                raise TypeCheckError(
-                    f"Passed tensors do not have the same dtype: expected {dtype}, got {_dtype}.",
-                    actual_type=_dtype,
-                    expected_type=dtype,
-                )
-    if device is None:
+    tensors = [tensor for tensor in tensor_list if isinstance(tensor, torch.Tensor)]
+    for tensor in tensors[1:]:
+        if tensor.device != tensors[0].device:
+            raise DeviceError(
+                f"Passed tensors are not on the same device: expected {tensors[0].device}, got {tensor.device}.",
+                actual_devices=[tensors[0].device, tensor.device],
+                expected_device=tensors[0].device,
+            )
+    for tensor in tensors[1:]:
+        if tensor.dtype != tensors[0].dtype:
+            raise TypeCheckError(
+                f"Passed tensors do not have the same dtype: expected {tensors[0].dtype}, got {tensor.dtype}.",
+                actual_type=tensor.dtype,
+                expected_type=tensors[0].dtype,
+            )
+    if not tensors:
         # `torch.empty(0).device` reads the current default device and, unlike
         # `torch.get_default_device()`, is traceable by dynamo — so this helper stays
         # fullgraph-compilable even when a caller can't prove a tensor is in the list.
-        device = torch.empty(0).device
-    if dtype is None:
-        dtype = torch.get_default_dtype()
-    return (device, dtype)
+        return (torch.empty(0).device, torch.get_default_dtype())
+    return (tensors[0].device, tensors[0].dtype)
 
 
 def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:

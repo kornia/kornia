@@ -78,6 +78,27 @@ from testing.base import BaseTester, assert_close
             None,
             DeviceError,
         ),
+        # A device mismatch anywhere in the list wins over a dtype mismatch, whichever comes first.
+        (
+            [
+                torch.tensor(0, device="cpu", dtype=torch.float32),
+                torch.tensor(0, device="cpu", dtype=torch.float64),
+                torch.tensor(0, device="meta", dtype=torch.float32),
+            ],
+            None,
+            None,
+            DeviceError,
+        ),
+        (
+            [
+                torch.tensor(0, device="meta", dtype=torch.float32),
+                torch.tensor(0, device="cpu", dtype=torch.float64),
+                torch.tensor(0, device="cpu", dtype=torch.float32),
+            ],
+            None,
+            None,
+            DeviceError,
+        ),
     ],
 )
 def test_extract_device_dtype(tensor_list, out_device, out_dtype, error):
@@ -105,16 +126,20 @@ class TestExtractDeviceDtype(BaseTester):
         assert "expected torch.float32, got torch.float16" in str(err)
 
     def test_device_mismatch_raises_device_error(self, device):
-        # A device mismatch stays a DeviceError, also when the dtypes differ too.
+        # A device mismatch stays a DeviceError, also when the dtypes differ too, and also when a same-device pair
+        # with two dtypes comes before it in the list.
         a = torch.zeros(1, device=device, dtype=torch.float32)
-        for b in (
-            torch.zeros(1, device="meta", dtype=torch.float32),
-            torch.zeros(1, device="meta", dtype=torch.float16),
+        other_dtype = torch.zeros(1, device=device, dtype=torch.float16)
+        for tensors in (
+            [a, torch.zeros(1, device="meta", dtype=torch.float32)],
+            [a, torch.zeros(1, device="meta", dtype=torch.float16)],
+            [a, other_dtype, torch.zeros(1, device="meta", dtype=torch.float32)],
         ):
             with pytest.raises(DeviceError) as excinfo:
-                _extract_device_dtype([a, b])
-            assert excinfo.value.actual_devices == [a.device, b.device]
+                _extract_device_dtype(tensors)
+            assert excinfo.value.actual_devices == [a.device, torch.device("meta")]
             assert excinfo.value.expected_device == a.device
+            assert str(excinfo.value) == f"Passed tensors are not on the same device: expected {a.device}, got meta."
 
 
 class TestInverseCast:
