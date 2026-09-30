@@ -38,8 +38,10 @@ from kornia.geometry.homography import (
     line_segment_transfer_error_one_way,
     oneway_transfer_error,
     sample_is_valid_for_homography,
+    sampson_homography_distance,
     symmetric_transfer_error,
 )
+from kornia.geometry.linalg import transform_points
 
 from testing.base import BaseTester
 from testing.geometry.create import create_random_homography
@@ -211,6 +213,219 @@ class TestSymmetricTransferError(BaseTester):
         symmetric_transfer_error(pts1, pts2, H).sum().backward()
         assert pts1.grad is not None
         assert torch.isfinite(pts1.grad).all()
+
+
+def _projective_homography():
+    """A homography with non-zero h31 and h32, in float64 on the CPU (MPS has no float64)."""
+    return torch.tensor([[1.1, 0.2, 5.0], [-0.1, 0.9, -3.0], [2e-3, -1e-3, 1.0]], dtype=torch.float64)
+
+
+def _homography_residuals(point: torch.Tensor, H: torch.Tensor) -> torch.Tensor:
+    """The two algebraic rows of ``x2 x H x1`` for one correspondence ``(x, y, u, v)``, as a Jacobian oracle."""
+    x1 = torch.stack([point[0], point[1], torch.ones((), dtype=point.dtype)])
+    Hx = H @ x1
+    return torch.stack([point[3] * Hx[2] - Hx[1], Hx[0] - point[2] * Hx[2]])
+
+
+class TestSampsonHomographyDistance(BaseTester):
+    # Expected values are formed in float64 on the CPU from the dtype-rounded inputs, then compared on the device.
+
+    def test_smoke(self, device, dtype):
+        pts1 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        H = create_random_homography(pts1, 3)
+        assert sampson_homography_distance(pts1, pts2, H).shape == (1, 6)
+
+    def test_points_broadcast_against_homographies(self, device, dtype):
+        pts1 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        H = create_random_homography(torch.rand(4, 6, 2, device=device, dtype=dtype), 3)
+        batched = sampson_homography_distance(pts1, pts2, H)
+        assert batched.shape == (4, 6)
+        for k in range(4):
+            self.assert_close(batched[k : k + 1], sampson_homography_distance(pts1, pts2, H[k : k + 1]))
+
+    def test_homogeneous_points(self, device, dtype):
+        pts1 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        H = create_random_homography(pts1, 3)
+        ones = torch.ones(2, 5, 1, device=device, dtype=dtype)
+        self.assert_close(
+            sampson_homography_distance(torch.cat([pts1, ones], -1), torch.cat([pts2, ones], -1), H),
+            sampson_homography_distance(pts1, pts2, H),
+        )
+
+    def test_exact_correspondences_score_zero(self, device, dtype):
+        H = _projective_homography()[None]
+        pts1 = torch.rand(1, 10, 2, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
+        pts2 = transform_points(H, pts1)
+        actual = sampson_homography_distance(pts1.to(device, dtype), pts2.to(device, dtype), H.to(device, dtype))
+        # The floor is the rounding of the inputs (coordinates up to ~6), not the formula.
+        atol = {torch.float16: 1e-3, torch.bfloat16: 1e-2}.get(dtype, 1e-6)
+        self.assert_close(actual, torch.zeros_like(actual), rtol=0.0, atol=atol)
+
+    def test_invariant_to_homography_scale(self, device, dtype):
+        H = _projective_homography()[None].to(device, dtype)
+        pts1 = torch.rand(1, 10, 2, device=device, dtype=dtype) * 10
+        pts2 = torch.rand(1, 10, 2, device=device, dtype=dtype) * 10
+        self.assert_close(
+            sampson_homography_distance(pts1, pts2, 4.0 * H),
+            sampson_homography_distance(pts1, pts2, H),
+            low_tolerance=True,
+        )
+
+    def test_affine_equals_exact_geometric_error(self, device, dtype):
+        # For x2 = A x1 + c the constraint is linear, so the first-order correction is exact: r^T (I + A A^T)^-1 r.
+        H = torch.eye(3, dtype=torch.float64)
+        H[:2, :2] = torch.tensor([[1.3, 0.4], [-0.2, 0.8]], dtype=torch.float64)
+        H[:2, 2] = torch.tensor([2.0, -1.0], dtype=torch.float64)
+        H = H.to(dtype)
+        generator = torch.Generator().manual_seed(1)
+        pts1 = (torch.rand(1, 8, 2, generator=generator, dtype=torch.float64) * 4).to(dtype)
+        pts2 = (torch.rand(1, 8, 2, generator=generator, dtype=torch.float64) * 4).to(dtype)
+        A, c = H[:2, :2].double(), H[:2, 2].double()
+        r = pts2[0].double() - pts1[0].double() @ A.T - c
+        expected = (r * torch.linalg.solve(torch.eye(2, dtype=torch.float64) + A @ A.T, r.T).T).sum(-1)
+        actual = sampson_homography_distance(pts1.to(device), pts2.to(device), H[None].to(device))[0]
+        self.assert_close(actual, expected.to(device, dtype))
+
+    def test_projective_matches_independent_jacobian(self, device, dtype):
+        # h31 and h32 are non-zero, so a wrong projective term in the hand-written Jacobian changes the value; the
+        # affine case, scale invariance and gradcheck cannot see one.
+        H = _projective_homography()
+        generator = torch.Generator().manual_seed(2)
+        pts1 = torch.rand(12, 2, generator=generator, dtype=torch.float64) * 100
+        noise = 0.7 * torch.randn(12, 2, generator=generator, dtype=torch.float64)
+        pts2 = transform_points(H[None], pts1[None])[0] + noise
+        pts1, pts2 = pts1.to(dtype).double(), pts2.to(dtype).double()
+        expected = []
+        for point in torch.cat([pts1, pts2], 1):
+            e = _homography_residuals(point, H.to(dtype).double())
+            J = torch.func.jacrev(_homography_residuals)(point, H.to(dtype).double())
+            expected.append(e @ torch.linalg.solve(J @ J.T, e))
+        expected = torch.stack(expected)
+        actual = sampson_homography_distance(
+            pts1[None].to(device, dtype), pts2[None].to(device, dtype), H[None].to(device, dtype)
+        )
+        self.assert_close(actual[0], expected.to(device, dtype), low_tolerance=True)
+
+    def test_close_to_gold_standard_correction(self, device):
+        # First order: within 1% of the exact two-image correction, found by Gauss-Newton, at 0.5 px noise.
+        if device.type == "mps":
+            pytest.skip("the reference correction needs float64")
+        dtype = torch.float64
+        H = _projective_homography().to(device)
+        generator = torch.Generator().manual_seed(3)
+        clean = (torch.rand(30, 2, generator=generator, dtype=dtype) * 100).to(device)
+        pts1 = clean + 0.5 * torch.randn(30, 2, generator=generator, dtype=dtype).to(device)
+        noise = 0.5 * torch.randn(30, 2, generator=generator, dtype=dtype).to(device)
+        pts2 = transform_points(H[None], clean[None])[0] + noise
+        estimate = pts1.clone()
+        for _ in range(30):
+            estimate = estimate.requires_grad_(True)
+            residual = torch.cat([pts1 - estimate, pts2 - transform_points(H[None], estimate[None])[0]], 1)
+            jacobian = torch.stack(
+                [torch.autograd.grad(residual[:, k].sum(), estimate, retain_graph=True)[0] for k in range(4)], 1
+            )
+            estimate, residual = estimate.detach(), residual.detach()
+            estimate = estimate - torch.linalg.solve(jacobian.mT @ jacobian, jacobian.mT @ residual[..., None])[..., 0]
+        gold = (pts1 - estimate).square().sum(1) + (pts2 - transform_points(H[None], estimate[None])[0]).square().sum(1)
+        self.assert_close(sampson_homography_distance(pts1[None], pts2[None], H[None])[0], gold, rtol=1e-2, atol=1e-6)
+
+    def test_distance_is_root_of_squared(self, device, dtype):
+        pts1 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        H = create_random_homography(pts1, 3)
+        self.assert_close(
+            sampson_homography_distance(pts1, pts2, H, squared=False),
+            sampson_homography_distance(pts1, pts2, H).sqrt(),
+        )
+
+    def test_non_finite_inputs_give_nan(self, device, dtype):
+        # As with oneway_transfer_error, a non-finite correspondence or homography scores NaN; inf is kept for a
+        # singular J J^T, a well-defined input without a finite correction.
+        pts = torch.rand(1, 3, 2, device=device, dtype=dtype)
+        pts[0, 1] = float("nan")
+        H = torch.eye(3, device=device, dtype=dtype)[None]
+        for squared in (True, False):
+            distances = sampson_homography_distance(pts, pts + 0.1, H, squared=squared)
+            assert bool(torch.isnan(distances[0, 1])) and bool(torch.isfinite(distances[0, [0, 2]]).all())
+        nan_homography = torch.full((1, 3, 3), float("nan"), device=device, dtype=dtype)
+        assert bool(torch.isnan(sampson_homography_distance(pts[:, :1], pts[:, :1], nan_homography)).all())
+
+    @pytest.mark.parametrize("squared", [True, False])
+    @pytest.mark.parametrize("invalid_input", [0, 1])
+    def test_nonfinite_homogeneous_coordinates_give_nan(self, device, dtype, squared, invalid_input):
+        points = torch.tensor([[[1.0, 2.0, 1.0]]], device=device, dtype=dtype).expand(1, 4, 3).clone()
+        invalid = points.clone()
+        invalid[0, 1:, 2] = invalid.new_tensor([float("nan"), float("inf"), -float("inf")])
+        inputs = [points[..., :2], points[..., :2]]
+        inputs[invalid_input] = invalid
+        H = torch.eye(3, device=device, dtype=dtype)[None].expand(2, -1, -1)
+        distances = sampson_homography_distance(*inputs, H, squared=squared)
+        assert distances.shape == (2, 4)
+        assert torch.isnan(distances[:, 1:]).all()
+        self.assert_close(distances[:, 0], torch.zeros_like(distances[:, 0]))
+
+    def test_extreme_homography_scales(self, device, dtype):
+        # The quadratic has terms of fourth order in H, which underflow or overflow the working precision for tiny or
+        # huge finite scales; the distance does not depend on the scale.
+        if dtype == torch.float16:
+            pytest.skip("scales that overflow the float32 working precision are not representable in float16")
+        finfo = torch.finfo(torch.float64 if dtype == torch.float64 else torch.float32)
+        pts1 = torch.zeros(1, 1, 2, device=device, dtype=dtype)
+        pts2 = torch.tensor([[[1.0, 0.0]]], device=device, dtype=dtype)
+        for scale in (finfo.tiny**0.3, finfo.max**0.3):
+            H = scale * torch.eye(3, device=device, dtype=torch.float64 if device.type != "mps" else torch.float32)
+            actual = sampson_homography_distance(pts1, pts2, H.to(dtype)[None])
+            self.assert_close(actual, torch.full_like(actual, 0.5))
+
+    def test_homogeneous_points_convert_in_working_precision(self, device, dtype):
+        # x / w of a small w overflows float16 when it is formed in the input dtype; an exact correspondence is 0.
+        pts = torch.tensor([[[1.0, 0.0, 1e-5]]], device=device, dtype=dtype)
+        distance = sampson_homography_distance(pts, pts, torch.eye(3, device=device, dtype=dtype)[None])
+        assert distance.tolist() == [[0.0]]
+
+    def test_integer_inputs_give_a_floating_distance(self, device):
+        # Pixel coordinates may be integers; the distance is computed in float32 and must not be cast back.
+        pts1 = torch.tensor([[[0, 0]]], device=device)
+        pts2 = torch.tensor([[[1, 0]]], device=device)
+        distance = sampson_homography_distance(pts1, pts2, torch.eye(3, dtype=torch.long, device=device)[None])
+        assert distance.dtype == torch.float32 and distance.tolist() == [[0.5]]
+
+    def test_singular_jacobian_is_inf(self, device, dtype):
+        # The zero matrix makes both residual rows and the Jacobian vanish: no finite correction exists.
+        pts = torch.rand(1, 3, 2, device=device, dtype=dtype)
+        H = torch.zeros(1, 3, 3, device=device, dtype=dtype)
+        assert torch.isinf(sampson_homography_distance(pts, pts, H)).all()
+
+    def test_exception(self, device, dtype):
+        pts = torch.rand(1, 3, 2, device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            sampson_homography_distance(pts, pts, torch.eye(3, device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            sampson_homography_distance(pts[..., :1], pts[..., :1], torch.eye(3, device=device, dtype=dtype)[None])
+
+    def test_gradcheck(self, device):
+        pts1 = torch.rand(2, 4, 2, device=device, dtype=torch.float64)
+        pts2 = pts1 + 0.1 * torch.rand(2, 4, 2, device=device, dtype=torch.float64)
+        H = create_random_homography(pts1, 3)
+        self.gradcheck(sampson_homography_distance, (pts1, pts2, H))
+        self.gradcheck(lambda a, b, h: sampson_homography_distance(a, b, h, squared=False), (pts1, pts2, H))
+
+    @pytest.mark.parametrize("homogeneous", [False, True])
+    def test_dynamo(self, device, dtype, torch_optimizer, homogeneous):
+        pts1 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        H = create_random_homography(pts1, 3)
+        if homogeneous:
+            pts1 = torch.cat([pts1, torch.ones_like(pts1[..., :1])], -1)
+            pts2 = torch.cat([pts2, torch.ones_like(pts2[..., :1])], -1)
+            pts1[0, 0, 2] = float("nan")
+        op = sampson_homography_distance
+        actual, expected = torch_optimizer(op)(pts1, pts2, H), op(pts1, pts2, H)
+        assert torch.equal(actual.isnan(), expected.isnan())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
 
 
 class TestFindHomographyDLT(BaseTester):

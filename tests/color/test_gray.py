@@ -42,16 +42,16 @@ class TestGrayscaleToRgb(BaseTester):
         with pytest.raises(TypeCheckError):
             assert kornia.color.grayscale_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.grayscale_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.grayscale_to_rgb(img)
 
+        img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
             assert kornia.color.grayscale_to_rgb(img)
 
     def test_opencv(self, device, dtype):
@@ -147,17 +147,17 @@ class TestRgbToGrayscale(BaseTester):
         with pytest.raises(TypeCheckError):
             assert kornia.color.rgb_to_grayscale([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_grayscale(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_grayscale(img)
 
+        img = torch.ones(3, 1, 1, device=device, dtype=dtype)
+        rgb_weights = torch.tensor([0.2, 0.8])
         with pytest.raises(ValueError):
-            img = torch.ones(3, 1, 1, device=device, dtype=dtype)
-            rgb_weights = torch.tensor([0.2, 0.8])
             assert kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
 
     def test_unsupported_dtype_raises(self, device):
@@ -262,12 +262,12 @@ class TestBgrToGrayscale(BaseTester):
         with pytest.raises(TypeCheckError):
             assert kornia.color.bgr_to_grayscale([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.bgr_to_grayscale(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.bgr_to_grayscale(img)
 
     def test_opencv(self, device, dtype):

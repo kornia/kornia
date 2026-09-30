@@ -735,22 +735,35 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    safe_eps: float = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
-    norm = torch.linalg.vector_norm(quaternion, ord=2, dim=-1, keepdim=True)
+    return _normalize_last_dim(quaternion, eps)
+
+
+def _normalize_last_dim(x: torch.Tensor, eps: float) -> torch.Tensor:
+    """Divide ``x`` by the L2 norm of its last axis, floored at ``eps``.
+
+    The arithmetic of :func:`normalize_quaternion`, shared with :meth:`kornia.geometry.vector.Vector3.normalized`,
+    :meth:`kornia.geometry.vector.Vector2.normalized` and :meth:`kornia.geometry.line.ParametrizedLine.through`.
+    Its values match ``torch.nn.functional.normalize(x, p=2, dim=-1, eps=eps)`` wherever the norm is nonzero. Their
+    default ``eps=1e-12`` rounds to ``0`` in float16, where ``normalize`` turns a zero vector into ``0 / 0 = NaN``
+    (#4021, #5062); here a row whose norm is exactly zero takes a separate arm (``x / eps``, or a constant zero where
+    float16 cannot hold ``1 / eps``), so with a positive ``eps`` the zero vector stays zero in every dtype.
+    """
+    safe_eps: float = max(eps, 5.960464477539063e-08) if x.dtype == torch.float16 and eps > 0.0 else eps
+    norm = torch.linalg.vector_norm(x, ord=2, dim=-1, keepdim=True)
     # Only an exactly-zero norm takes the constant arms below; a NaN norm compares unequal to zero and goes
     # through the division, so NaN in gives NaN out. The eps floor is a value floor selected by torch.where,
     # so its derivative does not depend on the torch version the way clamp's derivative at the bound does.
     mask = norm != 0.0
     safe_norm = torch.where(mask, norm, torch.ones_like(norm))
     denom = torch.where(safe_norm < safe_eps, torch.full_like(safe_norm, safe_eps), safe_norm)
-    out = quaternion / denom
+    out = x / denom
     if eps == 0.0:
-        return torch.where(mask, out, torch.full_like(quaternion, float("nan")))
-    if quaternion.dtype == torch.float16 and safe_eps * 65504.0 < 1.0:
-        # The exact derivative of q / eps at q = 0 is I / eps, which overflows float16 (#4623); use a zero gradient.
-        return torch.where(mask, out, torch.zeros_like(quaternion))
-    # Below eps the function is q / eps, so the zero quaternion keeps its exact derivative I / eps.
-    return torch.where(mask, out, quaternion / torch.full_like(quaternion, safe_eps))
+        return torch.where(mask, out, torch.full_like(x, float("nan")))
+    if x.dtype == torch.float16 and safe_eps * 65504.0 < 1.0:
+        # The exact derivative of x / eps at x = 0 is I / eps, which overflows float16 (#4623); use a zero gradient.
+        return torch.where(mask, out, torch.zeros_like(x))
+    # Below eps the function is x / eps, so the zero vector keeps its exact derivative I / eps.
+    return torch.where(mask, out, x / torch.full_like(x, safe_eps))
 
 
 # based on:
