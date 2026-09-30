@@ -297,15 +297,6 @@ class TestCheckLaf:
         assert KORNIA_CHECK_LAF(torch.rand(4, 2, 2), raises=False) is False
 
 
-def _device_converts(device: torch.device, dtype: torch.dtype) -> bool:
-    """Whether ``device`` can convert a ``dtype`` tensor to int64 (MPS on torch 2.5 cannot for uint16/32/64)."""
-    try:
-        torch.zeros(1, dtype=dtype).to(device).to(torch.int64)
-    except TypeError:
-        return False
-    return True
-
-
 class TestCheckIsImage(BaseTester):
     def test_valid_float(self):
         assert KORNIA_CHECK_IS_IMAGE(torch.rand(3, 4, 4)) is True
@@ -395,7 +386,7 @@ class TestCheckIsImage(BaseTester):
 
     @pytest.mark.parametrize(
         ("int_dtype", "bits"),
-        [(torch.int8, 8), (torch.int16, 16), (torch.int32, 32), (torch.int64, 64), (torch.int64, 63)],
+        [(torch.int8, 8), (torch.int8, 9), (torch.int16, 16), (torch.int32, 32), (torch.int64, 64), (torch.int64, 63)],
     )
     def test_signed_dtype_accepts_every_nonnegative_value_that_fits_the_bits(self, device, int_dtype, bits):
         # 2**bits - 1 exceeds these dtypes' maximum, so every non-negative value of the dtype is in range.
@@ -412,8 +403,6 @@ class TestCheckIsImage(BaseTester):
 
     @pytest.mark.parametrize("uint_dtype", [torch.uint16, torch.uint32, torch.uint64])
     def test_wide_unsigned_dtype_is_range_checked(self, device, uint_dtype):
-        if not _device_converts(device, uint_dtype):
-            pytest.skip(f"torch {torch.__version__} has no {uint_dtype} conversion kernel on {device.type}")
         info = torch.iinfo(uint_dtype)
         x = torch.tensor([[[0, 1000, info.max]]], dtype=uint_dtype).to(device)
         assert KORNIA_CHECK_IS_IMAGE(x, bits=info.bits, raises=False) is True

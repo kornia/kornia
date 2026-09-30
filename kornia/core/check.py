@@ -654,6 +654,10 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[str] = None, ra
     return True
 
 
+# The unsigned dtypes wider than 8 bits, each with the signed dtype of the same width.
+_UNSIGNED_AS_SIGNED = {torch.uint16: torch.int16, torch.uint32: torch.int32, torch.uint64: torch.int64}
+
+
 def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True, bits: int = 8) -> bool:
     """Check whether a tensor is a color or gray image with values in [0, 1] for float or [0, 2 ** bits - 1] for int.
 
@@ -693,22 +697,17 @@ def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bo
     if x.numel() == 0:
         return True
 
-    low: float
-    high: float
     offset = 0
     if x.dtype in (torch.bfloat16, float16, float32, float64):
         low, high = 0.0, 1.0
     else:
         low, high = 0, (1 << bits) - 1
-        # torch.aminmax has no kernel for the unsigned dtypes wider than 8 bits.
-        if x.dtype == torch.uint16:
-            x = x.to(torch.int32)
-        elif x.dtype == torch.uint32:
-            x = x.to(torch.int64)
-        elif x.dtype == torch.uint64:
-            # int64 cannot hold every uint64 value. Flipping the sign bit maps the uint64 order onto the int64 order.
-            x = x.to(torch.int64) ^ torch.iinfo(torch.int64).min
-            offset = 1 << 63
+        signed = _UNSIGNED_AS_SIGNED.get(x.dtype)
+        if signed is not None:
+            # torch.aminmax has no kernel for these dtypes. Flipping the sign bit of a same-width signed view maps the
+            # unsigned order onto the signed order; the offset is added back to the Python numbers below.
+            x = x.view(signed) ^ torch.iinfo(signed).min
+            offset = 1 << (torch.iinfo(signed).bits - 1)
 
     # The bounds are compared as Python numbers, so 2 ** bits - 1 cannot overflow the dtype, and in this form
     # a NaN, which fails every comparison, fails the check.
