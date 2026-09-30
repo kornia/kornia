@@ -670,6 +670,38 @@ The kernel builders against their references:
   where ``scipy.ndimage.laplace`` and ``cv2.Laplacian(ksize=1)`` return :math:`\nabla^2`, ``cv2.Laplacian(ksize=3)``
   :math:`4 \nabla^2` and ``skimage.filters.laplace`` :math:`-\nabla^2`.
 
+The blurs give sizes and standard deviations rows first, as torch orders ``(H, W)``: ``kernel_size`` is
+``(kh, kw)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)` in :func:`~kornia.filters.gaussian_blur2d`,
+:func:`~kornia.filters.box_blur`, :func:`~kornia.filters.median_blur` and the filters built on them. OpenCV passes
+both pairs x first, so swap them when porting; scipy uses kornia's order. For odd ``kh`` and ``kw``, with the border
+mapped by the table above:
+
+- ``gaussian_blur2d(x, (kh, kw), (sy, sx))`` equals ``cv2.GaussianBlur(x, (kw, kh), sigmaX=sx, sigmaY=sy)`` and
+  ``scipy.ndimage.gaussian_filter(x, sigma=(sy, sx), radius=(kh // 2, kw // 2))``.
+- ``box_blur(x, (kh, kw))`` equals ``cv2.blur(x, (kw, kh))`` and ``scipy.ndimage.uniform_filter(x, size=(kh, kw))``.
+
+The edge-preserving filters, the sharpening and the blur pools against their references:
+
+- :func:`~kornia.filters.bilateral_blur` with ``'l1'`` uses the colour distance of ``cv2.bilateralFilter``, but
+  weighs the whole ``kernel_size`` rectangle where OpenCV weighs only the disc of radius ``d // 2``, so the two differ
+  even for ``kernel_size=(d, d)``.
+- ``guided_blur(guide, src, 2 * r + 1, eps)`` equals ``cv2.ximgproc.guidedFilter(guide, src, r, eps)`` away from the
+  border: ``eps`` is the same quantity, but OpenCV pads with ``BORDER_REFLECT``, which has no kornia mode.
+  :func:`~kornia.filters.joint_bilateral_blur` takes its guide second, where
+  ``cv2.ximgproc.jointBilateralFilter(joint, src, ...)`` takes it first.
+- ``unsharp_mask(x, (k, k), (r, r))`` with ``k = 2 * int(4 * r + 0.5) + 1``, the window scikit-image truncates its
+  Gaussian to, equals ``skimage.filters.unsharp_mask(x, radius=r, amount=1, preserve_range=True)`` away from the
+  border. scikit-image pads with scipy's ``reflect``, which has no kornia mode, and with its default
+  ``preserve_range=False`` it clips the result, which :func:`~kornia.filters.unsharp_mask` never does.
+- ``blur_pool2d(x, k, s)`` with an odd ``k`` equals the antialiased-cnns
+  ``BlurPool(channels, pad_type='zero', filt_size=k, stride=s)``. The reference's default ``pad_type='reflect'``
+  keeps a constant map constant where :func:`~kornia.filters.blur_pool2d` zero-pads and darkens its border, and for
+  an even ``k`` kornia returns one row and one column fewer than the reference
+  (`#5166 <https://github.com/kornia/kornia/issues/5166>`_).
+- ``blur_pool2d(x, 5, 2)`` blurs with the 5 x 5 binomial kernel of :func:`~kornia.geometry.transform.pyrdown` but
+  samples differently: it zero-pads and keeps every second pixel from index 0, :math:`\lceil H / 2 \rceil` rows,
+  where ``pyrdown`` reflects the border and interpolates between pixels, :math:`\lfloor H / 2 \rfloor` rows.
+
 .. _two-view-conventions:
 
 Two-view geometry

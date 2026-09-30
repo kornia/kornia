@@ -33,16 +33,23 @@ def unsharp_mask(
 
     .. image:: _static/img/unsharp_mask.png
 
+    Convention:
+        - The output is ``input + (input - blurred)``, where ``blurred`` is :func:`~kornia.filters.gaussian_blur2d`
+          with the same ``kernel_size``, ``sigma`` and ``border_type``: the gain on the detail is fixed at 1. See
+          the Convention block on :func:`~kornia.filters.gaussian_blur2d` for the argument order.
+        - The output is not clamped: next to an edge it overshoots on both sides, so a step from 0 to 1 comes back
+          below 0 and above 1. :ref:`Filtering <filtering-conventions>` maps the call onto scikit-image.
+
     Args:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
-        the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
+        the sharpened torch.Tensor with shape :math:`(B,C,H,W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -58,12 +65,15 @@ def unsharp_mask(
 class UnsharpMask(nn.Module):
     r"""Create an operator that sharpens image with: out = 2 * image - gaussian_blur2d(image).
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.unsharp_mask`.
+
     Args:
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
         the sharpened torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -111,7 +121,7 @@ class UnsharpMask(nn.Module):
 
         Returns:
             Tensor with shape :math:`(B, C, H, W)` containing the sharpened
-            image. The amount and spatial scale of sharpening are controlled by
-            the configured Gaussian kernel size, sigma, and border handling.
+            image. The spatial scale of sharpening is set by the configured
+            Gaussian kernel size and sigma; the amount is fixed.
         """
         return unsharp_mask(input, self.kernel_size, self.sigma, self.border_type)

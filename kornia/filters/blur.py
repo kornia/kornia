@@ -124,11 +124,19 @@ def box_blur(
             1 & 1 & 1 & \cdots & 1 & 1 \\
         \end{bmatrix}
 
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)``, and every tap weighs ``1 / (kH * kW)``. An even extent is anchored at
+          ``(k - 1) // 2`` and the output keeps the input's size; see the Convention block on
+          :func:`~kornia.filters.filter2d` for the anchor and the border modes.
+        - Known defect: an integer input gets a kernel in its own dtype, whose ``1 / k`` taps truncate to 0, so a
+          uint8 image comes back as zeros (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
     Args:
         input: the image to blur with shape :math:`(B,C,H,W)`.
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+          Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
           for larger kernels. Floating inputs use average pooling outside autocast
           where it is faster (on CPUs with oneDNN, only for large inputs or small
@@ -183,6 +191,9 @@ class BoxBlur(nn.Module):
             \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
             1 & 1 & 1 & \cdots & 1 & 1 \\
         \end{bmatrix}
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.box_blur`.
 
     Args:
         kernel_size: the blurring kernel size.

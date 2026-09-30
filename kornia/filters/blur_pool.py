@@ -42,8 +42,11 @@ class BlurPool2D(nn.Module):
 
     See :cite:`zhang2019shiftinvar` for more details.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.blur_pool2d`.
+
     Args:
-        kernel_size: the kernel size for max pooling.
+        kernel_size: the size of the square binomial blur kernel.
         stride: stride for pooling.
 
     Shape:
@@ -97,15 +100,18 @@ class BlurPool2D(nn.Module):
 class MaxBlurPool2D(nn.Module):
     r"""Compute pools and blurs and downsample a given feature map.
 
-    Equivalent to ```nn.Sequential(nn.MaxPool2d(...), BlurPool2D(...))```
+    Equivalent to ``nn.Sequential(nn.MaxPool2d(max_pool_size, stride=1), BlurPool2D(kernel_size, stride))``.
 
     See :cite:`zhang2019shiftinvar` for more details.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.max_blur_pool2d`.
+
     Args:
-        kernel_size: the kernel size for max pooling.
-        stride: stride for pooling.
+        kernel_size: the size of the square binomial blur kernel.
+        stride: stride of the blur step.
         max_pool_size: the kernel size for max pooling.
-        ceil_mode: should be true to match output size of conv2d with same kernel size.
+        ceil_mode: the ``ceil_mode`` of the stride-1 max pool.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -169,13 +175,16 @@ class MaxBlurPool2D(nn.Module):
 
 
 class EdgeAwareBlurPool2D(nn.Module):
-    """Apply an edge-aware anti-aliasing filter during downsampling.
+    """Apply an edge-aware anti-aliasing blur that keeps the input size.
 
     This module performs blur pooling while preserving edges by using an
     edge-intensity threshold.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.edge_aware_blur_pool2d`.
+
     Args:
-        kernel_size: The size of the Gaussian blur kernel.
+        kernel_size: The size of the square binomial blur kernel.
         edge_threshold: The intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps
             its value. It must be greater than 1. Default: 1.25.
         edge_dilation_kernel_size: The kernel size for dilating the edge map. It must be an odd positive integer.
@@ -205,15 +214,12 @@ class EdgeAwareBlurPool2D(nn.Module):
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the input height, and :math:`W` is the
                 input width.
-            epsilon: Small positive value used to keep edge-aware divisions
-                numerically stable when local normalization terms are close to
-                zero.
+            epsilon: Small positive value added to the input before the
+                logarithm of the edge test.
 
         Returns:
-            Edge-aware downsampled tensor with shape
-            :math:`(B, C, H_{out}, W_{out})`. The output preserves channel
-            order while reducing the spatial dimensions according to the
-            configured pooling parameters.
+            Edge-aware blurred tensor with the shape of ``input``,
+            :math:`(B, C, H, W)`.
         """
         return edge_aware_blur_pool2d(
             input, self.kernel_size, self.edge_threshold, self.edge_dilation_kernel_size, epsilon
@@ -229,9 +235,21 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
 
     See :cite:`zhang2019shiftinvar` for more details.
 
+    Convention:
+        - The blur is the normalised binomial (Pascal) kernel, which must be square. The blurred map is sampled
+          every ``stride`` pixels from index 0, so an odd ``kernel_size`` returns
+          :math:`\lceil H / \text{stride} \rceil \times \lceil W / \text{stride} \rceil`.
+        - The border is zero-padded and there is no ``border_type``, so a constant map comes out darker along its
+          border. An even ``kernel_size`` is anchored at ``(k - 1) // 2``, as in :func:`~kornia.filters.filter2d`.
+          :ref:`Filtering <filtering-conventions>` compares both with antialiased-cnns and with
+          :func:`~kornia.geometry.transform.pyrdown`.
+        - Known defect: the padding is ``(k - 1) // 2`` on both sides, so an even ``kernel_size`` loses a row and a
+          column, and a :math:`7 \times 10` map comes back :math:`6 \times 9` at ``stride=1``
+          (`#5166 <https://github.com/kornia/kornia/issues/5166>`_).
+
     Args:
         input: torch.Tensor to apply operation to.
-        kernel_size: the kernel size for max pooling.
+        kernel_size: the size of the square binomial blur kernel.
         stride: stride for pooling.
 
     Shape:
@@ -275,12 +293,21 @@ def max_blur_pool2d(
 
     See :class:`~kornia.filters.MaxBlurPool2D` for details.
 
+    Convention:
+        - The result equals ``blur_pool2d(F.max_pool2d(input, max_pool_size, stride=1), kernel_size, stride)``: the
+          max pool runs at stride 1 without padding and ``stride`` belongs to the blur, so the output has
+          :func:`~kornia.filters.blur_pool2d`'s size for a map of ``H - max_pool_size + 1`` rows and
+          ``W - max_pool_size + 1`` columns. See the Convention block on :func:`~kornia.filters.blur_pool2d` for
+          the kernel and the border.
+        - Known defect: ``ceil_mode`` goes to the stride-1 max pool, where it has no effect
+          (`#5165 <https://github.com/kornia/kornia/issues/5165>`_).
+
     Args:
         input: torch.Tensor to apply operation to.
-        kernel_size: the kernel size for max pooling.
-        stride: stride for pooling.
+        kernel_size: the size of the square binomial blur kernel.
+        stride: stride of the blur step.
         max_pool_size: the kernel size for max pooling.
-        ceil_mode: should be true to match output size of conv2d with same kernel size.
+        ceil_mode: the ``ceil_mode`` of the stride-1 max pool.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
@@ -359,9 +386,25 @@ def edge_aware_blur_pool2d(
 ) -> torch.Tensor:
     r"""Blur the input torch.Tensor while maintaining its edges.
 
+    Convention:
+        - Nothing is downsampled: the output has the input's shape.
+        - A pixel is on an edge when, along ``x`` or ``y``, the channel mean of ``log2(input + epsilon)`` differs
+          by more than ``log2(edge_threshold)`` between the pixels two before and two after it: ``edge_threshold``
+          is a ratio of intensities four pixels apart, and scaling the image does not move the edges. Pixels on
+          the edge map, dilated by ``edge_dilation_kernel_size``, keep their input value; every other pixel takes
+          the value blurred with :func:`~kornia.filters.blur_pool2d`'s kernel at stride 1.
+        - The input is taken to be positive: the logarithm of a negative value is NaN, which never exceeds the
+          threshold, so negative regions are always blurred.
+        - Known defects:
+
+          - an even ``kernel_size`` is accepted and then fails with a raw torch shape error
+            (`#5163 <https://github.com/kornia/kornia/issues/5163>`_).
+          - an ``edge_threshold`` of at most 1 passes the positivity check but disables the blur, and the input
+            comes back unchanged (`#5169 <https://github.com/kornia/kornia/issues/5169>`_).
+
     Args:
         input: the input image to blur with shape :math:`(B, C, H, W)`.
-        kernel_size: the kernel size for max pooling.
+        kernel_size: the size of the square binomial blur kernel.
         edge_threshold: intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps its
             value. It must be greater than 1.
         edge_dilation_kernel_size: the kernel size for dilating the edges. It must be an odd positive integer.

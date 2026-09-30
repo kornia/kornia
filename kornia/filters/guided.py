@@ -185,9 +185,21 @@ def guided_blur(
     The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided`
     and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
 
+    Convention:
+        - ``guidance`` comes first and ``input`` second, the opposite of
+          :func:`~kornia.filters.joint_bilateral_blur`.
+        - ``kernel_size`` is the whole ``(kH, kW)`` window, ``2 * r + 1`` for the radius ``r`` of
+          :cite:`he2010guided`. The window means are :func:`~kornia.filters.box_blur`'s, so the border modes and
+          the anchor of an even size follow its Convention block.
+        - ``eps`` is added to the local variance of ``guidance``, so it is in squared guidance units: guidance and
+          input scaled by ``s``, filtered with ``eps * s**2``, give the result scaled by ``s``.
+          :ref:`Filtering <filtering-conventions>` maps the arguments onto OpenCV's ``guidedFilter``.
+        - Known defect: ``subsample=s`` needs ``H`` and ``W`` divisible by ``s``; any other size fails with a raw
+          torch error (`#5167 <https://github.com/kornia/kornia/issues/5167>`_).
+
     Arguments:
-        guidance: the guidance torch.Tensor with shape :math:`(B,C,H,W)`.
-        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
+        guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
+        input: the input torch.Tensor with shape :math:`(B,C_i,H,W)`.
         kernel_size: the size of the kernel.
         eps: regularization parameter. Smaller values preserve more edges.
         border_type: the padding mode to be applied before convolving.
@@ -205,7 +217,7 @@ def guided_blur(
           large windows. Default: False
 
     Returns:
-        the blurred torch.Tensor with same shape as `input` :math:`(B, C, H, W)`.
+        the blurred torch.Tensor with same shape as `input` :math:`(B, C_i, H, W)`.
 
     Raises:
         TypeCheckError: if ``subsample`` is not an integer (NumPy integers are accepted).
@@ -260,6 +272,9 @@ class GuidedBlur(nn.Module):
     The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided`
     and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.guided_blur`.
+
     Arguments:
         kernel_size: the size of the kernel.
         eps: regularization parameter. Smaller values preserve more edges.
@@ -285,8 +300,8 @@ class GuidedBlur(nn.Module):
         BaseError: if ``subsample`` is not positive, or is a ``bool``. Both are raised by the constructor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: :math:`(B, C_g, H, W)`, :math:`(B, C_i, H, W)`
+        - Output: :math:`(B, C_i, H, W)`
 
     Examples:
         >>> guidance = torch.rand(2, 3, 5, 5)
@@ -340,8 +355,8 @@ class GuidedBlur(nn.Module):
                 the width.
             input: Tensor to filter with shape :math:`(B, C_i, H, W)`, where
                 :math:`C_i` is the number of channels in the signal being
-                smoothed. Its batch and spatial dimensions must be compatible
-                with ``guidance``.
+                smoothed. Its batch and spatial dimensions must equal those
+                of ``guidance``.
 
         Returns:
             Tensor with shape :math:`(B, C_i, H, W)` containing the
