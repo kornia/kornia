@@ -429,6 +429,43 @@ class TestSIFTScalePyramid(BaseTester):
         for octave in pyramid(image):
             assert (octave - value).abs().max() < 1e-14
 
+    def test_device_argument_and_device_only_move(self, device):
+        # Registered as float64 buffers, the reference kernels made `device="mps"` and `.to("mps")` raise, because
+        # MPS has no float64. Only a move that also cast the dtype, `.to("mps", torch.float32)`, worked.
+        image = torch.rand(1, 1, 48, 52, device=device)
+        expected = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device, torch.float32)(image)
+        for feature in (
+            SIFTFeatureScaleSpace(8, descriptor_backend="pyramid", device=device),
+            SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device),
+        ):
+            # Not bitwise: on MPS, the orientation histogram's scatter_add_ varies from run to run at float32 rounding.
+            for actual, reference in zip(feature(image), expected):
+                assert actual.device == image.device
+                self.assert_close(actual, reference)
+
+    def test_dynamo_on_device(self, device, torch_optimizer):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The float64 reference kernels are cast to the image dtype before they move. A compiled graph that moved them
+        # first built a float64 tensor on the device, which MPS rejects.
+        pyramid = _SIFTScalePyramid().to(device)
+        image = torch.rand(1, 1, 33, 37, device=device)
+        expected = pyramid(image)
+        for actual_octave, expected_octave in zip(torch_optimizer(pyramid)(image), expected):
+            self.assert_close(actual_octave, expected_octave)
+
+    @pytest.mark.parametrize("module_dtype", [torch.float16, torch.bfloat16])
+    def test_module_dtype_cast_keeps_reference_kernels(self, device, module_dtype):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The detector builds its pyramid in float32 for half inputs, so a half-cast module still blurs float32 images.
+        # Casting the module must not round the Gaussian kernels to its dtype: rounded kernels miss their unit sum, and
+        # a constant image drifts level by level, by 8e-5 with float16 kernels and 1.1e-3 with bfloat16 ones.
+        value = 0.37
+        image = torch.full((1, 1, 96, 96), value, device=device, dtype=torch.float32)
+        for octave in _SIFTScalePyramid().to(device, module_dtype)(image):
+            assert (octave - value).abs().max() < 1e-6
+
     def test_pyramid_backend_rejects_unknown_compile_component(self):
         with pytest.raises(ValueError, match="compile_modules"):
             SIFTFeatureScaleSpace(descriptor_backend="pyramid", compile_modules=["resp"])

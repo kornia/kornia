@@ -61,11 +61,13 @@ class _SIFTScalePyramid(nn.Module):
         sigmas += [1.6 * step**i * math.sqrt(step**2 - 1.0) for i in range(5)]
         for index, sigma in enumerate(sigmas):
             size = int(8.0 * sigma + 1.0) | 1
-            # Keep the reference kernel in float64. Rounding it at construction
-            # would cap a float64 pyramid at float32 accuracy, unlike
-            # ``ScalePyramid``, which builds its kernels in the input dtype.
-            kernel = get_gaussian_kernel1d(size, sigma, dtype=torch.float64).reshape(-1)
-            self.register_buffer(f"kernel_{index}", kernel)
+            # Keep the reference kernel in float64 on the CPU. Rounding it at
+            # construction would cap a float64 pyramid at float32 accuracy, unlike
+            # ``ScalePyramid``, which builds its kernels in the input dtype. It is
+            # a plain attribute, not a buffer: ``Module.to(dtype)`` would round a
+            # buffer to the module dtype, and a float64 buffer cannot move to MPS.
+            # ``forward`` casts it to the image's dtype and device instead.
+            setattr(self, f"kernel_{index}", get_gaussian_kernel1d(size, sigma, dtype=torch.float64).reshape(-1))
 
     @staticmethod
     def _double(image: torch.Tensor) -> torch.Tensor:
@@ -166,8 +168,10 @@ class _SIFTScalePyramid(nn.Module):
     def forward(self, image: torch.Tensor) -> list[torch.Tensor]:
         """Build doubled-image Gaussian octaves for normalized grayscale images."""
         doubled = self._double(image)
-        # Cast the float64 reference kernels once instead of on every blur.
-        kernels = [getattr(self, f"kernel_{index}").to(doubled) for index in range(6)]
+        # Cast the float64 reference kernels once instead of on every blur. Cast
+        # the dtype on the CPU before moving: a compiled graph that moves first
+        # builds a float64 tensor on the device, which MPS rejects.
+        kernels = [getattr(self, f"kernel_{index}").to(doubled.dtype).to(doubled.device) for index in range(6)]
         first = self._blur(doubled, kernels[0])
         pyramid = []
         while True:
