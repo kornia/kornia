@@ -18,12 +18,17 @@
 from __future__ import annotations
 
 import os
+import pickle
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import torch
+from torch import nn
 
-from kornia.models.base import ModelBaseMixin
+from kornia.models.base import ModelBase, ModelBaseMixin
+
+from testing.base import BaseTester
 
 
 class DummyMixin(ModelBaseMixin):
@@ -207,3 +212,55 @@ class TestModelBaseMixinSaveWritesRealFiles:
         written = sorted(p.name for p in tmp_path.iterdir())
         assert len(written) == 2
         assert all("_mask_" in name for name in written)
+
+
+def _create_marker(path: str) -> None:
+    """Create an empty file at *path*; the only effect of unpickling :class:`_CreatesMarkerOnLoad`."""
+    Path(path).touch()
+
+
+class _CreatesMarkerOnLoad:
+    """An object whose unpickling calls :func:`_create_marker`, standing in for any pickled callable."""
+
+    def __init__(self, marker: Path) -> None:
+        self.marker = marker
+
+    def __reduce__(self) -> tuple[object, tuple[str]]:
+        return (_create_marker, (str(self.marker),))
+
+
+class _TinyModel(ModelBase[None]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.linear = nn.Linear(2, 3)
+
+    @staticmethod
+    def from_config(config: None) -> _TinyModel:
+        return _TinyModel()
+
+
+class TestModelBaseLoadCheckpoint(BaseTester):
+    """A local checkpoint is loaded as data, as a downloaded one is (``weights_only=True``)."""
+
+    def test_a_pickled_callable_in_a_local_file_is_refused_and_never_run(self, tmp_path) -> None:
+        marker = tmp_path / "marker"
+        path = tmp_path / "model.pth"
+        torch.save({**_TinyModel().state_dict(), "extra": _CreatesMarkerOnLoad(marker)}, path)
+
+        with pytest.raises(pickle.UnpicklingError):
+            try:
+                _TinyModel().load_checkpoint(str(path))
+            finally:
+                # Checked before the exception, so a loader that runs the payload fails on that.
+                assert not marker.exists(), "loading the checkpoint ran a callable pickled into it"
+
+    def test_a_local_state_dict_loads(self, tmp_path, dtype) -> None:
+        source = _TinyModel().to(dtype)
+        path = tmp_path / "model.pth"
+        torch.save(source.state_dict(), path)
+
+        model = _TinyModel().to(dtype)
+        model.load_checkpoint(str(path))
+
+        self.assert_close(model.linear.weight, source.linear.weight)
+        self.assert_close(model.linear.bias, source.linear.bias)

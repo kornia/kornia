@@ -622,7 +622,7 @@ class LightGlue(nn.Module):
         elif conf.weights is not None:
             path = Path(__file__).parent
             path = path / f"weights/{self.conf.weights}.pth"
-            state_dict = torch.load(str(path), map_location="cpu")
+            state_dict = torch.load(str(path), map_location="cpu", weights_only=True)
         if state_dict:
             # xfeat-lighterglue weights are nested under a 'matcher.' prefix
             prefix = "matcher."

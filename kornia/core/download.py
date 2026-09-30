@@ -599,6 +599,17 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     tried in turn; a :mod:`warnings` message is emitted for every failed
     attempt before the next source is tried.
 
+    The checkpoint is loaded with ``weights_only=True`` unless the caller passes
+    ``weights_only=False``. This differs from the torch function, whose default is
+    ``False`` on every torch version kornia supports: ``torch.load`` then restricts
+    unpickling to tensors, primitive types and plain containers, so loading a
+    checkpoint cannot execute code stored in it, as ``torch.load`` does by default
+    since torch 2.6. A checkpoint that stores another type fails to load with a
+    :class:`RuntimeError` chained to ``torch.load``'s :class:`pickle.UnpicklingError`
+    naming that type. Allowlist the type for the call with
+    ``torch.serialization.safe_globals([...])``, or pass ``weights_only=False`` --
+    and only for a file you trust, because unpickling it can run arbitrary code.
+
     Progress reporting is written to :data:`sys.stderr`. This is the one
     deliberate deviation from the torch function, which since torch 2.x writes
     its ``Downloading: "<url>" to <path>`` line to :data:`sys.stdout` (the
@@ -660,9 +671,9 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
 
     Args:
         url: a URL string, or a list of URL strings tried left-to-right.
-        **kwargs: forwarded verbatim to
-            :func:`torch.hub.load_state_dict_from_url`
-            (``map_location``, ``check_hash``, ``file_name``, …).
+        **kwargs: forwarded to :func:`torch.hub.load_state_dict_from_url`
+            (``map_location``, ``check_hash``, ``file_name``, …), with
+            ``weights_only`` set to ``True`` unless it is passed as ``False``.
 
     Returns:
         The loaded state dict.
@@ -685,6 +696,12 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
         ... ])
     """
     urls = [url] if isinstance(url, str) else list(url)
+
+    # The one torch call below loads from every source, the fallbacks and the
+    # refetch after a quarantine alike, so setting this once covers them all.
+    # ``None`` is included because torch 2.5 reads it as ``False``.
+    if kwargs.get("weights_only") is None:
+        kwargs["weights_only"] = True
 
     # Pin the cache filename to the primary URL's basename so that all
     # attempts share one cache slot and hash validation stays consistent.

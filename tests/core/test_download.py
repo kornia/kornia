@@ -17,8 +17,12 @@
 
 from __future__ import annotations
 
+import collections
 import http.client
+import http.server
+import io
 import os
+import pickle
 import sys
 import threading
 import time
@@ -40,6 +44,8 @@ from kornia.core.download import (
     hf_url,
     load_state_dict_from_url,
 )
+
+from testing.base import BaseTester
 
 
 @pytest.fixture(autouse=True)
@@ -108,14 +114,14 @@ class TestLoadStateDictFromUrl:
         with patch(self._MOCK_TARGET, return_value=self._SD) as mock:
             result = load_state_dict_from_url("http://example.com/model.pth")
         assert result == self._SD
-        mock.assert_called_once_with("http://example.com/model.pth")
+        mock.assert_called_once_with("http://example.com/model.pth", weights_only=True)
 
     def test_list_single_url_success(self) -> None:
         # A single-element list behaves like a plain str — no file_name injection
         with patch(self._MOCK_TARGET, return_value=self._SD) as mock:
             result = load_state_dict_from_url(["http://example.com/model.pth"])
         assert result == self._SD
-        mock.assert_called_once_with("http://example.com/model.pth")
+        mock.assert_called_once_with("http://example.com/model.pth", weights_only=True)
 
     def test_fallback_on_failure(self) -> None:
         primary = "http://primary.example.com/model.pth"
@@ -156,7 +162,7 @@ class TestLoadStateDictFromUrl:
 
         # fallback call must carry the primary's filename, not the fallback's
         fallback_call = mock.call_args_list[1]
-        assert fallback_call == call(fallback, file_name="weights-abc123.pth")
+        assert fallback_call == call(fallback, file_name="weights-abc123.pth", weights_only=True)
 
     def test_explicit_file_name_not_overridden(self) -> None:
         primary = "http://primary.example.com/model.pth"
@@ -178,7 +184,7 @@ class TestLoadStateDictFromUrl:
     def test_kwargs_forwarded(self) -> None:
         with patch(self._MOCK_TARGET, return_value=self._SD) as mock:
             load_state_dict_from_url("http://example.com/model.pth", map_location="cpu")
-        mock.assert_called_once_with("http://example.com/model.pth", map_location="cpu")
+        mock.assert_called_once_with("http://example.com/model.pth", map_location="cpu", weights_only=True)
 
 
 class TestProgressGoesToStderr:
@@ -1156,6 +1162,160 @@ class TestFailureMessageCarriesCause:
         assert os.path.join(str(tmp_path), "checkpoints", "m.pth") in message
         # The original exception stays chained for a full traceback.
         assert isinstance(excinfo.value.__cause__, HTTPError)
+
+
+def _create_marker(path: str) -> None:
+    """Create an empty file at *path*; the only effect of unpickling :class:`_CreatesMarkerOnLoad`."""
+    Path(path).touch()
+
+
+class _CreatesMarkerOnLoad:
+    """An object whose unpickling calls :func:`_create_marker`.
+
+    It stands in for any callable a pickled checkpoint can name: if the marker file
+    exists after a load, the loader executed code from the file it was handed.
+    """
+
+    def __init__(self, marker: Path) -> None:
+        self.marker = marker
+
+    def __reduce__(self) -> tuple[object, tuple[str]]:
+        return (_create_marker, (str(self.marker),))
+
+
+@pytest.fixture
+def local_server(monkeypatch):
+    """Serve in-memory files over HTTP from a thread bound to 127.0.0.1.
+
+    The transfer runs through ``torch.hub.download_url_to_file`` for real -- nothing is
+    stubbed between the socket and ``torch.load`` -- and nothing leaves the host. Yields
+    ``(files, url, hits)``: ``files`` maps a path such as ``"/model.pth"`` to the bytes
+    served for it (any other path answers 404), ``url(path)`` builds the URL, and ``hits``
+    counts the requests per path.
+    """
+    for var in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+
+    files: dict[str, bytes] = {}
+    hits: collections.Counter[str] = collections.Counter()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            hits[self.path] += 1
+            body = files.get(self.path)
+            self.send_response(404 if body is None else 200)
+            payload = b"not found" if body is None else body
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        yield files, (lambda path: f"http://127.0.0.1:{port}{path}"), hits
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def _checkpoint_bytes(obj: object) -> bytes:
+    buffer = io.BytesIO()
+    torch.save(obj, buffer)
+    return buffer.getvalue()
+
+
+class TestWeightsOnly(BaseTester):
+    """A checkpoint is loaded as data: tensors and plain containers, never pickled callables.
+
+    ``torch.hub.load_state_dict_from_url`` defaults to ``weights_only=False`` on every
+    supported torch, and ``torch.load`` itself did before torch 2.6, so a wrapper that
+    only forwards its keyword arguments unpickles whatever a checkpoint names. The
+    wrapper defaults to ``weights_only=True`` instead, and a caller that trusts a file
+    that needs more opts out with ``weights_only=False`` explicitly.
+    """
+
+    @pytest.mark.parametrize(
+        "sources",
+        [["/model.pth"], ["/missing.pth", "/model.pth"]],
+        ids=["single_source", "fallback_after_a_dead_primary"],
+    )
+    def test_a_pickled_callable_is_refused_and_never_run(self, local_server, tmp_path, sources) -> None:
+        files, url, _ = local_server
+        marker = tmp_path / "marker"
+        files["/model.pth"] = _checkpoint_bytes({"weight": torch.zeros(2), "extra": _CreatesMarkerOnLoad(marker)})
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # the dead primary's "Trying next source"
+            with pytest.raises(RuntimeError) as excinfo:
+                try:
+                    load_state_dict_from_url([url(s) for s in sources], model_dir=str(tmp_path / "cache"))
+                finally:
+                    # Checked before the exception, so a loader that runs the payload fails
+                    # on that -- the property under test -- whatever it goes on to do.
+                    assert not marker.exists(), "loading the checkpoint ran a callable pickled into it"
+
+        assert isinstance(excinfo.value.__cause__, pickle.UnpicklingError)
+
+    def test_a_poisoned_cache_entry_is_refused_and_refetched(self, local_server, tmp_path, dtype) -> None:
+        """The cache is a second way in: anything that can write it chooses what gets loaded."""
+        files, url, hits = local_server
+        marker = tmp_path / "marker"
+        good = {"weight": torch.arange(6, dtype=dtype).reshape(2, 3)}
+        files["/model.pth"] = _checkpoint_bytes(good)
+        cache = tmp_path / "cache"
+        cache.mkdir()
+        (cache / "model.pth").write_bytes(_checkpoint_bytes({"extra": _CreatesMarkerOnLoad(marker)}))
+
+        result = load_state_dict_from_url(url("/model.pth"), model_dir=str(cache))
+
+        assert not marker.exists(), "loading the cached checkpoint ran a callable pickled into it"
+        self.assert_close(result["weight"], good["weight"])
+        assert hits["/model.pth"] == 1
+
+    def test_a_plain_state_dict_still_loads(self, local_server, tmp_path, dtype) -> None:
+        """Control: what a checkpoint normally holds is allowed, container types included."""
+        files, url, _ = local_server
+        state_dict = collections.OrderedDict(
+            [("weight", torch.arange(6, dtype=dtype).reshape(2, 3)), ("index", torch.tensor([3, 1, 2]))]
+        )
+        files["/model.pth"] = _checkpoint_bytes(
+            {"state_dict": state_dict, "epoch": 7, "lr": 0.5, "arch": "net", "shape": (2, 3), "flags": [True, None]}
+        )
+
+        result = load_state_dict_from_url(url("/model.pth"), model_dir=str(tmp_path / "cache"), map_location="cpu")
+
+        assert isinstance(result["state_dict"], collections.OrderedDict)
+        assert list(result["state_dict"]) == ["weight", "index"]
+        self.assert_close(result["state_dict"]["weight"], state_dict["weight"])
+        assert result["state_dict"]["weight"].dtype == dtype
+        assert torch.equal(result["state_dict"]["index"], state_dict["index"])
+        assert (result["epoch"], result["lr"], result["arch"], result["shape"], result["flags"]) == (
+            7,
+            0.5,
+            "net",
+            (2, 3),
+            [True, None],
+        )
+
+    @pytest.mark.parametrize(
+        ("kwargs", "forwarded"),
+        [({}, True), ({"weights_only": None}, True), ({"weights_only": True}, True), ({"weights_only": False}, False)],
+        ids=["omitted", "none", "true", "false"],
+    )
+    def test_weights_only_is_true_unless_the_caller_passes_false(self, kwargs, forwarded) -> None:
+        # ``None`` counts as omitted: torch 2.5 reads it as ``False``.
+        with patch("kornia.core.download._prefetch_to_cache", return_value=False):
+            with patch("kornia.core.download.torch.hub.load_state_dict_from_url", return_value={}) as mock:
+                load_state_dict_from_url("http://example.com/model.pth", **kwargs)
+        mock.assert_called_once_with("http://example.com/model.pth", weights_only=forwarded)
 
 
 class TestDownloadFileFromUrl:
