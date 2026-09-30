@@ -130,7 +130,7 @@ class MotionBlur3D(nn.Module):
             (`#5164 <https://github.com/kornia/kornia/issues/5164>`_).
           - a tensor ``angle``, which :func:`~kornia.filters.motion_blur3d` accepts, fails at the first forward
             with an ``AttributeError``, and an ``int`` angle is rejected
-            (`#5164 <https://github.com/kornia/kornia/issues/5164>`_).
+            (`#5164 <https://github.com/kornia/kornia/issues/5164>`__).
 
     Args:
         kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
@@ -235,8 +235,8 @@ def motion_blur(
     Convention:
         - The kernel is :func:`~kornia.filters.get_motion_kernel2d`'s, correlated with the image by
           :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction``, ``mode``, the
-          tensor shapes and the border modes. With ``direction=1`` the streak of a bright point is heaviest to its
-          right at ``angle=0`` and above it at ``angle=90``.
+          tensor shapes and the border modes. See the Convention block on
+          :func:`~kornia.filters.get_motion_kernel2d` for the side on which the streak of a bright point is heaviest.
         - Known defects:
 
           - the default ``border_type='constant'`` zero-pads, so a constant image darkens toward the edges, where
