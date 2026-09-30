@@ -18,6 +18,7 @@
 import builtins
 import copy
 import doctest
+import importlib
 import inspect
 import math
 import os
@@ -28,7 +29,7 @@ import types
 
 import pytest
 
-from kornia.config import kornia_config
+from kornia.config import LazyLoaderConfig, kornia_config
 from kornia.core import external
 from kornia.core.external import LazyLoader
 
@@ -159,6 +160,22 @@ class TestLazyLoaderProtocolProbes:
         tests = doctest.DocTestFinder().find(module)
         assert [test.name for test in tests] == ["kornia_test_doctest_module.documented"]
         assert module.optional.module is None
+
+    @pytest.mark.parametrize(
+        ("module_name", "attribute"),
+        [("numpy", "__version__"), ("json", "__file__"), ("json", "__path__"), ("json", "__all__")],
+    )
+    def test_module_metadata_loads_the_module(self, module_name, attribute):
+        module = importlib.import_module(module_name)
+        loader = LazyLoader(module_name)
+        assert getattr(loader, attribute) == getattr(module, attribute)
+        assert loader.module is module
+
+    def test_module_metadata_of_a_missing_module_raises_import_error(self, monkeypatch):
+        monkeypatch.delenv("KORNIA_INSTALLATION_MODE", raising=False)
+        monkeypatch.setattr(kornia_config, "lazyloader", LazyLoaderConfig())
+        with pytest.raises(ImportError):
+            _ = LazyLoader(MISSING, extra="sd").__version__
 
     def test_probe_forwards_to_a_loaded_module(self):
         loader = LazyLoader("math")

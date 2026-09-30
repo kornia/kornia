@@ -24,6 +24,7 @@ import tempfile
 import textwrap
 import types
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -105,15 +106,30 @@ def not_installed(module_name, extra=None):
 
 
 class FakeTerminal:
-    """A stdin that reports an interactive terminal; the answers come from a patched ``input``."""
+    """A stream that reports an interactive terminal; the answers come from a patched ``input``."""
 
     def isatty(self):
         return True
 
+    def write(self, text):
+        return len(text)
 
-@pytest.fixture
-def answers(monkeypatch):
-    """Answer the loader's questions on a pretend terminal; returns (answers to give, prompts seen)."""
+    def flush(self):
+        pass
+
+
+def closed_stream():
+    stream = io.StringIO("y\n")
+    stream.close()
+    return stream
+
+
+def pretend_terminal(monkeypatch):
+    """Answer the loader's questions on a pretend terminal; returns (answers to give, prompts seen).
+
+    Called from the test body: pytest's output capture puts its own ``sys.stdout`` back between fixture setup and
+    the test call.
+    """
     to_give, prompts = [], []
 
     def scripted_input(prompt=""):
@@ -123,6 +139,7 @@ def answers(monkeypatch):
         return to_give.pop(0)
 
     monkeypatch.setattr(sys, "stdin", FakeTerminal())
+    monkeypatch.setattr(sys, "stdout", FakeTerminal())
     monkeypatch.setattr(builtins, "input", scripted_input)
     return to_give, prompts
 
@@ -188,6 +205,8 @@ class TestInstallationModeConfig:
             ("auto", InstallationMode.AUTO),
             ("AUTO", InstallationMode.AUTO),
             ("Ask", InstallationMode.ASK),
+            (" Auto ", InstallationMode.AUTO),
+            ("raise\n", InstallationMode.RAISE),
         ],
     )
     def test_env_var_sets_the_mode(self, monkeypatch, value, expected):
@@ -226,6 +245,8 @@ class TestInstallationModeConfig:
         with pytest.raises(ValueError) as excinfo:
             _ = LazyLoader(MISSING, extra=extra).attr
         self._assert_names_the_bad_value(str(excinfo.value), "maybe")
+        assert f"'{MISSING}'" in str(excinfo.value)
+        assert isinstance(excinfo.value.__cause__, ModuleNotFoundError)
         assert commands == []
 
     def test_invalid_env_var_does_not_break_import_kornia(self):
@@ -272,6 +293,7 @@ class TestInstallationModeConfig:
         assert len(missing) == 1, result.stdout
         assert missing[0].startswith("MISSING ValueError "), missing[0]
         self._assert_names_the_bad_value(missing[0], "bogus")
+        assert f"'{MISSING}'" in missing[0]
 
     @pytest.mark.parametrize(("value", "expected"), [(None, "RAISE"), ("auto", "AUTO")])
     def test_global_config_reads_the_env_var_at_import(self, value, expected):
@@ -329,14 +351,33 @@ class TestInstallationModeProtocol:
 class TestAskMode:
     """``ASK`` asks only on an interactive terminal and otherwise behaves as ``RAISE``."""
 
-    def test_non_terminal_stdin_raises_import_error(self, monkeypatch, restore_mode, commands, no_prompt):
+    @pytest.mark.parametrize(
+        ("stdin", "stdout"),
+        [
+            # A readable stdin that would answer "yes" if the loader read it; it is not a terminal.
+            (lambda: io.StringIO("y\n"), FakeTerminal),
+            (lambda: None, FakeTerminal),
+            (closed_stream, FakeTerminal),
+            # A terminal stdin with stdout redirected (``python train.py > log``): the question would be invisible.
+            (FakeTerminal, io.StringIO),
+            (FakeTerminal, lambda: None),
+        ],
+        ids=["stringio", "none", "closed", "stdout-redirected", "stdout-none"],
+    )
+    def test_non_terminal_raises_import_error(self, monkeypatch, restore_mode, commands, no_prompt, stdin, stdout):
         kornia_config.lazyloader.installation_mode = "ask"
-        # A readable stdin that would answer "yes" if the loader read it; it is not a terminal.
-        monkeypatch.setattr(sys, "stdin", io.StringIO("y\n"))
+        monkeypatch.setattr(sys, "stdin", stdin())
+        monkeypatch.setattr(sys, "stdout", stdout())
         with pytest.raises(ImportError) as excinfo:
             _ = LazyLoader(MISSING, extra="image").attr
         assert str(excinfo.value) == not_installed(MISSING, "image")
         assert commands == []
+
+    def test_terminal_check_returns_a_bool(self, monkeypatch):
+        truthy = mock.Mock()  # isatty() returns a truthy Mock
+        monkeypatch.setattr(sys, "stdin", truthy)
+        monkeypatch.setattr(sys, "stdout", truthy)
+        assert external._interactive_terminal() is True
 
     @staticmethod
     def _child_code():
@@ -417,8 +458,8 @@ class TestAskMode:
         assert "RESULT ImportError True" in lines, output
         assert "RECORDED []" in lines, output
 
-    def test_terminal_answer_no_raises_import_error(self, restore_mode, commands, answers):
-        to_give, prompts = answers
+    def test_terminal_answer_no_raises_import_error(self, monkeypatch, restore_mode, commands):
+        to_give, prompts = pretend_terminal(monkeypatch)
         to_give.append("n")
         kornia_config.lazyloader.installation_mode = "ask"
         with pytest.raises(ImportError) as excinfo:
@@ -431,8 +472,8 @@ class TestAskMode:
         assert commands == []
 
     @pytest.mark.parametrize("answer", ["y", "YES"])
-    def test_terminal_answer_yes_installs_the_extra(self, restore_mode, commands, answers, answer):
-        to_give, prompts = answers
+    def test_terminal_answer_yes_installs_the_extra(self, monkeypatch, restore_mode, commands, answer):
+        to_give, prompts = pretend_terminal(monkeypatch)
         to_give.append(answer)
         kornia_config.lazyloader.installation_mode = "ask"
         with pytest.raises(InstallRefused):
@@ -441,8 +482,8 @@ class TestAskMode:
         assert len(prompts) == 1
         assert kornia_config.lazyloader.installation_mode is InstallationMode.ASK
 
-    def test_terminal_answer_all_switches_the_process_to_auto(self, restore_mode, commands, answers):
-        to_give, prompts = answers
+    def test_terminal_answer_all_switches_the_process_to_auto(self, monkeypatch, restore_mode, commands):
+        to_give, prompts = pretend_terminal(monkeypatch)
         to_give.append("a")
         kornia_config.lazyloader.installation_mode = "ask"
         with pytest.raises(InstallRefused):
@@ -454,8 +495,8 @@ class TestAskMode:
         assert len(prompts) == 1
         assert commands == [pip_install("image"), pip_install("sd")]
 
-    def test_terminal_invalid_answer_asks_again(self, restore_mode, commands, answers):
-        to_give, prompts = answers
+    def test_terminal_invalid_answer_asks_again(self, monkeypatch, restore_mode, commands):
+        to_give, prompts = pretend_terminal(monkeypatch)
         to_give.extend(["maybe", "n"])
         kornia_config.lazyloader.installation_mode = "ask"
         with pytest.raises(ImportError):
@@ -463,8 +504,8 @@ class TestAskMode:
         assert len(prompts) == 2
         assert commands == []
 
-    def test_terminal_end_of_input_raises_import_error(self, restore_mode, commands, answers):
-        _, prompts = answers  # no answer: input() raises EOFError
+    def test_terminal_end_of_input_raises_import_error(self, monkeypatch, restore_mode, commands):
+        _, prompts = pretend_terminal(monkeypatch)  # no answer: input() raises EOFError
         kornia_config.lazyloader.installation_mode = "ask"
         with pytest.raises(ImportError) as excinfo:
             _ = LazyLoader(MISSING, extra="image").attr
@@ -472,8 +513,8 @@ class TestAskMode:
         assert len(prompts) == 1
         assert commands == []
 
-    def test_terminal_does_not_ask_for_a_loader_without_extra(self, restore_mode, commands, answers):
-        to_give, prompts = answers
+    def test_terminal_does_not_ask_for_a_loader_without_extra(self, monkeypatch, restore_mode, commands):
+        to_give, prompts = pretend_terminal(monkeypatch)
         to_give.append("y")
         kornia_config.lazyloader.installation_mode = "ask"
         with pytest.raises(ImportError) as excinfo:

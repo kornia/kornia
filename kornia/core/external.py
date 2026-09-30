@@ -30,15 +30,18 @@ logger = logging.getLogger(__name__)
 # The loader's own instance attributes. ``__getattr__`` sees them only on a copy or an unpickled loader whose state is
 # not restored yet; answering them from the module would recurse.
 _LOADER_ATTRIBUTES = frozenset({"module_name", "module", "dev_dependency", "extra", "_install_error"})
+# Module metadata that callers read from a loader as from the module itself: these dunder names load the module.
+_MODULE_METADATA = frozenset({"__version__", "__file__", "__path__", "__all__"})
 
 
-def _stdin_is_a_terminal() -> bool:
-    """Return whether ``input()`` can reach a person: stdin exists, is open and is a TTY."""
-    stdin = sys.stdin
-    if stdin is None:
-        return False
+def _interactive_terminal() -> bool:
+    """Return whether ``input()`` can reach a person: stdin and stdout both exist, are open and are terminals.
+
+    ``input()`` writes its question to stdout and reads the answer from stdin, so a redirected stdout
+    (``python train.py > log``) would hide the question while stdin waits for an answer.
+    """
     try:
-        return stdin.isatty()
+        return bool(sys.stdin is not None and sys.stdout is not None and sys.stdin.isatty() and sys.stdout.isatty())
     except (AttributeError, OSError, ValueError):  # replaced by an object without isatty, or closed
         return False
 
@@ -101,8 +104,8 @@ class LazyLoader:
         return False
 
     def _ask_to_install(self) -> bool:
-        """Ask on the terminal whether to install the declared extra; ``False`` when stdin is not a terminal."""
-        if not _stdin_is_a_terminal():
+        """Ask on the terminal whether to install the declared extra; ``False`` without an interactive terminal."""
+        if not _interactive_terminal():
             return False
         question = (
             f"Optional dependency '{self.module_name}' is not installed. "
@@ -178,7 +181,13 @@ class LazyLoader:
             import_error = e
         if self._install_error is not None:
             raise ImportError(self._install_error) from import_error
-        if not self._should_install():
+        try:
+            install = self._should_install()
+        except ValueError as e:  # an invalid KORNIA_INSTALLATION_MODE: name what needed the mode
+            raise ValueError(
+                f"{e} It was needed for the missing optional dependency '{self.module_name}'."
+            ) from import_error
+        if not install:
             raise ImportError(
                 f"Optional dependency '{self.module_name}' is not installed. {self._install_hint}"
             ) from import_error
@@ -192,7 +201,8 @@ class LazyLoader:
 
         Protocol lookups (dunder names such as ``__wrapped__`` or ``__deepcopy__``, which ``copy``, ``pickle``,
         ``inspect.unwrap`` and doctest collection make) never import, install or ask: before the module is loaded
-        they raise ``AttributeError``.
+        they raise ``AttributeError``. The module metadata ``__version__``, ``__file__``, ``__path__`` and ``__all__``
+        loads the module like any other attribute.
 
         Args:
             item: The name of the attribute to be accessed.
@@ -203,7 +213,7 @@ class LazyLoader:
         """
         if item in _LOADER_ATTRIBUTES:
             raise AttributeError(f"{type(self).__name__!r} object has no attribute {item!r}")
-        if item.startswith("__") and item.endswith("__"):
+        if item.startswith("__") and item.endswith("__") and item not in _MODULE_METADATA:
             module = self.__dict__.get("module")
             if module is None:
                 raise AttributeError(f"{type(self).__name__!r} object has no attribute {item!r}")

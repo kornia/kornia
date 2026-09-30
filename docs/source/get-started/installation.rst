@@ -56,9 +56,10 @@ so you only pay for the ones you use. If one of the extras below is missing, the
 object raises an ``ImportError`` naming the extra to install. The installation mode changes this: set
 ``kornia.config.kornia_config.lazyloader.installation_mode``, or the ``KORNIA_INSTALLATION_MODE``
 environment variable before Kornia is imported, to ``"ask"`` to be asked on an interactive terminal
-whether to install the extra (without one, for example in a CI job, it raises the same ``ImportError``),
-or to ``"auto"`` to install the declared extra with ``pip install "kornia[<extra>]"`` without asking.
-The default is ``"raise"``.
+whether to install the extra, or to ``"auto"`` to install the declared extra with
+``pip install "kornia[<extra>]"`` without asking. Without an interactive terminal, ``"ask"`` raises the
+same ``ImportError``: for example in a CI job, when output is redirected to a file, or in a Jupyter
+notebook, whose kernel's stdin is not a terminal (use ``"auto"`` there). The default is ``"raise"``.
 
 .. list-table::
    :header-rows: 1

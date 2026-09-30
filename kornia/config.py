@@ -36,8 +36,9 @@ class InstallationMode(StrEnum):
 
     - ``RAISE`` (the default): raise an ``ImportError`` that names the kornia extra to install, for example
       ``pip install "kornia[onnx]"``.
-    - ``ASK``: on an interactive terminal, ask whether to install that extra. When stdin is not a terminal (a CI job
-      or a DataLoader worker, for example), behave as ``RAISE``.
+    - ``ASK``: on an interactive terminal (stdin and stdout), ask whether to install that extra. Without one, behave
+      as ``RAISE``: in a CI job, a DataLoader worker, a script whose output is redirected, or a Jupyter notebook
+      (the kernel's stdin is not a terminal), for example. Use ``AUTO`` there to install without asking.
     - ``AUTO``: install the declared kornia extra instead of the import name, with the running interpreter's
       ``pip install "kornia[<extra>]"`` (for example ``kornia[image]``), and raise an ``ImportError`` if pip fails.
 
@@ -88,8 +89,8 @@ class LazyLoaderConfig:
     def __init__(self) -> None:
         self._installation_mode = InstallationMode.RAISE
         self._invalid_env_value: Optional[str] = None
-        env_value = os.environ.get(_INSTALLATION_MODE_ENV_VAR, "")
-        if env_value.strip():
+        env_value = os.environ.get(_INSTALLATION_MODE_ENV_VAR, "").strip()
+        if env_value:
             try:
                 self._installation_mode = _parse_installation_mode(env_value, _INSTALLATION_MODE_ENV_VAR)
             except ValueError as e:
