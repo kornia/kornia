@@ -1,0 +1,14 @@
+`kornia.core.load_state_dict_from_url` now loads checkpoints with `weights_only=True` unless the caller passes
+`weights_only=False`, and so does every `pretrained=True` model built on it. The loaders that call `torch.load`
+directly pass `weights_only=True` as well: `ModelBase.load_checkpoint` for a local file, `SmallSRNet`,
+`RRDBNetBuilder` and LightGlue's local weights. Previously the wrapper forwarded the `weights_only=False` default of
+`torch.hub.load_state_dict_from_url` on every supported torch, and the direct calls used `torch.load`'s default, which
+is `False` before torch 2.6, so loading a checkpoint unpickled whatever objects it stored. Now only tensors, primitive
+types and plain containers load. A checkpoint holding any other type fails with `pickle.UnpicklingError`, which
+`load_state_dict_from_url` chains to its `RuntimeError`. Allowlist such a type with
+`torch.serialization.safe_globals([...])` around the call, or pass `weights_only=False`, but only for a file you trust.
+All of kornia's pretrained checkpoints load under the new default, on torch 2.14 and 2.5.1, without an allowlist.
+
+The fallback download sources on `cmp.felk.cvut.cz` (HardNet8, LoFTR, SOLD2, DexiNed and three LightGlue heads) are
+now fetched over `https` instead of `http`. DeFMO's `http` fallback on `ptak.felk.cvut.cz` has no usable `https`
+equivalent and is removed, so DeFMO loads from its Hugging Face mirror only.
