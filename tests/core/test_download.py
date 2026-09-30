@@ -18,11 +18,15 @@
 from __future__ import annotations
 
 import collections
+import copy
+import hashlib
 import http.client
 import http.server
 import io
+import ntpath
 import os
 import pickle
+import socket
 import sys
 import threading
 import time
@@ -55,6 +59,12 @@ def _clear_discard_ledger():
     download_mod._DISCARDED_CACHE_PATHS.clear()
     yield
     download_mod._DISCARDED_CACHE_PATHS.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_timeout_from_the_environment(monkeypatch):
+    """A ``KORNIA_DOWNLOAD_TIMEOUT`` in the developer's shell must not change these tests."""
+    monkeypatch.delenv("KORNIA_DOWNLOAD_TIMEOUT", raising=False)
 
 
 class TestHfUrl:
@@ -106,8 +116,8 @@ class TestLoadStateDictFromUrl:
         """Keep the wrapper's prefetch step off the network and out of weights/."""
         monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
         monkeypatch.setattr(
-            torch.hub,
-            "download_url_to_file",
+            download_mod,
+            "_download_url_to_file",
             lambda url, dst, *a, **k: torch.save({"weight": torch.zeros(1)}, dst),
         )
 
@@ -212,13 +222,13 @@ class TestProgressGoesToStderr:
         transfers: list[str] = []
         monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
 
-        def fake_download(url, dst, hash_prefix=None, progress=True):
+        def fake_download(url, dst, hash_prefix=None, progress=True, timeout=None):
             transfers.append(url)
             if on_download is not None:
                 on_download()
             torch.save({"weight": torch.zeros(1)}, dst)
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", fake_download)
         return transfers
 
     def test_cold_cache_writes_nothing_to_stdout(self, capsys, monkeypatch, tmp_path) -> None:
@@ -272,11 +282,11 @@ class TestConcurrentLoadsDoNotDisturbStdout:
     def _stub_transfer(monkeypatch, tmp_path, hook):
         monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
 
-        def fake_download(url, dst, hash_prefix=None, progress=True):
+        def fake_download(url, dst, hash_prefix=None, progress=True, timeout=None):
             hook(url)
             torch.save({"weight": torch.zeros(1)}, dst)
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", fake_download)
 
     def test_overlapping_calls_leave_stdout_intact(self, monkeypatch, tmp_path) -> None:
         barrier = threading.Barrier(2)
@@ -381,7 +391,7 @@ class TestPoisonedCacheEntry:
         transfers: list[str] = []
         monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
 
-        def fake_download(url, dst, hash_prefix=None, progress=True):
+        def fake_download(url, dst, hash_prefix=None, progress=True, timeout=None):
             transfers.append(url)
             if url in bad_urls:
                 # A rate-limit page served with a 200, or a truncated transfer.
@@ -390,7 +400,7 @@ class TestPoisonedCacheEntry:
             else:
                 torch.save(TestPoisonedCacheEntry._GOOD, dst)
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", fake_download)
         return transfers
 
     def test_fallback_recovers_from_bad_primary_download(self, monkeypatch, tmp_path) -> None:
@@ -546,11 +556,11 @@ class TestPoisonedCacheEntry:
         monkeypatch.setattr(download_mod, "time", _FakeTime())
         transfers: list[str] = []
 
-        def offline(url, dst, hash_prefix=None, progress=True):
+        def offline(url, dst, hash_prefix=None, progress=True, timeout=None):
             transfers.append(url)
             raise URLError("network is unreachable")
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", offline)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", offline)
 
         cached = tmp_path / "checkpoints" / "model.pth"
         cached.parent.mkdir(parents=True, exist_ok=True)
@@ -586,10 +596,10 @@ class TestPoisonedCacheEntry:
         monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
         monkeypatch.setattr(download_mod, "time", _FakeTime())
 
-        def offline(url, dst, hash_prefix=None, progress=True):
+        def offline(url, dst, hash_prefix=None, progress=True, timeout=None):
             raise URLError("network is unreachable")
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", offline)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", offline)
 
         cached = tmp_path / "checkpoints" / "model.pth"
         cached.parent.mkdir(parents=True, exist_ok=True)
@@ -624,13 +634,13 @@ class TestPoisonedCacheEntry:
         offline = True
         transfers: list[str] = []
 
-        def fake_download(url, dst, hash_prefix=None, progress=True):
+        def fake_download(url, dst, hash_prefix=None, progress=True, timeout=None):
             transfers.append(url)
             if offline:
                 raise URLError("network is unreachable")
             torch.save(self._GOOD, dst)
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", fake_download)
 
         cached = tmp_path / "checkpoints" / "model.pth"
         cached.parent.mkdir(parents=True, exist_ok=True)
@@ -699,13 +709,13 @@ class TestPoisonedCacheEntry:
         cached.parent.mkdir(parents=True, exist_ok=True)
         cached.write_bytes(b"<html>429 Too Many Requests</html>")
 
-        def fake_download(url, dst, hash_prefix=None, progress=True):
+        def fake_download(url, dst, hash_prefix=None, progress=True, timeout=None):
             transfers.append(url)
             if url == self._FALLBACK:
                 raise HTTPError(url, 404, "Not Found", None, None)
             torch.save(self._GOOD, dst)
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", fake_download)
 
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
@@ -733,7 +743,7 @@ class TestPoisonedCacheEntry:
         monkeypatch.setattr(download_mod, "time", _FakeTime())
         healthy = False
 
-        def fake_download(url, dst, hash_prefix=None, progress=True):
+        def fake_download(url, dst, hash_prefix=None, progress=True, timeout=None):
             if url == self._FALLBACK:
                 raise URLError("network is unreachable")
             if healthy:
@@ -742,7 +752,7 @@ class TestPoisonedCacheEntry:
                 with open(dst, "wb") as f:
                     f.write(b"<html>429 Too Many Requests</html>")
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", fake_download)
         cached = tmp_path / "checkpoints" / "model.pth"
 
         with warnings.catch_warnings(record=True):
@@ -802,7 +812,7 @@ class TestPoisonedCacheEntry:
         healthy = False
         transfers: list[str] = []
 
-        def fake_download(url, dst, hash_prefix=None, progress=True):
+        def fake_download(url, dst, hash_prefix=None, progress=True, timeout=None):
             transfers.append(url)
             if healthy:
                 torch.save(self._GOOD, dst)
@@ -810,7 +820,7 @@ class TestPoisonedCacheEntry:
                 with open(dst, "wb") as f:
                     f.write(b"<html>429 Too Many Requests</html>")
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", fake_download)
         cached = tmp_path / "checkpoints" / "model.pth"
 
         with warnings.catch_warnings(record=True):
@@ -889,14 +899,14 @@ class TestTransientRetry:
         attempts: list[str] = []
         monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
 
-        def fake_download(url, dst, hash_prefix=None, progress=True):
+        def fake_download(url, dst, hash_prefix=None, progress=True, timeout=None):
             attempts.append(url)
             outcome = side_effects.pop(0)
             if outcome is not None:
                 raise outcome
             torch.save({"weight": torch.zeros(1)}, dst)
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", fake_download)
         return attempts
 
     @pytest.mark.parametrize("code", [408, 425, 429, 500, 502, 503, 504])
@@ -1143,8 +1153,8 @@ class TestFailureMessageCarriesCause:
     def test_message_names_the_underlying_error(self, monkeypatch, tmp_path) -> None:
         monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
         monkeypatch.setattr(
-            torch.hub,
-            "download_url_to_file",
+            download_mod,
+            "_download_url_to_file",
             lambda url, dst, *a, **k: (_ for _ in ()).throw(_http_error(url, 429)),
         )
         monkeypatch.setattr(download_mod, "time", _FakeTime())
@@ -1169,7 +1179,7 @@ class TestFailureMessageCarriesCause:
 def local_server(monkeypatch):
     """Serve in-memory files over HTTP from a thread bound to 127.0.0.1.
 
-    The transfer runs through ``torch.hub.download_url_to_file`` for real -- nothing is
+    The transfer runs through ``kornia.core.download._download_url_to_file`` for real -- nothing is
     stubbed between the socket and ``torch.load`` -- and nothing leaves the host. Yields
     ``(files, url, hits)``: ``files`` maps a path such as ``"/model.pth"`` to the bytes
     served for it (any other path answers 404), ``url(path)`` builds the URL, and ``hits``
@@ -1308,7 +1318,7 @@ class TestDownloadFileFromUrl:
     """The path for checkpoints torch cannot unpickle -- a ``.safetensors`` file.
 
     The transfers here are real: a ``file://`` URL goes through the same
-    ``torch.hub.download_url_to_file`` a remote one does, so the cache path, the
+    ``_download_url_to_file`` a remote one does, so the cache path, the
     bytes on disk and the cache hit are all exercised end to end without a
     network or a stub standing in for the transfer.
     """
@@ -1334,13 +1344,13 @@ class TestDownloadFileFromUrl:
         url, _ = self._serve(tmp_path)
         model_dir = tmp_path / "cache"
         transfers: list[str] = []
-        real = torch.hub.download_url_to_file
+        real = download_mod._download_url_to_file
 
         def counted(url_, dst, *args, **kwargs):
             transfers.append(url_)
             return real(url_, dst, *args, **kwargs)
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", counted)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", counted)
 
         first = download_file_from_url(url, model_dir=str(model_dir), progress=False)
         second = download_file_from_url(url, model_dir=str(model_dir), progress=False)
@@ -1389,8 +1399,8 @@ class TestDownloadFileFromUrl:
     def test_all_sources_failing_names_the_cause_and_the_path(self, monkeypatch, tmp_path) -> None:
         monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
         monkeypatch.setattr(
-            torch.hub,
-            "download_url_to_file",
+            download_mod,
+            "_download_url_to_file",
             lambda url, dst, *a, **k: (_ for _ in ()).throw(_http_error(url, 404)),
         )
 
@@ -1416,7 +1426,7 @@ class TestDownloadFileFromUrl:
                 raise _http_error(url, 429)
             Path(dst).write_bytes(b"weights")
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", flaky)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", flaky)
 
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
@@ -1435,7 +1445,7 @@ class TestDownloadFileFromUrl:
                 raise OSError("connection reset")
             Path(dst).write_bytes(b"complete")
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", half_written)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", half_written)
 
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
@@ -1591,13 +1601,13 @@ class TestDownloadValidate:
         url = self._serve(tmp_path, payload)
         model_dir = tmp_path / "cache"
         transfers: list[str] = []
-        real = torch.hub.download_url_to_file
+        real = download_mod._download_url_to_file
 
         def counted(url_, dst, *args, **kwargs):
             transfers.append(url_)
             return real(url_, dst, *args, **kwargs)
 
-        monkeypatch.setattr(torch.hub, "download_url_to_file", counted)
+        monkeypatch.setattr(download_mod, "_download_url_to_file", counted)
         validate = self._reject_truncated(len(payload))
 
         first = download_file_from_url(url, model_dir=str(model_dir), progress=False, validate=validate)
@@ -1701,3 +1711,871 @@ class TestDownloadValidate:
         truncated.write_bytes(whole[:-4])
         with pytest.raises(ValueError):
             check_safetensors(truncated)
+
+
+class _Chunked:
+    """A ``scripted_server`` response sent with ``Transfer-Encoding: chunked``.
+
+    ``content_length``, when given, adds a ``Content-Length`` header as well, which HTTP
+    says the chunked framing overrides.
+    """
+
+    def __init__(self, body: bytes, content_length: int | None = None) -> None:
+        self.body = body
+        self.content_length = content_length
+
+
+def _bypass_proxies(monkeypatch) -> None:
+    """Send requests for 127.0.0.1 straight to the test server, whatever proxy the shell sets.
+
+    A lowercase ``http_proxy`` pointing at a closed port -- one way to block the internet
+    for a test run -- would otherwise take the request and fail it with ``URLError``.
+    """
+    for var in ("http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+
+
+@pytest.fixture
+def scripted_server(monkeypatch):
+    """Serve scripted responses over HTTP from a thread bound to 127.0.0.1.
+
+    Like :func:`local_server`, and it shuts down in a tenth of the time, which the many
+    short tests below add up. ``responses`` maps a path to a response, or to a list of
+    them consumed one per request with the last one repeating: ``bytes`` is a 200 with
+    that body, an ``int`` is that status with an empty body and ``Retry-After: 0``, an
+    ``(announced, body)`` tuple is a 200 whose ``Content-Length`` header says ``announced``
+    (omitted when ``None``) while ``body`` is sent and the connection closes, and a
+    :class:`_Chunked` is a 200 with a chunked body. Yields ``(responses, url, hits)``;
+    any other path answers 404.
+    """
+    _bypass_proxies(monkeypatch)
+
+    responses: dict[str, object] = {}
+    hits: collections.Counter[str] = collections.Counter()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            hits[self.path] += 1
+            script = responses.get(self.path, 404)
+            if not isinstance(script, list):
+                script = [script]
+            outcome = script[min(hits[self.path], len(script)) - 1]
+            if isinstance(outcome, int):
+                self.send_response(outcome)
+                self.send_header("Retry-After", "0")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if isinstance(outcome, _Chunked):
+                self.send_response(200)
+                self.send_header("Transfer-Encoding", "chunked")
+                if outcome.content_length is not None:
+                    self.send_header("Content-Length", str(outcome.content_length))
+                self.end_headers()
+                for start in range(0, len(outcome.body), 1000):
+                    piece = outcome.body[start : start + 1000]
+                    self.wfile.write(f"{len(piece):x}\r\n".encode() + piece + b"\r\n")
+                self.wfile.write(b"0\r\n\r\n")
+                return
+            announced, body = outcome if isinstance(outcome, tuple) else (len(outcome), outcome)
+            self.send_response(200)
+            if announced is not None:
+                self.send_header("Content-Length", str(announced))
+            self.end_headers()
+            self.wfile.write(body)  # HTTP/1.0: the connection closes when the handler returns
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        yield responses, (lambda path: f"http://127.0.0.1:{port}{path}"), hits
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+class _StalledServer:
+    """A 127.0.0.1 listener that never finishes a response.
+
+    ``mode="silent"`` accepts each connection and never sends a byte; ``mode="mid_body"``
+    reads the request, sends the status line, the headers and the first 100 of 1000
+    announced body bytes, then goes quiet. Every connection is held open until
+    :meth:`close`, so the only thing that can end a client's wait is its own timeout.
+    """
+
+    def __init__(self, mode: str) -> None:
+        self.mode = mode
+        self.connections: list[socket.socket] = []
+        self._stop = threading.Event()
+        self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listener.bind(("127.0.0.1", 0))
+        self._listener.listen()
+        # Closing a listener does not wake a thread blocked in ``accept`` on Linux, so the
+        # thread polls a stop flag instead and :meth:`close` never waits on it.
+        self._listener.settimeout(0.05)
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def url(self, path: str) -> str:
+        return f"http://127.0.0.1:{self._listener.getsockname()[1]}{path}"
+
+    def _serve(self) -> None:
+        while not self._stop.is_set():
+            try:
+                conn, _ = self._listener.accept()
+            except TimeoutError:  # nobody connected in this poll interval
+                continue
+            except OSError:  # the listener was closed
+                return
+            self.connections.append(conn)
+            if self.mode == "mid_body":
+                conn.settimeout(5)
+                request = b""
+                while b"\r\n\r\n" not in request:
+                    chunk = conn.recv(4096)
+                    if not chunk:
+                        break
+                    request += chunk
+                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n" + b"x" * 100)
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=5)
+        self._listener.close()
+        for conn in self.connections:
+            conn.close()
+
+
+@pytest.fixture(params=["silent", "mid_body"])
+def stalled_server(request, monkeypatch):
+    _bypass_proxies(monkeypatch)
+    server = _StalledServer(request.param)
+    try:
+        yield server
+    finally:
+        server.close()
+
+
+def _outcome_within(fn, seconds: float) -> BaseException | object:
+    """Run *fn* in a daemon thread; return what it returned or raised, failing if it is still running."""
+    outcome: list[object] = []
+
+    def target() -> None:
+        try:
+            outcome.append(fn())
+        except BaseException as e:
+            outcome.append(e)
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    assert not worker.is_alive(), f"still waiting after {seconds} s: the transfer has no timeout"
+    return outcome[0]
+
+
+@pytest.fixture
+def hub_dir_in_tmp(monkeypatch, tmp_path):
+    """Point the default cache at *tmp_path* and prove it, before anything is fetched."""
+    hub = tmp_path / "hub"
+    monkeypatch.setattr(torch.hub, "get_dir", lambda: str(hub))
+    assert Path(torch.hub.get_dir()).is_relative_to(tmp_path)
+    return hub
+
+
+@pytest.mark.usefixtures("hub_dir_in_tmp")
+class TestTransferTimeout:
+    """A stalled server must end a download, not hang it (#5216).
+
+    kornia used to fetch through ``torch.hub.download_url_to_file``, which opens the URL
+    with no timeout, and set none either, so a server that accepted the connection and then
+    went quiet held the call forever: the retry and fallback logic never got control,
+    because nothing raised.
+    """
+
+    _TIMEOUT = 0.25
+    _DEADLINE = 10.0
+
+    @pytest.mark.parametrize("entry", ["load_state_dict_from_url", "download_file_from_url"])
+    def test_a_stalled_server_fails_within_the_timeout(self, stalled_server, monkeypatch, tmp_path, entry) -> None:
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        cache = tmp_path / "cache"
+        fn = {"load_state_dict_from_url": load_state_dict_from_url, "download_file_from_url": download_file_from_url}
+        url = stalled_server.url("/w.pth")
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            outcome = _outcome_within(
+                lambda: fn[entry](url, model_dir=str(cache), progress=False, timeout=self._TIMEOUT), self._DEADLINE
+            )
+
+        assert isinstance(outcome, RuntimeError), f"expected the documented RuntimeError, got {outcome!r}"
+        assert isinstance(outcome.__cause__, TimeoutError)
+        message = str(outcome)
+        assert "TimeoutError" in message and f"{self._TIMEOUT:g} s" in message
+        assert str(cache / "w.pth") in message
+        # Where the bound can be raised, including for callers such as pretrained constructors that take no timeout=.
+        assert "timeout=" in message and "KORNIA_DOWNLOAD_TIMEOUT" in message
+        assert "_DOWNLOAD_TIMEOUT_SECONDS" not in message
+        # A timeout is transient, so the retry logic got control on every attempt.
+        assert len(stalled_server.connections) == download_mod._MAX_ATTEMPTS
+        # And nothing partial is left behind, under the cache name or a temporary one.
+        assert not cache.exists() or list(cache.iterdir()) == []
+
+    def test_the_environment_bounds_a_call_that_passes_no_timeout(self, stalled_server, monkeypatch, tmp_path):
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", str(self._TIMEOUT))
+        monkeypatch.setattr(download_mod, "_HF_BASE", stalled_server.url(""))
+        cache = tmp_path / "cache"
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            outcome = _outcome_within(
+                lambda: download_hf_file("r", "w.safetensors", model_dir=str(cache), progress=False), self._DEADLINE
+            )
+
+        assert isinstance(outcome, RuntimeError), f"expected the documented RuntimeError, got {outcome!r}"
+        assert isinstance(outcome.__cause__, TimeoutError)
+        assert f"{self._TIMEOUT:g} s" in str(outcome)
+        assert not cache.exists() or list(cache.iterdir()) == []
+
+    def test_a_timed_out_primary_falls_back_to_the_mirror(self, stalled_server, scripted_server, monkeypatch, tmp_path):
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        files, url, hits = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.arange(3.0)})
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            outcome = _outcome_within(
+                lambda: load_state_dict_from_url(
+                    [stalled_server.url("/w.pth"), url("/w.pth")],
+                    model_dir=str(tmp_path / "cache"),
+                    progress=False,
+                    timeout=self._TIMEOUT,
+                ),
+                self._DEADLINE,
+            )
+
+        assert isinstance(outcome, dict), f"expected the mirror's state dict, got {outcome!r}"
+        assert torch.equal(outcome["w"], torch.arange(3.0))
+        assert hits["/w.pth"] == 1
+        assert any("Trying next source" in str(w.message) for w in caught)
+
+    @pytest.mark.parametrize(
+        ("timeout", "error"),
+        [
+            (0, ValueError),
+            (-1.0, ValueError),
+            (float("nan"), ValueError),
+            (float("inf"), ValueError),
+            # Finite but beyond threading.TIMEOUT_MAX: an OverflowError inside the socket otherwise (ruling C16).
+            pytest.param(1e300, ValueError, id="1e300"),
+            pytest.param(threading.TIMEOUT_MAX * 2, ValueError, id="twice_TIMEOUT_MAX"),
+            # More digits than the 4300 that ``repr`` of an int allows by default, so the message cannot print it.
+            pytest.param(10**5000, ValueError, id="int_beyond_float"),
+            ("30", TypeError),
+        ],
+    )
+    def test_an_unusable_timeout_is_rejected_before_any_request(self, scripted_server, tmp_path, timeout, error):
+        files, url, hits = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.zeros(1)})
+
+        for fn in (load_state_dict_from_url, download_file_from_url):
+            with pytest.raises(error, match="timeout"):
+                fn(url("/w.pth"), model_dir=str(tmp_path / "cache"), progress=False, timeout=timeout)
+
+        assert sum(hits.values()) == 0
+        assert not (tmp_path / "cache").exists()
+
+    def test_torch_hub_itself_is_left_without_a_timeout(self, scripted_server, tmp_path) -> None:
+        """kornia bounds its own transfers only: the socket default and a direct ``torch.hub`` call are unchanged."""
+        files, url, _ = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.zeros(1)})
+        load_state_dict_from_url(url("/w.pth"), model_dir=str(tmp_path / "cache"), progress=False, timeout=5.0)
+
+        assert socket.getdefaulttimeout() is None
+        server = _StalledServer("silent")
+
+        ended: list[Exception] = []
+
+        def direct_torch_call() -> None:
+            try:
+                torch.hub.download_url_to_file(server.url("/x.pth"), str(tmp_path / "direct.pth"), progress=False)
+            except Exception as e:  # the server hanging up below is what ends it
+                ended.append(e)
+
+        worker = threading.Thread(target=direct_torch_call, daemon=True)
+        try:
+            worker.start()
+            worker.join(4 * self._TIMEOUT)
+            assert worker.is_alive(), f"a direct torch.hub call picked up kornia's timeout: {ended}"
+        finally:
+            server.close()
+            worker.join(5)
+        assert not [e for e in ended if isinstance(e, TimeoutError)]
+
+
+class TestLoadStateDictFromUrlFileName:
+    """``file_name`` names a cache entry; nothing may escape the cache through it (#5217).
+
+    torch joins it onto ``model_dir`` with ``os.path.join``, so an absolute name or one with
+    ``../`` pointed outside the cache, and kornia's cache repair then moved the file there
+    aside, downloaded the checkpoint over it and deleted the original.
+    """
+
+    _VICTIM = b"precious user data, not a checkpoint"
+
+    def test_an_absolute_file_name_is_rejected_and_the_file_is_untouched(self, scripted_server, tmp_path) -> None:
+        files, url, hits = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.zeros(2)})
+        victims = tmp_path / "user_files"
+        victims.mkdir()
+        victim = victims / "precious.txt"
+        victim.write_bytes(self._VICTIM)
+
+        with pytest.raises(ValueError, match="bare filename"):
+            load_state_dict_from_url(
+                url("/w.pth"), model_dir=str(tmp_path / "cache"), progress=False, file_name=str(victim)
+            )
+
+        assert victim.read_bytes() == self._VICTIM
+        assert [p.name for p in victims.iterdir()] == ["precious.txt"]
+        assert sum(hits.values()) == 0
+        assert not (tmp_path / "cache").exists()
+
+    @pytest.mark.parametrize("file_name", ["../escape.pth", "sub/w.pth", "", ".", ".."])
+    @pytest.mark.parametrize("sources", [1, 2], ids=["one_url", "two_urls"])
+    def test_file_name_must_be_a_bare_filename(self, scripted_server, tmp_path, file_name, sources) -> None:
+        files, url, hits = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.zeros(2)})
+        model_dir = tmp_path / "cache"
+
+        with pytest.raises(ValueError, match="bare filename"):
+            load_state_dict_from_url(
+                [url("/w.pth")] * sources, model_dir=str(model_dir), progress=False, file_name=file_name
+            )
+
+        assert sum(hits.values()) == 0
+        assert not (tmp_path / "escape.pth").exists()
+        assert not model_dir.exists(), "nothing was written"
+
+
+_ENTRY_POINTS = {"load_state_dict_from_url": load_state_dict_from_url, "download_file_from_url": download_file_from_url}
+
+
+class TestUrlArguments:
+    """A URL that names no file, or a value that is not a URL, is refused up front (#5219)."""
+
+    @pytest.mark.parametrize("tail", ["/dir/..", "/dir/.", "/dir/"])
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    @pytest.mark.parametrize("as_list", [False, True], ids=["str", "list"])
+    def test_a_url_without_a_file_name_is_rejected(self, scripted_server, tmp_path, tail, entry, as_list) -> None:
+        """The derived cache path would be the cache directory or its parent."""
+        files, url, hits = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.zeros(2)})
+        model_dir = tmp_path / "parent" / "cache"
+        model_dir.mkdir(parents=True)
+        source = [url(tail), url("/w.pth")] if as_list else url(tail)
+
+        with pytest.raises(ValueError, match="file_name="):
+            _ENTRY_POINTS[entry](source, model_dir=str(model_dir), progress=False)
+
+        assert sum(hits.values()) == 0
+        assert list(model_dir.iterdir()) == []
+        assert [p.name for p in model_dir.parent.iterdir()] == ["cache"]
+
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    def test_an_explicit_file_name_makes_such_a_url_usable(self, scripted_server, tmp_path, entry) -> None:
+        """The error says to pass ``file_name=``; doing so must work."""
+        files, url, _ = scripted_server
+        files["/dir/"] = _checkpoint_bytes({"w": torch.zeros(2)})
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _ENTRY_POINTS[entry](url("/dir/"), model_dir=str(tmp_path / "cache"), progress=False, file_name="w.pth")
+
+        assert (tmp_path / "cache" / "w.pth").is_file()
+
+    @pytest.mark.parametrize(
+        ("url", "error", "match"),
+        [
+            ([], ValueError, "at least one URL"),
+            ("", ValueError, "empty"),
+            (["http://127.0.0.1:9/w.pth", ""], ValueError, "empty"),
+            (Path("w.pth"), TypeError, "as_uri"),
+            ([Path("w.pth")], TypeError, "as_uri"),
+            (None, TypeError, "URL string"),
+            (b"http://127.0.0.1:9/w.pth", TypeError, "URL string"),
+            ([b"http://127.0.0.1:9/w.pth"], TypeError, "URL string"),
+        ],
+        ids=["empty_list", "empty_str", "empty_str_in_list", "path", "path_in_list", "none", "bytes", "bytes_in_list"],
+    )
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    def test_a_value_that_is_not_a_url_is_refused(self, hub_dir_in_tmp, url, error, match, entry) -> None:
+        with pytest.raises(error, match=match):
+            _ENTRY_POINTS[entry](url, progress=False)
+
+        assert not hub_dir_in_tmp.exists()
+
+
+class TestHfUrlEscaping:
+    """``hf_url`` builds a URL, so its arguments are path segments, not URL syntax (#5219)."""
+
+    @pytest.mark.parametrize(
+        ("filename", "tail"),
+        [("a#b.pth", "a%23b.pth"), ("a?b.pth", "a%3Fb.pth"), ("my model.pth", "my%20model.pth"), ("a%b", "a%25b")],
+    )
+    def test_a_reserved_character_is_percent_encoded(self, filename, tail) -> None:
+        assert hf_url("r", filename) == f"https://huggingface.co/kornia/r/resolve/main/{tail}"
+
+    def test_a_subdirectory_keeps_its_slashes(self) -> None:
+        assert hf_url("loftr", "weights/outdoor.ckpt") == (
+            "https://huggingface.co/kornia/loftr/resolve/main/weights/outdoor.ckpt"
+        )
+
+    def test_the_repo_id_is_encoded_too(self) -> None:
+        assert hf_url("owner/my repo", "f.pth") == "https://huggingface.co/owner/my%20repo/resolve/main/f.pth"
+
+    def test_download_hf_file_fetches_the_file_it_names(self, scripted_server, monkeypatch, tmp_path) -> None:
+        """Unescaped, ``#b.pth`` was a fragment: the file ``a`` was fetched and cached as ``a#b.pth``."""
+        files, url, hits = scripted_server
+        files["/kornia/r/resolve/main/a%23b.pth"] = b"the file a#b.pth"
+        files["/kornia/r/resolve/main/a"] = b"the file a"
+        monkeypatch.setattr(download_mod, "_HF_BASE", url(""))
+
+        path = download_hf_file("r", "a#b.pth", model_dir=str(tmp_path / "cache"), progress=False)
+
+        assert Path(path).name == "kornia--r--a#b.pth"
+        assert Path(path).read_bytes() == b"the file a#b.pth"
+        assert hits == {"/kornia/r/resolve/main/a%23b.pth": 1}
+
+
+class TestWarningAttribution:
+    """A warning names the caller's line through every public entry point (#5219)."""
+
+    @pytest.mark.parametrize("entry", ["load_state_dict_from_url", "download_file_from_url", "download_hf_file"])
+    def test_a_retry_warning_points_at_the_caller(self, scripted_server, monkeypatch, tmp_path, entry) -> None:
+        responses, url, _ = scripted_server
+        body = _checkpoint_bytes({"w": torch.zeros(1)})
+        responses["/flaky/w.pth"] = [503, body]
+        responses["/kornia/flaky/resolve/main/w.pth"] = [503, body]
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        monkeypatch.setattr(download_mod, "_HF_BASE", url(""))
+        cache = str(tmp_path / "cache")
+        calls = {
+            "load_state_dict_from_url": lambda: load_state_dict_from_url(
+                url("/flaky/w.pth"), model_dir=cache, progress=False
+            ),
+            "download_file_from_url": lambda: download_file_from_url(
+                url("/flaky/w.pth"), model_dir=cache, progress=False
+            ),
+            "download_hf_file": lambda: download_hf_file("flaky", "w.pth", model_dir=cache, progress=False),
+        }
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            calls[entry]()
+
+        retries = [w for w in caught if "Transient failure" in str(w.message)]
+        assert len(retries) == 1
+        assert Path(retries[0].filename).resolve() == Path(__file__).resolve(), retries[0].filename
+
+
+class TestKeywordArguments:
+    """A keyword torch does not accept is a caller error, not a corrupt cache entry (#5219)."""
+
+    def test_a_mistyped_keyword_on_a_warm_cache_raises_at_once(self, scripted_server, tmp_path) -> None:
+        """It used to quarantine the entry, download it again and raise ``RuntimeError``."""
+        files, url, hits = scripted_server
+        body = _checkpoint_bytes({"w": torch.zeros(2)})
+        files["/w.pth"] = body
+        cache = tmp_path / "cache"
+        load_state_dict_from_url(url("/w.pth"), model_dir=str(cache), progress=False)
+        assert hits["/w.pth"] == 1
+
+        with pytest.raises(TypeError, match="map_locaton"):
+            load_state_dict_from_url(url("/w.pth"), model_dir=str(cache), progress=False, map_locaton="cpu")
+
+        assert hits["/w.pth"] == 1, "the checkpoint was downloaded again"
+        assert [p.name for p in cache.iterdir()] == ["w.pth"]
+        assert (cache / "w.pth").read_bytes() == body
+
+    def test_a_mistyped_keyword_on_a_cold_cache_makes_no_request(self, scripted_server, tmp_path) -> None:
+        files, url, hits = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.zeros(2)})
+
+        with pytest.raises(TypeError, match="map_locaton"):
+            load_state_dict_from_url(url("/w.pth"), model_dir=str(tmp_path / "cache"), map_locaton="cpu")
+
+        assert sum(hits.values()) == 0
+        assert not (tmp_path / "cache").exists()
+
+    def test_every_keyword_torch_accepts_is_still_forwarded(self, scripted_server, tmp_path) -> None:
+        files, url, _ = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.zeros(2)})
+
+        result = load_state_dict_from_url(
+            url("/w.pth"),
+            model_dir=str(tmp_path / "cache"),
+            map_location="cpu",
+            progress=False,
+            check_hash=False,
+            file_name="w.pth",
+            weights_only=True,
+        )
+
+        assert torch.equal(result["w"], torch.zeros(2))
+
+
+class TestModelDirExpandsUser:
+    """``model_dir="~/..."`` means the home directory, as it does everywhere else (#5219)."""
+
+    @pytest.fixture
+    def home(self, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        # ``~`` must resolve inside the temporary directory before anything is fetched.
+        assert os.path.expanduser("~/kc") == str(home / "kc")
+        return home, cwd
+
+    def test_download_file_from_url(self, scripted_server, home) -> None:
+        home_dir, cwd = home
+        files, url, _ = scripted_server
+        files["/t.bin"] = b"payload"
+
+        path = download_file_from_url(url("/t.bin"), model_dir="~/kc", progress=False)
+
+        assert path == str(home_dir / "kc" / "t.bin")
+        assert Path(path).read_bytes() == b"payload"
+        assert list(cwd.iterdir()) == [], "a literal '~' directory was created"
+
+    def test_load_state_dict_from_url(self, scripted_server, home) -> None:
+        home_dir, cwd = home
+        files, url, _ = scripted_server
+        files["/w.pth"] = _checkpoint_bytes({"w": torch.ones(2)})
+
+        result = load_state_dict_from_url(url("/w.pth"), model_dir="~/kc", progress=False)
+
+        assert torch.equal(result["w"], torch.ones(2))
+        assert (home_dir / "kc" / "w.pth").is_file()
+        assert list(cwd.iterdir()) == [], "a literal '~' directory was created"
+
+
+class TestKorniaTransfer:
+    """``_download_url_to_file`` stands in for ``torch.hub.download_url_to_file``; it keeps torch's contract."""
+
+    def test_check_hash_accepts_the_right_prefix_and_rejects_a_wrong_one(self, scripted_server, tmp_path) -> None:
+        responses, url, _ = scripted_server
+        body = _checkpoint_bytes({"w": torch.ones(3)})
+        prefix = hashlib.sha256(body).hexdigest()[:8]
+        responses[f"/w-{prefix}.pth"] = body
+        responses["/w-deadbeef.pth"] = body
+        cache = tmp_path / "cache"
+
+        result = load_state_dict_from_url(
+            url(f"/w-{prefix}.pth"), model_dir=str(cache), progress=False, check_hash=True
+        )
+        assert torch.equal(result["w"], torch.ones(3))
+
+        with pytest.raises(RuntimeError, match="invalid hash value") as excinfo:
+            load_state_dict_from_url(url("/w-deadbeef.pth"), model_dir=str(cache), progress=False, check_hash=True)
+        assert f'got "{prefix}' in str(excinfo.value)
+        # Nothing of the rejected transfer is kept, under its name or a temporary one.
+        assert [p.name for p in cache.iterdir()] == [f"w-{prefix}.pth"]
+
+    def test_the_progress_bar_stays_off_stdout(self, scripted_server, tmp_path, capsys) -> None:
+        responses, url, _ = scripted_server
+        responses["/t.bin"] = b"x" * 300_000
+
+        path = download_file_from_url(url("/t.bin"), model_dir=str(tmp_path / "cache"), progress=True)
+
+        assert Path(path).read_bytes() == b"x" * 300_000
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert 'Downloading: "' in captured.err
+
+    def test_an_existing_file_is_replaced_only_by_a_complete_transfer(self, scripted_server, tmp_path) -> None:
+        """The transfer writes beside the destination and swaps it in only once complete."""
+        responses, url, _ = scripted_server
+        responses["/t.bin"] = 503
+        dst = tmp_path / "t.bin"
+        dst.write_bytes(b"previous")
+
+        with pytest.raises(HTTPError):
+            download_mod._download_url_to_file(url("/t.bin"), str(dst), progress=False, timeout=5.0)
+        assert dst.read_bytes() == b"previous"
+        assert [p.name for p in tmp_path.iterdir()] == ["t.bin"]
+
+        responses["/t.bin"] = b"complete"
+        download_mod._download_url_to_file(url("/t.bin"), str(dst), progress=False, timeout=5.0)
+        assert dst.read_bytes() == b"complete"
+        assert [p.name for p in tmp_path.iterdir()] == ["t.bin"]
+
+
+class TestTruncatedTransfer:
+    """A body shorter than its ``Content-Length`` is a failed transfer, not a file (#5216).
+
+    urllib ends a ``read(n)`` loop on the early close without an error, so a server that
+    announced 1577 bytes and sent 50 left a 50-byte file in the cache, which every later
+    call returned as a hit.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_backoff(self, monkeypatch, hub_dir_in_tmp):
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+
+    def test_a_short_body_is_retried_and_never_cached(self, scripted_server, tmp_path) -> None:
+        responses, url, hits = scripted_server
+        body = _checkpoint_bytes({"w": torch.ones(4)})
+        responses["/t.bin"] = (len(body), body[:50])
+        cache = tmp_path / "cache"
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError) as excinfo:
+                download_file_from_url(url("/t.bin"), model_dir=str(cache), progress=False)
+
+        assert isinstance(excinfo.value.__cause__, http.client.IncompleteRead)
+        message = str(excinfo.value)
+        assert f"Last error: transfer truncated: the server sent 50 of the {len(body)} bytes" in message
+        assert "_TruncatedTransfer" not in message
+        assert hits["/t.bin"] == download_mod._MAX_ATTEMPTS  # retried as the transient failure it is
+        assert not cache.exists() or list(cache.iterdir()) == []
+
+    @pytest.mark.parametrize("entry", ["load_state_dict_from_url", "download_file_from_url"])
+    def test_a_short_primary_hands_over_to_the_mirror(self, scripted_server, tmp_path, entry) -> None:
+        responses, url, _ = scripted_server
+        body = _checkpoint_bytes({"w": torch.ones(4)})
+        responses["/primary/w.pth"] = (len(body), body[:50])
+        responses["/mirror/w.pth"] = body
+        cache = tmp_path / "cache"
+        fn = {"load_state_dict_from_url": load_state_dict_from_url, "download_file_from_url": download_file_from_url}
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            fn[entry]([url("/primary/w.pth"), url("/mirror/w.pth")], model_dir=str(cache), progress=False)
+
+        assert [p.name for p in cache.iterdir()] == ["w.pth"]
+        assert (cache / "w.pth").read_bytes() == body
+
+    def test_a_retry_after_a_short_body_completes_the_file(self, scripted_server, tmp_path) -> None:
+        responses, url, hits = scripted_server
+        body = b"y" * 5000
+        responses["/t.bin"] = [(len(body), body[:50]), body]
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            path = download_file_from_url(url("/t.bin"), model_dir=str(tmp_path / "cache"), progress=False)
+
+        assert Path(path).read_bytes() == body
+        assert hits["/t.bin"] == 2
+
+    def test_a_short_body_leaves_an_existing_destination_untouched(self, scripted_server, tmp_path) -> None:
+        responses, url, _ = scripted_server
+        responses["/t.bin"] = (1000, b"z" * 10)
+        dst = tmp_path / "t.bin"
+        dst.write_bytes(b"previous")
+
+        with pytest.raises(http.client.IncompleteRead):
+            download_mod._download_url_to_file(url("/t.bin"), str(dst), progress=False, timeout=5.0)
+
+        assert dst.read_bytes() == b"previous"
+        assert [p.name for p in tmp_path.iterdir()] == ["t.bin"]
+
+
+class TestCacheNameEdgeCases:
+    """Review follow-ups on the cache-name checks (#5217, #5219)."""
+
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    def test_a_drive_relative_url_name_is_rejected_under_windows_path_rules(
+        self, monkeypatch, hub_dir_in_tmp, entry
+    ) -> None:
+        """``d:x.pth`` is one segment of a URL path, but a drive-relative path to ``ntpath.join``."""
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        monkeypatch.setattr(download_mod.os.path, "basename", ntpath.basename)
+        # A closed local port: if the name were accepted, the call would fail on the transfer instead.
+        with pytest.raises(ValueError, match="file_name="):
+            _ENTRY_POINTS[entry]("http://127.0.0.1:9/d:x.pth", progress=False)
+
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    def test_a_path_file_name_is_accepted(self, scripted_server, tmp_path, entry) -> None:
+        """``file_name=Path("w.pth")`` worked before the check existed; it is a bare name."""
+        responses, url, _ = scripted_server
+        body = _checkpoint_bytes({"w": torch.ones(2)})
+        responses["/other.pth"] = body
+        cache = tmp_path / "cache"
+
+        _ENTRY_POINTS[entry](url("/other.pth"), model_dir=str(cache), progress=False, file_name=Path("w.pth"))
+
+        assert [p.name for p in cache.iterdir()] == ["w.pth"]
+        assert (cache / "w.pth").read_bytes() == body
+
+
+class TestTruncatedTransferFraming:
+    """The short-read check follows the framing http.client used, and the error travels (#5216 review)."""
+
+    @pytest.fixture(autouse=True)
+    def _no_backoff(self, monkeypatch, hub_dir_in_tmp):
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+
+    @pytest.mark.parametrize(
+        "response",
+        [(None, b"q" * 5000), _Chunked(b"q" * 5000), _Chunked(b"q" * 5000, content_length=10), (-5, b"q" * 5000)],
+        ids=["close_delimited", "chunked", "chunked_with_a_mismatched_content_length", "negative_content_length"],
+    )
+    def test_a_body_not_framed_by_content_length_downloads_completely(self, scripted_server, tmp_path, response):
+        """Without a valid ``Content-Length`` framing the body there is nothing to count against, as in torch."""
+        responses, url, hits = scripted_server
+        responses["/t.bin"] = response
+
+        path = download_file_from_url(url("/t.bin"), model_dir=str(tmp_path / "cache"), progress=False)
+
+        assert Path(path).read_bytes() == b"q" * 5000
+        assert hits["/t.bin"] == 1
+
+    def test_the_truncation_error_pickles_and_copies(self) -> None:
+        error = download_mod._TruncatedTransfer(50, 1577)
+        for clone in (pickle.loads(pickle.dumps(error)), copy.copy(error)):  # noqa: S301 - our own bytes
+            assert isinstance(clone, http.client.IncompleteRead)
+            assert str(clone) == str(error)
+            assert (clone.received, clone.announced) == (50, 1577)
+        assert str(error) == "transfer truncated: the server sent 50 of the 1577 bytes its Content-Length announced"
+
+
+class TestDownloadTimeoutEnvironment:
+    """``KORNIA_DOWNLOAD_TIMEOUT`` sets the default for calls that pass no ``timeout=`` (ruling C14).
+
+    Pretrained model constructors take no ``timeout=``, so the variable is how their users
+    raise the bound on a slow link.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_backoff(self, monkeypatch, hub_dir_in_tmp):
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+
+    @pytest.fixture(autouse=True)
+    def _no_proxy(self, monkeypatch):
+        """Three tests below build a ``_StalledServer`` without the ``stalled_server`` fixture and its proxy scrub."""
+        _bypass_proxies(monkeypatch)
+
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    def test_the_variable_bounds_a_call_without_timeout(self, monkeypatch, tmp_path, entry) -> None:
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", "0.25")
+        server = _StalledServer("silent")
+        try:
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                outcome = _outcome_within(
+                    lambda: _ENTRY_POINTS[entry](server.url("/w.pth"), model_dir=str(tmp_path / "c"), progress=False),
+                    10.0,
+                )
+        finally:
+            server.close()
+
+        assert isinstance(outcome, RuntimeError), f"expected the documented RuntimeError, got {outcome!r}"
+        assert isinstance(outcome.__cause__, TimeoutError)
+        assert "0.25 s" in str(outcome)
+
+    def test_an_explicit_timeout_wins_over_the_variable(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", "600")
+        server = _StalledServer("silent")
+        try:
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                outcome = _outcome_within(
+                    lambda: download_file_from_url(
+                        server.url("/w.pth"), model_dir=str(tmp_path / "c"), progress=False, timeout=0.25
+                    ),
+                    10.0,
+                )
+        finally:
+            server.close()
+
+        assert isinstance(outcome, RuntimeError) and isinstance(outcome.__cause__, TimeoutError)
+        assert "0.25 s" in str(outcome)
+
+    def test_an_explicit_timeout_does_not_read_the_variable(self, scripted_server, monkeypatch, tmp_path) -> None:
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", "abc")
+        responses, url, _ = scripted_server
+        responses["/t.bin"] = b"payload"
+
+        path = download_file_from_url(url("/t.bin"), model_dir=str(tmp_path / "c"), progress=False, timeout=5.0)
+
+        assert Path(path).read_bytes() == b"payload"
+
+    @pytest.mark.parametrize(
+        "value",
+        ["0", "-1", "abc", "inf", "nan", "1e300", pytest.param(str(threading.TIMEOUT_MAX * 2), id="twice_TIMEOUT_MAX")],
+    )
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    def test_an_invalid_value_is_named_before_any_request(self, scripted_server, monkeypatch, tmp_path, value, entry):
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", value)
+        responses, url, hits = scripted_server
+        responses["/t.bin"] = b"payload"
+
+        with pytest.raises(ValueError, match="KORNIA_DOWNLOAD_TIMEOUT"):
+            _ENTRY_POINTS[entry](url("/t.bin"), model_dir=str(tmp_path / "c"), progress=False)
+
+        assert sum(hits.values()) == 0
+        assert not (tmp_path / "c").exists()
+
+    @pytest.mark.parametrize("value", [None, "", "  "], ids=["unset", "empty", "blank"])
+    def test_unset_gives_the_default(self, monkeypatch, value) -> None:
+        if value is None:
+            monkeypatch.delenv("KORNIA_DOWNLOAD_TIMEOUT", raising=False)
+        else:
+            monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", value)
+
+        assert download_mod._resolve_timeout(None) == download_mod._DOWNLOAD_TIMEOUT_SECONDS == 30.0
+
+    def test_a_valid_value_is_read_at_call_time(self, monkeypatch) -> None:
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", " 12.5 ")
+        assert download_mod._resolve_timeout(None) == 12.5
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", "3")
+        assert download_mod._resolve_timeout(None) == 3.0
+
+    def test_the_stdlib_ceiling_itself_is_accepted(self, monkeypatch) -> None:
+        """``threading.TIMEOUT_MAX`` is the largest blocking timeout the stdlib takes; validation lets it through."""
+        assert download_mod._resolve_timeout(threading.TIMEOUT_MAX) == threading.TIMEOUT_MAX
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", repr(threading.TIMEOUT_MAX))
+        assert download_mod._resolve_timeout(None) == threading.TIMEOUT_MAX
+
+    def test_the_message_states_the_bound_exactly(self, monkeypatch) -> None:
+        """``:g`` printed 9223372036.0 as 9.22337e+09, and Windows' 4294967.0 as 4.29497e+06, above the bound."""
+        bound = f"at most {threading.TIMEOUT_MAX!r} (threading.TIMEOUT_MAX)"
+        with pytest.raises(ValueError, match="timeout") as caught:
+            download_mod._resolve_timeout(threading.TIMEOUT_MAX * 2)
+        assert bound in str(caught.value)
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", "1e300")
+        with pytest.raises(ValueError, match="KORNIA_DOWNLOAD_TIMEOUT") as caught:
+            download_mod._resolve_timeout(None)
+        assert bound in str(caught.value)
+
+    @pytest.mark.parametrize("entry", list(_ENTRY_POINTS))
+    def test_a_warm_cache_call_still_checks_the_variable(self, scripted_server, monkeypatch, tmp_path, entry) -> None:
+        """The variable is checked when the function is called, before the cache; ``timeout=`` skips it."""
+        responses, url, hits = scripted_server
+        body = _checkpoint_bytes({"w": torch.ones(2)})
+        responses["/w.pth"] = body
+        cache = str(tmp_path / "c")
+        _ENTRY_POINTS[entry](url("/w.pth"), model_dir=cache, progress=False)
+        assert hits["/w.pth"] == 1
+
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", "abc")
+        with pytest.raises(ValueError, match="KORNIA_DOWNLOAD_TIMEOUT"):
+            _ENTRY_POINTS[entry](url("/w.pth"), model_dir=cache, progress=False)
+        _ENTRY_POINTS[entry](url("/w.pth"), model_dir=cache, progress=False, timeout=5)
+
+        assert hits["/w.pth"] == 1, "the cached file was fetched again"
+        assert (tmp_path / "c" / "w.pth").read_bytes() == body
