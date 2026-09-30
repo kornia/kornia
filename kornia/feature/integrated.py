@@ -240,7 +240,9 @@ class SIFTFeature(_SIFTFeature):
     ``descriptor_backend="pyramid"`` uses :class:`SIFTDescriptorFromPyramid` for
     orientation and description at the detector's sparse LAFs. Detection and the
     feature budget are unchanged. The default ``"patch"`` backend retains the
-    existing patch-wise pipeline.
+    existing patch-wise pipeline. Both return descriptors in kornia's SIFT layout;
+    :func:`~kornia.feature.convert_sift_descriptor_layout` reorders them to OpenCV's,
+    which :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
 
     Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
     https://github.com/kornia/kornia/pull/884,
@@ -297,6 +299,9 @@ class SIFTFeatureScaleSpace(LocalFeature):
     extrema and ranks all valid candidates by response, without contrast or edge
     rejection. The feature budget is unchanged; detections may differ.
     The default ``"patch"`` backend retains patch-wise orientation and description.
+    Both return descriptors in kornia's SIFT layout;
+    :func:`~kornia.feature.convert_sift_descriptor_layout` reorders them to OpenCV's,
+    which :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
@@ -664,8 +669,14 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
     See :cite:`LightGlue2023` for more details.
 
     Args:
-        feature_name: type of feature for matching, can be `disk` or `superpoint`.
+        feature_name: type of feature for matching, one of ``known_modes``.
         params: LightGlue params.
+
+    With ``"sift"``, the descriptors must be in OpenCV's SIFT layout, which LightGlue's SIFT weights expect. kornia's
+    SIFT descriptors use another order of the same values; convert them first with
+    :func:`~kornia.feature.convert_sift_descriptor_layout`::
+
+        descs = convert_sift_descriptor_layout(descs, "kornia", "opencv")
 
     """
 

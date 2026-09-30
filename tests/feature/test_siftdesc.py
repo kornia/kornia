@@ -18,6 +18,8 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
+from kornia.feature import convert_sift_descriptor_layout
 from kornia.feature.siftdesc import (
     DenseSIFTDescriptor,
     SIFTDescriptor,
@@ -413,3 +415,61 @@ class TestDenseSIFTDescriptor(BaseTester):
         expected[:, :bins] = torch.eye(bins, device=device, dtype=torch.float64)
         # The float32 pi in the orientation offset and the bin scale leaked up to 1e-7 into the lower bin.
         self.assert_close(histograms[0, :, 0], expected, rtol=0.0, atol=1e-12)
+
+
+class TestConvertSIFTDescriptorLayout(BaseTester):
+    def test_smoke(self, device, dtype):
+        descriptors = torch.rand(2, 5, 128, device=device, dtype=dtype)
+        converted = convert_sift_descriptor_layout(descriptors, "kornia", "opencv")
+        assert converted.shape == descriptors.shape
+        assert converted.dtype == dtype and converted.device == descriptors.device
+
+    def test_index_mapping(self, device, dtype):
+        # kornia stores (angle, row, column) and OpenCV (row, column, angle), with the angle bins counted the other
+        # way round: kornia index a * 16 + y * 4 + x is OpenCV index (y * 4 + x) * 8 + (-a mod 8).
+        one_hot = torch.eye(128, device=device, dtype=dtype)
+        converted = convert_sift_descriptor_layout(one_hot, "kornia", "opencv")
+        assert torch.equal(converted.sum(0), torch.ones(128, device=device, dtype=dtype))
+        for kornia_index, opencv_index in ((0, 0), (18, 23), (13, 104), (32, 6), (127, 121)):
+            assert converted[kornia_index].argmax().item() == opencv_index
+
+    @pytest.mark.parametrize("num_ang_bins, num_spatial_bins", [(8, 4), (6, 3), (4, 1)])
+    def test_round_trip(self, device, dtype, num_ang_bins, num_spatial_bins):
+        descriptors = torch.rand(3, 2, num_ang_bins * num_spatial_bins**2, device=device, dtype=dtype)
+        bins = {"num_ang_bins": num_ang_bins, "num_spatial_bins": num_spatial_bins}
+        opencv = convert_sift_descriptor_layout(descriptors, "kornia", "opencv", **bins)
+        assert not torch.equal(opencv, descriptors)
+        assert torch.equal(convert_sift_descriptor_layout(opencv, "opencv", "kornia", **bins), descriptors)
+        assert torch.equal(convert_sift_descriptor_layout(descriptors, "kornia", "kornia", **bins), descriptors)
+
+    def test_angle_bins_follow_each_convention(self, device, dtype):
+        # Intensity grows downwards, so every gradient points along +y. kornia measures angles from +x towards +y
+        # (image rows run downwards), which puts it in bin 2 of 8. OpenCV measures them towards -y: bin 6.
+        ramp = torch.arange(32, device=device, dtype=torch.float32).view(32, 1).expand(32, 32)
+        descriptor = SIFTDescriptor(32, rootsift=False).to(device)(ramp[None, None]).to(dtype)
+        assert descriptor.view(8, 16).sum(-1).argmax().item() == 2
+        opencv = convert_sift_descriptor_layout(descriptor, "kornia", "opencv")
+        assert opencv.view(16, 8).sum(0).argmax().item() == 6
+
+    def test_exception(self, device, dtype):
+        descriptors = torch.rand(2, 128, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="layout"):
+            convert_sift_descriptor_layout(descriptors, "kornia", "vlfeat")
+        with pytest.raises(ValueError, match="layout"):
+            convert_sift_descriptor_layout(descriptors, "colmap", "kornia")
+        with pytest.raises(BaseError):
+            convert_sift_descriptor_layout(torch.rand(2, 100, device=device, dtype=dtype), "kornia", "opencv")
+
+    def test_gradcheck(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 gradcheck")
+        descriptors = torch.rand(2, 128, device=device, dtype=torch.float64)
+        self.gradcheck(lambda d: convert_sift_descriptor_layout(d, "kornia", "opencv"), (descriptors,))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        descriptors = torch.rand(2, 128, device=device, dtype=dtype)
+
+        def op(d: torch.Tensor) -> torch.Tensor:
+            return convert_sift_descriptor_layout(d, "kornia", "opencv")
+
+        self.assert_close(torch_optimizer(op)(descriptors), op(descriptors))

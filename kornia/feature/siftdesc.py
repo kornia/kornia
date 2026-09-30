@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 
@@ -151,6 +151,9 @@ class SIFTDescriptor(nn.Module):
     Shape:
         - Input: :math:`(B, 1, \text{patch_size}, \text{patch_size})`
         - Output: :math:`(B, \text{num_ang_bins * num_spatial_bins ** 2})`
+
+    The output is in kornia's angle-major SIFT layout; :func:`~kornia.feature.convert_sift_descriptor_layout` reorders
+    it to OpenCV's.
 
     Example:
         >>> input = torch.rand(23, 1, 32, 32)
@@ -292,6 +295,80 @@ def _rootsift(desc: torch.Tensor, eps: float) -> torch.Tensor:
     if desc.dtype == torch.float16:
         return torch.sqrt(F.normalize(desc.float(), p=1, eps=1e-12) + eps).to(desc.dtype)
     return torch.sqrt(F.normalize(desc, p=1, eps=1e-12) + eps)
+
+
+_SIFT_DESCRIPTOR_LAYOUTS = ("kornia", "opencv")
+
+
+def _opencv_order(num_ang_bins: int, num_spatial_bins: int) -> list[int]:
+    """For each OpenCV descriptor position, the kornia position holding the same histogram value."""
+    cells = num_spatial_bins * num_spatial_bins
+    # Negating the angle maps bin a to bin -a (mod num_ang_bins); the map is its own inverse.
+    return [((-angle) % num_ang_bins) * cells + cell for cell in range(cells) for angle in range(num_ang_bins)]
+
+
+def convert_sift_descriptor_layout(
+    descriptors: torch.Tensor,
+    source: str,
+    target: str,
+    num_ang_bins: int = 8,
+    num_spatial_bins: int = 4,
+) -> torch.Tensor:
+    r"""Reorder SIFT descriptors between kornia's layout and OpenCV's.
+
+    Both layouts hold the same histogram values, one per angle bin :math:`a` and spatial cell :math:`(y, x)`
+    of the frame, with :math:`A` = ``num_ang_bins`` and :math:`S` = ``num_spatial_bins``:
+
+    - ``"kornia"``, the layout of every kornia SIFT descriptor (:class:`~kornia.feature.SIFTDescriptor`,
+      :class:`~kornia.feature.SIFTDescriptorFromPyramid`, and :class:`~kornia.feature.SIFTFeature` and
+      :class:`~kornia.feature.SIFTFeatureScaleSpace` with either ``descriptor_backend``): angle-major, value
+      :math:`(a, y, x)` at index :math:`a S^2 + y S + x`. Bin :math:`a` is centred on the direction
+      :math:`2 \pi a / A`, measured from :math:`+x` towards :math:`+y`, with :math:`y` growing downwards as image
+      rows do.
+    - ``"opencv"``, the layout of OpenCV's ``cv2.SIFT``: spatial-major, index :math:`(y S + x) A + a'`, with angles
+      measured from :math:`+x` towards :math:`-y`. A gradient in kornia's bin :math:`a` falls in OpenCV's bin
+      :math:`a' = -a \bmod A`.
+
+    LightGlue's ``"sift"`` weights expect the ``"opencv"`` layout: convert kornia descriptors before passing them to
+    :class:`~kornia.feature.LightGlueMatcher` with ``"sift"``. The conversion only reorders values, so it applies
+    equally to SIFT and RootSIFT descriptors and keeps their scale; converting back restores the input exactly.
+
+    Args:
+        descriptors: SIFT descriptors of shape :math:`(*, A S^2)`.
+        source: layout of ``descriptors``, ``"kornia"`` or ``"opencv"``.
+        target: layout to return, ``"kornia"`` or ``"opencv"``.
+        num_ang_bins: number of angle bins :math:`A`.
+        num_spatial_bins: number of spatial bins :math:`S` per side.
+
+    Returns:
+        The descriptors in the ``target`` layout, with the input's shape, dtype and device.
+
+    Example:
+        >>> descs = SIFTDescriptor(32)(torch.rand(4, 1, 32, 32))
+        >>> opencv_descs = convert_sift_descriptor_layout(descs, "kornia", "opencv")
+        >>> torch.equal(convert_sift_descriptor_layout(opencv_descs, "opencv", "kornia"), descs)
+        True
+
+    """
+    for layout in (source, target):
+        if layout not in _SIFT_DESCRIPTOR_LAYOUTS:
+            raise ValueError(f"Unknown SIFT descriptor layout {layout!r}; expected one of {_SIFT_DESCRIPTOR_LAYOUTS}")
+    size = num_ang_bins * num_spatial_bins * num_spatial_bins
+    KORNIA_CHECK(
+        descriptors.shape[-1] == size,
+        f"Expected descriptors of size num_ang_bins * num_spatial_bins**2 = {size}, got {descriptors.shape[-1]}",
+    )
+    if source == target:
+        order = list(range(size))
+    elif target == "opencv":
+        order = _opencv_order(num_ang_bins, num_spatial_bins)
+    else:
+        # Invert the permutation: kornia position k takes the OpenCV value that `_opencv_order` sends to k.
+        inverse = [0] * size
+        for opencv_index, kornia_index in enumerate(_opencv_order(num_ang_bins, num_spatial_bins)):
+            inverse[kornia_index] = opencv_index
+        order = inverse
+    return descriptors.index_select(-1, torch.tensor(order, device=descriptors.device, dtype=torch.long))
 
 
 def sift_describe(

@@ -1,0 +1,1 @@
+`convert_sift_descriptor_layout` reorders SIFT descriptors between kornia's layout and OpenCV's. `LightGlueMatcher("sift")` expects OpenCV's layout, which kornia's SIFT descriptors do not use, so convert them before matching: on Oxford Graf 1→4, `SIFTFeature` descriptors matched as they are gave 3 correct matches, and 470 once converted.
