@@ -434,6 +434,7 @@ class TestConventionsInRange(BaseTester):
         img = torch.tensor([[row, row]] * 3, device=device, dtype=dtype)[None]  # (1, 3, 2, 4), H != W
         img[0, 2, 1, 1] = 0.95  # above channel 2's upper bound 0.9 at one pixel only
         img[0, 0, 1, 0] = float("nan")  # at a pixel that is otherwise in range
+        img[0, 1, 0, 3] = float("inf")  # at a pixel that fails anyway (0.9 > 0.8)
         lower, upper = (0.2, 0.2, 0.2), (0.8, 0.8, 0.9)
         mask = in_range(img, lower, upper, return_mask=True)
         # both bounds inclusive (0.2 and 0.8 pass), a pixel passes only if every channel does, NaN fails;
@@ -441,8 +442,13 @@ class TestConventionsInRange(BaseTester):
         expected = torch.tensor([[[[1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]], device=device, dtype=dtype)
         assert mask.dtype == dtype
         self.assert_close(mask, expected)
-        # return_mask=False zeroes every channel of a failing pixel
-        self.assert_close(in_range(img, lower, upper).nan_to_num(), (img * expected).nan_to_num())
+        # return_mask=False is input * mask: a failing pixel's channels become 0, a NaN stays NaN and an inf becomes NaN
+        out = in_range(img, lower, upper)
+        assert out[0, 0, 1, 0].isnan()
+        self.assert_close(out[0, 1:, 1, 0], torch.zeros(2, device=device, dtype=dtype))
+        assert out[0, 1, 0, 3].isnan()
+        self.assert_close(out[0, [0, 2], 0, 3], torch.zeros(2, device=device, dtype=dtype))
+        self.assert_close(out.nan_to_num(), (img * expected).nan_to_num())
         # relabel: transposing the image transposes the mask
         self.assert_close(in_range(img.transpose(-1, -2), lower, upper, return_mask=True), expected.transpose(-1, -2))
         # lower > upper is not rejected; it selects nothing

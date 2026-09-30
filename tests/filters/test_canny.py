@@ -663,6 +663,38 @@ class TestConventionsCanny(BaseTester):
         assert not torch.equal(kept_8, kept_4)  # and separates the two connectivities
         self.assert_close(edges, kept_8.to(dtype))
 
+    def test_convention_canny_blur_pairs_are_rows_first(self, device, dtype):
+        self._require_padding(device, dtype)
+        # kernel_size and sigma reach gaussian_blur2d unchanged, as (rows, columns) and (sigma_y, sigma_x); the step
+        # varies along x only, so the column entries decide the ridge and the swapped pairs give another magnitude
+        img = self._ramped_step(0.125, device, dtype)
+        ridge = {}
+        for kernel_size, sigma in (((5, 3), (1.5, 0.7)), ((3, 5), (0.7, 1.5))):
+            grad = spatial_gradient(gaussian_blur2d(img, kernel_size, sigma), normalized=False)
+            reference = torch.sqrt(grad[:, :, 0] ** 2 + grad[:, :, 1] ** 2 + 1e-6)
+            magnitude, _ = canny(img, kernel_size=kernel_size, sigma=sigma)
+            kept = magnitude > 0.1  # the ridge, not the sqrt(eps) floor of the flat regions
+            assert kept[0, 0].nonzero()[:, 1].tolist() == [7] * 9
+            self.assert_close(magnitude[kept], reference[kept])
+            ridge[kernel_size] = magnitude[0, 0, 4, 7].item()
+        assert abs(ridge[(5, 3)] - ridge[(3, 5)]) > 0.1  # about 0.395 against 0.263
+
+    def test_convention_canny_nms_follows_the_diagonal_gradient(self, device, dtype):
+        self._require_padding(device, dtype)
+        # a three-level step across x + y (0 | 0.3 on x + y = 13 | 1) in a 12x17 image, no blur: the gradient points
+        # along (1, 1) and its raw Sobel components are 0.3, 1.6, 3, 2.4, 0.7 on the lines x + y = 11..15. Suppression
+        # compares each line with the lines two steps away along the gradient, so 13 (3 against 0.3, 0.7) and 14
+        # (2.4 against 1.6, 0) survive; comparing along the edge, or along x or y only, gives another set
+        ys, xs = torch.meshgrid(torch.arange(12, device=device), torch.arange(17, device=device), indexing="ij")
+        u = xs + ys
+        img = torch.where(u < 13, 0.0, torch.where(u == 13, 0.3, 1.0)).to(dtype)[None, None]
+        # relabel: mirrored in x, the step runs along x - y and the lines move with it
+        for image, mirrored in ((img, False), (img.flip(-1), True)):
+            _, edges = canny(image, 0.1, 0.2, kernel_size=1)
+            on = edges[0, 0].nonzero()
+            x = 16 - on[:, 1] if mirrored else on[:, 1]
+            assert set((on[:, 0] + x).tolist()) == {13, 14}
+
     def test_wart_canny_two_level_step_has_no_edge_5170(self, device, dtype):
         """#5170: NMS needs strictly greater on both sides, so the tied pair of a two-level step is suppressed."""
         self._require_padding(device, dtype)

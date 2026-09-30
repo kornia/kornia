@@ -323,6 +323,18 @@ class TestConventionsOtsuThreshold(BaseTester):
         assert out8.flatten()[level].item() == 0
         assert out8.flatten()[level + 1].item() == level + 1
 
+    @pytest.mark.parametrize("int_dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
+    def test_convention_otsu_integer_threshold_truncates_toward_zero(self, device, int_dtype):
+        # the threshold takes the input's dtype: -59.57 in float64 becomes -59 for an integer input, not -60, and
+        # 40.43 becomes 40
+        img = torch.tensor([[-90, -80, -70], [-60, -50, -40], [-30, -20, -10]], device=device, dtype=int_dtype)
+        for data in (img, img + 100):
+            _, threshold = otsu_threshold(data)
+            _, float_threshold = otsu_threshold(data.cpu().double())
+            assert threshold.dtype == int_dtype
+            assert threshold.item() == int(float_threshold.item())
+        assert otsu_threshold(img)[1].item() == -59
+
     def test_wart_otsu_threshold_one_bin_above_its_split_5172(self, device, dtype):
         """#5172: the threshold is read from linspace(min, max, nbins), not from the histc bin edges."""
         # nbins=2 has one split, and the returned threshold is the data maximum, so nothing is kept
@@ -361,7 +373,7 @@ class TestConventionsOtsuThreshold(BaseTester):
             assert not mask.any()
 
     def test_wart_otsu_slow_path_threshold_has_no_gradient_and_kde_skips_pixels_5174(self, device, dtype):
-        """#5174: slow_and_differentiable gives no threshold gradient, and its 1e-3 KDE skips most pixels."""
+        """#5174: the slow path gives no threshold gradient, and its 1e-3 KDE skips pixels between its sample points."""
         generator = torch.Generator().manual_seed(0)
         noise = torch.rand(1000, generator=generator)
         x = torch.cat([0.3 + 0.1 * noise[:500], 0.6 + 0.1 * noise[500:]]).view(1, 1, 20, 50)

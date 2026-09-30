@@ -327,16 +327,21 @@ class TestConventionsLaplacian(BaseTester):
         data = torch.rand(1, 1, 5, 6, device=device, dtype=dtype)
         assert laplacian(data, 1).isnan().all()
 
-    def test_wart_laplacian_integer_input_wraps_the_kernel_5155(self, device, dtype):
-        """#5155: the kernel is built in uint8, so its centre 1 - 9 wraps and the result is garbage."""
+    def test_wart_laplacian_integer_input_returns_zeros_5155(self, device, dtype):
+        """#5155: the kernel takes the integer input's dtype, so the normalised taps truncate to 0."""
         self._require_reflect_padding(device, dtype)
         if device.type == "mps":
-            pytest.skip("#5155: MPS rejects integer convolution instead of wrapping")
+            pytest.skip("#5155: MPS rejects integer convolution instead of returning zeros")
         img = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
         img[0, 0, 2, 3] = 180
-        # the float result at a neighbour of the bright pixel is (180 - 100) / 16 = 5; uint8 returns 0
-        self.assert_close(laplacian(img.to(dtype), 3)[0, 0, 1, 3], torch.tensor(5.0, device=device, dtype=dtype))
-        assert laplacian(img, 3)[0, 0, 1, 3].item() == 0
+        # in a float dtype: (8 * 100 - 8 * 180) / 16 = -40 at the bright pixel, (180 - 100) / 16 = 5 beside it
+        reference = laplacian(img.to(dtype), 3)[0, 0, [2, 1], [3, 3]]
+        self.assert_close(reference, torch.tensor([-40.0, 5.0], device=device, dtype=dtype))
+        # every tap of the normalised kernel (1/16, -8/16) truncates to 0, in int16 as in uint8: no wrap is involved
+        for int_dtype in (torch.uint8, torch.int16):
+            assert laplacian(img.to(int_dtype), 3).count_nonzero().item() == 0
+        # unnormalised, the taps survive but the sum is uint8 arithmetic: -640 at the bright pixel reads -640 mod 256
+        assert laplacian(img, 3, normalized=False)[0, 0, 2, 3].item() == 128
 
     def test_wart_laplacian_uppercase_border_type_passes_check_then_raises_5156(self, device, dtype):
         """#5156: the border_type check lower-cases, the padding call does not."""

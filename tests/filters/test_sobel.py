@@ -699,14 +699,20 @@ class TestConventionsSpatialGradient(BaseTester):
         self._require_replicate_padding(device, dtype, three_d=True)
         # the border is replicated (not the reflect default of filter2d / laplacian), so a ramp's derivative at the
         # first and last column is half its slope; reflect would give 0 there
-        _, xs = self._grid(6, 9, device, dtype)
+        ys, xs = self._grid(6, 9, device, dtype)
         x_ramp = (3 * xs + 1)[None, None]
+        y_ramp = (2 * ys + 1)[None, None]
         for mode in ("sobel", "diff"):
             gx = spatial_gradient(x_ramp, mode)[0, 0, 0, 2]
             self.assert_close(gx[[0, 4, 8]], torch.tensor([1.5, 3.0, 1.5], device=device, dtype=dtype))
+            gy = spatial_gradient(y_ramp, mode)[0, 0, 1, :, 4]
+            self.assert_close(gy[[0, 3, 5]], torch.tensor([1.0, 2.0, 1.0], device=device, dtype=dtype))
         x_ramp3d = (3 * torch.arange(7, device=device, dtype=dtype) + 1).expand(1, 1, 5, 6, 7)
         g3 = spatial_gradient3d(x_ramp3d)[0, 0, 0, 2, 3]
         self.assert_close(g3[[0, 3, 6]], torch.tensor([1.5, 3.0, 1.5], device=device, dtype=dtype))
+        z_ramp3d = (5 * torch.arange(5, device=device, dtype=dtype) + 1).view(1, 1, 5, 1, 1).expand(1, 1, 5, 6, 7)
+        gz = spatial_gradient3d(z_ramp3d)[0, 0, 2, :, 3, 4]
+        self.assert_close(gz[[0, 2, 4]], torch.tensor([2.5, 5.0, 2.5], device=device, dtype=dtype))
 
     def test_convention_spatial_gradient3d_channel_order(self, device, dtype):
         self._require_replicate_padding(device, dtype, three_d=True)
