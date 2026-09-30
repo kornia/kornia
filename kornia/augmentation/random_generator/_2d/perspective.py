@@ -28,6 +28,27 @@ from kornia.core.utils import _extract_device_dtype
 __all__ = ["PerspectiveGenerator"]
 
 
+def _source_end_and_extent(
+    size: Union[int, torch.Tensor],
+) -> Tuple[Union[int, torch.Tensor], Union[int, torch.Tensor]]:
+    """Return the last source coordinate and the corner-offset extent along one spatial axis.
+
+    A size-1 axis would make two source corners coincide and the homography singular. It gets a
+    unit extent and no offset instead, so its single row or column maps onto itself. The legacy
+    ONNX tracer passes sizes as 0-d tensors; the rule then has to be tensor arithmetic, because
+    a Python comparison is evaluated once at trace time and never reaches the exported graph.
+    """
+    if isinstance(size, torch.Tensor):
+        return (size - 1).clamp(min=1), size * (size > 1)
+    return (1, 0) if size == 1 else (size - 1, size)
+
+
+def _as_scalar_tensor(value: Union[int, torch.Tensor], device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    if isinstance(value, torch.Tensor):
+        return value.to(device=device, dtype=dtype)
+    return torch.full((), value, device=device, dtype=dtype)
+
+
 class PerspectiveGenerator(RandomGeneratorBase):
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
@@ -80,25 +101,29 @@ class PerspectiveGenerator(RandomGeneratorBase):
         _check_positive_int_or_traced(height, "height")
         _check_positive_int_or_traced(width, "width")
 
-        # A size-1 axis would make two source corners coincide and the homography singular. Give it a
-        # unit extent and no offset instead: the single row or column then maps onto itself.
-        flat_x = isinstance(width, int) and width == 1
-        flat_y = isinstance(height, int) and height == 1
-        x_end = 1 if flat_x else width - 1
-        y_end = 1 if flat_y else height - 1
+        x_end, x_extent = _source_end_and_extent(width)
+        y_end, y_extent = _source_end_and_extent(height)
 
         # Subtract before casting: bbox_generator subtracts in the tensor dtype,
         # which changes large half-precision image coordinates.
-        start_points = _constant_tensor(
-            [[[0, 0], [x_end, 0], [x_end, y_end], [0, y_end]]],
-            device=_device,
-            dtype=_dtype,
-        )
+        if isinstance(x_end, torch.Tensor) or isinstance(y_end, torch.Tensor):
+            # _constant_tensor is specified for Python scalars only, so build the corners from the traced sizes.
+            x = _as_scalar_tensor(x_end, _device, _dtype)
+            y = _as_scalar_tensor(y_end, _device, _dtype)
+            zero = torch.zeros((), device=_device, dtype=_dtype)
+            start_points = torch.stack([torch.stack([zero, x, x, zero]), torch.stack([zero, zero, y, y])], dim=-1)
+            start_points = start_points.unsqueeze(0)
+        else:
+            start_points = _constant_tensor(
+                [[[0, 0], [x_end, 0], [x_end, y_end], [0, y_end]]],
+                device=_device,
+                dtype=_dtype,
+            )
         start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        fx = self._distortion_scale * (0 if flat_x else width) / 2
-        fy = self._distortion_scale * (0 if flat_y else height) / 2
+        fx = self._distortion_scale * x_extent / 2
+        fy = self._distortion_scale * y_extent / 2
 
         factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
 

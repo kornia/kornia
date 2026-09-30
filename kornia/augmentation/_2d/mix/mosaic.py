@@ -101,8 +101,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         - A list box input comes back as a list with one tensor per sample, from a direct call and from
           :class:`~kornia.augmentation.container.AugmentationSequential` alike, whatever the gate selects. An
           unselected sample's tensor is its own boxes unchanged, with no padding rows. A selected sample's tensor
-          takes its box count from the wrong source images, so it can drop real boxes or keep padding rows
-          (`#4715 <https://github.com/kornia/kornia/issues/4715>`_).
+          holds the boxes of each tile's source image, with no padding rows.
         - In either form, a selected sample's box that falls below ``min_bbox_size`` is zeroed by
           :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area`. A direct call exports it as ``[0, 0, 1, 1]``
           in ``"bbox_xyxy"`` and ``"bbox_xywh"``, not as zero-area padding
@@ -173,6 +172,11 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _box = input.clone()
                 _idx = i * flags["mosaic_grid"][1] + j
                 _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]
+                if input._N is not None:
+                    # A list input pads each sample to the longest one; the tile keeps its source's padding count.
+                    _box._N = list(input._N)
+                    for dst, src in params["permutation"][:, [0, _idx]].tolist():
+                        _box._N[dst] = input._N[src]
                 _box.translate(_offset, inplace=True)
                 if maybe_out_boxes is None:
                     maybe_out_boxes = _box

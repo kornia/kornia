@@ -742,8 +742,10 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
         - The result satisfies :math:`x_2^\top F x_1 = 0` for ``(P1, P2)``, the order of :func:`find_fundamental`.
           It is not normalised, and for ``P1 = [I | 0]``, ``P2 = [R | t]`` it is the negative of
           :func:`~kornia.geometry.epipolar.essential_from_Rt` for the same motion.
-        - Known defects: float16 overflows to ``inf`` for pixel-unit projection matrices
-          (`#4877 <https://github.com/kornia/kornia/issues/4877>`_).
+        - float16 and bfloat16 inputs are computed in float32. A float16 ``F`` is then divided by its largest
+          absolute entry before the cast back, because pixel-unit projection matrices give entries of order ``1e10``,
+          above float16's maximum of 65504; an all-zero ``F`` (coincident camera centres) stays zero. bfloat16 has
+          float32's exponent range and is cast back unnormalised.
 
     Args:
         P1: The projection matrix from first camera with shape :math:`(*, 3, 4)`.
@@ -792,4 +794,11 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
         dim=1,
     )
 
-    return F_vec.view(*P1.shape[:-2], 3, 3).to(input_dtype)
+    F = F_vec.view(*P1.shape[:-2], 3, 3)
+
+    if input_dtype == torch.float16:
+        # F is defined up to scale: divide by the largest absolute entry so it fits float16; F = 0 stays 0.
+        scale = F.abs().amax(dim=(-2, -1), keepdim=True)
+        F = F / torch.where(scale > 0, scale, torch.ones_like(scale))
+
+    return F.to(input_dtype)

@@ -78,6 +78,43 @@ class TestVector3(BaseTester):
         res: Scalar = p0.squared_norm()
         assert res.shape == () if shape is None else shape
 
+    def test_normalized(self, device, dtype):
+        # A zero row normalizes to zero in every dtype (#5062: in float16 it used to be 0 / 0 = NaN, because
+        # F.normalize's eps=1e-12 floor rounds to 0 there), next to an ordinary row.
+        vec = Vector3(torch.tensor([[0.0, 3.0, -4.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype))
+        out = vec.normalized()
+        assert isinstance(out, Vector3)
+        assert out.data.dtype == dtype
+        self.assert_close(out.data[0], torch.tensor([0.0, 0.6, -0.8], device=device, dtype=dtype))
+        assert torch.equal(out.data[1], torch.zeros(3, device=device, dtype=dtype))
+
+    def test_normalized_matches_functional_normalize(self, device, dtype):
+        # Away from the zero vector the values are those of F.normalize(p=2, dim=-1), bit for bit, at every scale.
+        # The row of norm 3e-6 (float16 subnormals) is a unit vector only while the norm floor stays below it.
+        vec = Vector3(
+            torch.tensor(
+                [
+                    [3.0, 0.0, 4.0],
+                    [1e-3, -2e-3, 2e-3],
+                    [100.0, 100.0, -100.0],
+                    [0.5, 0.25, 0.125],
+                    [1e-6, -2e-6, 2e-6],
+                ],
+                device=device,
+                dtype=dtype,
+            )
+        )
+        assert torch.equal(vec.normalized().data, torch.nn.functional.normalize(vec.data, p=2, dim=-1))
+
+    def test_normalized_zero_vector_gradient_is_finite_5062(self, device, dtype):
+        # The gradient at the zero vector is I / eps with eps = 1e-12, as with F.normalize, except in float16, where
+        # I / eps overflows and the gradient is zero instead of inf.
+        zero = torch.zeros(2, 3, device=device, dtype=dtype, requires_grad=True)
+        Vector3(zero).normalized().data.sum().backward()
+        assert torch.isfinite(zero.grad).all()
+        expected = torch.zeros_like(zero) if dtype == torch.float16 else torch.full_like(zero, 1e12)
+        self.assert_close(zero.grad, expected)
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_jit(self, device, dtype):
         pass
@@ -145,6 +182,29 @@ class TestVector2(BaseTester):
         p0 = Vector2.random(shape, device, dtype)
         res: Scalar = p0.squared_norm()
         assert res.shape == () if shape is None else shape
+
+    def test_normalized(self, device, dtype):
+        # A zero row normalizes to zero in every dtype (#5062: NaN in float16 before), next to an ordinary row.
+        vec = Vector2(torch.tensor([[-3.0, 4.0], [0.0, 0.0]], device=device, dtype=dtype))
+        out = vec.normalized()
+        assert isinstance(out, Vector2)
+        assert out.data.dtype == dtype
+        self.assert_close(out.data[0], torch.tensor([-0.6, 0.8], device=device, dtype=dtype))
+        assert torch.equal(out.data[1], torch.zeros(2, device=device, dtype=dtype))
+
+    def test_normalized_matches_functional_normalize(self, device, dtype):
+        # As for Vector3: the values of F.normalize(p=2, dim=-1) away from the zero vector, the 5e-6 row included.
+        vec = Vector2(
+            torch.tensor([[-3.0, 4.0], [1e-3, 2e-3], [100.0, -100.0], [3e-6, -4e-6]], device=device, dtype=dtype)
+        )
+        assert torch.equal(vec.normalized().data, torch.nn.functional.normalize(vec.data, p=2, dim=-1))
+
+    def test_normalized_zero_vector_gradient_is_finite_5062(self, device, dtype):
+        zero = torch.zeros(2, 2, device=device, dtype=dtype, requires_grad=True)
+        Vector2(zero).normalized().data.sum().backward()
+        assert torch.isfinite(zero.grad).all()
+        expected = torch.zeros_like(zero) if dtype == torch.float16 else torch.full_like(zero, 1e12)
+        self.assert_close(zero.grad, expected)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_jit(self, device, dtype):

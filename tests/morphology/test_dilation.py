@@ -133,12 +133,12 @@ class TestDilate(BaseTester):
         with pytest.raises(TypeError):
             assert dilation(tensor, [0.0])
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert dilation(test, kernel)
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert dilation(tensor, test)
 
         with pytest.raises(NotImplementedError, match="unknown"):

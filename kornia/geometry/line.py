@@ -17,15 +17,16 @@
 
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
+import math
 from typing import Iterator, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, are_checks_enabled
 from kornia.core.exceptions import ValueCheckError
 from kornia.core.utils import _torch_svd_cast, is_compiling, register_module_state
+from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar
@@ -108,7 +109,7 @@ class ParametrizedLine(nn.Module):
         if not torch.jit.is_scripting() and are_checks_enabled() and not is_compiling():
             if not bool((direction.abs().amax(dim=-1) > 0).all()):
                 raise ValueCheckError("ParametrizedLine.through requires two distinct points; p0 and p1 coincide.")
-        return ParametrizedLine(p0, F.normalize(direction, p=2, dim=-1))
+        return ParametrizedLine(p0, _normalize_last_dim(direction, 1e-12))
 
     def point_at(self, t: Union[float, torch.Tensor, Scalar]) -> torch.Tensor:
         """Get the point at :math:`t` along this line.
@@ -201,58 +202,73 @@ class ParametrizedLine(nn.Module):
         return res_lambda, res_point
 
 
-def _fit_line_ols_2d(points: torch.Tensor) -> ParametrizedLine:
-    x = points[..., 0]
-    y = points[..., 1]
+def _tls_direction_2d(dx: torch.Tensor, dy: torch.Tensor, weights: Optional[torch.Tensor]) -> torch.Tensor:
+    """Return the unit direction of the total least squares line through centred 2-D points (#5040).
+
+    The direction is the principal axis of the (weighted) scatter of ``(dx, dy)``, in closed form:
+    ``theta = 0.5 * atan2(2 * sxy, sxx - syy)`` lies in ``[-pi / 2, pi / 2]`` and the direction is
+    ``(cos(theta), sin(theta))``, so its x component is non-negative. ``theta`` does not change when the points are
+    scaled, so they are first divided by their largest magnitude: the second moments then cannot overflow (float16
+    does past 65504) or underflow, whatever the unit of the coordinates.
+    """
+    scale = torch.maximum(dx.abs().amax(dim=-1, keepdim=True), dy.abs().amax(dim=-1, keepdim=True))  # (B, 1)
+    scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+    dx = dx / scale
+    dy = dy / scale
+    wdx = dx if weights is None else weights * dx
+    wdy = dy if weights is None else weights * dy
+    sxx = (wdx * dx).sum(dim=-1, keepdim=True)
+    syy = (wdy * dy).sum(dim=-1, keepdim=True)
+    sxy = (wdx * dy).sum(dim=-1, keepdim=True)
+
+    # theta and the direction in float32 for half-precision input: compiled half-precision kernels keep theta in
+    # float32 but round pi / 2 to the input dtype, which gave an exactly vertical line x = -4.8e-4.
+    dtype = sxy.dtype
+    if dtype in (torch.float16, torch.bfloat16):
+        sxx, syy, sxy = sxx.float(), syy.float(), sxy.float()
+    # 0.5 * atan2(2 * sxy, sxx - syy), computed with both signs flipped. An exactly vertical set has sxy = +0: eager
+    # atan2(+0, negative) is +pi, but the ONNX export's atan2 returns -pi for either zero. atan2(-0, negative) is -pi
+    # in both, so theta is +pi / 2 in eager, compiled and exported graphs alike.
+    theta = -0.5 * torch.atan2(-2 * sxy, sxx - syy)  # (B, 1)
+    # cos(theta) as sin(pi / 2 - |theta|): float32 atan2 can return the float nearest to pi, which is larger than pi,
+    # and the cosine of half of it is -4.4e-8, whereas pi / 2 - |theta| is never negative.
+    return torch.cat([torch.sin(math.pi / 2 - theta.abs()), theta.sin()], dim=-1).to(dtype)
+
+
+def _fit_line_tls_2d(points: torch.Tensor) -> ParametrizedLine:
+    """Fit a 2-D line by total least squares (#5040).
+
+    The points are centred relative to the first one, so a coordinate that equals the first point's is exactly 0
+    after centring, whatever the rounding of the mean. An exactly vertical set then has ``sxy = +0`` and gets the
+    direction ``(0, 1)``; the float32 rounding of ``pi / 2`` can leave an x component of 1.2e-7.
+    """
+    x0 = points[..., :1, 0]  # (B, 1)
+    y0 = points[..., :1, 1]  # (B, 1)
+    x = points[..., 0] - x0  # (B, N)
+    y = points[..., 1] - y0  # (B, N)
     x_mean = x.mean(dim=-1, keepdim=True)
     y_mean = y.mean(dim=-1, keepdim=True)
-    dx = x - x_mean
-    dy = y - y_mean
 
-    denom = (dx * dx).sum(dim=-1, keepdim=True)  # (B, 1)
-    slope = torch.where(denom > 1e-8, (dx * dy).sum(dim=-1, keepdim=True) / denom, torch.zeros_like(denom))
-
-    # For vertical lines, fallback to [0,1] direction
-    direction = torch.where(
-        denom > 1e-8,
-        torch.cat([torch.ones_like(slope), slope], dim=-1),
-        torch.tensor([0.0, 1.0], device=points.device, dtype=points.dtype).expand(points.shape[0], 2),
-    )
-
-    direction = direction / direction.norm(dim=-1, keepdim=True)
-    origin = torch.cat([x_mean, y_mean], dim=-1)
+    direction = _tls_direction_2d(x - x_mean, y - y_mean, None)
+    origin = torch.cat([x0 + x_mean, y0 + y_mean], dim=-1)
     return ParametrizedLine(origin, direction)
 
 
-def _fit_line_weighted_ols_2d(points: torch.Tensor, weights: torch.Tensor) -> ParametrizedLine:
-    x = points[..., 0]  # (B, N)
-    y = points[..., 1]  # (B, N)
+def _fit_line_weighted_tls_2d(points: torch.Tensor, weights: torch.Tensor) -> ParametrizedLine:
+    """Fit a 2-D line by weighted total least squares: weighted centroid and weighted moments (#5040).
 
+    Centred relative to the first point, like :func:`_fit_line_tls_2d`.
+    """
+    x0 = points[..., :1, 0]  # (B, 1)
+    y0 = points[..., :1, 1]  # (B, 1)
+    x = points[..., 0] - x0  # (B, N)
+    y = points[..., 1] - y0  # (B, N)
     w_sum = weights.sum(dim=-1, keepdim=True)  # (B, 1)
     x_mean = (weights * x).sum(dim=-1, keepdim=True) / w_sum  # (B, 1)
     y_mean = (weights * y).sum(dim=-1, keepdim=True) / w_sum  # (B, 1)
 
-    dx = x - x_mean  # (B, N)
-    dy = y - y_mean  # (B, N)
-
-    weighted_dx2 = weights * dx * dx
-    weighted_dxdy = weights * dx * dy
-
-    denom = weighted_dx2.sum(dim=-1, keepdim=True)  # (B, 1)
-    slope = weighted_dxdy.sum(dim=-1, keepdim=True) / denom  # (B, 1)
-
-    # Replace NaNs or infs from division by zero
-    slope = torch.where(torch.isfinite(slope), slope, torch.zeros_like(slope))
-
-    # direction = F.normalize([1, slope]) or [0,1] if vertical
-    is_vertical = denom <= 1e-8
-    direction = torch.cat([torch.ones_like(slope), slope], dim=-1)  # (B, 2)
-    replacement = torch.tensor([0.0, 1.0], device=points.device, dtype=points.dtype)
-    direction[is_vertical.squeeze(-1)] = replacement
-
-    direction = direction / direction.norm(dim=-1, keepdim=True)
-    origin = torch.cat([x_mean, y_mean], dim=-1)
-
+    direction = _tls_direction_2d(x - x_mean, y - y_mean, weights)
+    origin = torch.cat([x0 + x_mean, y0 + y_mean], dim=-1)
     return ParametrizedLine(origin, direction)
 
 
@@ -262,7 +278,11 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
     A line needs at least two points that are not all identical. Comparing every point with
     the first one is exact at any scale; comparing with the mean is not, because its rounding
     leaves a nonzero residual for identical points such as three copies of (0.1, 0.7). With
-    weights, the weighted mean is undefined unless the weight sum of every row is positive.
+    weights, the weighted mean is undefined unless the weight sum of every row is positive,
+    and a point with weight 0 does not count, so the same rule applies to the points with
+    positive weight, compared with the point of largest weight. Every weight must be
+    non-negative: a negative weight can make the weighted scatter indefinite, and then the
+    2-D and the D >= 3 branches disagree.
 
     The value checks are skipped under ``torch.compile``/export, where they would be a
     data-dependent branch, and by ``disable_checks()``, like every kornia value check.
@@ -280,10 +300,27 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
             raise ValueCheckError(
                 "fit_line requires a positive sum of weights; the given weights do not sum to a positive value."
             )
+        # A point with weight 0 does not count: some point with positive weight must differ from the point of
+        # largest weight, which is positive once the weight sum is.
+        ref = points.gather(-2, weights.argmax(-1)[:, None, None].expand(-1, 1, points.shape[-1]))
+        if not bool(((points != ref).any(-1) & (weights > 0)).any(-1).all()):
+            raise ValueCheckError(
+                "fit_line requires at least two distinct points with positive weight; the points with positive "
+                "weight are all identical."
+            )
+        if bool((weights < 0).any()):
+            raise ValueCheckError(
+                "fit_line requires non-negative weights; a negative weight can make the weighted scatter indefinite."
+            )
 
 
 def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
-    """Fit a line from a set of points.
+    """Fit a line from a set of points by total least squares.
+
+    The line minimises the perpendicular distances to the points, for every dimensionality.
+    For 2-D inputs the direction is computed in closed form and always has a non-negative
+    x component, so an exactly vertical line gets the direction (0, 1); higher-dimensional
+    inputs take the principal direction of the scatter matrix, whose sign is not specified.
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The expected
@@ -296,7 +333,8 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     Raises:
         ValueCheckError: if the points do not determine a line — fewer than two points,
-            all points identical, or (with weights) a zero weight sum.
+            all points identical, or (with weights) a zero weight sum, a negative weight, or all
+            points with positive weight identical.
 
     Example:
         >>> points = torch.rand(2, 10, 3)
@@ -312,14 +350,14 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     _reject_degenerate_line(points, weights)
 
-    # Fast path: use OLS for unweighted 2D case
+    # Fast path: closed-form total least squares for the 2D case
     if D == 2:
         if weights is not None:
             KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
             KORNIA_CHECK_SHAPE(weights, ["B", "N"])
             KORNIA_CHECK(points.shape[0] == weights.shape[0])
-            return _fit_line_weighted_ols_2d(points, weights)
-        return _fit_line_ols_2d(points)
+            return _fit_line_weighted_tls_2d(points, weights)
+        return _fit_line_tls_2d(points)
 
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")

@@ -43,15 +43,15 @@ class TestImageToString:
 
         from kornia.core.exceptions import ShapeError
 
+        img = torch.rand(1, 3, 15, 15)
         with pytest.raises(ShapeError) as errinfo:
-            img = torch.rand(1, 3, 15, 15)
             image_to_string(img)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         from kornia.core.exceptions import ValueCheckError
 
+        img = torch.rand(3, 15, 15) * 10
         with pytest.raises(ValueCheckError) as errinfo:
-            img = torch.rand(3, 15, 15) * 10
             image_to_string(img)
         assert "Value range mismatch" in str(errinfo.value) or "Invalid image value range" in str(errinfo.value)
 

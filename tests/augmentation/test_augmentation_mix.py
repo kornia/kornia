@@ -691,6 +691,60 @@ class TestRandomMosaic(BaseTester):
         torch.testing.assert_close(output[0], boxes[0])
         torch.testing.assert_close(output[2], boxes[2])
 
+    @pytest.mark.parametrize("sequential", [False, True])
+    @pytest.mark.parametrize("gate", [(1.0, 1.0, 1.0, 1.0), (1.0, 0.0, 1.0, 0.0)])
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_list_boxes_follow_tile_sources_4715(self, data_key, gate, sequential, device, dtype):
+        # The samples carry 1, 3, 2 and 1 boxes, so each tile's padding depends on its source image. The window
+        # starts at the canvas origin and spans the whole 2x2 canvas, so every box is translated and none is clipped.
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = [
+            torch.tensor(sample, device=device, dtype=dtype)
+            for sample in (
+                [[1.0, 1.0, 3.0, 3.0]],
+                [[1.0, 1.0, 3.0, 3.0], [2.0, 1.0, 6.0, 5.0], [0.5, 0.5, 2.0, 2.0]],
+                [[1.0, 1.0, 4.0, 4.0], [2.0, 2.0, 5.0, 5.0]],
+                [[0.0, 0.0, 2.0, 2.0]],
+            )
+        ]
+        permutation = torch.tensor([[0, 2, 2, 1], [1, 1, 3, 3], [2, 0, 0, 0], [3, 2, 1, 3]], device=device)
+
+        def convert(boxes: torch.Tensor) -> torch.Tensor:
+            if data_key == "bbox_xywh":
+                return torch.cat([boxes[:, :2], boxes[:, 2:] - boxes[:, :2]], -1)
+            if data_key == "bbox":
+                x1, y1, x2, y2 = boxes.unbind(-1)
+                return torch.stack([torch.stack(v, -1) for v in ((x1, y1), (x2, y1), (x2, y2), (x1, y2))], -2)
+            return boxes
+
+        boxes = [convert(b) for b in xyxy]
+        kwargs = {"output_size": (12, 16), "start_ratio_range": (0.0, 0.0), "p": 1.0}
+        if sequential:
+            aug = AugmentationSequential(RandomMosaic(**kwargs), data_keys=["input", data_key])
+            aug(image, boxes)
+            params = aug._params
+            params[0].data["permutation"] = permutation
+            params[0].data["batch_prob"] = params[0].data["batch_prob"].new_tensor(gate)
+        else:
+            aug = RandomMosaic(**kwargs, data_keys=["input", data_key])
+            aug(image, boxes)
+            params = dict(aug._params)
+            params["permutation"] = permutation
+            params["batch_prob"] = params["batch_prob"].new_tensor(gate)
+        _, out = aug(image, boxes, params=params)
+
+        assert isinstance(out, list) and len(out) == 4
+        for b, selected in enumerate(gate):
+            if not selected:
+                self.assert_close(out[b], boxes[b])
+                continue
+            tiles = []
+            for i in range(2):
+                for j in range(2):
+                    offset = torch.tensor([8.0 * i, 6.0 * j] * 2, device=device, dtype=dtype)
+                    tiles.append(xyxy[int(permutation[b, 2 * i + j])] + offset)
+            self.assert_close(out[b], convert(torch.cat(tiles)))
+
     @pytest.mark.parametrize(("keepdim", "expected_shape"), [(False, (1, 1, 6, 8)), (True, (1, 6, 8))])
     def test_non_square_unbatched_keepdim_4438(self, keepdim, expected_shape):
         torch.manual_seed(0)

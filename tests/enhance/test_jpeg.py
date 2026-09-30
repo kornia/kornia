@@ -1157,3 +1157,55 @@ class TestDiffJPEG(BaseTester):
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
         self.assert_close(jpeg_quality.grad, jpeg_quality_grad_ref, rtol=0.01, atol=0.01)
+
+    def test_basis_cache_after_inference_mode(self, device, dtype, monkeypatch) -> None:
+        """A first call under ``torch.inference_mode()`` must not break later calls that track gradients.
+
+        The DCT basis is memoized per dtype and device. Caching the inference tensors built by that first call made
+        later calls in which autograd tracks the image fail in the forward with "Inference tensors cannot be saved
+        for backward".
+        """
+        monkeypatch.setattr("kornia.enhance.jpeg._DCT8_CACHE", {})
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 16, 16).to(device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([30.0, 90.0], device=device, dtype=dtype)
+        with torch.inference_mode():
+            expected = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
+        img = img.clone().requires_grad_(True)
+        img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
+        img_jpeg.sum().backward()
+        self.assert_close(img_jpeg.detach(), expected)
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+
+    def test_basis_cache_after_compile_in_inference_mode(self, device, dtype, torch_optimizer, monkeypatch) -> None:
+        """A compiled first call under ``torch.inference_mode()`` must not break later calls that track gradients."""
+        monkeypatch.setattr("kornia.enhance.jpeg._DCT8_CACHE", {})
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 16, 16).to(device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([30.0, 90.0], device=device, dtype=dtype)
+        op_optimized = torch_optimizer(kornia.enhance.jpeg_codec_differentiable)
+        with torch.inference_mode():
+            op_optimized(img, jpeg_quality)
+        img = img.clone().requires_grad_(True)
+        kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality).sum().backward()
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+
+    @pytest.mark.device_agnostic
+    def test_basis_cache_after_export(self, monkeypatch) -> None:
+        """Tracing with ``torch.export`` must not leave fake tensors in the DCT basis cache.
+
+        The trace runs the forward on fake tensors. Caching the basis built there made later eager calls in the same
+        process return fake tensors without data: ``.item()`` gave a symbol and ``.numpy()`` raised.
+        """
+        monkeypatch.setattr("kornia.enhance.jpeg._DCT8_CACHE", {})
+        torch.manual_seed(0)
+        img = torch.rand(1, 3, 16, 16)
+        jpeg_quality = torch.tensor([50.0])
+        module = kornia.enhance.JPEGCodecDifferentiable()
+        torch.export.export(module, (img, jpeg_quality), strict=False)
+        img_jpeg = module(img, jpeg_quality)
+        assert type(img_jpeg) is torch.Tensor
+        kornia.enhance.jpeg._DCT8_CACHE.clear()
+        self.assert_close(img_jpeg, module(img, jpeg_quality))
