@@ -41,6 +41,7 @@ import os
 import torch
 
 from kornia.core.download import load_state_dict_from_url
+from kornia.feature import DISKFeatures
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +212,10 @@ if __name__ == "__main__":
             # Don't pass model_dir - use the default from torch.hub.set_dir()
             # This ensures files go to {hub_dir}/checkpoints/ matching test behavior.
             # file_name is pinned so the entry lands where kornia will look for it.
-            load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
+            # ``knchurch_disk.pt`` (reference data for the ``data`` fixture) stores ``DISKFeatures``, which
+            # ``weights_only`` loading accepts only once it is allowlisted, as ``conftest.py`` does.
+            with torch.serialization.safe_globals([DISKFeatures]):
+                load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
         except Exception as e:  # noqa: BLE001 - report every failure, not just the first
             logger.error(f"Failed to download `{file_name}`: {type(e).__name__}: {e}")
             failed.append(file_name)
