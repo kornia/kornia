@@ -1,0 +1,11 @@
+`ImageModule`, `ImageSequential` and the augmentation containers accept grayscale and other
+non-RGB PIL images (modes `L`, `I;16`, `I`, `F`, `1`), which used to crash `to_tensor` with a
+`permute` error, and convert them to one-channel tensors like a grayscale NumPy array.
+`output_type="pil"` / `to_pil` turn a one-channel tensor into a mode `"L"` image instead of
+raising `TypeError: Cannot handle this data type`. `to_pil`, `show()` and `save()` clamp a float
+image to `[0, 1]` and round it to 8 bits, the conversion the `kornia.models` `save` methods already used: a
+value above 1 used to wrap modulo 256 (1.1 became 24), a negative value gave 0 or 231 depending
+on the method and the torch version, and a `uint8` image was multiplied by 255 (200 became 56). A
+negative value now gives 0 on every torch version and an integer image keeps its values. In-range
+float pixels change by at most one step, from truncation to rounding (0.999 now gives 255
+instead of 254).

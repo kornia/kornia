@@ -28,11 +28,47 @@ from kornia.core.external import numpy as np
 from kornia.core.utils import is_exporting
 
 
+def _image_to_float(image: torch.Tensor) -> torch.Tensor:
+    """Convert an image tensor to floating point, scaling an integer image by the maximum of its dtype.
+
+    A ``uint8`` image is divided by 255, a ``uint16`` one by 65535, and so on; a ``bool`` image becomes 0 and 1; a
+    floating image is returned unchanged, since it is taken to be in ``[0, 1]`` already. Integer and ``bool`` images
+    become the default floating dtype.
+    """
+    if image.is_floating_point():
+        return image
+    converted = image.to(torch.get_default_dtype())
+    if image.dtype == torch.bool:
+        return converted
+    return converted / float(torch.iinfo(image.dtype).max)
+
+
+def _to_uint8_image(image: torch.Tensor) -> torch.Tensor:
+    """Convert a floating image in ``[0, 1]`` to ``uint8`` for display or an 8-bit file.
+
+    Values are clamped to ``[0, 1]``, scaled by 255 and rounded, so an image that overshoots the range saturates
+    instead of wrapping modulo 256 (1.1 would otherwise become 24, black where it should be white), and a negative
+    value becomes 0 on every torch version. Non-floating images pass through untouched, so a ``uint8`` or ``uint16``
+    image keeps its values.
+    """
+    if not image.is_floating_point():
+        return image
+    return (image.detach().clamp(0.0, 1.0) * 255).round().to(torch.uint8)
+
+
 class ImageModuleMixIn:
     """A MixIn that handles image-based operations.
 
     This modules accepts multiple input and output data types, provides end-to-end visualization, file saving features.
     Note that this MixIn fits the classes that return one image tensor only.
+
+    Non-tensor inputs are converted by :meth:`to_tensor`: a NumPy array of shape :math:`(H, W)`, :math:`(H, W, C)`
+    or :math:`(B, H, W, C)`, a PIL image or an image path becomes a :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor.
+    An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535), a ``bool`` image
+    becomes 0 and 1, and a floating image keeps its values. Tensors pass through unchanged. ``output_type="numpy"``
+    returns channels-last arrays with the values of the output tensor, so a floating output fed back in converts to
+    the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to ``[0, 1]`` and
+    round it to 8 bits, and pass an integer image through with its values.
     """
 
     _output_image: Any
@@ -138,7 +174,11 @@ class ImageModuleMixIn:
     def to_tensor(self, x: Any) -> torch.Tensor:
         """Convert input to tensor.
 
-        Supports image path, numpy array, PIL image, and raw tensor.
+        Supports image path, numpy array, PIL image, and raw tensor. A NumPy array of shape :math:`(H, W)`,
+        :math:`(H, W, C)` or :math:`(B, H, W, C)` becomes :math:`(C, H, W)` or :math:`(B, C, H, W)`, with one channel
+        for :math:`(H, W)`; a PIL image converts like its NumPy array. An integer image is divided by the maximum of
+        its dtype (``uint8`` by 255, ``uint16`` by 65535), a ``bool`` image becomes 0 and 1, and a floating image keeps
+        its values; integer and ``bool`` images become the default floating dtype. A tensor is returned unchanged.
 
         Args:
             x: The input to convert.
@@ -150,19 +190,23 @@ class ImageModuleMixIn:
         if isinstance(x, str):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
 
-            return load_image(x, ImageLoadType.UNCHANGED) / 255
+            return _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
         if isinstance(x, torch.Tensor):
             return x
-        if isinstance(x, np.ndarray):  # type: ignore
-            from kornia.image.utils import image_to_tensor  # pylint: disable=C0415
+        from kornia.image.utils import image_to_tensor  # pylint: disable=C0415
 
-            return image_to_tensor(x) / 255
+        if isinstance(x, np.ndarray):  # type: ignore
+            return _image_to_float(image_to_tensor(x))
         if isinstance(x, Image.Image):  # type: ignore
-            return torch.from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
+            return _image_to_float(image_to_tensor(np.array(x)))  # type: ignore
         raise TypeError("Input type not supported")
 
     def to_numpy(self, x: Any) -> "np.array":  # type: ignore
         """Convert input to numpy array.
+
+        A :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor becomes a channels-last :math:`(H, W, C)` or
+        :math:`(B, H, W, C)` array with the same values, the layout :meth:`to_tensor` accepts, so a floating array
+        converts back to the same tensor. A tensor of any other rank keeps its shape.
 
         Args:
             x: The input to convert.
@@ -172,7 +216,12 @@ class ImageModuleMixIn:
 
         """
         if isinstance(x, torch.Tensor):
-            return x.cpu().detach().numpy()
+            x = x.detach().cpu()
+            if x.dim() == 3:
+                x = x.permute(1, 2, 0)
+            elif x.dim() == 4:
+                x = x.permute(0, 2, 3, 1)
+            return x.contiguous().numpy()
         if isinstance(x, np.ndarray):  # type: ignore
             return x
         if isinstance(x, Image.Image):  # type: ignore
@@ -182,6 +231,9 @@ class ImageModuleMixIn:
     def to_pil(self, x: Any) -> "Image.Image":  # type: ignore
         """Convert input to PIL image.
 
+        A floating image is clamped to ``[0, 1]`` and rounded to 8 bits; an integer image keeps its values. A
+        one-channel image becomes a mode ``"L"`` image, and a :math:`(B, C, H, W)` batch a list of images.
+
         Args:
             x: The input to convert.
 
@@ -190,19 +242,25 @@ class ImageModuleMixIn:
 
         """
         if isinstance(x, torch.Tensor):
-            x = x.cpu().detach() * 255
             if x.dim() == 3:
-                x = x.permute(1, 2, 0)
-                return Image.fromarray(x.byte().numpy())  # type: ignore
+                return self._chw_to_pil(x)
             if x.dim() == 4:
-                x = x.permute(0, 2, 3, 1)
-                return [Image.fromarray(_x.byte().numpy()) for _x in x]  # type: ignore
-            raise NotImplementedError
+                return [self._chw_to_pil(_x) for _x in x]  # type: ignore
+            raise NotImplementedError(
+                f"to_pil converts a (C, H, W) or (B, C, H, W) tensor, got a tensor of shape {tuple(x.shape)}."
+            )
         if isinstance(x, np.ndarray):  # type: ignore
-            raise NotImplementedError
+            raise NotImplementedError("to_pil does not convert NumPy arrays; convert them with to_tensor first.")
         if isinstance(x, Image.Image):  # type: ignore
             return x
         raise TypeError("Input type not supported")
+
+    @staticmethod
+    def _chw_to_pil(image: torch.Tensor) -> "Image.Image":  # type: ignore
+        image = _to_uint8_image(image).cpu()
+        if image.shape[0] == 1:
+            return Image.fromarray(image[0].numpy())  # type: ignore
+        return Image.fromarray(image.permute(1, 2, 0).numpy())  # type: ignore
 
     def _detach_tensor(
         self, output_image: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]
@@ -250,10 +308,10 @@ class ImageModuleMixIn:
             raise ValueError
 
         if backend == "pil" and display:
-            Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8)).show()  # type: ignore
+            Image.fromarray(_to_uint8_image(out_image).permute(1, 2, 0).squeeze().numpy()).show()  # type: ignore
             return None
         if backend == "pil":
-            return Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8))  # type: ignore
+            return Image.fromarray(_to_uint8_image(out_image).permute(1, 2, 0).squeeze().numpy())  # type: ignore
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
@@ -281,4 +339,4 @@ class ImageModuleMixIn:
             if n_row is None:
                 n_row = math.ceil(output_image.shape[0] ** 0.5)
             out_image = make_grid(output_image, n_row, padding=2)
-        write_image(name, out_image.mul(255.0).byte())
+        write_image(name, _to_uint8_image(out_image))
