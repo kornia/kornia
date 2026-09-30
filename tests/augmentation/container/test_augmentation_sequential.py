@@ -689,7 +689,6 @@ class TestAugmentationSequential:
         assert outputs[2].dtype == dtype, "Output box dtype should match the input dtype"
         assert outputs[3].dtype == dtype, "Output keypoints dtype should match the input dtype"
 
-
     def test_call_time_data_keys_are_restored_after_forward_exception(self, device, dtype):
         image = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
         mask = torch.ones(1, 1, 16, 20, device=device, dtype=dtype)
