@@ -80,7 +80,7 @@ def laplacian(
           - ``kernel_size=1`` passes validation, and the normalised :math:`1 \times 1` kernel is ``0 / 0``, so the
             output is all NaN (`#5175 <https://github.com/kornia/kornia/issues/5175>`_).
           - an integer input casts the kernel to its dtype, as :func:`~kornia.filters.filter2d` does, so the
-            normalised kernel truncates to 0 and the output is all zeros
+            normalised kernel truncates to 0 and on the CPU the output is all zeros
             (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
           - ``border_type`` is checked case-insensitively but used as given, so ``'REFLECT'`` raises
             (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).

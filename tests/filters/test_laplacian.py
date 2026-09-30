@@ -337,7 +337,8 @@ class TestConventionsLaplacian(BaseTester):
         # in a float dtype: (8 * 100 - 8 * 180) / 16 = -40 at the bright pixel, (180 - 100) / 16 = 5 beside it
         reference = laplacian(img.to(dtype), 3)[0, 0, [2, 1], [3, 3]]
         self.assert_close(reference, torch.tensor([-40.0, 5.0], device=device, dtype=dtype))
-        # every tap of the normalised kernel (1/16, -8/16) truncates to 0, in int16 as in uint8: no wrap is involved
+        # every tap of the normalised kernel is below 1 in magnitude (1/16 and -8/16 in int16; 1/256 and 248/256 in
+        # uint8, whose centre wraps) and truncates to 0, so the wrap does not decide the result
         for int_dtype in (torch.uint8, torch.int16):
             assert laplacian(img.to(int_dtype), 3).count_nonzero().item() == 0
         # unnormalised, the taps survive but the sum is uint8 arithmetic: -640 at the bright pixel reads -640 mod 256
