@@ -198,8 +198,9 @@ class RgbToGrayscale(nn.Module):
 
     def __init__(self, rgb_weights: Optional[torch.Tensor] = None) -> None:
         super().__init__()
-        if rgb_weights is None:
-            rgb_weights = torch.Tensor([0.299, 0.587, 0.114])
+        # None stays None: rgb_to_grayscale then picks the weights for the image dtype. Float32 defaults stored here
+        # were cast to the image, so a uint8 image got the weights [0, 0, 0] and came back all zeros, and a float64
+        # image got float32-rounded weights (#5109).
         self.rgb_weights = rgb_weights
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
