@@ -20,7 +20,7 @@ from typing import List, Optional
 import torch
 import torch.nn.functional as F
 
-__all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "top_hat"]
+__all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "reconstruction", "top_hat"]
 
 
 def _validate_morphology_inputs(
@@ -1097,3 +1097,134 @@ def bottom_hat(
         )
         - tensor
     )
+
+
+def _reconstruct_up(
+    seed: torch.Tensor,
+    mask: torch.Tensor,
+    kernel: torch.Tensor,
+    num_iters: Optional[int],
+    check_every: int,
+    engine: str,
+) -> torch.Tensor:
+    output = torch.minimum(seed, mask)
+
+    if num_iters is not None:
+        for _ in range(num_iters):
+            output = torch.minimum(dilation(output, kernel, engine=engine), mask)
+        return output
+
+    # Each step can only raise a pixel, so the loop has converged once a batch of steps raises none.
+    changed = True
+    while changed:
+        previous = output
+        for _ in range(check_every):
+            output = torch.minimum(dilation(output, kernel, engine=engine), mask)
+        changed = bool((output > previous).any())
+
+    return output
+
+
+def reconstruction(
+    seed: torch.Tensor,
+    mask: torch.Tensor,
+    kernel: Optional[torch.Tensor] = None,
+    method: str = "dilation",
+    num_iters: Optional[int] = None,
+    check_every: int = 4,
+    engine: str = "auto",
+) -> torch.Tensor:
+    r"""Return the morphological reconstruction of ``seed`` bounded by ``mask``, applied to each channel.
+
+    Reconstruction by dilation repeats the geodesic dilation :math:`\min(\delta_B(x), \text{mask})`, starting
+    from :math:`\min(\text{seed}, \text{mask})`, until the result stops changing. Reconstruction by erosion is
+    its dual, :math:`-\text{reconstruction}(-\text{seed}, -\text{mask})`. See L. Vincent, "Morphological
+    grayscale reconstruction in image analysis: applications and efficient algorithms", IEEE TIP 1993.
+    Under autograd every step keeps its intermediates, so memory grows with the number of steps.
+
+    Convention:
+        Matches ``skimage.morphology.reconstruction``: the default ``kernel`` is a :math:`3 \times 3` square,
+        its center cell is always part of the neighborhood, and both methods spread a pixel's value to the
+        kernel's offsets, as :func:`dilation` does. scikit-image's ``dilation`` spreads the other way, but its
+        ``reconstruction`` agrees. The image border is ``geodesic``. Unlike scikit-image, a ``seed`` above
+        ``mask`` (below it for ``"erosion"``) is clipped to ``mask`` instead of raising.
+
+    Args:
+        seed: Floating-point starting image with shape :math:`(B, C, H, W)`; any other dtype raises a
+            ``TypeError``.
+        mask: Floating-point image bounding the reconstruction, with the same shape as ``seed``; any other dtype
+            raises a ``TypeError``.
+        kernel: Offsets from the center that a pixel's value spreads to in one step, with shape
+            :math:`(k_h, k_w)` and odd sizes. Non-zero cells mark an offset; their magnitude and dtype are
+            ignored. Default: ``None``, which uses a :math:`3 \times 3` square.
+        method: ``"dilation"`` (default) or ``"erosion"``.
+        num_iters: Number of steps to run. Default: ``None``, which runs until the result stops changing.
+            That can take far more steps than :math:`\max(H, W)` when ``mask`` has winding paths. A fixed
+            count always runs that many steps, even past convergence. It has no data-dependent exit, so
+            ``torch.compile`` captures it as one graph, but the loop is unrolled and compile time grows with the
+            count.
+        check_every: Number of steps between convergence checks when ``num_iters`` is ``None``. Each check syncs
+            the device with the host, and steps past convergence are wasted, so a larger value suits inputs that
+            take many steps. For inputs without NaN, the output does not depend on it. Default: ``4``.
+        engine: ``"unfold"``, ``"shift"`` or ``"auto"`` (default), passed to :func:`dilation`. ``"convolution"``
+            raises a ``ValueError``: it is not exact on every backend, and an inexact step can keep the loop
+            from converging.
+
+    Returns:
+        Reconstructed image with shape :math:`(B, C, H, W)` and the promoted dtype of ``seed`` and ``mask``.
+
+    Example:
+        >>> mask = torch.rand(1, 3, 5, 5)
+        >>> seed = mask * 0.5
+        >>> output = reconstruction(seed, mask)
+
+    """
+    if not isinstance(seed, torch.Tensor):
+        raise TypeError(f"Seed type is not a torch.Tensor. Got {type(seed)}")
+
+    if not isinstance(mask, torch.Tensor):
+        raise TypeError(f"Mask type is not a torch.Tensor. Got {type(mask)}")
+
+    if len(seed.shape) != 4:
+        raise ValueError(f"Seed size must have 4 dimensions. Got {seed.dim()}")
+
+    if not seed.is_floating_point():
+        raise TypeError(f"Seed must have a floating-point dtype. Got {seed.dtype}")
+
+    if not mask.is_floating_point():
+        raise TypeError(f"Mask must have a floating-point dtype. Got {mask.dtype}")
+
+    if seed.shape != mask.shape:
+        raise ValueError(f"`seed` and `mask` shapes must match. Got {seed.shape} and {mask.shape}.")
+
+    if method not in ["dilation", "erosion"]:
+        raise ValueError(f"Unknown `method`: {method}. Expected one of ['dilation', 'erosion'].")
+
+    if engine not in ["auto", "unfold", "shift"]:
+        raise ValueError(f"Unsupported `engine`: {engine}. Expected one of ['auto', 'unfold', 'shift'].")
+
+    if num_iters is not None and num_iters < 0:
+        raise ValueError(f"`num_iters` must be non-negative. Got {num_iters}.")
+
+    if check_every < 1:
+        raise ValueError(f"`check_every` must be positive. Got {check_every}.")
+
+    if kernel is None:
+        kernel = torch.ones(3, 3, device=seed.device, dtype=torch.bool)
+
+    _validate_morphology_inputs(seed, kernel, None, "geodesic")
+
+    se_h, se_w = kernel.shape
+    if se_h % 2 == 0 or se_w % 2 == 0:
+        raise ValueError(f"Kernel sizes must be odd. Got {kernel.shape}.")
+
+    # The kernel is only a membership mask, so a bool copy keeps its dtype out of the result. The center cell
+    # keeps each pixel in its own neighborhood, as in scikit-image. It also makes every step non-decreasing,
+    # which the convergence test relies on.
+    kernel = kernel != 0
+    kernel[se_h // 2, se_w // 2] = True
+
+    if method == "erosion":
+        return -_reconstruct_up(-seed, -mask, kernel, num_iters, check_every, engine)
+
+    return _reconstruct_up(seed, mask, kernel, num_iters, check_every, engine)

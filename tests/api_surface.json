@@ -712,6 +712,7 @@
     "gradient",
     "morphology",
     "opening",
+    "reconstruction",
     "top_hat"
   ],
   "kornia.utils": [
