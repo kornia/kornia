@@ -2013,13 +2013,21 @@ class TestConventionsKernels(BaseTester):
         if device.type != "mps":
             pytest.skip("#5181 compares the kernel built on MPS with the one built on the CPU")
         _kernel_guard("get_motion_kernel2d", torch.device("cpu"), dtype)
+        # every whole degree, including 120 and 210
         angles = torch.arange(0.0, 360.0, 1.0, dtype=dtype)
         directions = torch.full_like(angles, 0.3)
         on_cpu = get_motion_kernel2d(7, angles, directions)
         on_mps = get_motion_kernel2d(7, angles.to(device), directions.to(device)).cpu()
-        # every kernel sums to 1; some angles (120 degrees among them) differ by more than 0.1 in a tap
-        differing = (on_mps - on_cpu).abs().flatten(1).amax(1) > 0.1
-        assert bool(differing.any())
+        # a sampling tie rounded the other way moves a tap weight (about 0.18), far beyond half-precision roundoff
+        differing = (on_mps.float() - on_cpu.float()).abs().flatten(1).amax(1) > 0.05
+        if not bool(differing.any()):
+            pytest.skip("this MPS backend rounds the sampling ties like the CPU (#5181)")
+        # a Python-float angle builds the kernel on the CPU in float32, equal to the CPU tensor-angle kernel
+        on_cpu_f32 = get_motion_kernel2d(7, angles.float(), directions.float())
+        for index in differing.nonzero().flatten().tolist():
+            from_float = get_motion_kernel2d(7, float(angles[index]), float(directions[index]))
+            assert from_float.device.type == "cpu"
+            self.assert_close(from_float[0], on_cpu_f32[index])
 
     @pytest.mark.parametrize("ndim", [1, 2])
     def test_wart_box_kernel_is_a_stride_zero_view_5160(self, ndim, device, dtype):
