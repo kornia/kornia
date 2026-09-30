@@ -81,11 +81,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         - ``size`` and the output shape are ordered ``(D, H, W)``. A scalar ``padding`` expands to every side;
           three values expand as ``(left/right, top/bottom, front/back)``, and six are passed to
           :func:`torch.nn.functional.pad` as ``(left, right, top, bottom, front, back)`` before the crop is drawn.
-        - ``transform_matrix`` maps the padded volume to the crop, not the original input to the crop
-          (`#4801 <https://github.com/kornia/kornia/issues/4801>`_). Add the left, top, and front padding to an
-          original ``(x, y, z)`` point before applying this matrix: padding a ``3 x 3 x 3`` input by ``1`` and
-          cropping the full ``5 x 5 x 5`` volume records an identity matrix although voxel ``(1, 1, 1)`` moves to
-          ``(2, 2, 2)``.
+        - ``transform_matrix`` maps original input ``(x, y, z)`` coordinates to the crop, including the
+          left, top, and front translation from explicit padding and ``pad_if_needed``.
         - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped: a
           crop larger than the padded volume along any axis, even by one voxel, raises; a crop equal to it is
           valid. The exception types differ from :class:`CenterCrop3D`'s, and an ``int`` ``size`` is rejected
@@ -182,6 +179,10 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
+        for padding in self._compute_padding(tuple(input.shape), flags):
+            transform[:, 0, 3] += padding[0]
+            transform[:, 1, 3] += padding[2]
+            transform[:, 2, 3] += padding[4]
         return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(
@@ -194,6 +195,12 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
 
+        # Resampling starts from the padded volume; the public matrix starts from the original input.
+        transform = transform.clone()
+        for padding in self._compute_padding(tuple(input.shape), flags):
+            transform[:, :3, 3] -= (
+                transform[:, :3, 0] * padding[0] + transform[:, :3, 1] * padding[2] + transform[:, :3, 2] * padding[4]
+            )
         input = self.precrop_padding(input, flags)
         return crop_by_transform_mat3d(
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]

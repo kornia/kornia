@@ -184,6 +184,13 @@ class TestKeypoints(BaseTester):
         kp.type(torch.float64)
         assert kp.dtype == torch.float64
 
+    def test_not_implemented(self, device, dtype):
+        kp = Keypoints(torch.rand(2, 5, 2, device=device, dtype=dtype))
+        with pytest.raises(NotImplementedError, match="from a list of tensors is not implemented"):
+            Keypoints([torch.rand(3, 2, device=device, dtype=dtype), torch.rand(5, 2, device=device, dtype=dtype)])
+        with pytest.raises(NotImplementedError, match=r"`Keypoints\.to_tensor\(as_padded_sequence=True\)`"):
+            kp.to_tensor(as_padded_sequence=True)
+
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
             Keypoints("not a tensor")
@@ -370,12 +377,18 @@ class TestKeypoints3D(BaseTester):
 
     def test_not_implemented(self, device, dtype):
         kp = Keypoints3D(torch.rand(5, 3, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.pad` is not implemented"):
             kp.pad(torch.zeros(1, 6, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.unpad` is not implemented"):
             kp.unpad(torch.zeros(1, 6, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match="transform_points"):
             kp.transform_keypoints(torch.eye(4, device=device, dtype=dtype))
+        with pytest.raises(NotImplementedError, match="transform_points"):
+            kp.transform_keypoints_(torch.eye(4, device=device, dtype=dtype))
+        with pytest.raises(NotImplementedError, match="from a list of tensors is not implemented"):
+            Keypoints3D([torch.rand(3, 3, device=device, dtype=dtype), torch.rand(5, 3, device=device, dtype=dtype)])
+        with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.to_tensor\(as_padded_sequence=True\)`"):
+            kp.to_tensor(as_padded_sequence=True)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):

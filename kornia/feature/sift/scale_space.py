@@ -299,7 +299,9 @@ class _SIFTScaleSpaceDetector(nn.Module):
             )
             determinants = m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) + m02 * (m10 * m21 - m11 * m20)
             det = determinants[:, 0:1]
-            solved = det.abs() > 1e-7
+            # The relative floor of _solve_cramer_sym3x3, which the eager path calls; columns 0-5 hold the Hessian.
+            scale = system[:, :6].abs().amax(1, keepdim=True)
+            solved = det.abs() > 1e-7 * scale * scale * scale
             shifts = determinants[:, 1:] / torch.where(solved, det, torch.ones_like(det))
             alive = alive & solved[:, 0] & torch.isfinite(shifts).all(1)
             move = alive & (shifts.abs() >= 0.5).any(1)

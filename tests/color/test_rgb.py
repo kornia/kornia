@@ -39,23 +39,23 @@ class TestRgbToBgr(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_bgr([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_bgr(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_bgr(img)
 
         with pytest.raises(TypeError):
             assert kornia.color.bgr_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.bgr_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.bgr_to_rgb(img)
 
     def test_back_and_forth(self, device, dtype):
@@ -133,32 +133,32 @@ class TestRgbToRgba(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_rgba([0.0], 0.0)
 
+        img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
         with pytest.raises(TypeError):
-            img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_rgba(img)
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_rgba(img, 0.0)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_rgba(img, 0.0)
 
+        img = torch.ones(3, 1, 1, device=device, dtype=dtype)
         with pytest.raises(TypeError):
-            img = torch.ones(3, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_rgba(img, "alpha_str")
 
         # rgba to rgb
         with pytest.raises(TypeError):
             assert kornia.color.rgba_to_rgb(0.0)
 
+        img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgba_to_rgb(img)
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgba_to_rgb(img)
 
     def test_back_and_forth_rgb(self, device, dtype):
@@ -317,23 +317,23 @@ class TestLinearRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_linear_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_linear_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_linear_rgb(img)
 
         with pytest.raises(TypeError):
             assert kornia.color.linear_rgb_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.linear_rgb_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.linear_rgb_to_rgb(img)
 
     def test_back_and_forth(self, device, dtype):

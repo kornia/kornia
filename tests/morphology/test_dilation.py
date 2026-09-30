@@ -20,7 +20,7 @@ import functools
 import pytest
 import torch
 
-from kornia.morphology import dilation, erosion
+from kornia.morphology import bottom_hat, closing, dilation, erosion, gradient, opening, top_hat
 from kornia.morphology import morphology as morphology_module
 from kornia.morphology.morphology import _records_grad, _resolve_engine
 
@@ -133,12 +133,12 @@ class TestDilate(BaseTester):
         with pytest.raises(TypeError):
             assert dilation(tensor, [0.0])
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert dilation(test, kernel)
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert dilation(tensor, test)
 
         with pytest.raises(NotImplementedError, match="unknown"):
@@ -161,28 +161,6 @@ class TestDilate(BaseTester):
         actual = dilation(tensor, kernel.to(kernel_dtype), engine=engine)
         assert actual.dtype == expected.dtype
         assert torch.equal(actual, expected)
-
-    def test_integer_image_keeps_the_kernel_dtype(self, device):
-        # Only a floating-point image lends its dtype to a non-float kernel (#4736). An integer image
-        # keeps the kernel's own dtype, as before: int32 with int64 computes and returns int64.
-        tensor = torch.tensor([[0, 3, 0, 0, 7]], dtype=torch.int32, device=device)[None, None]
-        kernel = torch.tensor([[1, 0, 1]], dtype=torch.int64, device=device)
-        actual = dilation(tensor, kernel)
-        assert actual.dtype == torch.int64
-        assert actual.flatten().tolist() == [3, 0, 3, 7, 0]
-
-    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
-    def test_integer_image_keeps_max_val_arithmetic(self, device, engine):
-        # A non-float image keeps the finite `max_val` pad and exclusion until #4735 rejects it. A pad at the
-        # dtype minimum would wrap once a negative integer structuring element is added to it.
-        if engine == "convolution" and device.type == "mps":
-            pytest.skip("MPS has no integer convolution")
-        tensor = torch.tensor([[[[-5, -1, -6, -7]]]], dtype=torch.int32, device=device)
-        kernel = torch.tensor([[1, 0, 1]], dtype=torch.int32, device=device)
-        structuring_element = torch.full((1, 3), -1, dtype=torch.int32, device=device)
-        actual = dilation(tensor, kernel, structuring_element=structuring_element, engine=engine)
-        assert actual.dtype == torch.int32
-        assert actual.flatten().tolist() == [-2, -6, -2, -7]
 
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
     def test_accepted_border_types(self, device, dtype, border_type):
@@ -881,17 +859,22 @@ class TestDilate(BaseTester):
             expected_tensor = torch.tensor(expected, device=device, dtype=actual.dtype)
             torch.testing.assert_close(actual, expected_tensor, rtol=0.0, atol=0.0, equal_nan=True)
 
-    @pytest.mark.xfail(strict=True, reason="a non-float image is not rejected (#4735)")
-    def test_wart_non_float_image_is_not_rejected_4735(self, device):
-        # Only floating-point images are supported; kornia should reject the others. A `uint8` or `bool`
-        # image under `border_type="constant"` runs today on every backend, so this XPASSes when #4735 adds
-        # the check. Dtypes are explicit, so this pin takes `device` only.
-        float_kernel = torch.ones(1, 3, device=device)
-        for image_dtype in (torch.uint8, torch.bool):
+    @pytest.mark.parametrize("image_dtype", [torch.bool, torch.uint8, torch.int32, torch.int64])
+    def test_convention_non_float_images_are_rejected_4735(self, device, image_dtype):
+        kernel = torch.ones(1, 3, device=device)
+        for op in (dilation, erosion, opening, closing, gradient, top_hat, bottom_hat):
             image = torch.zeros(1, 1, 1, 5, dtype=image_dtype, device=device)
-            for op in (dilation, erosion):
-                with pytest.raises((TypeError, ValueError)):
-                    op(image, float_kernel, border_type="constant")
+            with pytest.raises(TypeError, match="floating-point"):
+                op(image, kernel, border_type="constant")
+
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution", "auto"])
+    def test_non_float_image_is_rejected_before_engine_dispatch(self, device, engine):
+        image = torch.zeros(1, 1, 1, 5, dtype=torch.int32, device=device)
+        kernel = torch.tensor([[1, 0, 1]], device=device)
+        structuring_element = torch.zeros_like(kernel)
+        for op in (dilation, erosion):
+            with pytest.raises(TypeError, match="floating-point"):
+                op(image, kernel, structuring_element=structuring_element, engine=engine)
 
     def test_convention_mask_kernel_with_structuring_element(self, device, dtype):
         # With a floating structuring element the kernel is only the `kernel == 0` mask, so a `uint8` or

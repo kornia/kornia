@@ -94,7 +94,9 @@ class TestScaleSpaceDetector(BaseTester):
             pytest.skip("ConvQuadInterp3d has no candidate cap")
         torch.manual_seed(17)
         img = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype, requires_grad=True)
-        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype)
+        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype).clamp_min(0.05)
+        # Zero only the top band: a float16 draw also rounds a few scattered weights to exactly 0, and the refined
+        # centre of a candidate beside one fails the mask re-check, which left this fixture without a detection.
         mask[..., :8, :] = 0
 
         def detector(subpix):

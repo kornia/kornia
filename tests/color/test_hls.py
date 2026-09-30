@@ -41,12 +41,12 @@ class TestRgbToHls(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_hls([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hls(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hls(img)
 
     def test_unit(self, device, dtype):
@@ -223,12 +223,12 @@ class TestHlsToRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.hls_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.hls_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.hls_to_rgb(img)
 
     def test_unit(self, device, dtype):

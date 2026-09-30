@@ -212,8 +212,8 @@ class TestAugmentationSequential:
 
     @pytest.mark.parametrize("num_boxes", [1, 2])
     def test_convention_padded_random_crop_accepts_rank2_bboxes_4244(self, num_boxes, device, dtype):
-        # kornia#4244: RandomCrop's padded path routes bounding boxes through Boxes.pad and
-        # Boxes.unpad. A rank-2 (N, 4) bbox for a single image builds an *unbatched* Boxes
+        # kornia#4244: RandomCrop's padded path routed bounding boxes through Boxes.pad and
+        # Boxes.unpad until #4801. A rank-2 (N, 4) bbox for a single image builds an *unbatched* Boxes
         # container, which those methods crashed on with "output with shape [1, 4] doesn't match
         # the broadcast shape [1, 1, 4]". This is the reproducer from the issue's follow-up, and it
         # is the only public route to that container: a rank-3 (B, N, 4) bbox builds a batched one,

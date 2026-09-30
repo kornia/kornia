@@ -18,10 +18,10 @@
 from typing import Optional, Tuple, Union, cast
 
 import torch
-import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.tensor_wrapper import TensorWrapper, _wrap  # type: ignore[attr-defined]
+from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
 
 __all__ = ["Scalar", "Vector2", "Vector3"]
@@ -84,11 +84,10 @@ class Vector3(TensorWrapper):
 
         Returns:
             New :class:`Vector3` of the same shape. The norm is floored at ``1e-12``, so a shorter vector is scaled
-            by ``1e12`` instead of normalized (`#3952 <https://github.com/kornia/kornia/issues/3952>`_) and a zero
-            vector stays zero, except in ``float16``, where the floor underflows and a zero vector gives NaN
-            (`#5062 <https://github.com/kornia/kornia/issues/5062>`_).
+            by ``1e12`` instead of normalized (`#3952 <https://github.com/kornia/kornia/issues/3952>`_). A zero
+            vector stays zero in every dtype.
         """
-        return Vector3(F.normalize(self.data, p=2, dim=-1))
+        return Vector3(_normalize_last_dim(self.data, 1e-12))
 
     def dot(self, right: "Vector3") -> Scalar:
         """Compute dot products with another 3D vector wrapper.
@@ -225,7 +224,7 @@ class Vector2(TensorWrapper):
         Returns:
             New :class:`Vector2` of the same shape, with the norm floored as in :meth:`Vector3.normalized`.
         """
-        return Vector2(F.normalize(self.data, p=2, dim=-1))
+        return Vector2(_normalize_last_dim(self.data, 1e-12))
 
     def dot(self, right: "Vector2") -> Scalar:
         """Compute dot products with another 2D vector wrapper.

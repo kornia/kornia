@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 import array
 import os
 import struct
@@ -32,7 +34,7 @@ __all__ = [
 ]
 
 
-def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
+def save_pointcloud_ply(filename: str | os.PathLike[str], pointcloud: torch.Tensor) -> None:
     r"""Save to disk a pointcloud in ASCII PLY format.
 
     Convention:
@@ -42,18 +44,17 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         - ``pointcloud`` is channels-last. Apply ``permute(0, 2, 3, 1)`` to a
           :func:`~kornia.geometry.depth.depth_to_3d` result or use :func:`~kornia.geometry.depth.depth_to_3d_v2`:
           a channels-first tensor whose width is 3 passes the shape check and is written scrambled.
-        - The PLY writers and loaders take ``filename`` as a ``str`` ending in ``.ply`` (any case); another suffix
-          raises ``TypeError``.
-        - Known defect: a :class:`pathlib.Path` also raises ``TypeError``
-          (`#5072 <https://github.com/kornia/kornia/issues/5072>`_).
+        - The PLY writers and loaders take ``filename`` as a ``str`` or ``os.PathLike[str]`` ending in ``.ply``
+          (any case); another suffix raises ``TypeError``.
 
     Args:
-        filename: path of the ``.ply`` file to write.
+        filename: path of the ``.ply`` file to write, a ``str`` or ``os.PathLike[str]``.
         pointcloud: tensor of shape :math:`(*, 3)` with at least two dimensions, where the last dimension is the
           point :math:`(X, Y, Z)`.
     """
+    filename = os.fspath(filename)
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
 
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
@@ -91,18 +92,19 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
                 f.write(f"{x!r} {y!r} {z!r}\n")
 
 
-def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
+def save_pointcloud_ply_binary(filename: str | os.PathLike[str], pointcloud: torch.Tensor) -> None:
     r"""Save to disk a pointcloud in binary PLY format.
 
     See the Convention block on :func:`save_pointcloud_ply`; the payload is little-endian float64.
 
     Args:
-        filename: path of the ``.ply`` file to write.
+        filename: path of the ``.ply`` file to write, a ``str`` or ``os.PathLike[str]``.
         pointcloud: tensor of shape :math:`(*, 3)` with at least two dimensions, where the last dimension is the
           point :math:`(X, Y, Z)`.
     """
+    filename = os.fspath(filename)
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
 
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
@@ -273,12 +275,12 @@ def _warn_header_size(header_size: Optional[int]) -> None:
 
 def _check_ply_filename(filename: str) -> None:
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
-        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
+        raise TypeError(f"Input filename must be a str or os.PathLike[str] with the .ply extension. Got {filename!r}")
     if not os.path.isfile(filename):
         raise ValueError("Input filename is not an existing file.")
 
 
-def load_pointcloud_ply(filename: str, header_size: Optional[int] = None) -> torch.Tensor:
+def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:
     r"""Load from disk a pointcloud in ASCII PLY format.
 
     The header is parsed up to ``end_header``; the number of points comes from the
@@ -288,13 +290,14 @@ def load_pointcloud_ply(filename: str, header_size: Optional[int] = None) -> tor
     tokens and would shift every column after it. See the Convention block on :func:`save_pointcloud_ply`.
 
     Args:
-        filename: path of an existing ``.ply`` file.
+        filename: path of an existing ``.ply`` file, a ``str`` or ``os.PathLike[str]``.
         header_size: deprecated and ignored; the header is parsed instead of skipped.
 
     Return:
         tensor containing the loaded points with shape :math:`(N, 3)` in ``float32``, where
         :math:`N` is the declared vertex count.
     """
+    filename = os.fspath(filename)
     _check_ply_filename(filename)
     _warn_header_size(header_size)
 
@@ -337,7 +340,7 @@ def load_pointcloud_ply(filename: str, header_size: Optional[int] = None) -> tor
     return torch.tensor(points, dtype=torch.float32).reshape(-1, 3)
 
 
-def load_pointcloud_ply_binary(filename: str, header_size: Optional[int] = None) -> torch.Tensor:
+def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:
     r"""Load from disk a pointcloud in binary PLY format.
 
     The header is parsed up to ``end_header``; the number of points comes from the
@@ -349,13 +352,14 @@ def load_pointcloud_ply_binary(filename: str, header_size: Optional[int] = None)
     parsing it, so such a file is rejected. See the Convention block on :func:`save_pointcloud_ply`.
 
     Args:
-        filename: path of an existing ``.ply`` file.
+        filename: path of an existing ``.ply`` file, a ``str`` or ``os.PathLike[str]``.
         header_size: deprecated and ignored; the header is parsed instead of skipped.
 
     Return:
         tensor containing the loaded points with shape :math:`(N, 3)` in ``float32``, where
         :math:`N` is the declared vertex count.
     """
+    filename = os.fspath(filename)
     _check_ply_filename(filename)
     _warn_header_size(header_size)
 

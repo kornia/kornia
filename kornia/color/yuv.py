@@ -118,7 +118,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
 
-    Input need to be padded to be evenly divisible by 2 horizontal and vertical.
+    Input width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
     :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
@@ -144,8 +144,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
-    if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
+    if image.shape[-1] % 2 == 1:
+        raise ShapeError(f"Input W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -257,7 +257,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV422 image to RGB.
 
-    Input need to be padded to be evenly divisible by 2 horizontal and vertical.
+    Input width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
@@ -283,8 +283,8 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
-    if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
+    if imagey.shape[-1] % 2 == 1:
+        raise ShapeError(f"Input W must be evenly divisible by 2. Got {imagey.shape}")
 
     if (
         len(imageuv.shape) < 2
@@ -399,7 +399,7 @@ class RgbToYuv420(nn.Module):
 class RgbToYuv422(nn.Module):
     r"""Convert an image from RGB to YUV422.
 
-    Width and Height must be evenly divisible by 2.
+    Width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -540,7 +540,7 @@ class Yuv420ToRgb(nn.Module):
 class Yuv422ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
-    Width and Height must be evenly divisible by 2.
+    Width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.

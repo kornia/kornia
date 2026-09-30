@@ -27,7 +27,7 @@ from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.solvers.homogeneous import _null_space_householder
 from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2
 
-from .fundamental import _epipolar_design_rows, _hat_basis, _sampson_normal_equations, _solve_dtype
+from .fundamental import _epipolar_design_rows, _hat_basis, _sampson_cost, _sampson_normal_equations, _solve_dtype
 from .numeric import cross_product_matrix, matrix_cofactor_tensor
 from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
@@ -299,6 +299,20 @@ _LINEAR_PRODUCTS = T_deg1.view(4, 4, 10)
 _CUBIC_PRODUCTS = T_deg2.view(10, 4, 20)
 
 
+def _scaled_polynomial_powers(roots: torch.Tensor) -> torch.Tensor:
+    """Return ``z**d / max(1, abs(z))**10`` for ``d = 0, ..., 10`` without large powers.
+
+    For ``abs(z) > 1`` these are the powers of ``1/z`` in reverse order (the degree ten is even).
+    Every multiplication therefore has magnitude at most one. Cumulative products avoid the two general
+    tensor exponentiations in the Newton correction, which dominate its CPU cost.
+    """
+    large = roots.abs() > 1.0
+    bounded = torch.where(large, torch.where(large, roots, 1.0).reciprocal(), roots)
+    powers = bounded[..., None].expand(*bounded.shape, 10).cumprod(-1)
+    powers = torch.cat((torch.ones_like(bounded[..., None]), powers), -1)
+    return torch.where(large[..., None], powers.flip(-1), powers)
+
+
 def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[torch.Tensor, torch.Tensor]:
     """Essential matrices ``E = x X + y Y + z Z + W`` in the span of ``basis`` ``(B, 9, 4)`` (columns X, Y, Z, W).
 
@@ -380,8 +394,7 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
     # The polynomial and its slope are evaluated divided by s^10 with s = max(1, |z|): the same step, without the
     # overflow of z^10 for large roots in float32.
     degrees = torch.arange(11, device=device, dtype=dtype)
-    scale = root0.abs().clamp(min=1.0)[..., None]  # root0 carries no gradient
-    powers = (root0[..., None] / scale) ** degrees * scale ** (degrees - 10)  # (B, 10, 11)
+    powers = _scaled_polynomial_powers(root0)  # (B, 10, 11); root0 carries no gradient
     value = (powers * cs[:, None]).sum(-1)
     slope_terms = powers[..., :10] * (degrees[1:] * cs[:, 1:])[:, None]
     slope = slope_terms.sum(-1)
@@ -880,6 +893,9 @@ def _refine_essential_lm(
     """
     K = E.shape[0]
     dtype, device = E.dtype, E.device
+    cpu = K > 0 and device.type == "cpu" and not torch.is_grad_enabled()
+    if cpu and K == 1 and mask is not None and mask.dtype == torch.bool:
+        x1, x2, mask = x1[mask[0]], x2[mask[0]], None
     H = _hat_basis(dtype, device)
     eye3 = torch.eye(3, dtype=dtype, device=device)
     eye5 = torch.eye(5, dtype=dtype, device=device)
@@ -909,11 +925,15 @@ def _refine_essential_lm(
 
     E = compose(U, V)
     system, cost = normal_equations(E, V)
-    for _ in range(iters):
+    for iteration in range(iters):
         delta = -torch.linalg.solve_ex(system[..., :5] + damping * eye5, system[..., 5:])[0][..., 0]
         U_new = cayley(0.5 * delta[:, :3]) @ U
         V_new = cayley(0.5 * (V[..., :2] @ delta[:, 3:, None])[..., 0]) @ V
         E_new = compose(U_new, V_new)
+        if cpu and iteration + 1 == iters:
+            cost_new = _sampson_cost(E_new, algebraic, quadratic, mask, loss, scale2)
+            accepted = cost_new < cost
+            return torch.where(accepted[:, None, None], E_new, E)
         system_new, cost_new = normal_equations(E_new, V_new)
         accept = (cost_new < cost)[:, None, None]
         U, V = torch.where(accept, U_new, U), torch.where(accept, V_new, V)

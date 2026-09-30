@@ -47,17 +47,18 @@ Kornia augmentations generally follow a `sample-apply` routine.
 - `apply`: with the generated (or user-provided) parameters, the augmentation is performed accordingly.
   Apart from transforming image tensors, Kornia also supports inverse operations that revert the transform,
   and transforms of other data modalities (`data keys` in Kornia) such as masks, keypoints, and bounding boxes.
-  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` dispatches
-  geometric coordinate transforms by the geometric base type; implementing a matrix on a custom rigid base alone
-  does not enable that dispatch (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). Non-rigid coordinate
-  transforms are not supplied automatically (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` passes the
+  recorded matrix to the mask, box and keypoint handlers of geometric children and of custom
+  `RigidAffineAugmentationBase2D` subclasses. Non-rigid coordinate transforms are not supplied automatically
+  (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
 Custom Augmentation Classes
 ---------------------------
 
 `IntensityAugmentationBase2D` supplies an identity matrix and default passthrough handlers for most annotations.
-Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct intensity
-`transform_boxes` calls return the boxes unchanged; the container skips intensity transforms for boxes.
+Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct and container
+calls pass masks, boxes, and keypoints through unchanged unless a subclass overrides
+`apply_transform_mask`, `apply_transform_box`, or `apply_transform_keypoint`.
 `GeometricAugmentationBase2D` supplies the dispatch used for geometric coordinate transformations.
 
 For a geometric operation, implement `compute_transformation` and `apply_transform`. Supporting image inversion

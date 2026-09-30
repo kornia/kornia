@@ -226,8 +226,8 @@ class TestMeanAbsoluteDisparityError(BaseTester):
             kornia.metrics.mean_absolute_disparity_error(sample, sample[..., :2])
         assert "Shape mismatch" in str(errinfo.value)
 
+        mask = torch.ones(3, device=device, dtype=torch.bool)
         with pytest.raises(BaseError) as errinfo:
-            mask = torch.ones(3, device=device, dtype=torch.bool)
             kornia.metrics.mean_absolute_disparity_error(sample, sample, mask)
         assert "broadcastable" in str(errinfo.value)
 
@@ -564,8 +564,8 @@ class TestKittiD1Error(BaseTester):
             kornia.metrics.kitti_d1_error(sample, sample[..., :2])
         assert "Shape mismatch" in str(errinfo.value)
 
+        mask = torch.ones(3, device=device, dtype=torch.bool)
         with pytest.raises(BaseError) as errinfo:
-            mask = torch.ones(3, device=device, dtype=torch.bool)
             kornia.metrics.kitti_d1_error(sample, sample, valid_mask=mask)
         assert "broadcastable" in str(errinfo.value)
 
