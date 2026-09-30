@@ -548,6 +548,23 @@ class TestSIFTPyramidBackend(BaseTester):
         with pytest.raises(ValueError, match="descriptor backend"):
             preset(descriptor_backend="unknown")
 
+    def test_generic_local_feature_preserves_frames_and_forwards_mask(self, device, dtype):
+        image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[6.0, 2.0, 20.0], [-2.0, 6.0, 20.0]]]], device=device, dtype=dtype)
+        mask = torch.ones_like(image)
+
+        class Detector(nn.Module):
+            def forward(self, image, received_mask):
+                assert received_mask is mask
+                return lafs, image.new_ones(1, 1)
+
+        descriptor = kornia.feature.SIFTDescriptorFromPyramid().to(device, dtype)
+        feature = LocalFeature(Detector(), descriptor)
+        returned, responses, descriptors = feature(image, mask)
+        self.assert_close(returned, lafs)
+        self.assert_close(responses, image.new_ones(1, 1))
+        self.assert_close(descriptors, descriptor(image, lafs))
+
 
 class TestLightGlueKeypointConventions(BaseTester):
     def _lafs(self, device, dtype, orientations):
@@ -597,20 +614,3 @@ class TestSIFTDescriptorLayoutArgument(BaseTester):
     def test_invalid_layout(self, preset):
         with pytest.raises(ValueError, match="layout"):
             preset(descriptor_layout="vlfeat")
-
-    def test_generic_local_feature_preserves_frames_and_forwards_mask(self, device, dtype):
-        image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype)
-        lafs = torch.tensor([[[[6.0, 2.0, 20.0], [-2.0, 6.0, 20.0]]]], device=device, dtype=dtype)
-        mask = torch.ones_like(image)
-
-        class Detector(nn.Module):
-            def forward(self, image, received_mask):
-                assert received_mask is mask
-                return lafs, image.new_ones(1, 1)
-
-        descriptor = kornia.feature.SIFTDescriptorFromPyramid().to(device, dtype)
-        feature = LocalFeature(Detector(), descriptor)
-        returned, responses, descriptors = feature(image, mask)
-        self.assert_close(returned, lafs)
-        self.assert_close(responses, image.new_ones(1, 1))
-        self.assert_close(descriptors, descriptor(image, lafs))

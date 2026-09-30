@@ -459,6 +459,11 @@ class TestConvertSIFTDescriptorLayout(BaseTester):
             convert_sift_descriptor_layout(descriptors, "colmap", "kornia")
         with pytest.raises(BaseError):
             convert_sift_descriptor_layout(torch.rand(2, 100, device=device, dtype=dtype), "kornia", "opencv")
+        # -4 spatial bins square to the size of 4, and 0 angle bins match an empty descriptor.
+        with pytest.raises(ValueError, match="bin counts must be positive"):
+            convert_sift_descriptor_layout(descriptors, "kornia", "opencv", num_spatial_bins=-4)
+        with pytest.raises(ValueError, match="bin counts must be positive"):
+            convert_sift_descriptor_layout(descriptors[:, :0], "kornia", "opencv", num_ang_bins=0)
 
     def test_gradcheck(self, device):
         if device.type == "mps":
@@ -472,4 +477,4 @@ class TestConvertSIFTDescriptorLayout(BaseTester):
         def op(d: torch.Tensor) -> torch.Tensor:
             return convert_sift_descriptor_layout(d, "kornia", "opencv")
 
-        self.assert_close(torch_optimizer(op)(descriptors), op(descriptors))
+        self.assert_close(torch_optimizer(op, fullgraph=True)(descriptors), op(descriptors))

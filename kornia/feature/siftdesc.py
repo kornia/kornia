@@ -357,6 +357,10 @@ def convert_sift_descriptor_layout(
     """
     _check_sift_descriptor_layout(source)
     _check_sift_descriptor_layout(target)
+    if num_ang_bins < 1 or num_spatial_bins < 1:
+        raise ValueError(
+            f"SIFT bin counts must be positive. Got num_ang_bins={num_ang_bins}, num_spatial_bins={num_spatial_bins}"
+        )
     size = num_ang_bins * num_spatial_bins * num_spatial_bins
     KORNIA_CHECK(
         descriptors.shape[-1] == size,

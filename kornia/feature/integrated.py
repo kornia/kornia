@@ -66,7 +66,9 @@ def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tupl
     orientation is the image angle of the frame's x-axis in :math:`(-\pi, \pi]`: the negative of the LAF
     orientation. The scale is taken as a sixth of the LAF scale, which is sigma for 6-sigma DoG frames such as
     :class:`SIFTFeatureScaleSpace`'s. Every other feature keeps the LAF scale and the LAF orientation in
-    :math:`[0, 2\pi)`.
+    :math:`[0, 2\pi)`. The ``"sift"`` scale is converted here rather than through :class:`LightGlue`'s
+    ``scale_coef``, which the ``"doghardnet"`` configurations use, so that ``LightGlue("sift")`` itself keeps taking
+    keypoints in the training convention.
     """
     scales = get_laf_scale(lafs).reshape(1, -1)
     oris = torch.deg2rad(get_laf_orientation(lafs).reshape(1, -1))
