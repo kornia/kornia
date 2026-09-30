@@ -393,7 +393,7 @@ class Keypoints3D:
         raise NotImplementedError("`Keypoints3D.unpad` is not implemented (kornia#5023).")
 
     def transform_keypoints(self, M: torch.Tensor, inplace: bool = False) -> "Keypoints3D":
-        r"""Apply a transformation matrix to the 2D keypoints.
+        r"""Apply a transformation matrix to the 3D keypoints.
 
         Args:
             M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`.
@@ -410,7 +410,7 @@ class Keypoints3D:
         )
 
     def transform_keypoints_(self, M: torch.Tensor) -> "Keypoints3D":
-        """Inplace version of :func:`Keypoints.transform_keypoints`."""
+        """Inplace version of :func:`Keypoints3D.transform_keypoints`."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
