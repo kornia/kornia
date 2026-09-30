@@ -464,7 +464,8 @@ class TestSIFTScalePyramid(BaseTester):
 
         # The detector builds its pyramid in float32 for half inputs, so a half-cast module still blurs float32 images.
         # Casting the module must not round the Gaussian kernels to its dtype: rounded kernels miss their unit sum, and
-        # a constant image drifts level by level, by 8e-5 with float16 kernels and 1.1e-3 with bfloat16 ones.
+        # a constant image drifts octave by octave, from 8e-5 in the first to 4.9e-4 in the fifth with float16 kernels,
+        # and from 1.1e-3 to 3.0e-3 with bfloat16 ones.
         value = 0.37
         image = torch.full((1, 1, 96, 96), value, device=device, dtype=torch.float32)
         for octave in _SIFTScalePyramid().to(device, module_dtype)(image):
