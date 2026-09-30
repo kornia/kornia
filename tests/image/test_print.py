@@ -58,6 +58,12 @@ class TestImageToString:
         with pytest.raises(RuntimeError):
             print_image([img])  # Do not accept list
 
+    def test_rejects_a_tensor_that_is_not_a_color_or_gray_image(self):
+        from kornia.core.exceptions import ImageError
+
+        with pytest.raises(ImageError):
+            image_to_string(torch.rand(6, 4, 4))
+
     def test_print_smoke(self):
         img = torch.rand(3, 15, 15)
         print_image(img)
