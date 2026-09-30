@@ -888,6 +888,44 @@ class TestConventionAugmentationBase2D(BaseTester):
             self.assert_close(output_image, expected_image)
             self.assert_close(output, expected)
 
+    def test_convention_container_transforms_image_first_for_nested_geometric_child(self, device, dtype):
+        image = torch.linspace(0, 1, 2 * 3 * 16 * 20, device=device, dtype=dtype).reshape(2, 3, 16, 20)
+        keypoints = torch.tensor([[[3.0, 4.0], [10.0, 6.0]], [[5.0, 5.0], [15.0, 12.0]]], device=device, dtype=dtype)
+        reference = K.AugmentationSequential(RandomAffine(30.0, p=1.0))
+        sequence = K.AugmentationSequential(K.ImageSequential(RandomAffine(30.0, p=1.0)))
+
+        # A fresh nested child used to raise because its matrix was not recorded yet.
+        torch.manual_seed(1)
+        expected_image, expected_keypoints = reference(image, keypoints, data_keys=["input", "keypoints"])
+        torch.manual_seed(1)
+        output_keypoints, output_image = sequence(keypoints, image, data_keys=["keypoints", "input"])
+        self.assert_close(output_image, expected_image)
+        self.assert_close(output_keypoints, expected_keypoints)
+
+        # A prior call used to leave a matrix behind and silently apply that matrix to later calls.
+        sequence(image, keypoints, data_keys=["input", "keypoints"])
+        for seed in range(2, 6):
+            torch.manual_seed(seed)
+            expected_image, expected_keypoints = reference(image, keypoints, data_keys=["input", "keypoints"])
+            torch.manual_seed(seed)
+            output_keypoints, output_image = sequence(keypoints, image, data_keys=["keypoints", "input"])
+            self.assert_close(output_image, expected_image)
+            self.assert_close(output_keypoints, expected_keypoints)
+
+    def test_convention_container_transforms_image_first_for_auto_policy(self, device, dtype):
+        image = torch.linspace(0, 1, 2 * 3 * 16 * 20, device=device, dtype=dtype).reshape(2, 3, 16, 20)
+        keypoints = torch.tensor([[[3.0, 4.0], [10.0, 6.0]], [[5.0, 5.0], [15.0, 12.0]]], device=device, dtype=dtype)
+        reference = K.AugmentationSequential(K.auto.TrivialAugment())
+        sequence = K.AugmentationSequential(K.auto.TrivialAugment())
+        sequence(image, keypoints, data_keys=["input", "keypoints"])
+        for seed in (2, 4):
+            torch.manual_seed(seed)
+            expected_image, expected_keypoints = reference(image, keypoints, data_keys=["input", "keypoints"])
+            torch.manual_seed(seed)
+            output_keypoints, output_image = sequence(keypoints, image, data_keys=["keypoints", "input"])
+            self.assert_close(output_image, expected_image)
+            self.assert_close(output_keypoints, expected_keypoints)
+
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_convention_intensity_annotation_overrides_in_container_5113(self, device, dtype, p):
         class Blackout(K.IntensityAugmentationBase2D):

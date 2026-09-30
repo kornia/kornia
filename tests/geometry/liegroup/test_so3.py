@@ -278,7 +278,7 @@ class TestSo3(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
         q = Quaternion.identity(batch_size, device, dtype)
         s1 = So3(q)
@@ -286,7 +286,7 @@ class TestSo3(BaseTester):
         assert isinstance(s2, So3)
         self.assert_close(s1.q.data, s2.q.data)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_getitem(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         s = So3(q)
@@ -294,7 +294,7 @@ class TestSo3(BaseTester):
             s1 = s[i]
             self.assert_close(s1.q.data, q.data[i])
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul(self, device, dtype, batch_size):
         q1 = Quaternion.identity(batch_size, device, dtype)
         q2 = Quaternion.random(batch_size, device, dtype)
@@ -305,7 +305,7 @@ class TestSo3(BaseTester):
         self.assert_close((s2 * s2.inverse()).q.data, s1.q.data)
         self.assert_close((s1 * t), t)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vec(self, device, dtype, batch_size):
         q1 = Quaternion.identity(batch_size, device, dtype)
         q2 = Quaternion.random(batch_size, device, dtype)
@@ -320,7 +320,7 @@ class TestSo3(BaseTester):
         self.assert_close((s2 * s2.inverse()).q.data, s1.q.data)
         self.assert_close((s1 * t), t)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_unit_norm(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         q2 = Quaternion.random(batch_size, device, dtype)
@@ -344,21 +344,21 @@ class TestSo3(BaseTester):
             self.assert_close(s5[i].q.norm(), ones_vec)
             self.assert_close(s6[i].q.norm(), ones_vec)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp(self, device, dtype, batch_size):
         q = Quaternion.identity(batch_size, device, dtype)
         s = So3(q)
         zero_vec = 0 * self._make_rand_data(device, dtype, batch_size, dims=3)
         self.assert_close(s.exp(zero_vec).q.data, q.data)  # exp of zero vec is identity
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_log(self, device, dtype, batch_size):
         q = Quaternion.identity(batch_size, device, dtype)
         s = So3(q)
         zero_vec = 0 * self._make_rand_data(device, dtype, batch_size, dims=3)
         self.assert_close(s.log(), zero_vec)  # log of identity quat is zero vec
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp_log(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         s = So3(q)
@@ -366,7 +366,7 @@ class TestSo3(BaseTester):
         b = s.exp(a).log()
         self.assert_close(b, a)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_hat(self, device, dtype, batch_size):
         v = torch.tensor([1, 2, 3], device=device, dtype=dtype)
         expected = v
@@ -377,7 +377,7 @@ class TestSo3(BaseTester):
             hat = hat[None]
         self.assert_close(hat.unique()[-3:], expected)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_vee(self, device, dtype, batch_size):
         omega = torch.tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]], device=device, dtype=dtype)
         expected = torch.tensor([8, 3, 4], device=device, dtype=dtype)
@@ -386,14 +386,14 @@ class TestSo3(BaseTester):
             expected = expected.repeat(batch_size, 1)
         self.assert_close(So3.vee(omega), expected)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_hat_vee(self, device, dtype, batch_size):
         a = self._make_rand_data(device, dtype, batch_size, dims=3)
         omega = So3.hat(a)
         b = So3.vee(omega)
         self.assert_close(b, a)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         r = So3(q).matrix()
@@ -410,7 +410,7 @@ class TestSo3(BaseTester):
             self.assert_close(rp_, qp_.vec)  # p_ = R*p = q*p*q_inv
             self.assert_close(rp_.norm(), pvec.norm())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2])
     def test_from_matrix_check_rotation(self, device, dtype, batch_size):
         # kornia#4773: from_matrix delegates to rotation_matrix_to_quaternion, so by default the
         # reflection diag(-1, 1, 1) becomes the identity instead of being rejected. So2.from_matrix
@@ -426,7 +426,7 @@ class TestSo3(BaseTester):
         with pytest.raises(ValueError, match="reflection"):
             So3.from_matrix(reflection, check_rotation=True)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_matrix_check_rotation_accepts_rotation(self, device, dtype, batch_size):
         # A genuine rotation passes the check, and the flag does not alter the result. Comparing
         # the two calls rather than the matrix round trip keeps this about the check itself: the
@@ -435,13 +435,13 @@ class TestSo3(BaseTester):
         matrix = So3(q).matrix()
         self.assert_close(So3.from_matrix(matrix, check_rotation=True).q.data, So3.from_matrix(matrix).q.data)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_wxyz(self, device, dtype, batch_size):
         wxyz = self._make_rand_data(device, dtype, batch_size, dims=4)
         s = So3.from_wxyz(wxyz)
         self.assert_close(s.q.data, wxyz)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_ortho(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         b_R_a = So3(q).matrix()
@@ -464,34 +464,34 @@ class TestSo3(BaseTester):
             self.assert_close(a_R_b[i, :, :] @ b_R_a[i, :, :], eye_mat[i])
             self.assert_close(b_R_a[i, :, :] @ a_R_b[i, :, :], eye_mat[i])
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_inverse(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         self.assert_close(So3(q).inverse().inverse().q.data, q.data)
         self.assert_close(So3(q).inverse().inverse().matrix(), So3(q).matrix())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_rot_x(self, device, dtype, batch_size):
         x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         so3 = So3.rot_x(x)
         roll, _, _ = euler_from_quaternion(*so3.q.coeffs)
         self.assert_close(x, roll)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_rot_y(self, device, dtype, batch_size):
         y = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         so3 = So3.rot_y(y)
         _, pitch, _ = euler_from_quaternion(*so3.q.coeffs)
         self.assert_close(y, pitch)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_rot_z(self, device, dtype, batch_size):
         z = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         so3 = So3.rot_z(z)
         _, _, yaw = euler_from_quaternion(*so3.q.coeffs)
         self.assert_close(z, yaw)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_adjoint(self, device, dtype, batch_size):
         shape = (3,) if batch_size is None else (batch_size, 3)
         x = So3.exp(torch.tensor([0.1, -0.2, 0.3], device=device, dtype=dtype).expand(shape))
@@ -503,14 +503,14 @@ class TestSo3(BaseTester):
         self.assert_close(adjoint @ inverse_adjoint, identity, rtol=half_tolerance, atol=half_tolerance)
         self.assert_close((x * y).adjoint(), adjoint @ y.adjoint(), rtol=half_tolerance, atol=half_tolerance)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_random(self, device, dtype, batch_size):
         s = So3.random(batch_size=batch_size, device=device, dtype=dtype)
         s_in_s = s.inverse() * s
         i = So3.identity(batch_size=batch_size, device=device, dtype=dtype)
         self.assert_close(s_in_s.q.data, i.q.data)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_right_jacobian(self, device, dtype, batch_size):
         vec = self._make_rand_data(device, dtype, batch_size, dims=3)
         Jr = So3.right_jacobian(vec)
@@ -518,7 +518,7 @@ class TestSo3(BaseTester):
         self.assert_close(vec[..., None], Jr @ vec[..., None])
         self.assert_close(Jr.transpose(-1, -2) @ Jr, I, atol=0.1, rtol=0.1)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_left_jacobian(self, device, dtype, batch_size):
         vec = self._make_rand_data(device, dtype, batch_size, dims=3)
         Jl = So3.left_jacobian(vec)
@@ -526,7 +526,7 @@ class TestSo3(BaseTester):
         self.assert_close(vec[..., None], Jl @ vec[..., None])
         self.assert_close(Jl.transpose(-1, -2) @ Jl, I, atol=0.1, rtol=0.1)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_right_left_jacobian(self, device, dtype, batch_size):
         vec = self._make_rand_data(device, dtype, batch_size, dims=3)
         Jr = So3.right_jacobian(vec)

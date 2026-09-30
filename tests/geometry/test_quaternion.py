@@ -44,7 +44,7 @@ class TestQuaternion(BaseTester):
         self.assert_close(q.scalar, q_data[..., 0])
         self.assert_close(q.vec, q_data[..., 1:])
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
         q1 = Quaternion.identity(batch_size, device, dtype)
         q2 = Quaternion(q1.data)
@@ -74,20 +74,20 @@ class TestQuaternion(BaseTester):
         q = Quaternion(data)
         self.assert_close(q.data, data)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_random(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         q_n = q.normalize().norm()
         self.assert_close(q_n, q_n.new_ones(q_n.shape))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_minus(self, device, dtype, batch_size):
         data = self._make_rand_data(device, dtype, batch_size)
         q = Quaternion(data)
         q = q.to(device, dtype)
         self.assert_close(-q, -data)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_add(self, device, dtype, batch_size):
         d1 = self._make_rand_data(device, dtype, batch_size)
         d2 = self._make_rand_data(device, dtype, batch_size)
@@ -99,7 +99,7 @@ class TestQuaternion(BaseTester):
         q1 += q2
         self.assert_close(q1, q3)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_subtract(self, device, dtype, batch_size):
         d1 = self._make_rand_data(device, dtype, batch_size)
         d2 = self._make_rand_data(device, dtype, batch_size)
@@ -155,7 +155,7 @@ class TestQuaternion(BaseTester):
         self.assert_close(k / k, one)
         self.assert_close(i / -j, k)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_pow(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         q1 = Quaternion.identity(batch_size, device, dtype)
@@ -234,7 +234,7 @@ class TestQuaternion(BaseTester):
         (q**t).data[0, 1].backward()
         self.assert_close(t.grad, torch.tensor(2.0**0.5 * math.log(2.0), device=device, dtype=dtype))
 
-    @pytest.mark.parametrize("t", (-1.0, 0.5, 2.0))
+    @pytest.mark.parametrize("t", [-1.0, 0.5, 2.0])
     def test_pow_gradcheck(self, device, t):
         # the first quaternion lies on the real axis, where the vector part has zero norm; the last is pure imaginary
         # (w = 0), where the unselected real-axis arm divides by w
@@ -243,7 +243,7 @@ class TestQuaternion(BaseTester):
         )
         self.gradcheck(lambda x: (Quaternion(x) ** t).data, (data,))
 
-    @pytest.mark.parametrize("t", (-1.0, 2.0, 3.0))
+    @pytest.mark.parametrize("t", [-1.0, 2.0, 3.0])
     def test_pow_gradcheck_negative_real_axis(self, device, t):
         # q = -2 has theta = pi, where the real-axis limit t * cos(t * theta) / w carries the signs of cos(t * pi) and
         # of w. Only integer t: for a non-integer t the negative real axis is a branch cut with no derivative.
@@ -297,7 +297,7 @@ class TestQuaternion(BaseTester):
         )
         self.gradcheck(lambda x: Quaternion(x).polar_angle, (data,))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
         """Test scalar multiplication for issue #3101."""
         # Create a quaternion with parameters to test gradient flow
@@ -317,42 +317,42 @@ class TestQuaternion(BaseTester):
         # The quaternion's parameter should have gradients
         assert q.data.grad is not None
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_inverse(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         q2 = Quaternion.identity(batch_size, device, dtype)
         self.assert_close(q1 * q1.inv(), q2, rtol=1e-4, atol=1e-4)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_conjugate(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         q2 = Quaternion.random(batch_size, device, dtype)
         self.assert_close((q1 * q2).conj(), q2.conj() * q1.conj())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_double_conjugate(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         self.assert_close(q1, q1.conj().conj())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_norm(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         q2 = Quaternion.random(batch_size, device, dtype)
         self.assert_close((q1 * q2).norm(), q1.norm() * q2.norm())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_norm_shape(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         expected_shape = () if batch_size is None else (batch_size,)
         self.assert_close(tuple(q.norm().shape), expected_shape)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_normalize(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         q1_n = q1.normalize().norm()
         self.assert_close(q1_n, q1_n.new_ones(q1_n.shape))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         m1 = q1.matrix()
@@ -363,7 +363,7 @@ class TestQuaternion(BaseTester):
             except Exception:
                 self.assert_close(qq1, -qq2)
 
-    @pytest.mark.parametrize("batch_size", (1, 2))
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_from_matrix_check_rotation(self, device, dtype, batch_size):
         # kornia#4773: the reflection diag(-1, 1, 1) is orthogonal but has det = -1, and by default
         # comes back as the non-unit quaternion [0.7071, 0, 0, 0] rather than being rejected.
@@ -380,14 +380,14 @@ class TestQuaternion(BaseTester):
             Quaternion.from_matrix(rotation).data,
         )
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_getitem(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         for i in range(batch_size):
             q1 = q[i]
             self.assert_close(q1.data, q.data[i])
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_axis_angle(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         angle = 2 * q1.scalar.arccos()[..., None]
@@ -397,7 +397,7 @@ class TestQuaternion(BaseTester):
         q2 = q2.to(device, dtype)
         self.assert_close(q1, q2)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_to_axis_angle(self, device, dtype, batch_size):
         # batch_s = 5
         # random_coefs = Quaternion.random(batch_s).data
@@ -430,7 +430,7 @@ class TestQuaternion(BaseTester):
 
         self.assert_close(axis_angle_expected, axis_angle_actual, 1e-4, 1e-4)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_slerp(self, device, dtype, batch_size):
         for axis in torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]):
             axis = axis.to(device, dtype)

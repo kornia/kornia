@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from collections.abc import Sequence
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -23,7 +24,6 @@ from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.constants import pi
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -51,7 +51,7 @@ def _adjust_saturation(input: torch.Tensor, factor: torch.Tensor) -> torch.Tenso
 
 
 def _adjust_hue(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    return _contiguous_output(adjust_hue(input, factor * 2 * pi))
+    return _contiguous_output(adjust_hue(input, factor * 2 * math.pi))
 
 
 _StepFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
@@ -115,7 +115,7 @@ def _brightness_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
 
 
 def _hue_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    return adjust_hue(input, factor * 2 * pi)
+    return adjust_hue(input, factor * 2 * math.pi)
 
 
 _NEUTRAL = (1.0, 1.0, 1.0, 0.0)

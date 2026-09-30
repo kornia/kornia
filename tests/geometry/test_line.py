@@ -131,7 +131,7 @@ class TestParametrizedLine(BaseTester):
         point_projection = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         self.assert_close(l1.projection(point), point_projection)
 
-    @pytest.mark.parametrize("batch_size", (2, 3))
+    @pytest.mark.parametrize("batch_size", [2, 3])
     def test_batched_projection(self, device, dtype, batch_size):
         origin = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], device=device, dtype=dtype)[:batch_size]
         direction = torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]], device=device, dtype=dtype)[:batch_size]
@@ -324,8 +324,8 @@ def _near_vertical_points_5040(device, dtype) -> torch.Tensor:
 
 
 class TestFitLine(BaseTester):
-    @pytest.mark.parametrize("B", (1, 2))
-    @pytest.mark.parametrize("D", (2, 3, 4))
+    @pytest.mark.parametrize("B", [1, 2])
+    @pytest.mark.parametrize("D", [2, 3, 4])
     def test_smoke(self, device, dtype, B, D):
         N: int = 10  # num points
         # A line needs distinct points: ones() is a set of identical points, rejected since #5041.
@@ -719,7 +719,7 @@ class TestFitLine(BaseTester):
         assert torch.isfinite(line.direction).all()
         assert torch.isfinite(line.origin).all()
 
-    @pytest.mark.parametrize("dim", (2, 3))
+    @pytest.mark.parametrize("dim", [2, 3])
     def test_gradcheck(self, device, dim):
         # Two point sets whose rows differ, each projected onto its own fitted line (#5013).
         def proxy_func(pts, weights):
@@ -744,3 +744,79 @@ class TestFitLine(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
+
+
+class TestConventionsParametrizedLine(BaseTester):
+    def test_convention_parametrized_line_direction_is_not_normalized(self, device, dtype):
+        # The constructor does not normalise the direction, so point_at(t) = origin + t * direction steps in units of
+        # ||direction||. through(p0, p1) normalises p1 - p0, so there t is the Euclidean distance from p0. The
+        # distance methods assume a unit direction, which the constructor does not enforce.
+        origin = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        direction = torch.tensor([3.0, 4.0], device=device, dtype=dtype)
+        assert torch.linalg.vector_norm(direction).item() == 5.0  # not a unit direction
+
+        line = ParametrizedLine(origin, direction)
+        self.assert_close(line.direction, direction)
+        self.assert_close(line.point_at(1.0), torch.tensor([4.0, 6.0], device=device, dtype=dtype))
+
+        through = ParametrizedLine.through(origin, origin + direction)
+        self.assert_close(through.origin, origin)
+        self.assert_close(through.direction, torch.tensor([0.6, 0.8], device=device, dtype=dtype))
+        self.assert_close(through.point_at(5.0), torch.tensor([4.0, 6.0], device=device, dtype=dtype))
+
+    def test_convention_parametrized_line_intersect_lambda_units(self, device, dtype):
+        # intersect returns (lambda, point) with point = point_at(lambda), so lambda is in units of the stored
+        # direction: a unit direction gives the Euclidean distance from the origin, a non-unit direction a different
+        # lambda for the same point, and the reversed direction a negative one. A non-unit normal gives the same
+        # lambda. lambda = -(offset + n . origin) / (n . direction).
+        normal = torch.tensor([1.0, 2.0, 2.0], device=device, dtype=dtype) / 3
+        assert (normal.abs() >= 0.1).all()  # a tilted plane: no normal component near 0
+        plane = Hyperplane.from_vector(Vector3(normal), Vector3(torch.ones(3, device=device, dtype=dtype)))
+        origin = torch.tensor([0.5, -1.0, 2.0], device=device, dtype=dtype)
+        direction = torch.tensor([2.0, 1.0, -0.5], device=device, dtype=dtype)
+        # origin + 5/6 * direction lies on the plane; ||direction|| = sqrt(5.25).
+        expected_point = torch.tensor([13 / 6, -1 / 6, 19 / 12], device=device, dtype=dtype)
+
+        lmbda, point = ParametrizedLine(origin, direction / torch.linalg.vector_norm(direction)).intersect(plane)
+        self.assert_close(lmbda, torch.tensor(5.25**0.5 * 5 / 6, device=device, dtype=dtype))  # 1.9094
+        self.assert_close(point, expected_point)
+        self.assert_close(plane.signed_distance(point).data, torch.zeros((), device=device, dtype=dtype))
+
+        lmbda, point = ParametrizedLine(origin, direction).intersect(plane)
+        self.assert_close(lmbda, torch.tensor(5 / 6, device=device, dtype=dtype))  # 0.8333
+        self.assert_close(point, expected_point)
+
+        lmbda, point = ParametrizedLine(origin, -direction).intersect(plane)
+        self.assert_close(lmbda, torch.tensor(-5 / 6, device=device, dtype=dtype))
+        self.assert_close(point, expected_point)
+
+        nonunit_plane = Hyperplane.from_vector(Vector3(3 * normal), Vector3(torch.ones(3, device=device, dtype=dtype)))
+        lmbda, point = ParametrizedLine(origin, direction).intersect(nonunit_plane)
+        self.assert_close(lmbda, torch.tensor(5 / 6, device=device, dtype=dtype))
+        self.assert_close(point, expected_point)
+
+
+class TestConventionsFitLine(BaseTester):
+    @pytest.mark.parametrize("dim", [2, 3])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_convention_fit_line_centroid_and_unit_direction(self, device, dtype, dim, weighted):
+        # fit_line returns, for each batch row on its own, a line through the centroid of that row's points (the
+        # weighted centroid sum(w p) / sum(w) with weights) and a unit direction, for D = 2 and D >= 3 alike. The
+        # weights are uneven, so the two centroids differ, and the points are off any single line. Each row's direction
+        # is compared with the fit of that row alone, up to sign (the D >= 3 sign is unspecified).
+        points = torch.tensor(
+            [[0.0, 0.0, 0.3], [1.0, 0.4, -0.2], [2.5, 0.9, 0.1], [3.0, 1.6, 0.4], [4.2, 1.7, -0.3]],
+            device=device,
+            dtype=dtype,
+        )[:, :dim]
+        rows = torch.stack([points, 2.0 * points.flip(-1) + 1.0])  # the second row: another line elsewhere
+        w = torch.tensor([[3.0, 0.5, 1.0, 0.25, 2.0], [0.5, 2.0, 1.0, 4.0, 0.25]], device=device, dtype=dtype)
+
+        line = fit_line(rows, w if weighted else None)
+        for i in range(2):
+            centroid = (w[i, :, None] * rows[i]).sum(0) / w[i].sum() if weighted else rows[i].mean(0)
+            self.assert_close(line.origin[i], centroid)
+            one = torch.ones((), device=device, dtype=dtype)
+            self.assert_close(torch.linalg.vector_norm(line.direction[i]), one)
+            single = fit_line(rows[i : i + 1], w[i : i + 1] if weighted else None).direction[0]
+            self.assert_close(line.direction[i], torch.sign((line.direction[i] * single).sum()) * single)

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -22,7 +23,6 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _range_bound
-from kornia.constants import pi
 from kornia.enhance.adjust import adjust_hue
 
 
@@ -102,4 +102,4 @@ class RandomHue(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         hue_factor = params["hue_factor"].to(input)
-        return adjust_hue(input, hue_factor * 2 * pi)
+        return adjust_hue(input, hue_factor * 2 * math.pi)
