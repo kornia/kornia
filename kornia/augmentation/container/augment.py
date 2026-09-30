@@ -545,14 +545,24 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if len(args) == 1 and isinstance(args[0], dict):
             original_keys, data_keys, args, invalid_data = self._preproc_dict_data(cast(Dict[str, DataType], args[0]))
 
-        self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
+        original_data_keys = self.transform_op.preproc_datakeys(data_keys)
+        self.transform_op.data_keys = original_data_keys
 
-        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+        self._validate_args_datakeys(*args, data_keys=original_data_keys)
 
-        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+        in_args = self._arguments_preproc(*args, data_keys=original_data_keys)
 
-        if DataKey.INPUT in self.transform_op.data_keys:
-            inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
+        # Annotation handlers may read the matrix recorded by the image call. Process INPUT first for every child,
+        # including nested containers and policies, then restore the caller's order below.
+        input_first_order = list(range(len(original_data_keys)))
+        if DataKey.INPUT in original_data_keys:
+            image_index = original_data_keys.index(DataKey.INPUT)
+            input_first_order.insert(0, input_first_order.pop(image_index))
+            in_args = [in_args[i] for i in input_first_order]
+            self.transform_op.data_keys = [original_data_keys[i] for i in input_first_order]
+
+        if DataKey.INPUT in original_data_keys:
+            inp = in_args[0]
             if not isinstance(inp, torch.Tensor):
                 raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
             if self.contains_3d_augmentation and len(inp.shape) == 4:
@@ -563,8 +573,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         if params is None:
             # image data must exist if params is not provided.
-            if DataKey.INPUT in self.transform_op.data_keys:
-                inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
+            if DataKey.INPUT in original_data_keys:
+                inp = in_args[0]
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
@@ -587,7 +597,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = [outputs]
             self._update_transform_matrix_by_module(module)
 
-        outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
+        if input_first_order != list(range(len(input_first_order))):
+            restore_order = [input_first_order.index(i) for i in range(len(input_first_order))]
+            outputs = [outputs[i] for i in restore_order]
+            self.transform_op.data_keys = original_data_keys
+
+        outputs = self._arguments_postproc(args, outputs, data_keys=original_data_keys)  # type: ignore
         # Restore it back
         self.transform_op.data_keys = self.data_keys
 
