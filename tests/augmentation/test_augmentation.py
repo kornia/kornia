@@ -3632,6 +3632,7 @@ class TestRandomCrop(BaseTester):
         # Also compile the full forward so parameter generation is captured too.
         torch._dynamo.reset()
         assert torch_optimizer(RandomCrop((32, 32), p=1.0), fullgraph=True)(input).shape == input.shape[:2] + (32, 32)
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")

@@ -114,7 +114,6 @@ def _apply_sampled_order_cond(
     order: torch.Tensor, input: torch.Tensor, factors: Tuple[torch.Tensor, ...]
 ) -> torch.Tensor:
     """Apply sampled color operations without tensor-to-Python conversion."""
-
     brightness_factor, contrast_factor, saturation_factor, hue_factor = factors
 
     def apply_step(index: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
