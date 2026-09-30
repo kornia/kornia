@@ -553,6 +553,7 @@
     "rotation_matrix_to_quaternion",
     "sample_is_valid_for_homography",
     "sampson_epipolar_distance",
+    "sampson_homography_distance",
     "save_pointcloud_ply",
     "save_pointcloud_ply_binary",
     "scale",
