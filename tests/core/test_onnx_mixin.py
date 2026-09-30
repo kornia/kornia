@@ -75,6 +75,7 @@ class TestONNXExportMixin(BaseTester):
     def test_failed_export_restores_the_training_mode(self, monkeypatch):
         model = ImageSequential(nn.Conv2d(3, 3, 1), nn.Dropout(0.5))
         model.train()
+        model[0].eval()  # a mixed state: ``model.train(True)`` in place of an exact restore would lose it
 
         def _fail(*args, **kwargs):
             raise RuntimeError("export failed")
@@ -82,7 +83,7 @@ class TestONNXExportMixin(BaseTester):
         monkeypatch.setattr(torch.onnx, "export", _fail)
         with pytest.raises(RuntimeError, match="export failed"):
             model.to_onnx(save=False, **_RGB)
-        assert model.training and model[0].training and model[1].training
+        assert [m.training for m in (model, *model)] == [True, False, True]
 
     @pytest.mark.parametrize(
         "channels, module",
@@ -112,6 +113,24 @@ class TestONNXExportMixin(BaseTester):
             expected = model(x)
         self.assert_close(_run(op, x), expected)
 
+    def test_pseudo_shape_alone_sets_the_channel_count(self):
+        # Without input_shape, the default's fixed channel count follows an explicit pseudo shape.
+        model = ImageSequential(nn.Conv2d(1, 1, 1))
+        op = model.to_onnx(save=False, pseudo_shape=[1, 1, 32, 32])
+
+        x = torch.rand(2, 1, 5, 7)
+        with torch.no_grad():
+            expected = model(x)
+        self.assert_close(_run(op, x), expected)
+
+        dims = _input_dims(op)
+        assert dims[1] == 1
+        assert all(isinstance(d, str) for d in (dims[0], dims[2], dims[3]))
+
+    def test_input_shape_must_agree_with_an_explicit_pseudo_shape(self):
+        with pytest.raises(ValueError, match="input_shape"):
+            ImageSequential(nn.Sigmoid()).to_onnx(save=False, input_shape=[-1, 3, -1, -1], pseudo_shape=[1, 1, 32, 32])
+
     def test_input_shape_rank_must_match_the_pseudo_shape(self):
         with pytest.raises(ValueError, match="pseudo shape"):
             ImageSequential(nn.Identity()).to_onnx(save=False, input_shape=[-1, 3, -1, -1, -1])
@@ -126,20 +145,31 @@ class TestONNXExportMixin(BaseTester):
 
 
 class _ChannelAffine(nn.Module):
-    """A model with parameters whose ops onnxruntime's CPU provider runs in float16, float32 and float64."""
+    """A per-channel affine map, with its weights as parameters or as buffers.
 
-    def __init__(self) -> None:
+    Its ops run in float16, float32 and float64 on onnxruntime's CPU provider.
+    """
+
+    def __init__(self, as_buffers: bool = False) -> None:
         super().__init__()
-        self.weight = nn.Parameter(torch.linspace(0.5, 1.5, 3).view(1, 3, 1, 1))
-        self.bias = nn.Parameter(torch.linspace(-0.25, 0.25, 3).view(1, 3, 1, 1))
+        weight = torch.linspace(0.5, 1.5, 3).view(1, 3, 1, 1)
+        bias = torch.linspace(-0.25, 0.25, 3).view(1, 3, 1, 1)
+        if as_buffers:
+            self.register_buffer("weight", weight)
+            self.register_buffer("bias", bias)
+        else:
+            self.weight = nn.Parameter(weight)
+            self.bias = nn.Parameter(bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x * self.weight + self.bias
 
 
 class TestONNXExportMixinDtypeDevice(BaseTester):
-    def test_dummy_input_follows_the_model_dtype_and_device(self, device, dtype):
-        model = ImageSequential(_ChannelAffine()).to(device, dtype)
+    @pytest.mark.parametrize("as_buffers", [False, True], ids=["parameters", "buffers"])
+    def test_dummy_input_follows_the_model_dtype_and_device(self, device, dtype, as_buffers):
+        model = ImageSequential(_ChannelAffine(as_buffers)).to(device, dtype)
+        assert len(list(model.parameters())) == (0 if as_buffers else 2)
         op = model.to_onnx(save=False, **_RGB)
 
         elem_types = {

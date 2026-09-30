@@ -43,7 +43,7 @@ _ONNX_EXPORT_OPSET = 18
 
 
 def _first_floating_tensor(module: Any) -> Optional[torch.Tensor]:
-    """Return the first floating parameter or buffer of ``module``, or ``None``."""
+    """Return the first floating parameter of ``module``, else its first floating buffer, else ``None``."""
     if not isinstance(module, nn.Module):
         return None
     for tensor in itertools.chain(module.parameters(), module.buffers()):
@@ -109,7 +109,8 @@ class ONNXExportMixin:
                 format "Kornia-<ClassName>.onnx" will be used.
             input_shape:
                 The input shape for the model as a list of integers. If None,
-                `ONNX_DEFAULT_INPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
+                `ONNX_DEFAULT_INPUTSHAPE` will be used, with its fixed entries (the channel count) taken
+                from `pseudo_shape` when one of the same rank is given. Dynamic dimensions can be indicated by `-1`.
                 Mark only the dimensions the model accepts at any size: on the dynamo exporter a `-1`
                 on a dimension the model fixes, such as the channel count of a convolution, is an export error.
             output_shape:
@@ -119,7 +120,8 @@ class ONNXExportMixin:
             pseudo_shape:
                 The pseudo shape for the model as a list of integers. If None,
                 `ONNX_EXPORT_PSEUDO_SHAPE` will be used. It needs the rank of `input_shape` when
-                `input_shape` has a dynamic dimension.
+                `input_shape` has a dynamic dimension, and a fixed entry of an explicit `input_shape` must
+                match it.
             model:
                 The model to export. If not provided, the current object will be used.
             save:
@@ -131,7 +133,8 @@ class ONNXExportMixin:
 
         Raises:
             RuntimeError: If `ONNX_EXPORTABLE` is False.
-            ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's.
+            ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's, or
+                a fixed entry of `input_shape` differs from the explicit `pseudo_shape`.
             FileNotFoundError: If `save` is True and the directory of `onnx_name` does not exist. This is
                 checked before the export runs.
 
@@ -142,8 +145,8 @@ class ONNXExportMixin:
               from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
               `opset_version` to request another one.
             - A dummy input tensor is created from the input shape, with each `-1` taken from the pseudo shape.
-              It has the dtype and device of the model's first floating parameter or buffer, and is float32 on
-              the CPU for a model without one.
+              It has the dtype and device of the model's first floating parameter or, for a model without one,
+              of its first floating buffer; it is float32 on the CPU for a model with neither.
             - The dimensions marked `-1` are exported as dynamic: through `dynamic_shapes` on the dynamo exporter
               from torch 2.9, through `dynamic_axes` otherwise. A `dynamic_axes` or `dynamic_shapes` keyword
               argument replaces them.
@@ -155,6 +158,16 @@ class ONNXExportMixin:
 
         if input_shape is None:
             input_shape = self.ONNX_DEFAULT_INPUTSHAPE
+            if pseudo_shape is not None and len(pseudo_shape) == len(input_shape):
+                # The default's fixed entries (the channel count) follow the example the caller gave.
+                input_shape = [dim if dim == -1 else size for dim, size in zip(input_shape, pseudo_shape)]
+        elif pseudo_shape is not None and len(pseudo_shape) == len(input_shape):
+            conflicts = [i for i, (dim, size) in enumerate(zip(input_shape, pseudo_shape)) if dim not in (-1, size)]
+            if conflicts:
+                raise ValueError(
+                    f"input_shape {list(input_shape)} fixes dimension(s) {conflicts} to other sizes than pseudo_shape "
+                    f"{list(pseudo_shape)}. Make the two agree, or mark those dimensions -1 in input_shape."
+                )
         if output_shape is None:
             output_shape = self.ONNX_DEFAULT_OUTPUTSHAPE
         resolved_pseudo_shape = self.ONNX_EXPORT_PSEUDO_SHAPE if pseudo_shape is None else pseudo_shape
@@ -210,6 +223,10 @@ class ONNXExportMixin:
                 )
                 onnx_model = onnx.load(tmp_path)  # type: ignore
         finally:
+            # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
+            # state. It also skips ``train()`` overrides: TinyViT's ``Attention.train(True)`` would drop the attention
+            # bias cached in eval mode, which is harmless because a training-mode forward does not read it. Check any
+            # new ``train()`` override with side effects against this restore.
             for submodule, training in modes:
                 submodule.training = training
 
