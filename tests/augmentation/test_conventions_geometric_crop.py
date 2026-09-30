@@ -146,8 +146,8 @@ class TestGeometricCropConventions(BaseTester):
         points = image.new_tensor([[[2, 2]]])
         boxes = image.new_tensor([[[[1, 1], [2, 1], [2, 2], [1, 2]]]])
         output, out_points, out_boxes = seq(image, points, boxes, params=params)
-        # The matrix starts from the padded canvas (#4801); the keypoint and box handlers add the padding.
-        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
+        # The matrix includes padding and applies directly to original coordinates (#4801).
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 1], [0, 1, 1], [0, 0, 1]]]))
         self.assert_close(out_points, image.new_tensor([[[3, 3]]]))
         self.assert_close(out_boxes, boxes + 1)
         expected = [[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]
@@ -165,7 +165,7 @@ class TestGeometricCropConventions(BaseTester):
         boxes = image.new_tensor([[[[1, 1], [2, 1], [2, 2], [1, 2]]]])
         output, out_points, out_boxes = seq(image, points, boxes, params=params)
         expected = image.new_tensor([[0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 3, 4], [0, 0, 6, 7]]).reshape(1, 1, 4, 4) / 8
-        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 2], [0, 1, 1], [0, 0, 1]]]))
         self.assert_close(output, expected)
         self.assert_close(out_points, image.new_tensor([[[4, 3]]]))
         self.assert_close(out_boxes, boxes + image.new_tensor([2, 1]))
@@ -191,19 +191,24 @@ class TestGeometricCropConventions(BaseTester):
         params["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 3], [0, 3]]])
         crop.flags["padding"] = 0
         output = crop(image, params=params)
-        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 1], [0, 1, 1], [0, 0, 1]]]))
         expected = image.new_tensor([[[[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]]]) / 8
         self.assert_close(output, expected)
 
+    @pytest.mark.parametrize("override", [{}, {"padding": 0}, {"padding": 2}])
     @pytest.mark.parametrize("mode", ["slice", "resample"])
-    def test_random_crop_explicit_padding_recomputes_static_canvas_without_saved_padding(self, device, dtype, mode):
+    def test_random_crop_explicit_padding_recomputes_static_canvas_without_saved_padding(
+        self, device, dtype, mode, override
+    ):
         image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3) / 8
         crop = K.RandomCrop((4, 4), padding=1, cropping_mode=mode, p=1.0)
         params = crop.forward_parameters(image.shape)
         params["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 3], [0, 3]]])
         params.pop("padding_size")
-        output = crop(image, params=params)
-        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
+        # The canvas is recomputed from the module's own padding; the matrix must follow the pixels even when the
+        # call overrides the padding flag (#4801).
+        output = crop(image, params=params, **override)
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 1], [0, 1, 1], [0, 0, 1]]]))
         expected = image.new_tensor([[[[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]]]) / 8
         self.assert_close(output, expected)
 
@@ -352,8 +357,8 @@ class TestGeometricCropConventions(BaseTester):
             K.RandomResizedCrop(4)  # type: ignore[arg-type]
 
     @pytest.mark.parametrize("mode", ["slice", "resample"])
-    def test_wart_random_crop_matrix_starts_from_the_padded_canvas_4801(self, device, dtype, mode):
-        # #4801: flips when the recorded matrix includes the padding offset and maps (2, 1) to (3, 2).
+    def test_convention_random_crop_matrix_maps_original_coordinates_4801(self, device, dtype, mode):
+        # #4801: the recorded matrix and the pixel both map (2, 1) to (3, 2).
         image = torch.zeros(1, 1, 3, 4, device=device, dtype=dtype)
         image[0, 0, 1, 2] = 1  # pixel (x=2, y=1); cropping the whole padded canvas has one placement
         seq = K.AugmentationSequential(
@@ -362,11 +367,12 @@ class TestGeometricCropConventions(BaseTester):
         output, points = seq(image, image.new_tensor([[[2.0, 1.0]]]))
         assert output[0, 0].argmax().item() == 2 * 6 + 3
         self.assert_close(points, image.new_tensor([[[3.0, 2.0]]]))
-        self.assert_close(seq.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])
+        mapped = seq.transform_matrix[0] @ image.new_tensor([2.0, 1.0, 1.0])
+        self.assert_close(mapped[:2], points[0, 0], rtol=0, atol=0)
 
     @pytest.mark.parametrize("mode", ["slice", "resample"])
-    def test_wart_random_crop_pad_if_needed_matrix_omits_the_padding_4801(self, device, dtype, mode):
-        # #4801: flips when the matrix includes the `pad_if_needed` offset, (2, 1) for a 6 x 9 crop of 5 x 7.
+    def test_convention_random_crop_pad_if_needed_matrix_includes_padding_4801(self, device, dtype, mode):
+        # #4801: automatic padding belongs in the original-input-to-output matrix.
         image = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
         image[0, 0, 2, 1] = 1  # pixel (x=1, y=2)
         torch.manual_seed(0)
@@ -377,7 +383,7 @@ class TestGeometricCropConventions(BaseTester):
         row, col = divmod(output[0, 0].argmax().item(), 9)
         self.assert_close(points, image.new_tensor([[[col, row]]]))  # the keypoint follows the pixel
         via_matrix = seq.transform_matrix[0] @ image.new_tensor([1.0, 2.0, 1.0])
-        self.assert_close(points[0, 0] - via_matrix[:2], image.new_tensor([2.0, 1.0]))
+        self.assert_close(points[0, 0], via_matrix[:2], rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_wart_interpolate_paths_record_a_corner_aligned_matrix_4804(self):

@@ -554,6 +554,7 @@ class TestAugmentationAudit(BaseTester):
         [
             ((4, 8), None, False),
             ((4, 8), (1, 2), False),
+            ((4, 8), (1, 2, 3, 0), False),
             ((6, 10), (1, 2, 3, 0), False),
             ((8, 12), None, True),
         ],
@@ -581,8 +582,16 @@ class TestAugmentationAudit(BaseTester):
         )
         aug = K.AugmentationSequential(module, data_keys=["input", "keypoints", "bbox"])
         outputs, report = audit(aug, image, points, boxes, params=[ParamItem("RandomCrop_0", params)])
-        selected = params["batch_prob"] > 0.5
+        selected = (params["batch_prob"] > 0.5).to(device=image.device)
         static = p == 1.0
+        # Public matrices include padding; the dynamic gate leaves skipped rows as identity.
+        public_shift = image.new_tensor([pad[0] - x, pad[2] - y]).expand(2, -1)
+        public_shift = torch.where((selected | static)[:, None], public_shift, 0)
+        self.assert_close(module.transform_matrix[:, :2, 2], public_shift)
+        # An explicitly overridden batch_prob still gates labels even for static p=1.
+        label_shift = torch.where(selected[:, None], public_shift, 0)
+        self.assert_close(outputs[1], points + label_shift[:, None])
+        self.assert_close(outputs[2].data, boxes.data + label_shift[:, None, None])
         all_transformed = static or (size != image.shape[-2:] and bool(selected.any()))
         transformed = torch.ones_like(selected) if all_transformed else selected
         padded = torch.nn.functional.pad(image, pad)
