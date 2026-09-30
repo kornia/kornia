@@ -183,7 +183,7 @@ jobs:
         model-weights-
 
   # Single blocking MPS leg: newest Python, float32, on an Apple-silicon image.
-  # The exact known-failure baseline is pinned as strict xfails (history in #4159): a new failure,
+  # The exact known-failure baseline is pinned as strict xfails: a new failure,
   # changed failure, skipped pin, or fixed pin makes the job red and requires review. The
   # torch pin tracks the newest pin of the CPU matrix so the leg resolves the locked
   # dependency set; changing it means re-recording the manifest in the same change, because
@@ -196,8 +196,7 @@ jobs:
   # 664 tests down across every subpackage -- `linalg.inv`, `linalg.solve`, `inv_ex`,
   # `lu_factor_ex` and `F.conv3d` all route through it -- where the same runner on torch
   # 2.9.1 had 200 failures. The blocker is the *virtual* GPU and not macOS 26: a physical M1
-  # on macOS 26.5 compiled those shaders in the #4202 comparison. The strict manifest is empty
-  # since #4185 fixed the two YUV420/YUV422 empty-input failures and #5078 the 12 eigvals ones.
+  # on macOS 26.5 compiled those shaders in the #4202 comparison.
   # The macOS 15 image is Metal 3 and takes the older kernel path, which is the path that
   # works on the runner fleet. Two consequences: no job here exercises the Metal 4 path that
   # users on current macOS run, and when GitHub retires macos-15 this leg stops scheduling
