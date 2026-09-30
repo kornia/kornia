@@ -596,9 +596,8 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
        second-image points
      - ``computeCorrespondEpilines(x1, 1, F)``; ``whichImage=2`` for second-image points
    * - Sampson distance
-     - ``sampson_epipolar_distance(pts1, pts2, F)``, squared by default; the value depends on the scale of ``F``
-       (`#4881 <https://github.com/kornia/kornia/issues/4881>`_)
-     - ``sampsonDistance(pt1, pt2, F)``, the same argument order, independent of the scale of ``F``
+     - ``sampson_epipolar_distance(pts1, pts2, F)``, squared by default
+     - ``sampsonDistance(pt1, pt2, F)``, the same argument order
    * - RANSAC threshold
      - ``inl_th`` is a point distance in the keypoints' units, calibrated units for ``model_type="essential"``;
        for line segments, the mean distance of the transferred endpoints from the target segment's line, which
