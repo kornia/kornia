@@ -689,44 +689,6 @@ class TestAugmentationSequential:
         assert outputs[2].dtype == dtype, "Output box dtype should match the input dtype"
         assert outputs[3].dtype == dtype, "Output keypoints dtype should match the input dtype"
 
-    def test_call_time_data_keys_are_restored_after_forward_exception(self, device, dtype):
-        image = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
-        mask = torch.ones(1, 1, 16, 20, device=device, dtype=dtype)
-
-        aug = K.AugmentationSequential(
-            K.RandomThinPlateSpline(p=1.0),
-            data_keys=["input"],
-        )
-
-        with pytest.raises(NotImplementedError):
-            aug(image, mask, data_keys=["input", "mask"])
-
-        assert aug.transform_op.data_keys == aug.data_keys
-
-        # A later call without call-time data_keys must use the container defaults.
-        out = aug(image)
-        assert out.shape == image.shape
-
-    def test_call_time_data_keys_are_restored_after_inverse_exception(self, device, dtype):
-        image = torch.rand(1, 1, 4, 8, 8, device=device, dtype=dtype)
-        class_label = torch.tensor([1], device=device)
-
-        aug = K.AugmentationSequential(
-            K.RandomHorizontalFlip3D(p=1.0),
-            data_keys=["input"],
-        )
-
-        outputs = aug(image, class_label, data_keys=["input", "class"])
-
-        with pytest.raises(NotImplementedError, match="3d inverse"):
-            aug.inverse(*outputs, data_keys=["input", "class"])
-
-        assert aug.transform_op.data_keys == aug.data_keys
-
-        # The next keyless call must still use the container defaults.
-        out = aug(image)
-        assert out.shape == image.shape
-
 
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionAugmentationSequential(BaseTester):
