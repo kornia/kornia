@@ -57,7 +57,7 @@ class TestSe3(BaseTester):
         self.assert_close(s.r.q.data, q.data)
         self.assert_close(s.t, t)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_cardinality(self, device, dtype, batch_size):
         se: Se3 = self._make_rand_se3d(device, dtype, batch_size)
         assert se.r.q.shape[0] == batch_size
@@ -119,7 +119,7 @@ class TestSe3(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
         s1: Se3 = self._make_rand_se3d(device, dtype, batch_size)
         s2 = Se3(s1.r, s1.t)
@@ -127,7 +127,7 @@ class TestSe3(BaseTester):
         self.assert_close(s1.r.q.data, s2.r.q.data)
         self.assert_close(s1.t, s2.t)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_getitem(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         t = torch.rand(batch_size, 3, device=device, dtype=dtype)
@@ -137,7 +137,7 @@ class TestSe3(BaseTester):
             self.assert_close(s1.r.q.data, q.data[i])
             self.assert_close(s1.t, t[i])
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul(self, device, dtype, batch_size):
         s1 = Se3.identity(batch_size, device, dtype)
         s2: Se3 = self._make_rand_se3d(device, dtype, batch_size)
@@ -152,7 +152,7 @@ class TestSe3(BaseTester):
         self.assert_close(s2s2inv.r.q.data, so3_expected.q.data)
         self.assert_close(s2s2inv.t, zeros_vec)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_point(self, device, dtype, batch_size):
         world_pose_s1: Se3 = self._make_rand_se3d(device, dtype, batch_size)
         world_pose_s2: Se3 = self._make_rand_se3d(device, dtype, batch_size)
@@ -165,7 +165,7 @@ class TestSe3(BaseTester):
         self.assert_close(pt_in_s1, pt_in_s2_in_s1)
         self.assert_close(pt_in_s2, pt_in_s1_in_s2)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
         world_pose_s1: Se3 = self._make_rand_se3d(device, dtype, batch_size)
         world_pose_s2: Se3 = self._make_rand_se3d_vec(device, dtype, batch_size)
@@ -194,7 +194,7 @@ class TestSe3(BaseTester):
         self.assert_close(s4s4inv.r.q.data, so3_expected.q.data)
         self.assert_close(s4s4inv.t, zeros_vec)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp(self, device, dtype, batch_size):
         omega = torch.zeros(3, device=device, dtype=dtype)
         t = torch.rand(3, device=device, dtype=dtype)
@@ -206,7 +206,7 @@ class TestSe3(BaseTester):
         self.assert_close(s.r.q.data, quat_expected.data)
         self.assert_close(s.t, t)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_log(self, device, dtype, batch_size):
         q = Quaternion.identity(batch_size, device, dtype)
         t = self._make_rand_data(device, dtype, batch_size, dims=3)
@@ -249,20 +249,20 @@ class TestSe3(BaseTester):
         v = torch.tensor([[1.0, 2.0, 3.0, 0.6 * theta, 0.0, 0.8 * theta]], device=device, dtype=dtype)
         self.assert_close(Se3.exp(v).log(), v, rtol=rtol, atol=0.0)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp_log(self, device, dtype, batch_size):
         a = self._make_rand_data(device, dtype, batch_size, dims=6)
         b = Se3.exp(a).log()
         self.assert_close(b, a)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_hat_vee(self, device, dtype, batch_size):
         a = self._make_rand_data(device, dtype, batch_size, dims=6)
         omega_hat = Se3.hat(a)
         b = Se3.vee(omega_hat)
         self.assert_close(b, a)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         t = self._make_rand_data(device, dtype, batch_size, dims=3)
@@ -275,7 +275,7 @@ class TestSe3(BaseTester):
         self.assert_close(rot_mat[..., 0:3, 0:3], rot.matrix())
         self.assert_close(rot_mat[..., 0:3, 3], t)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_matrix(self, device, dtype, batch_size):
         matrix = torch.tensor(
             ((1.0, 0.0, 0.0, 0.0), (0.0, 0.0, -1.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
@@ -288,7 +288,7 @@ class TestSe3(BaseTester):
         self.assert_close(s.r.matrix(), matrix[..., 0:3, 0:3])
         self.assert_close(s.t, matrix[..., 0:3, 3])
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2])
     def test_from_matrix_check_rotation(self, device, dtype, batch_size):
         # kornia#4773: the rotation block reaches rotation_matrix_to_quaternion, so a reflection
         # block is accepted by default and yields a non-unit quaternion. check_rotation=True has
@@ -302,7 +302,7 @@ class TestSe3(BaseTester):
         with pytest.raises(ValueError, match="reflection"):
             Se3.from_matrix(matrix, check_rotation=True)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_matrix_check_rotation_accepts_rotation(self, device, dtype, batch_size):
         # A genuine rotation block passes, and the flag leaves both parts of the group element
         # alone. Comparing the checked call against the unchecked one rather than against the
@@ -316,14 +316,14 @@ class TestSe3(BaseTester):
         self.assert_close(checked.r.q.data, unchecked.r.q.data)
         self.assert_close(checked.t, unchecked.t)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_qxyz(self, device, dtype, batch_size):
         qxyz = self._make_rand_data(device, dtype, batch_size, dims=7)
         s = Se3.from_qxyz(qxyz)
         self.assert_close(s.r.q.data, qxyz[..., :4].data)
         self.assert_close(s.t, qxyz[..., 4:])
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_inverse(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         rot = So3(q)
@@ -332,7 +332,7 @@ class TestSe3(BaseTester):
         self.assert_close(sinv.r.inverse().q.data, q.data)
         self.assert_close(sinv.t, sinv.r * (-1 * t))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_rot_x(self, device, dtype, batch_size):
         x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         se3 = Se3.rot_x(x)
@@ -342,7 +342,7 @@ class TestSe3(BaseTester):
         self.assert_close(x, roll)
         self.assert_close(se3.t, torch.zeros_like(se3.t))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_rot_y(self, device, dtype, batch_size):
         y = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         se3 = Se3.rot_y(y)
@@ -352,7 +352,7 @@ class TestSe3(BaseTester):
         self.assert_close(y, pitch)
         self.assert_close(se3.t, torch.zeros_like(se3.t))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_rot_z(self, device, dtype, batch_size):
         z = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         se3 = Se3.rot_z(z)
@@ -362,7 +362,7 @@ class TestSe3(BaseTester):
         self.assert_close(z, yaw)
         self.assert_close(se3.t, torch.zeros_like(se3.t))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans(self, device, dtype, batch_size):
         trans = self._make_rand_data(device, dtype, batch_size, dims=3)
         x, y, z = trans[..., 0], trans[..., 1], trans[..., 2]
@@ -370,7 +370,7 @@ class TestSe3(BaseTester):
         self.assert_close(se3.t, trans)
         self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans_x(self, device, dtype, batch_size):
         x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         zs = torch.zeros_like(x)
@@ -378,7 +378,7 @@ class TestSe3(BaseTester):
         self.assert_close(se3.t, torch.stack((x, zs, zs), -1))
         self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans_y(self, device, dtype, batch_size):
         y = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         zs = torch.zeros_like(y)
@@ -386,7 +386,7 @@ class TestSe3(BaseTester):
         self.assert_close(se3.t, torch.stack((zs, y, zs), -1))
         self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans_z(self, device, dtype, batch_size):
         z = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         zs = torch.zeros_like(z)
@@ -394,7 +394,7 @@ class TestSe3(BaseTester):
         self.assert_close(se3.t, torch.stack((zs, zs, z), -1))
         self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_adjoint(self, device, dtype, batch_size):
         shape = (6,) if batch_size is None else (batch_size, 6)
         x_data = torch.tensor([0.1, -0.2, 0.3, 0.2, -0.1, 0.1], device=device, dtype=dtype).expand(shape)
@@ -408,7 +408,7 @@ class TestSe3(BaseTester):
         self.assert_close(adjoint @ inverse_adjoint, identity, rtol=half_tolerance, atol=half_tolerance)
         self.assert_close((x * y).adjoint(), adjoint @ y.adjoint(), rtol=half_tolerance, atol=half_tolerance)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_random(self, device, dtype, batch_size):
         s = Se3.random(batch_size=batch_size, device=device, dtype=dtype)
         s_in_s = s.inverse() * s

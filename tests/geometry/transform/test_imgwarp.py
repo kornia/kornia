@@ -498,8 +498,8 @@ class TestWarpAffine(BaseTester):
             traced = torch.jit.trace(SingletonWarp(), (src, affine), check_trace=False)
         self.assert_close(traced(src, affine), expected)
 
-    @pytest.mark.parametrize("batch_shape", ([1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]))
-    @pytest.mark.parametrize("out_shape", ([2, 5], [3, 4], [6, 2]))
+    @pytest.mark.parametrize("batch_shape", [[1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]])
+    @pytest.mark.parametrize("out_shape", [[2, 5], [3, 4], [6, 2]])
     def test_cardinality(self, device, dtype, batch_shape, out_shape):
         batch_size, channels, height, width = batch_shape
         h_out, w_out = out_shape
@@ -632,8 +632,8 @@ class TestWarpAffine(BaseTester):
 
         self.assert_close(img_a[:, :, :1, :1].squeeze(), fill_value.squeeze())
 
-    @pytest.mark.parametrize("align_corners", (True, False))
-    @pytest.mark.parametrize("padding_mode", ("zeros", "fill"))
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
     def test_jit_script(self, device, dtype, align_corners, padding_mode):
         offset = 1.0
         h, w = 3, 4
@@ -656,8 +656,8 @@ class TestWarpPerspective(BaseTester):
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (height, width))
         self.assert_close(img_b, img_a)
 
-    @pytest.mark.parametrize("batch_shape", ([1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]))
-    @pytest.mark.parametrize("out_shape", ([2, 5], [3, 4], [6, 2]))
+    @pytest.mark.parametrize("batch_shape", [[1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]])
+    @pytest.mark.parametrize("out_shape", [[2, 5], [3, 4], [6, 2]])
     def test_cardinality(self, device, dtype, batch_shape, out_shape):
         batch_size, channels, height, width = batch_shape
         h_out, w_out = out_shape

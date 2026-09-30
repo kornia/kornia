@@ -64,7 +64,7 @@ class TestSe2(BaseTester):
         assert s.inverse().so2.z.shape == input_shape
         assert s.inverse().t.shape == t_input_shape
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_exception(self, device, dtype, batch_size):
         r = So2.random(batch_size)
         t1 = torch.randn((batch_size, 1), dtype=dtype, device=device)
@@ -126,7 +126,7 @@ class TestSe2(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
         s1 = Se2.random(batch_size, device, dtype)
         s2 = Se2(s1.r, s1.t)
@@ -134,7 +134,7 @@ class TestSe2(BaseTester):
         self.assert_close(s1.r.z, s2.r.z)
         self.assert_close(s1.t, s2.t)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_getitem(self, device, dtype, batch_size):
         z = torch.rand(batch_size, dtype=torch.cfloat, device=device)
         t = torch.rand((batch_size, 2), device=device, dtype=dtype)
@@ -144,7 +144,7 @@ class TestSe2(BaseTester):
             self.assert_close(s1.r.z, z[i])
             self.assert_close(s1.t, t[i])
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul(self, device, dtype, batch_size):
         s1 = Se2.identity(batch_size, device, dtype)
         s2 = Se2.random(batch_size, device, dtype)
@@ -160,7 +160,7 @@ class TestSe2(BaseTester):
         self.assert_close(s2_pose_s2.r.z.imag, so2_expected.z.imag)
         self.assert_close(s2_pose_s2.t, zeros_vec)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
         s1 = Se2.identity(batch_size, device, dtype)
         if batch_size is None:
@@ -180,7 +180,7 @@ class TestSe2(BaseTester):
         self.assert_close(s2_pose_s2.r.z.imag, so2_expected.z.imag)
         self.assert_close(s2_pose_s2.t, zeros_vec)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = torch.zeros(batch_size if batch_size is not None else (), device=device, dtype=dtype)
@@ -189,14 +189,14 @@ class TestSe2(BaseTester):
         # V(0) is the identity, so a pure translation keeps its translation (#4924)
         self.assert_close(s.t, t)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_log(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         s = Se2(So2.identity(batch_size, device, dtype), t)
         # V(0)^-1 is the identity, so the log of a pure translation is (t, 0) (#4924)
         self.assert_close(s.log(), torch.cat((t, torch.zeros_like(t[..., :1])), -1))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp_log(self, device, dtype, batch_size):
         a = self._make_rand_data(device, dtype, (batch_size, 3))
         b = Se2.exp(a).log()
@@ -282,7 +282,7 @@ class TestSe2(BaseTester):
         g = Se2(So2.exp(v[..., 2]), t_ref)  # the element exp(v), rounded to dtype
         self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_wart_se2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
         # https://github.com/kornia/kornia/issues/4929: hat places translation in the bottom row and has a symmetric
         # rotation block; vee reads that same non-generator layout, so vee(hat(v)) conceals the defect.
@@ -297,7 +297,7 @@ class TestSe2(BaseTester):
         self.assert_close(recovered[..., -1], omega[..., 0, 1])
         self.assert_close(Se2.vee(s_hat), torch.cat((v, theta), -1))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_identity(self, device, dtype, batch_size):
         s = Se2.random(batch_size)
         s_pose_s = s * Se2.identity(batch_size)
@@ -305,7 +305,7 @@ class TestSe2(BaseTester):
         self.assert_close(s_pose_s.so2.z.imag, s.so2.z.imag)
         self.assert_close(s.t, s_pose_s.t)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size,))
         t = self._make_rand_data(device, dtype, (batch_size, 2))
@@ -314,7 +314,7 @@ class TestSe2(BaseTester):
         p2 = s.matrix() @ t[..., None]
         self.assert_close(p1, p2.squeeze(-1))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_matrix(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size,))
         t = self._make_rand_data(device, dtype, (batch_size, 2))
@@ -327,7 +327,7 @@ class TestSe2(BaseTester):
         p2 = Se2.from_matrix(RT) * t
         self.assert_close(p1, p2)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_inverse(self, device, batch_size, dtype):
         s = Se2.random(batch_size, device, dtype)
         s_in_in = s.inverse().inverse()
@@ -335,7 +335,7 @@ class TestSe2(BaseTester):
         self.assert_close(s_in_in.so2.z.imag, s.so2.z.imag)
         self.assert_close(s_in_in.t, s.t)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_random(self, device, dtype, batch_size):
         s = So2.random(batch_size=batch_size, device=device, dtype=dtype)
         t = self._make_rand_data(device, dtype, (batch_size, 2))
@@ -356,7 +356,7 @@ class TestSe2(BaseTester):
         theta = z.imag.atan2(z.real)
         assert theta.min() < -math.pi / 2 and theta.max() > math.pi / 2, (theta.min(), theta.max())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans(self, device, dtype, batch_size):
         trans = self._make_rand_data(device, dtype, (batch_size, 2))
         x, y = trans[..., 0], trans[..., 1]
@@ -364,7 +364,7 @@ class TestSe2(BaseTester):
         self.assert_close(se2.t, trans)
         self.assert_close(se2.so2.matrix(), So2.identity(batch_size, device, dtype).matrix())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans_x(self, device, dtype, batch_size):
         x = self._make_rand_data(device, dtype, (batch_size, 1)).squeeze(-1)
         zs = torch.zeros_like(x)
@@ -372,7 +372,7 @@ class TestSe2(BaseTester):
         self.assert_close(se2.t, torch.stack((x, zs), -1))
         self.assert_close(se2.so2.matrix(), So2.identity(batch_size, device, dtype).matrix())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_trans_y(self, device, dtype, batch_size):
         y = self._make_rand_data(device, dtype, (batch_size, 1)).squeeze(-1)
         zs = torch.zeros_like(y)
@@ -380,7 +380,7 @@ class TestSe2(BaseTester):
         self.assert_close(se2.t, torch.stack((zs, y), -1))
         self.assert_close(se2.so2.matrix(), So2.identity(batch_size, device, dtype).matrix())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_adjoint(self, device, dtype, batch_size):
         x = Se2.random(batch_size)
         y = Se2.random(batch_size)

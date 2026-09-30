@@ -104,7 +104,7 @@ class TestSolvePnpDlt(BaseTester):
 
         return intrinsics, world_to_cam_3x4, world_points, img_points
 
-    @pytest.mark.parametrize("num_points", (6, 20))
+    @pytest.mark.parametrize("num_points", [6, 20])
     def test_smoke(self, num_points, device, dtype):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
         batch_size = world_points.shape[0]
@@ -112,31 +112,31 @@ class TestSolvePnpDlt(BaseTester):
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         assert pred_world_to_cam.shape == (batch_size, 3, 4)
 
-    @pytest.mark.parametrize("num_points", (6,))
+    @pytest.mark.parametrize("num_points", [6])
     def test_gradcheck(self, num_points, device):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics))
 
-    @pytest.mark.parametrize("num_points", (8,))
+    @pytest.mark.parametrize("num_points", [8])
     def test_gradcheck_weights(self, num_points, device):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
         weights = torch.rand(*world_points.shape[:2], device=device, dtype=torch.float64).abs()
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics, weights))
 
-    @pytest.mark.parametrize("num_points", (6, 20))
+    @pytest.mark.parametrize("num_points", [6, 20])
     def test_pred_world_to_cam(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("num_points", (16, 20))
+    @pytest.mark.parametrize("num_points", [16, 20])
     def test_pred_world_to_cam_weighted(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
         weights = torch.ones(*world_points.shape[:2], device=device, dtype=dtype)
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("num_points", (25,))
+    @pytest.mark.parametrize("num_points", [25])
     def test_pred_world_to_cam_weighted_rand(self, num_points, device, dtype):
         torch.manual_seed(0)
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
@@ -147,7 +147,7 @@ class TestSolvePnpDlt(BaseTester):
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-3)
 
-    @pytest.mark.parametrize("num_points", (6, 20))
+    @pytest.mark.parametrize("num_points", [6, 20])
     def test_project(self, num_points, device, dtype):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
@@ -381,7 +381,7 @@ class TestSolvePnpDlt(BaseTester):
 
 
 class TestNormalization(BaseTester):
-    @pytest.mark.parametrize("dimension", (2, 3, 5))
+    @pytest.mark.parametrize("dimension", [2, 3, 5])
     def test_smoke(self, dimension, device, dtype):
         batch_size = 10
         num_points = 100
@@ -391,7 +391,7 @@ class TestNormalization(BaseTester):
         assert points_norm.shape == (batch_size, num_points, dimension)
         assert transform.shape == (batch_size, dimension + 1, dimension + 1)
 
-    @pytest.mark.parametrize("dimension", (2, 3, 5))
+    @pytest.mark.parametrize("dimension", [2, 3, 5])
     def test_gradcheck(self, dimension, device):
         batch_size = 3
         num_points = 5

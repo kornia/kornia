@@ -79,9 +79,9 @@ class TestElasticTransform(BaseTester):
     @pytest.mark.parametrize(
         "kernel_size, sigma, alpha",
         [
-            [(3, 3), (4.0, 4.0), (32.0, 32.0)],
-            [(5, 3), (4.0, 8.0), (16.0, 32.0)],
-            [(5, 5), torch.tensor([2.0, 8.0]), torch.tensor([16.0, 64.0])],
+            ((3, 3), (4.0, 4.0), (32.0, 32.0)),
+            ((5, 3), (4.0, 8.0), (16.0, 32.0)),
+            ((5, 5), torch.tensor([2.0, 8.0]), torch.tensor([16.0, 64.0])),
         ],
     )
     def test_valid_paramters(self, device, dtype, kernel_size, sigma, alpha):
