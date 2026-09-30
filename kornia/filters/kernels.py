@@ -763,7 +763,7 @@ def get_gaussian_discrete_kernel1d(
           - the tap count is not always ``kernel_size``: ``kernel_size=1`` gives 3 taps, and an even size with
             ``force_even=True`` gives one more than asked (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
           - the Bessel terms are computed unscaled and overflow, so the kernel is all NaN for a large ``sigma``
-            (from about 7 in float32) and for any ``sigma`` in float16
+            (from about 7 in float32) and, in float16, for any ``sigma > 0`` once ``kernel_size`` is 5 or more
             (`#5227 <https://github.com/kornia/kornia/issues/5227>`_).
 
     Args:

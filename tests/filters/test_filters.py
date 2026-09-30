@@ -2001,9 +2001,9 @@ class TestConventionsKernels(BaseTester):
         assert kernel[2] > kernel[1]
 
     def test_wart_gaussian_discrete_kernel1d_overflows_to_nan_5227(self, device, dtype):
-        """get_gaussian_discrete_kernel1d scales its Bessel terms by exp(+sigma**2) and overflows to NaN (#5227)."""
-        # the smallest failing sigma depends on the dtype: every sigma in float16, about 6.8 in float32 and
-        # bfloat16, about 19 in float64
+        """get_gaussian_discrete_kernel1d computes its Bessel terms unscaled and overflows to NaN (#5227)."""
+        # the smallest failing sigma depends on the dtype: about 6.8 in float32 and bfloat16, about 19 in float64;
+        # in float16 every sigma > 0 fails once kernel_size is 5 or more
         sigma = {torch.float16: 1.0, torch.bfloat16: 7.0, torch.float32: 7.0, torch.float64: 20.0}[dtype]
         kernel = get_gaussian_discrete_kernel1d(5, sigma, device=device, dtype=dtype)
         assert bool(torch.isnan(kernel).all())
