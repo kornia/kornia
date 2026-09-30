@@ -2419,9 +2419,9 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         #       det = 0.9999974535249636 and max|R @ R.T - I| = 2.5464750363912714e-06;
         #   (2) theta = 1e-3 takes the low-angle branch, which returned the first-order Taylor
         #       matrix [[1, -rz, ry], [rz, 1, -rx], [-ry, rx, 1]] with det = 1 + theta**2 = 1.000001.
-        # The low-angle branch now returns the second-order Taylor expansion R = I + [v]x + [v]x^2/2,
-        # whose determinant is 1 + theta**4 / 4 -- at theta = 1e-3 that is 1 + 2.5e-13, a rotation
-        # to the working precision -- so both branches must now pass the same orthogonality checks.
+        # The low-angle branch now evaluates Rodrigues' formula with the theta**2 terms of its two
+        # coefficient series kept (kornia#4838), a rotation to float64 rounding, so both branches
+        # must now pass the same orthogonality checks.
         # The general branch must also agree with the quaternion route on a generic (non-axis
         # aligned) rotation, which is where the eps defect showed up as an axis-dependent error.
         # float64 is hardcoded and the dtype fixture dropped because both cells are float64 facts:
@@ -2434,8 +2434,9 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         #   (R @ R.T - torch.eye(3, dtype=torch.float64)).abs().max()   -> 0.0
         #   t = torch.tensor([[0., 0., 1e-3]], dtype=torch.float64)   # theta**2 == 1e-06 exactly
         #   axis_angle_to_rotation_matrix(t)[0].tolist()
-        #     -> [[0.9999995, -0.001, 0.0], [0.001, 0.9999995, 0.0], [0.0, 0.0, 1.0]]
-        #   torch.linalg.det(that).item()                               -> 1.00000000000025
+        #     -> [[0.9999995000000417, -0.0009999998333333332, 0.0],
+        #         [0.0009999998333333332, 0.9999995000000417, 0.0], [0.0, 0.0, 1.0]]
+        #   torch.linalg.det(that).item()                               -> 1.0
         #   g = torch.tensor([[1., 2., 3.]], dtype=torch.float64) * 0.6 / math.sqrt(14.0)  # generic axis
         #   Rg = axis_angle_to_rotation_matrix(g)[0]
         #   torch.linalg.det(Rg).item()                                 -> 1.0
@@ -2470,6 +2471,38 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         assert (generic - quat_route).abs().max().item() < 1e-12, (
             "kornia#3947: axis_angle_to_rotation_matrix disagrees with the quaternion route"
         )
+
+    def test_convention_low_angle_branch_matches_quaternion_route_4838(self, device):
+        # Regression test for kornia#4838. Below theta**2 = 1e-6 the function switches to a
+        # series form of Rodrigues' formula. That branch used to stop at sin(theta)/theta = 1 and
+        # (1 - cos(theta))/theta**2 = 1/2, an error of theta**3 / 6 per entry: 1.3e-10 at
+        # theta = 9.99e-4 in float64, next to 1.1e-16 on the general branch just above the switch,
+        # and 130 times the 1e-12 the general branch is held to against the quaternion route in
+        # test_convention_both_branches_are_orthogonal_3947. Keeping the theta**2 terms of both
+        # series puts the error below float64 rounding across the branch.
+        # float64 is hardcoded because in float32 the old truncation error (1.7e-10) is below
+        # rounding (3e-8 at these angles), so only float64 can tell the two apart.
+        # Snippet used to generate the old values (torch only, cpu float64, before the fix):
+        #   axis = torch.tensor([1., 2., 3.], dtype=torch.float64) / 14.0**0.5
+        #   v = (9.99e-4 * axis)[None]
+        #   (axis_angle_to_rotation_matrix(v)
+        #    - quaternion_to_rotation_matrix(axis_angle_to_quaternion(v))).abs().max()  -> 1.3e-10
+        _skip_if_dtype_unavailable(device, torch.float64)
+
+        axis = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float64) / 14.0**0.5
+        for theta in (1.1e-3, 9.99e-4, 5e-4, 1e-4, 1e-5):
+            v = (theta * axis)[None]
+            direct = axis_angle_to_rotation_matrix(v)
+            quat_route = kornia.geometry.conversions.quaternion_to_rotation_matrix(
+                kornia.geometry.conversions.axis_angle_to_quaternion(v)
+            )
+            assert (direct - quat_route).abs().max().item() < 1e-12, (
+                f"kornia#4838: the low-angle branch disagrees with the quaternion route at theta={theta}"
+            )
+            round_trip = kornia.geometry.conversions.rotation_matrix_to_axis_angle(direct)
+            assert (round_trip - v).abs().max().item() < 1e-15, (
+                f"kornia#4838: the axis-angle round trip drifted at theta={theta}"
+            )
 
     def test_convention_accepts_any_leading_batch_dimensions_3955(self, device):
         # Convention: axis_angle_to_rotation_matrix accepts (*, 3) and returns (*, 3, 3) -- what its
