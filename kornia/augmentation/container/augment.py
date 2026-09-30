@@ -400,7 +400,6 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
         try:
-
             self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
             in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
@@ -595,9 +594,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             outputs: Union[torch.Tensor, List[DataType]] = in_args
             for param in params:
                 module = self.get_submodule(param.name)
-                outputs = self.transform_op.transform(
-                    *outputs, module=module, param=param, extra_args=self.extra_args
-                )
+                outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
                 if not isinstance(outputs, list | tuple):
                     # Make sure we are unpacking a list whilst post-proc
                     outputs = [outputs]
