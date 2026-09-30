@@ -246,8 +246,11 @@ class TestGeometricCropConventions(BaseTester):
             ],
         }
         expected = image.new_tensor(expected_rows[mode]).reshape(1, 1, 6, 4)
-        # float16 resampling also rounds its grid, so this is a bound; the matrix is pinned exactly above.
-        tolerance = {"rtol": 0.0, "atol": 3e-3} if dtype == torch.float16 and mode == "resample" else {}
+        # Half-precision resampling also rounds its matrix and grid, so this is a bound, in units of the dtype's eps
+        # (3e-3 in float16); the matrix is pinned exactly above. The right column samples next to the canvas edge,
+        # the most sensitive spot: in bfloat16 it is 0.012 off even with a correctly rounded inverse and a float64 grid.
+        half = dtype in (torch.float16, torch.bfloat16)
+        tolerance = {"rtol": 0.0, "atol": 3 * torch.finfo(dtype).eps} if half and mode == "resample" else {}
         self.assert_close(output, expected, **tolerance)
         self.assert_close(output[0, 0, 0], image.new_tensor([0, 0, 0, 0]))
         assert output.shape == (1, 1, 6, 4)
