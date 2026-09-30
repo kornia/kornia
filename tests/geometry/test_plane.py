@@ -28,8 +28,8 @@ from testing.base import BaseTester
 
 # TODO: implement the rest of methods
 class TestFitPlane(BaseTester):
-    @pytest.mark.parametrize("N", (4, 10))
-    @pytest.mark.parametrize("D", (3,))
+    @pytest.mark.parametrize("N", [4, 10])
+    @pytest.mark.parametrize("D", [3])
     # @pytest.mark.parametrize("D", (2, 3, 4))
     def test_smoke(self, device, dtype, N, D):
         # A plane needs non-collinear points: ones() is a set of identical points, rejected since #5041.
@@ -94,7 +94,7 @@ class TestFitPlane(BaseTester):
 
 # TODO: implement the rest of methods
 class TestHyperplane(BaseTester):
-    @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
+    @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_smoke(self, device, dtype, shape):
         p0 = Vector3.random(shape, device, dtype)
         n0 = Vector3.random(shape, device, dtype).normalized()
@@ -114,7 +114,7 @@ class TestHyperplane(BaseTester):
         loaded_plane = torch.load(file_path, weights_only=False)
         self.assert_close(plane.normal.unwrap(), loaded_plane.normal.unwrap())
 
-    @pytest.mark.parametrize("shape", ((2,), (1, 2), (3,), (1, 3)))
+    @pytest.mark.parametrize("shape", [(2,), (1, 2), (3,), (1, 3)])
     def test_through_two_points_raises(self, device, dtype, shape):
         # Hyperplane stores a Vector3 normal and has no 2D form: two points must be rejected with a
         # message that names the three-point requirement, whatever the points' dimension.
@@ -123,7 +123,7 @@ class TestHyperplane(BaseTester):
         with pytest.raises(BaseError, match="requires three points"):
             Hyperplane.through(p0, p1)
 
-    @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
+    @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_through_three(self, device, dtype, shape):
         v0 = Vector3.random(shape, device, dtype)
         v1 = Vector3.random(shape, device, dtype)
@@ -183,7 +183,7 @@ class TestHyperplane(BaseTester):
         with pytest.raises(ValueCheckError, match="not collinear"):
             Hyperplane.through(torch.stack([p0, a]), torch.stack([p1, b]), torch.stack([p2, c]))
 
-    @pytest.mark.parametrize("scale", (1.0, 1e-4))
+    @pytest.mark.parametrize("scale", [1.0, 1e-4])
     def test_through_small_valid_triangle_keeps_orientation_5064(self, device, dtype, scale):
         # A small triangle is not collinear, and it keeps the (p2 - p0) x (p1 - p0) orientation. In float16 the
         # cross product of the 1e-4 triangle underflows to 0 (1e-8 is below the smallest subnormal), so it took the
@@ -194,7 +194,7 @@ class TestHyperplane(BaseTester):
         plane = Hyperplane.through(p0, p1, p2)
         self.assert_close(plane.normal.unwrap(), torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype))
 
-    @pytest.mark.parametrize("size", (300.0, 4e4))
+    @pytest.mark.parametrize("size", [300.0, 4e4])
     def test_through_large_triangle_keeps_orientation_5064(self, device, dtype, size):
         # The normal is (p2 - p0) x (p1 - p0) = (size, size, 0) x (2 size, 0, 0) = (0, 0, -2 size^2). In float16 that
         # overflows for size 300 (-1.8e5 is beyond 65504), and for size 4e4 the edge p1 - p0 = 8e4 overflows too: the
@@ -265,7 +265,7 @@ class TestHyperplane(BaseTester):
         self.assert_close(Hyperplane.through(points[0], points[1], points[2]).normal.unwrap().abs(), expected)
         self.assert_close(fit_plane(points).normal.unwrap().abs(), expected)
 
-    @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
+    @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_abs_signed_distance(self, device, dtype, shape):
         p0 = Vector3.random(shape, device, dtype)
         p1 = Vector3.random(shape, device, dtype)
@@ -437,3 +437,121 @@ class TestHyperplane(BaseTester):
         finally:
             if checks_were_enabled:
                 enable_checks()
+
+
+class TestConventionsHyperplane(BaseTester):
+    def test_convention_hyperplane_offset_sign(self, device, dtype):
+        # The plane is n . x + d = 0: from_vector(n, e) sets d = -n . e, and signed_distance(x) = n . x + d is positive
+        # on the side the normal points to, negative on the other side, and equals d at the origin. With a unit
+        # normal it is the Euclidean distance. Neither the constructor nor from_vector normalises the normal, so a
+        # normal of length 3 triples the offset and signed_distance.
+        normal = torch.tensor([2.0, 1.0, -2.0], device=device, dtype=dtype) / 3
+        assert (normal.abs() >= 0.1).all()  # a tilted plane: no normal component near 0
+        e = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype)
+        plane = Hyperplane.from_vector(Vector3(normal), Vector3(e))
+
+        self.assert_close(plane.offset.data, torch.tensor(-1.0, device=device, dtype=dtype))  # -n . e
+        self.assert_close(plane.signed_distance(e).data, torch.tensor(0.0, device=device, dtype=dtype))
+        self.assert_close(plane.signed_distance(e + 0.7 * normal).data, torch.tensor(0.7, device=device, dtype=dtype))
+        self.assert_close(plane.signed_distance(e - 0.4 * normal).data, torch.tensor(-0.4, device=device, dtype=dtype))
+        self.assert_close(plane.abs_distance(e - 0.4 * normal).data, torch.tensor(0.4, device=device, dtype=dtype))
+        self.assert_close(plane.signed_distance(torch.zeros(3, device=device, dtype=dtype)).data, plane.offset.data)
+
+        scaled = Hyperplane.from_vector(Vector3(3 * normal), Vector3(e))
+        built = Hyperplane(Vector3(3 * normal), scaled.offset)
+        for p in (scaled, built):
+            self.assert_close(p.normal.data, 3 * normal)
+            self.assert_close(p.offset.data, torch.tensor(-3.0, device=device, dtype=dtype))
+            self.assert_close(p.signed_distance(e + 0.7 * normal).data, torch.tensor(2.1, device=device, dtype=dtype))
+
+    def test_convention_hyperplane_through_normal_orientation(self, device, dtype):
+        # through(p0, p1, p2) takes its normal along c = (p2 - p0) x (p1 - p0), Eigen's order: the opposite of the
+        # right-hand normal of the loop p0 -> p1 -> p2. Swapping two points flips the normal and a cyclic shift keeps
+        # it. Only the direction is compared; the length of the returned normal is not part of this convention.
+        p0 = torch.tensor([1.0, 0.0, 0.2], device=device, dtype=dtype)
+        p1 = torch.tensor([0.1, 1.2, 0.0], device=device, dtype=dtype)
+        p2 = torch.tensor([0.3, 0.0, 1.5], device=device, dtype=dtype)
+        c = torch.tensor([-1.56, -1.31, -0.84], device=device, dtype=dtype)  # (p2 - p0) x (p1 - p0)
+        assert (c.abs() >= 0.1).all()  # a tilted plane: no normal component near 0
+        c = c / torch.linalg.vector_norm(c)
+
+        def unit_normal(plane: Hyperplane) -> torch.Tensor:
+            normal = plane.normal.data
+            return normal / torch.linalg.vector_norm(normal, dim=-1, keepdim=True)
+
+        one = torch.tensor(1.0, device=device, dtype=dtype)
+        plane = Hyperplane.through(p0, p1, p2)
+        self.assert_close((unit_normal(plane) * c).sum(-1), one)
+        self.assert_close((unit_normal(Hyperplane.through(p0, p2, p1)) * c).sum(-1), -one)
+        self.assert_close((unit_normal(Hyperplane.through(p1, p2, p0)) * c).sum(-1), one)
+        # The plane passes through the three points: d = -n . p0 for the returned normal.
+        for p in (p0, p1, p2):
+            self.assert_close(
+                plane.signed_distance(p).data / torch.linalg.vector_norm(plane.normal.data), torch.zeros_like(one)
+            )
+
+    def test_wart_hyperplane_state_not_registered_4923(self, device, dtype):
+        # Hyperplane keeps its normal and offset as Vector3 / Scalar wrappers outside the module state (#4923), so
+        # state_dict() is empty and .to() leaves both in the original dtype. Registering them, as ParametrizedLine
+        # does, flips both assertions.
+        normal = torch.tensor([2.0, 1.0, -2.0], device=device, dtype=dtype) / 3
+        e = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype)
+        plane = Hyperplane.from_vector(Vector3(normal), Vector3(e))
+        assert list(plane.state_dict()) == []
+
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
+        moved = plane.to(other)
+        assert moved.normal.data.dtype == dtype
+        assert moved.offset.data.dtype == dtype
+
+
+class TestConventionsFitPlane(BaseTester):
+    def test_convention_fit_plane_input_forms(self, device, dtype):
+        # fit_plane takes a tensor or a Vector3 of shape (N, 3), or a batch (B, N, 3) that it fits row by row. The
+        # normal is unit, its sign is the SVD's and unspecified, so normals are compared up to sign (and the offset
+        # with them); the plane passes through the centroid. Other coordinate counts raise TypeError.
+        true_normal = torch.tensor([0.36, -0.48, 0.8], device=device, dtype=dtype)
+        assert (true_normal.abs() >= 0.1).all()  # a tilted plane: no normal component near 0
+        # Six points near the plane through (1, -2, 0.5) with this normal (offsets up to 0.02 along it).
+        points = torch.tensor(
+            [
+                [1.0036, -2.0048, 0.5080],
+                [0.7129, -0.3310, 1.6056],
+                [-0.3940, -3.1425, 0.4606],
+                [3.0525, -0.9923, 0.1810],
+                [-0.0298, 0.4593, 2.4265],
+                [1.8415, -2.1787, 0.0204],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # A second plane for the batch: the same points with their coordinates permuted, normal (-0.48, 0.8, 0.36).
+        permuted = points[:, [1, 2, 0]]
+
+        def assert_same_plane(normal: torch.Tensor, offset: torch.Tensor, other: Hyperplane) -> None:
+            sign = torch.sign((normal * other.normal.data).sum(-1))
+            self.assert_close(normal, sign * other.normal.data)
+            self.assert_close(offset, sign * other.offset.data)
+
+        plane = fit_plane(points)
+        assert plane.normal.shape == (3,)
+        assert plane.offset.shape == ()
+        self.assert_close(torch.linalg.vector_norm(plane.normal.data), torch.tensor(1.0, device=device, dtype=dtype))
+        assert (plane.normal.data * true_normal).sum().abs().item() > 0.999
+        centroid = points.mean(0)
+        self.assert_close(plane.signed_distance(centroid).data, torch.tensor(0.0, device=device, dtype=dtype))
+
+        from_vector3 = fit_plane(Vector3(points))
+        assert_same_plane(from_vector3.normal.data, from_vector3.offset.data, plane)
+
+        batch = fit_plane(torch.stack([points, permuted]))
+        assert batch.normal.shape == (2, 3)
+        assert batch.offset.shape == (2,)
+        rows = [plane, fit_plane(permuted)]
+        assert (rows[0].normal.data * rows[1].normal.data).sum().abs().item() < 0.5  # the two rows differ
+        for i, row in enumerate(rows):
+            assert_same_plane(batch.normal.data[i], batch.offset.data[i], row)
+
+        for wrong in (points[:, :2], torch.cat([points, points[:, :1]], -1)):
+            with pytest.raises(TypeError, match=r"vector must be \(\*, 3\)"):
+                fit_plane(wrong)

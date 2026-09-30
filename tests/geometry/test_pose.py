@@ -177,7 +177,7 @@ class TestNamedPose(BaseTester):
         assert a_from_b.frame_src == "frame_b"
         assert a_from_b.frame_dst == "frame_a"
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_transform_points(self, device, dtype, batch_size):
         if batch_size is None:
             points_in_a = torch.randn(3, device=device, dtype=dtype)

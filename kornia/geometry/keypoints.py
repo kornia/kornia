@@ -33,11 +33,26 @@ def _merge_keypoint_list(keypoints: List[torch.torch.Tensor]) -> torch.torch.Ten
 
 
 class Keypoints:
-    """2D Keypoints containing Nx2 or BxNx2 points.
+    r"""2D keypoints, stored as an :math:`(N, 2)` or :math:`(B, N, 2)` tensor of ``(x, y)`` points.
 
     Args:
-        keypoints: Raw tensor or a list of torch.Tensors with the Nx2 coordinates
-        raise_if_not_floating_point: will raise if the torch.Tensor isn't float
+        keypoints: tensor of :math:`(N, 2)` or :math:`(B, N, 2)` coordinates. A list of tensors is not implemented
+            (see Known defects).
+        raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
+            it to ``float32``.
+
+    Convention:
+        - A point is ``(x, y)`` in pixel coordinates (:ref:`Coordinates and sizes <coordinate-conventions>`), the
+          frame of the :class:`~kornia.geometry.boxes.Boxes` vertices.
+        - :meth:`transform_keypoints` maps a point to :math:`M [x, y, 1]^\top` and converts it back with
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous`. ``inplace=False`` returns a new
+          :class:`Keypoints`; ``inplace=True`` and :meth:`transform_keypoints_` rebind ``self`` to the transformed
+          tensor and return ``self``. Neither writes into the tensor that ``self`` wrapped.
+        - The constructor and :meth:`from_tensor` wrap a floating-point tensor without copying it. :meth:`pad`,
+          :meth:`unpad`, item assignment and ``index_put(inplace=True)`` write into the stored tensor, so they
+          change the caller's tensor; call :meth:`clone` first to keep it.
+        - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``
+          (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
     """
 
@@ -117,6 +132,8 @@ class Keypoints:
     ) -> "Keypoints":
         """Write keypoint coordinates at selected tensor indices.
 
+        See the Convention block on :class:`Keypoints`.
+
         Args:
             indices: Index tuple or list accepted by ``Tensor.index_put_`` for
                 the stored coordinate tensor.
@@ -164,12 +181,15 @@ class Keypoints:
     def pad(self, padding_size: torch.torch.Tensor) -> "Keypoints":
         """Pad the keypoints in place.
 
+        See the Convention block on :class:`Keypoints`.
+
         ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only ``left`` and ``top`` shift the
         coordinate origin. Both the batched :math:`(B, N, 2)` and the unbatched :math:`(N, 2)` container are
         supported; the unbatched form carries a single image, so ``padding_size`` must have exactly one row.
 
         Args:
-            padding_size: (B, 4)
+            padding_size: per-image padding in pixels, shaped :math:`(B, 4)`. A single row broadcasts across the
+                batch.
 
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
@@ -182,10 +202,13 @@ class Keypoints:
     def unpad(self, padding_size: torch.torch.Tensor) -> "Keypoints":
         """Undo :meth:`pad` in place.
 
+        See the Convention block on :class:`Keypoints`.
+
         Accepts the same batched and unbatched containers and ``padding_size`` layout as :meth:`pad`.
 
         Args:
-            padding_size: (B, 4)
+            padding_size: per-image padding in pixels, shaped :math:`(B, 4)`. A single row broadcasts across the
+                batch.
 
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
@@ -198,9 +221,12 @@ class Keypoints:
     def transform_keypoints(self, M: torch.torch.Tensor, inplace: bool = False) -> "Keypoints":
         r"""Apply a transformation matrix to the 2D keypoints.
 
+        See the Convention block on :class:`Keypoints`.
+
         Args:
             M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
-            inplace: do transform in-place and return self.
+            inplace: ``True`` rebinds this object to the transformed tensor and returns it; ``False`` returns a new
+                :class:`Keypoints`.
 
         Returns:
             The transformed keypoints.
@@ -225,8 +251,8 @@ class Keypoints:
         """Validate and wrap a tensor of 2D keypoint coordinates.
 
         Args:
-            keypoints: Tensor in :math:`(N, 2)` or :math:`(B, N, 2)` format.
-                The last dimension stores ``(x, y)`` coordinates.
+            keypoints: Floating-point tensor in :math:`(N, 2)` or :math:`(B, N, 2)` format; an integer tensor
+                raises ``ValueError``. The last dimension stores ``(x, y)`` coordinates.
 
         Returns:
             New :class:`Keypoints` instance containing the input coordinates.
@@ -236,14 +262,12 @@ class Keypoints:
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[torch.torch.Tensor, List[torch.torch.Tensor]]:
         r"""Cast :class:`Keypoints` to a tensor.
 
-        ``mode`` controls which 2D keypoints format should be use to represent keypoints in the tensor.
-
         Args:
-            as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid
-                if the keypoints are from a keypoint list.
+            as_padded_sequence: not implemented; ``True`` raises ``NotImplementedError``
+                (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
         Returns:
-            Keypoints tensor :math:`(B, N, 2)`
+            The stored tensor itself, :math:`(N, 2)` or :math:`(B, N, 2)`.
 
         """
         if as_padded_sequence:
@@ -262,10 +286,10 @@ class Keypoints:
         """Cast stored keypoint coordinates to a target dtype.
 
         Args:
-            dtype: Destination floating-point dtype for the coordinate tensor.
+            dtype: Destination dtype for the coordinate tensor.
 
         Returns:
-            ``self`` after converting the stored coordinates in place.
+            ``self``, rebound to the converted tensor; the tensor it wrapped before is not modified.
         """
         self._data = self._data.type(dtype)
         return self
@@ -309,11 +333,20 @@ class VideoKeypoints(Keypoints):
 
 
 class Keypoints3D:
-    """3D Keypoints containing Nx3 or BxNx3 points.
+    """3D keypoints, stored as an :math:`(N, 3)` or :math:`(B, N, 3)` tensor of ``(x, y, z)`` points.
+
+    The constructor validates the tensor as :class:`Keypoints` does and wraps a floating-point one without copying it.
 
     Args:
-        keypoints: Raw tensor or a list of torch.Tensors with the Nx3 coordinates
-        raise_if_not_floating_point: will raise if the torch.Tensor isn't float
+        keypoints: tensor of :math:`(N, 3)` or :math:`(B, N, 3)` coordinates. A list of tensors is not implemented
+            (see Known defects).
+        raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
+            it to ``float32``.
+
+    Convention:
+        - Known defects: list input, :meth:`pad`, :meth:`unpad`, :meth:`transform_keypoints`,
+          :meth:`transform_keypoints_` and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``
+          (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
     """
 
@@ -375,33 +408,17 @@ class Keypoints3D:
         return self._data
 
     def pad(self, padding_size: torch.torch.Tensor) -> "Keypoints3D":
-        """Pad a bounding keypoints.
-
-        Args:
-            padding_size: (B, 6)
-
-        """
+        """Not implemented: raises ``NotImplementedError`` (`#5023 <https://github.com/kornia/kornia/issues/5023>`_)."""
         raise NotImplementedError("`Keypoints3D.pad` is not implemented (kornia#5023).")
 
     def unpad(self, padding_size: torch.torch.Tensor) -> "Keypoints3D":
-        """Pad a bounding keypoints.
-
-        Args:
-            padding_size: (B, 6)
-
-        """
+        """Not implemented: raises ``NotImplementedError`` (`#5023 <https://github.com/kornia/kornia/issues/5023>`_)."""
         raise NotImplementedError("`Keypoints3D.unpad` is not implemented (kornia#5023).")
 
     def transform_keypoints(self, M: torch.Tensor, inplace: bool = False) -> "Keypoints3D":
-        r"""Apply a transformation matrix to the 3D keypoints.
+        """Not implemented: raises ``NotImplementedError`` (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
-        Args:
-            M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`.
-            inplace: do transform in-place and return self.
-
-        Returns:
-            The transformed keypoints.
-
+        Use :func:`~kornia.geometry.linalg.transform_points` on :attr:`data` instead.
         """
         raise NotImplementedError(
             "`Keypoints3D.transform_keypoints` is not implemented; use "
@@ -410,7 +427,7 @@ class Keypoints3D:
         )
 
     def transform_keypoints_(self, M: torch.Tensor) -> "Keypoints3D":
-        """Inplace version of :func:`Keypoints3D.transform_keypoints`."""
+        """Not implemented: raises ``NotImplementedError`` (`#5023 <https://github.com/kornia/kornia/issues/5023>`_)."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
@@ -427,16 +444,14 @@ class Keypoints3D:
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[torch.torch.Tensor, List[torch.torch.Tensor]]:
-        r"""Cast :class:`Keypoints` to a tensor.
-
-        ``mode`` controls which 2D keypoints format should be use to represent keypoints in the tensor.
+        r"""Cast :class:`Keypoints3D` to a tensor.
 
         Args:
-            as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid
-                if the keypoints are from a keypoint list.
+            as_padded_sequence: not implemented; ``True`` raises ``NotImplementedError``
+                (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
         Returns:
-            Keypoints tensor :math:`(B, N, 3)`
+            The stored tensor itself, :math:`(N, 3)` or :math:`(B, N, 3)`.
 
         """
         if as_padded_sequence:

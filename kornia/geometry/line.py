@@ -35,14 +35,22 @@ __all__ = ["ParametrizedLine", "fit_line"]
 
 
 class ParametrizedLine(nn.Module):
-    """Class that describes a parametrize line.
+    r"""Class that describes a parametrized line.
 
-    A parametrized line is defined by an origin point :math:`o` and a unit
+    A parametrized line is defined by an origin point :math:`o` and a
     direction vector :math:`d` such that the line corresponds to the set
 
     .. math::
 
         l(t) = o + t * d
+
+    Convention:
+        - The constructor does not normalise or check ``direction``, so :meth:`point_at` steps ``t`` in units of its
+          length. :meth:`through` and :func:`fit_line` return a unit direction; after :meth:`through`, ``t`` is the
+          Euclidean distance from ``p0``.
+        - :meth:`projection`, :meth:`squared_distance` and :meth:`distance` require a unit ``direction``.
+        - :meth:`intersect` returns ``(lambda, point)`` with ``point = point_at(lambda)``: ``lambda`` is in units of
+          the stored direction, and the plane's normal need not be unit.
     """
 
     def __init__(self, origin: torch.Tensor, direction: torch.Tensor) -> None:
@@ -50,11 +58,11 @@ class ParametrizedLine(nn.Module):
 
         Args:
             origin: any point on the line of any dimension.
-            direction: the normalized vector direction of any dimension.
+            direction: the direction vector of the line, of the same dimension.
 
         Example:
             >>> o = torch.tensor([0.0, 0.0])
-            >>> d = torch.tensor([1.0, 1.0])
+            >>> d = torch.tensor([0.6, 0.8])
             >>> l = ParametrizedLine(o, d)
 
         """
@@ -153,7 +161,7 @@ class ParametrizedLine(nn.Module):
         return torch.sum(perp * perp, dim=-1)
 
     def distance(self, point: torch.Tensor) -> torch.Tensor:
-        """Return the distance of a point to its projections onto the line.
+        """Return the distance of a point to its projection onto the line.
 
         Args:
             point: the point to calculate the distance onto the line.
@@ -177,7 +185,7 @@ class ParametrizedLine(nn.Module):
 
         Args:
             plane: the plane to compute the intersection point.
-            eps: epsilon for numerical stability.
+            eps: absolute threshold on ``|normal . direction|`` below which the line counts as parallel to the plane.
 
         Return:
             - the lambda value used to compute the look at point.
@@ -315,21 +323,24 @@ def _reject_degenerate_line(points: torch.Tensor, weights: Optional[torch.Tensor
 
 
 def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
-    """Fit a line from a set of points by total least squares.
+    r"""Fit a line from a set of points by total least squares.
 
-    The line minimises the perpendicular distances to the points, for every dimensionality.
-    For 2-D inputs the direction is computed in closed form and always has a non-negative
-    x component, so an exactly vertical line gets the direction (0, 1); higher-dimensional
-    inputs take the principal direction of the scatter matrix, whose sign is not specified.
+    Convention:
+        - Returns a :class:`ParametrizedLine` (see its conventions) through the centroid of the points, weighted
+          when ``weights`` are given, whose unit direction minimises the (weighted) sum of squared perpendicular
+          distances to the points, for every dimensionality. Each batch row is fitted on its own.
+        - For 2-D points the direction is computed in closed form and has a non-negative x component, so an exactly
+          vertical line gets the direction ``(0, 1)`` up to rounding. For :math:`D \ge 3` it is the principal
+          direction of the scatter matrix, whose sign is not specified.
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The expected
             shape of the tensor is :math:`(B, N, D)`.
-        weights: weights to use to solve the equations system. The expected
+        weights: per-point weights, used in the centroid and in the fit. The expected
             shape of the tensor is :math:`(B, N)`.
 
     Return:
-        A tensor containing the direction of the fitted line of shape :math:`(B, D)`.
+        The fitted line, with origin and direction of shape :math:`(B, D)`.
 
     Raises:
         ValueCheckError: if the points do not determine a line — fewer than two points,
