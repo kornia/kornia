@@ -90,10 +90,9 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type
+                input_names_to_handle=input_names_to_handle, output_type=output_type, cache_output=True
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            self._store_output_image(_output_image, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
@@ -164,10 +163,9 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type
+                input_names_to_handle=input_names_to_handle, output_type=output_type, cache_output=True
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            self._store_output_image(_output_image, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
