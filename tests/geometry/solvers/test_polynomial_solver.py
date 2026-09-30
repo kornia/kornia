@@ -694,30 +694,29 @@ class TestQuarticSolver(BaseTester):
         # to recover exactly those roots (no complex outputs).
         self.assert_close(computed_roots_sorted, true_roots_sorted, atol=1e-3, rtol=1e-3)
 
-    def test_wart_close_real_roots_float32_precision_4906(self, device, dtype):
-        if dtype != torch.float32:
-            pytest.skip("float64 recovers this row exactly; only float32 loses resolvent-cubic precision here")
-        # #4906: from torch.manual_seed(95); torch.randn(10, 4) (see the issue repro), the worst row of that
-        # batch. Its resolvent cubic (Ferrari's method) has a discriminant of ~2.3e-11 -- close enough to the
-        # real/complex-pair boundary that the ~1e-6-level rounding in computing the resolvent coefficients in
-        # float32 (not inside solve_cubic, which solves whichever cubic it's given correctly either way) flips
-        # which side of that boundary it lands on: float64 finds 3 close real resolvent roots, float32 only 1.
-        # This is inherent conditioning near a near-repeated root, not a fixable branch in the solver, so the
-        # bound here is wide and documents today's ceiling rather than asserting numerical precision.
-        # Measured max error vs the true roots: ~3e-4 on Linux/Windows CPU, ~1.6e-2 on macOS arm64 (#4906's own
-        # report) -- the tolerance is set well above the worse of the two, not the locally-measured value.
+    def test_close_real_roots_bound_4906(self, device, dtype):
+        # #4906: row 4 of torch.manual_seed(95); torch.randn(10, 4) on CPU, through test_random's float32
+        # coefficient construction. Two real roots sit 0.056 apart. The float32 rounding of the coefficients
+        # alone moves the roots by up to 4.1e-4 (the float64 solve of these coefficients); float32 solve_quartic
+        # misses them by 2.3e-2, the solver-side loss #4906 tracks. Keep the literals exact: moving two
+        # coefficients by one ulp brings the float32 error down to 2.3e-4 and the case stops being one.
+        # float32 is bounded at about twice today's error, so a pair that is dropped or misplaced further fails
+        # and a solver fix passes (tighten the bound then); float64 is bounded by the coefficient rounding.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the case bounds the float32 loss and the float64 coefficient rounding")
         coeffs = torch.tensor(
-            [[1.0, 4.462162017822266, 7.442312240600586, 5.498605728149414, 1.5184011459350586]],
+            [[1.0, 4.4621620178222656, 7.4423127174377441, 5.4986057281494141, 1.518401026725769]],
             device=device,
             dtype=dtype,
         )
         true_roots = torch.tensor(
-            [[-1.2491413354873657, -1.192849040031433, -1.0452626943588257, -0.9749088287353516]],
+            [[-1.2491413354873657, -1.1928491592407227, -1.0452626943588257, -0.974908709526062]],
             device=device,
             dtype=dtype,
         )
         out = solver.solve_quartic(coeffs).sort(-1).values
-        self.assert_close(out, true_roots.sort(-1).values, atol=0.1, rtol=0.1)
+        atol = 5e-2 if dtype == torch.float32 else 1e-3
+        self.assert_close(out, true_roots, atol=atol, rtol=0.0)
 
     @pytest.mark.parametrize(
         "coeffs, expected_solutions",
