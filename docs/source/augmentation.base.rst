@@ -47,10 +47,10 @@ Kornia augmentations generally follow a `sample-apply` routine.
 - `apply`: with the generated (or user-provided) parameters, the augmentation is performed accordingly.
   Apart from transforming image tensors, Kornia also supports inverse operations that revert the transform,
   and transforms of other data modalities (`data keys` in Kornia) such as masks, keypoints, and bounding boxes.
-  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` dispatches
-  geometric coordinate transforms by the geometric base type; implementing a matrix on a custom rigid base alone
-  does not enable that dispatch (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). Non-rigid coordinate
-  transforms are not supplied automatically (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` passes the
+  recorded matrix to the mask, box and keypoint handlers of geometric children and of custom
+  `RigidAffineAugmentationBase2D` subclasses. Non-rigid coordinate transforms are not supplied automatically
+  (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
 Custom Augmentation Classes
 ---------------------------

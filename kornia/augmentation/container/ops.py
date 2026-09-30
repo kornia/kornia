@@ -201,14 +201,26 @@ class AugmentationSequentialOps:
                 ),
             )
 
-        outputs = []
-        for inp, dcate in zip(arg, _data_keys):
+        # Rigid annotation handlers read the matrix produced by the image call. Process that input first even
+        # when the caller supplies data keys in another order, then restore the caller's output order.
+        order = list(range(len(arg)))
+        if (
+            isinstance(module, K.RigidAffineAugmentationBase2D)
+            and not isinstance(module, K.IntensityAugmentationBase2D)
+            and DataKey.INPUT in _data_keys
+        ):
+            image_index = _data_keys.index(DataKey.INPUT)
+            order.insert(0, order.pop(image_index))
+
+        outputs = list(arg)
+        for index in order:
+            inp, dcate = arg[index], _data_keys[index]
             op = self._get_op(dcate)
             extra_arg = extra_args.get(dcate, {})
             if dcate.name == "MASK" and isinstance(inp, list):
-                outputs.append(MaskSequentialOps.transform_list(inp, module, param=param, extra_args=extra_arg))
+                outputs[index] = MaskSequentialOps.transform_list(inp, module, param=param, extra_args=extra_arg)
             else:
-                outputs.append(op.transform(inp, module, param=param, extra_args=extra_arg))
+                outputs[index] = op.transform(inp, module, param=param, extra_args=extra_arg)
         if len(outputs) == 1 and isinstance(outputs, (list, tuple)):
             return outputs[0]
         return outputs
@@ -427,7 +439,9 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if extra_args is None:
             extra_args = {}
 
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+            module, K.IntensityAugmentationBase2D
+        ):
             extra_args = cls._mask_extra_args(module, extra_args)
             input = module.transform_masks(
                 input,
@@ -482,7 +496,9 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         """
         if extra_args is None:
             extra_args = {}
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+            module, K.IntensityAugmentationBase2D
+        ):
             extra_args = cls._mask_extra_args(module, extra_args)
             tfm_input = []
             params = cls.get_instance_module_param(param)
@@ -646,7 +662,9 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             extra_args = {}
         _input = input.clone()
 
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+            module, K.IntensityAugmentationBase2D
+        ):
             _input = module.transform_boxes(
                 _input,
                 cls.get_instance_module_param(param),
@@ -752,7 +770,9 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
             extra_args = {}
         _input = input.clone()
 
-        if isinstance(module, (K.GeometricAugmentationBase2D,)):
+        if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
+            module, K.IntensityAugmentationBase2D
+        ):
             _input = module.transform_keypoints(
                 _input,
                 cls.get_instance_module_param(param),
