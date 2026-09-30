@@ -169,8 +169,8 @@ class TestKimiVLModel(BaseTester):
 
     def test_exception(self, device, dtype, model):
         # Test invalid input shape (missing batch dim)
+        images = torch.randn(3, 32, 32, device=device, dtype=dtype)
         with pytest.raises((RuntimeError, ValueError, IndexError)):
-            images = torch.randn(3, 32, 32, device=device, dtype=dtype)
             model(images)
 
     def test_gradcheck(self, device, config):

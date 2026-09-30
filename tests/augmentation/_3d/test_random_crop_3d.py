@@ -300,3 +300,42 @@ class TestRandomCrop3D(BaseTester):
             RandomCrop3D((4, 4, 4), padding=1, fill=(1.0, 0.0, 0.0), padding_mode="replicate", p=1.0).precrop_padding(
                 volume
             )
+
+
+class TestRandomCrop3DPaddingMatrix(BaseTester):
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize(
+        "padding,automatic,size",
+        [
+            (None, False, (4, 5, 6)),
+            ((1, 2, 2, 1, 3, 1), False, (7, 7, 8)),
+            (None, True, (6, 7, 8)),
+            ((1, 0, 2, 0, 0, 1), True, (7, 9, 9)),
+        ],
+    )
+    def test_original_voxel_coordinates_and_replay_4801(self, same_on_batch, padding, automatic, size, device, dtype):
+        torch.manual_seed(4)
+        volume = torch.zeros(2, 1, 5, 6, 7, device=device, dtype=dtype)
+        volume[..., 2, 3, 3] = 1
+        aug = RandomCrop3D(
+            size,
+            padding=padding,
+            pad_if_needed=automatic,
+            same_on_batch=same_on_batch,
+            resample="nearest",
+            p=1.0,
+        )
+        output = aug(volume)
+        matrix = aug.transform_matrix.clone()
+        mapped = (matrix @ volume.new_tensor([3, 3, 2, 1]))[:, :3]
+        for row in range(2):
+            indices = (output[row, 0] == 1).nonzero()
+            assert indices.shape == (1, 3)
+            self.assert_close(mapped[row], indices[0].flip(0).to(volume), rtol=0, atol=0)
+        if same_on_batch:
+            self.assert_close(matrix[0], matrix[1], rtol=0, atol=0)
+        self.assert_close(aug(volume, params=aug._params), output, rtol=0, atol=0)
+        self.assert_close(aug.transform_matrix, matrix, rtol=0, atol=0)
+        skipped = RandomCrop3D(size, padding=padding, pad_if_needed=automatic, p=0.0)
+        self.assert_close(skipped(volume), volume, rtol=0, atol=0)
+        self.assert_close(skipped.transform_matrix, torch.eye(4, device=device, dtype=dtype).expand(2, -1, -1))

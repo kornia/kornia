@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import Resample
 from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
@@ -110,10 +111,21 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         start_points, end_points = params["start_points"], params["end_points"]
-        if isinstance(input.shape[-1], int) and input.shape[-1] == 1:
-            # The solver uses corners 0, 1, 2, 5, 7: only two lie on x=0. Swap the x/z or x/y
-            # corner ordering so three constrain each singleton plane to map onto itself.
-            order = [0, 4, 7, 3, 1, 5, 6, 2] if input.shape[-3] > 1 else [0, 3, 2, 1, 4, 7, 6, 5]
+        width, depth = input.shape[-1], input.shape[-3]
+        # The solver uses corners 0, 1, 2, 5, 7: only two lie on x=0. On a singleton x axis, swap the x/z
+        # or x/y corner ordering so three constrain each singleton plane to map onto itself.
+        if isinstance(width, torch.Tensor):
+            # torch.jit.trace passes the sizes as 0-d tensors, so the order is selected in the graph (#5110).
+            device = start_points.device
+            singleton_order = torch.where(
+                torch.as_tensor(depth, device=device) > 1,
+                _constant_tensor([0, 4, 7, 3, 1, 5, 6, 2], device=device, dtype=torch.long),
+                _constant_tensor([0, 3, 2, 1, 4, 7, 6, 5], device=device, dtype=torch.long),
+            )
+            order = torch.where(width.to(device) == 1, singleton_order, torch.arange(8, device=device))
+            start_points, end_points = start_points[:, order], end_points[:, order]
+        elif isinstance(width, int) and width == 1:
+            order = [0, 4, 7, 3, 1, 5, 6, 2] if depth > 1 else [0, 3, 2, 1, 4, 7, 6, 5]
             start_points, end_points = start_points[:, order], end_points[:, order]
         return get_perspective_transform3d(start_points, end_points).to(input)
 

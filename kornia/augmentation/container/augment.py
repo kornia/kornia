@@ -132,14 +132,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           same per-entry gate. A flip round-trips each entry, subject to the working-dtype rounding above; other
           warps lose the pixels they move out of the frame and, when they resample, restore the rest only
           approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
-        - supported geometric data-key handlers share the recorded transform, subject to the mask limitations
-          above. Custom rigid subclasses are not dispatched solely because they supply a matrix
-          (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid warp child has no matrix, so
-          the coordinate keys are left unchanged; see the warning below.
-        - ``.inverse()`` undoes the 2D geometric steps and leaves intensity and non-rigid steps applied. Slice-mode
-          crops and 3D geometric children raise ``NotImplementedError``, mix children ``RuntimeError``. Tensor
-          boxes come back as axis-aligned enclosures; pass :class:`~kornia.geometry.boxes.Boxes` to keep rotated
-          corners. Content lost to cropping, padding or interpolation is not recovered.
+        - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform it recorded,
+          subject to the mask limitations above; a handler the subclass does not implement raises
+          ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are left unchanged;
+          see the warning below.
+        - ``.inverse()`` undoes the 2D geometric steps and leaves intensity, custom rigid and non-rigid steps
+          applied. Slice-mode crops and 3D geometric children raise ``NotImplementedError``, mix children
+          ``RuntimeError``. Tensor boxes come back as axis-aligned enclosures; pass
+          :class:`~kornia.geometry.boxes.Boxes` to keep rotated corners. Content lost to cropping, padding or
+          interpolation is not recovered.
         - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
           ``True`` or ``False`` overrides it.
         - ``.transform_matrix`` of a chain holding a nested container is unreliable: it can raise, omit the
