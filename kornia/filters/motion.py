@@ -245,8 +245,6 @@ def motion_blur(
             (`#5168 <https://github.com/kornia/kornia/issues/5168>`_).
           - a tuple ``kernel_size`` is not rejected up front and fails with a raw ``TypeError``
             (`#5169 <https://github.com/kornia/kornia/issues/5169>`_).
-          - a tensor ``angle`` on MPS builds the kernel there, and for some angles it blurs differently from the
-            same float angle (`#5181 <https://github.com/kornia/kornia/issues/5181>`_).
 
     Args:
         input: the input torch.Tensor with shape :math:`(B, C, H, W)`.
@@ -300,8 +298,7 @@ def motion_blur3d(
         - The kernel is :func:`~kornia.filters.get_motion_kernel3d`'s, correlated with the volume by
           :func:`~kornia.filters.filter3d`; their Convention blocks cover ``angle``, ``direction``, ``mode`` and the
           border modes. With ``direction=1`` and zero angles the streak of a bright voxel is heaviest toward
-          :math:`+x`; a positive roll turns it toward :math:`+y`, clockwise as displayed and the opposite of
-          :func:`~kornia.filters.motion_blur`'s ``angle``, and a positive pitch toward decreasing ``D``.
+          :math:`+x`; a positive roll turns it toward :math:`+y` and a positive pitch toward decreasing ``D``.
         - Known defects:
 
           - the default ``border_type='constant'`` zero-pads, so a constant volume darkens toward the faces, where

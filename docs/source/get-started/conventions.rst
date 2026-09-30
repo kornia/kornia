@@ -694,9 +694,10 @@ The edge-preserving filters, the sharpening and the blur pools against their ref
   border. scikit-image pads with scipy's ``reflect``, which has no kornia mode, and with its default
   ``preserve_range=False`` it clips the result, which :func:`~kornia.filters.unsharp_mask` never does.
 - ``blur_pool2d(x, k, s)`` with an odd ``k`` equals the antialiased-cnns
-  ``BlurPool(channels, pad_type='zero', filt_size=k, stride=s)``. The reference's default ``pad_type='reflect'``
-  keeps a constant map constant where :func:`~kornia.filters.blur_pool2d` zero-pads and darkens its border, and for
-  an even ``k`` kornia returns one row and one column fewer than the reference
+  ``BlurPool(channels, pad_type='zero', filt_size=k, stride=s)``, which defines ``filt_size`` up to 7. The reference's
+  default ``pad_type='reflect'`` keeps a constant map constant where :func:`~kornia.filters.blur_pool2d` zero-pads
+  and darkens its border. For an even ``k`` kornia's blurred map is one row and one column short, so at ``s=1`` it
+  returns one row and one column fewer than the reference
   (`#5166 <https://github.com/kornia/kornia/issues/5166>`_).
 - ``blur_pool2d(x, 5, 2)`` blurs with the 5 x 5 binomial kernel of :func:`~kornia.geometry.transform.pyrdown` but
   samples differently: it zero-pads and keeps every second pixel from index 0, :math:`\lceil H / 2 \rceil` rows,

@@ -128,8 +128,8 @@ def box_blur(
         - ``kernel_size`` is ``(kH, kW)``, and every tap weighs ``1 / (kH * kW)``. An even extent is anchored at
           ``(k - 1) // 2`` and the output keeps the input's size; see the Convention block on
           :func:`~kornia.filters.filter2d` for the anchor and the border modes.
-        - Known defect: an integer input gets a kernel in its own dtype, whose ``1 / k`` taps truncate to 0, so a
-          uint8 image comes back as zeros (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - Known defect: an integer input gets a kernel in its own dtype, whose ``1 / k`` taps truncate to 0, so on
+          the CPU a uint8 image comes back as zeros (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         input: the image to blur with shape :math:`(B,C,H,W)`.
@@ -138,12 +138,8 @@ def box_blur(
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
           Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. Floating inputs use average pooling outside autocast
-          where it is faster (on CPUs with oneDNN, only for large inputs or small
-          compiled windows); complex inputs and autocast use convolution. The dense implementation
-          may differ by floating-point roundoff. Ordinary eager CPU execution
-          falls back to convolution for extreme input ranges; captured graphs
-          and function transforms retain native pooling arithmetic.
+          for larger kernels. The implementations agree to floating-point roundoff, except that outside eager
+          CPU execution values near the dtype's largest finite value can overflow to ``inf``.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -201,12 +197,8 @@ class BoxBlur(nn.Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. Floating inputs use average pooling outside autocast
-          where it is faster (on CPUs with oneDNN, only for large inputs or small
-          compiled windows); complex inputs and autocast use convolution. The dense implementation
-          may differ by floating-point roundoff. Ordinary eager CPU execution
-          falls back to convolution for extreme input ranges; captured graphs
-          and function transforms retain native pooling arithmetic.
+          for larger kernels. The implementations agree to floating-point roundoff, except that outside eager
+          CPU execution values near the dtype's largest finite value can overflow to ``inf``.
 
     Returns:
         the blurred input torch.Tensor.
