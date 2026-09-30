@@ -657,6 +657,7 @@ class TestQuarticSolver(BaseTester):
 
     def test_random(self, device, dtype):
         # Generate random roots and construct coefficients to ensure valid solutions exist
+        torch.manual_seed(0)
         B = 10
         true_roots = torch.randn(B, 4, device=device, dtype=dtype)
 
@@ -692,6 +693,30 @@ class TestQuarticSolver(BaseTester):
         # Since we synthesized the coefficients from real roots, we expect
         # to recover exactly those roots (no complex outputs).
         self.assert_close(computed_roots_sorted, true_roots_sorted, atol=1e-3, rtol=1e-3)
+
+    def test_close_real_roots_bound_4906(self, device, dtype):
+        # #4906: row 4 of torch.manual_seed(95); torch.randn(10, 4) on CPU, through test_random's float32
+        # coefficient construction. Two real roots sit 0.056 apart. The float32 rounding of the coefficients
+        # alone moves the roots by up to 4.1e-4 (the float64 solve of these coefficients); float32 solve_quartic
+        # misses them by 2.3e-2, the solver-side loss #4906 tracks. Keep the literals exact: moving two
+        # coefficients by one ulp brings the float32 error down to 2.3e-4 and the case stops being one.
+        # float32 is bounded at about twice today's error, so a pair that is dropped or misplaced further fails
+        # and a solver fix passes (tighten the bound then); float64 is bounded by the coefficient rounding.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the case bounds the float32 loss and the float64 coefficient rounding")
+        coeffs = torch.tensor(
+            [[1.0, 4.4621620178222656, 7.4423127174377441, 5.4986057281494141, 1.518401026725769]],
+            device=device,
+            dtype=dtype,
+        )
+        true_roots = torch.tensor(
+            [[-1.2491413354873657, -1.1928491592407227, -1.0452626943588257, -0.974908709526062]],
+            device=device,
+            dtype=dtype,
+        )
+        out = solver.solve_quartic(coeffs).sort(-1).values
+        atol = 5e-2 if dtype == torch.float32 else 1e-3
+        self.assert_close(out, true_roots, atol=atol, rtol=0.0)
 
     @pytest.mark.parametrize(
         "coeffs, expected_solutions",
