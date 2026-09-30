@@ -28,6 +28,7 @@ from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.core.exceptions import BaseError
 from kornia.filters import (
     GaussianBlur2d,
+    filter2d,
     gaussian,
     gaussian_blur2d,
     get_gaussian_discrete_kernel1d,
@@ -38,7 +39,7 @@ from kornia.filters import (
 )
 from kornia.filters.kernels import gaussian_discrete, gaussian_discrete_erf
 
-from testing.base import BaseTester, assert_close, supports_reflect_padding
+from testing.base import BaseTester, assert_close, supports_reflect_padding, supports_replicate_padding
 
 
 @pytest.mark.parametrize(
@@ -754,20 +755,49 @@ class TestConventionsGaussianBlur(BaseTester):
         self.assert_close(shared[0], out[0])
         self.assert_close(shared[1], out[0])
 
+    @pytest.mark.parametrize("border_type", ["reflect", "replicate", "constant", "circular"])
+    def test_convention_gaussian_blur2d_border_type_is_filter2d_s_on_every_path(self, border_type, device, dtype):
+        # border_type pads as filter2d does, on every implementation: the separable pass, the dense kernel and, for a
+        # large float32 / float64 CPU image, the weighted-slice path. The delta-free random image reaches the border.
+        if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip(f"this torch build has no replicate padding kernel for {dtype} on {device.type}")
+        kernel = get_gaussian_kernel2d((5, 7), (1.0, 2.0), dtype=torch.float64).to(dtype)
+        torch.manual_seed(0)
+        for shape in ((1, 2, 23, 31), (1, 2, 257, 301)):
+            image = torch.rand(shape).to(device=device, dtype=dtype)
+            expected = filter2d(image, kernel, border_type)
+            for separable in (True, False):
+                self.assert_close(gaussian_blur2d(image, (5, 7), (1.0, 2.0), border_type, separable), expected)
+
     def test_wart_gaussian_blur2d_integer_image_blurs_to_zero_5155(self, device):
-        """gaussian_blur2d casts its kernel to an integer input's dtype, so a uint8 image blurs to zero (#5155)."""
+        """gaussian_blur2d casts sigma and the kernel to an integer dtype: a uint8 image blurs to zero (#5155)."""
         if device.type != "cpu":
             pytest.skip("#5155 is pinned on the CPU; MPS raises for an integer convolution instead")
         image = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
         for separable in (True, False):
             assert gaussian_blur2d(image, (3, 3), (1.0, 1.0), separable=separable).eq(0).all()
+        # a sigma below 1 truncates to 0 in uint8 and is then rejected as not positive
+        with pytest.raises(BaseError):
+            gaussian_blur2d(image, (3, 3), (0.5, 0.5))
         # the same blur of the same values in floating point keeps the constant image
         self.assert_close(gaussian_blur2d(image.float(), (3, 3), (1.0, 1.0)), image.float())
 
     def test_wart_gaussian_blur2d_sigma_batch_is_not_validated_5169(self, device, dtype):
-        """gaussian_blur2d accepts a sigma batch that is neither 1 nor B and fails in a raw torch reshape (#5169)."""
+        """gaussian_blur2d does not validate the sigma batch: a divisor of B cycles, another size fails raw (#5169)."""
         if not supports_reflect_padding(device, dtype):
             pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
-        image = torch.rand(2, 3, 9, 13, device=device, dtype=dtype)
+        torch.manual_seed(0)
+        image = torch.rand(4, 3, 9, 13).to(device=device, dtype=dtype)
+        # a (2, 2) sigma for B = 4 runs: sample b is blurred with sigma row b % 2
+        sigma = torch.tensor([[0.8, 0.8], [3.0, 3.0]], device=device, dtype=dtype)
+        out = gaussian_blur2d(image, 5, sigma)
+        for sample in range(4):
+            row = sample % 2
+            self.assert_close(
+                out[sample : sample + 1], gaussian_blur2d(image[sample : sample + 1], 5, sigma[row : row + 1])
+            )
+        # a batch that does not divide B fails inside torch
         with pytest.raises(RuntimeError):
-            gaussian_blur2d(image, 3, torch.ones(3, 2, device=device, dtype=dtype))
+            gaussian_blur2d(image[:2], 3, torch.ones(3, 2, device=device, dtype=dtype))

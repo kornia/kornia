@@ -421,8 +421,9 @@ class TestConventionsBlurPool(BaseTester):
     def test_convention_edge_aware_blur_pool2d_edge_is_an_intensity_ratio(self, device, dtype):
         # A pixel keeps its value where the channel mean of log2(I(x + 2) / I(x - 2)), along x or y, exceeds
         # log2(edge_threshold) in magnitude (dilated by edge_dilation_kernel_size), and is blurred elsewhere: the
-        # threshold is a ratio of intensities 4 px apart, so the decision is scale-invariant. Positive intensities
-        # are assumed: a negative pixel's log is NaN, which never counts as an edge.
+        # threshold is a ratio of intensities 4 px apart, so the decision is scale-invariant for intensities well
+        # above epsilon. The comparison is strict. Positive intensities are assumed: a negative pixel's log is NaN,
+        # which never counts as an edge.
         # The default edge_threshold is 1.25, and the output keeps the input size. On a vertical step between
         # columns 5 and 6 the blur would move those two columns by a quarter of the step.
         if not supports_reflect_padding(device, dtype):
@@ -450,6 +451,28 @@ class TestConventionsBlurPool(BaseTester):
         out = edge_aware_blur_pool2d(step, 3)
         assert moved(step, out) > 0.3 / 8
         assert not out.isnan().any()
+        # strict: with epsilon=0 a 1 -> 2 step has a log2 ratio of exactly 1 = log2(2), which is not an edge at
+        # edge_threshold=2 and is one just below it
+        step = torch.ones(1, 1, 9, 12, device=device, dtype=dtype)
+        step[..., 6:] = 2.0
+        assert moved(step, edge_aware_blur_pool2d(step, 3, edge_threshold=2.0, epsilon=0.0)) > 1 / 8
+        self.assert_close(edge_aware_blur_pool2d(step, 3, edge_threshold=1.99, epsilon=0.0)[..., 5:7], step[..., 5:7])
+
+    def test_convention_edge_aware_blur_pool2d_compares_pixels_two_apart_and_dilates_the_edges(self, device, dtype):
+        # The edge test at x compares x - 2 with x + 2 (and y - 2 with y + 2), and edge_dilation_kernel_size widens
+        # the kept band. Period-2 stripes, 1.0 | 1.15, scaled by 1.5 from column 8 on: pixels two apart match away
+        # from the step, so only columns 6..9 see the 1.5 ratio, and the stripes make every blurred column differ
+        # from the input. Transposing the image moves the band to rows 6..9.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        step = (1.0 + 0.15 * (torch.arange(16) % 2)).expand(1, 1, 9, 16).to(device=device, dtype=dtype).contiguous()
+        step[..., 8:] *= 1.5
+        for dilation, kept in ((1, [6, 7, 8, 9]), (3, [5, 6, 7, 8, 9, 10])):
+            out = edge_aware_blur_pool2d(step, 3, edge_dilation_kernel_size=dilation)
+            assert [c for c in range(16) if torch.equal(out[..., c], step[..., c])] == kept
+        transposed = step.transpose(-1, -2).contiguous()
+        out = edge_aware_blur_pool2d(transposed, 3, edge_dilation_kernel_size=1)
+        assert [r for r in range(16) if torch.equal(out[..., r, :], transposed[..., r, :])] == [6, 7, 8, 9]
 
     def test_wart_blur_pool2d_even_kernel_drops_a_row_and_a_column_5166(self, device, dtype):
         """The blur pools pad (k - 1) // 2 on both sides, so an even kernel loses a row and a column (#5166)."""
@@ -484,12 +507,32 @@ class TestConventionsBlurPool(BaseTester):
         with pytest.raises(RuntimeError):
             EdgeAwareBlurPool2D(kernel_size)(image)
 
-    def test_wart_edge_aware_blur_pool2d_threshold_at_most_one_disables_the_blur_5169(self, device, dtype):
-        """edge_aware_blur_pool2d checks only edge_threshold > 0, but a ratio <= 1 makes every pixel an edge (#5169)."""
+    def test_wart_edge_aware_blur_pool2d_threshold_below_one_disables_the_blur_5169(self, device, dtype):
+        """edge_aware_blur_pool2d checks only edge_threshold > 0; below 1 every positive pixel is an edge (#5169)."""
         if not supports_reflect_padding(device, dtype):
             pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
         torch.manual_seed(0)
         smooth = (1.0 + 0.05 * torch.rand(2, 3, 9, 13)).to(device=device, dtype=dtype)
+        # period-2 stripes: pixels two apart are equal, so every log ratio is exactly 0
+        stripes = (1.0 + (torch.arange(13) % 2)).expand(1, 1, 9, 13).to(device=device, dtype=dtype).contiguous()
         assert not torch.equal(edge_aware_blur_pool2d(smooth, 3, edge_threshold=1.25), smooth)
-        for edge_threshold in (0.5, 1.0):
+        for edge_threshold in (0.5, 0.99):
             assert torch.equal(edge_aware_blur_pool2d(smooth, 3, edge_threshold=edge_threshold), smooth)
+            assert torch.equal(edge_aware_blur_pool2d(stripes, 3, edge_threshold=edge_threshold), stripes)
+        # exactly 1 is not below 1: a zero log ratio is not an edge, and the stripes are blurred
+        assert not torch.equal(edge_aware_blur_pool2d(stripes, 3, edge_threshold=1.0), stripes)
+
+    def test_wart_edge_aware_blur_pool2d_large_kernel_darkens_a_constant_image_5228(self, device, dtype):
+        """edge_aware_blur_pool2d pads 2 px, so from kernel_size=7 its blur reaches zeros at the border (#5228)."""
+        # A 7-tap binomial reaches 3 px: at a corner its outermost tap of 1/64 per axis falls on zero padding, so the
+        # corner keeps (63/64)^2 of a constant image, and a pixel on an edge 63/64. Kernel sizes 3 and 5 stay inside
+        # the reflected 2 px.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        ones = torch.ones(1, 1, 15, 18, device=device, dtype=dtype)
+        for kernel_size in (3, 5):
+            assert torch.equal(edge_aware_blur_pool2d(ones, kernel_size), ones)
+        out = edge_aware_blur_pool2d(ones, 7)
+        self.assert_close(out[0, 0, 0, 0], torch.tensor((63 / 64) ** 2, device=device, dtype=dtype))
+        self.assert_close(out[0, 0, -1, 5], torch.tensor(63 / 64, device=device, dtype=dtype))
+        self.assert_close(out[0, 0, 3:-3, 3:-3], ones[0, 0, 3:-3, 3:-3])

@@ -588,6 +588,17 @@ class TestConventionsMotionBlur(BaseTester):
         ):
             assert self._heaviest_offset(motion_blur3d(volume, 3, angle, 1.0)[0, 0], (3, 5, 4)) == offset
 
+    def test_convention_motion_blur3d_module_float_angle_is_used_for_all_three_axes(self, device, dtype):
+        # MotionBlur3D takes a float angle as (angle, angle, angle): yaw, pitch and roll alike. At 50 degrees every
+        # triple that leaves one or two of the axes at 0 is a different kernel.
+        torch.manual_seed(0)
+        volume = torch.rand(1, 1, 7, 8, 9).to(device=device, dtype=dtype)
+        out = MotionBlur3D(3, 50.0, 0.5)(volume)
+        self.assert_close(out, motion_blur3d(volume, 3, (50.0, 50.0, 50.0), 0.5))
+        for yaw, pitch, roll in ((1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, 0, 1), (0, 1, 1)):
+            partial = motion_blur3d(volume, 3, (50.0 * yaw, 50.0 * pitch, 50.0 * roll), 0.5)
+            assert (out - partial).abs().max() > 0.3
+
     def test_convention_motion_blur_tensor_angle_and_direction_are_per_sample(self, device, dtype):
         # A tensor angle and direction are (B,): entry b drives sample b. A scalar direction is not broadcast
         # against a (B,) angle.
@@ -646,8 +657,12 @@ class TestConventionsMotionBlur(BaseTester):
         self.assert_close(MotionBlur3D(3, (0.0, 0.0, 0.0), 0.0)(volume)[0, 0, 2, 3], line)
 
     def test_wart_motion_blur_tuple_kernel_size_raises_a_raw_type_error_5169(self, device, dtype):
-        """motion_blur and motion_blur3d take an int kernel_size; a tuple fails with a raw TypeError (#5169)."""
-        with pytest.raises(TypeError):
+        """motion_blur and motion_blur3d take an int kernel_size; a tuple fails in arithmetic, unnamed (#5169)."""
+        # The error comes from Python arithmetic on the tuple and does not name the argument; a fix that validates
+        # kernel_size, with a kornia error or a TypeError naming it, fails this pin.
+        with pytest.raises(TypeError) as planar:
             motion_blur(torch.rand(1, 1, 9, 12, device=device, dtype=dtype), (5, 5), 30.0, 0.5)
-        with pytest.raises(TypeError):
+        assert "kernel_size" not in str(planar.value)
+        with pytest.raises(TypeError) as volumetric:
             motion_blur3d(torch.rand(1, 1, 5, 9, 12, device=device, dtype=dtype), (3, 3, 3), (30.0, 0.0, 0.0), 0.5)
+        assert "kernel_size" not in str(volumetric.value)

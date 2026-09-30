@@ -28,7 +28,7 @@ from kornia.filters import (
     joint_bilateral_blur,
 )
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
 
 class TestBilateralBlur(BaseTester):
@@ -435,16 +435,27 @@ class TestConventionsBilateralBlur(BaseTester):
             unscaled = bilateral_blur(16 * image, 3, 0.1, (1.0, 1.5), color_distance_type=distance)
             assert (unscaled - 16 * reference).abs().max() > 0.1
 
-    def test_convention_bilateral_blur_sigma_space_is_gaussian_blur2d_sigma(self, device, dtype):
-        # sigma_space is gaussian_blur2d's (sigma_y, sigma_x) with the same kernel_size: once sigma_color dwarfs every
-        # intensity difference the colour weights are 1 and the bilateral filter is gaussian_blur2d.
-        self._skip_without_reflect_padding(device, dtype)
+    @pytest.mark.parametrize("border_type", ["reflect", "replicate", "constant", "circular"])
+    def test_convention_bilateral_blur_sigma_space_is_gaussian_blur2d_sigma(self, border_type, device, dtype):
+        # sigma_space is gaussian_blur2d's (sigma_y, sigma_x) with the same kernel_size, and border_type pads as it
+        # does: once sigma_color dwarfs every intensity difference the colour weights are 1 and the bilateral filter
+        # is gaussian_blur2d.
+        if border_type == "reflect":
+            self._skip_without_reflect_padding(device, dtype)
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip(f"this torch build has no replicate padding kernel for {dtype} on {device.type}")
         image = torch.zeros(1, 1, 23, 31, device=device, dtype=dtype)
         image[0, 0, 9, 17] = 1.0
-        out = bilateral_blur(image, (15, 21), 1e6, (1.0, 3.0))
-        self.assert_close(out, gaussian_blur2d(image, (15, 21), (1.0, 3.0)))
+        out = bilateral_blur(image, (15, 21), 1e6, (1.0, 3.0), border_type)
+        self.assert_close(out, gaussian_blur2d(image, (15, 21), (1.0, 3.0), border_type))
         # control: the swapped sigma is a different blur of this delta
-        assert (out - gaussian_blur2d(image, (15, 21), (3.0, 1.0))).abs().max() > 0.02
+        assert (out - gaussian_blur2d(image, (15, 21), (3.0, 1.0), border_type)).abs().max() > 0.02
+
+        # A delta one pixel from the top and right edges: the window reaches the padding.
+        corner = torch.zeros(1, 1, 9, 12, device=device, dtype=dtype)
+        corner[0, 0, 1, 10] = 1.0
+        out = bilateral_blur(corner, (5, 7), 1e6, (1.0, 2.0), border_type)
+        self.assert_close(out, gaussian_blur2d(corner, (5, 7), (1.0, 2.0), border_type))
 
     @pytest.mark.parametrize("distance", ["l1", "l2"])
     def test_convention_bilateral_blur_color_weight(self, distance, device, dtype):
@@ -472,23 +483,25 @@ class TestConventionsBilateralBlur(BaseTester):
     def test_convention_joint_bilateral_blur_filters_its_first_argument(self, device, dtype):
         # joint_bilateral_blur(input, guidance, ...) filters input with colour weights taken from guidance -- the
         # guidance second, unlike guided_blur(guidance, input, ...) -- and the guidance may have its own channel
-        # count. A flat guidance makes every colour weight 1, so the output is gaussian_blur2d of the input.
+        # count. A flat guidance makes every colour weight 1, so the output is gaussian_blur2d of the input, with a
+        # one-channel guidance and with one that has the input's three channels.
         self._skip_without_reflect_padding(device, dtype)
         torch.manual_seed(0)
         image = torch.rand(2, 3, 9, 13).to(device=device, dtype=dtype)
-        flat = torch.full((2, 1, 9, 13), 0.5, device=device, dtype=dtype)
         expected = gaussian_blur2d(image, (3, 5), (1.0, 2.0))
-        for out in (
-            joint_bilateral_blur(image, flat, (3, 5), 0.1, (1.0, 2.0)),
-            JointBilateralBlur((3, 5), 0.1, (1.0, 2.0))(image, flat),
-        ):
-            assert out.shape == image.shape
-            self.assert_close(out, expected)
+        for guidance_channels in (1, 3):
+            flat = torch.full((2, guidance_channels, 9, 13), 0.5, device=device, dtype=dtype)
+            for out in (
+                joint_bilateral_blur(image, flat, (3, 5), 0.1, (1.0, 2.0)),
+                JointBilateralBlur((3, 5), 0.1, (1.0, 2.0))(image, flat),
+            ):
+                assert out.shape == image.shape
+                self.assert_close(out, expected)
 
     def test_wart_bilateral_blur_integer_image_wraps_its_differences_5155(self, device):
         """bilateral_blur subtracts uint8 values in uint8, so 10 - 250 wraps and blends edges it should keep (#5155)."""
-        if device.type != "cpu":
-            pytest.skip("#5155 is pinned on the CPU only")
+        if device.type not in ("cpu", "mps"):
+            pytest.skip("#5155 is pinned on the CPU and MPS only")
         # Columns alternate 10 and 250. A colour sigma of 50 keeps them apart, but the wrapped difference
         # 10 - 250 = 16 (mod 256) makes the 10s look close to the 250s, which come back near 162.
         # Snippet used to generate expected:
