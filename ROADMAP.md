@@ -67,13 +67,14 @@ Four engineering north stars shape the roadmap below.
 2. **Compile-first (`torch.compile` / dynamo).** The numeric core (filters, color,
    geometry, enhance, losses) is already largely compile-clean. The remaining work is
    concentrated in the stochastic augmentation pipeline and the dynamic-shape feature
-   detectors, which branch on tensor values and break the graph — the augmentation
-   classes fail structurally in data-dependent parameter generation
-   ([#3913](https://github.com/kornia/kornia/issues/3913)). Compile support is
+   detectors, which branch on tensor values and break the graph. The geometric parameter
+   generators (`RandomAffine`, `RandomPerspective`, `RandomResizedCrop`) now compile
+   fullgraph; the data-dependent crops and the `AugmentationSequential` container still
+   break ([#5137](https://github.com/kornia/kornia/issues/5137)). Compile support is
    claimed **per evidenced surface**: today that means the functional core, not the
    augmentation classes as a class-level guarantee — many individual augmentations
    already run fullgraph in the PR-time dynamo job (see the compile/export spine
-   below), but the data-dependent parameter generators keep the class-level claim
+   below), but the remaining breaks and CUDA coverage keep the class-level claim
    off the table — and docs state the scope explicitly.
 
 3. **Export-first (ONNX).** ONNX export fails on the *same* patterns that break
@@ -168,10 +169,11 @@ and finish under the rules they started under.
   compiles fullgraph.* The stochastic-apply path, the `_extract_device_dtype`/version-check
   helpers, the transform-matrix blend, and the shape-changing crops (`Resize`, `CenterCrop`)
   have all landed as genuine single-path fixes; common intensity ops (color jitter, solarize,
-  brightness/contrast, erasing, flips) are fullgraph on the CI torch. Remaining: the
-  data-dependent tail — random-coordinate `RandomCrop`/`crop_by_indices`, histogram-based
-  `equalize`, and random-permutation dispatch — which need redesign, not guards
-  ([#3913](https://github.com/kornia/kornia/issues/3913)). On the export
+  brightness/contrast, erasing, flips), `equalize`, and the geometric parameter generators
+  (`RandomAffine`, `RandomPerspective`, `RandomResizedCrop`) are fullgraph on the CI torch.
+  Remaining: the data-dependent tail — random-coordinate `RandomCrop`/`crop_by_indices` and
+  the `AugmentationSequential` container, including its random-permutation dispatch — which
+  needs redesign, not guards ([#5137](https://github.com/kornia/kornia/issues/5137)). On the export
   side: solve multi-output ONNX export generically so tuple-returning modules (e.g. `Canny`,
   YUV conversions) are no longer blocked, and converge on a single modern ONNX opset.
 - **Dynamo tests in CI — landed for the compile-clean core.** A PR-time `dynamo` job now runs
