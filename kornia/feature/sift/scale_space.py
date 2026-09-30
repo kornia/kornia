@@ -67,7 +67,8 @@ class _SIFTScalePyramid(nn.Module):
             # a plain attribute, not a buffer: ``Module.to(dtype)`` would round a
             # buffer to the module dtype, and a float64 buffer cannot move to MPS.
             # ``forward`` casts it to the image's dtype and device instead.
-            setattr(self, f"kernel_{index}", get_gaussian_kernel1d(size, sigma, dtype=torch.float64).reshape(-1))
+            kernel = get_gaussian_kernel1d(size, sigma, device=torch.device("cpu"), dtype=torch.float64)
+            setattr(self, f"kernel_{index}", kernel.reshape(-1))
 
     @staticmethod
     def _double(image: torch.Tensor) -> torch.Tensor:

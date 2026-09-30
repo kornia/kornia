@@ -432,11 +432,15 @@ class TestSIFTScalePyramid(BaseTester):
     def test_device_argument_and_device_only_move(self, device):
         # Registered as float64 buffers, the reference kernels made `device="mps"` and `.to("mps")` raise, because
         # MPS has no float64. Only a move that also cast the dtype, `.to("mps", torch.float32)`, worked.
+        # Built on the default device, they also made construction under `with torch.device("mps")` raise.
         image = torch.rand(1, 1, 48, 52, device=device)
         expected = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device, torch.float32)(image)
+        with device:
+            under_default_device = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid")
         for feature in (
             SIFTFeatureScaleSpace(8, descriptor_backend="pyramid", device=device),
             SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device),
+            under_default_device,
         ):
             # Not bitwise: on MPS, the orientation histogram's scatter_add_ varies from run to run at float32 rounding.
             for actual, reference in zip(feature(image), expected):
