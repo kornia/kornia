@@ -17,8 +17,10 @@
 
 from __future__ import annotations
 
-import copy
 import io
+import itertools
+import os
+import tempfile
 from typing import (
     Any,
     ClassVar,
@@ -30,9 +32,33 @@ import torch
 from torch import nn
 
 import kornia
+from kornia.core._compat import torch_version_ge
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
+
+# The opset ``ONNXExportMixin.to_onnx`` requests: the one the dynamo exporter (the ``torch.onnx.export`` default from
+# torch 2.9) builds natively, so no version conversion runs. The legacy TorchScript exporter emits it directly as well.
+_ONNX_EXPORT_OPSET = 18
+
+
+def _first_floating_tensor(module: Any) -> Optional[torch.Tensor]:
+    """Return the first floating parameter or buffer of ``module``, or ``None``."""
+    if not isinstance(module, nn.Module):
+        return None
+    for tensor in itertools.chain(module.parameters(), module.buffers()):
+        if tensor.is_floating_point():
+            return tensor
+    return None
+
+
+def _to_floating(value: Any, reference: torch.Tensor) -> Any:
+    """Move the floating tensors in ``value`` (a tensor or a tuple) to the dtype and device of ``reference``."""
+    if isinstance(value, torch.Tensor) and value.is_floating_point():
+        return value.to(device=reference.device, dtype=reference.dtype)
+    if isinstance(value, tuple):
+        return tuple(_to_floating(item, reference) for item in value)
+    return value
 
 
 class ONNXExportMixin:
@@ -43,7 +69,8 @@ class ONNXExportMixin:
             A flag indicating whether the object can be exported to ONNX. Default is True.
         ONNX_DEFAULT_INPUTSHAPE:
             Default input shape for the ONNX export. A list of integers where `-1` indicates
-            dynamic dimensions. Default is [-1, -1, -1, -1].
+            dynamic dimensions. Default is [-1, 3, -1, -1]: a batch of 3-channel images of any
+            batch size, height and width. A class whose models take another channel count declares its own.
         ONNX_DEFAULT_OUTPUTSHAPE:
             Default output shape for the ONNX export. A list of integers where `-1` indicates
             dynamic dimensions. Default is [-1, -1, -1, -1].
@@ -58,7 +85,7 @@ class ONNXExportMixin:
     """
 
     ONNX_EXPORTABLE: bool = True
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
     ONNX_EXPORT_PSEUDO_SHAPE: ClassVar[list[int]] = [1, 3, 256, 256]
     ADDITIONAL_METADATA: ClassVar[list[tuple[str, str]]] = []
@@ -83,25 +110,44 @@ class ONNXExportMixin:
             input_shape:
                 The input shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_INPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
+                Mark only the dimensions the model accepts at any size: on the dynamo exporter a `-1`
+                on a dimension the model fixes, such as the channel count of a convolution, is an export error.
             output_shape:
                 The output shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_OUTPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
+                Only the legacy TorchScript exporter reads it; the dynamo exporter infers the output shape.
             pseudo_shape:
                 The pseudo shape for the model as a list of integers. If None,
-                `ONNX_EXPORT_PSEUDO_SHAPE` will be used.
+                `ONNX_EXPORT_PSEUDO_SHAPE` will be used. It needs the rank of `input_shape` when
+                `input_shape` has a dynamic dimension.
             model:
                 The model to export. If not provided, the current object will be used.
             save:
                 If to save the model or load it.
             additional_metadata:
-                Additional metadata to add to the ONNX model.
+                Additional metadata to add to the ONNX model. A key that is already present is overwritten.
             **kwargs:
                 Additional keyword arguments to pass to the `torch.onnx.export` function.
 
+        Raises:
+            RuntimeError: If `ONNX_EXPORTABLE` is False.
+            ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's.
+            FileNotFoundError: If `save` is True and the directory of `onnx_name` does not exist. This is
+                checked before the export runs.
+
         Notes:
-            - A dummy input tensor is created based on the provided or default input shape.
-            - Dynamic axes for input and output tensors are configured where dimensions are marked `-1`.
-            - The model is exported with `torch.onnx.export`, with constant folding enabled and opset version set to 17.
+            - The model is exported in eval mode (``Dropout`` inactive, ``BatchNorm`` on its running
+              statistics). The training flag of every submodule is restored afterwards, also when the export fails.
+            - The export requests ONNX opset 18, which the dynamo exporter (the default of `torch.onnx.export`
+              from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
+              `opset_version` to request another one.
+            - A dummy input tensor is created from the input shape, with each `-1` taken from the pseudo shape.
+              It has the dtype and device of the model's first floating parameter or buffer, and is float32 on
+              the CPU for a model without one.
+            - The dimensions marked `-1` are exported as dynamic: through `dynamic_shapes` on the dynamo exporter
+              from torch 2.9, through `dynamic_axes` otherwise. A `dynamic_axes` or `dynamic_shapes` keyword
+              argument replaces them.
+            - The model is exported with `torch.onnx.export`, with constant folding enabled.
 
         """
         if not self.ONNX_EXPORTABLE:
@@ -111,38 +157,65 @@ class ONNXExportMixin:
             input_shape = self.ONNX_DEFAULT_INPUTSHAPE
         if output_shape is None:
             output_shape = self.ONNX_DEFAULT_OUTPUTSHAPE
+        resolved_pseudo_shape = self.ONNX_EXPORT_PSEUDO_SHAPE if pseudo_shape is None else pseudo_shape
+        if -1 in input_shape and len(input_shape) != len(resolved_pseudo_shape):
+            raise ValueError(
+                f"input_shape {list(input_shape)} has {len(input_shape)} dimensions, but the pseudo shape "
+                f"{list(resolved_pseudo_shape)} that sizes its dynamic dimensions has {len(resolved_pseudo_shape)}. "
+                "Pass a pseudo_shape of the same rank."
+            )
 
         if onnx_name is None:
             onnx_name = f"Kornia-{self.__class__.__name__}.onnx"
+        if save:
+            directory = os.path.dirname(os.path.abspath(onnx_name))
+            if not os.path.isdir(directory):
+                raise FileNotFoundError(f"Cannot save the ONNX model to {onnx_name}: {directory} does not exist.")
 
+        module = self if model is None else model
         dummy_input = self._create_dummy_input(input_shape, pseudo_shape)
-        dynamic_axes = self._create_dynamic_axes(input_shape, output_shape)
+        reference = _first_floating_tensor(module)
+        if reference is not None:
+            dummy_input = _to_floating(dummy_input, reference)
 
         default_args: dict[str, Any] = {
             "export_params": True,
-            "opset_version": 17,
+            "opset_version": _ONNX_EXPORT_OPSET,
             "do_constant_folding": True,
             "input_names": ["input"],
             "output_names": ["output"],
-            "dynamic_axes": dynamic_axes,
         }
+        if "dynamic_axes" not in kwargs and "dynamic_shapes" not in kwargs:
+            # The dynamo exporter (the default from torch 2.9) takes ``dynamic_shapes`` and warns on ``dynamic_axes``.
+            if torch_version_ge(2, 9, 0) and kwargs.get("dynamo", True):
+                default_args["dynamic_shapes"] = self._create_dynamic_shapes(input_shape, dummy_input)
+            else:
+                default_args["dynamic_axes"] = self._create_dynamic_axes(input_shape, output_shape)
         default_args.update(kwargs)
 
-        onnx_buffer = io.BytesIO()
-        torch.onnx.export(
-            model or self,  # type: ignore[arg-type]
-            dummy_input,  # type: ignore[arg-type]
-            onnx_buffer,  # type: ignore[arg-type]
-            **default_args,
-        )
-        onnx_buffer.seek(0)
-        onnx_model = onnx.load(onnx_buffer)  # type: ignore
+        # The dynamo exporter captures the model in whatever mode it is in, so a model left in training mode would
+        # export active Dropout. Each submodule's own flag is restored, since ``train(True)`` would reset them all.
+        modes = [(m, m.training) for m in module.modules()] if isinstance(module, nn.Module) else []
+        try:
+            if isinstance(module, nn.Module):
+                module.eval()
+            # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = os.path.join(tmp_dir, "model.onnx")
+                torch.onnx.export(
+                    module,  # type: ignore[arg-type]
+                    dummy_input,  # type: ignore[arg-type]
+                    tmp_path,
+                    **default_args,
+                )
+                onnx_model = onnx.load(tmp_path)  # type: ignore
+        finally:
+            for submodule, training in modes:
+                submodule.training = training
 
-        if additional_metadata is None:
-            additional_metadata = []
-        additional_metadata = copy.deepcopy(additional_metadata)
-        additional_metadata.extend(self.ADDITIONAL_METADATA)
-        onnx_model = kornia.onnx.utils.add_metadata(onnx_model, additional_metadata)
+        # Later entries overwrite earlier ones, so the caller's metadata wins over the class's.
+        metadata = [*self.ADDITIONAL_METADATA, *(additional_metadata or [])]
+        onnx_model = kornia.onnx.utils.add_metadata(onnx_model, metadata)
         if save:
             onnx.save(onnx_model, onnx_name)  # type: ignore
         return onnx_model
@@ -163,6 +236,15 @@ class ONNXExportMixin:
             "output": {i: "dim_" + str(i) for i, dim in enumerate(output_shape) if dim == -1},
         }
 
+    def _create_dynamic_shapes(
+        self, input_shape: list[int], dummy_input: Union[tuple[Any, ...], torch.Tensor]
+    ) -> tuple[Optional[dict[int, str]], ...]:
+        # A named dimension is ``Dim.DYNAMIC`` to ``torch.export``, and the name is kept in the ONNX graph.
+        dims = {i: "dim_" + str(i) for i, dim in enumerate(input_shape) if dim == -1} or None
+        if isinstance(dummy_input, tuple):
+            return (dims, *([None] * (len(dummy_input) - 1)))
+        return (dims,)
+
 
 class ONNXRuntimeMixin:
     """Provide methods to manage ONNX Runtime inference sessions."""
@@ -171,7 +253,7 @@ class ONNXRuntimeMixin:
         self,
         op: onnx.ModelProto,  # type:ignore
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.InferenceSession] = None,  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
     ) -> ort.InferenceSession:  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
@@ -180,18 +262,19 @@ class ONNXRuntimeMixin:
             providers:
                 Execution providers for ONNXRuntime (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
             session_options:
-                Optional ONNXRuntime session options for session configuration and optimizations.
+                Optional ONNXRuntime session options for session configuration and optimizations, used as given.
+                If None, the session uses ``ORT_ENABLE_EXTENDED`` graph optimizations.
 
         Returns:
             ort.InferenceSession: The ONNXRuntime session optimized for inference.
 
         """
         if session_options is None:
-            sess_options = ort.SessionOptions()  # type:ignore
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED  # type:ignore
+            session_options = ort.SessionOptions()  # type:ignore
+            session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED  # type:ignore
         return ort.InferenceSession(  # type:ignore
             op.SerializeToString(),
-            sess_options=sess_options,
+            sess_options=session_options,
             providers=providers or ["CPUExecutionProvider"],
         )
 
@@ -390,11 +473,14 @@ class ONNXMixin:
     ) -> onnx.ModelProto:  # type:ignore
         """Add metadata to the combined ONNX model.
 
+        The ``source`` and ``version`` entries are always written. A key that is already present is overwritten,
+        so the model keeps one entry per key, as ``onnx.checker.check_model`` requires.
+
         Args:
             op: onnx operation.
             additional_metadata:
                 A list of tuples representing additional metadata to add to the combined ONNX model.
-                Example: [("version", 0.1)], [("date", 20240909)].
+                Example: [("model_version", "0.1"), ("date", "20240909")].
 
         """
         return kornia.onnx.utils.add_metadata(op, additional_metadata)
@@ -413,7 +499,7 @@ class ONNXMixin:
             target_opset_version: The target OPSET version to convert to.
 
         """
-        if op.ir_version != target_ir_version or op.opset_import[0].version != target_opset_version:
+        if op.ir_version != target_ir_version or self._opset_version(op) != target_opset_version:
             # Check if all ops are supported in the current IR version
             model_bytes = io.BytesIO()
             onnx.save_model(op, model_bytes)  # type:ignore
@@ -428,3 +514,11 @@ class ONNXMixin:
                 loaded_model.ir_version = target_ir_version
             op = loaded_model
         return op
+
+    @staticmethod
+    def _opset_version(op: onnx.ModelProto) -> Optional[int]:  # type:ignore
+        """Return the version of the default (``ai.onnx``) operator set that ``op`` imports, or None."""
+        for entry in op.opset_import:
+            if entry.domain in ("", "ai.onnx"):
+                return entry.version
+        return None

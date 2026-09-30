@@ -194,27 +194,29 @@ def test_io_name_conversion():
 
 
 def test_add_metadata():
-    from unittest import mock
+    from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 
+    import kornia
     from kornia.onnx.utils import add_metadata
 
-    with mock.patch("kornia.core.external.onnx.ModelProto") as mock_model_proto:
-        # Arrange
-        mock_model = mock_model_proto()
-        mock_metadata_props = mock.Mock()
-        mock_model.metadata_props.add.return_value = mock_metadata_props
+    graph = make_graph(
+        [make_node("Identity", ["input"], ["output"])],
+        "identity",
+        [make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1])],
+        [make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1])],
+    )
+    model = add_metadata(make_model(graph), [("test_key", "test_value")])
+    assert [(p.key, p.value) for p in model.metadata_props] == [
+        ("source", "kornia"),
+        ("version", kornia.__version__),
+        ("test_key", "test_value"),
+    ]
 
-        # Act
-        add_metadata(mock_model, [("test_key", "test_value")])
-
-        # Assert
-        calls = [
-            mock.call(),  # for "source"
-            mock.call(),  # for "version"
-            mock.call(),  # for "test_key"
-        ]
-        mock_model.metadata_props.add.assert_has_calls(calls)
-        assert mock_model.metadata_props.add.call_count == 3
-        # Check if version was added
-        # (Since it's a mock, we just check if any call set value to kornia.__version__)
-        # Metadata logic: metadata_props.key = key; metadata_props.value = str(value)
+    # A second call overwrites the existing keys instead of appending duplicates, which check_model rejects.
+    model = add_metadata(model, [("test_key", 2)])
+    assert [(p.key, p.value) for p in model.metadata_props] == [
+        ("source", "kornia"),
+        ("version", kornia.__version__),
+        ("test_key", "2"),
+    ]
+    onnx.checker.check_model(model)
