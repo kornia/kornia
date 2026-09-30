@@ -74,7 +74,7 @@ class TestCam2Pixel(BaseTester):
         """Return a tensor having the given shape and whose values are in the range [low, high)"""
         return ((high - low) * torch.rand(shape, device=device, dtype=dtype)) + low
 
-    @pytest.mark.parametrize("batch_size", (1,))
+    @pytest.mark.parametrize("batch_size", [1])
     def test_smoke(self, batch_size, device, dtype):
         H, W = 250, 500
         fx, fy = W, H
@@ -97,7 +97,7 @@ class TestCam2Pixel(BaseTester):
         )
         assert pixel_coords_dst.shape == (batch_size, H, W, 2)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_consistency(self, batch_size, device, dtype):
         H, W = 250, 500
         fx, fy = W, H
@@ -136,7 +136,7 @@ class TestCam2Pixel(BaseTester):
 
         self.assert_close(cam_coords_output, cam_coords_input, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("batch_size", (1,))
+    @pytest.mark.parametrize("batch_size", [1])
     def test_gradcheck(self, batch_size, device):
         dtype = torch.float64
         H, W = 10, 20
@@ -224,7 +224,7 @@ class TestPixel2Cam(BaseTester):
         """Return a tensor having the given shape and whose values are in the range [low, high)"""
         return ((high - low) * torch.rand(shape, device=device, dtype=dtype)) + low
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_smoke(self, batch_size, device, dtype):
         H, W = 250, 500
         fx, fy = W, H
@@ -248,7 +248,7 @@ class TestPixel2Cam(BaseTester):
 
         assert output.shape == (batch_size, H, W, 3)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_consistency(self, batch_size, device, dtype):
         H, W = 250, 500
         fx, fy = W, H
@@ -288,7 +288,7 @@ class TestPixel2Cam(BaseTester):
 
         self.assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("batch_size", (1,))
+    @pytest.mark.parametrize("batch_size", [1])
     @pytest.mark.slow
     def test_gradcheck(self, batch_size, device):
         dtype = torch.float64
@@ -524,7 +524,7 @@ class TestPinholeCamera(BaseTester):
         assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
         assert pinhole.translation_vector.shape == (batch_size, 3, 1)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_from_parameters(self, batch_size, device, dtype):
         height, width = 6, 8
         fx = torch.arange(1, batch_size + 1, device=device, dtype=dtype) * 100.0
