@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import pytest
 import torch
 
@@ -229,6 +231,25 @@ class Test3DAugmentationConventions(BaseTester):
                 self.assert_close(mapped[..., axis], torch.zeros_like(mapped[..., axis]), low_tolerance=True)
             else:
                 assert not torch.allclose(mapped[..., axis], points[..., axis], atol=1e-2)
+
+    @pytest.mark.parametrize(
+        "depth,height,width", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1), (2, 3, 4)]
+    )
+    @pytest.mark.device_agnostic
+    def test_convention_random_perspective3d_traced_singleton_matches_eager_5110(self, depth, height, width):
+        # #5110: torch.jit.trace passes the sizes as 0-d tensors. The generator's unit extent and the corner order
+        # that keeps a singleton x plane fixed both have to reach the traced graph; otherwise a size-1 depth or
+        # height raises a singular solve and a size-1 width warps differently from eager.
+        volume = torch.linspace(0, 1, 2 * depth * height * width).reshape(2, 1, depth, height, width)
+        augmentation = K.RandomPerspective3D(0.5, p=1.0, align_corners=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(augmentation, volume, check_trace=False)
+        torch.manual_seed(0)
+        output = traced(volume)
+        torch.manual_seed(0)
+        expected = augmentation(volume)
+        self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.device_agnostic
     def test_wart_positive_roll_direction_splits_the_rotation_entry_points_4408(self):
