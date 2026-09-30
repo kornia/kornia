@@ -63,8 +63,26 @@ def laplacian(
 
     .. image:: _static/img/laplacian.png
 
-    The operator smooths the given tensor with a laplacian kernel by convolving
-    it to each channel. It supports batched operation.
+    The operator filters each channel of the given tensor with a Laplacian kernel.
+    It supports batched operation.
+
+    Convention:
+        - The kernel is ``get_laplacian_kernel2d(kernel_size)``, correlated with each channel as by
+          :func:`~kornia.filters.filter2d`; see the Convention blocks on
+          :func:`~kornia.filters.get_laplacian_kernel2d` for the stencil, its sign and ``kernel_size``, and on
+          :func:`~kornia.filters.filter2d` for the border modes.
+        - ``normalized=True``, the default, divides the kernel by its absolute sum :math:`2 (kH \cdot kW - 1)`, 16
+          for size 3. Unlike ``normalized`` in :func:`~kornia.filters.spatial_gradient`, this does not give
+          derivative units: size 3 returns :math:`3 \nabla^2 / 16`. :ref:`Filtering <filtering-conventions>`
+          compares both scales with scipy and OpenCV.
+        - Known defects:
+
+          - ``kernel_size=1`` passes validation, and the normalised :math:`1 \times 1` kernel is ``0 / 0``, so the
+            output is all NaN (`#5175 <https://github.com/kornia/kornia/issues/5175>`_).
+          - a uint8 input builds the kernel in uint8, where the centre ``1 - 9`` wraps to ``248``, so the result
+            is wrong (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+          - ``border_type`` is checked case-insensitively but used as given, so ``'REFLECT'`` raises
+            (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
 
     Args:
         input: the input image tensor with shape :math:`(B, C, H, W)`.
@@ -79,7 +97,7 @@ def laplacian(
         Captured graphs and function transforms retain their selected arithmetic.
 
     Return:
-        the blurred image with shape :math:`(B, C, H, W)`.
+        the Laplacian response with shape :math:`(B, C, H, W)`.
 
     Raises:
         BaseError: if a size is even or not positive, if ``kernel_size`` is a sequence of other than 2 sizes, or if
@@ -140,8 +158,11 @@ def laplacian(
 class Laplacian(nn.Module):
     r"""Create an operator that returns a tensor using a Laplacian filter.
 
-    The operator smooths the given tensor with a laplacian kernel by convolving
-    it to each channel. It supports batched operation.
+    The operator filters each channel of the given tensor with a Laplacian kernel.
+    It supports batched operation.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.laplacian`.
 
     Args:
         kernel_size: the size of the kernel. It should be odd and positive, and at least 3 along one axis.

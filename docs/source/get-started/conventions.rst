@@ -670,6 +670,31 @@ The kernel builders against their references:
   where ``scipy.ndimage.laplace`` and ``cv2.Laplacian(ksize=1)`` return :math:`\nabla^2`, ``cv2.Laplacian(ksize=3)``
   :math:`4 \nabla^2` and ``skimage.filters.laplace`` :math:`-\nabla^2`.
 
+The derivative filters apply those kernels at different scales, and :func:`~kornia.filters.canny` thresholds the raw
+one:
+
+- :func:`~kornia.filters.spatial_gradient` and :func:`~kornia.filters.sobel` are normalized by default and return
+  derivatives: a slope of 1 gives 1. ``normalized=False`` returns the raw Sobel response above, 8 per unit slope.
+  :func:`~kornia.filters.spatial_gradient` always replicates the border, so
+  ``cv2.Sobel(x, cv2.CV_64F, 1, 0, borderType=cv2.BORDER_REPLICATE)`` and
+  ``scipy.ndimage.sobel(x, axis=-1, mode='nearest')`` equal channel 0 of ``spatial_gradient(x, normalized=False)``;
+  OpenCV's default ``BORDER_REFLECT_101`` differs on the outermost rows and columns.
+  ``skimage.filters.sobel(x, mode='nearest')`` equals ``sqrt(2) * sobel(x, eps=0)``.
+- :func:`~kornia.filters.laplacian` is normalized by default too, but by the kernel's absolute sum, 16 for size 3:
+  ``laplacian(x, 3)`` estimates :math:`3 \nabla^2 / 16`, and ``normalized=False`` the :math:`3 \nabla^2` above.
+- :func:`~kornia.filters.canny` compares its thresholds with the **unnormalized** Sobel magnitude of the blurred
+  image, eight times what :func:`~kornia.filters.sobel` returns by default. For a uint8 image ``img``,
+  ``cv2.Canny(img, t1, t2, L2gradient=True)`` corresponds to ``canny(x, t1 / 255, t2 / 255, kernel_size=1)`` with
+  ``x`` the floating-point tensor ``img / 255``: the thresholds scale with the image, ``kernel_size=1`` skips the
+  Gaussian blur that OpenCV does not apply, and OpenCV's default L1 magnitude :math:`|g_x| + |g_y|` has no kornia
+  counterpart. The two edge maps agree except around neighbouring pixels of exactly equal magnitude, where OpenCV
+  keeps one and :func:`~kornia.filters.canny` keeps neither or lets rounding decide
+  (`#5170 <https://github.com/kornia/kornia/issues/5170>`_), and the thresholds must stay below 1, so ``t2`` below 255
+  (`#5171 <https://github.com/kornia/kornia/issues/5171>`_).
+- ``skimage.feature.canny`` thresholds the same unnormalized magnitude of a floating-point image and has the same
+  defaults, 0.1 and 0.2, so thresholds carry over; its Gaussian blur and its interpolating suppression differ from
+  :func:`~kornia.filters.canny`'s, so the edge maps do not match.
+
 .. _two-view-conventions:
 
 Two-view geometry

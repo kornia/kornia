@@ -27,7 +27,12 @@ from kornia.enhance.histogram import histogram as diff_histogram
 
 
 class OtsuThreshold(torch.nn.Module):
-    """Otsu thresholding module for PyTorch tensors."""
+    """Otsu thresholding module for PyTorch tensors.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.otsu_threshold`. ``forward`` has no ``return_mask`` and
+        always returns the thresholded tensor with the thresholds.
+    """
 
     def __init__(self) -> None:
         """Initialize the OtsuThreshold module."""
@@ -114,8 +119,8 @@ class OtsuThreshold(torch.nn.Module):
         Args:
             x (torch.Tensor): Image or batch of images to threshold.
             nbins (int, optional): Number of bins for histogram computation. Default is 256.
-            slow_and_differentiable (bool, optional): If True, use a differentiable histogram computation.
-                Default is False.
+            slow_and_differentiable (bool, optional): If True, estimate the histogram with
+                :func:`~kornia.enhance.histogram` instead of :func:`torch.histc`. Default is False.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, threshold values.
@@ -197,34 +202,53 @@ def otsu_threshold(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Apply automatic image thresholding using Otsu algorithm to the input tensor.
 
-    Each image/channel plane uses its own histogram range. On the default path, the threshold is the upper edge
-    of the selected histogram bin. For an integer input it is the largest integer below that value, so
-    ``x > threshold`` keeps every pixel on or above it. A constant plane uses its constant value as the threshold.
+    Convention:
+        - One threshold is returned per plane over the last two axes: a :math:`(B, C, H, W)` input gives ``B * C``
+          thresholds, flattened, and a tensor of at most two dimensions is one plane.
+        - Each plane is histogrammed on its own range, ``nbins`` bins between its minimum and its maximum, not over a
+          fixed :math:`[0, 1]` or :math:`[0, 255]`. On the default path the threshold is the upper edge of the
+          selected histogram bin, in input units and in the input's dtype. For an integer input it is the largest
+          integer below that value, so ``x > threshold`` keeps every pixel on or above it. Among splits of equal
+          between-class variance the lowest wins. A constant plane uses its constant value as the threshold.
+        - The foreground is ``x > threshold``, strictly. The first output is ``x * (x > threshold)``, not a
+          binary image, and its gradient is that mask.
+        - Known defects:
+
+          - the minimum and maximum are taken over the whole input, so every plane is histogrammed on the joint
+            range and its threshold depends on the other images and channels in the call
+            (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
+          - the threshold is read from ``linspace(min, max, nbins)`` instead of the histogram's bin edges, so it
+            sits up to one bin above the chosen split: at ``nbins=2`` it is the data maximum and nothing is kept
+            (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
+          - a constant plane, which has no split, gets the threshold 0 whatever its value
+            (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
+          - ``return_mask=True`` returns ``result > 0``, so foreground pixels of value 0 or below are reported as
+            background (`#5173 <https://github.com/kornia/kornia/issues/5173>`_).
+          - ``slow_and_differentiable=True`` only replaces the histogram with a kernel density estimate of fixed
+            bandwidth ``1e-3`` in input units: the threshold still has no gradient, and the estimate misses the
+            pixels lying more than a few bandwidths from each of its ``nbins`` sample points
+            (`#5174 <https://github.com/kornia/kornia/issues/5174>`_).
 
     Args:
-        x (Tensor): Input tensor (image or batch of images).
+        x (Tensor): Input tensor (image or batch of images) of at most five dimensions.
         nbins (int): Number of bins for histogram computation, default is 256.
-        slow_and_differentiable (bool): If True, use a differentiable histogram computation. Default is False.
+        slow_and_differentiable (bool): If True, estimate the histogram with
+            :func:`~kornia.enhance.histogram` instead of :func:`torch.histc`. Default is False.
         return_mask (bool): If True, return the boolean mask ``x > threshold`` in place of the thresholded image,
             with each pixel compared against the threshold of its own image and channel. If False, return the
             thresholded image.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, or the boolean mask ``x > threshold`` when
-        ``return_mask`` is True, and the computed threshold values. The thresholded tensor cannot tell a kept pixel
-        of value 0 from a dropped one; use the mask for that.
+        ``return_mask`` is True, either with the shape of ``x``, and the computed threshold values. The thresholded
+        tensor cannot tell a kept pixel of value 0 from a dropped one; use the mask for that.
 
     Raises:
-        ValueError: If the input tensor has unsupported dimensionality or dtype.
+        ValueError: If the input tensor has more than five dimensions.
+        ~kornia.core.exceptions.BaseError: If the input dtype is not supported.
 
     .. note::
-        - The input tensor can be of various types, but float types are preferred for accuracy
-          in histogram computation, especially on CPU. Integer types will be cast to float.
-        - If `use_thresh` is True, the threshold must have been computed previously and set in the module.
-        - If `threshold` is provided, it overrides the computed threshold.
-
-    .. note::
-        You may found more information about the Otsu algorithm here: https://en.wikipedia.org/wiki/Otsu's_method
+        You can find more information about the Otsu algorithm here: https://en.wikipedia.org/wiki/Otsu's_method
 
     Example:
         >>> import torch

@@ -70,19 +70,40 @@ def canny(
 
     .. image:: _static/img/canny.png
 
-    The thresholds are compared with the magnitude :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised**
-    Sobel gradient of the blurred grayscale image, ``sobel(blurred, normalized=False, eps=eps)``. That is eight times
-    what :func:`~kornia.filters.sobel` returns with its default ``normalized=True``, up to the ``eps`` inside the square
-    root, so on an image in :math:`[0, 1]` it is not bounded by 1: a unit step reaches 4 without the blur
-    (``kernel_size=1``) and about 2.59 with the default one.
-    In float16 the squared gradient overflows past 65504, which a step of 64 already reaches without the blur, so
-    keep a float16 image in :math:`[0, 1]` rather than scaling it and the thresholds up.
+    Convention:
+        - A 3-channel input is read as RGB and converted with :func:`~kornia.color.rgb_to_grayscale`; a 1-channel
+          input is used as it is. Both outputs are :math:`(B, 1, H, W)` in the input's floating dtype; an integer
+          input raises.
+        - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``, so both pairs are rows first
+          (see the Convention block on :func:`~kornia.filters.gaussian_blur2d`); ``kernel_size=1`` skips the blur.
+          The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
+          ``spatial_gradient(blurred, normalized=False)``: a slope of ``s`` gives ``8 s``, eight times what
+          :func:`~kornia.filters.sobel` returns by default. On an image in :math:`[0, 1]` it is not bounded by 1: a
+          unit step reaches 4 without the blur and about 2.59 with the default one. In float16 the squared gradient
+          overflows past 65504, which a step of 64 already reaches without the blur, so keep a float16 image in
+          :math:`[0, 1]` rather than scaling it and the thresholds up.
+        - The thresholds compare against that magnitude and are strict: a pixel is weak above ``low_threshold`` and
+          strong above ``high_threshold``. :ref:`Filtering <filtering-conventions>` maps them onto OpenCV and
+          scikit-image.
+        - Non-maximum suppression compares each pixel with its two neighbours along the gradient direction,
+          rounded to a multiple of 45 degrees. As in OpenCV's ``cv2.Canny``, along a horizontal (vertical) gradient
+          a pixel must be strictly greater than its left (upper) neighbour and greater than or equal to its right
+          (lower) one, so of two pixels of equal magnitude across a step edge the left (upper) one is kept. Along a
+          diagonal it must be strictly greater than both. A pixel with zero gradient is never kept. The returned
+          magnitude is taken after this step, so it is zero off the edge ridges; it carries the gradient, and the
+          edge map does not.
+        - Hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, repeated until
+          nothing changes, and returns edges of 0 and 1.
+        - Known defects:
 
-    Non-maximum suppression compares each pixel with its two neighbours along the gradient direction, rounded to a
-    multiple of 45 degrees. As in OpenCV's ``cv2.Canny``, along a horizontal (vertical) gradient a pixel must be
-    strictly greater than its left (upper) neighbour and greater than or equal to its right (lower) one, so of two
-    pixels of equal magnitude across a step edge the left (upper) one is kept. Along a diagonal it must be strictly
-    greater than both. A pixel with zero gradient is never kept.
+          - suppression needs a pixel strictly greater than both neighbours, so the two equal pixels on either
+            side of a step between two constant regions are both dropped and the step yields no edge; with the
+            blur, rounding decides whether one survives (`#5170 <https://github.com/kornia/kornia/issues/5170>`_).
+          - both thresholds must lie in :math:`(0, 1)`, although without the blur a unit step reaches a magnitude
+            of 4, so every step higher than 0.25 passes any threshold that can be set
+            (`#5171 <https://github.com/kornia/kornia/issues/5171>`_).
+          - a channel count other than 1 or 3 is not validated and fails with a raw torch error
+            (`#5171 <https://github.com/kornia/kornia/issues/5171>`_).
 
     Args:
         input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1, or to 3 for an RGB
@@ -97,7 +118,7 @@ def canny(
         eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+        - the gradient magnitude after non-maximum suppression, shape of :math:`(B,1,H,W)`.
         - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
     .. note::
@@ -218,7 +239,8 @@ def canny(
 class Canny(nn.Module):
     r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
 
-    See :func:`~kornia.filters.canny` for the units of the thresholds and the non-maximum suppression.
+    Convention:
+        See the Convention block on :func:`~kornia.filters.canny`. The thresholds are validated at construction.
 
     Args:
         low_threshold: lower threshold for the hysteresis procedure, in the units of the unnormalised Sobel
@@ -231,7 +253,7 @@ class Canny(nn.Module):
         eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+        - the gradient magnitude after non-maximum suppression, shape of :math:`(B,1,H,W)`.
         - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
     Example:
@@ -302,7 +324,7 @@ class Canny(nn.Module):
 
         Returns:
             Tuple ``(magnitude, edges)``. ``magnitude`` contains the gradient
-            magnitude response for each pixel, and ``edges`` contains the final
+            magnitude after non-maximum suppression, and ``edges`` contains the final
             thresholded edge map. Both tensors follow the layout returned by
             :func:`canny` and keep the same batch and spatial dimensions as the
             input.
