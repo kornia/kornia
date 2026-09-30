@@ -593,10 +593,10 @@ class TestConventionsKeypoints(BaseTester):
         ],
     )
     def test_wart_keypoints_documented_paths_not_implemented_5023(self, path, device, dtype):
-        # Wart pin (#5023): the docstrings advertise list input, to_tensor(as_padded_sequence=True) and the
-        # Keypoints3D pad / unpad / transform_keypoints methods, and every one of these paths raises
+        # Wart pin (#5023): the API offers list input (the List[Tensor] annotation), to_tensor(as_padded_sequence=True)
+        # and the Keypoints3D pad / unpad / transform_keypoints methods, and every one of these paths raises
         # NotImplementedError. Implementing a path, or removing it from the API, flips its case. The message is
-        # not asserted: a change that only adds messages leaves every path unimplemented.
+        # not asserted, so rewording it leaves every case green.
         kp2d = torch.tensor([[[8.0, 2.0], [3.0, 5.0]]], device=device, dtype=dtype)
         kp3d = torch.tensor([[[8.0, 2.0, 4.0], [3.0, 5.0, 1.0]]], device=device, dtype=dtype)
         calls = {
