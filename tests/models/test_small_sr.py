@@ -46,8 +46,8 @@ class TestSmallSRNet(BaseTester):
         model = SmallSRNet(upscale_factor=3, pretrained=False).to(device, dtype)
 
         # SmallSRNet expects 1 channel input (Y channel), not 3
+        x = torch.randn(1, 3, 16, 16, device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
-            x = torch.randn(1, 3, 16, 16, device=device, dtype=dtype)
             model(x)
 
     def test_smoke_upscale_factor_one(self, device, dtype):
@@ -164,8 +164,8 @@ class TestSmallSRNetWrapper(BaseTester):
         model = SmallSRNetWrapper(upscale_factor=3, pretrained=False).to(device, dtype)
 
         # SmallSRNetWrapper expects 3 channel RGB input, rgb_to_ycbcr will raise ValueError
+        x = torch.randn(1, 1, 16, 16, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Input size must have a shape of"):
-            x = torch.randn(1, 1, 16, 16, device=device, dtype=dtype)
             model(x)
 
     def test_exception_negative_values(self, device, dtype):
