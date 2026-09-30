@@ -28,8 +28,8 @@ from testing.base import BaseTester
 
 # TODO: implement the rest of methods
 class TestFitPlane(BaseTester):
-    @pytest.mark.parametrize("N", (4, 10))
-    @pytest.mark.parametrize("D", (3,))
+    @pytest.mark.parametrize("N", [4, 10])
+    @pytest.mark.parametrize("D", [3])
     # @pytest.mark.parametrize("D", (2, 3, 4))
     def test_smoke(self, device, dtype, N, D):
         # A plane needs non-collinear points: ones() is a set of identical points, rejected since #5041.
@@ -94,7 +94,7 @@ class TestFitPlane(BaseTester):
 
 # TODO: implement the rest of methods
 class TestHyperplane(BaseTester):
-    @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
+    @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_smoke(self, device, dtype, shape):
         p0 = Vector3.random(shape, device, dtype)
         n0 = Vector3.random(shape, device, dtype).normalized()
@@ -114,7 +114,7 @@ class TestHyperplane(BaseTester):
         loaded_plane = torch.load(file_path, weights_only=False)
         self.assert_close(plane.normal.unwrap(), loaded_plane.normal.unwrap())
 
-    @pytest.mark.parametrize("shape", ((2,), (1, 2), (3,), (1, 3)))
+    @pytest.mark.parametrize("shape", [(2,), (1, 2), (3,), (1, 3)])
     def test_through_two_points_raises(self, device, dtype, shape):
         # Hyperplane stores a Vector3 normal and has no 2D form: two points must be rejected with a
         # message that names the three-point requirement, whatever the points' dimension.
@@ -123,7 +123,7 @@ class TestHyperplane(BaseTester):
         with pytest.raises(BaseError, match="requires three points"):
             Hyperplane.through(p0, p1)
 
-    @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
+    @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_through_three(self, device, dtype, shape):
         v0 = Vector3.random(shape, device, dtype)
         v1 = Vector3.random(shape, device, dtype)
@@ -183,7 +183,7 @@ class TestHyperplane(BaseTester):
         with pytest.raises(ValueCheckError, match="not collinear"):
             Hyperplane.through(torch.stack([p0, a]), torch.stack([p1, b]), torch.stack([p2, c]))
 
-    @pytest.mark.parametrize("scale", (1.0, 1e-4))
+    @pytest.mark.parametrize("scale", [1.0, 1e-4])
     def test_through_small_valid_triangle_keeps_orientation_5064(self, device, dtype, scale):
         # A small triangle is not collinear, and it keeps the (p2 - p0) x (p1 - p0) orientation. In float16 the
         # cross product of the 1e-4 triangle underflows to 0 (1e-8 is below the smallest subnormal), so it took the
@@ -194,7 +194,7 @@ class TestHyperplane(BaseTester):
         plane = Hyperplane.through(p0, p1, p2)
         self.assert_close(plane.normal.unwrap(), torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype))
 
-    @pytest.mark.parametrize("size", (300.0, 4e4))
+    @pytest.mark.parametrize("size", [300.0, 4e4])
     def test_through_large_triangle_keeps_orientation_5064(self, device, dtype, size):
         # The normal is (p2 - p0) x (p1 - p0) = (size, size, 0) x (2 size, 0, 0) = (0, 0, -2 size^2). In float16 that
         # overflows for size 300 (-1.8e5 is beyond 65504), and for size 4e4 the edge p1 - p0 = 8e4 overflows too: the
@@ -265,7 +265,7 @@ class TestHyperplane(BaseTester):
         self.assert_close(Hyperplane.through(points[0], points[1], points[2]).normal.unwrap().abs(), expected)
         self.assert_close(fit_plane(points).normal.unwrap().abs(), expected)
 
-    @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
+    @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_abs_signed_distance(self, device, dtype, shape):
         p0 = Vector3.random(shape, device, dtype)
         p1 = Vector3.random(shape, device, dtype)
