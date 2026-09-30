@@ -358,7 +358,7 @@ def conv_soft_argmax2d(
         input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
         kernel_size: the size of the window.
         stride: the stride of the window.
-        padding: the padding added to each side of the input.
+        padding: the padding added to each side of the input, at most half of ``kernel_size`` on every axis.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
           A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
@@ -405,22 +405,22 @@ def conv_soft_argmax2d(
     center_kernel: torch.Tensor = _get_center_kernel2d(ky, kx, device).to(dtype)
     window_kernel: torch.Tensor = _get_window_grid_kernel2d(ky, kx, device).to(dtype)
 
+    if not (0 <= 2 * py <= ky and 0 <= 2 * px <= kx):
+        raise ValueError(
+            f"padding must be non-negative and at most half of kernel_size. Got {padding} for kernel_size {kernel_size}"
+        )
+
     # Softmax over each window on its own: `softmax` shifts every window by its own maximum, so the denominator is
     # at least 1 whatever the rest of the map holds and no `eps` is needed. A single `exp` map shifted by the
     # map-wide maximum underflowed for windows far below it and `eps` then pulled them to their centre (#5020).
-    # The unfolded windows hold `kernel_size` values per output position. Padded positions get `-inf` logits and
-    # carry no weight; their values are 0 so that they do not enter the pooled value either.
+    # The unfolded windows hold `kernel_size` values per output position. The map is divided by the temperature
+    # before it is unfolded, so a tensor temperature broadcasts against the map as before, and padded with `-inf`
+    # logits, which carry no weight.
     n = b * c
     h_out = (h + 2 * py - ky) // sy + 1
     w_out = (w + 2 * px - kx) // sx + 1
-    windows = F.unfold(F.pad(input, [px, px, py, py]), kernel_size, stride=stride)
-    logits = windows / temperature
-    if py > 0 or px > 0:
-        padded_mask = F.pad(torch.zeros(1, 1, h, w, device=device, dtype=dtype), [px, px, py, py], value=float("-inf"))
-        logits = logits + F.unfold(padded_mask, kernel_size, stride=stride)
+    logits = F.unfold(F.pad(input / temperature, [px, px, py, py], value=float("-inf")), kernel_size, stride=stride)
     weights = torch.softmax(logits, dim=1)
-
-    x_softmaxpool = (weights * windows).sum(1).view(b, c, h_out, w_out)
 
     # We need to output also coordinates
     # Pooled window center coordinates. The grid covers the padded input and carries the coordinates on into the
@@ -446,9 +446,13 @@ def conv_soft_argmax2d(
     # Back B*C -> (b, c)
     coords_max = coords_max.view(b, c, 2, coords_max.size(2), coords_max.size(3))
 
-    if output_value:
-        return coords_max, x_softmaxpool
-    return coords_max
+    if not output_value:
+        return coords_max
+
+    # Padded positions have value 0 here and weight 0, so they do not enter the pooled value.
+    windows = F.unfold(F.pad(input, [px, px, py, py]), kernel_size, stride=stride)
+    x_softmaxpool = (weights * windows).sum(1).view(b, c, h_out, w_out)
+    return coords_max, x_softmaxpool
 
 
 def conv_soft_argmax3d(
@@ -481,7 +485,7 @@ def conv_soft_argmax3d(
         input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
         kernel_size:  size of the window.
         stride: stride of the window.
-        padding: the padding added to each side of the input.
+        padding: the padding added to each side of the input, at most half of ``kernel_size`` on every axis.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
           A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
@@ -537,6 +541,11 @@ def conv_soft_argmax3d(
     center_kernel: torch.Tensor = _get_center_kernel3d(kz, ky, kx, device).to(dtype)
     window_kernel: torch.Tensor = _get_window_grid_kernel3d(kz, ky, kx, device).to(dtype)
 
+    if not (0 <= 2 * pz <= kz and 0 <= 2 * py <= ky and 0 <= 2 * px <= kx):
+        raise ValueError(
+            f"padding must be non-negative and at most half of kernel_size. Got {padding} for kernel_size {kernel_size}"
+        )
+
     # Softmax over each window on its own, as in conv_soft_argmax2d (#5020): the windows are unfolded slice by
     # slice and then along depth, holding `kernel_size` values per output position, in (depth, row, column) order
     # like the window kernel.
@@ -544,13 +553,8 @@ def conv_soft_argmax3d(
     d_out = (d + 2 * pz - kz) // sz + 1
     h_out = (h + 2 * py - ky) // sy + 1
     w_out = (w + 2 * px - kx) // sx + 1
-    windows = _unfold3d(F.pad(input, [px, px, py, py, pz, pz]), kernel_size, stride)
-    logits = windows / temperature
-    if pz > 0 or py > 0 or px > 0:
-        padded_mask = F.pad(
-            torch.zeros(1, 1, d, h, w, device=device, dtype=dtype), [px, px, py, py, pz, pz], value=float("-inf")
-        )
-        logits = logits + _unfold3d(padded_mask, kernel_size, stride)
+    pad = [px, px, py, py, pz, pz]
+    logits = _unfold3d(F.pad(input / temperature, pad, value=float("-inf")), kernel_size, stride)
     weights = torch.softmax(logits, dim=2)
 
     # We need to output also coordinates
@@ -580,6 +584,7 @@ def conv_soft_argmax3d(
     if not output_value:
         return coords_max
 
+    windows = _unfold3d(F.pad(input, pad), kernel_size, stride)
     x_softmaxpool = (weights * windows).sum(2).view(b, c, d_out, h_out, w_out)
     return coords_max, x_softmaxpool
 

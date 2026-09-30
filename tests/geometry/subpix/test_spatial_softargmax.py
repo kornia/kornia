@@ -28,7 +28,7 @@ from kornia.geometry.subpix.spatial_soft_argmax import (
     conv_quad_interp3d,
 )
 
-from testing.base import BaseTester, supports_avg_pool3d
+from testing.base import BaseTester
 
 
 class TestCenterKernel2d(BaseTester):
@@ -425,6 +425,42 @@ class TestConvSoftArgmax2d(BaseTester):
         with pytest.raises(ValueError, match="Temperature should be positive"):
             getattr(kornia.geometry.subpix, op)(data, temperature=temperature)
 
+    @pytest.mark.parametrize(
+        "op, shape", [("conv_soft_argmax2d", (2, 3, 5, 7)), ("conv_soft_argmax3d", (2, 3, 4, 5, 7))]
+    )
+    def test_tensor_temperature_matches_float(self, device, dtype, op, shape):
+        # A one-element tensor temperature of any rank that broadcasts against the map gives the float result: the
+        # map is divided before its windows are unfolded, so a (1, 1, 1, 1) temperature does not broadcast against
+        # the (N, k, L) windows instead.
+        data = torch.zeros(shape, device=device, dtype=dtype)
+        data[0, 1, ..., 1, 3] = 2.0
+        data[1, 2, ..., 3, 5] = 1.0
+        fn = getattr(kornia.geometry.subpix, op)
+        expected = fn(data, temperature=0.5, output_value=True)
+        for temperature_shape in ((), (1,), (1,) * len(shape)):
+            temperature = torch.full(temperature_shape, 0.5, device=device, dtype=dtype)
+            actual = fn(data, temperature=temperature, output_value=True)
+            for got, want in zip(actual, expected):
+                self.assert_close(got, want, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "op, kernel_size, padding",
+        [
+            ("conv_soft_argmax2d", (3, 3), (2, 1)),
+            ("conv_soft_argmax2d", (1, 3), (1, 0)),
+            ("conv_soft_argmax2d", (3, 3), (1, -1)),
+            ("conv_soft_argmax3d", (3, 3, 3), (1, 1, 2)),
+            ("conv_soft_argmax3d", (1, 3, 3), (1, 1, 1)),
+            ("conv_soft_argmax3d", (3, 3, 3), (-1, 1, 1)),
+        ],
+    )
+    def test_padding_over_half_kernel_raises(self, device, dtype, op, kernel_size, padding):
+        # A padding above half the window, or a negative one, raises as the pooling kernels did: past the window
+        # size a window would hold padding only and have no softmax, and a negative padding would crop the map.
+        data = torch.zeros((1, 1) + (3, 5, 7)[-len(kernel_size) :], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="padding must be non-negative and at most half of kernel_size"):
+            getattr(kornia.geometry.subpix, op)(data, kernel_size, (1,) * len(kernel_size), padding)
+
 
 class TestConvSoftArgmax3d(BaseTester):
     def test_smoke(self, device, dtype):
@@ -581,8 +617,6 @@ class TestConvSoftArgmax3d(BaseTester):
     def test_window_offset_in_pixels_5017(self, device, dtype, kernel_size):
         # 3-D counterpart of TestConvSoftArgmax2d::test_window_offset_in_pixels_5017: the depth offset used to
         # come from linspace(-1, 1, d), so a 5-deep window reported depth 4 for a peak at depth 5.
-        if device.type == "cpu" and dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("conv_soft_argmax3d has no CPU float16/bfloat16 kernel (avg_pool3d)")
         kz, ky, kx = kernel_size
         data = torch.zeros(1, 1, 11, 11, 13, device=device, dtype=dtype)
         data[..., 5, 4, 6] = 50.0
@@ -609,8 +643,6 @@ class TestConvSoftArgmax3d(BaseTester):
     def test_border_window_centre_with_padding_5066(self, device, dtype, kernel_size, padding, peak):
         # 3-D counterpart of TestConvSoftArgmax2d::test_border_window_centre_with_padding_5066: a zero-padded
         # coordinate grid pulled every channel of an even border window toward 0, not only the straddling axis.
-        if not supports_avg_pool3d(device, dtype):
-            pytest.skip(f"torch has no avg_pool3d kernel for {device.type} {dtype}")
         (kz, ky, kx), (pz, py, px), (lev, row, col) = kernel_size, padding, peak
         data = torch.zeros(1, 1, 5, 6, 7, device=device, dtype=dtype)
         data[..., lev, row, col] = 50.0
@@ -632,8 +664,6 @@ class TestConvSoftArgmax3d(BaseTester):
         self.assert_close(coords[0, 0][:, holds_peak], expected.expand(3, n), atol=1e-4, rtol=1e-4)
 
     def test_int_padding_matches_tuple(self, device, dtype):
-        if not supports_avg_pool3d(device, dtype):
-            pytest.skip(f"torch has no avg_pool3d kernel for {device.type} {dtype}")
         data = torch.zeros(1, 1, 4, 5, 7, device=device, dtype=dtype)
         data[0, 0, 3, 4, 6] = 5.0
         data[0, 0, 0, 0, 0] = 3.0
@@ -1178,8 +1208,7 @@ class TestStrictMaximaBonusDeprecated(BaseTester):
     # `strict_maxima_bonus` is deprecated since kornia 0.9.0. It is still accepted wherever 0.8.3 accepted it,
     # by keyword or in its positional slot, but it warns and is ignored: a call that passes it returns what the
     # call without it returns, and test_default_adds_no_bonus pins that the latter carries no bonus. The argument
-    # handling does not depend on the dtype, so these run in float32 only: conv_soft_argmax3d has no CPU
-    # float16/bfloat16 kernel (avg_pool3d).
+    # handling does not depend on the dtype, so these run in float32 only.
     _SOFT = kornia.geometry.subpix.conv_soft_argmax3d
     _CONV = kornia.geometry.subpix.conv_quad_interp3d
     _ITER = kornia.geometry.subpix.iterative_quad_interp3d
@@ -1280,8 +1309,6 @@ class TestConventionsConvSoftArgmax(BaseTester):
     def test_convention_conv_soft_argmax3d_is_dxy(self, device, dtype):
         # The 3-D windows return (d, x, y) = (depth, column, row). D != H != W, one hot voxel at (d 2, row 1, col 6):
         # the window on it and the six beside it return (2, 6, 1). Swapping D and W is the relabel control.
-        if not supports_avg_pool3d(device, dtype):
-            pytest.skip(f"torch has no avg_pool3d kernel for {device.type} {dtype}")
         volume = torch.zeros(1, 1, 4, 5, 8, device=device, dtype=dtype)
         volume[0, 0, 2, 1, 6] = 30.0
         coords, _ = kornia.geometry.subpix.conv_soft_argmax3d(volume, (3, 3, 3))

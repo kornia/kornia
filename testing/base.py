@@ -343,20 +343,6 @@ def supports_topk(device: torch.device, dtype: torch.dtype) -> bool:
     return _supports_kernel_probe(_topk_op, device.type, dtype)
 
 
-def _avg_pool3d_op(device_type: str, dtype: torch.dtype) -> None:
-    F.avg_pool3d(_probe_zeros(device_type, dtype, 1, 1, 1, 1, 1), 1)
-
-
-def supports_avg_pool3d(device: torch.device, dtype: torch.dtype) -> bool:
-    """Whether this device has a 3D average-pooling kernel for ``dtype``.
-
-    :func:`kornia.geometry.subpix.conv_soft_argmax3d` pools its windows with ``avg_pool3d``, which
-    torch has no float16 / bfloat16 CPU kernel for. Probed at runtime and cached per (device type,
-    dtype), like :func:`supports_replicate_padding`.
-    """
-    return _supports_kernel_probe(_avg_pool3d_op, device.type, dtype)
-
-
 class BaseTester:
     @staticmethod
     def assert_close(
