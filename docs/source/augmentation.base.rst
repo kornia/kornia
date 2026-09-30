@@ -56,8 +56,9 @@ Custom Augmentation Classes
 ---------------------------
 
 `IntensityAugmentationBase2D` supplies an identity matrix and default passthrough handlers for most annotations.
-Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct intensity
-`transform_boxes` calls return the boxes unchanged; the container skips intensity transforms for boxes.
+Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct and container
+calls pass masks, boxes, and keypoints through unchanged unless a subclass overrides
+`apply_transform_mask`, `apply_transform_box`, or `apply_transform_keypoint`.
 `GeometricAugmentationBase2D` supplies the dispatch used for geometric coordinate transformations.
 
 For a geometric operation, implement `compute_transformation` and `apply_transform`. Supporting image inversion
