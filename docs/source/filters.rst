@@ -19,7 +19,9 @@ counterpart on the same page.
    * - :doc:`Thresholding <filters.segmentation>`
      - Range thresholding and Otsu's threshold.
    * - :doc:`filters.filtering_api`
-     - Apply your own 2D, separable or 3D kernels with :func:`filter2d`, :func:`filter2d_separable` and :func:`filter3d`.
+     - Apply your own 2D, separable or 3D kernels with :func:`filter2d`, :func:`filter2d_separable` and :func:`filter3d`,
+       or by correlation or convolution with :func:`correlate2d`, :func:`convolve2d`, :func:`correlate3d` and
+       :func:`convolve3d`.
    * - :doc:`filters.kernels`
      - Gaussian, Hanning, Laplacian and motion kernels used by the filters above.
 
