@@ -1222,6 +1222,11 @@ class TestWeightsOnly(BaseTester):
     only forwards its keyword arguments unpickles whatever a checkpoint names. The
     wrapper defaults to ``weights_only=True`` instead, and a caller that trusts a file
     that needs more opts out with ``weights_only=False`` explicitly.
+
+    The payload is an ordinary pickled callable in the current ``torch.save`` format. These
+    tests pin that the default reaches torch and that torch's restricted unpickler refuses
+    such a payload; they do not exercise the bypasses PyTorch has published for torch before
+    2.10, which the wrapper's docstring describes.
     """
 
     @pytest.mark.parametrize(

@@ -602,14 +602,26 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
 
     The checkpoint is loaded with ``weights_only=True`` unless the caller passes
     ``weights_only=False``, whereas the torch function defaults to ``False`` on
-    every torch version kornia supports. ``torch.load`` then unpickles only
-    tensors, primitive types and plain containers, so loading a checkpoint does
-    not execute code stored in it, which is also ``torch.load``'s own default
-    since torch 2.6. A checkpoint that stores any other type fails with a
-    :class:`RuntimeError` chained to the :class:`pickle.UnpicklingError` that
-    names the type. Allowlist the type for the call with
-    ``torch.serialization.safe_globals([...])``, or pass ``weights_only=False``,
-    but only for a file you trust, because unpickling it can run arbitrary code.
+    every torch version kornia supports; ``weights_only=True`` is
+    ``torch.load``'s own default since torch 2.6. ``torch.load`` then unpickles
+    only tensors, primitive types and plain containers, and refuses a pickled
+    callable instead of running it. A checkpoint that stores any other type
+    fails with a :class:`RuntimeError` chained to the
+    :class:`pickle.UnpicklingError` that names the type. Allowlist the type for
+    the call with ``torch.serialization.safe_globals([...])``, or pass
+    ``weights_only=False``, but only for a file you trust, because unpickling it
+    can run arbitrary code.
+
+    On older torch, ``weights_only=True`` narrows what a checkpoint can do but
+    does not guarantee that it runs no code. PyTorch's advisories report
+    checkpoints crafted to run code despite it before torch 2.6
+    (`GHSA-53q9-r3pm-6pq6
+    <https://github.com/pytorch/pytorch/security/advisories/GHSA-53q9-r3pm-6pq6>`__)
+    and to corrupt memory, potentially running code, before torch 2.10
+    (`GHSA-63cw-57p8-fm3p
+    <https://github.com/pytorch/pytorch/security/advisories/GHSA-63cw-57p8-fm3p>`__).
+    kornia supports torch 2.5.1 and later, so load a checkpoint from a source
+    you do not trust only on torch 2.10 or later, which fixes both.
 
     Progress reporting is written to :data:`sys.stderr`. This is the second
     deliberate deviation from the torch function, which since torch 2.x writes
