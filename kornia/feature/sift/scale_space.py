@@ -694,7 +694,11 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         yy: torch.Tensor,
         spatial_weights: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Accumulate the two angular votes per sample into the 4 x 4 spatial cells."""
+        """Accumulate the two angular votes per sample into the 4 x 4 spatial cells.
+
+        The result is in the (angle, row, column) order of every kornia SIFT descriptor; see
+        :func:`~kornia.feature.convert_sift_descriptor_layout` for OpenCV's order.
+        """
         b, n, _ = mag.shape
         weight = torch.exp(-0.78125 * (xx.square() + yy.square())).to(mag.dtype)
         angular = (angle % (2 * math.pi)) * 8 / (2 * math.pi)
@@ -715,7 +719,8 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
             # (B,N,4,size,8), instead of multiplying each sample into 16 cells.
             size = spatial_weights.shape[0]
             rows = spatial_weights.T @ angular_weights.reshape(b, n, size, size * 8)
-            return (spatial_weights.T @ rows.reshape(b, n, 4, size, 8)).reshape(b, n, 128)
+            # (B, N, row, column, angle) -> (B, N, angle, row, column).
+            return (spatial_weights.T @ rows.reshape(b, n, 4, size, 8)).permute(0, 1, 4, 2, 3).reshape(b, n, 128)
         spatial_x = 2.5 * xx + 1.5
         spatial_y = 2.5 * yy + 1.5
         bins = torch.arange(4, device=mag.device, dtype=mag.dtype)
@@ -723,8 +728,8 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         spatial_weights = (1.0 - (spatial_x.unsqueeze(-1) - cell_x.reshape(-1)).abs()).clamp_min(0.0) * (
             1.0 - (spatial_y.unsqueeze(-1) - cell_y.reshape(-1)).abs()
         ).clamp_min(0.0)
-        # (B, N, 8, samples) @ (samples, 16) -> one 8-bin histogram per spatial cell.
-        return torch.matmul(angular_weights.transpose(-1, -2), spatial_weights).transpose(-1, -2).reshape(b, n, 128)
+        # (B, N, 8, samples) @ (samples, 16) -> (B, N, angle, cell): one 8-bin histogram per spatial cell.
+        return torch.matmul(angular_weights.transpose(-1, -2), spatial_weights).reshape(b, n, 128)
 
     def forward(
         self,
