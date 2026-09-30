@@ -17,6 +17,7 @@
 
 import dis
 import inspect
+import math
 import platform
 import sys
 import warnings
@@ -2490,6 +2491,14 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         _skip_if_dtype_unavailable(device, torch.float64)
 
         axis = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float64) / 14.0**0.5
+        zero = torch.zeros((), device=device, dtype=torch.float64)
+        skew = torch.stack(
+            [
+                torch.stack([zero, -axis[2], axis[1]]),
+                torch.stack([axis[2], zero, -axis[0]]),
+                torch.stack([-axis[1], axis[0], zero]),
+            ]
+        )
         for theta in (1.1e-3, 9.99e-4, 5e-4, 1e-4, 1e-5):
             v = (theta * axis)[None]
             direct = axis_angle_to_rotation_matrix(v)
@@ -2502,6 +2511,17 @@ class TestAngleAxisToRotationMatrix(BaseTester):
             round_trip = kornia.geometry.conversions.rotation_matrix_to_axis_angle(direct)
             assert (round_trip - v).abs().max().item() < 1e-15, (
                 f"kornia#4838: the axis-angle round trip drifted at theta={theta}"
+            )
+            # Rodrigues' formula from sin and cos, 1 - cos(theta) written as 2 sin(theta / 2)**2 so it does not
+            # cancel. The (1 - cos(theta)) / theta**2 coefficient only shows at theta**4 / 24 (4e-14 at 1e-3), below
+            # the quaternion-route bound above, so this is the check that pins its theta**2 term.
+            expected = (
+                torch.eye(3, device=device, dtype=torch.float64)
+                + math.sin(theta) * skew
+                + 2.0 * math.sin(0.5 * theta) ** 2 * (skew @ skew)
+            )
+            assert (direct[0] - expected).abs().max().item() < 1e-15, (
+                f"kornia#4838: the low-angle branch is not the rotation of its input at theta={theta}"
             )
 
     def test_convention_accepts_any_leading_batch_dimensions_3955(self, device):
