@@ -288,6 +288,13 @@ class TestRgbToGrayscale(BaseTester):
         assert torch.equal(out, kornia.color.rgb_to_grayscale(img))
         assert out.count_nonzero() > 0
 
+    def test_module_other_integer_dtype_raises_like_the_functional_5109(self, device):
+        # Default weights exist for uint8 and floating images only. The module used to return all zeros here.
+        img = torch.arange(120, device=device, dtype=torch.int32).reshape(2, 3, 4, 5)
+        gray = kornia.color.RgbToGrayscale()
+        with pytest.raises(TypeError, match="Unknown data type"):
+            gray(img)
+
 
 class TestBgrToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
