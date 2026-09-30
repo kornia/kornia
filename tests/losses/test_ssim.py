@@ -157,7 +157,8 @@ class TestMS_SSIMLoss(BaseTester):
     @pytest.mark.parametrize("channels", [1, 3])
     def test_reference(self, device, dtype, channels):
         # Snippet used to generate expected (requires numpy only): the per-pixel, Gaussian-window MS-SSIM of
-        # Zhao et al. (2017) for every channel, multiplied over the channels.
+        # Zhao et al. (2017) for every channel, averaged over the channels as in their reference implementation
+        # (NVlabs/PL4NN, ``MSSSIML1`` in src/loss.py).
         # import numpy as np
         # def gauss(s, k):
         #     g = np.exp(-((np.arange(k) - k // 2) ** 2) / (2 * s * s)); g /= g.sum(); return np.outer(g, g)
@@ -165,15 +166,17 @@ class TestMS_SSIMLoss(BaseTester):
         #     k = w.shape[0]; a = np.pad(a, k // 2); h, v = a.shape[0] - k + 1, a.shape[1] - k + 1
         #     return np.array([[(a[i : i + k, j : j + k] * w).sum() for j in range(v)] for i in range(h)])
         # def ms_ssim_loss(x, y, sigmas=(0.5, 1.0, 2.0), c1=0.01**2, c2=0.03**2):  # x, y: (C, H, W)
-        #     k = int(4 * sigmas[-1] + 1); prod = np.ones(x.shape[1:])
+        #     k = int(4 * sigmas[-1] + 1); per_channel = []
         #     for xc, yc in zip(x, y):
+        #         ms = np.ones(x.shape[1:])
         #         for i, s in enumerate(sigmas):
         #             w = gauss(s, k); mx, my = filt(xc, w), filt(yc, w)
         #             vx, vy, cxy = filt(xc * xc, w) - mx * mx, filt(yc * yc, w) - my * my, filt(xc * yc, w) - mx * my
-        #             prod *= (2 * cxy + c2) / (vx + vy + c2)
+        #             ms *= (2 * cxy + c2) / (vx + vy + c2)
         #             if i == len(sigmas) - 1:
-        #                 prod *= (2 * mx * my + c1) / (mx * mx + my * my + c1)
-        #     return 1 - prod
+        #                 ms *= (2 * mx * my + c1) / (mx * mx + my * my + c1)
+        #         per_channel.append(ms)
+        #     return 1 - np.mean(per_channel, axis=0)
         # x = (np.arange(60).reshape(3, 4, 5) * np.array([1, 3, 7]).reshape(3, 1, 1) % 11) / 10
         # expected = ms_ssim_loss(x[:channels], x[:channels] ** 2)
         img1 = torch.arange(60, dtype=torch.float64).reshape(1, 3, 4, 5)
@@ -188,10 +191,10 @@ class TestMS_SSIMLoss(BaseTester):
                 [0.27640491, 0.33963748, 0.28366937, 0.22100261, 0.19366287],
             ],
             3: [
-                [0.66712644, 0.55020783, 0.54474428, 0.59134973, 0.69012946],
-                [0.51310637, 0.49969304, 0.48765724, 0.47662429, 0.53276831],
-                [0.46020250, 0.49761160, 0.46484452, 0.46814626, 0.51647284],
-                [0.53283039, 0.56160072, 0.51846598, 0.54783399, 0.52460798],
+                [0.30440426, 0.23147867, 0.22960489, 0.25790863, 0.31691969],
+                [0.21193412, 0.20488162, 0.19946196, 0.19401123, 0.22219212],
+                [0.18556347, 0.20465673, 0.18753592, 0.18937725, 0.21497141],
+                [0.22266887, 0.23662971, 0.21462762, 0.23004896, 0.21928525],
             ],
         }[channels]
         expected = torch.tensor([expected], device=device, dtype=dtype)

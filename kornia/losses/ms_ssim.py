@@ -42,12 +42,14 @@ class MS_SSIMLoss(nn.Module):
         - :math:`G_\alpha` is the sigma values for computing multi-scale SSIM.
         - :math:`\mathcal{L_1}` is the L1 loss.
 
-    Each channel is filtered at every scale. :math:`\mathcal{L_{MSSIM}}` is one minus the product, over the channels,
-    of the luminance at the coarsest scale and the contrast-structure at every scale, so a single-channel input gives
-    the plain MS-SSIM of [1]. The L1 term is filtered at the coarsest scale and averaged over the channels.
+    Each channel is filtered at every scale. The MS-SSIM of a channel is its luminance at the coarsest scale times its
+    contrast-structure at every scale, and :math:`\mathcal{L_{MSSIM}}` is one minus the mean of the per-channel
+    MS-SSIM, as in the reference implementation [2] of [1]. The L1 term is filtered at the coarsest scale and averaged
+    over the channels.
 
     Reference:
         [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
+        [2]: https://github.com/NVlabs/PL4NN/blob/master/src/loss.py (``MSSSIML1``)
 
     Args:
         sigmas: gaussian sigma values.
@@ -198,12 +200,12 @@ class MS_SSIMLoss(nn.Module):
 
         lc = (2 * muxy + self.C1) / (mux2 + muy2 + self.C1)
         cs = (2 * sigmaxy + self.C2) / (sigmax2 + sigmay2 + self.C2)
-        # Luminance at the coarsest scale and contrast-structure at every scale, multiplied over the channels.
-        lM = lc[:, S - 1 :: S].prod(dim=1)
-        PIcs = cs.prod(dim=1)
+        # Per channel: luminance at the coarsest scale times contrast-structure at every scale.
+        lM = lc[:, S - 1 :: S]
+        PIcs = cs.unflatten(1, [CH, S]).prod(dim=2)
 
-        # Compute MS-SSIM loss
-        loss_ms_ssim = 1 - lM * PIcs
+        # Compute MS-SSIM loss, averaged over the channels
+        loss_ms_ssim = 1 - (lM * PIcs).mean(dim=1)
 
         # TODO: pass pointer to function e.g. to make more custom with mse, cosine, etc.
         # Compute L1 loss
