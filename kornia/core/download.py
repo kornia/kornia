@@ -594,23 +594,24 @@ def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget)
 def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, Any]:
     """Load a state dict from a URL, trying fallback URLs on failure.
 
-    Drop-in replacement for :func:`torch.hub.load_state_dict_from_url` that
-    accepts either a single URL string or an ordered list of URLs. Each URL is
-    tried in turn; a :mod:`warnings` message is emitted for every failed
-    attempt before the next source is tried.
+    Replacement for :func:`torch.hub.load_state_dict_from_url` that also accepts
+    an ordered list of URLs. Each URL is tried in turn; a :mod:`warnings` message
+    is emitted for every failed attempt before the next source is tried. It
+    deliberately differs from the torch function in two ways, both described
+    below: the ``weights_only`` default and where progress is reported.
 
     The checkpoint is loaded with ``weights_only=True`` unless the caller passes
-    ``weights_only=False``; the torch function defaults to ``False`` on every torch
-    version kornia supports. ``torch.load`` then unpickles only tensors, primitive
-    types and plain containers, so loading a checkpoint does not execute code
-    stored in it, which is also ``torch.load``'s own default since torch 2.6. A
-    checkpoint that stores any other type fails with a :class:`RuntimeError`
-    chained to the :class:`pickle.UnpicklingError` that names the type. Allowlist
-    the type for the call with ``torch.serialization.safe_globals([...])``, or pass
-    ``weights_only=False``, but only for a file you trust, because unpickling it
-    can run arbitrary code.
+    ``weights_only=False``, whereas the torch function defaults to ``False`` on
+    every torch version kornia supports. ``torch.load`` then unpickles only
+    tensors, primitive types and plain containers, so loading a checkpoint does
+    not execute code stored in it, which is also ``torch.load``'s own default
+    since torch 2.6. A checkpoint that stores any other type fails with a
+    :class:`RuntimeError` chained to the :class:`pickle.UnpicklingError` that
+    names the type. Allowlist the type for the call with
+    ``torch.serialization.safe_globals([...])``, or pass ``weights_only=False``,
+    but only for a file you trust, because unpickling it can run arbitrary code.
 
-    Progress reporting is written to :data:`sys.stderr`. This is the one
+    Progress reporting is written to :data:`sys.stderr`. This is the second
     deliberate deviation from the torch function, which since torch 2.x writes
     its ``Downloading: "<url>" to <path>`` line to :data:`sys.stdout` (the
     accompanying progress bar already goes to stderr). Status output on stdout
