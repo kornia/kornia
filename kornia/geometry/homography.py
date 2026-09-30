@@ -261,16 +261,15 @@ def sampson_homography_distance(
 def line_segment_transfer_error_one_way(
     ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor, squared: bool = False
 ) -> torch.Tensor:
-    r"""Return transfer error in image 2 for line segment correspondences given the homography matrix.
+    r"""Return the mean perpendicular transfer distance in image 2 for line segment correspondences.
 
     Both endpoints of each image-1 segment are mapped into image 2 by ``H`` and scored against the line through
     the matching image-2 segment. See :cite:`homolines2001` for details.
 
     Convention:
         - Argument order and direction as :func:`oneway_transfer_error`.
-        - Known defects: the image-2 line is not normalised, so the error is the mean perpendicular distance of
-          the two mapped endpoints multiplied by the length of the image-2 segment, not a pixel distance
-          (`#4867 <https://github.com/kornia/kornia/issues/4867>`_).
+        - The image-2 line is scaled to unit :math:`(a, b)`, so the error is the mean perpendicular distance of
+          the two mapped endpoints, in pixels.
 
     Args:
         ls1: line segment correspondences from the left images with shape
@@ -293,6 +292,11 @@ def line_segment_transfer_error_one_way(
     ps2_h = convert_points_to_homogeneous(ps2)
     pe2_h = convert_points_to_homogeneous(pe2)
     ln2 = torch.linalg.cross(ps2_h, pe2_h, dim=3)
+    # Scale the image-2 line to a unit (a, b) so the error is a perpendicular distance in pixels, not that
+    # distance times the image-2 segment length (#4867). A zero-length segment defines no line; as before the
+    # fix its error reads as zero, and the callers that need infinity guard on the segment length themselves.
+    scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
+    ln2 = ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))
     ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1))
     pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1))
     er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
@@ -306,12 +310,11 @@ def line_segment_transfer_error_one_way(
 def _line_segment_squared_distance_one_way(ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor) -> torch.Tensor:
     """Squared perpendicular distance, in pixels, of the mapped image-1 endpoints from the image-2 line.
 
-    :func:`line_segment_transfer_error_one_way` carries the image-2 segment length (#4867); dividing by it gives the
-    pixel distance. A zero-length image-2 segment defines no line, so its distance is infinite.
+    :func:`line_segment_transfer_error_one_way` returns that pixel distance directly since #4867; a zero-length
+    image-2 segment defines no line, so its distance is infinite.
     """
-    residual = line_segment_transfer_error_one_way(ls1, ls2, H)
+    distance = line_segment_transfer_error_one_way(ls1, ls2, H)
     length = (ls2[..., 1, :] - ls2[..., 0, :]).norm(dim=-1)
-    distance = residual / torch.where(length > 0, length, torch.ones_like(length))
     return torch.where(length > 0, distance.square(), torch.full_like(distance, float("inf")))
 
 
@@ -803,10 +806,7 @@ def find_homography_lines_dlt_iterated(
     Convention:
         - As :func:`find_homography_dlt_iterated`, with :func:`find_homography_lines_dlt` as the solver and, as
           ``e`` in the Gaussian kernel, the perpendicular distance in pixels of the mapped image-1 endpoints from
-          the image-2 line: the residual of :func:`line_segment_transfer_error_one_way` divided by the image-2
-          segment length it carries. A zero-length image-2 segment gets weight zero.
-        - Known defect: the length-scaled residual of :func:`line_segment_transfer_error_one_way` still applies
-          (`#4867 <https://github.com/kornia/kornia/issues/4867>`_).
+          the image-2 line. A zero-length image-2 segment gets weight zero.
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.

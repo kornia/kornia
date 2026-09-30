@@ -131,7 +131,10 @@ class TestLineSegmentOneWayError(BaseTester):
         pts2_end = pts2 + torch.ones(3, 2, device=device, dtype=dtype)[None]
         ls2 = torch.stack([pts2, pts2_end], dim=2)
         H = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=dtype, device=device)[None]
-        expected = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)[None]
+        # The perpendicular distance in pixels: the mapped endpoints miss the image-2 line by sqrt(2)/2, the
+        # distance of (1, 1) from the line through (2, 0)-(3, 1) and (2, 2)-(3, 3). #4867 scaled it by the
+        # image-2 segment length, sqrt(2), and reported 1.
+        expected = torch.tensor([0.0, 0.70710678, 0.70710678], device=device, dtype=dtype)[None]
         self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected, atol=1e-4, rtol=1e-4)
 
 
@@ -1258,17 +1261,16 @@ class TestConventionHomography(BaseTester):
         p1, _, H = _planar(device, dtype)
         short = p1[:, [1, 7]].reshape(1, 1, 2, 2)
         mid = short.mean(dim=2, keepdim=True)
-        errors, lengths = [], []
+        errors = []
         for seg1 in (short, mid + 2.0 * (short - mid)):  # the same line, the segment twice as long
             seg2 = kornia.geometry.transform_points(H, seg1.reshape(1, 2, 2)).reshape(1, 1, 2, 2)
             offset = seg2 + 3.0 * _unit_normal(seg2)[..., None, :]  # moved 3 px off its line in image 2
             errors.append(line_segment_transfer_error_one_way(seg1, offset, H))
-            lengths.append((seg2[..., 1, :] - seg2[..., 0, :]).norm(dim=-1))
-        # #4867: the image-2 line is not normalised, so the error is 3 px times the image-2 segment length (223 and
-        # 447 px here), not 3 px. Once the line is normalised both errors are 3.
-        for error, length in zip(errors, lengths):
-            self.assert_close(error / length, torch.full_like(error, 3.0))
-        assert errors[1] > 1.9 * errors[0]
+        # #4867 fixed: the image-2 line is normalised, so both errors are the 3-px offset itself, whatever the
+        # image-2 segment length (223 and 447 px here). Before the fix they were 3 px times the length.
+        for error in errors:
+            self.assert_close(error, torch.full_like(error, 3.0))
+        self.assert_close(errors[1], errors[0])
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_gaussian_weights_4870(self, model, device, dtype, monkeypatch):
@@ -1291,10 +1293,9 @@ class TestConventionHomography(BaseTester):
             name, iterated, args, k = "find_homography_lines_dlt", find_homography_lines_dlt_iterated, (ls1, ls2), 2
 
             def error(H):
-                # The kernel's e is the perpendicular distance in pixels: the residual of
-                # line_segment_transfer_error_one_way divided by the image-2 segment length it carries (#4867).
-                length = (ls2[..., 1, :] - ls2[..., 0, :]).norm(dim=-1)
-                return line_segment_transfer_error_one_way(ls1, ls2, H, squared=False) / length
+                # The kernel's e is the perpendicular distance in pixels, which
+                # line_segment_transfer_error_one_way returns directly since #4867.
+                return line_segment_transfer_error_one_way(ls1, ls2, H, squared=False)
 
         plain = getattr(kornia.geometry.homography, name)
         weights = torch.ones(1, args[0].shape[1], device=device, dtype=dtype)
