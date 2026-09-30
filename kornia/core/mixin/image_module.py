@@ -33,7 +33,8 @@ def _image_to_float(image: torch.Tensor) -> torch.Tensor:
 
     A ``uint8`` image is divided by 255, a ``uint16`` one by 65535, and so on; a ``bool`` image becomes 0 and 1; a
     floating image is returned unchanged, since it is taken to be in ``[0, 1]`` already. Integer and ``bool`` images
-    become the default floating dtype.
+    become the default floating dtype. A signed integer image maps to ``[iinfo.min / iinfo.max, 1]``: negative values
+    stay negative, and the minimum lands just below -1 (``int8`` -128 gives -128 / 127).
     """
     if image.is_floating_point():
         return image
@@ -41,6 +42,19 @@ def _image_to_float(image: torch.Tensor) -> torch.Tensor:
     if image.dtype == torch.bool:
         return converted
     return converted / float(torch.iinfo(image.dtype).max)
+
+
+def _array_to_float_image(array: Any) -> torch.Tensor:
+    """Convert a channels-last NumPy image to a channels-first tensor scaled by :func:`_image_to_float`."""
+    from kornia.image.utils import image_to_tensor  # pylint: disable=C0415
+
+    if not array.dtype.isnative:  # torch.from_numpy rejects big-endian data, such as PIL's "I;16B" mode
+        array = array.astype(array.dtype.newbyteorder("="))
+    return _image_to_float(image_to_tensor(array))
+
+
+# Non-``uint8`` dtypes PIL stores as a one-channel image (modes "1", "I;16" and "I"); ``uint8`` takes 1 to 4 channels.
+_PIL_ONE_CHANNEL_DTYPES = (torch.bool, torch.int8, torch.int16, torch.uint16, torch.int32, torch.uint32)
 
 
 def _to_uint8_image(image: torch.Tensor) -> torch.Tensor:
@@ -64,11 +78,11 @@ class ImageModuleMixIn:
 
     Non-tensor inputs are converted by :meth:`to_tensor`: a NumPy array of shape :math:`(H, W)`, :math:`(H, W, C)`
     or :math:`(B, H, W, C)`, a PIL image or an image path becomes a :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor.
-    An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535), a ``bool`` image
-    becomes 0 and 1, and a floating image keeps its values. Tensors pass through unchanged. ``output_type="numpy"``
-    returns channels-last arrays with the values of the output tensor, so a floating output fed back in converts to
-    the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to ``[0, 1]`` and
-    round it to 8 bits, and pass an integer image through with its values.
+    An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535; a signed image keeps
+    its negative values), a ``bool`` image becomes 0 and 1, and a floating image keeps its values. Tensors pass through
+    unchanged. ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
+    output fed back in converts to the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a
+    floating image to ``[0, 1]`` and round it to 8 bits on the CPU, and pass a ``uint8`` image through with its values.
     """
 
     _output_image: Any
@@ -176,9 +190,12 @@ class ImageModuleMixIn:
 
         Supports image path, numpy array, PIL image, and raw tensor. A NumPy array of shape :math:`(H, W)`,
         :math:`(H, W, C)` or :math:`(B, H, W, C)` becomes :math:`(C, H, W)` or :math:`(B, C, H, W)`, with one channel
-        for :math:`(H, W)`; a PIL image converts like its NumPy array. An integer image is divided by the maximum of
-        its dtype (``uint8`` by 255, ``uint16`` by 65535), a ``bool`` image becomes 0 and 1, and a floating image keeps
-        its values; integer and ``bool`` images become the default floating dtype. A tensor is returned unchanged.
+        for :math:`(H, W)`; a PIL image converts like its NumPy array, except that a palette image (mode ``P`` or
+        ``PA``) is converted to RGB, or RGBA when it has transparency, first. An integer image is divided by the maximum
+        of its dtype (``uint8`` by 255, ``uint16`` by 65535, a PIL mode ``I`` image by the ``int32`` maximum); a signed
+        image maps to ``[iinfo.min / iinfo.max, 1]``, so its negative values stay negative. A ``bool`` image becomes 0
+        and 1, and a floating image keeps its values; integer and ``bool`` images become the default floating dtype. A
+        tensor is returned unchanged.
 
         Args:
             x: The input to convert.
@@ -193,12 +210,12 @@ class ImageModuleMixIn:
             return _image_to_float(load_image(x, ImageLoadType.UNCHANGED))
         if isinstance(x, torch.Tensor):
             return x
-        from kornia.image.utils import image_to_tensor  # pylint: disable=C0415
-
         if isinstance(x, np.ndarray):  # type: ignore
-            return _image_to_float(image_to_tensor(x))
+            return _array_to_float_image(x)
         if isinstance(x, Image.Image):  # type: ignore
-            return _image_to_float(image_to_tensor(np.array(x)))  # type: ignore
+            if x.mode in ("P", "PA"):  # palette indices are not intensities
+                x = x.convert("RGBA" if x.mode == "PA" or "transparency" in x.info else "RGB")
+            return _array_to_float_image(np.array(x))  # type: ignore
         raise TypeError("Input type not supported")
 
     def to_numpy(self, x: Any) -> "np.array":  # type: ignore
@@ -206,7 +223,10 @@ class ImageModuleMixIn:
 
         A :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor becomes a channels-last :math:`(H, W, C)` or
         :math:`(B, H, W, C)` array with the same values, the layout :meth:`to_tensor` accepts, so a floating array
-        converts back to the same tensor. A tensor of any other rank keeps its shape.
+        converts back to the same tensor. A tensor of any other rank keeps its shape. Every 3-D or 4-D tensor is taken
+        to be an image, so a non-image element of a tuple output, such as a :math:`(B, N, 4)` box tensor, is moved to
+        channels-last too; modules with several outputs are tracked in
+        `#5210 <https://github.com/kornia/kornia/issues/5210>`_.
 
         Args:
             x: The input to convert.
@@ -231,8 +251,9 @@ class ImageModuleMixIn:
     def to_pil(self, x: Any) -> "Image.Image":  # type: ignore
         """Convert input to PIL image.
 
-        A floating image is clamped to ``[0, 1]`` and rounded to 8 bits; an integer image keeps its values. A
-        one-channel image becomes a mode ``"L"`` image, and a :math:`(B, C, H, W)` batch a list of images.
+        A floating image is clamped to ``[0, 1]`` and rounded to 8 bits on the CPU; a ``uint8`` image keeps its
+        values. A one-channel image becomes a mode ``"L"`` image, and a :math:`(B, C, H, W)` batch a list of images.
+        Other integer and ``bool`` images convert only with one channel (PIL modes ``"I"``, ``"I;16"`` and ``"1"``).
 
         Args:
             x: The input to convert.
@@ -257,7 +278,12 @@ class ImageModuleMixIn:
 
     @staticmethod
     def _chw_to_pil(image: torch.Tensor) -> "Image.Image":  # type: ignore
-        image = _to_uint8_image(image).cpu()
+        image = _to_uint8_image(image.detach().cpu())
+        if image.dtype != torch.uint8 and (image.shape[0] != 1 or image.dtype not in _PIL_ONE_CHANNEL_DTYPES):
+            raise NotImplementedError(
+                "to_pil converts a float or uint8 image, or a one-channel bool, int8, int16, int32, uint16 or uint32 "
+                f"image; got a {image.shape[0]}-channel {image.dtype} tensor."
+            )
         if image.shape[0] == 1:
             return Image.fromarray(image[0].numpy())  # type: ignore
         return Image.fromarray(image.permute(1, 2, 0).numpy())  # type: ignore

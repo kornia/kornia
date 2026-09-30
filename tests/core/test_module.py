@@ -25,6 +25,7 @@ from PIL import Image as PILImage
 
 from kornia.augmentation import ImageSequential as AugmentationImageSequential
 from kornia.core.module import ImageModule, ImageModuleMixIn, ImageSequential
+from kornia.io import write_image
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -292,14 +293,17 @@ _ROW_UINT8 = [255, 128, 255, 0, 0, 255]
 class TestImageModuleConversions(BaseTester):
     """Value and layout contract of the ``ImageModule`` input and output conversions."""
 
-    @pytest.mark.parametrize("np_dtype", [np.uint8, np.uint16, np.int16, np.int32])
+    @pytest.mark.parametrize("np_dtype", [np.uint8, np.uint16, np.int8, np.int16, np.int32])
     def test_to_tensor_scales_integer_numpy_by_dtype_max_5207(self, np_dtype):
         info = np.iinfo(np_dtype)
-        pixel = np.array([0, info.max // 2, info.max], dtype=np_dtype)
-        image = np.broadcast_to(pixel, (2, 4, 3)).copy()  # (H, W, C), every pixel is `pixel`
+        values = [0, info.max // 2, info.max] if info.min == 0 else [info.min, -1, 0, info.max // 2, info.max]
+        pixel = np.array(values, dtype=np_dtype)
+        image = np.broadcast_to(pixel, (2, 4, len(values))).copy()  # (H, W, C), every pixel is `pixel`
         out = _Identity().to_tensor(image)
-        expected = torch.tensor(pixel.astype(np.float64) / info.max, dtype=torch.float32).view(3, 1, 1).expand(3, 2, 4)
-        self.assert_close(out, expected)
+        expected = torch.tensor(pixel.astype(np.float64) / info.max, dtype=torch.float32).view(-1, 1, 1)
+        self.assert_close(out, expected.expand(len(values), 2, 4))
+        if info.min < 0:  # a signed minimum lands just below -1: int8 -128 -> -128 / 127
+            assert out[0, 0, 0].item() == pytest.approx(info.min / info.max)
 
     @pytest.mark.parametrize("np_dtype", [np.float16, np.float32, np.float64])
     def test_to_tensor_passes_floating_numpy_through_5207(self, np_dtype):
@@ -329,6 +333,12 @@ class TestImageModuleConversions(BaseTester):
         out = _Identity().to_tensor(str(path))
         self.assert_close(out, torch.tensor([1.0, 0.2, 0.0]).view(3, 1, 1).expand(3, 4, 6))
 
+    def test_to_tensor_16_bit_path_5207(self, tmp_path):
+        path = tmp_path / "rgb16.png"
+        write_image(str(path), torch.tensor([65535, 13107, 0], dtype=torch.uint16).view(3, 1, 1).expand(3, 4, 6))
+        out = _Identity().to_tensor(str(path))
+        self.assert_close(out, torch.tensor([1.0, 0.2, 0.0]).view(3, 1, 1).expand(3, 4, 6))
+
     def test_numpy_output_round_trips_through_numpy_input_5207(self):
         module = _Identity()
         image = np.random.default_rng(0).integers(0, 256, (4, 6, 3), dtype=np.uint8)
@@ -354,6 +364,7 @@ class TestImageModuleConversions(BaseTester):
         [
             ("L", 51, [0.2]),
             ("I;16", 65535, [1.0]),
+            ("I;16B", 65535, [1.0]),
             ("I", 2**31 - 1, [1.0]),
             ("F", 0.25, [0.25]),
             ("1", 1, [1.0]),
@@ -366,6 +377,22 @@ class TestImageModuleConversions(BaseTester):
         out = _Identity().to_tensor(PILImage.new(mode, (6, 4), fill))
         expected = torch.tensor(expected).view(-1, 1, 1).expand(len(expected), 4, 6)
         self.assert_close(out, expected)
+
+    @pytest.mark.parametrize(
+        "mode, fill, transparency, expected",
+        [
+            ("P", 1, None, [1.0, 0.0, 0.0]),
+            ("P", 1, 0, [1.0, 0.0, 0.0, 1.0]),
+            ("PA", (1, 51), None, [1.0, 0.0, 0.0, 0.2]),
+        ],
+    )
+    def test_to_tensor_pil_palette_converts_to_colors_5208(self, mode, fill, transparency, expected):
+        image = PILImage.new(mode, (6, 4), fill)
+        image.putpalette([0, 0, 0, 255, 0, 0] + [0] * (256 * 3 - 6))  # index 1 is red
+        if transparency is not None:
+            image.info["transparency"] = transparency
+        out = _Identity().to_tensor(image)
+        self.assert_close(out, torch.tensor(expected).view(-1, 1, 1).expand(len(expected), 4, 6))
 
     def test_to_pil_one_channel_is_mode_l_5208(self, device, dtype):
         module = _Identity()
@@ -422,3 +449,27 @@ class TestImageModuleConversions(BaseTester):
         module.save(name=str(path))
         with PILImage.open(path) as saved:
             assert np.asarray(saved).tolist() == [[[200] * 3] * 2] * 2
+
+    @pytest.mark.parametrize(
+        "torch_dtype, channels", [(torch.uint16, 3), (torch.int32, 3), (torch.int64, 3), (torch.int64, 1)]
+    )
+    def test_to_pil_rejects_integer_images_pil_cannot_store_5209(self, torch_dtype, channels):
+        image = torch.zeros(channels, 2, 2, dtype=torch_dtype)
+        with pytest.raises(NotImplementedError, match=f"{channels}-channel {torch_dtype}"):
+            _Identity().to_pil(image)
+
+    def test_to_pil_show_save_agree_on_float16_ties_5209(self, device, tmp_path):
+        # x * 255 lands on exact .5 ties in float16 (0.00196 -> 0.5). All three methods round on the CPU, half to even:
+        # MPS on torch 2.5.1 rounds ties away from zero, so rounding on the device made `to_pil` differ from the others.
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(3, 32, 32, generator=generator).to(device=device, dtype=torch.float16)
+        image[:, 0, 0] = 0.00196
+        module = _Identity()
+        module(image)
+        pil = np.asarray(module.to_pil(image))
+        assert pil[0, 0].tolist() == [0, 0, 0]
+        np.testing.assert_array_equal(pil, np.asarray(module.show(display=False)))
+        path = tmp_path / "ties.png"
+        module.save(name=str(path))
+        with PILImage.open(path) as saved:
+            np.testing.assert_array_equal(pil, np.asarray(saved))
