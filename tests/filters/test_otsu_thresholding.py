@@ -282,3 +282,98 @@ def test_otsu_threshold_basic(shape, device, dtype):
     img = torch.rand(shape, device=device, dtype=dtype)
     thresh_result, _thresh_value = otsu_threshold(img)
     assert thresh_result.shape == img.shape
+
+
+def _uint8_bimodal(device):
+    # every value 0..255 once, plus 300 pixels at 60 and 300 at 190
+    values = torch.cat([torch.arange(256), torch.full((300,), 60), torch.full((300,), 190)])
+    return values.to(device=device, dtype=torch.uint8).view(1, 1, 8, 107)
+
+
+class TestConventionsOtsuThreshold(BaseTester):
+    def test_convention_otsu_threshold_per_plane_in_input_units_foreground_strictly_above(self, device, dtype):
+        # two well-separated clusters per plane, in input units (not [0, 1]); B = 2, C = 3, H != W
+        values = torch.tensor([20.0, 30.0, 40.0, 160.0, 170.0, 180.0])
+        plane = torch.stack([values.roll(i) for i in range(4)]).view(1, 1, 4, 6)
+        img = torch.cat([plane, plane.flip(-1) + 5, plane * 0.5], 1)
+        img = torch.cat([img, img + 7]).to(device=device, dtype=dtype).requires_grad_(True)
+        out, thresholds = otsu_threshold(img)
+        # one threshold per (b, c) plane, returned flat, in the input dtype
+        assert thresholds.shape == (6,)
+        assert thresholds.dtype == out.dtype == dtype
+        ordered = img.detach().view(6, -1).sort(dim=1).values  # 12 low and 12 high pixels per plane
+        low_max, high_min = ordered[:, 11], ordered[:, 12]
+        # between the clusters (a threshold equal to the low cluster's top still drops it), at the lowest tied split
+        assert (thresholds >= low_max).all()
+        assert (thresholds < low_max + (high_min - low_max) / 4).all()
+        # the first output is x * (x > threshold), and its gradient is that mask
+        mask = img.detach() > thresholds.view(2, 3, 1, 1)
+        self.assert_close(out, img.detach() * mask)
+        (grad,) = torch.autograd.grad(out.sum(), img)
+        self.assert_close(grad, mask.to(dtype))
+        # relabel: transposing the image leaves the thresholds and transposes the output
+        out_t, thresholds_t = otsu_threshold(img.detach().transpose(-1, -2))
+        self.assert_close(thresholds_t, thresholds)
+        self.assert_close(out_t, out.detach().transpose(-1, -2))
+        # strictly above: on 0..255 the pixel equal to the threshold is dropped, the next value is kept
+        u8 = _uint8_bimodal(device)
+        out8, t8 = otsu_threshold(u8)
+        assert t8.dtype == torch.uint8
+        level = int(t8.item())
+        assert out8.flatten()[level].item() == 0
+        assert out8.flatten()[level + 1].item() == level + 1
+
+    def test_wart_otsu_threshold_one_bin_above_its_split_5172(self, device, dtype):
+        """#5172: the threshold is read from linspace(min, max, nbins), not from the histc bin edges."""
+        # nbins=2 has one split, and the returned threshold is the data maximum, so nothing is kept
+        x = torch.tensor([[0.0, 0.1, 0.2, 0.55, 0.9, 1.0]], device=device, dtype=dtype)
+        out, threshold = otsu_threshold(x, nbins=2)
+        assert threshold.item() == x.max().item()
+        assert out.count_nonzero().item() == 0
+        # uint8: skimage.filters.threshold_otsu and cv2.THRESH_OTSU give 125 on this image
+        _, t8 = otsu_threshold(_uint8_bimodal(device))
+        assert t8.item() == 126
+
+    def test_wart_otsu_threshold_depends_on_batch_mates_5172(self, device, dtype):
+        """#5172: one histogram range, [min, max] of the whole call, is shared by every image and channel."""
+        a = (torch.linspace(0, 1, 60) ** 2).view(1, 1, 6, 10).to(device=device, dtype=dtype)
+        b = torch.linspace(0.6, 4.3, 60).view(1, 1, 6, 10).to(device=device, dtype=dtype)
+        _, alone = otsu_threshold(a)
+        _, batched = otsu_threshold(torch.cat([a, b]))
+        _, channels = otsu_threshold(torch.cat([a, b], 1))
+        assert batched[0] != alone[0]
+        assert channels[0] != alone[0]
+
+    def test_wart_otsu_constant_image_threshold_is_zero_5172(self, device, dtype):
+        """#5172: a constant plane has no split and gets threshold 0 in input units."""
+        for value, kept in ((0.4, 20), (-0.4, 0)):
+            img = torch.full((1, 1, 4, 5), value, device=device, dtype=dtype)
+            out, threshold = otsu_threshold(img)
+            assert threshold.item() == 0
+            assert out.count_nonzero().item() == kept
+
+    def test_wart_otsu_return_mask_drops_nonpositive_foreground_5173(self, device, dtype):
+        """#5173: the mask is computed as result > 0, so foreground pixels <= 0 are reported as background."""
+        for values in ([-1.0, -1.0, 0.0, 0.0], [-2.0, -2.0, -1.0, -1.0]):
+            x = torch.tensor([values], device=device, dtype=dtype)
+            mask, threshold = otsu_threshold(x, return_mask=True)
+            assert (x > threshold).flatten().tolist() == [False, False, True, True]
+            assert not mask.any()
+
+    def test_wart_otsu_slow_path_threshold_has_no_gradient_and_kde_skips_pixels_5174(self, device, dtype):
+        """#5174: slow_and_differentiable gives no threshold gradient, and its 1e-3 KDE skips most pixels."""
+        generator = torch.Generator().manual_seed(0)
+        noise = torch.rand(1000, generator=generator)
+        x = torch.cat([0.3 + 0.1 * noise[:500], 0.6 + 0.1 * noise[500:]]).view(1, 1, 20, 50)
+        x = x.to(device=device, dtype=dtype).requires_grad_(True)
+        _, threshold = otsu_threshold(x, slow_and_differentiable=True)
+        assert not threshold.requires_grad
+        # the KDE is evaluated at linspace(0, 1, 16) with bandwidth 1e-3: a mass at 0.3 or at 0.7 lies between those
+        # points, so the slow path gives both images the same threshold while the fast path separates them
+        fast, slow = [], []
+        for mid in (0.3, 0.7):
+            img = torch.tensor([0.0] * 10 + [mid] * 80 + [1.0] * 10, device=device, dtype=dtype).view(1, 1, 1, -1)
+            fast.append(otsu_threshold(img, nbins=16)[1])
+            slow.append(otsu_threshold(img, nbins=16, slow_and_differentiable=True)[1])
+        assert fast[0] != fast[1]
+        assert slow[0] == slow[1]

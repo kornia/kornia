@@ -24,7 +24,13 @@ from kornia.core.exceptions import BaseError
 from kornia.filters import Laplacian, filter2d, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
 from kornia.filters.kernels import normalize_kernel2d
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_close,
+    dynamo_is_available,
+    supports_reflect_padding,
+)
 
 laplacian_module = importlib.import_module("kornia.filters.laplacian")
 
@@ -275,3 +281,66 @@ class TestLaplacian(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+
+class TestConventionsLaplacian(BaseTester):
+    @staticmethod
+    def _require_reflect_padding(device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("torch has no reflect padding kernel for this device and dtype")
+
+    def test_convention_laplacian_kernel_sign_and_normalization(self, device, dtype):
+        self._require_reflect_padding(device, dtype)
+        # delta off centre in a 7x10 image; kernel_size is (kH, kW) = (3, 5), all ones with centre 1 - kH * kW
+        delta = torch.zeros(1, 1, 7, 10, device=device, dtype=dtype)
+        delta[0, 0, 2, 6] = 1.0
+        raw = laplacian(delta, (3, 5), normalized=False)
+        expected = torch.zeros_like(delta)
+        expected[0, 0, 1:4, 4:9] = 1.0
+        expected[0, 0, 2, 6] = -14.0  # negative at a bright peak
+        self.assert_close(raw, expected)
+        # the default normalized=True divides by the kernel's absolute sum, 2 * (kH * kW - 1) = 28
+        self.assert_close(laplacian(delta, (3, 5)), expected / 28)
+        # relabel: transposing the image and the kernel size transposes the output
+        self.assert_close(laplacian(delta.transpose(-1, -2), (5, 3), normalized=False), raw.transpose(-1, -2))
+        # normalized is not derivative units: x^2/2 + y^2/2 has a Laplacian of 2, the k=3 output is 6 / 16
+        ys, xs = torch.meshgrid(
+            torch.arange(7, device=device, dtype=dtype), torch.arange(10, device=device, dtype=dtype), indexing="ij"
+        )
+        bowl = ((xs - 4) ** 2 / 2 + (ys - 2) ** 2 / 2)[None, None]
+        self.assert_close(
+            laplacian(bowl, 3, normalized=False)[0, 0, 3, 5], torch.tensor(6.0, device=device, dtype=dtype)
+        )
+        self.assert_close(laplacian(bowl, 3)[0, 0, 3, 5], torch.tensor(0.375, device=device, dtype=dtype))
+
+    def test_convention_laplacian_default_border_is_reflect(self, device, dtype):
+        self._require_reflect_padding(device, dtype)
+        # an x-ramp's Laplacian is 0 inside; at x = 0 torch's reflect gives 0.375, replicate 0.1875
+        ramp = (torch.arange(10, device=device, dtype=dtype) + 1).expand(1, 1, 7, 10)
+        out = laplacian(ramp, 3)
+        self.assert_close(out, laplacian(ramp, 3, border_type="reflect"))
+        self.assert_close(out[0, 0, 3, [0, 5]], torch.tensor([0.375, 0.0], device=device, dtype=dtype))
+
+    def test_wart_laplacian_kernel_size_one_returns_nan_5175(self, device, dtype):
+        """#5175: kernel_size=1 passes validation and the normalized 1x1 kernel is 0 / 0."""
+        self._require_reflect_padding(device, dtype)
+        data = torch.rand(1, 1, 5, 6, device=device, dtype=dtype)
+        assert laplacian(data, 1).isnan().all()
+
+    def test_wart_laplacian_integer_input_wraps_the_kernel_5155(self, device, dtype):
+        """#5155: the kernel is built in uint8, so its centre 1 - 9 wraps and the result is garbage."""
+        self._require_reflect_padding(device, dtype)
+        if device.type == "mps":
+            pytest.skip("#5155: MPS rejects integer convolution instead of wrapping")
+        img = torch.full((1, 1, 5, 7), 100, device=device, dtype=torch.uint8)
+        img[0, 0, 2, 3] = 180
+        # the float result at a neighbour of the bright pixel is (180 - 100) / 16 = 5; uint8 returns 0
+        self.assert_close(laplacian(img.to(dtype), 3)[0, 0, 1, 3], torch.tensor(5.0, device=device, dtype=dtype))
+        assert laplacian(img, 3)[0, 0, 1, 3].item() == 0
+
+    def test_wart_laplacian_uppercase_border_type_passes_check_then_raises_5156(self, device, dtype):
+        """#5156: the border_type check lower-cases, the padding call does not."""
+        data = torch.rand(1, 1, 7, 10, device=device, dtype=dtype)
+        with pytest.raises(Exception) as excinfo:
+            laplacian(data, 3, border_type="REFLECT")
+        assert not isinstance(excinfo.value, BaseError)

@@ -21,10 +21,12 @@ from typing import Any
 
 import pytest
 import torch
+import torch.nn.functional as F
 
+from kornia.color import rgb_to_grayscale
 from kornia.core._compat import torch_version, torch_version_ge
-from kornia.core.exceptions import ImageError
-from kornia.filters import Canny, canny, sobel
+from kornia.core.exceptions import BaseError, ImageError
+from kornia.filters import Canny, canny, gaussian_blur2d, sobel, spatial_gradient
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
@@ -570,3 +572,124 @@ class TestCanny(BaseTester):
     def test_unsupported_channel_count_raises(self, channels, device, dtype):
         with pytest.raises(ImageError, match="1 or 3 channels"):
             canny(torch.zeros(1, channels, 12, 13, device=device, dtype=dtype))
+
+
+class TestConventionsCanny(BaseTester):
+    @staticmethod
+    def _require_padding(device, dtype):
+        # the Gaussian blur pads by reflection, the Sobel gradient by replication
+        if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+            pytest.skip("torch has no reflect or replicate padding kernel for this device and dtype")
+
+    @staticmethod
+    def _ramped_step(height, device, dtype):
+        # 0 | 0.6 * height | height across x = 6..8 of a 9x14 image; with kernel_size=1 (no blur) the raw Sobel |gx|
+        # is 2.4h, 4h and 1.6h at x = 6, 7, 8, so the ridge at x = 7 has no tie
+        img = torch.zeros(1, 1, 9, 14, device=device, dtype=dtype)
+        img[..., 7] = 0.6 * height
+        img[..., 8:] = height
+        return img
+
+    def test_convention_canny_magnitude_is_unnormalized_sobel_after_nms(self, device, dtype):
+        self._require_padding(device, dtype)
+        img = self._ramped_step(0.125, device, dtype)
+        magnitude, edges = canny(img, 0.4, 0.49, kernel_size=1, eps=0.0)
+        assert magnitude.dtype == edges.dtype == dtype
+        # the thresholds compare against the unnormalized Sobel magnitude 4h = 0.5, eight times sobel()'s default
+        self.assert_close(sobel(img, eps=0.0)[..., 7], torch.full((1, 1, 9), 0.0625, device=device, dtype=dtype))
+        expected = torch.zeros_like(img)
+        expected[..., 7] = 0.5  # returned after non-maximum suppression: zero off the ridge
+        self.assert_close(magnitude, expected)
+        self.assert_close(edges, expected * 2)
+        # relabel: the transposed step gives the transposed result
+        magnitude_t, edges_t = canny(img.transpose(-1, -2), 0.4, 0.49, kernel_size=1, eps=0.0)
+        self.assert_close(magnitude_t, magnitude.transpose(-1, -2))
+        self.assert_close(edges_t, edges.transpose(-1, -2))
+        # with the default 5x5, sigma=1 blur: the Sobel of gaussian_blur2d(img), unnormalized, eps inside the root
+        grad = spatial_gradient(gaussian_blur2d(img, (5, 5), (1.0, 1.0)), normalized=False)
+        reference = torch.sqrt(grad[:, :, 0] ** 2 + grad[:, :, 1] ** 2 + 1e-6)
+        magnitude, _ = canny(img)
+        kept = magnitude > 0.1  # the ridge (about 0.32), not the sqrt(eps) floor of the flat regions
+        assert kept.sum() == 9  # one ridge pixel per row
+        self.assert_close(magnitude[kept], reference[kept])
+
+    def test_convention_canny_thresholds_are_strict(self, device, dtype):
+        self._require_padding(device, dtype)
+        # the ridge magnitude is exactly 0.5 (eps=0); hysteresis=False keeps the weak (0.5) / strong (1) labels
+        img = self._ramped_step(0.125, device, dtype)
+        ridge = (0, 0, 4, 7)
+        _, edges = canny(img, 0.4, 0.5, kernel_size=1, eps=0.0, hysteresis=False)
+        assert edges[ridge].item() == 0.5  # equal to high_threshold: weak, not strong
+        _, edges = canny(img, 0.5, 0.5, kernel_size=1, eps=0.0, hysteresis=False)  # low == high is accepted
+        assert edges.sum().item() == 0  # equal to low_threshold: dropped
+        _, edges = canny(img, 0.4, 0.49, kernel_size=1, eps=0.0, hysteresis=False)
+        assert edges[ridge].item() == 1.0
+
+    def test_convention_canny_converts_rgb_to_grayscale(self, device, dtype):
+        self._require_padding(device, dtype)
+        generator = torch.Generator().manual_seed(0)
+        rgb = torch.rand(2, 3, 11, 13, generator=generator).to(device=device, dtype=dtype)
+        magnitude, edges = canny(rgb)
+        assert magnitude.shape == edges.shape == (2, 1, 11, 13)
+        magnitude_grey, edges_grey = canny(rgb_to_grayscale(rgb))
+        self.assert_close(magnitude, magnitude_grey)
+        self.assert_close(edges, edges_grey)
+        # channel 0 is read as red: the same data in BGR order gives other edges
+        _, edges_bgr = canny(rgb.flip(1))
+        assert not torch.equal(edges_bgr, edges)
+
+    def test_convention_canny_hysteresis_is_8_connected(self, device, dtype):
+        self._require_padding(device, dtype)
+        # hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, iterated to
+        # convergence; the reference grows the strong set from canny's own weak / strong labels
+        generator = torch.Generator().manual_seed(2)
+        img = torch.rand(1, 1, 12, 17, generator=generator).to(device=device, dtype=dtype)
+        _, labels = canny(img, 0.3, 0.6, hysteresis=False)
+        _, edges = canny(img, 0.3, 0.6, hysteresis=True)
+        weak, strong = (labels == 0.5).float(), (labels == 1).float()
+        cross = torch.tensor([[[[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]]]], device=device)
+
+        def grow(dilate):
+            kept, steps = strong, 0
+            while True:
+                grown = torch.maximum(strong, weak * (dilate(kept) > 0).float())
+                if torch.equal(grown, kept):
+                    return kept, steps
+                kept, steps = grown, steps + 1
+
+        kept_8, steps_8 = grow(lambda k: F.max_pool2d(k, 3, 1, 1))
+        kept_4, _ = grow(lambda k: F.conv2d(k, cross, padding=1))
+        assert steps_8 > 1  # the fixture needs more than one pass
+        assert not torch.equal(kept_8, kept_4)  # and separates the two connectivities
+        self.assert_close(edges, kept_8.to(dtype))
+
+    def test_wart_canny_two_level_step_has_no_edge_5170(self, device, dtype):
+        """#5170: NMS needs strictly greater on both sides, so the tied pair of a two-level step is suppressed."""
+        self._require_padding(device, dtype)
+        step = torch.zeros(1, 1, 9, 14, device=device, dtype=dtype)
+        step[..., 7:] = 1.0
+        for img in (step, step.transpose(-1, -2)):
+            _, edges = canny(img, kernel_size=1)
+            assert edges.sum().item() == 0
+        # control: the ramped step has no tie and gives one pixel per row
+        _, edges = canny(self._ramped_step(1.0, device, dtype), kernel_size=1)
+        assert edges[0, 0].nonzero()[:, 1].tolist() == [7] * 9
+
+    def test_wart_canny_rejects_thresholds_of_one_and_above_5171(self, device, dtype):
+        """#5171: thresholds must lie in (0, 1) though the magnitude of a [0, 1] image reaches 4."""
+        self._require_padding(device, dtype)
+        img = self._ramped_step(1.0, device, dtype)
+        magnitude, _ = canny(img, kernel_size=1)
+        self.assert_close(magnitude.max(), torch.tensor(4.0, device=device, dtype=dtype))
+        with pytest.raises(BaseError):
+            canny(img, 2.0, 3.0, kernel_size=1)
+        with pytest.raises(BaseError):
+            Canny(2.0, 3.0)
+
+    def test_wart_canny_unsupported_channel_count_is_not_validated_5171(self, device, dtype):
+        """#5171: only C in {1, 3} works; other channel counts fail inside torch, not in a kornia check."""
+        self._require_padding(device, dtype)  # else the missing pad kernel raises first
+        for channels in (2, 4):
+            with pytest.raises(Exception) as excinfo:
+                canny(torch.rand(1, channels, 12, 13, device=device, dtype=dtype))
+            assert not isinstance(excinfo.value, BaseError)

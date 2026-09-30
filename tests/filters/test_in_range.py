@@ -425,3 +425,43 @@ class TestInRange(BaseTester):
         op = InRange(lower=lower, upper=upper, return_mask=True)
         op_optimized = torch_optimizer(op, fullgraph=True)
         self.assert_close(op(data), op_optimized(data))
+
+
+class TestConventionsInRange(BaseTester):
+    def test_convention_in_range_bounds_inclusive_and_all_channels_must_pass(self, device, dtype):
+        # built in the test dtype so that a value equal to a bound is equal after rounding
+        row = [0.2, 0.5, 0.8, 0.9]
+        img = torch.tensor([[row, row]] * 3, device=device, dtype=dtype)[None]  # (1, 3, 2, 4), H != W
+        img[0, 2, 1, 1] = 0.95  # above channel 2's upper bound 0.9 at one pixel only
+        img[0, 0, 1, 0] = float("nan")  # at a pixel that is otherwise in range
+        lower, upper = (0.2, 0.2, 0.2), (0.8, 0.8, 0.9)
+        mask = in_range(img, lower, upper, return_mask=True)
+        # both bounds inclusive (0.2 and 0.8 pass), a pixel passes only if every channel does, NaN fails;
+        # the mask is (B, 1, H, W) in the input dtype with 1 (not 255) for a pass
+        expected = torch.tensor([[[[1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]], device=device, dtype=dtype)
+        assert mask.dtype == dtype
+        self.assert_close(mask, expected)
+        # return_mask=False zeroes every channel of a failing pixel
+        self.assert_close(in_range(img, lower, upper).nan_to_num(), (img * expected).nan_to_num())
+        # relabel: transposing the image transposes the mask
+        self.assert_close(in_range(img.transpose(-1, -2), lower, upper, return_mask=True), expected.transpose(-1, -2))
+        # lower > upper is not rejected; it selects nothing
+        assert in_range(img, upper, lower, return_mask=True).sum().item() == 0
+
+    def test_convention_in_range_bounds_are_cast_to_input_dtype(self, device, dtype):
+        # on an integer image a fractional bound truncates: 100.7 -> 100 admits the value 100, a float image does not
+        values = torch.tensor([100, 101, 200, 201], device=device, dtype=torch.uint8).view(1, 1, 1, 4)
+        as_uint8 = in_range(values, (100.7,), (200.2,), return_mask=True)
+        assert as_uint8.dtype == torch.uint8
+        assert as_uint8.flatten().tolist() == [1, 1, 1, 0]
+        as_float = in_range(values.to(dtype), (100.7,), (200.2,), return_mask=True)
+        assert as_float.flatten().tolist() == [0, 1, 1, 0]
+
+    def test_wart_in_range_checks_one_tensor_bound_shape_5176(self, device, dtype):
+        """#5176: a (W,) upper bound is accepted when the lower bound is (B, C, 1, 1), and applied per column."""
+        generator = torch.Generator().manual_seed(0)
+        img = torch.rand(2, 3, 4, 5, generator=generator).to(device=device, dtype=dtype)
+        lower = torch.zeros(2, 3, 1, 1, device=device, dtype=dtype)
+        upper = torch.tensor([1.0, 1.0, 1.0, 1.0, 0.0], device=device, dtype=dtype)
+        mask = in_range(img, lower, upper, return_mask=True)
+        assert mask.sum(dim=(0, 1, 2)).tolist() == [8, 8, 8, 8, 0]

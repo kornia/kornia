@@ -22,10 +22,11 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core._compat import torch_version
+from kornia.core.exceptions import BaseError
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from kornia.filters.kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_replicate_padding
 
 sobel_module = importlib.import_module("kornia.filters.sobel")
 
@@ -629,3 +630,134 @@ class TestSobel(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+
+def _supports_replicate_padding_3d(device, dtype):
+    # torch 2.5.1 has no float16 CPU replication_pad3d, like the 2-D kernel that supports_replicate_padding probes
+    try:
+        F.pad(torch.zeros(1, 1, 2, 2, 2, device=device, dtype=dtype), (1, 1, 1, 1, 1, 1), mode="replicate")
+    except RuntimeError as err:
+        if "not implemented for" in str(err):
+            return False
+        raise
+    return True
+
+
+class TestConventionsSpatialGradient(BaseTester):
+    @staticmethod
+    def _require_replicate_padding(device, dtype, three_d=False):
+        if not supports_replicate_padding(device, dtype) or (
+            three_d and not _supports_replicate_padding_3d(device, dtype)
+        ):
+            pytest.skip("torch has no replicate padding kernel for this device and dtype")
+
+    @staticmethod
+    def _grid(h, w, device, dtype):
+        return torch.meshgrid(
+            torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype), indexing="ij"
+        )
+
+    def test_convention_spatial_gradient_normalized_ramp(self, device, dtype):
+        self._require_replicate_padding(device, dtype)
+        # H != W; an x-ramp of slope 3 and a y-ramp of slope 2, read at an interior pixel off the diagonal
+        ys, xs = self._grid(6, 9, device, dtype)
+        x_ramp = (3 * xs + 1)[None, None]
+        y_ramp = (2 * ys + 1)[None, None]
+        raw_scale = {"sobel": 8.0, "diff": 2.0}
+        for mode in ("sobel", "diff"):
+            # the default (normalized=True) is in derivative units; channel 0 = d/dx along W, 1 = d/dy along H (y down)
+            gx = spatial_gradient(x_ramp, mode)
+            gy = spatial_gradient(y_ramp, mode)
+            assert gx.shape == (1, 1, 2, 6, 9)
+            self.assert_close(gx[0, 0, :, 2, 5], torch.tensor([3.0, 0.0], device=device, dtype=dtype))
+            self.assert_close(gy[0, 0, :, 2, 5], torch.tensor([0.0, 2.0], device=device, dtype=dtype))
+            # normalized=False returns the raw kernel response: 8x for Sobel (as cv2.Sobel), 2x for diff
+            raw = spatial_gradient(x_ramp, mode, normalized=False)[0, 0, :, 2, 5]
+            self.assert_close(raw, torch.tensor([3.0 * raw_scale[mode], 0.0], device=device, dtype=dtype))
+            # relabel: transposing the image swaps the two channels and transposes each
+            gxt = spatial_gradient(x_ramp.transpose(-1, -2), mode)
+            self.assert_close(gxt[:, :, [1, 0]], gx.transpose(-1, -2))
+
+    def test_convention_spatial_gradient_second_order_channels(self, device, dtype):
+        self._require_replicate_padding(device, dtype)
+        # quadratics centred off the probe pixel (3, 4) of a 7x10 image; channels are (dxx, dxy, dyy)
+        ys, xs = self._grid(7, 10, device, dtype)
+        x, y = xs - 4, ys - 4
+        surfaces = torch.stack([x * x / 2, x * y, y * y / 2, x * x / 2 + 3 * x * y - y * y])[:, None]
+        exact = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 3.0, -2.0]])
+        raw_scale = {"sobel": torch.tensor([64.0, 64.0, 64.0]), "diff": torch.tensor([1.0, 4.0, 1.0])}
+        for mode in ("sobel", "diff"):
+            out = spatial_gradient(surfaces, mode, order=2)
+            self.assert_close(out[:, 0, :, 3, 4], exact.to(device, dtype))
+            raw = spatial_gradient(surfaces, mode, order=2, normalized=False)[:, 0, :, 3, 4]
+            self.assert_close(raw, (exact * raw_scale[mode]).to(device, dtype))
+            # relabel: transposing swaps dxx and dyy, dxy stays
+            out_t = spatial_gradient(surfaces.transpose(-1, -2), mode, order=2)
+            self.assert_close(out_t[:, :, [2, 1, 0]], out.transpose(-1, -2))
+
+    def test_convention_spatial_gradient_border_is_replicate(self, device, dtype):
+        self._require_replicate_padding(device, dtype, three_d=True)
+        # the border is replicated (not the reflect default of filter2d / laplacian), so a ramp's derivative at the
+        # first and last column is half its slope; reflect would give 0 there
+        _, xs = self._grid(6, 9, device, dtype)
+        x_ramp = (3 * xs + 1)[None, None]
+        for mode in ("sobel", "diff"):
+            gx = spatial_gradient(x_ramp, mode)[0, 0, 0, 2]
+            self.assert_close(gx[[0, 4, 8]], torch.tensor([1.5, 3.0, 1.5], device=device, dtype=dtype))
+        x_ramp3d = (3 * torch.arange(7, device=device, dtype=dtype) + 1).expand(1, 1, 5, 6, 7)
+        g3 = spatial_gradient3d(x_ramp3d)[0, 0, 0, 2, 3]
+        self.assert_close(g3[[0, 3, 6]], torch.tensor([1.5, 3.0, 1.5], device=device, dtype=dtype))
+
+    def test_convention_spatial_gradient3d_channel_order(self, device, dtype):
+        self._require_replicate_padding(device, dtype, three_d=True)
+        # D != H != W (5, 6, 7); first order (dx, dy, dz) along (W, H, D), always in derivative units
+        zs, ys, xs = torch.meshgrid(
+            torch.arange(5, device=device, dtype=dtype),
+            torch.arange(6, device=device, dtype=dtype),
+            torch.arange(7, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        ramps = torch.stack([3 * xs + 1, 2 * ys + 1, 5 * zs + 1])[:, None]
+        first = spatial_gradient3d(ramps)
+        assert first.shape == (3, 1, 3, 5, 6, 7)
+        expected = torch.tensor([[3.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 5.0]], device=device, dtype=dtype)
+        self.assert_close(first[:, 0, :, 2, 3, 4], expected)
+        # relabel: swapping D and W swaps dx and dz
+        first_t = spatial_gradient3d(ramps.transpose(-1, -3))
+        self.assert_close(first_t[:, :, [2, 1, 0]], first.transpose(-1, -3))
+        # second order: pure terms first, (dxx, dyy, dzz, dxy, dyz, dxz), unlike the 2-D (dxx, dxy, dyy)
+        x, y, z = xs - 4, ys - 2, zs - 1
+        quadratics = torch.stack([x * x / 2, y * y / 2, z * z / 2, x * y, y * z, x * z])[:, None]
+        second = spatial_gradient3d(quadratics, order=2)[:, 0, :, 2, 3, 4]
+        self.assert_close(second, torch.eye(6, device=device, dtype=dtype))
+
+    def test_convention_spatial_gradient3d_sobel_mode_raises(self, device, dtype):
+        # 'diff' is the default and the only implemented 3-D mode
+        volume = torch.rand(1, 1, 5, 6, 7, device=device, dtype=dtype)
+        with pytest.raises(NotImplementedError):
+            spatial_gradient3d(volume, mode="sobel")
+        with pytest.raises(NotImplementedError):
+            SpatialGradient3d(mode="sobel")
+
+    def test_convention_sobel_magnitude_of_normalized_gradient_eps_inside_root(self, device, dtype):
+        self._require_replicate_padding(device, dtype)
+        # sobel = sqrt(gx^2 + gy^2 + eps) of the normalized gradient: slope (3, 2) -> sqrt(13), not 8 * sqrt(13)
+        ys, xs = self._grid(6, 9, device, dtype)
+        plane = (3 * xs + 2 * ys + 1)[None, None]
+        interior = (..., slice(1, -1), slice(1, -1))
+        self.assert_close(sobel(plane)[interior], torch.full((1, 1, 4, 7), 13.0**0.5, device=device, dtype=dtype))
+        self.assert_close(
+            sobel(plane, normalized=False)[interior],
+            torch.full((1, 1, 4, 7), 8 * 13.0**0.5, device=device, dtype=dtype),
+        )
+        # eps sits inside the root: a flat image returns sqrt(eps), not 0
+        flat = torch.full((1, 1, 6, 9), 0.3, device=device, dtype=dtype)
+        self.assert_close(sobel(flat), torch.full_like(flat, 1e-3))
+        self.assert_close(sobel(flat, eps=0.0), torch.zeros_like(flat))
+
+    def test_wart_spatial_gradient_capitalised_mode_passes_check_then_raises_5156(self, device, dtype):
+        """#5156: the mode check lower-cases, the dispatch does not."""
+        img = torch.rand(1, 1, 6, 9, device=device, dtype=dtype)
+        with pytest.raises(Exception) as excinfo:
+            spatial_gradient(img, mode="Sobel")
+        assert not isinstance(excinfo.value, BaseError)
