@@ -330,8 +330,8 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
           when ``weights`` are given, whose unit direction minimises the (weighted) sum of squared perpendicular
           distances to the points, for every dimensionality. Each batch row is fitted on its own.
         - For 2-D points the direction is computed in closed form and has a non-negative x component, so an exactly
-          vertical line gets the direction ``(0, 1)``. For :math:`D \ge 3` it is the principal direction of the
-          scatter matrix, whose sign is not specified.
+          vertical line gets the direction ``(0, 1)`` up to rounding. For :math:`D \ge 3` it is the principal
+          direction of the scatter matrix, whose sign is not specified.
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The expected
