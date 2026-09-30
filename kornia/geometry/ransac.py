@@ -206,7 +206,7 @@ class RANSAC(nn.Module):
           draws the minimal samples from the global generator. DEGENSAC's recovery draws always come from a private
           host generator, which an unseeded call seeds from the sample that triggers the recovery.
         - ``compile=True`` runs the whole ``local_optimization="lm"`` estimation as one ``torch.compile`` graph
-          (torch 2.14 or later, CPU; CUDA untested). The graph is traced once per configuration and does not
+          (torch 2.14 or later, CPU and CUDA). The graph is traced once per configuration and does not
           depend on the number of correspondences, the threshold, the confidence or the budget; it is also saved next
           to inductor's cache (``TORCHINDUCTOR_CACHE_DIR``), so a later process loads it instead of compiling. It
           runs the same algorithm with its own random stream: a seeded call is reproducible, but its result is not
@@ -901,7 +901,8 @@ class RANSAC(nn.Module):
         if self.local_optimization == "lm":
             with torch.no_grad():
                 if self.compiled:
-                    return self._forward_compiled(kp1, kp2)
+                    with torch.inference_mode(False), torch.no_grad():
+                        return self._forward_compiled(kp1, kp2)
                 return self._forward_lm(kp1, kp2)
         best_score_total = -float("inf")
         num_tc: int = len(kp1)
@@ -976,6 +977,12 @@ class RANSAC(nn.Module):
 
         if kp1.device.type not in ("cpu", "cuda"):
             raise ValueError(f"compile=True runs on CPU and CUDA, not {kp1.device.type}")
+        # Artifacts guard tensor dispatch keys, gradients and strides. Normalize these without copying ordinary
+        # contiguous inputs; inference tensors need a clone under the disabled inference context in forward.
+        kp1, kp2 = (
+            kp.clone(memory_format=torch.contiguous_format) if kp.is_inference() else kp.detach().contiguous()
+            for kp in (kp1, kp2)
+        )
         num_tc = len(kp1)
         first, largest = self._lm_batch_range(num_tc, kp1.device)
         if largest > MAX_BATCH:
@@ -988,8 +995,12 @@ class RANSAC(nn.Module):
         if self.seed is None:
             return program(*inputs)
         devices = [kp1.device] if kp1.device.type == "cuda" else []
-        with torch.random.fork_rng(devices=devices, device_type=kp1.device.type):
-            torch.manual_seed(self.seed)
+        with torch.random.fork_rng(devices=devices):
+            # torch.manual_seed also seeds every accelerator. Seed only the generators this call forks.
+            torch.random.default_generator.manual_seed(self.seed)
+            if devices:
+                with torch.cuda.device(kp1.device):
+                    torch.cuda.manual_seed(self.seed)
             return program(*inputs)
 
     def _lm_minimal_models(

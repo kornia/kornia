@@ -66,6 +66,7 @@ from kornia.geometry.homography import (
     sample_is_valid_for_homography,
 )
 from kornia.geometry.ransac import _LM_CANDIDATES, _normalize_correspondences_core
+from kornia.geometry.solvers import homogeneous as _homogeneous
 
 __all__ = ["MAX_BATCH", "build_lm_program", "load_program"]
 
@@ -247,10 +248,15 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
             pool_scores, order = torch.cat([top_scores, pool_scores]).topk(_POOL)
             pool = torch.cat([top_models, pool])[order]
             # The bound follows the new incumbent's own support, as with local_optimization="dlt".
-            improved = top_scores[0] > best_score
-            needed = _samples_needed(top_counts[0], num_tc, m, confidence, budget)
+            # The loop counters and stopping bound stay on the host. Transfer both statistics together:
+            # otherwise CUDA scores promote the carried CPU scalars to CUDA and change the loop's metadata.
+            leading_score, leading_count = (
+                torch.stack([top_scores[0], top_counts[0].to(torch.float64)]).to(host).unbind()
+            )
+            improved = leading_score > best_score
+            needed = _samples_needed(leading_count, num_tc, m, confidence, budget)
             max_samples = torch.where(improved, torch.minimum(budget, needed), max_samples)
-            best_score = torch.where(improved, top_scores[0], best_score)
+            best_score = torch.where(improved, leading_score, best_score)
             batch = torch.minimum(2 * batch, largest_batch)
             return drawn + current, batch, max_samples, best_score, pool, pool_scores
 
@@ -336,7 +342,15 @@ _PROGRAMS: Dict[Tuple, Callable[..., Tuple]] = {}
 def _source_digest() -> str:
     """Digest of the modules whose code the compiled graph embeds, read once: an edit must not load a stale artifact."""
     digest = hashlib.sha256()
-    for module in (sys.modules[__name__], _homography, _fundamental, _essential, _epipolar_metrics, _ransac):
+    for module in (
+        sys.modules[__name__],
+        _homography,
+        _fundamental,
+        _essential,
+        _epipolar_metrics,
+        _ransac,
+        _homogeneous,
+    ):
         digest.update(inspect.getsource(module).encode())
     return digest.hexdigest()
 
@@ -351,7 +365,12 @@ def _dynamo_config() -> Iterator[None]:
     with (
         warnings.catch_warnings(),
         torch._dynamo.config.patch(
-            capture_scalar_outputs=True, capture_dynamic_output_shape_ops=True, recompile_limit=64
+            capture_scalar_outputs=True,
+            capture_dynamic_output_shape_ops=True,
+            # Model/configuration integers are fixed per program. Generalizing the minimal sample size across
+            # model types makes CUDA solver metadata depend on symbolic matrix dimensions inside while_loop.
+            specialize_int=True,
+            recompile_limit=64,
         ),
     ):
         warnings.filterwarnings(
@@ -366,7 +385,13 @@ def _artifact_path(key: Tuple) -> str:
 
     digest = hashlib.sha256()
     # The generated CPU kernels target this machine's vector instructions, which a shared cache directory may not.
-    machine = (platform.platform(), platform.machine(), str(pick_vec_isa()))
+    device = torch.device(key[5])
+    accelerator = (
+        (torch.cuda.get_device_name(device), torch.cuda.get_device_capability(device))
+        if device.type == "cuda"
+        else None
+    )
+    machine = (platform.platform(), platform.machine(), str(pick_vec_isa()), accelerator)
     for part in (torch.__version__, kornia.__version__, sys.version, machine, key, _source_digest()):
         digest.update(repr(part).encode())
     return os.path.join(cache_dir(), "kornia_ransac", f"{digest.hexdigest()[:32]}.bin")

@@ -177,7 +177,7 @@ Compiled estimation
 -------------------
 
 ``compile=True`` (torch 2.14 or later) runs the whole ``local_optimization="lm"``
-estimation as one ``torch.compile`` graph. The sampling loop is a
+estimation as one ``torch.compile`` graph on CPU and CUDA. The sampling loop is a
 ``torch.while_loop`` that carries the pool of the best minimal models, the
 early-stopping bound is computed inside the graph, and the batch sizes and the
 number of models that survive the degeneracy tests are dynamic. The graph does
@@ -188,6 +188,10 @@ to 60 s for essential matrices on an Apple M1, and saves the compiled function
 next to inductor's cache (``TORCHINDUCTOR_CACHE_DIR``); later processes load it
 in about a second. ``KORNIA_RANSAC_AOT=0`` disables that file, and each process
 then compiles again, in 17 to 35 s once inductor's kernels are cached.
+Ordinary calls and calls under ``torch.inference_mode()`` share the same artifact.
+On CUDA the loop counters and stopping bound stay on the host, with a transfer
+of the leading score and inlier count after each batch; compilation therefore
+does not remove every host-device synchronization.
 
 On that CPU (4 threads, synthetic scenes of 500 to 5000 correspondences with
 20% or 50% inliers, averaged over seeds) a compiled call is 1.2 to 1.7 times
@@ -200,8 +204,7 @@ scenes of 500 and 2000 correspondences with 20% to 50% inliers its mean inlier
 recall was within 0.015 of eager's for homographies and essential matrices and
 within 0.03 for fundamental matrices, where eager runs with other seeds differ
 from each other as much (60 seeds per case at 20% and 30% inliers). PROSAC
-sampling, ``degensac=True`` and ``local_optimization="dlt"`` are not supported, and CUDA runs the
-same program but has not been measured.
+sampling, ``degensac=True`` and ``local_optimization="dlt"`` are not supported.
 
 Dominant planes
 ---------------
