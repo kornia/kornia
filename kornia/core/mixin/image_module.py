@@ -18,6 +18,7 @@
 import datetime
 import math
 import os
+import sys
 from functools import wraps
 from typing import Any, Callable, List, Literal, Optional, Tuple, Union
 
@@ -128,10 +129,12 @@ class ImageModuleMixIn:
             return True
         if isinstance(arg, torch.Tensor):
             return True
-        # Make sure that the numpy and PIL are not necessarily needed to be imported.
         if isinstance(arg, np.ndarray):  # type: ignore
             return True
-        if isinstance(arg, (Image.Image)):  # type: ignore
+        # A PIL image exists only once PIL is imported: look the module up instead of importing it through the lazy
+        # loader, which would raise on an install without the "image" extra for every non-image argument.
+        pil_image = sys.modules.get("PIL.Image")
+        if pil_image is not None and isinstance(arg, pil_image.Image):
             return True
         return False
 
