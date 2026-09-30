@@ -362,8 +362,8 @@ class TestRANSACLocalOptimization(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("line_segment_transfer_error_one_way overflows half precision on 600 px coordinates")
         # Segments about 100 px long, half of them outliers. The polisher's Gaussian weights are on the perpendicular
-        # distance in pixels, not on the length-scaled residual of line_segment_transfer_error_one_way (#4867), so
-        # local optimization refines the minimal-sample model instead of fitting a handful of segments.
+        # distance in pixels, not on that distance times the segment length (#4867), so local optimization refines
+        # the minimal-sample model instead of fitting a handful of segments.
         torch.manual_seed(0)
         H = torch.tensor([[1.1, 0.05, 20.0], [0.02, 0.95, -10.0], [1e-4, 2e-4, 1.0]], device=device, dtype=dtype)
         centers = torch.rand(300, 2, device=device, dtype=dtype) * 600
