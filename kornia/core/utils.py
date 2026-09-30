@@ -35,7 +35,7 @@ from kornia.core._small_linalg import (
     _inverse_3x3_scalar,
 )
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
-from kornia.core.exceptions import DeviceError
+from kornia.core.exceptions import DeviceError, TypeCheckError
 
 
 def xla_is_available() -> bool:
@@ -93,13 +93,17 @@ def get_cuda_or_mps_device_if_available() -> torch.device:
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
-    """Check if all the input are in the same device (only if when they are torch.Tensor).
+    """Check that the tensors in the list share one device and one dtype, and return them.
 
-    If so, it would return a tuple of (device, dtype).
-    Default: (``torch.get_default_device()``, ``torch.get_default_dtype()``).
+    Entries that are not tensors (``None`` included) are skipped. Without any tensor, the result is
+    (``torch.get_default_device()``, ``torch.get_default_dtype()``).
 
     Returns:
         [torch.device, torch.dtype]
+
+    Raises:
+        DeviceError: if two tensors are on different devices.
+        TypeCheckError: if two tensors are on the same device and have different dtypes.
 
     """
     device, dtype = None, None
@@ -112,12 +116,18 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
             if device is None and dtype is None:
                 device = _device
                 dtype = _dtype
-            elif device != _device or dtype != _dtype:
+            elif device != _device:
                 raise DeviceError(
                     f"Passed values are not in the same device and dtype. "
                     f"Got ({device}, {dtype}) and ({_device}, {_dtype}).",
                     actual_devices=[device, _device],
                     expected_device=device,
+                )
+            elif dtype != _dtype:
+                raise TypeCheckError(
+                    f"Passed tensors do not have the same dtype: expected {dtype}, got {_dtype}.",
+                    actual_type=_dtype,
+                    expected_type=dtype,
                 )
     if device is None:
         # `torch.empty(0).device` reads the current default device and, unlike
