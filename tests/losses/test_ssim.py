@@ -202,6 +202,38 @@ class TestMS_SSIMLoss(BaseTester):
         tol = _MS_SSIM_TOL.get(dtype, 1e-4)
         self.assert_close(loss(img1, img2), expected, atol=tol, rtol=tol)
 
+    @pytest.mark.parametrize("channels", [1, 3])
+    def test_reference_gaussian_l1(self, device, dtype, channels):
+        # With alpha=0 the loss is the l1 map filtered by the coarsest Gaussian and averaged over the channels.
+        # Generated with ``gauss`` and ``filt`` from the snippet in ``test_reference``:
+        # w = gauss(2.0, 9)
+        # expected = np.mean([filt(np.abs(c - c**2), w) for c in x[:channels]], axis=0)
+        img1 = torch.arange(60, dtype=torch.float64).reshape(1, 3, 4, 5)
+        img1 = (img1 * torch.tensor([1.0, 3.0, 7.0], dtype=torch.float64).view(1, 3, 1, 1) % 11) / 10
+        img1 = img1[:, :channels].to(device, dtype)
+        img2 = img1**2
+        expected = {
+            1: [
+                [0.04841360, 0.06432695, 0.07315782, 0.07117095, 0.05873239],
+                [0.05998628, 0.07880676, 0.08869681, 0.08553489, 0.07010512],
+                [0.06226608, 0.08101300, 0.09034629, 0.08643698, 0.07039810],
+                [0.05424314, 0.06998091, 0.07739282, 0.07348809, 0.05948054],
+            ],
+            3: [
+                [0.05252443, 0.06618850, 0.07189183, 0.06754884, 0.05445936],
+                [0.06308681, 0.07960642, 0.08649714, 0.08128649, 0.06559485],
+                [0.06331894, 0.08003596, 0.08705040, 0.08188926, 0.06620053],
+                [0.05316348, 0.06731125, 0.07329963, 0.06904758, 0.05593615],
+            ],
+        }[channels]
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+
+        loss = kornia.losses.MS_SSIMLoss(sigmas=(0.5, 1.0, 2.0), alpha=0.0, compensation=1.0, reduction="none")
+        loss = loss.to(device, dtype)
+
+        tol = {torch.float16: 1e-3, torch.bfloat16: 1e-2}.get(dtype, 1e-4)
+        self.assert_close(loss(img1, img2), expected, atol=tol, rtol=tol)
+
     def test_load_legacy_state_dict(self, device, dtype):
         class Wrapper(torch.nn.Module):
             def __init__(self) -> None:
