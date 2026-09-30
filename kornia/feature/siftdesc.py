@@ -300,6 +300,11 @@ def _rootsift(desc: torch.Tensor, eps: float) -> torch.Tensor:
 _SIFT_DESCRIPTOR_LAYOUTS = ("kornia", "opencv")
 
 
+def _check_sift_descriptor_layout(layout: str) -> None:
+    if layout not in _SIFT_DESCRIPTOR_LAYOUTS:
+        raise ValueError(f"Unknown SIFT descriptor layout {layout!r}; expected one of {_SIFT_DESCRIPTOR_LAYOUTS}")
+
+
 def _opencv_order(num_ang_bins: int, num_spatial_bins: int) -> list[int]:
     """For each OpenCV descriptor position, the kornia position holding the same histogram value."""
     cells = num_spatial_bins * num_spatial_bins
@@ -350,9 +355,8 @@ def convert_sift_descriptor_layout(
         True
 
     """
-    for layout in (source, target):
-        if layout not in _SIFT_DESCRIPTOR_LAYOUTS:
-            raise ValueError(f"Unknown SIFT descriptor layout {layout!r}; expected one of {_SIFT_DESCRIPTOR_LAYOUTS}")
+    _check_sift_descriptor_layout(source)
+    _check_sift_descriptor_layout(target)
     size = num_ang_bins * num_spatial_bins * num_spatial_bins
     KORNIA_CHECK(
         descriptors.shape[-1] == size,
