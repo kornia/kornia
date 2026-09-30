@@ -27,7 +27,6 @@ import sys
 import threading
 import time
 import warnings
-from collections.abc import Callable
 from email.message import Message
 from email.utils import formatdate
 from pathlib import Path
@@ -47,6 +46,7 @@ from kornia.core.download import (
 )
 
 from testing.base import BaseTester
+from testing.pickle_payload import CreatesMarkerOnLoad, load_without_running_payload
 
 
 @pytest.fixture(autouse=True)
@@ -1165,37 +1165,6 @@ class TestFailureMessageCarriesCause:
         assert isinstance(excinfo.value.__cause__, HTTPError)
 
 
-def _create_marker(path: str) -> None:
-    """Create an empty file at *path*; the only effect of unpickling :class:`_CreatesMarkerOnLoad`."""
-    Path(path).touch()
-
-
-class _CreatesMarkerOnLoad:
-    """An object whose unpickling calls :func:`_create_marker`.
-
-    It stands in for any callable a pickled checkpoint can name: if the marker file
-    exists after a load, the loader executed code from the file it was handed.
-    """
-
-    def __init__(self, marker: Path) -> None:
-        self.marker = marker
-
-    def __reduce__(self) -> tuple[object, tuple[str]]:
-        return (_create_marker, (str(self.marker),))
-
-
-def _load_without_running_payload(marker: Path, load: Callable[[], object]) -> object:
-    """Return ``load()``, failing if *marker* exists afterwards, whether ``load`` returned or raised.
-
-    Checking in ``finally`` puts the payload having run ahead of whatever the loader then
-    returns or raises, so a loader that executes it fails on exactly that.
-    """
-    try:
-        return load()
-    finally:
-        assert not marker.exists(), "loading the checkpoint ran a callable pickled into it"
-
-
 @pytest.fixture
 def local_server(monkeypatch):
     """Serve in-memory files over HTTP from a thread bound to 127.0.0.1.
@@ -1263,13 +1232,13 @@ class TestWeightsOnly(BaseTester):
     def test_a_pickled_callable_is_refused_and_never_run(self, local_server, tmp_path, sources) -> None:
         files, url, _ = local_server
         marker = tmp_path / "marker"
-        files["/model.pth"] = _checkpoint_bytes({"weight": torch.zeros(2), "extra": _CreatesMarkerOnLoad(marker)})
+        files["/model.pth"] = _checkpoint_bytes({"weight": torch.zeros(2), "extra": CreatesMarkerOnLoad(marker)})
 
         urls = [url(s) for s in sources]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # the dead primary's "Trying next source"
             with pytest.raises(RuntimeError) as excinfo:
-                _load_without_running_payload(
+                load_without_running_payload(
                     marker, lambda: load_state_dict_from_url(urls, model_dir=str(tmp_path / "cache"))
                 )
 
@@ -1283,9 +1252,9 @@ class TestWeightsOnly(BaseTester):
         files["/model.pth"] = _checkpoint_bytes(good)
         cache = tmp_path / "cache"
         cache.mkdir()
-        (cache / "model.pth").write_bytes(_checkpoint_bytes({"extra": _CreatesMarkerOnLoad(marker)}))
+        (cache / "model.pth").write_bytes(_checkpoint_bytes({"extra": CreatesMarkerOnLoad(marker)}))
 
-        result = _load_without_running_payload(
+        result = load_without_running_payload(
             marker, lambda: load_state_dict_from_url(url("/model.pth"), model_dir=str(cache))
         )
 

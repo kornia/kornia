@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import os
 import pickle
-from collections.abc import Callable
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -30,6 +28,7 @@ from torch import nn
 from kornia.models.base import ModelBase, ModelBaseMixin
 
 from testing.base import BaseTester
+from testing.pickle_payload import CreatesMarkerOnLoad, load_without_running_payload
 
 
 class DummyMixin(ModelBaseMixin):
@@ -215,29 +214,6 @@ class TestModelBaseMixinSaveWritesRealFiles:
         assert all("_mask_" in name for name in written)
 
 
-def _create_marker(path: str) -> None:
-    """Create an empty file at *path*; the only effect of unpickling :class:`_CreatesMarkerOnLoad`."""
-    Path(path).touch()
-
-
-class _CreatesMarkerOnLoad:
-    """An object whose unpickling calls :func:`_create_marker`, standing in for any pickled callable."""
-
-    def __init__(self, marker: Path) -> None:
-        self.marker = marker
-
-    def __reduce__(self) -> tuple[object, tuple[str]]:
-        return (_create_marker, (str(self.marker),))
-
-
-def _load_without_running_payload(marker: Path, load: Callable[[], object]) -> object:
-    """Return ``load()``, failing if *marker* exists afterwards, whether ``load`` returned or raised."""
-    try:
-        return load()
-    finally:
-        assert not marker.exists(), "loading the checkpoint ran a callable pickled into it"
-
-
 class _TinyModel(ModelBase[None]):
     def __init__(self) -> None:
         super().__init__()
@@ -254,11 +230,11 @@ class TestModelBaseLoadCheckpoint(BaseTester):
     def test_a_pickled_callable_in_a_local_file_is_refused_and_never_run(self, tmp_path) -> None:
         marker = tmp_path / "marker"
         path = tmp_path / "model.pth"
-        torch.save({**_TinyModel().state_dict(), "extra": _CreatesMarkerOnLoad(marker)}, path)
+        torch.save({**_TinyModel().state_dict(), "extra": CreatesMarkerOnLoad(marker)}, path)
 
         model = _TinyModel()
         with pytest.raises(pickle.UnpicklingError):
-            _load_without_running_payload(marker, lambda: model.load_checkpoint(str(path)))
+            load_without_running_payload(marker, lambda: model.load_checkpoint(str(path)))
 
     def test_a_local_state_dict_loads(self, tmp_path, dtype) -> None:
         source = _TinyModel().to(dtype)
