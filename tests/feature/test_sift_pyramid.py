@@ -58,6 +58,21 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
             get_laf_orientation(oriented), torch.zeros(1, 1, 1, device=device, dtype=dtype), rtol=0.0, atol=1e-2
         )
 
+    def test_float64_vertical_gradient_orientation_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # The peak lands on orientation bin 9 of 36, so the bin-to-angle scale decides the angle; the
+        # horizontal case above sits on bin 0 and cannot see it.
+        image = torch.arange(64, device=device, dtype=torch.float64).reshape(1, 1, 64, 1).expand(1, 1, 64, 64)
+        xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=torch.float64)
+        lafs = laf_from_center_scale_ori(xy, torch.full((1, 1, 1, 1), 8.0, device=device, dtype=torch.float64))
+        oriented, _ = (
+            SIFTDescriptorFromPyramid(rootsift=False).to(device, torch.float64).orient_and_describe(image, lafs)
+        )
+        angle = torch.deg2rad(get_laf_orientation(oriented)).flatten()
+        # The float32 pi put this angle 1.6e-8 rad off; the residual here is about 6e-11.
+        self.assert_close(angle, torch.full_like(angle, -torch.pi / 2), rtol=0.0, atol=1e-9)
+
     def test_flat_input_has_finite_backward(self, device, dtype):
         image = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype, requires_grad=True)
         xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)

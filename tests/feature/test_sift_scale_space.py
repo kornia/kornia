@@ -59,9 +59,23 @@ class TestSharedSIFTScaleSpace(BaseTester):
         if device.type == "mps":
             pytest.skip("float64 is unavailable on MPS")
         angle = torch.arange(36, device=device, dtype=torch.float64).view(1, 36, 1) * (2 * torch.pi / 36)
-        histogram = _SIFTScaleSpaceDescriptor._angular_histogram(torch.ones_like(angle), angle, 36)
-        # The float32 pi in the bin scale leaked up to 9.7e-7 of the upper bins into their lower neighbour.
-        self.assert_close(histogram[0], torch.eye(36, device=device, dtype=torch.float64), rtol=0.0, atol=1e-12)
+        # The gradient angles arrive in [2 pi, 4 pi), where the `%` takes part as well.
+        for offset in (0.0, 2 * torch.pi):
+            histogram = _SIFTScaleSpaceDescriptor._angular_histogram(torch.ones_like(angle), angle + offset, 36)
+            # The float32 pi in the bin scale leaked up to 9.7e-7 of the upper bins into their lower neighbour.
+            eye = torch.eye(36, device=device, dtype=torch.float64)
+            self.assert_close(histogram[0], eye, rtol=0.0, atol=1e-12)
+
+    def test_float64_bin_centre_angles_fill_one_descriptor_bin_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # One sample per frame at the patch centre, whose angle sits on one of the 8 bin centres.
+        angle = 2 * torch.pi + torch.arange(8, device=device, dtype=torch.float64).view(1, 8, 1) * (torch.pi / 4)
+        centre = torch.zeros(1, device=device, dtype=torch.float64)
+        votes = _SIFTScaleSpaceDescriptor._descriptor_histograms(torch.ones_like(angle), angle, centre, centre)
+        # Summing the 16 spatial cells leaves each frame's angular histogram.
+        histogram = votes.reshape(8, 16, 8).sum(1)
+        self.assert_close(histogram, torch.eye(8, device=device, dtype=torch.float64), rtol=0.0, atol=1e-12)
 
     def test_histogram_gradcheck(self, device):
         if device.type == "mps":
@@ -206,6 +220,20 @@ class TestSharedSIFTScaleSpace(BaseTester):
         self.assert_close(angles.abs(), angles.new_tensor([0, 90]), atol=0.02, rtol=0)
         self.assert_close(desc[0, 0], desc[0, 1], atol=0.002, rtol=0.002)
         self.assert_close(desc.norm(dim=-1), torch.ones(1, 2, device=device, dtype=dtype))
+
+    def test_float64_vertical_gradient_orientation_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        axis = torch.arange(64, device=device, dtype=torch.float64)
+        pyramid = [torch.stack([axis[None, :].expand(64, 64), axis[:, None].expand(64, 64)])[None, None]]
+        lafs = torch.tensor([[[[6.0, 0, 16], [0, 6.0, 16]]] * 2], device=device, dtype=torch.float64)
+        octaves = torch.zeros(1, 2, device=device, dtype=torch.long)
+        levels = torch.tensor([[0, 1]], device=device)
+        oriented, _ = _SIFTScaleSpaceDescriptor()(pyramid, lafs, octaves, levels)
+        angles = torch.deg2rad(get_laf_orientation(oriented)).flatten()
+        # The vertical layer peaks on orientation bin 9 of 36; the float32 pi put its angle 1.6e-8 rad off.
+        expected = torch.tensor([0.0, -torch.pi / 2], device=device, dtype=torch.float64)
+        self.assert_close(angles, expected, rtol=0.0, atol=1e-9)
 
     def test_mask_padding_and_empty(self, device, dtype):
         feature = SIFTFeatureScaleSpace(4, descriptor_backend="pyramid").to(device, dtype)

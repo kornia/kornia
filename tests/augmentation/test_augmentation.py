@@ -1751,6 +1751,20 @@ class TestColorJiggle(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.parametrize("order", [None, (3,)])
+    def test_float64_half_turn_uses_full_precision_pi_5127(self, device, order):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
+        hue = kornia.color.rgb_to_hsv(image)[:, 0]
+        # A float64 range gives float64 factors. The random order and a fixed `order` apply the hue step
+        # through separate functions (the per-step loop and the `torch.cond` branch table).
+        aug = ColorJiggle(hue=torch.tensor((0.5, 0.5), dtype=torch.float64), p=1.0, order=order)
+        shifted = kornia.color.rgb_to_hsv(aug(image))[:, 0]
+        error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
+        self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
+
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
@@ -2272,6 +2286,19 @@ class TestColorJitter(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    def test_float64_half_turn_uses_full_precision_pi_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
+        hue = kornia.color.rgb_to_hsv(image)[:, 0]
+        aug = ColorJitter(hue=(0.5, 0.5), p=1.0)
+        # ColorJitter draws its factors in the generator dtype, float32 unless set otherwise.
+        aug.set_rng_device_and_dtype(device, torch.float64)
+        shifted = kornia.color.rgb_to_hsv(aug(image))[:, 0]
+        error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
+        self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
+
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
@@ -2599,7 +2626,7 @@ class TestRandomHue(BaseTester):
         image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
         hue = kornia.color.rgb_to_hsv(image)[:, 0]
         shifted = kornia.color.rgb_to_hsv(RandomHue(hue=(0.5, 0.5), p=1.0)(image))[:, 0]
-        # Circular distance of the shift from pi; the float32 pi left it 8.7e-8 short.
+        # Circular distance of the shift from pi; the float32 pi overshot it by 8.7e-8.
         error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
