@@ -59,12 +59,39 @@ def filter2d(
     padding: str = "same",
     behaviour: str = "corr",
 ) -> torch.Tensor:
-    r"""Convolve a tensor with a 2d kernel.
+    r"""Filter a tensor with a 2d kernel, by cross-correlation unless ``behaviour='conv'``.
 
     The function applies a given kernel to a tensor. The kernel is applied
-    independently at each depth channel of the tensor. Before applying the
-    kernel, the function applies padding according to the specified mode so
-    that the output remains in the same shape.
+    independently at each channel of the tensor. With ``padding='same'`` the
+    input is first padded according to ``border_type``, so that the output
+    keeps the input's height and width.
+
+    Convention:
+        - The default ``behaviour='corr'`` is cross-correlation,
+          :math:`out[y, x] = \sum_{i, j} k[i, j] \, input[y + i - a_y, x + j - a_x]`, anchored at
+          :math:`(a_y, a_x)` = ``((kH - 1) // 2, (kW - 1) // 2)``: the centre of an odd kernel and, for an even size,
+          the tap before the middle. ``behaviour='conv'`` flips the kernel on both axes and keeps the anchor.
+        - ``border_type`` takes the :func:`torch.nn.functional.pad` mode names, and the default ``'reflect'`` mirrors
+          about the edge pixel without repeating it. :ref:`Filtering <filtering-conventions>` maps the modes and the
+          anchor onto scipy and OpenCV. With ``padding='same'``, ``'reflect'`` needs each axis longer than
+          ``k // 2`` for a kernel ``k`` taps long along it, and ``'circular'`` at least that long; a shorter axis
+          raises.
+        - A :math:`(1, kH, kW)` kernel is shared by the whole batch, and a :math:`(B, kH, kW)` kernel gives each
+          sample its own, shared by the sample's channels; there are no per-channel kernels.
+        - ``normalized=True`` divides each kernel by the sum of its absolute values, so a zero-sum derivative kernel
+          keeps its sign.
+        - The kernel is cast to the input's dtype and device and stays differentiable; the output has the input's
+          dtype.
+        - Known defects:
+
+          - a kernel batch that divides the input batch without matching it is not rejected: with 2 kernels for 4
+            samples, sample ``i`` is filtered with kernel ``i % 2``
+            (`#5154 <https://github.com/kornia/kornia/issues/5154>`_).
+          - an integer input casts the kernel to its dtype, so a fractional kernel truncates to 0 and a uint8 image
+            filtered with a box kernel comes back as zeros (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+          - ``padding`` and ``border_type`` are checked case-insensitively but used as given: ``padding='SAME'``
+            returns the ``'valid'`` output and ``border_type='REFLECT'`` raises
+            (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
 
     Args:
         input: the input tensor with shape of
@@ -78,12 +105,12 @@ def filter2d(
         padding: This defines the type of padding.
           2 modes available ``'same'`` or ``'valid'``.
         behaviour: defines the convolution mode -- correlation (default), using pytorch conv2d,
-        or true convolution (kernel is flipped). 2 modes available ``'corr'`` or ``'conv'``.
-
+          or true convolution (kernel is flipped). 2 modes available ``'corr'`` or ``'conv'``.
 
     Return:
-        Tensor: the convolved tensor of same size and numbers of channels
-        as the input with shape :math:`(B, C, H, W)`.
+        the filtered tensor. With ``padding='same'`` it has the input's shape :math:`(B, C, H, W)`. With
+        ``padding='valid'`` it has shape :math:`(B, C, H - kH + 1, W - kW + 1)`, and its pixel ``(0, 0)`` is the
+        ``'same'`` output at the anchor ``(a_y, a_x)``.
 
     Example:
         >>> input = torch.tensor([[[
@@ -160,12 +187,18 @@ def filter2d_separable(
     normalized: bool = False,
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Convolve a tensor with two 1d kernels, in x and y directions.
+    r"""Correlate a tensor with two 1d kernels, one along x and one along y.
 
-    The function applies a given kernel to a tensor. The kernel is applied
-    independently at each depth channel of the tensor. Before applying the
-    kernel, the function applies padding according to the specified mode so
-    that the output remains in the same shape.
+    The function applies the given kernels to a tensor. They are applied
+    independently at each channel of the tensor. With ``padding='same'`` the
+    input is first padded according to ``border_type``, so that the output
+    keeps the input's height and width.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.filter2d`. The result equals
+        :func:`~kornia.filters.filter2d` with the outer-product kernel ``kernel_y[:, :, None] * kernel_x[:, None, :]``,
+        the even-size anchor included: ``kernel_x`` runs along ``W`` and comes first. There is no ``behaviour``
+        argument, so the kernels are always correlated. ``normalized=True`` normalizes each 1d kernel.
 
     Args:
         input: the input tensor with shape of
@@ -182,8 +215,8 @@ def filter2d_separable(
           2 modes available ``'same'`` or ``'valid'``.
 
     Return:
-        Tensor: the convolved tensor of same size and numbers of channels
-        as the input with shape :math:`(B, C, H, W)`.
+        the filtered tensor, of the shape :func:`~kornia.filters.filter2d` returns for the same ``padding``:
+        :math:`(B, C, H, W)` with ``padding='same'``.
 
     Example:
         >>> input = torch.tensor([[[
@@ -213,12 +246,20 @@ def filter3d(
     normalized: bool = False,
     behaviour: str = "corr",
 ) -> torch.Tensor:
-    r"""Convolve a tensor with a 3d kernel.
+    r"""Filter a tensor with a 3d kernel, by cross-correlation unless ``behaviour='conv'``.
 
     The function applies a given kernel to a tensor. The kernel is applied
-    independently at each depth channel of the tensor. Before applying the
+    independently at each channel of the tensor. Before applying the
     kernel, the function applies padding according to the specified mode so
     that the output remains in the same shape.
+
+    Convention:
+        - See the Convention block on :func:`~kornia.filters.filter2d`, applied to the ``(D, H, W)`` axes with the
+          anchor ``((kD - 1) // 2, (kH - 1) // 2, (kW - 1) // 2)``.
+        - The default ``border_type`` is ``'replicate'``, where :func:`~kornia.filters.filter2d` defaults to
+          ``'reflect'``. There is no ``padding`` argument: the output always has the input's shape.
+        - Known defect: ``normalized=True`` raises for a non-contiguous kernel, such as a permuted one
+          (`#5159 <https://github.com/kornia/kornia/issues/5159>`_).
 
     Args:
         input: the input tensor with shape of
@@ -226,7 +267,7 @@ def filter3d(
         kernel: the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(1, kD, kH, kW)`  or :math:`(B, kD, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``,
+          The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         normalized: If True, kernel will be L1 normalized.
         behaviour: defines the convolution mode -- correlation (default), using pytorch conv3d,
@@ -345,11 +386,22 @@ def fft_conv(
     O(H * W log(H * W)). For small kernels, however, direct convolution
     is usually faster due to lower constant overhead.
 
+    Convention:
+        - See the Convention block on :func:`~kornia.filters.filter2d`: for the same arguments ``fft_conv`` returns
+          the same result, to roundoff.
+        - Known defects:
+
+          - one input sample with a batch of kernels is broadcast, one output per kernel, where
+            :func:`~kornia.filters.filter2d` raises (`#5154 <https://github.com/kornia/kornia/issues/5154>`_).
+          - an integer input truncates a fractional kernel to 0, as in :func:`~kornia.filters.filter2d`, and the
+            result is float32 (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.
-        kernel: Convolution kernel of shape :math:`(B, kH, kW)`. Each batch
-            element provides one kernel, which is shared across all channels
-            of the corresponding input batch.
+        kernel: Convolution kernel of shape :math:`(1, kH, kW)`, shared by the
+            whole batch, or :math:`(B, kH, kW)`, where each batch element
+            provides one kernel, which is shared across all channels of the
+            corresponding input batch.
         border_type: Padding mode applied to the input before convolution.
             Supported values are ``'constant'``, ``'reflect'``,
             ``'replicate'``, and ``'circular'``.

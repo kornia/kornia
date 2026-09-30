@@ -32,8 +32,24 @@ def get_motion_kernel2d(
 ) -> torch.Tensor:
     r"""Return 2D motion blur filter.
 
+    Convention:
+        - ``direction`` is clamped to ``[-1, 1]`` and weighs the line linearly before it is rotated: ``1`` gives
+          ``[0.4, 0.3, 0.2, 0.1, 0]`` along the middle row of a size-5 kernel, heavy at the left end and 0 at the
+          right, so only ``kernel_size - 1`` taps carry weight; ``-1`` mirrors it and ``0`` is uniform.
+        - ``angle`` is in degrees and turns the line counter-clockwise as displayed (row 0 at the top), as
+          :func:`~kornia.geometry.transform.rotate` does: at ``90`` the heavy end moves from the left to the bottom.
+        - Because :func:`~kornia.filters.filter2d` correlates, the streak that the kernel draws from a bright point
+          is heaviest on the side opposite the kernel's heavy end: to the point's right at ``angle=0``,
+          ``direction=1``.
+        - The rotation resamples the line with ``mode``: ``'nearest'`` drops taps that fall between pixels, leaving
+          3 of 5 at 45 degrees, and ``'bilinear'`` spreads the weight off the line.
+        - A tensor ``angle`` of shape :math:`(B,)` needs a ``direction`` of the same length and gives
+          :math:`(B, k, k)` in the angle's dtype; a float ``direction`` is not broadcast and raises.
+        - Known defect: on MPS some angles give a different kernel than on the CPU
+          (`#5181 <https://github.com/kornia/kornia/issues/5181>`_).
+
     Args:
-        kernel_size: motion kernel width and height. It should be odd and positive.
+        kernel_size: motion kernel width and height, an odd integer of at least 3.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
@@ -112,11 +128,18 @@ def get_motion_kernel3d(
 ) -> torch.Tensor:
     r"""Return 3D motion blur filter.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_motion_kernel2d` for ``direction`` and ``mode``.
+        ``angle`` is ``(yaw, pitch, roll)`` in degrees, the rotations about the x, y and z axes applied by
+        :func:`~kornia.geometry.transform.rotate3d`. The unrotated line lies along x, so yaw alone leaves the kernel
+        unchanged; a positive pitch moves the heavy end to +z, and a positive roll turns the line clockwise as
+        displayed, the opposite of the 2d ``angle``.
+
     Args:
-        kernel_size: motion kernel width, height and depth. It should be odd and positive.
-        angle: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
+        angle: yaw (x-axis), pitch (y-axis) and roll (z-axis) of the motion blur, in degrees.
             If tensor, it must be :math:`(B, 3)`.
-            If tuple, it must be (yaw, pitch, raw).
+            If tuple, it must be (yaw, pitch, roll).
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
