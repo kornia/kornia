@@ -355,3 +355,23 @@ class TestMedianBlur(BaseTester):
         expected = op(data)
         self.assert_close(actual.isnan(), expected.isnan())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+
+class TestConventionsMedianBlur(BaseTester):
+    """Pins for the border of :func:`median_blur`."""
+
+    # Without a gradient a square 3x3 or 5x5 window on the CPU runs the selection network; with one, the
+    # convolution + median path. Both pad with zeros.
+    @pytest.mark.parametrize("requires_grad", [False, True], ids=["selection_network", "conv_median"])
+    def test_wart_median_blur_zero_pads_the_border_4670(self, requires_grad, device, dtype):
+        """median_blur zero-pads and has no border_type, so a constant image loses its corners (#4670)."""
+        # A 3x3 corner window holds 4 image pixels and 5 zeros, so its median is 0; a 5x5 window zeroes a
+        # triangle of 3 pixels at each corner. Every other pixel keeps the constant.
+        # Snippet used to generate expected:
+        #   image = torch.full((1, 1, 11, 13), 0.8)
+        #   for k in (3, 5): print((median_blur(image, k) != image).sum())  # 4, 12
+        image = torch.full((1, 1, 11, 13), 0.8, device=device, dtype=dtype).requires_grad_(requires_grad)
+        for kernel_size, changed in ((3, 4), (5, 12)):
+            out = median_blur(image, kernel_size).detach()
+            assert out[0, 0, 0, 0] == 0 and out[0, 0, -1, -1] == 0
+            assert int((out != image.detach()).sum()) == changed

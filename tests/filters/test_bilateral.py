@@ -15,12 +15,20 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
-from kornia.filters import BilateralBlur, JointBilateralBlur, bilateral_blur, joint_bilateral_blur
+from kornia.filters import (
+    BilateralBlur,
+    JointBilateralBlur,
+    bilateral_blur,
+    gaussian_blur2d,
+    joint_bilateral_blur,
+)
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 
 class TestBilateralBlur(BaseTester):
@@ -403,3 +411,113 @@ class TestJointBilateralBlur(BaseTester):
 
         out = joint_bilateral_blur(img, guide, kernel_size, sigma_color, sigma_distance)
         self.assert_close(out, expected)
+
+
+class TestConventionsBilateralBlur(BaseTester):
+    """Pins for the colour and space parameters of :func:`bilateral_blur` and :func:`joint_bilateral_blur`."""
+
+    @staticmethod
+    def _skip_without_reflect_padding(device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+
+    def test_convention_bilateral_blur_sigma_color_is_in_input_units(self, device, dtype):
+        # sigma_color is compared with differences of input values, not with a normalised range: scaling the image by
+        # s needs sigma_color * s for the same (scaled) result. A power of two keeps the rescaling exact in every dtype.
+        self._skip_without_reflect_padding(device, dtype)
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 9, 13).to(device=device, dtype=dtype)
+        for distance in ("l1", "l2"):
+            reference = bilateral_blur(image, 3, 0.1, (1.0, 1.5), color_distance_type=distance)
+            rescaled = bilateral_blur(16 * image, 3, 16 * 0.1, (1.0, 1.5), color_distance_type=distance)
+            self.assert_close(rescaled, 16 * reference)
+            # control: the unscaled sigma_color on the rescaled image is a different filter
+            unscaled = bilateral_blur(16 * image, 3, 0.1, (1.0, 1.5), color_distance_type=distance)
+            assert (unscaled - 16 * reference).abs().max() > 0.1
+
+    def test_convention_bilateral_blur_sigma_space_is_gaussian_blur2d_sigma(self, device, dtype):
+        # sigma_space is gaussian_blur2d's (sigma_y, sigma_x) with the same kernel_size: once sigma_color dwarfs every
+        # intensity difference the colour weights are 1 and the bilateral filter is gaussian_blur2d.
+        self._skip_without_reflect_padding(device, dtype)
+        image = torch.zeros(1, 1, 23, 31, device=device, dtype=dtype)
+        image[0, 0, 9, 17] = 1.0
+        out = bilateral_blur(image, (15, 21), 1e6, (1.0, 3.0))
+        self.assert_close(out, gaussian_blur2d(image, (15, 21), (1.0, 3.0)))
+        # control: the swapped sigma is a different blur of this delta
+        assert (out - gaussian_blur2d(image, (15, 21), (3.0, 1.0))).abs().max() > 0.02
+
+    @pytest.mark.parametrize("distance", ["l1", "l2"])
+    def test_convention_bilateral_blur_color_weight(self, distance, device, dtype):
+        # A neighbour's weight is its spatial Gaussian weight times exp(-d^2 / (2 sigma_color^2)), normalised over the
+        # window, with d = sum_c |dI_c| for 'l1' (OpenCV's colour distance) and d^2 = sum_c dI_c^2 for 'l2'.
+        # One 1 x 3 window on a two-channel 1 x 3 image: the centre pixel is recomputed here from that formula.
+        self._skip_without_reflect_padding(device, dtype)
+        rows = [[0.2, 0.2, 0.9], [0.8, 0.8, 0.1]]  # the right neighbour differs by (0.7, -0.7), the left by nothing
+        image = torch.tensor(rows, device=device, dtype=dtype).view(1, 2, 1, 3)
+        sigma_color, sigma_x = 0.8, 1.2
+
+        def centre(dist):
+            weights = []
+            for col in range(3):
+                diff = [row[col] - row[1] for row in rows]
+                d2 = sum(abs(v) for v in diff) ** 2 if dist == "l1" else sum(v * v for v in diff)
+                weights.append(math.exp(-((col - 1) ** 2) / (2 * sigma_x**2)) * math.exp(-d2 / (2 * sigma_color**2)))
+            return [sum(w * v for w, v in zip(weights, row)) / sum(weights) for row in rows]
+
+        # the fixture tells the two distances apart well beyond the half-precision tolerances
+        assert max(abs(a - b) for a, b in zip(centre("l1"), centre("l2"))) > 0.05
+        out = bilateral_blur(image, (1, 3), sigma_color, (1.0, sigma_x), color_distance_type=distance)
+        self.assert_close(out[0, :, 0, 1], torch.tensor(centre(distance), device=device, dtype=dtype))
+
+    def test_convention_joint_bilateral_blur_filters_its_first_argument(self, device, dtype):
+        # joint_bilateral_blur(input, guidance, ...) filters input with colour weights taken from guidance -- the
+        # guidance second, unlike guided_blur(guidance, input, ...) -- and the guidance may have its own channel
+        # count. A flat guidance makes every colour weight 1, so the output is gaussian_blur2d of the input.
+        self._skip_without_reflect_padding(device, dtype)
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 9, 13).to(device=device, dtype=dtype)
+        flat = torch.full((2, 1, 9, 13), 0.5, device=device, dtype=dtype)
+        expected = gaussian_blur2d(image, (3, 5), (1.0, 2.0))
+        for out in (
+            joint_bilateral_blur(image, flat, (3, 5), 0.1, (1.0, 2.0)),
+            JointBilateralBlur((3, 5), 0.1, (1.0, 2.0))(image, flat),
+        ):
+            assert out.shape == image.shape
+            self.assert_close(out, expected)
+
+    def test_wart_bilateral_blur_integer_image_wraps_its_differences_5155(self, device):
+        """bilateral_blur subtracts uint8 values in uint8, so 10 - 250 wraps and blends edges it should keep (#5155)."""
+        if device.type != "cpu":
+            pytest.skip("#5155 is pinned on the CPU only")
+        # Columns alternate 10 and 250. A colour sigma of 50 keeps them apart, but the wrapped difference
+        # 10 - 250 = 16 (mod 256) makes the 10s look close to the 250s, which come back near 162.
+        # Snippet used to generate expected:
+        #   s = torch.tensor([10, 250], dtype=torch.uint8).repeat(8, 5)[None, None]
+        #   print(bilateral_blur(s, 3, 50.0, (1.0, 1.0))[0, 0, 3, :4])  # [10.0, 162.3, 10.0, 162.3]
+        stripes = torch.tensor([10, 250], device=device, dtype=torch.uint8).repeat(8, 5)[None, None]
+        out = bilateral_blur(stripes, 3, 50.0, (1.0, 1.0))
+        assert out[0, 0, :, 1::2].max() < 200
+        # the same filter on the same values in floating point keeps the stripes
+        self.assert_close(bilateral_blur(stripes.float(), 3, 50.0, (1.0, 1.0)), stripes.float(), rtol=0.0, atol=0.01)
+
+    @pytest.mark.parametrize("kernel_size", [4, (3, 4)])
+    def test_wart_bilateral_blur_even_kernel_size_fails_inside_the_filter_5163(self, kernel_size, device, dtype):
+        """The bilateral filters accept an even kernel_size and then fail with a raw torch error (#5163)."""
+        self._skip_without_reflect_padding(device, dtype)
+        image = torch.rand(1, 1, 8, 9, device=device, dtype=dtype)
+        calls = (
+            lambda: bilateral_blur(image, kernel_size, 0.1, (1.0, 1.0)),
+            lambda: joint_bilateral_blur(image, image, kernel_size, 0.1, (1.0, 1.0)),
+            lambda: BilateralBlur(kernel_size, 0.1, (1.0, 1.0))(image),
+            lambda: JointBilateralBlur(kernel_size, 0.1, (1.0, 1.0))(image, image),
+        )
+        for call in calls:
+            with pytest.raises(RuntimeError):
+                call()
+
+    def test_wart_bilateral_blur_zero_sigma_color_turns_the_image_to_nan_5169(self, device, dtype):
+        """bilateral_blur does not check sigma_color > 0: a tensor of zeros makes every output pixel NaN (#5169)."""
+        self._skip_without_reflect_padding(device, dtype)
+        image = torch.rand(2, 3, 9, 13, device=device, dtype=dtype)
+        out = bilateral_blur(image, 3, torch.zeros(2, device=device, dtype=dtype), (1.0, 1.0))
+        assert out.isnan().all()
