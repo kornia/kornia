@@ -429,6 +429,84 @@ class TestSIFTScalePyramid(BaseTester):
         for octave in pyramid(image):
             assert (octave - value).abs().max() < 1e-14
 
+    def test_device_argument_and_device_only_move(self, device):
+        # Registered as float64 buffers, the reference kernels made `device="mps"` and `.to("mps")` raise, because
+        # MPS has no float64. Only a move that also cast the dtype, `.to("mps", torch.float32)`, worked.
+        # Built on the default device, they also made construction under `with torch.device("mps")` raise.
+        image = torch.rand(1, 1, 48, 52, device=device)
+        expected = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device, torch.float32)(image)
+        with device:
+            under_default_device = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid")
+        for feature in (
+            SIFTFeatureScaleSpace(8, descriptor_backend="pyramid", device=device),
+            SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device),
+            under_default_device,
+        ):
+            # Not bitwise: on MPS, the orientation histogram's scatter_add_ varies from run to run at float32 rounding.
+            for actual, reference in zip(feature(image), expected):
+                assert actual.device == image.device
+                self.assert_close(actual, reference)
+
+    def test_dynamo_on_device(self, device, torch_optimizer):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # A compiled graph must not build a float64 tensor on MPS, which rejects it: the kernels are float32 there, and
+        # forward casts a kernel's dtype before any move.
+        pyramid = _SIFTScalePyramid().to(device)
+        image = torch.rand(1, 1, 33, 37, device=device)
+        expected = pyramid(image)
+        for actual_octave, expected_octave in zip(torch_optimizer(pyramid)(image), expected):
+            self.assert_close(actual_octave, expected_octave)
+
+    @pytest.mark.parametrize("module_dtype", [torch.float16, torch.bfloat16])
+    def test_module_dtype_cast_keeps_reference_kernels(self, device, module_dtype):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The detector builds its pyramid in float32 for half inputs, so a half-cast module still blurs float32 images.
+        # Casting the module must not round the Gaussian kernels to its dtype: rounded kernels miss their unit sum, and
+        # a constant image drifts octave by octave, from 8e-5 in the first to 4.9e-4 in the fifth with float16 kernels,
+        # and from 1.1e-3 to 3.0e-3 with bfloat16 ones.
+        value = 0.37
+        image = torch.full((1, 1, 96, 96), value, device=device, dtype=torch.float32)
+        for octave in _SIFTScalePyramid().to(device, module_dtype)(image):
+            assert (octave - value).abs().max() < 1e-6
+
+    def test_kernels_are_buffers_that_follow_device_moves(self, device):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The kernels live on the module's device, so forward does not copy them there on every call. A move rebuilds
+        # them from float64, in float32 on MPS, which has no float64; a dtype cast of the module leaves them alone. They
+        # stay out of state_dict: loading a checkpoint saved on MPS would round a CPU module's kernels to float32.
+        reference = [getattr(_SIFTScalePyramid(), f"kernel_{index}") for index in range(6)]
+        pyramid = _SIFTScalePyramid().to(device).half()
+        kernel_dtype = torch.float32 if device.type == "mps" else torch.float64
+        assert not pyramid.state_dict()
+        for index, expected in enumerate(reference):
+            kernel = getattr(pyramid, f"kernel_{index}")
+            assert kernel.device.type == device.type and kernel.dtype == kernel_dtype
+            assert torch.equal(kernel.cpu(), expected.to(kernel_dtype))
+        pyramid.cpu()
+        for index, expected in enumerate(reference):
+            kernel = getattr(pyramid, f"kernel_{index}")
+            assert kernel.dtype == torch.float64 and torch.equal(kernel, expected)
+
+    def test_whole_module_pickle_rebuilds_kernels_where_they_land(self, device):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The pickle holds float32 copies of the kernels, which `map_location` can put on MPS, and loading rebuilds
+        # them on the device they land on. A float64 CPU copy could not be mapped to MPS, and float32 MPS kernels
+        # mapped to the CPU would cap float64 images at float32 accuracy.
+        for source, target in ((device, torch.device("cpu")), (torch.device("cpu"), device)):
+            checkpoint = io.BytesIO()
+            torch.save(_SIFTScalePyramid().to(source), checkpoint)
+            checkpoint.seek(0)
+            restored = torch.load(checkpoint, map_location=target, weights_only=False)
+            expected = _SIFTScalePyramid().to(target)
+            for index in range(6):
+                kernel, reference = getattr(restored, f"kernel_{index}"), getattr(expected, f"kernel_{index}")
+                assert kernel.device.type == target.type and kernel.dtype == reference.dtype
+                assert torch.equal(kernel, reference)
+
     def test_pyramid_backend_rejects_unknown_compile_component(self):
         with pytest.raises(ValueError, match="compile_modules"):
             SIFTFeatureScaleSpace(descriptor_backend="pyramid", compile_modules=["resp"])
