@@ -131,7 +131,7 @@ class TestParametrizedLine(BaseTester):
         point_projection = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         self.assert_close(l1.projection(point), point_projection)
 
-    @pytest.mark.parametrize("batch_size", (2, 3))
+    @pytest.mark.parametrize("batch_size", [2, 3])
     def test_batched_projection(self, device, dtype, batch_size):
         origin = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], device=device, dtype=dtype)[:batch_size]
         direction = torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]], device=device, dtype=dtype)[:batch_size]
@@ -324,8 +324,8 @@ def _near_vertical_points_5040(device, dtype) -> torch.Tensor:
 
 
 class TestFitLine(BaseTester):
-    @pytest.mark.parametrize("B", (1, 2))
-    @pytest.mark.parametrize("D", (2, 3, 4))
+    @pytest.mark.parametrize("B", [1, 2])
+    @pytest.mark.parametrize("D", [2, 3, 4])
     def test_smoke(self, device, dtype, B, D):
         N: int = 10  # num points
         # A line needs distinct points: ones() is a set of identical points, rejected since #5041.
@@ -719,7 +719,7 @@ class TestFitLine(BaseTester):
         assert torch.isfinite(line.direction).all()
         assert torch.isfinite(line.origin).all()
 
-    @pytest.mark.parametrize("dim", (2, 3))
+    @pytest.mark.parametrize("dim", [2, 3])
     def test_gradcheck(self, device, dim):
         # Two point sets whose rows differ, each projected onto its own fitted line (#5013).
         def proxy_func(pts, weights):
