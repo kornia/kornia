@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -87,6 +89,25 @@ class TestMaxBlurPool(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
+    @pytest.mark.parametrize("kernel_size", [2, 3, 4])
+    @pytest.mark.parametrize("stride", [1, 2])
+    @pytest.mark.parametrize("max_pool_size", [1, 2, 3])
+    def test_even_kernel_keeps_ceil_size_5166(self, kernel_size, stride, max_pool_size, device, dtype):
+        # An even kernel_size used to lose a row and a column: (7, 10) with kernel_size 2, stride 1, max_pool_size 1
+        # returned (6, 9). The size is ceil((H - max_pool_size + 1) / stride) for every kernel size.
+        data = torch.rand(1, 2, 7, 10, device=device, dtype=dtype)
+        actual = max_blur_pool2d(data, kernel_size, stride=stride, max_pool_size=max_pool_size)
+        expected = tuple(math.ceil((n - max_pool_size + 1) / stride) for n in (7, 10))
+        assert actual.shape == (1, 2, *expected)
+
+    @pytest.mark.parametrize("kernel_size", [2, 4])
+    def test_even_kernel_is_max_pool_then_blur_pool_5166(self, kernel_size, device, dtype):
+        data = torch.rand(1, 2, 7, 10, device=device, dtype=dtype)
+        expected = blur_pool2d(torch.nn.functional.max_pool2d(data, 2, stride=1), kernel_size, stride=2)
+        actual = max_blur_pool2d(data, kernel_size, stride=2)
+        assert actual.shape == (1, 2, 3, 5)
+        self.assert_close(actual, expected)
+
 
 class TestBlurPool(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
@@ -145,6 +166,36 @@ class TestBlurPool(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+    @pytest.mark.parametrize("kernel_size", [1, 2, 3, 4, 5, 6])
+    @pytest.mark.parametrize("stride", [1, 2, 3])
+    def test_even_kernel_keeps_ceil_size_5166(self, kernel_size, stride, device, dtype):
+        # An even kernel_size used to lose a row and a column: (7, 10) returned (6, 9) at stride 1 and (3, 5) at
+        # stride 2. The size is ceil(H / stride) x ceil(W / stride) for every kernel size.
+        data = torch.rand(1, 2, 7, 10, device=device, dtype=dtype)
+        actual = blur_pool2d(data, kernel_size, stride=stride)
+        assert actual.shape == (1, 2, math.ceil(7 / stride), math.ceil(10 / stride))
+
+    @pytest.mark.parametrize("kernel_size", [2, 3, 4, 5])
+    @pytest.mark.parametrize("stride", [1, 2, 3])
+    def test_matches_zero_padded_reference_5166(self, kernel_size, stride, device, dtype):
+        # adobe/antialiased-cnns BlurPool with pad_type='zero': pad (k - 1) // 2 pixels before and k // 2 after with
+        # zeros, then correlate with the normalised Pascal kernel at the given stride. Computed here in float64 on
+        # CPU, one output pixel at a time, without F.pad or F.conv2d.
+        k, s = kernel_size, stride
+        data = torch.rand(2, 3, 7, 10, device=device, dtype=dtype)
+        x = data.cpu().double()
+        taps = torch.tensor([math.comb(k - 1, i) for i in range(k)], dtype=torch.float64)
+        kernel = torch.outer(taps, taps) / (2.0 ** (2 * (k - 1)))
+        before = (k - 1) // 2
+        padded = torch.zeros(2, 3, 7 + k - 1, 10 + k - 1, dtype=torch.float64)
+        padded[..., before : before + 7, before : before + 10] = x
+        h_out, w_out = math.ceil(7 / s), math.ceil(10 / s)
+        expected = torch.zeros(2, 3, h_out, w_out, dtype=torch.float64)
+        for i in range(h_out):
+            for j in range(w_out):
+                expected[..., i, j] = (padded[..., i * s : i * s + k, j * s : j * s + k] * kernel).sum(dim=(-2, -1))
+        self.assert_close(blur_pool2d(data, k, stride=s), expected.to(device=device, dtype=dtype))
 
 
 class TestEdgeAwareBlurPool(BaseTester):
@@ -213,3 +264,10 @@ class TestEdgeAwareBlurPool(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+    @pytest.mark.parametrize("kernel_size", [2, 4])
+    def test_even_kernel_keeps_shape_5166(self, kernel_size, device, dtype):
+        # blur_pool2d(stride=1) used to return one row and one column less for an even kernel_size, and the fusion
+        # with the input raised a shape error.
+        data = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        assert edge_aware_blur_pool2d(data, kernel_size).shape == data.shape
