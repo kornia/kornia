@@ -117,8 +117,11 @@ class TestLovaszSoftmaxLoss(BaseTester):
         if weight is not None:
             expected = expected * weight
         logits = probabilities.log()
-        self.assert_close(kornia.losses.lovasz_softmax_loss(logits, labels, weight), expected.mean())
-        self.assert_close(kornia.losses.LovaszSoftmaxLoss(weight)(logits, labels), expected.mean())
+        loss = kornia.losses.lovasz_softmax_loss(logits, labels, weight)
+        # Integer foreground counts retain the existing float32 promotion for half inputs.
+        assert loss.dtype == torch.promote_types(dtype, torch.float32)
+        self.assert_close(loss.to(dtype), expected.mean())
+        self.assert_close(kornia.losses.LovaszSoftmaxLoss(weight)(logits, labels).to(dtype), expected.mean())
 
     @pytest.mark.parametrize("order", [(2, 0, 1), (1, 2, 0), (0, 2, 1)])
     @pytest.mark.parametrize("absent_classes", [False, True])
@@ -170,6 +173,15 @@ class TestLovaszSoftmaxLoss(BaseTester):
         optimized = torch_optimizer(op)(logits, labels)
         self.assert_close(optimized, torch.tensor(1.03 / 3, device=device, dtype=dtype))
         self.assert_close(torch.autograd.grad(optimized, logits)[0], torch.autograd.grad(loss, logits)[0])
+
+    def test_large_foreground_counts(self, device, dtype):
+        # More than 65504 foreground pixels exceed float16's finite range.
+        logits = torch.zeros((1, 3, 257, 257), device=device, dtype=dtype, requires_grad=True)
+        labels = torch.zeros((1, 257, 257), device=device, dtype=torch.int64)
+        loss = kornia.losses.lovasz_softmax_loss(logits, labels)
+        assert loss.dtype == torch.promote_types(dtype, torch.float32)
+        self.assert_close(loss.to(dtype), torch.tensor(4 / 9, device=device, dtype=dtype))
+        assert torch.isfinite(torch.autograd.grad(loss, logits)[0]).all()
 
     def test_gradcheck(self, device, dtype):
         num_classes = 4
