@@ -47,7 +47,13 @@ class TestDiffJPEG(BaseTester):
                 _DCT8_CACHE.clear()
                 if warm_cache:
                     expected = codec(image, quality)
-                exported = torch.export.export(codec, (image, quality), strict=True).module()
+                try:
+                    exported = torch.export.export(codec, (image, quality), strict=True).module()
+                except RuntimeError as e:
+                    # torch 2.5.1 routes strict export through Dynamo, which rejects Python 3.13+.
+                    if "Python 3.13+ not yet supported for torch.compile" in str(e):
+                        pytest.skip(f"strict torch.export is unavailable in this environment: {e}")
+                    raise
                 _DCT8_CACHE.clear()
                 if not warm_cache:
                     expected = codec(image, quality)
