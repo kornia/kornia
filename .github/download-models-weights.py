@@ -41,6 +41,7 @@ import os
 import torch
 
 from kornia.core.download import load_state_dict_from_url
+from kornia.feature import DISKFeatures
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +116,11 @@ MODELS: dict[str, "str | list[str]"] = {
     # LoFTR: tests instantiate both the outdoor and indoor weights.
     "loftr_outdoor.ckpt": [
         "https://huggingface.co/kornia/loftr/resolve/main/loftr_outdoor.ckpt",
-        "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
+        "https://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
     ],
     "loftr_indoor.ckpt": [
         "https://huggingface.co/kornia/loftr/resolve/main/loftr_indoor.ckpt",
-        "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
+        "https://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
     ],
     # LightGlue pins its own cache names; these keys are not the URL basenames.
     "superpoint_lightglue_v0-1_arxiv-pth": [
@@ -149,11 +150,11 @@ MODELS: dict[str, "str | list[str]"] = {
     # -- line, edge and object models ---------------------------------------
     "sold2_wireframe.pth": [
         "https://huggingface.co/kornia/sold2/resolve/main/sold2_wireframe.pth",
-        "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+        "https://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
     ],
     "DexiNed_BIPED_10.pth": [
         "https://huggingface.co/kornia/dexined/resolve/main/DexiNed_BIPED_10.pth",
-        "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+        "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
     ],
     "yunet_final.pth": [
         "https://huggingface.co/kornia/yunet/resolve/main/yunet_final.pth",
@@ -174,14 +175,8 @@ MODELS: dict[str, "str | list[str]"] = {
     "xfeat.pt": "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat.pt",
     # -- deblurring ----------------------------------------------------------
     # DeFMO(True): smoke and jit tests instantiate both halves.
-    "encoder_best.pt": [
-        "https://huggingface.co/kornia/defmo/resolve/main/encoder_best.pt",
-        "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",
-    ],
-    "rendering_best.pt": [
-        "https://huggingface.co/kornia/defmo/resolve/main/rendering_best.pt",
-        "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt",
-    ],
+    "encoder_best.pt": "https://huggingface.co/kornia/defmo/resolve/main/encoder_best.pt",
+    "rendering_best.pt": "https://huggingface.co/kornia/defmo/resolve/main/rendering_best.pt",
 }
 
 
@@ -217,7 +212,10 @@ if __name__ == "__main__":
             # Don't pass model_dir - use the default from torch.hub.set_dir()
             # This ensures files go to {hub_dir}/checkpoints/ matching test behavior.
             # file_name is pinned so the entry lands where kornia will look for it.
-            load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
+            # ``knchurch_disk.pt`` (reference data for the ``data`` fixture) stores ``DISKFeatures``, which
+            # ``weights_only`` loading accepts only once it is allowlisted, as ``conftest.py`` does.
+            with torch.serialization.safe_globals([DISKFeatures]):
+                load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
         except Exception as e:  # noqa: BLE001 - report every failure, not just the first
             logger.error(f"Failed to download `{file_name}`: {type(e).__name__}: {e}")
             failed.append(file_name)

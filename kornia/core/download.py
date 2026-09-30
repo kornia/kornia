@@ -594,12 +594,36 @@ def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget)
 def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, Any]:
     """Load a state dict from a URL, trying fallback URLs on failure.
 
-    Drop-in replacement for :func:`torch.hub.load_state_dict_from_url` that
-    accepts either a single URL string or an ordered list of URLs. Each URL is
-    tried in turn; a :mod:`warnings` message is emitted for every failed
-    attempt before the next source is tried.
+    Replacement for :func:`torch.hub.load_state_dict_from_url` that also accepts
+    an ordered list of URLs. Each URL is tried in turn; a :mod:`warnings` message
+    is emitted for every failed attempt before the next source is tried. It
+    deliberately differs from the torch function in two ways, both described
+    below: the ``weights_only`` default and where progress is reported.
 
-    Progress reporting is written to :data:`sys.stderr`. This is the one
+    The checkpoint is loaded with ``weights_only=True`` unless the caller passes
+    ``weights_only=False``, whereas the torch function defaults to ``False`` on
+    every torch version kornia supports; ``weights_only=True`` is
+    ``torch.load``'s own default since torch 2.6. ``torch.load`` then unpickles
+    only tensors, primitive types and plain containers, and refuses a pickled
+    callable instead of running it. A checkpoint that stores any other type
+    fails with a :class:`RuntimeError` chained to the
+    :class:`pickle.UnpicklingError` that names the type. Allowlist the type for
+    the call with ``torch.serialization.safe_globals([...])``, or pass
+    ``weights_only=False``, but only for a file you trust, because unpickling it
+    can run arbitrary code.
+
+    On older torch, ``weights_only=True`` narrows what a checkpoint can do but
+    does not guarantee that it runs no code. PyTorch's advisories report
+    checkpoints crafted to run code despite it before torch 2.6
+    (`GHSA-53q9-r3pm-6pq6
+    <https://github.com/pytorch/pytorch/security/advisories/GHSA-53q9-r3pm-6pq6>`__)
+    and to corrupt memory, potentially running code, before torch 2.10
+    (`GHSA-63cw-57p8-fm3p
+    <https://github.com/pytorch/pytorch/security/advisories/GHSA-63cw-57p8-fm3p>`__).
+    kornia supports torch 2.5.1 and later, so load a checkpoint from a source
+    you do not trust only on torch 2.10 or later, which fixes both.
+
+    Progress reporting is written to :data:`sys.stderr`. This is the second
     deliberate deviation from the torch function, which since torch 2.x writes
     its ``Downloading: "<url>" to <path>`` line to :data:`sys.stdout` (the
     accompanying progress bar already goes to stderr). Status output on stdout
@@ -660,9 +684,9 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
 
     Args:
         url: a URL string, or a list of URL strings tried left-to-right.
-        **kwargs: forwarded verbatim to
-            :func:`torch.hub.load_state_dict_from_url`
-            (``map_location``, ``check_hash``, ``file_name``, …).
+        **kwargs: forwarded to :func:`torch.hub.load_state_dict_from_url`
+            (``map_location``, ``check_hash``, ``file_name``, …), with
+            ``weights_only`` set to ``True`` unless it is passed as ``False``.
 
     Returns:
         The loaded state dict.
@@ -685,6 +709,12 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
         ... ])
     """
     urls = [url] if isinstance(url, str) else list(url)
+
+    # The one torch call below loads from every source, the fallbacks and the
+    # refetch after a quarantine alike, so setting this once covers them all.
+    # ``None`` is included because torch 2.5 reads it as ``False``.
+    if kwargs.get("weights_only") is None:
+        kwargs["weights_only"] = True
 
     # Pin the cache filename to the primary URL's basename so that all
     # attempts share one cache slot and hash validation stays consistent.
