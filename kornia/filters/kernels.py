@@ -107,9 +107,9 @@ def gaussian(
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`, which validates the size and
-        calls this function; ``gaussian`` does not validate it. For an even ``window_size`` the Gaussian is centred at
-        ``mean - 0.5``, halfway between two samples: the default ``mean`` centres the kernel on the middle of the
-        window, and an explicit ``mean=m`` centres it at ``m - 0.5``.
+        calls this function; ``gaussian`` does not validate it. In a floating ``dtype``, for an even ``window_size``
+        the Gaussian is centred at ``mean - 0.5``, halfway between two samples: the default ``mean`` centres the
+        kernel on the middle of the window, and an explicit ``mean=m`` centres it at ``m - 0.5``.
 
     Args:
         window_size: the size which drives the filter amount.
@@ -366,9 +366,13 @@ def get_box_kernel1d(
     r"""Return a 1-D box filter.
 
     Convention:
-        - Every tap is ``1 / kernel_size``; an even ``kernel_size`` is accepted.
-        - Known defect: the kernel is a stride-0 view of a single value, so writing one tap in place changes every
-          tap (`#5160 <https://github.com/kornia/kornia/issues/5160>`_).
+        - For a floating ``dtype`` every tap is ``1 / kernel_size``; an even ``kernel_size`` is accepted.
+        - Known defects:
+
+          - the kernel is a stride-0 view of a single value, so writing one tap in place changes every tap
+            (`#5160 <https://github.com/kornia/kornia/issues/5160>`_).
+          - an integer ``dtype`` truncates ``1 / kernel_size``, so every tap is 0 once ``kernel_size`` is above 1
+            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         kernel_size: the size of the kernel.
@@ -377,7 +381,7 @@ def get_box_kernel1d(
 
     Returns:
         A tensor with shape :math:`(1, \text{kernel\_size})`, filled with the value
-        :math:`\frac{1}{\text{kernel\_size}}`.
+        :math:`\frac{1}{\text{kernel\_size}}` for a floating ``dtype``.
 
     """
     scale = torch.tensor(1.0 / kernel_size, device=device, dtype=dtype)
@@ -399,7 +403,8 @@ def get_box_kernel2d(
 
     Returns:
         A tensor with shape :math:`(1, \text{kernel\_size}[0], \text{kernel\_size}[1])`,
-        filled with the value :math:`\frac{1}{\text{kernel\_size}[0] \times \text{kernel\_size}[1]}`.
+        filled with the value :math:`\frac{1}{\text{kernel\_size}[0] \times \text{kernel\_size}[1]}` for a
+        floating ``dtype``.
 
     """
     ky, kx = _unpack_2d_ks(kernel_size)
@@ -659,10 +664,14 @@ def get_spatial_gradient_kernel3d(
           :math:`(\partial_{xx}, \partial_{yy}, \partial_{zz}, \partial_{xy}, \partial_{yz}, \partial_{xz})`, an
           order that differs from the 2d :math:`(\partial_{xx}, \partial_{xy}, \partial_{yy})`. The stack has a
           singleton second axis that :func:`~kornia.filters.get_spatial_gradient_kernel2d` lacks.
-        - Every channel is in derivative units: it answers 1 to a unit slope or a unit second derivative, unlike
-          the raw 2d stencils.
-        - Known defect: ``mode`` is checked case-insensitively but used as given, so ``'Diff'`` raises
-          (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
+        - In a floating ``dtype`` every channel is in derivative units: it answers 1 to a unit slope or a unit
+          second derivative, unlike the raw 2d stencils.
+        - Known defects:
+
+          - ``mode`` is checked case-insensitively but used as given, so ``'Diff'`` raises
+            (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
+          - a signed integer ``dtype`` truncates the half and quarter taps to 0, so the first-order channels and
+            the mixed second-order ones are all zero (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         mode: ``'diff'``.
@@ -698,16 +707,20 @@ def get_gaussian_kernel1d(
     r"""Return Gaussian filter coefficients.
 
     Convention:
-        - The kernel samples :math:`\exp(-n^2 / 2\sigma^2)` at the offsets :math:`n` of its taps from its centre,
-          integers for an odd size and half-integers for an even one, and is normalized to sum 1;
-          :ref:`Filtering <filtering-conventions>` names the matching scipy and OpenCV kernels.
+        - In a floating ``dtype`` the kernel samples :math:`\exp(-n^2 / 2\sigma^2)` at the offsets :math:`n` of its
+          taps from its centre, integers for an odd size and half-integers for an even one, and is normalized to
+          sum 1; :ref:`Filtering <filtering-conventions>` names the matching scipy and OpenCV kernels.
           :func:`~kornia.filters.get_gaussian_erf_kernel1d` integrates the Gaussian over each pixel instead, and
           :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is the discrete Gaussian.
         - ``force_even=True`` also accepts an even ``kernel_size``, and the kernel is then symmetric about the middle
           of the window, ``(kernel_size - 1) / 2``.
         - A tensor ``sigma`` of shape :math:`(B, 1)` gives one kernel per row.
-        - Known defect: a Python ``int`` ``sigma`` raises, while the 2d and 3d builders accept integers
-          (`#5157 <https://github.com/kornia/kornia/issues/5157>`_).
+        - Known defects:
+
+          - a Python ``int`` ``sigma`` raises, while the 2d and 3d builders accept integers
+            (`#5157 <https://github.com/kornia/kornia/issues/5157>`_).
+          - an integer ``dtype`` truncates a fractional ``sigma``, and an unsigned one also wraps the negative
+            offsets, zeroing every tap before the centre (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -755,9 +768,10 @@ def get_gaussian_discrete_kernel1d(
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Convention:
-        - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. This kernel is Lindeberg's
-          discrete Gaussian :math:`e^{-\sigma^2} I_{|n|}(\sigma^2)`, with :math:`I_n` the modified Bessel function
-          of the first kind, normalized over the window: the smoothing kernel of discrete scale space.
+        - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. In a floating ``dtype`` this
+          kernel is Lindeberg's discrete Gaussian :math:`e^{-\sigma^2} I_{|n|}(\sigma^2)`, with :math:`I_n` the
+          modified Bessel function of the first kind, normalized over the window: the smoothing kernel of discrete
+          scale space.
         - Known defects:
 
           - the tap count is not always ``kernel_size``: ``kernel_size=1`` gives 3 taps, and an even size with
@@ -805,10 +819,10 @@ def get_gaussian_erf_kernel1d(
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Convention:
-        - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. This kernel integrates the
-          Gaussian over each pixel, :math:`\Phi((n + 1/2) / \sigma) - \Phi((n - 1/2) / \sigma)` with :math:`\Phi`
-          the normal CDF, so it blurs slightly more than the sampled kernel: for :math:`\sigma` of about 1 or more,
-          on a window wide enough for the tails, its variance is :math:`\sigma^2 + 1/12`.
+        - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. In a floating ``dtype`` this
+          kernel integrates the Gaussian over each pixel, :math:`\Phi((n + 1/2) / \sigma) - \Phi((n - 1/2) / \sigma)`
+          with :math:`\Phi` the normal CDF, so it blurs slightly more than the sampled kernel: for :math:`\sigma` of
+          about 1 or more, on a window wide enough for the tails, its variance is :math:`\sigma^2 + 1/12`.
         - Known defect: with ``force_even=True`` an even kernel is centred on tap ``kernel_size // 2`` instead of
           the middle of the window, so it is not symmetric (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
 
@@ -972,10 +986,12 @@ def get_laplacian_kernel1d(
     r"""Return the coefficients of a 1D Laplacian filter.
 
     Convention:
-        - The kernel is all ones with the centre tap set to ``1 - kernel_size``, so it sums to 0. Size 3 is the
-          second difference ``[1, -2, 1]``; a larger size is not a wider second difference, and size 5 answers 5
-          to a unit second derivative.
+        - In a signed ``dtype`` the kernel is all ones with the centre tap set to ``1 - kernel_size``, so it sums
+          to 0. Size 3 is the second difference ``[1, -2, 1]``; a larger size is not a wider second difference, and
+          size 5 answers 5 to a unit second derivative.
         - The negative centre makes the response positive where the values curve upwards.
+        - Known defect: an unsigned ``dtype`` wraps the negative centre, to 252 for size 5 in uint8
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -1008,11 +1024,11 @@ def get_laplacian_kernel2d(
     r"""Return Laplacian filter matrix coefficients.
 
     Convention:
-        See the Convention block on :func:`~kornia.filters.get_laplacian_kernel1d`: all ones with the centre set to
-        :math:`1 - k_y k_x` for ``kernel_size=(k_y, k_x)``. Size 3 is the 8-neighbour stencil, which answers 3 to a
-        unit :math:`\partial_{xx}` or :math:`\partial_{yy}`, so it estimates :math:`3 \nabla^2`; size 5 estimates
-        :math:`25 \nabla^2`. :ref:`Filtering <filtering-conventions>` compares it with the scipy, OpenCV and
-        scikit-image Laplacians.
+        See the Convention block on :func:`~kornia.filters.get_laplacian_kernel1d`: in a signed ``dtype``, all ones
+        with the centre set to :math:`1 - k_y k_x` for ``kernel_size=(k_y, k_x)``. Size 3 is the 8-neighbour
+        stencil, which answers 3 to a unit :math:`\partial_{xx}` or :math:`\partial_{yy}`, so it estimates
+        :math:`3 \nabla^2`; size 5 estimates :math:`25 \nabla^2`. :ref:`Filtering <filtering-conventions>` compares
+        it with the scipy, OpenCV and scikit-image Laplacians.
 
     Args:
         kernel_size: filter size should be odd.
