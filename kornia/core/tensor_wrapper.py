@@ -150,13 +150,14 @@ class TensorWrapper:
     def __getstate__(self) -> dict[str, Any]:
         """Support for pickle serialization.
 
-        ``used_calls`` keeps only the functions pickle can store. A few torch functions cannot be pickled, such as
-        ``torch.unique`` or the ``Tensor.__pow__`` that ``tensor ** wrapper`` dispatches, and they are left out of the
-        state, so pickling, ``torch.save`` and ``copy.deepcopy`` still work after them.
+        Both tracking sets are copied, so a ``copy.copy`` tracks its own usage. ``used_calls`` keeps only the
+        functions pickle can store. A few torch functions cannot be pickled, such as ``torch.unique`` or the
+        ``Tensor.__pow__`` that ``tensor ** wrapper`` dispatches, and they are left out of the state, so pickling,
+        ``torch.save`` and ``copy.deepcopy`` still work after them.
         """
         return {
             "_data": self._data,
-            "used_attrs": self.used_attrs,
+            "used_attrs": set(self.used_attrs),
             "used_calls": {func for func in self.used_calls if _is_picklable(func)},
         }
 
@@ -282,7 +283,12 @@ class TensorWrapper:
 
     def __pow__(self, other: Any) -> TensorWrapper:
         """Power operation."""
-        return self.__binary_op__(torch.pow, other)
+        # ``torch.pow`` rather than ``Tensor.__pow__``, which pickle cannot store in ``used_calls``. Like
+        # ``Tensor.__pow__``, an operand ``torch.pow`` rejects returns NotImplemented, so Python tries its ``__rpow__``.
+        try:
+            return self.__binary_op__(torch.pow, other)
+        except TypeError:
+            return NotImplemented
 
     def __rpow__(self, other: Any) -> TensorWrapper:
         """Right-side power operation."""

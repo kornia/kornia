@@ -421,6 +421,7 @@ class TestTensorWrapperProtocol(BaseTester):
         data = torch.tensor([[0.3, -1.2, 2.5]], device=device, dtype=dtype, requires_grad=True)
         wrapper = TensorWrapper(data)
         _ = wrapper.shape
+        _ = wrapper + 1
 
         deep = copy.deepcopy(wrapper)
         assert type(deep) is TensorWrapper
@@ -432,6 +433,11 @@ class TestTensorWrapperProtocol(BaseTester):
         shallow = copy.copy(wrapper)
         assert type(shallow) is TensorWrapper
         assert shallow.data is data
+        # The copy tracks its own usage: both sets are copied, neither is shared with the original.
+        assert shallow.used_attrs == wrapper.used_attrs
+        assert shallow.used_attrs is not wrapper.used_attrs
+        assert shallow.used_calls == wrapper.used_calls == {torch.add}
+        assert shallow.used_calls is not wrapper.used_calls
 
         restored = pickle.loads(pickle.dumps(wrapper))  # noqa: S301
         torch.save(wrapper, tmp_path / "wrapper.pt")
@@ -452,6 +458,29 @@ class TestTensorWrapperProtocol(BaseTester):
         array = np.asarray(wrapper)
         assert array.dtype == np.float32
         assert array.tolist() == data.tolist()
+
+    def test_pow_defers_to_the_other_operand_as_the_tensor_does(self, device, dtype):
+        # For an operand torch.pow cannot take, Tensor.__pow__ returns NotImplemented, so Python tries the other
+        # operand's __rpow__; ``w ** x`` does the same, like the other forward operators (``w % x``, ``w @ x``).
+        class Exponent:
+            def __rpow__(self, base):
+                return "Exponent.__rpow__"
+
+        data = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        wrapper = TensorWrapper(data.clone())
+        assert data ** Exponent() == "Exponent.__rpow__"
+        assert wrapper ** Exponent() == "Exponent.__rpow__"
+        with pytest.raises(TypeError, match="unsupported operand"):
+            _ = wrapper ** "2"
+
+    @pytest.mark.filterwarnings("ignore:__array_wrap__ must accept:DeprecationWarning")
+    def test_pow_with_a_numpy_operand_matches_the_tensor(self):
+        data = torch.tensor([[1.0, 2.0, 3.0]])
+        for exponent in (np.array(2.0), np.array([[2.0, 0.5, 3.0]])):
+            expected = data**exponent
+            out = TensorWrapper(data.clone()) ** exponent
+            assert type(out) is type(expected)
+            self.assert_close(out, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize(
         "op",
