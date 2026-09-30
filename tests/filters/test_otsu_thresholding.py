@@ -110,6 +110,33 @@ def test_mask(device, dtype):
     assert_close(thresh_result, expected)
 
 
+@pytest.mark.parametrize(
+    "values",
+    [(-1.0, 0.0), (-2.0, -1.0), (0.0, 1.0), (1.0, 2.0)],
+)
+def test_mask_is_the_comparison_5173(values, device, dtype):
+    # #5173: the mask used to be `result > 0`, so a foreground pixel of value 0 or below, above the threshold but not
+    # above 0, came out False. The mask is `x > threshold`, whatever the sign of the data.
+    low, high = values
+    x = torch.tensor([[low, low, high, high]], device=device, dtype=dtype)
+    mask, threshold = otsu_threshold(x, return_mask=True)
+    assert mask.dtype == torch.bool
+    assert_close(mask, x > threshold)
+    assert mask.tolist() == [[False, False, True, True]]
+
+
+def test_mask_per_channel_threshold_5173(device, dtype):
+    # Each channel of a (B, C, H, W) input has its own threshold; the mask follows its channel's comparison and keeps
+    # the input shape. Channel 0 is non-positive data, channel 1 positive.
+    x = torch.tensor([[[[-1.0, -1.0], [0.0, 0.0]], [[1.0, 1.0], [2.0, 2.0]]]], device=device, dtype=dtype)
+    mask, threshold = otsu_threshold(x, return_mask=True)
+    assert mask.shape == x.shape
+    assert threshold.shape == (2,)
+    assert_close(mask, x > threshold.reshape(1, 2, 1, 1))
+    assert mask[0, 0].tolist() == [[False, False], [True, True]]
+    assert mask[0, 1].tolist() == [[False, False], [True, True]]
+
+
 @pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 1, 10, 10)])
 def test_otsu_threshold_basic(shape, device, dtype):
     img = torch.rand(shape, device=device, dtype=dtype)
