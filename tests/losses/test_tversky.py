@@ -24,6 +24,46 @@ from testing.base import BaseTester
 
 
 class TestTverskyLoss(BaseTester):
+    @pytest.mark.parametrize(
+        "size,ignore_index,ignored_rows",
+        [(256, None, 0), (256, -100, 0), (512, -100, 8)],
+    )
+    def test_large_image_half_precision(self, device, dtype, size, ignore_index, ignored_rows):
+        logits = torch.full((1, 2, size, size), -2.0, device=device, dtype=dtype)
+        logits[:, 0] = 2.0
+        logits.requires_grad_()
+        labels = torch.zeros((1, size, size), device=device, dtype=torch.int64)
+        if ignored_rows:
+            labels[:, :ignored_rows] = ignore_index
+
+        # Use a reference dtype that can represent the spatial sums.
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        expected = kornia.losses.tversky_loss(
+            logits.detach().to(reference_dtype),
+            labels,
+            alpha=0.5,
+            beta=0.5,
+            ignore_index=ignore_index,
+        )
+        actual = kornia.losses.tversky_loss(
+            logits,
+            labels,
+            alpha=0.5,
+            beta=0.5,
+            ignore_index=ignore_index,
+        )
+
+        assert actual.dtype == dtype
+        assert actual.device == logits.device
+        assert torch.isfinite(actual)
+        self.assert_close(actual, expected.to(dtype))
+
+        actual.backward()
+        assert logits.grad is not None
+        assert torch.isfinite(logits.grad).all()
+        if ignored_rows:
+            assert torch.count_nonzero(logits.grad[:, :, :ignored_rows]) == 0
+
     def test_smoke(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
