@@ -147,6 +147,35 @@ class TestImageModuleMixIn:
         result = dummy_func(sample_image, "not_an_image")
         assert isinstance(result, torch.Tensor)
 
+    def test_convert_input_output_default_only_converts_first_input(self, img_module, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        image_path = tmp_path / "mode.png"
+        PILImage.new("RGB", (6, 4)).save(image_path)
+
+        @img_module.convert_input_output(output_type="pt")
+        def dummy_func(image, mode="nearest"):
+            return image, mode
+
+        image, mode = dummy_func(str(image_path), mode="mode.png")
+
+        assert isinstance(image, torch.Tensor)
+        assert image.shape == (3, 4, 6)
+        assert mode == "mode.png"
+
+    def test_convert_input_output_default_does_not_convert_keyword_file(self, img_module, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "bilinear").touch()
+
+        @img_module.convert_input_output(output_type="pt")
+        def dummy_func(image, mode="nearest"):
+            return image, mode
+
+        image = torch.zeros(3, 4, 6)
+        result, mode = dummy_func(image, mode="bilinear")
+
+        assert result is image
+        assert mode == "bilinear"
+
     def test_show_4d_tensor(self, img_module):
         img_module._output_image = torch.rand(4, 3, 16, 16)
         result = img_module.show(display=False)

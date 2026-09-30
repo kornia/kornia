@@ -58,12 +58,11 @@ class ImageModuleMixIn:
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
-                # If input_names_to_handle is None, handle all inputs
+                # If input_names_to_handle is None, handle the first positional input.
                 if input_names_to_handle is None:
-                    # Convert all args to tensors
-                    args = tuple(self.to_tensor(arg) if self._is_valid_arg(arg) else arg for arg in args)
-                    # Convert all kwargs to tensors
-                    kwargs = {k: self.to_tensor(v) if self._is_valid_arg(v) else v for k, v in kwargs.items()}
+                    # Convert only the image input; keyword arguments may contain string options.
+                    if args and self._is_valid_arg(args[0]):
+                        args = (self.to_tensor(args[0]), *args[1:])
                 else:
                     # Convert specified args to tensors
                     args = list(args)  # type:ignore
