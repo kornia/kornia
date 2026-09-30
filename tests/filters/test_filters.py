@@ -50,6 +50,7 @@ from kornia.filters import (
     get_sobel_kernel2d,
     get_spatial_gradient_kernel2d,
     get_spatial_gradient_kernel3d,
+    laplacian_1d,
 )
 
 from testing.base import (
@@ -1247,9 +1248,20 @@ def _peaks(out: torch.Tensor) -> list[list[int]]:
 _FILTER2D_FNS = {"filter2d": filter2d, "fft_conv": fft_conv}
 
 
+def _fft_guard(name: str, device: torch.device, dtype: torch.dtype) -> None:
+    """Skip fft_conv where the device has no FFT for the dtype (fft_conv computes a CPU half input in float32)."""
+    if name != "fft_conv" or device.type == "cpu":
+        return
+    try:
+        torch.fft.rfftn(torch.zeros(3, 5, device=device, dtype=dtype))
+    except (RuntimeError, NotImplementedError):
+        pytest.skip("this device has no FFT for this dtype, which fft_conv needs")
+
+
 class TestConventionsFilter2d(BaseTester):
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
     def test_convention_filter2d_is_correlation(self, name, device, dtype):
+        _fft_guard(name, device, dtype)
         fn = _FILTER2D_FNS[name]
         image = _delta((1, 1, 6, 9), (0, 0, 2, 5), device, dtype)
         kernel = _delta((1, 3, 3), (0, 0, 2), device, dtype)  # one weight on the up-right neighbour
@@ -1273,6 +1285,7 @@ class TestConventionsFilter2d(BaseTester):
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "fft_conv"])
     def test_convention_filter2d_reflect_excludes_the_edge_pixel(self, name, device, dtype):
+        _fft_guard(name, device, dtype)
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         ys, xs = torch.meshgrid(torch.arange(5), torch.arange(7), indexing="ij")
@@ -1307,6 +1320,8 @@ class TestConventionsFilter2d(BaseTester):
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "fft_conv"])
     def test_convention_filter2d_even_kernel_centre(self, name, device, dtype):
+        _fft_guard(name, device, dtype)
+
         # A single weight at the kernel's first tap. The anchor of a (kH, kW) kernel is ((kH - 1) // 2, (kW - 1) // 2),
         # the anchor of torch's F.conv2d(padding='same'): a (4, 2) kernel moves the delta by (+1, 0). An anchor at
         # k // 2 (the OpenCV and scipy default, and kornia.morphology's) would move it by (+2, +1).
@@ -1321,6 +1336,35 @@ class TestConventionsFilter2d(BaseTester):
         assert _peaks(run(image, 4, 2)) == [[3, 5]]
         # relabel: the transposed image with the transposed (2, 4) kernel gives the transposed position
         assert _peaks(run(image.transpose(-2, -1), 2, 4)) == [[5, 3]]
+        if name == "filter2d_separable":
+            return  # no behaviour argument
+        # behaviour='conv' flips the kernel, putting the weight at its last tap (3, 1), and keeps the anchor (1, 0):
+        # the delta moves by (-2, -1). An anchor at k // 2 would move it by (-1, 0).
+        fn = _FILTER2D_FNS[name]
+        conv = fn(image, _delta((1, 4, 2), (0, 0, 0), device, dtype), border_type="constant", behaviour="conv")
+        assert _peaks(conv) == [[0, 4]]
+        kernel_t = _delta((1, 2, 4), (0, 0, 0), device, dtype)
+        conv_t = fn(image.transpose(-2, -1), kernel_t, border_type="constant", behaviour="conv")
+        assert _peaks(conv_t) == [[4, 0]]
+
+    @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
+    def test_convention_filter2d_conv_equals_scipy_convolve_for_an_even_kernel(self, name, device, dtype):
+        _fft_guard(name, device, dtype)
+        # scipy 1.17.1, numpy 2.0.0:
+        #   image = np.random.default_rng(0).integers(0, 3, (5, 7)).astype(float)
+        #   ndi.convolve(image, [[1, 2, 3, 4], [5, 6, 7, 8]], mode="constant", cval=0.0)  # default origin
+        image = [[2, 1, 1, 0, 0, 0, 0], [0, 0, 2, 1, 2, 1, 1], [2, 2, 1, 1, 1, 2, 0], [2, 2, 0, 1, 2, 1, 0]]
+        image += [[2, 2, 2, 0, 0, 2, 0]]
+        expected = [[27, 34, 25, 24, 13, 13, 7], [21, 34, 44, 51, 44, 39, 23], [41, 56, 46, 39, 39, 33, 20]]
+        expected += [[38, 53, 46, 34, 32, 29, 16], [36, 42, 30, 26, 12, 14, 16]]
+        image_t = torch.tensor(image, device=device, dtype=dtype)[None, None]
+        expected_t = torch.tensor(expected, device=device, dtype=dtype)[None, None]
+        kernel = torch.tensor([[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]], device=device, dtype=dtype)
+        fn = _FILTER2D_FNS[name]
+        self.assert_close(fn(image_t, kernel, "constant", behaviour="conv"), expected_t)
+        # relabel: transposing the image and the kernel transposes the output
+        conv_t = fn(image_t.transpose(-2, -1), kernel.transpose(-2, -1), "constant", behaviour="conv")
+        self.assert_close(conv_t, expected_t.transpose(-2, -1))
 
     def test_convention_filter3d_even_kernel_centre(self, device, dtype):
         volume = _delta((1, 1, 5, 6, 7), (0, 0, 1, 4, 3), device, dtype)
@@ -1332,6 +1376,7 @@ class TestConventionsFilter2d(BaseTester):
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "fft_conv"])
     def test_convention_filter2d_valid_output_is_the_same_output_cropped(self, name, device, dtype):
+        _fft_guard(name, device, dtype)
         image = _rand(2, 1, 6, 9, device=device, dtype=dtype)
         kernel_y = _rand(1, 4, device=device, dtype=dtype, seed=1)
         kernel_x = _rand(1, 5, device=device, dtype=dtype, seed=2)
@@ -1373,6 +1418,7 @@ class TestConventionsFilter2d(BaseTester):
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "fft_conv", "filter3d"])
     def test_convention_filter2d_normalized_divides_by_the_absolute_sum(self, name, device, dtype):
+        _fft_guard(name, device, dtype)
         taps = torch.tensor([[1.0, 2.0, -4.0]], device=device, dtype=dtype)  # sum -1, absolute sum 7
         if name == "filter2d_separable":
             image = _rand(1, 2, 5, 7, device=device, dtype=dtype)
@@ -1385,18 +1431,21 @@ class TestConventionsFilter2d(BaseTester):
         else:
             fn = filter3d if name == "filter3d" else _FILTER2D_FNS[name]
             image = _rand(1, 2, *((3,) if name == "filter3d" else ()), 5, 7, device=device, dtype=dtype)
-            kernel = taps[:, None, None] if name == "filter3d" else taps[:, None]
+            # two rows (two depth slices in 3-D) with absolute sums 7 and 4: the whole kernel's is 11
+            rows = torch.tensor([[1.0, 2.0, -4.0], [3.0, 0.0, 1.0]], device=device, dtype=dtype)
+            kernel = rows[None, :, None] if name == "filter3d" else rows[None]
 
             def call(*kernels, **kwargs):
                 return fn(image, *kernels, "constant", **kwargs)
 
-            kernels, divided = (kernel,), (kernel / 7,)
+            kernels, divided = (kernel,), (kernel / 11,)
         self.assert_close(call(*kernels, normalized=True), call(*divided))
         # the default is normalized=False
         self.assert_close(call(*kernels), call(*kernels, normalized=False))
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv", "filter3d"])
     def test_convention_filter2d_casts_the_kernel_to_the_input_dtype_and_device(self, name, device, dtype):
+        _fft_guard(name, device, dtype)
         fn = filter3d if name == "filter3d" else _FILTER2D_FNS[name]
         spatial = (3, 5, 7) if name == "filter3d" else (5, 7)
         image = _rand(1, 2, *spatial, device=device, dtype=dtype)
@@ -1418,11 +1467,11 @@ class TestConventionsFilter2d(BaseTester):
         if border_type == "reflect" and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         # A kernel 4 wide pads 1 column before and 2 after. reflect needs every pad shorter than the axis, circular
-        # at most as long; filter2d does not check the size itself.
+        # at most as long; a narrower axis raises.
         kernel = _rand(1, 1, 4, device=device, dtype=dtype)
         out = filter2d(_rand(1, 1, 3, wide_enough, device=device, dtype=dtype), kernel, border_type)
         assert out.shape == (1, 1, 3, wide_enough)
-        with pytest.raises(RuntimeError):
+        with pytest.raises((RuntimeError, BaseError)):
             filter2d(_rand(1, 1, 3, too_narrow, device=device, dtype=dtype), kernel, border_type)
         # constant padding runs on any size
         assert filter2d(_rand(1, 1, 3, 1, device=device, dtype=dtype), kernel, "constant").shape == (1, 1, 3, 1)
@@ -1453,6 +1502,7 @@ class TestConventionsFilter2d(BaseTester):
 
     def test_wart_fft_conv_broadcasts_one_sample_over_the_kernel_batch_5154(self, device, dtype):
         """fft_conv returns a batch of 4 for one sample and 4 kernels, where filter2d raises (#5154)."""
+        _fft_guard("fft_conv", device, dtype)
         image = _rand(1, 1, 5, 7, device=device, dtype=dtype)
         kernels = _rand(4, 3, 3, device=device, dtype=dtype, seed=1)
         out = fft_conv(image, kernels, border_type="constant")
@@ -1464,7 +1514,7 @@ class TestConventionsFilter2d(BaseTester):
     def test_wart_integer_input_truncates_a_fractional_kernel_to_zero_5155(self, name, device, dtype):
         """An integer input casts the kernel to its dtype: a 1/9 box kernel turns a constant 100 image to 0 (#5155)."""
         if name != "fft_conv" and device.type != "cpu":
-            pytest.skip("integer convolution raises on this device instead of truncating the kernel (#5155)")
+            pytest.skip("integer convolution raises on this device, so there is no truncated result to pin (#5155)")
         spatial = (3, 5, 7) if name == "filter3d" else (5, 7)
         image = torch.full((1, 1, *spatial), 100, dtype=torch.uint8, device=device)
         if name == "filter2d_separable":
@@ -1480,6 +1530,7 @@ class TestConventionsFilter2d(BaseTester):
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
     def test_wart_uppercase_padding_returns_the_valid_size_5156(self, name, device, dtype):
         """padding='SAME' passes the case-insensitive check but misses the 'same' branch: valid size (#5156)."""
+        _fft_guard(name, device, dtype)
         image = _rand(1, 1, 5, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 3, device=device, dtype=dtype, seed=1)
         assert _FILTER2D_FNS[name](image, kernel, "constant", padding="SAME").shape == (1, 1, 3, 5)
@@ -1499,11 +1550,13 @@ class TestConventionsFilter2d(BaseTester):
             "kernel2d_mode": lambda: get_spatial_gradient_kernel2d("Sobel", 1, device=device, dtype=dtype),
             "kernel3d_mode": lambda: get_spatial_gradient_kernel3d("Diff", 1, device=device, dtype=dtype),
         }
-        with pytest.raises(NotImplementedError):
+        # the error comes from past the check (torch's F.pad or the kernel dispatch), not from kornia's validation
+        with pytest.raises(Exception) as error:
             calls[case]()
+        assert not isinstance(error.value, BaseError)
 
     def test_wart_filter3d_normalized_rejects_a_non_contiguous_kernel_5159(self, device, dtype):
-        """filter3d(normalized=True) calls .view on the kernel, which fails for a non-contiguous one (#5159)."""
+        """filter3d(normalized=True) calls .view on the kernel, which fails for a permuted kernel (#5159)."""
         volume = _rand(1, 1, 5, 6, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 4, 5, device=device, dtype=dtype, seed=1).permute(0, 3, 2, 1)  # (1, 5, 4, 3)
         assert not kernel.is_contiguous()
@@ -1666,7 +1719,7 @@ _UNIT_SUM_KERNELS = [
 def _kernel_guard(name: str, device: torch.device, dtype: torch.dtype, values: bool = True) -> None:
     """Skip a builder whose kernel cannot be built, or whose ``values`` are not usable, on this device/dtype."""
     if values and name == "get_gaussian_discrete_kernel1d" and dtype == torch.float16:
-        pytest.skip("get_gaussian_discrete_kernel1d overflows to NaN in float16 (#4153)")
+        pytest.skip("get_gaussian_discrete_kernel1d overflows to NaN in float16 (#5227)")
     if name == "get_motion_kernel2d" and not _supports_nearest_2d_grid_sample(device, dtype):
         pytest.skip("2D grid_sample (nearest) is unavailable for this device/dtype")
     if name == "get_motion_kernel3d" and not supports_nearest_3d_grid_sample(device, dtype):
@@ -1795,6 +1848,14 @@ class TestConventionsKernels(BaseTester):
                 _correlate_at(kernel[None], field, (3, 6)), torch.tensor([3.0], device=device, dtype=dtype)
             )
 
+    def test_convention_laplacian_1d_puts_an_even_kernels_negative_tap_at_k_half(self, device, dtype):
+        # laplacian_1d does not validate the size: an even one is accepted and its centre tap sits at k // 2
+        self.assert_close(
+            laplacian_1d(4, device=device, dtype=dtype), torch.tensor([1.0, 1.0, -3.0, 1.0], device=device, dtype=dtype)
+        )
+        expected = torch.tensor([1.0, 1.0, 1.0, -5.0, 1.0, 1.0], device=device, dtype=dtype)
+        self.assert_close(laplacian_1d(6, device=device, dtype=dtype), expected)
+
     def test_convention_binary_kernel2d_is_a_row_major_one_hot_stack(self, device, dtype):
         kernel = get_binary_kernel2d((3, 5), device=device, dtype=dtype)
         # channel i is one-hot at (i // 5, i % 5)
@@ -1873,6 +1934,11 @@ class TestConventionsKernels(BaseTester):
         uniform = torch.zeros(5, 5, device=device, dtype=dtype)
         uniform[2] = 0.2
         self.assert_close(kernel(0.0), uniform)
+        # in between, the ramp's slope is linear in direction: 0.5 weighs the taps 0.3 down to 0.1
+        half = torch.zeros(5, 5, device=device, dtype=dtype)
+        half[2] = torch.tensor([0.3, 0.25, 0.2, 0.15, 0.1], device=device, dtype=dtype)
+        self.assert_close(kernel(0.5), half)
+        self.assert_close(kernel(-0.5), half.flip(-1))
         # direction is clamped to [-1, 1]
         self.assert_close(kernel(5.0), forward)
 
@@ -1933,6 +1999,27 @@ class TestConventionsKernels(BaseTester):
         # the sampled get_gaussian_kernel1d with the same arguments is symmetric about (k - 1) / 2 = 1.5
         assert int(kernel.float().argmax()) == 2
         assert kernel[2] > kernel[1]
+
+    def test_wart_gaussian_discrete_kernel1d_overflows_to_nan_5227(self, device, dtype):
+        """get_gaussian_discrete_kernel1d scales its Bessel terms by exp(+sigma**2) and overflows to NaN (#5227)."""
+        # the smallest failing sigma depends on the dtype: every sigma in float16, about 6.8 in float32 and
+        # bfloat16, about 19 in float64
+        sigma = {torch.float16: 1.0, torch.bfloat16: 7.0, torch.float32: 7.0, torch.float64: 20.0}[dtype]
+        kernel = get_gaussian_discrete_kernel1d(5, sigma, device=device, dtype=dtype)
+        assert bool(torch.isnan(kernel).all())
+
+    def test_wart_motion_kernel2d_on_mps_differs_from_cpu_for_some_angles_5181(self, device, dtype):
+        """A tensor angle builds get_motion_kernel2d on its own device, and MPS gives other kernels (#5181)."""
+        if device.type != "mps":
+            pytest.skip("#5181 compares the kernel built on MPS with the one built on the CPU")
+        _kernel_guard("get_motion_kernel2d", torch.device("cpu"), dtype)
+        angles = torch.arange(0.0, 360.0, 1.0, dtype=dtype)
+        directions = torch.full_like(angles, 0.3)
+        on_cpu = get_motion_kernel2d(7, angles, directions)
+        on_mps = get_motion_kernel2d(7, angles.to(device), directions.to(device)).cpu()
+        # every kernel sums to 1; some angles (120 degrees among them) differ by more than 0.1 in a tap
+        differing = (on_mps - on_cpu).abs().flatten(1).amax(1) > 0.1
+        assert bool(differing.any())
 
     @pytest.mark.parametrize("ndim", [1, 2])
     def test_wart_box_kernel_is_a_stride_zero_view_5160(self, ndim, device, dtype):
