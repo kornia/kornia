@@ -25,7 +25,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
-from kornia.constants import pi
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,
@@ -208,7 +207,7 @@ def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
     spatial_idx = idx.unsqueeze(0)
     freq_idx = idx.unsqueeze(1)
 
-    basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * pi / 16.0)
+    basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * math.pi / 16.0)
     alpha = torch.ones(8, dtype=dtype, device=device)
     alpha[0] = 1.0 / (2**0.5)
     dct_scale = torch.outer(alpha, alpha)
@@ -671,7 +670,7 @@ def _build_dct8_basis_scale(
     dtype: Union[torch.dtype, None], device: Union[str, torch.device, None]
 ) -> tuple[torch.Tensor, torch.Tensor]:
     i = torch.arange(8, dtype=dtype, device=device)
-    freq = (2.0 * i + 1.0)[:, None] * i[None, :] * (pi / 16.0)
+    freq = (2.0 * i + 1.0)[:, None] * i[None, :] * (math.pi / 16.0)
     basis_1d = torch.cos(freq)
     dct_tensor = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
     alpha = torch.ones(8, dtype=dtype, device=device)
