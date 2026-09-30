@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import itertools
 import warnings
 
 import pytest
@@ -1284,6 +1285,30 @@ class TestStrictMaximaBonusDeprecated(BaseTester):
             self.assert_close(got, want, atol=0, rtol=0)
 
 
+def _window_softmax_reference(data, kernel_size, stride, padding, temperature):
+    """Softmax of every window of a ``(1, 1, *spatial)`` map over its in-image pixels, in float64 on the CPU.
+
+    Returns the coordinates, channels ``(x, y)`` in 2D and ``(d, x, y)`` in 3D, and the values.
+    """
+    data = data.cpu().double()[0, 0]
+    spatial = data.shape
+    out = [(n + 2 * p - k) // s + 1 for n, k, s, p in zip(spatial, kernel_size, stride, padding)]
+    coords = torch.zeros(len(spatial), *out, dtype=torch.float64)
+    values = torch.zeros(*out, dtype=torch.float64)
+    for index in itertools.product(*(range(n) for n in out)):
+        ranges = [
+            [q for q in range(i * s - p, i * s - p + k) if 0 <= q < n]
+            for i, n, k, s, p in zip(index, spatial, kernel_size, stride, padding)
+        ]
+        pixels = torch.tensor(list(itertools.product(*ranges)), dtype=torch.float64)
+        window = data[tuple(pixels.long().T)]
+        weights = torch.softmax(window / temperature, 0)
+        position = weights @ pixels  # (row, column) or (depth, row, column)
+        coords[(slice(None), *index)] = position[[1, 0]] if len(spatial) == 2 else position[[0, 2, 1]]
+        values[index] = weights @ window
+    return coords, values
+
+
 class TestConventionsConvSoftArgmax(BaseTester):
     def test_convention_conv_soft_argmax2d_is_xy(self, device, dtype):
         # Every window returns (x, y) = (column, row) of the input grid: pixel coordinates, or normalized
@@ -1355,6 +1380,30 @@ class TestConventionsConvSoftArgmax(BaseTester):
         even = kornia.geometry.subpix.conv_soft_argmax2d(heatmap, (4, 4), (1, 1), (2, 2), normalized_coordinates=False)
         assert even.shape[-1] == 10
         self.assert_close(even[0, 0, :, 2, -1], expected)
+
+    @pytest.mark.parametrize(
+        "op, shape, kernel_size, stride, padding",
+        [
+            ("conv_soft_argmax2d", (6, 9), (3, 4), (2, 3), (1, 2)),
+            ("conv_soft_argmax3d", (5, 6, 7), (3, 2, 3), (2, 1, 2), (1, 1, 1)),
+        ],
+    )
+    def test_convention_conv_soft_argmax_is_the_softmax_of_each_window(
+        self, device, dtype, op, shape, kernel_size, stride, padding
+    ):
+        # Every window, with unequal strides, kernel sides and paddings, is the softmax of its in-image pixels:
+        # a padded position carries no weight, not the weight of a 0 logit. A deterministic map in [0, 2] keeps the
+        # border windows' padded positions within a few units of temperature of their pixels.
+        numel = 1
+        for n in shape:
+            numel *= n
+        data = ((torch.arange(numel, device=device) * 7 % 11) / 5).reshape(1, 1, *shape).to(dtype)
+        coords, values = getattr(kornia.geometry.subpix, op)(
+            data, kernel_size, stride, padding, 0.5, normalized_coordinates=False, output_value=True
+        )
+        expected_coords, expected_values = _window_softmax_reference(data, kernel_size, stride, padding, 0.5)
+        self.assert_close(coords[0, 0], expected_coords.to(device=device, dtype=dtype))
+        self.assert_close(values[0, 0], expected_values.to(device=device, dtype=dtype))
 
 
 class TestConventionsQuadInterp3d(BaseTester):
