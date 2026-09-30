@@ -52,12 +52,12 @@ class TestRgbToXyz(BaseTester):
         with pytest.raises(TypeCheckError):
             assert kornia.color.rgb_to_xyz([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_xyz(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_xyz(img)
 
     def test_unit(self, device, dtype):
@@ -179,12 +179,12 @@ class TestXyzToRgb(BaseTester):
         with pytest.raises(TypeCheckError):
             assert kornia.color.xyz_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.xyz_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.xyz_to_rgb(img)
 
     def test_unit(self, device, dtype):

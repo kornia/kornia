@@ -284,22 +284,41 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     return points_0.to(points_dtype)
 
 
+def _nonzero(x: torch.Tensor) -> torch.Tensor:
+    """``x`` with 1 in place of its zeros: a divisor for entries the caller then sets to inf with :func:`_inf_where`."""
+    return torch.where(x == 0, torch.ones_like(x), x)
+
+
+def _inf_where(value: torch.Tensor, singular: torch.Tensor) -> torch.Tensor:
+    """``value`` with inf at the ``singular`` entries.
+
+    This is the guard that replaces ``eps`` in the two-view metrics (#4881): ``torch.where`` also differentiates the
+    branch it does not select, so ``value`` must be formed with divisors from :func:`_nonzero`; the gradient at a
+    singular entry is then 0 instead of NaN.
+    """
+    return torch.where(singular, torch.full_like(value, torch.inf), value)
+
+
+def _sqrt_or_zero(squared: torch.Tensor) -> torch.Tensor:
+    """``squared.sqrt()`` with a zero gradient at ``squared == 0``, an exact match, where the root's own is infinite."""
+    zero = squared <= 0
+    return torch.where(zero, torch.zeros_like(squared), torch.where(zero, torch.ones_like(squared), squared).sqrt())
+
+
 def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     r"""Return the distance from points to lines.
 
     Convention:
-        - ``line`` need not be normalised. The geometric distance is :math:`|ax + by + c| / \|(a, b)\|` for
-          :math:`(a, b) \ne (0, 0)`; kornia instead divides by :math:`\|(a, b)\| + \epsilon`.
-        - Known defect: this ``eps`` biases the distance when the line coefficients are small and returns
-          :math:`|c| / \epsilon` for a line with :math:`a = b = 0`; in ``float16`` the default ``eps`` rounds to
-          zero, so that line gives ``inf``, or ``nan`` when :math:`c = 0` as well
-          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+        - ``line`` need not be normalised: the distance is :math:`|ax + by + c| / \|(a, b)\|` at every scale of the
+          coefficients. A line with :math:`a = b = 0`, the line at infinity or no line at all, is at distance ``inf``
+          from every point, as a point at infinity is from every line.
 
     Args:
        point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the
          weight :math:`w`; a point at infinity (:math:`w = 0`) is at distance ``inf`` from every line.
        line: lines coefficients :math:`(a, b, c)` with shape :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
-       eps: small constant added to :math:`\|(a, b)\|` in the denominator.
+       eps: unused; it was added to :math:`\|(a, b)\|` and made the distance depend on the scale of the line
+         (#4881). The singular line is guarded exactly instead. Accepted so that existing calls keep working.
 
     Returns:
         the computed distance with shape :math:`(*, N)`.
@@ -323,20 +342,18 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
         numerator += line[..., 2]
     numerator.abs_()
 
-    # Avoid computing norm multiple times by saving its value
-    denom_norm = (line[..., 0].square() + line[..., 1].square()).sqrt()
-
-    distance = numerator / (denom_norm + eps)
+    # The root and the divisions are taken on safe arguments (see _inf_where); a line with a = b = 0 is singular.
+    squared_norm = line[..., 0].square() + line[..., 1].square()
+    singular = squared_norm == 0
+    distance = numerator / _nonzero(squared_norm).sqrt()
     if point.shape[-1] == 3:
         # (x, y, w) is the Euclidean point (x / w, y / w), so its distance is |ax + by + cw| / (|w| |(a, b)|); the
-        # weight used to be ignored, which is right only for w = 1 (#4935). A point at infinity (w = 0) is at
-        # distance inf; torch.where also differentiates the branch it does not select, so that division is kept
-        # finite.
+        # weight used to be ignored, which is right only for w = 1 (#4935). A point at infinity (w = 0) is singular
+        # as well.
         w = point[..., 2].abs()
-        at_infinity = w == 0
-        safe_w = torch.where(at_infinity, torch.ones_like(w), w)
-        distance = torch.where(at_infinity, torch.full_like(distance, torch.inf), distance / safe_w)
-    return distance
+        distance = distance / _nonzero(w)
+        singular = singular | (w == 0)
+    return _inf_where(distance, singular)
 
 
 def batched_dot_product(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False) -> torch.Tensor:

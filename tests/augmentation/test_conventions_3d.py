@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import pytest
 import torch
 
@@ -173,6 +175,81 @@ class Test3DAugmentationConventions(BaseTester):
             pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
         volume = torch.arange(60, device=device, dtype=dtype).reshape(1, 1, 3, 4, 5)
         self.assert_close(K.RandomPerspective3D(0.0, p=1.0)(volume), volume)
+
+    @pytest.mark.parametrize("size", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1)])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_convention_random_perspective3d_singleton_identity_5001(self, device, dtype, size, align_corners):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.linspace(0, 1, 2 * size[0] * size[1] * size[2], device=device, dtype=dtype).reshape(2, 1, *size)
+        augmentation = K.RandomPerspective3D(0.0, p=1.0, align_corners=align_corners)
+
+        output = augmentation(volume)
+
+        assert output.shape == volume.shape
+        assert output.device == volume.device and output.dtype == dtype
+        assert torch.isfinite(output).all()
+        matrix = augmentation.transform_matrix
+        assert torch.isfinite(matrix).all()
+        self.assert_close(matrix, torch.eye(4, device=device, dtype=dtype).expand(2, -1, -1))
+        # #4503 still affects output identity with align_corners=False, independently of the corner solve.
+        if align_corners:
+            self.assert_close(output, volume, low_tolerance=True)
+
+    @pytest.mark.parametrize("size", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1)])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_convention_random_perspective3d_singleton_axis_stays_fixed_5001(
+        self, device, dtype, size, align_corners, same_on_batch
+    ):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        torch.manual_seed(0)
+        volume = torch.rand(2, 1, *size, device=device, dtype=dtype)
+        augmentation = K.RandomPerspective3D(0.5, p=1.0, align_corners=align_corners, same_on_batch=same_on_batch)
+
+        output = augmentation(volume)
+
+        assert torch.isfinite(output).all()
+        start, end = augmentation._params["start_points"], augmentation._params["end_points"]
+        x, y, z = (max(n - 1, 1) for n in reversed(size))
+        expected = start.new_tensor(
+            [[0, 0, 0], [x, 0, 0], [x, y, 0], [0, y, 0], [0, 0, z], [x, 0, z], [x, y, z], [0, y, z]]
+        ).expand_as(start)
+        assert torch.equal(start, expected)
+        if same_on_batch:
+            assert torch.equal(end[0], end[1])
+        matrix = augmentation.transform_matrix.to(torch.float32)
+        assert torch.isfinite(matrix).all()
+        zz, yy, xx = torch.meshgrid(*(torch.arange(n, device=device, dtype=torch.float32) for n in size), indexing="ij")
+        points = torch.stack([xx, yy, zz], dim=-1).reshape(1, -1, 3).expand(2, -1, -1)
+        homogeneous = torch.cat([points, torch.ones_like(points[..., :1])], dim=-1) @ matrix.transpose(-1, -2)
+        mapped = homogeneous[..., :3] / homogeneous[..., 3:]
+        for axis, extent in enumerate(reversed(size)):
+            if extent == 1:
+                assert torch.equal(start[..., axis], end[..., axis])
+                self.assert_close(mapped[..., axis], torch.zeros_like(mapped[..., axis]), low_tolerance=True)
+            else:
+                assert not torch.allclose(mapped[..., axis], points[..., axis], atol=1e-2)
+
+    @pytest.mark.parametrize(
+        "depth,height,width", [(1, 4, 5), (4, 1, 5), (4, 5, 1), (1, 1, 5), (1, 4, 1), (4, 1, 1), (1, 1, 1), (2, 3, 4)]
+    )
+    @pytest.mark.device_agnostic
+    def test_convention_random_perspective3d_traced_singleton_matches_eager_5110(self, depth, height, width):
+        # #5110: torch.jit.trace passes the sizes as 0-d tensors. The generator's unit extent and the corner order
+        # that keeps a singleton x plane fixed both have to reach the traced graph; otherwise a size-1 depth or
+        # height raises a singular solve and a size-1 width warps differently from eager.
+        volume = torch.linspace(0, 1, 2 * depth * height * width).reshape(2, 1, depth, height, width)
+        augmentation = K.RandomPerspective3D(0.5, p=1.0, align_corners=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(augmentation, volume, check_trace=False)
+        torch.manual_seed(0)
+        output = traced(volume)
+        torch.manual_seed(0)
+        expected = augmentation(volume)
+        self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.device_agnostic
     def test_wart_positive_roll_direction_splits_the_rotation_entry_points_4408(self):
@@ -362,8 +439,8 @@ class Test3DAugmentationConventions(BaseTester):
         "padding,size,marker",
         [(1, (5, 5, 5), (2, 2, 2)), ((1, 2, 3), (9, 7, 5), (4, 3, 2))],
     )
-    def test_wart_random_crop3d_matrix_uses_the_padded_source_frame_4801(self, padding, size, marker, device, dtype):
-        # #4801: flips when the recorded matrix includes the padding offset.
+    def test_convention_random_crop3d_matrix_maps_original_coordinates_4801(self, padding, size, marker, device, dtype):
+        # #4801: the recorded matrix includes the left, top, and front padding.
         if not supports_nearest_3d_grid_sample(device, dtype):
             pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
         volume = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
@@ -374,8 +451,8 @@ class Test3DAugmentationConventions(BaseTester):
         expected = torch.zeros_like(output)
         expected[..., marker[0], marker[1], marker[2]] = 1
         self.assert_close(output, expected)
-        # Taking the whole padded canvas records identity, despite moving the original marker by the padding.
-        self.assert_close(augmentation.transform_matrix, torch.eye(4, device=device, dtype=dtype)[None])
+        mapped = augmentation.transform_matrix[0] @ volume.new_tensor([1, 1, 1, 1])
+        self.assert_close(mapped[:3], volume.new_tensor(marker[::-1]), rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_convention_motion_blur3d_kernel_range_is_drawn_once_per_call_bounds_included(self):

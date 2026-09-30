@@ -18,7 +18,6 @@
 import pytest
 import torch
 
-import kornia.geometry.plane as plane_module
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.geometry.plane import Hyperplane, fit_plane
@@ -134,6 +133,39 @@ class TestHyperplane(BaseTester):
         assert p0.normal.shape == shape or (3,)
         assert p0.offset.shape == ((*shape,) if shape is not None else ())
 
+    def test_through_orthogonal_equal_length_gradient_5056(self, device, dtype):
+        # #5056: the SVD fallback ran on every row and torch.where only zeroed its gradient. When p2 - p0 and
+        # p1 - p0 are orthogonal and of equal length the two singular values coincide, the SVD backward divides by
+        # their difference, and 0 * inf turned every input gradient into nan although the plane came from the cross
+        # product. Row 0: v0 = (2, 1, -2) and v1 = (1, 2, 2), orthogonal and both of length 3. Row 1: the
+        # axis-aligned plane z = 1, whose unit edges are orthogonal too. Row 2: a general triangle.
+        p0 = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.1, 0.2, 0.3]], device=device, dtype=dtype)
+        p1 = torch.tensor([[1.0, 2.0, 2.0], [1.0, 0.0, 1.0], [1.5, -0.4, 0.8]], device=device, dtype=dtype)
+        p2 = torch.tensor([[2.0, 1.0, -2.0], [0.0, 1.0, 1.0], [-0.7, 1.1, 2.0]], device=device, dtype=dtype)
+        for p in (p0, p1, p2):
+            p.requires_grad_(True)
+        plane = Hyperplane.through(p0, p1, p2)
+        expected = torch.tensor([[4.0, -4.0, 2.0], [0.0, 0.0, -1.0]], device=device, dtype=dtype)
+        self.assert_close(plane.normal.data[:2], expected / expected.norm(dim=-1, keepdim=True))
+        # detect_anomaly also rejects a nan inside the backward that torch.where would discard, so this pins the
+        # distinct singular values of the substituted matrix and not only the final gradient.
+        with torch.autograd.detect_anomaly():
+            (plane.normal.data.sum() + plane.offset.data.sum()).backward()
+        for p in (p0, p1, p2):
+            assert torch.isfinite(p.grad).all(), p.grad
+
+    def test_through_orthogonal_equal_length_gradcheck_5056(self, device):
+        # The three rows of the test above through gradcheck; the two orthogonal rows failed on main with nan.
+        p0 = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.1, 0.2, 0.3]], device=device, dtype=torch.float64)
+        p1 = torch.tensor([[1.0, 2.0, 2.0], [1.0, 0.0, 1.0], [1.5, -0.4, 0.8]], device=device, dtype=torch.float64)
+        p2 = torch.tensor([[2.0, 1.0, -2.0], [0.0, 1.0, 1.0], [-0.7, 1.1, 2.0]], device=device, dtype=torch.float64)
+
+        def through(p0: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
+            plane = Hyperplane.through(p0, p1, p2)
+            return torch.cat([plane.normal.data, plane.offset.data[..., None]], dim=-1)
+
+        self.gradcheck(through, (p0, p1, p2))
+
     def test_through_collinear_points_raises_5041(self, device, dtype):
         # #5041: collinear (or coincident) points used to take the SVD fallback and return an
         # arbitrary plane containing the line instead of raising.
@@ -152,14 +184,56 @@ class TestHyperplane(BaseTester):
             Hyperplane.through(torch.stack([p0, a]), torch.stack([p1, b]), torch.stack([p2, c]))
 
     @pytest.mark.parametrize("scale", (1.0, 1e-4))
-    def test_through_small_valid_triangle_still_fits(self, device, dtype, scale):
-        # A small triangle is not collinear. In float16 the cross product of the 1e-4 triangle underflows to 0
-        # (1e-8 is below the smallest subnormal), so it reaches the SVD fallback, which must not reject it.
+    def test_through_small_valid_triangle_keeps_orientation_5064(self, device, dtype, scale):
+        # A small triangle is not collinear, and it keeps the (p2 - p0) x (p1 - p0) orientation. In float16 the
+        # cross product of the 1e-4 triangle underflows to 0 (1e-8 is below the smallest subnormal), so it took the
+        # SVD fallback and came back as +z (#5064); the cross product is now computed in float32.
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([scale, 0.0, 0.0], device=device, dtype=dtype)
         p2 = torch.tensor([0.0, scale, 0.0], device=device, dtype=dtype)
         plane = Hyperplane.through(p0, p1, p2)
-        self.assert_close(plane.normal.unwrap().abs(), torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype))
+        self.assert_close(plane.normal.unwrap(), torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("size", (300.0, 4e4))
+    def test_through_large_triangle_keeps_orientation_5064(self, device, dtype, size):
+        # The normal is (p2 - p0) x (p1 - p0) = (size, size, 0) x (2 size, 0, 0) = (0, 0, -2 size^2). In float16 that
+        # overflows for size 300 (-1.8e5 is beyond 65504), and for size 4e4 the edge p1 - p0 = 8e4 overflows too: the
+        # first took the SVD fallback and came back as +z, the second as nan. Both are now computed in float32.
+        p0 = torch.tensor([-size, 0.0, 1.0], device=device, dtype=dtype)
+        p1 = torch.tensor([size, 0.0, 1.0], device=device, dtype=dtype)
+        p2 = torch.tensor([0.0, size, 1.0], device=device, dtype=dtype)
+        plane = Hyperplane.through(p0, p1, p2)
+        self.assert_close(plane.normal.unwrap(), torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype))
+        self.assert_close(plane.offset.data, torch.tensor(1.0, device=device, dtype=dtype))
+
+    def test_through_points_collinear_up_to_rounding_raise(self, device, dtype):
+        # The origin, (0.1, 0.2, 0.3) and (0.3, 0.6, 0.9) are collinear, but their rounded coordinates are not
+        # exactly. The collinearity tolerance scales with the input dtype, also for a float16 or bfloat16 input whose
+        # edges are taken in float32, so through() rejects these points in every dtype, as fit_plane does, instead
+        # of returning a normal fitted to the rounding error ((0.89, -0.45, 0) in float16).
+        points = torch.tensor([[0.0, 0.0, 0.0], [0.1, 0.2, 0.3], [0.3, 0.6, 0.9]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            Hyperplane.through(points[0], points[1], points[2])
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            fit_plane(points)
+
+    def test_through_thin_triangle_keeps_orientation_without_checks(self, device, dtype):
+        # Without the value checks, as under torch.compile, only the fallback threshold decides. For a float16 or
+        # bfloat16 input it uses the float32 epsilon, so this triangle, whose cross product is 2^-11 of the product of
+        # its edge lengths, below the float16 and bfloat16 epsilons, keeps the (p2 - p0) x (p1 - p0) orientation in
+        # every dtype instead of taking the SVD fallback. Both point orders are checked: the normal follows the order.
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+            p1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+            p2 = torch.tensor([0.5, 2.0**-12, 0.0], device=device, dtype=dtype)
+            expected = torch.tensor([0.0, 0.0, -1.0], device=device, dtype=dtype)
+            self.assert_close(Hyperplane.through(p0, p1, p2).normal.unwrap(), expected)
+            self.assert_close(Hyperplane.through(p0, p2, p1).normal.unwrap(), -expected)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
 
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
@@ -318,9 +392,8 @@ class TestHyperplane(BaseTester):
     def test_through_batched_threshold_is_per_row(self, device, dtype):
         # The fallback threshold compares each row's cross product with that row's own edge lengths. Measured
         # against the whole batch, the 1e-4 triangle would fall below it next to the 1e4 one and take the SVD
-        # fallback, whose sign differs from the cross product's for this triangle.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the 1e4 triangle's cross product overflows float16")
+        # fallback, whose sign differs from the cross product's for this triangle. The 1e4 triangle's cross product
+        # overflows float16, so half-precision points are taken to float32 first (#5064).
         base = [
             torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype),
             torch.tensor([0.0, 2.0, 0.0], device=device, dtype=dtype),
@@ -346,6 +419,12 @@ class TestHyperplane(BaseTester):
                 plane = Hyperplane.through(*points)
                 norm = torch.linalg.vector_norm(plane.normal.data, dim=-1)
                 self.assert_close(norm, torch.tensor(1.0, device=device, dtype=dtype))
+
+            # The fallback normal is the SVD null vector of the edges, so it is orthogonal to the line through the
+            # collinear points. A unit norm alone does not pin that: (0, 0, 1) has one and is 3 off here.
+            normal = Hyperplane.through(*collinear).normal.data
+            zero = torch.tensor(0.0, device=device, dtype=dtype)
+            self.assert_close((normal * (b - a)).sum(-1), zero, rtol=0.0, atol=0.1)
 
             # A degenerate row does not send the other rows of its batch to the fallback.
             tilted = [
@@ -410,32 +489,6 @@ class TestConventionsHyperplane(BaseTester):
             self.assert_close(
                 plane.signed_distance(p).data / torch.linalg.vector_norm(plane.normal.data), torch.zeros_like(one)
             )
-
-    def test_wart_hyperplane_through_float16_underflow_loses_orientation_5064(self, device, dtype, monkeypatch):
-        # Wart pin (#5064): through() points the normal along (p2 - p0) x (p1 - p0), so swapping p1 and p2 should
-        # reverse it. In float16 the cross product of this valid triangle with sides of 1e-4 underflows to zero and
-        # the SVD fallback loses that input-order orientation. Once the fallback preserves orientation, this assertion
-        # should instead require swapped_normal == -normal. Pin the fallback's sign so this test checks Kornia's
-        # orientation handling rather than PyTorch's arbitrary SVD sign choice.
-        def deterministic_svd(matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-            columns = matrix.shape[-1]
-            v = torch.eye(columns, device=matrix.device, dtype=matrix.dtype).expand(
-                *matrix.shape[:-2], columns, columns
-            )
-            return matrix, matrix[..., 0], v
-
-        monkeypatch.setattr(plane_module, "_torch_svd_cast", deterministic_svd)
-        scale = 1e-4 if dtype == torch.float16 else 1e-3
-        p0 = torch.zeros(3, device=device, dtype=dtype)
-        p1 = torch.tensor([scale, 0.0, 0.0], device=device, dtype=dtype)
-        p2 = torch.tensor([0.0, scale, 0.0], device=device, dtype=dtype)
-        normal = Hyperplane.through(p0, p1, p2).normal.data
-        swapped_normal = Hyperplane.through(p0, p2, p1).normal.data
-
-        if dtype == torch.float16:
-            self.assert_close(swapped_normal, normal)
-        else:
-            self.assert_close(swapped_normal, -normal)
 
     def test_wart_hyperplane_state_not_registered_4923(self, device, dtype):
         # Hyperplane keeps its normal and offset as Vector3 / Scalar wrappers outside the module state (#4923), so

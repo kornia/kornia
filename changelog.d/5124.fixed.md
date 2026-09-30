@@ -1,0 +1,1 @@
+`axis_angle_to_rotation_matrix` is now accurate to float64 rounding for rotations below `1e-3` rad. Its low-angle branch used to drop the `theta**2` terms of Rodrigues' coefficients, an error of `theta**3 / 6` per entry (`1.3e-10` just below the switch), so the result jumped at `theta = 1e-3` and disagreed with the quaternion route by the same amount.

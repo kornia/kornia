@@ -22,12 +22,20 @@ from __future__ import annotations
 import math
 import sys
 from functools import lru_cache, partial
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.geometry._degensac import (
+    _h_degenerate_sample,
+    _h_degenerate_samples,
+    _inner_homography,
+    _inside_plane,
+    _plane_parallax_search,
+    _repeats_plane,
+)
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
@@ -52,6 +60,7 @@ from kornia.geometry.homography import (
     find_homography_lines_dlt_iterated,
     oneway_transfer_error,
     sample_is_valid_for_homography,
+    sampson_homography_distance,
 )
 
 __all__ = ["RANSAC"]
@@ -62,6 +71,8 @@ _DEFAULT_BATCH = 2048
 # Model types that local_optimization="lm" supports, and how many minimal models it refines.
 _LM_MODELS = ("homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential")
 _LM_CANDIDATES = 8
+# Model types that DEGENSAC supports: seven-point fundamental matrices (Chum, Werner and Matas, CVPR 2005).
+_DEGENSAC_MODELS = ("fundamental", "fundamental_7pt")
 
 
 @lru_cache(maxsize=32)
@@ -76,6 +87,18 @@ def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, .
         ends.append(ends[-1] + max(1, math.ceil(next_expected - expected)))
         expected = next_expected
     return tuple(ends)
+
+
+def _resolve_degensac(degensac: Optional[bool], model_type: str, local_optimization: str) -> bool:
+    """The ``degensac`` setting of :class:`RANSAC`: None leaves it off; True requires support."""
+    if degensac is not None and not isinstance(degensac, bool):
+        raise ValueError(f"degensac must be None, True or False, got {degensac!r}")
+    supported = model_type in _DEGENSAC_MODELS and local_optimization == "lm"
+    if degensac and not supported:
+        raise ValueError(
+            'degensac=True requires model_type "fundamental" or "fundamental_7pt" with local_optimization="lm"'
+        )
+    return False if degensac is None else degensac
 
 
 def _normalize_correspondences(
@@ -142,10 +165,25 @@ class RANSAC(nn.Module):
           model from its inliers: with the default ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on
           32-inlier subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers
           iteratively.
+        - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
+          ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
+          sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
+          correspondences related by one homography. Such a model fits the dominant plane and whatever happens to
+          agree with it off the plane, so the homography is refined, and fundamental matrices are drawn from it and
+          pairs of correspondences off the plane (plane and parallax). The best of them, refined, joins the
+          eight-model pool and, when it outscores the incumbent, sets the stopping bound. Thresholds and iteration
+          counts follow Chum's implementation in pydegensac; the draws come from a private host generator. A plane
+          already searched in the call is not searched again: a sample whose homography's inliers lie 95% or more
+          inside it is skipped before refinement, and a refined plane whose inliers match it (Jaccard index 0.95 or
+          more) before the search. The default, ``degensac=False``, keeps the plain seven-point loop.
+          Explicit recovery reproduces that result exactly when no record-setting sample is degenerate.
+          Chum's tolerance, three times the squared threshold for five of the seven correspondences, also flags
+          samples in many scenes without a dominant plane; there the recovered models only join the competition.
         - ``prosac_sampling=True`` expects correspondences sorted best-first and stops with PROSAC's
           termination-length test; ``confidence=1`` runs the whole ``batch_size * max_iter`` budget.
         - A seeded call uses a private generator and leaves torch's global RNG state unchanged; ``seed=None``
-          draws from the global generator.
+          draws the minimal samples from the global generator. DEGENSAC's recovery draws always come from a private
+          host generator, which an unseeded call seeds from the sample that triggers the recovery.
 
     Args:
         model_type: "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
@@ -176,6 +214,9 @@ class RANSAC(nn.Module):
             fundamental and essential matrices and ``"dlt"`` for line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
+        degensac: run DEGENSAC's dominant-plane recovery, as described above. Defaults to False; None also leaves
+            it off. True enables it for ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``,
+            the only supported combinations; True with any other raises ``ValueError``.
 
     """
 
@@ -194,6 +235,7 @@ class RANSAC(nn.Module):
         max_samples: Optional[int] = None,
         local_optimization: Optional[str] = None,
         refine_iters: int = 3,
+        degensac: Optional[bool] = False,
     ) -> None:
         """Initialize the RANSAC estimator.
 
@@ -221,6 +263,9 @@ class RANSAC(nn.Module):
                 final robust refinement) or ``"dlt"`` (refits of each new best model); None picks ``"lm"`` where it
                 is supported, for homographies, fundamental and essential matrices.
             refine_iters: Levenberg-Marquardt iterations of the final refinement on the inliers with ``"lm"``.
+            degensac: opt-in DEGENSAC dominant-plane recovery for seven-point fundamental matrices.
+                Defaults to False; None also leaves it off. True requires seven-point matrices with
+                local_optimization="lm".
 
         """
         super().__init__()
@@ -258,6 +303,7 @@ class RANSAC(nn.Module):
             raise ValueError(f'local_optimization must be "lm" or "dlt", got {local_optimization!r}')
         if local_optimization == "lm" and model_type not in _LM_MODELS:
             raise ValueError(f'local_optimization="lm" supports {", ".join(_LM_MODELS)}, not {model_type!r}')
+        degensac = _resolve_degensac(degensac, model_type, local_optimization)
         self.score_type = score_type
         self.inl_th = inl_th
         self.max_iter = max_iter
@@ -272,6 +318,7 @@ class RANSAC(nn.Module):
         self.lo_sample_size = lo_sample_size
         self.local_optimization = local_optimization
         self.refine_iters = refine_iters
+        self.degensac = degensac
         # The PROSAC growth schedule as a device tensor, reused across the batches of a call.
         self._prosac_ends: Optional[Tuple[Tuple[int, int, int, torch.device], torch.Tensor]] = None
 
@@ -426,9 +473,9 @@ class RANSAC(nn.Module):
         up to 1024, and at 256 on CUDA and MPS, up to 8192: a five-point sample needs few draws at high inlier
         ratios, and its host eigenvalue solve costs the same on every device. All shrink, down to 64 samples, when a
         batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models
-        of a seven-point sample and the ten candidate slots of a five-point one; scoring holds two or three times
-        that many entries at its peak, about 0.5 GiB in float32 on an accelerator. An integer ``batch_size`` is kept
-        for every batch.
+        of a seven-point sample and the ten candidate slots of a five-point one. On accelerators scoring holds two or
+        three times that many entries at its peak, about 0.5 GiB in float32; on CPU it scores tiles of about a million
+        residuals, independently of the batch. An integer ``batch_size`` is kept for every batch.
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
@@ -888,35 +935,64 @@ class RANSAC(nn.Module):
                 inliers_best_total = torch.zeros_like(inliers_best_total)
         return best_model_total, inliers_best_total
 
-    def _lm_minimal_models(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    def _lm_minimal_models(
+        self, x1: torch.Tensor, x2: torch.Tensor, track_origins: bool = False
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Minimal models ``(M, 3, 3)`` of normalized (for essential matrices, calibrated) samples ``(B, m, 3)``.
 
         Samples that :func:`~kornia.geometry.homography.sample_is_valid_for_homography` rejects and absent roots of
         the seven-point cubic are dropped on CPU; on other devices, where dropping would need a synchronization, they
         are NaN models, which score no inliers. The orientation test is unaffected by the normalization, a
         translation and a positive scale.
+
+        Returns:
+            The models and the sample row ``(M,)`` each was solved from, in draw order: sample by sample, and root by
+            root within a sample, as DEGENSAC's record setters need them. The sample rows are None unless
+            ``track_origins=True``, avoiding this bookkeeping for plain RANSAC.
         """
         compact = x1.device.type == "cpu"
+        rows = torch.arange(x1.shape[0], device=x1.device) if track_origins else None
         if self.model_type == "homography":
             oriented = sample_is_valid_for_homography(x1[..., :2], x2[..., :2])
             if compact:
                 x1, x2 = x1[oriented], x2[oriented]
+                if rows is not None:
+                    rows = rows[oriented]
                 if len(x1) == 0:
-                    return x1.new_zeros(0, 3, 3)
-                return _four_point_homography(x1, x2)
+                    return x1.new_zeros(0, 3, 3), rows
+                return _four_point_homography(x1, x2), rows
             models = _four_point_homography(x1, x2)
-            return models.masked_fill(~oriented[:, None, None], float("nan"))
+            return models.masked_fill(~oriented[:, None, None], float("nan")), rows
         design = _epipolar_design_rows(x1, x2)
         if self.model_type == "essential":
             # Samples with a non-finite correspondence, rank-deficient samples and complex roots give NaN slots.
             candidates, valid = _five_point_candidates(design)
-            return candidates[valid] if compact else candidates.flatten(0, 1)
+            if rows is not None:
+                rows = rows.repeat_interleave(candidates.shape[1])
+            if compact:
+                return candidates[valid], rows[valid.flatten()] if rows is not None else None
+            return candidates.flatten(0, 1), rows
         if self.minimal_sample_size == 7:
             candidates, valid = _seven_point_candidates(design)
             models = candidates.masked_fill(~valid[..., None, None], float("nan")).flatten(0, 1)
+            if rows is not None:
+                rows = rows.repeat_interleave(candidates.shape[1])
         else:
             models = _eight_point_fundamental(design)
-        return models[torch.isfinite(models).flatten(1).all(1)] if compact else models
+        if compact:
+            keep = torch.isfinite(models).flatten(1).all(1)
+            return models[keep], rows[keep] if rows is not None else None
+        return models, rows
+
+    @staticmethod
+    def _raw_record_setters(scores: torch.Tensor, prior: float) -> List[int]:
+        """Indices of the models, in draw order, whose score beats ``prior`` and every earlier score of the batch.
+
+        The models a sequential loop would find to set a new raw record (Chum's ``maxSs``), found at once with a
+        running maximum over the CPU ``scores``.
+        """
+        earlier = torch.cat([scores.new_full((1,), prior), torch.cummax(scores, 0).values[:-1]])
+        return (scores > earlier.clamp_min(prior)).nonzero().flatten().tolist()
 
     def _lm_errors(self, models: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
         """Squared residuals ``(M, N)`` of normalized models on normalized correspondences (calibrated: essential)."""
@@ -928,8 +1004,39 @@ class RANSAC(nn.Module):
         """MSAC scores ``sum(1 - min(e / threshold, 1))`` or RANSAC support counts ``(M,)`` of squared residuals."""
         if self.score_type == "msac":
             # fmin, unlike clamp, takes the threshold for NaN residuals: a NaN residual is an outlier.
-            return (1.0 - torch.fmin(errors, torch.full_like(errors[:1, :1], threshold)) / threshold).sum(1)
+            # The clipped residuals own their storage: reuse it for the pointwise score operations.
+            contributions = torch.fmin(errors, torch.full_like(errors[:1, :1], threshold))
+            return contributions.div_(-threshold).add_(1.0).sum(1)
         return (errors <= threshold).sum(1).to(errors.dtype)
+
+    def _lm_score_models(
+        self, models: torch.Tensor, basis: torch.Tensor, threshold: float, max_residuals: int = 1 << 20
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """Score minimal models without retaining the whole model-by-correspondence residual matrix.
+
+        CPU hypothesis tiles bound temporary storage independently of the solver batch. Correspondences are never
+        split, so each score uses the same reduction as full verification. Accelerators keep one tile to amortize
+        launch overhead. Support counts accumulate in the working dtype while they are exactly representable,
+        avoiding the default int64 conversion of every entry of the inlier matrix. Only PROSAC retains the boolean
+        masks: its stopping rule must use the same inlier decisions as the score, including at rounding boundaries.
+        """
+        planar = self.model_type == "homography"
+        n = basis.shape[1] // (3 if planar else 2)
+        tile = max(1, max_residuals // max(n, 1)) if models.device.type == "cpu" else max(len(models), 1)
+        scores, counts, masks = [], [], []
+        count_dtype = models.dtype if n <= 1 << 24 else torch.int64
+        residual_fn = _transfer_from_basis if planar else _sampson_from_quadratic_basis
+        for start in range(0, len(models), tile):
+            errors = residual_fn(models[start : start + tile], basis)
+            inliers = errors <= threshold
+            support = inliers.sum(1, dtype=count_dtype)
+            counts.append(support)
+            scores.append(self._lm_score(errors, threshold) if self.score_type == "msac" else support.to(models.dtype))
+            if self.prosac_sampling:
+                masks.append(inliers)
+        if len(scores) == 1:
+            return scores[0], counts[0], masks[0] if masks else None
+        return torch.cat(scores), torch.cat(counts), torch.cat(masks) if masks else None
 
     def _lm_refine(
         self,
@@ -947,6 +1054,177 @@ class RANSAC(nn.Module):
         if self.model_type == "essential":
             return _refine_essential_lm(models, x1, x2, mask, loss, scale2, iters)
         return _refine_fundamental_lm(models, x1, x2, mask, loss, scale2, iters)
+
+    def _degensac_recover(
+        self,
+        model: torch.Tensor,
+        sample: torch.Tensor,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        x1_host: torch.Tensor,
+        x2_host: torch.Tensor,
+        basis: torch.Tensor,
+        threshold: float,
+        generator: Optional[torch.Generator],
+        seen_planes: Optional[List[torch.Tensor]] = None,
+        homography: Optional[torch.Tensor] = None,
+    ) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
+        """DEGENSAC's recovery of a raw record setter (Chum, Werner and Matas, CVPR 2005; Chum's ``exp_ranF.c``).
+
+        ``model`` ``(3, 3)`` is a seven-point model of ``sample`` ``(7,)``, both on the device of the normalized
+        correspondences ``x1``, ``x2`` ``(N, 3)``; ``x1_host``, ``x2_host`` are the same correspondences on the host in
+        float64, NaN where not finite; ``threshold`` is the squared threshold ``t`` of that frame. When the sample is
+        H-degenerate and its homography has at least 8 inliers at ``3 t``, the homography is refined (``innerH``), and
+        with more than 6 plane inliers at ``16 t`` and at least 4 correspondences beyond ``100 t``, plane-and-parallax
+        models are drawn from those (:mod:`kornia.geometry._degensac`), unless ``seen_planes``, the refined planes'
+        inlier masks of the call's earlier recoveries, already holds the plane (:func:`_repeats_plane`); a new plane
+        is appended to it. The best-scoring model is refined like the pool, with ``max_lo_iters`` truncated
+        Levenberg-Marquardt iterations, Chum's ``innerFH`` role, and the better of it and its refinement is returned
+        alone, as ``rFtH`` returns one model: near-duplicates from one search would crowd the eight-model pool.
+
+        ``homography``, when supplied, is the result of the batch's degeneracy check in float64 on the host.
+
+        Returns:
+            The recovered model ``(1, 3, 3)`` with its score, support and, with PROSAC, inlier mask, as
+            :meth:`_lm_score_models` returns them; None when the sample is not H-degenerate or nothing is recovered.
+        """
+        m = self.minimal_sample_size
+        if homography is None:
+            sample_host = sample.cpu()
+            homography = _h_degenerate_sample(
+                model.detach().cpu().double(), x1_host[sample_host], x2_host[sample_host], 3 * threshold
+            )
+        if homography is None:
+            return None
+        rows = (torch.isfinite(x1_host).all(1) & torch.isfinite(x2_host).all(1)).nonzero().flatten()
+        p1, p2 = x1_host[rows, :2], x2_host[rows, :2]
+        errors = sampson_homography_distance(p1[None], p2[None], homography[None])[0]
+        planes = [] if seen_planes is None else seen_planes
+        # A plane already searched in this call is skipped before its refinement when the sample's own homography
+        # falls inside it, and after when the refined plane matches it.
+        if int((errors < 3 * threshold).sum()) < 8 or _inside_plane(errors <= 16 * threshold, planes):
+            return None
+        homography, errors = _inner_homography(homography, p1, p2, 16 * threshold, generator)
+        plane, off_plane = errors <= 16 * threshold, errors > 100 * threshold
+        if _repeats_plane(plane, planes):
+            return None
+        planes.append(plane)
+        if int(plane.sum()) <= 6 or int(off_plane.sum()) < 4:
+            return None
+        off_rows = rows[off_plane].to(x1.device)
+        found = _plane_parallax_search(
+            homography.to(x1.device, x1.dtype),
+            x1[off_rows],
+            x2[off_rows],
+            2 * threshold,
+            256 if x1.device.type == "cpu" else 2048,
+            generator,
+        )
+        if found is None:
+            return None
+        models = found[0]
+        scores, counts, masks = self._lm_score_models(models, basis, threshold)
+        scores = scores.masked_fill(counts <= m, -1.0)
+        if float(scores.max()) < 0:
+            return None
+        best = int(scores.argmax())
+        raw = models[best : best + 1], scores[best : best + 1], counts[best : best + 1]
+        raw_mask = None if masks is None else masks[best : best + 1]
+        if self.max_lo_iters == 0:
+            return (*raw, raw_mask)
+        refined = self._lm_refine(
+            raw[0].cpu().double(), x1_host[rows], x2_host[rows], None, "truncated", threshold, self.max_lo_iters
+        ).to(x1.device, x1.dtype)
+        scores, counts, masks = self._lm_score_models(refined, basis, threshold)
+        scores = scores.masked_fill(counts <= m, -1.0)
+        # The truncated loss is not the score: with score_type="ransac" a step can trade inliers (568 -> 566 on one
+        # dominant-plane sample). Keep the better model, the refit on ties.
+        if float(scores[0]) < float(raw[1][0]):
+            return (*raw, raw_mask)
+        return refined, scores, counts, masks
+
+    @staticmethod
+    def _lm_pool(
+        candidates: torch.Tensor, candidate_scores: torch.Tensor, models: torch.Tensor, scores: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """The pool's ``_LM_CANDIDATES`` best models and scores after adding ``models``, placed first for ties."""
+        candidate_scores, order = torch.cat([scores, candidate_scores]).topk(
+            min(_LM_CANDIDATES, len(scores) + len(candidate_scores))
+        )
+        return torch.cat([models, candidates])[order], candidate_scores
+
+    def _lm_stopping_bound(
+        self, masks: Optional[torch.Tensor], row: Union[int, torch.Tensor], support: int, num_tc: int
+    ) -> int:
+        """Samples to draw for an incumbent with ``support`` inliers, as in OpenCV's USAC.
+
+        PROSAC's termination test on ``masks[row]`` when PROSAC keeps masks, else the classic bound.
+        """
+        if masks is not None:
+            return self._prosac_max_samples(masks[row], support)
+        return min(
+            self.sample_budget, self.max_samples_by_conf(support, num_tc, self.minimal_sample_size, self.confidence)
+        )
+
+    def _degensac_batch(
+        self,
+        models: torch.Tensor,
+        samples: torch.Tensor,
+        scores: torch.Tensor,
+        prior: float,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        x1_host: torch.Tensor,
+        x2_host: torch.Tensor,
+        basis: torch.Tensor,
+        threshold: float,
+        iteration: int,
+        seen_planes: Optional[List[torch.Tensor]] = None,
+    ) -> List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
+        """DEGENSAC's recoveries of a batch's raw record setters, in draw order (:meth:`_raw_record_setters`).
+
+        ``models`` ``(M, 3, 3)`` were solved from ``samples`` ``(M, 7)`` and scored ``scores``; ``prior`` is the raw
+        record before the batch. Every recovery draw comes from one private host generator per batch: a device
+        generator cannot draw on the host, and the global one, which an unseeded call's minimal samples come from,
+        must not advance, or every later sample of the call would differ from ``degensac=False``. A seeded call seeds
+        it ``seed + 2 * sample_budget + iteration``; an unseeded one from the first record setter's sample, drawn from
+        the global generator, so that its draws still differ between calls.
+        """
+        # Transfer and test all record setters together; only the subsequent recovery depends on earlier planes.
+        records = self._raw_record_setters(scores.cpu(), prior)
+        if not records:
+            return []
+        generator = torch.Generator()
+        if self.seed is not None:
+            generator.manual_seed(self.seed + 2 * self.sample_budget + iteration)
+        else:
+            # Python hashes a tuple of ints the same in every process.
+            generator.manual_seed(hash(tuple(samples[records[0]].tolist())) & 0x7FFFFFFFFFFFFFFF)
+        planes = [] if seen_planes is None else seen_planes
+        recoveries = []
+        samples_host = samples[records].cpu()
+        homographies = _h_degenerate_samples(
+            models[records].detach().cpu().double(), x1_host[samples_host], x2_host[samples_host], 3 * threshold
+        )
+        for record, homography in zip(records, homographies):
+            if homography is None:
+                continue
+            recovered = self._degensac_recover(
+                models[record],
+                samples[record],
+                x1,
+                x2,
+                x1_host,
+                x2_host,
+                basis,
+                threshold,
+                generator,
+                planes,
+                homography,
+            )
+            if recovered is not None:
+                recoveries.append(recovered)
+        return recoveries
 
     def _forward_lm(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """RANSAC with batched minimal solvers and Levenberg-Marquardt local optimization and refinement.
@@ -992,39 +1270,63 @@ class RANSAC(nn.Module):
         grow = not isinstance(self.batch_size, int)
         candidates, candidate_scores = x1.new_zeros(0, 3, 3), x1.new_zeros(0)
         best_score = -1.0
+        # DEGENSAC tests the models that set a new raw record (Chum's maxSs), which recovered models never raise;
+        # best_score is the incumbent's, over raw and recovered models (maxS).
+        degensac = self.degensac and m == 7
+        best_minimal_score = -1.0
+        seen_planes: List[torch.Tensor] = []
         max_samples, drawn, iteration = budget, 0, 0
         while drawn < max_samples:
             current = min(batch, max_samples - drawn)
             indices = self.sample(m, num_tc, current, iteration, device, offset=drawn)
+            batch_iteration = iteration
             drawn, iteration = drawn + current, iteration + 1
             if grow:
                 batch = min(2 * batch, largest)
-            models = self._lm_minimal_models(x1[indices], x2[indices])
+            models, origin = self._lm_minimal_models(x1[indices], x2[indices], track_origins=degensac)
             if len(models) == 0:
                 continue
-            errors = _transfer_from_basis(models, basis) if planar else _sampson_from_quadratic_basis(models, basis)
             # Reject insufficient support before ranking: high MSAC scores from minimal samples alone must not
             # crowd supported models out of the candidate pool.
-            counts_all = (errors <= threshold).sum(1)
-            scores_all = self._lm_score(errors, threshold).masked_fill(counts_all <= m, -1.0)
+            scores_all, counts_all, masks_all = self._lm_score_models(models, basis, threshold)
+            scores_all = scores_all.masked_fill(counts_all <= m, -1.0)
             top_scores, top = scores_all.topk(min(_LM_CANDIDATES, len(models)))
-            top_inliers = errors[top] <= threshold
             top_counts = counts_all[top]
             # The run's best minimal models so far, refined after sampling.
-            candidate_scores, order = torch.cat([top_scores, candidate_scores]).topk(
-                min(_LM_CANDIDATES, len(top_scores) + len(candidate_scores))
-            )
-            candidates = torch.cat([models[top], candidates])[order]
+            candidates, candidate_scores = self._lm_pool(candidates, candidate_scores, models[top], top_scores)
             scores, counts = torch.stack([top_scores, top_counts.to(top_scores.dtype)]).tolist()
             best = max(range(len(scores)), key=scores.__getitem__)
             if scores[best] > best_score:
                 # The bound follows the new incumbent's own support, as with local_optimization="dlt".
                 best_score = scores[best]
-                if self.prosac_sampling:
-                    max_samples = self._prosac_max_samples(top_inliers[best], int(counts[best]))
-                else:
-                    support = int(counts[best])
-                    max_samples = min(budget, self.max_samples_by_conf(support, num_tc, m, self.confidence))
+                max_samples = self._lm_stopping_bound(masks_all, top[best], int(counts[best]), num_tc)
+            if origin is None or scores[best] <= best_minimal_score:
+                continue
+            recoveries = self._degensac_batch(
+                models,
+                indices[origin],
+                scores_all,
+                best_minimal_score,
+                x1,
+                x2,
+                x1_host,
+                x2_host,
+                basis,
+                threshold,
+                batch_iteration,
+                seen_planes,
+            )
+            best_minimal_score = scores[best]
+            for recovered_models, recovered_scores, recovered_counts, recovered_masks in recoveries:
+                candidates, candidate_scores = self._lm_pool(
+                    candidates, candidate_scores, recovered_models, recovered_scores
+                )
+                winner = int(recovered_scores.argmax())
+                if float(recovered_scores[winner]) > best_score:
+                    best_score = float(recovered_scores[winner])
+                    max_samples = self._lm_stopping_bound(
+                        recovered_masks, winner, int(recovered_counts[winner]), num_tc
+                    )
         x1_host, x2_host = x1_host[finite], x2_host[finite]
         candidates = candidates.to(host).double()[candidate_scores.to(host) >= 0]
         if len(candidates) == 0:
@@ -1042,7 +1344,7 @@ class RANSAC(nn.Module):
         model, inliers = candidates[best], inliers[best]
         if self.refine_iters > 0:
             # A Cauchy scale of a third of the threshold: the threshold as three standard deviations of the noise.
-            mask = inliers.to(torch.float64)[None]
+            mask = inliers[None]
             refined = self._lm_refine(model[None], x1_host, x2_host, mask, "cauchy", threshold / 9, self.refine_iters)
             refined_inliers = self._lm_errors(refined, x1_host, x2_host)[0] <= threshold
             if self._is_supported(int(refined_inliers.sum())):
@@ -1061,7 +1363,7 @@ class RANSAC(nn.Module):
         # Casting (especially to half precision) changes the model. Classify that exact returned matrix in pixel
         # coordinates, in float64 so metric arithmetic does not add another round of low-precision error. The public
         # line/transfer forms also avoid cancellation in the normalized quadratic sampling basis near epipoles.
-        errors = self.error_fn(kp1_host[None], kp2_host[None], model[None].to(torch.float64), eps=0.0)[0]
+        errors = self.error_fn(kp1_host[None], kp2_host[None], model[None].to(torch.float64))[0]
         mask = finite & (errors <= self.inl_th**2)
         if not self._is_supported(int(mask.sum())):
             return failure

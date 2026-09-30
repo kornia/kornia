@@ -159,10 +159,12 @@ def mean_average_precision(
         cumul_precision = cumul_gt_positives / (
             cumul_gt_positives + cumul_false_positives + 1e-10
         )  # (n_class_detections)
-        cumul_recall = cumul_gt_positives / _gt_boxes.size(0)  # (n_class_detections)
+        cumul_recall = cumul_gt_positives / gt_class_images.size(0)  # (n_class_detections)
 
         # Find the mean of the maximum of the precisions corresponding to recalls above the threshold 't'
-        recall_thresholds = torch.arange(start=0, end=1.1, step=0.1).tolist()  # (11)
+        # Exact tenths as Python floats: each comparison below casts them to the recall dtype. A float32 arange widened
+        # to Python floats gives 0.10000000149..., which a float64 recall of exactly 1/10 never reaches (#5083).
+        recall_thresholds = [i / 10 for i in range(11)]  # (11)
         precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=_gt_boxes.dtype)  # (11)
         for i, t in enumerate(recall_thresholds):
             recalls_above_t = cumul_recall >= t

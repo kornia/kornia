@@ -103,12 +103,12 @@ class TestClosing(BaseTester):
         with pytest.raises(TypeError):
             assert closing(tensor, [0.0])
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert closing(test, kernel)
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert closing(tensor, test)
 
     def test_jit(self, device, dtype):

@@ -15,18 +15,19 @@
 # limitations under the License.
 #
 
+import math
 import warnings
 from typing import Optional, Tuple
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.epipolar._metrics import _shares_points
 from kornia.geometry.epipolar.fundamental import _robust_loss
-from kornia.geometry.linalg import transform_points
+from kornia.geometry.linalg import _inf_where, _nonzero, _sqrt_or_zero, transform_points
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "line_segment_transfer_error_one_way",
     "oneway_transfer_error",
     "sample_is_valid_for_homography",
+    "sampson_homography_distance",
     "symmetric_transfer_error",
 ]
 
@@ -56,9 +58,8 @@ def oneway_transfer_error(
           per-homography computation to roundoff.
         - ``squared=True``, the default here and in :func:`symmetric_transfer_error`, returns the squared
           distance; :func:`line_segment_transfer_error_one_way` defaults to ``squared=False``.
-        - Known defects: ``eps`` is added to the projective denominator and inside the square root, so the error
-          depends on the scale of ``H``, and an exact match scores ``sqrt(eps)``, not 0, with ``squared=False``
-          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+        - The error does not depend on the scale of ``H``, and an exact match scores exactly 0, with a zero
+          gradient, with ``squared=False``. A point that ``H`` maps to infinity (:math:`w' = 0`) has error ``inf``.
 
     Args:
         pts1: correspondences from the left images with shape
@@ -67,7 +68,9 @@ def oneway_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
-        eps: added to the projective denominator and, with ``squared=False``, inside the square root.
+        eps: unused; it was added to the projective denominator and inside the square root, which made the error
+            depend on the scale of ``H`` and an exact match score ``sqrt(eps)`` (#4881). The singular case is
+            guarded exactly instead. Accepted so that existing calls keep working.
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
@@ -75,7 +78,7 @@ def oneway_transfer_error(
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
     if H.shape[0] >= 2 and _shares_points(pts1, pts2):
-        return _oneway_transfer_error_shared_impl_(pts1, pts2, H, squared, eps)
+        return _oneway_transfer_error_shared_impl_(pts1, pts2, H, squared)
 
     if pts1.shape[-1] == 3:
         x1y1 = convert_points_from_homogeneous(pts1)
@@ -112,14 +115,14 @@ def oneway_transfer_error(
     y_num = h10 * x1 + h11 * y1 + h12
     w_den = h20 * x1 + h21 * y1 + h22
 
-    u1in2 = x_num / (w_den + eps)
-    v1in2 = y_num / (w_den + eps)
+    # A point mapped to infinity (w' = 0) is singular (#4881).
+    w_safe = _nonzero(w_den)
+    u1in2 = x_num / w_safe
+    v1in2 = y_num / w_safe
 
     # ---- Squared transfer error in image 2 ----
-    err2 = (u1in2 - u2).pow(2) + (v1in2 - v2).pow(2)
-    if squared:
-        return err2
-    return (err2 + eps).sqrt()
+    err2 = _inf_where((u1in2 - u2).pow(2) + (v1in2 - v2).pow(2), w_den == 0)
+    return err2 if squared else _sqrt_or_zero(err2)
 
 
 def symmetric_transfer_error(
@@ -130,8 +133,8 @@ def symmetric_transfer_error(
     Convention:
         - Argument order as :func:`oneway_transfer_error`. The squared value is the image-2 error of ``H`` plus
           the image-1 error of ``H^-1``, and ``squared=False`` returns the square root of that sum.
-        - Known defects: the ``eps`` defect of :func:`oneway_transfer_error` applies here too
-          (`#4881 <https://github.com/kornia/kornia/issues/4881>`_).
+        - As :func:`oneway_transfer_error`, the error does not depend on the scale of ``H`` and an exact match
+          scores exactly 0 with ``squared=False``.
 
     Args:
         pts1: correspondences from the left images with shape
@@ -140,7 +143,7 @@ def symmetric_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
-        eps: added to the projective denominator and, with ``squared=False``, inside the square root.
+        eps: unused, as in :func:`oneway_transfer_error` (#4881).
 
     Returns:
         the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
@@ -166,15 +169,93 @@ def symmetric_transfer_error(
     H_safe = torch.where(good_H.view(-1, 1, 1), H, eye)
     H_inv_safe, _ = safe_inverse_with_mask(H_safe)
 
-    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H_safe, True, eps)
-    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True, eps)
+    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H_safe, True)
+    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True)
     good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
 
     out = there + back
     if not squared:
-        out = (out + eps).sqrt()
+        out = _sqrt_or_zero(out)
     max_tensor = torch.full_like(out, max_num)
     return torch.where(good_H_reshape, out, max_tensor)
+
+
+def sampson_homography_distance(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True
+) -> torch.Tensor:
+    r"""Return the Sampson distance of correspondences to homographies.
+
+    The first-order approximation of the geometric error: the squared distance by which ``pts1`` and ``pts2``
+    together must move for :math:`x_2 \sim H x_1` to hold (Hartley and Zisserman, *Multiple View Geometry*, 2nd ed.,
+    section 4.2.6). With :math:`x_1 = (x, y, 1)`, :math:`x_2 = (u, v, 1)` and :math:`H x_1 = (p, q, w)`, the
+    algebraic residuals :math:`\epsilon = (v w - q, p - u w)` and their Jacobian :math:`J` with respect to
+    :math:`(x, y, u, v)` give :math:`d^2 = \epsilon^\top (J J^\top)^{-1} \epsilon`.
+
+    Convention:
+        - Argument order and direction as :func:`oneway_transfer_error`: ``H`` maps ``pts1`` to ``pts2``. Unlike the
+          one-way transfer error, the distance accounts for noise in both images and does not depend on the scale
+          of ``H``.
+        - For an affine ``H`` the constraint is linear in the coordinates, and the distance is the exact geometric
+          error.
+        - An exact correspondence scores 0; a correspondence whose :math:`J J^\top` is singular scores ``inf``; a
+          non-finite correspondence or homography gives NaN.
+        - Computed in at least float32 and returned in the promoted dtype of the inputs, or in float32 when they are
+          all integers.
+
+    Args:
+        pts1: points in the first image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
+        pts2: points in the second image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
+        H: homographies with shape :math:`(B, 3, 3)`. Points with a leading dimension of 1 are scored against every
+            homography.
+        squared: if True (default), the squared distance is returned, else the distance.
+
+    Returns:
+        the computed distance with shape :math:`(B, N)`.
+
+    """
+    KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
+    KORNIA_CHECK(pts1.shape[-1] in (2, 3) and pts2.shape[-1] in (2, 3), "points must have 2 or 3 coordinates")
+    dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), H.dtype)
+    work = torch.promote_types(dtype, torch.float32)
+    # Integer coordinates give a floating distance. Everything runs in at least float32, the dehomogenization too:
+    # x / w of a small w overflows float16.
+    out_dtype = dtype if dtype.is_floating_point else work
+    pts1, pts2 = pts1.to(work), pts2.to(work)
+    if pts1.shape[-1] == 3:
+        finite = torch.isfinite(pts1).all(-1, keepdim=True)
+        pts1 = convert_points_from_homogeneous(pts1).masked_fill(~finite, float("nan"))
+    if pts2.shape[-1] == 3:
+        finite = torch.isfinite(pts2).all(-1, keepdim=True)
+        pts2 = convert_points_from_homogeneous(pts2).masked_fill(~finite, float("nan"))
+    x, y = pts1[..., 0], pts1[..., 1]
+    u, v = pts2[..., 0], pts2[..., 1]
+    # The distance does not depend on the scale of H, but its quadratic is of fourth order in H: dividing by the
+    # largest entry keeps tiny and huge finite scales in range. A zero H stays zero, and non-finite entries give NaN.
+    H = H.to(work)
+    scale = H.abs().amax(dim=(-2, -1), keepdim=True)
+    h = (H / torch.where(scale > 0, scale, torch.ones_like(scale)))[..., None]
+    p = h[..., 0, 0, :] * x + h[..., 0, 1, :] * y + h[..., 0, 2, :]
+    q = h[..., 1, 0, :] * x + h[..., 1, 1, :] * y + h[..., 1, 2, :]
+    w = h[..., 2, 0, :] * x + h[..., 2, 1, :] * y + h[..., 2, 2, :]
+    e1, e2 = v * w - q, p - u * w
+    # Jacobian rows over (x, y, u, v): (v h20 - h10, v h21 - h11, 0, w) and (h00 - u h20, h01 - u h21, -w, 0).
+    jx1, jy1 = v * h[..., 2, 0, :] - h[..., 1, 0, :], v * h[..., 2, 1, :] - h[..., 1, 1, :]
+    jx2, jy2 = h[..., 0, 0, :] - u * h[..., 2, 0, :], h[..., 0, 1, :] - u * h[..., 2, 1, :]
+    a = jx1.square() + jy1.square() + w.square()
+    c = jx2.square() + jy2.square() + w.square()
+    b = jx1 * jx2 + jy1 * jy2
+    det = a * c - b.square()
+    num = c * e1.square() - 2 * b * e1 * e2 + a * e2.square()
+    # A singular J J^T has no finite correction. The division takes a safe denominator inside the where, so the
+    # inf branch leaves finite gradients (#4229); rounding can make the quadratic form slightly negative. NaN fails
+    # every comparison below and passes through, as in oneway_transfer_error.
+    d2 = num / torch.where(det > 0, det, torch.ones_like(det))
+    d2 = torch.where(det <= 0, torch.full_like(det, math.inf), d2)
+    d2 = torch.where(d2 < 0, torch.zeros_like(d2), d2)
+    if not squared:
+        positive = d2 > 0
+        d2 = torch.where(positive, torch.where(positive, d2, torch.ones_like(d2)).sqrt(), d2)
+    return d2.to(out_dtype)
 
 
 def line_segment_transfer_error_one_way(
@@ -268,21 +349,22 @@ def _four_point_homography(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     return (h * h.square().sum(-1, keepdim=True).rsqrt()).reshape(-1, 3, 3).to(x1.dtype)
 
 
-def _transfer_errors(H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor, eps: float) -> torch.Tensor:
+def _transfer_errors(H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     """Squared one-way transfer errors ``(M, N)`` of homographies ``(M, 3, 3)`` on one set of correspondences.
 
     ``x1`` is homogeneous ``(N, 3)`` with unit last coordinate and ``x2`` ``(N, 2)``. ``H x1`` of every model is one
-    ``(3M, 3) @ (3, N)`` product; the rest is :func:`oneway_transfer_error`'s formula, ``eps`` in the projective
-    denominator included.
+    ``(3M, 3) @ (3, N)`` product; the rest is :func:`oneway_transfer_error`'s formula, with its guard of ``w' = 0``.
     """
     m, n = H.shape[0], x1.shape[0]
     projected = (H.reshape(3 * m, 3) @ x1.T).view(m, 3, n)
-    w = projected[:, 2] + eps
-    return (projected[:, 0] / w - x2[:, 0]).square() + (projected[:, 1] / w - x2[:, 1]).square()
+    w = projected[:, 2]
+    w_safe = _nonzero(w)
+    err2 = (projected[:, 0] / w_safe - x2[:, 0]).square() + (projected[:, 1] / w_safe - x2[:, 1]).square()
+    return _inf_where(err2, w == 0)
 
 
 def _oneway_transfer_error_shared_impl_(
-    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool, eps: float
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool
 ) -> torch.Tensor:
     """One-way transfer errors of many homographies on one set of correspondences, by :func:`_transfer_errors`.
 
@@ -298,8 +380,8 @@ def _oneway_transfer_error_shared_impl_(
         x1 = convert_points_from_homogeneous(x1)
     if x2.shape[-1] == 3:
         x2 = convert_points_from_homogeneous(x2)
-    err2 = _transfer_errors(H.to(work), convert_points_to_homogeneous(x1), x2, eps)
-    out = err2 if squared else (err2 + eps).sqrt()
+    err2 = _transfer_errors(H.to(work), convert_points_to_homogeneous(x1), x2)
+    out = err2 if squared else _sqrt_or_zero(err2)
     shape = torch.broadcast_shapes(pts1.shape[:-2], pts2.shape[:-2], H.shape[:-2])
     return out.reshape(*shape, num_points).to(dtype)
 
@@ -348,6 +430,9 @@ def _refine_homography_lm(
     """
     K = H.shape[0]
     dtype, device = H.dtype, H.device
+    cpu = K > 0 and device.type == "cpu" and not torch.is_grad_enabled()
+    if cpu and K == 1 and mask is not None and mask.dtype == torch.bool:
+        x1, x2, mask = x1[mask[0]], x2[mask[0]], None
     eye8 = torch.eye(8, dtype=dtype, device=device)
     eye9 = torch.eye(9, dtype=dtype, device=device)
     last = eye9[8]
@@ -375,10 +460,18 @@ def _refine_homography_lm(
         return torch.cat([Jw @ J.mT, Jw @ r[..., None]], 2), rho.sum(1), tangent
 
     system, cost, tangent = normal_equations(h)
-    for _ in range(iters):
+    for iteration in range(iters):
         delta = -torch.linalg.solve_ex(system[..., :8] + damping * eye8, system[..., 8:])[0]
         h_new = h + (tangent @ delta)[..., 0]
         h_new = h_new * h_new.square().sum(1, keepdim=True).rsqrt()
+        if cpu and iteration + 1 == iters:
+            projection = h_new.reshape(K, 3, 3) @ x1.T
+            residual = projection[:, :2] / projection[:, 2:3] - x2.T
+            r2 = residual.square().sum(1)
+            rho = torch.log1p(r2 / scale2) if loss == "cauchy" else torch.fmin(r2, torch.full_like(r2[:1, :1], scale2))
+            cost_new = (rho if mask is None else rho * mask).sum(1)
+            accepted = cost_new < cost
+            return torch.where(accepted[:, None], h_new, h).reshape(K, 3, 3)
         system_new, cost_new, tangent_new = normal_equations(h_new)
         accept = (cost_new < cost)[:, None, None]
         h, cost = torch.where(accept[:, :, 0], h_new, h), torch.where(accept[:, 0, 0], cost_new, cost)

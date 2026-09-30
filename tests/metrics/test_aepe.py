@@ -60,20 +60,20 @@ class TestAepe(BaseTester):
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import TypeCheckError
 
+        criterion = kornia.metrics.AEPE()
         with pytest.raises(TypeCheckError) as errinfo:
-            criterion = kornia.metrics.AEPE()
             criterion(None, torch.ones(4, 4, 2, device=device, dtype=dtype))
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
+        sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         with pytest.raises(NotImplementedError) as errinfo:
-            sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
             _ = kornia.metrics.aepe(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo)
 
         from kornia.core.exceptions import ShapeError
 
+        sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError) as errinfo:
-            sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
             _ = kornia.metrics.aepe(sample, 2.0 * sample[..., 0], reduction="mean")
         assert (
             "Shape dimension mismatch" in str(errinfo.value)
