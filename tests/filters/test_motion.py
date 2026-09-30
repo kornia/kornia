@@ -657,9 +657,10 @@ class TestConventionsMotionBlur(BaseTester):
         self.assert_close(MotionBlur3D(3, (0.0, 0.0, 0.0), 0.0)(volume)[0, 0, 2, 3], line)
 
     def test_wart_motion_blur_tuple_kernel_size_raises_a_raw_type_error_5169(self, device, dtype):
-        """motion_blur and motion_blur3d take an int kernel_size; a tuple fails in arithmetic, unnamed (#5169)."""
-        # The error comes from Python arithmetic on the tuple and does not name the argument; a fix that validates
-        # kernel_size, with a kornia error or a TypeError naming it, fails this pin.
+        """motion_blur and motion_blur3d take an int kernel_size; a tuple fails inside the kernel builder with a
+        TypeError that does not name it (#5169)."""
+        # The error comes from Python (arithmetic or range() on the tuple) and does not name the argument; a fix that
+        # validates kernel_size, with a kornia error or a TypeError naming it, fails this pin.
         with pytest.raises(TypeError) as planar:
             motion_blur(torch.rand(1, 1, 9, 12, device=device, dtype=dtype), (5, 5), 30.0, 0.5)
         assert "kernel_size" not in str(planar.value)

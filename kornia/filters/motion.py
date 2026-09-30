@@ -234,9 +234,8 @@ def motion_blur(
 
     Convention:
         - The kernel is :func:`~kornia.filters.get_motion_kernel2d`'s, correlated with the image by
-          :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction``, ``mode``, the
-          tensor shapes and the border modes. See the Convention block on
-          :func:`~kornia.filters.get_motion_kernel2d` for the side on which the streak of a bright point is heaviest.
+          :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction`` (including the
+          side on which the streak of a bright point is heaviest), ``mode``, the tensor shapes and the border modes.
         - Known defects:
 
           - the default ``border_type='constant'`` zero-pads, so a constant image darkens toward the edges, where
