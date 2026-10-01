@@ -610,13 +610,14 @@ class TestGuidedBlur(BaseTester):
     def test_subsample_accepts_an_integer_that_is_not_a_python_int(
         self, guide_dim, subsample, kernel_size, device, dtype
     ):
-        """``numpy`` integers worked before the check, and still do.
+        """``numpy`` integers are accepted and give the result of the equal Python ``int``.
 
         ``guided_blur`` continues with ``int(subsample)``: ``(301 - 1) // numpy.uint8(2)`` is 300, which does not fit
-        the ``uint8`` the window arithmetic would otherwise stay in (``OverflowError``).
+        the ``uint8`` the window arithmetic would otherwise stay in (``OverflowError``). The size, 66, is a multiple of
+        every ``subsample`` here, so these cases pin the integer types, not the handling of other sizes.
         """
-        guide = torch.rand(1, guide_dim, 64, 64, device=device, dtype=dtype)
-        inp = torch.rand(1, 2, 64, 64, device=device, dtype=dtype)
+        guide = torch.rand(1, guide_dim, 66, 66, device=device, dtype=dtype)
+        inp = torch.rand(1, 2, 66, 66, device=device, dtype=dtype)
 
         actual = guided_blur(guide, inp, kernel_size, 0.01, border_type="constant", subsample=subsample)
 
