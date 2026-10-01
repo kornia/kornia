@@ -149,7 +149,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
         (
             *_audited(
                 "tests/augmentation/container/test_augmentation_sequential.py",
-                49,
+                71,
                 "torch.randn",
                 2,
                 (

@@ -18,6 +18,7 @@
 from functools import partial
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 import torch
 
@@ -35,6 +36,27 @@ from testing.base import BaseTester, assert_close
 
 
 class TestAugmentationSequential:
+    @pytest.mark.parametrize("as_dict", [False, True])
+    def test_numpy_annotations_are_not_scaled_like_images(self, as_dict):
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((8, 9), dtype=np.int64)
+        mask[2:5, 3:6] = 3
+        boxes = np.array([[[3.0, 2.0, 6.0, 5.0]]], dtype=np.float32)
+        keypoints = np.array([[[4.0, 3.0]]], dtype=np.float32)
+        data_keys = ["input", "mask", "bbox_xyxy", "keypoints"]
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None if as_dict else data_keys)
+
+        if as_dict:
+            output = aug(dict(zip(data_keys, (image, mask, boxes, keypoints))))
+            out_mask, out_boxes, out_keypoints = output["mask"], output["bbox_xyxy"], output["keypoints"]
+        else:
+            _, out_mask, out_boxes, out_keypoints = aug(image, mask, boxes, keypoints)
+
+        assert out_mask.dtype == torch.int64
+        assert set(out_mask.unique().tolist()) == {0, 3}
+        assert torch.equal(out_boxes, torch.from_numpy(boxes))
+        assert torch.equal(out_keypoints, torch.from_numpy(keypoints))
+
     @pytest.mark.parametrize(
         "data_keys", ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
@@ -1277,6 +1299,26 @@ class TestConventionAugmentationSequential(BaseTester):
         )
         assert keys == [DataKey.BBOX, DataKey.BBOX, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL]
         assert metadata == []
+
+    def test_numpy_mask_is_read_channels_last_without_scaling_5236(self):
+        # A NumPy mask is laid out like a NumPy image, (H, W) or (H, W, C), and keeps its labels: an (8, 9, 1) mask
+        # becomes (1, 1, 8, 9) and flips with the image. The label block sits off the flip axis (columns 1-2 go to
+        # 6-7), and a mask read as (C, H, W) = (8, 9, 1) would come back with another shape.
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((8, 9, 1), dtype=np.int64)
+        mask[2:5, 1:3] = 3
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        _, out_mask = aug(image, mask)
+        expected = torch.zeros(1, 1, 8, 9, dtype=torch.int64)
+        expected[..., 2:5, 6:8] = 3
+        assert torch.equal(out_mask, expected)
+
+    def test_argument_without_a_data_key_raises(self):
+        # ``__call__`` converts NumPy arguments by data key; an argument with no key must still reach ``forward``,
+        # which rejects the count, instead of being dropped.
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
+        with pytest.raises(AssertionError, match="number of inputs must align"):
+            aug(torch.zeros(1, 3, 8, 9), torch.zeros(1, 1, 8, 9))
 
     def test_convention_same_on_batch_none_does_not_override_a_child(self, device, dtype):
         # Convention pin: `AugmentationSequential(same_on_batch=None)` - the default - keeps whatever each

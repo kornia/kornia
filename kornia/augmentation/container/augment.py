@@ -26,10 +26,12 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
+from kornia.core.external import numpy as np
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
+from kornia.image.utils import image_to_tensor
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
@@ -643,6 +645,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """
         # Wrap the forward method with the decorator
         if not self._disable_features:
+            converted_inputs = inputs
+            if len(inputs) == 1 and isinstance(inputs[0], dict):
+                keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
+                converted_dict = dict(inputs[0])
+                for key, arg, data_key in zip(keys, args, data_keys):
+                    if isinstance(arg, np.ndarray):
+                        if data_key in _IMG_OPTIONS:
+                            converted_dict[key] = self.to_tensor(arg)
+                        else:
+                            converted_dict[key] = self._convert_numpy_non_image(arg, data_key)
+                converted_inputs = (converted_dict,)
+            else:
+                data_keys = self.transform_op.preproc_datakeys(kwargs.get("data_keys", self.data_keys))
+                # Arguments beyond the data keys pass through unconverted, so ``forward`` still rejects the count.
+                converted_inputs = tuple(
+                    self._convert_numpy_non_image(arg, data_key) for arg, data_key in zip(inputs, data_keys)
+                ) + tuple(inputs[len(data_keys) :])
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
             self._check_output_type(output_type)
@@ -651,7 +670,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             decorated_forward = self.convert_input_output(input_names_to_handle=input_names_to_handle)(
                 super(ImageSequential, self).__call__
             )
-            tensor_output = decorated_forward(*inputs, **kwargs)
+            tensor_output = decorated_forward(*converted_inputs, **kwargs)
 
             in_data_keys: Optional[List[DataKey]]
             original_keys: Optional[Tuple[str, ...]] = None
@@ -670,6 +689,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
+
+    @staticmethod
+    def _convert_numpy_non_image(arg: Any, data_key: DataKey) -> Any:
+        if not isinstance(arg, np.ndarray) or data_key in _IMG_OPTIONS:
+            return arg
+        if data_key in _MSK_OPTIONS:
+            return image_to_tensor(arg)
+        return torch.as_tensor(arg)
 
     def _select_output_image(
         self, output: Any, data_keys: List[DataKey], original_keys: Optional[Tuple[str, ...]]
