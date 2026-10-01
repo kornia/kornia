@@ -284,6 +284,15 @@ class TestGaussianDiscreteStability(BaseTester):
         (kernel * torch.arange(5, device=device, dtype=dtype)).sum().backward()
         assert torch.isfinite(sigma.grad).all()
 
+    @pytest.mark.parametrize("window_size, sigma", [(5, 0.0), (121, 0.5)])
+    def test_backward_finite_small_sigma(self, window_size, sigma, device, dtype):
+        # The upward-recurrence lanes are computed and discarded here; they must run on a safe placeholder
+        # argument, or their division by sigma**2 (zero, or tiny next to the order) puts NaN in the gradient.
+        sigma = torch.tensor([[sigma]], device=device, dtype=dtype, requires_grad=True)
+        kernel = get_gaussian_discrete_kernel1d(window_size, sigma)
+        (kernel * torch.arange(window_size, device=device, dtype=dtype)).sum().backward()
+        assert torch.isfinite(sigma.grad).all()
+
     def test_gradcheck(self, device):
         sigma = torch.tensor([[1.5], [7.0], [20.0]], device=device, dtype=torch.float64)
         self.gradcheck(get_gaussian_discrete_kernel1d, (7, sigma))
