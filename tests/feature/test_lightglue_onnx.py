@@ -15,11 +15,16 @@
 # limitations under the License.
 #
 
+import subprocess
+import sys
+
 import pytest
 
 pytest.importorskip("onnx")
 import torch
 
+from kornia.config import LazyLoaderConfig, kornia_config
+from kornia.core import external
 from kornia.core._compat import torch_version_le
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
@@ -30,18 +35,35 @@ except ImportError:
     ort = None
 
 
-def test_missing_onnxruntime_names_the_extra(monkeypatch):
+@pytest.fixture
+def without_onnxruntime(monkeypatch):
+    """Make `onnxruntime` unimportable and forget what the loader cached, so the loader handles the miss itself."""
+    monkeypatch.delenv("KORNIA_INSTALLATION_MODE", raising=False)
+    monkeypatch.setattr(kornia_config, "lazyloader", LazyLoaderConfig())
+    monkeypatch.setitem(sys.modules, "onnxruntime", None)
+    monkeypatch.setattr(external.onnxruntime, "module", None)
+    monkeypatch.setattr(external.onnxruntime, "_install_error", None)
+
+
+def test_missing_onnxruntime_names_the_extra(without_onnxruntime):
     # Without onnxruntime the constructor must fail the way the LazyLoader handles do: an ImportError that
-    # says `pip install "kornia[onnx]"`, which the installation page promises.
-    import importlib.util
-
-    real_find_spec = importlib.util.find_spec
-
-    def hide_onnxruntime(name, *args, **kwargs):
-        return None if name == "onnxruntime" else real_find_spec(name, *args, **kwargs)
-
-    monkeypatch.setattr(importlib.util, "find_spec", hide_onnxruntime)
+    # says `pip install "kornia[onnx]"`, which the installation page promises. The module is hidden by hiding
+    # it in `sys.modules` rather than by patching a probe, because the constructor reaches the loader (#5279).
     with pytest.raises(ImportError, match=r"kornia\[onnx\]"):
+        OnnxLightGlue()
+
+
+def test_missing_onnxruntime_applies_the_installation_mode(monkeypatch, without_onnxruntime):
+    # #5279: an `importlib.util.find_spec` probe returned before anything reached the loader, so "auto" installed
+    # nothing and "ask" never asked. With the mode set to "auto" and every process start refused, the constructor
+    # has to reach the loader's install attempt, which the probe made unreachable.
+    kornia_config.lazyloader.installation_mode = "auto"
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the loader tried to start the installer")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+    with pytest.raises(AssertionError, match="tried to start the installer"):
         OnnxLightGlue()
 
 
