@@ -177,7 +177,7 @@ class TestImageModuleMixIn:
         result = dummy_func(sample_image, "not_an_image")
         assert isinstance(result, torch.Tensor)
 
-    def test_convert_input_output_default_only_converts_first_input(self, img_module, tmp_path, monkeypatch):
+    def test_convert_input_output_default_loads_first_positional_path(self, img_module, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         image_path = tmp_path / "mode.png"
         PILImage.new("RGB", (6, 4)).save(image_path)
