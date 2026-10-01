@@ -71,6 +71,20 @@ class TestApplyColorMap(BaseTester):
 
         self.assert_close(actual, expected_tensor)
 
+    def test_upper_endpoint_selects_last_color(self, device, dtype):
+        cm = ColorMap(
+            base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+            num_colors=4,
+            device=device,
+            dtype=dtype,
+        )
+        input_tensor = torch.ones(1, 1, 1, device=device, dtype=dtype)
+
+        actual = apply_colormap(input_tensor, cm)
+        expected = cm.colors[..., -1].reshape(1, 3, 1, 1)
+
+        self.assert_close(actual, expected)
+
     def test_exception(self, device, dtype):
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
         with pytest.raises(Exception):
