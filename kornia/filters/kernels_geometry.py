@@ -133,17 +133,19 @@ def get_motion_kernel3d(
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_motion_kernel2d` for ``direction`` and ``mode``.
-        ``angle`` is ``(yaw, pitch, roll)`` in degrees, the rotations about the x, y and z axes applied by
-        :func:`~kornia.geometry.transform.rotate3d`. The unrotated line lies along x, so with the default
+        ``angle`` is a Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, as applied by
+        :func:`~kornia.geometry.transform.rotate3d`: its direction is the rotation axis and its norm is the
+        rotation angle. The components are called ``yaw``, ``pitch`` and ``roll`` internally, but are not
+        composed Euler rotations. The unrotated line lies along x, so with the default
         ``mode='nearest'`` yaw alone leaves the kernel unchanged (``'bilinear'`` resamples it off the line); a
-        positive pitch moves the heavy end to +z, and a positive roll turns the line clockwise as displayed, the
-        opposite of the 2d ``angle``.
+        positive pitch alone moves the heavy end to +z, and a positive roll alone turns the line clockwise as
+        displayed, the opposite of the 2d ``angle``.
 
     Args:
         kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
-        angle: yaw (x-axis), pitch (y-axis) and roll (z-axis) of the motion blur, in degrees.
+        angle: Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler angles.
             If tensor, it must be :math:`(B, 3)`.
-            If tuple, it must be (yaw, pitch, roll).
+            If tuple, it must be ``(rx, ry, rz)``.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a

@@ -1967,7 +1967,7 @@ class TestConventionsKernels(BaseTester):
         bilinear = get_motion_kernel2d(5, angle, direction, mode="bilinear")[0]
         assert int((bilinear > 0).sum()) > 5
 
-    def test_convention_motion_kernel3d_angle_is_yaw_pitch_roll(self, device, dtype):
+    def test_convention_motion_kernel3d_angle_is_an_axis_angle_vector(self, device, dtype):
         _kernel_guard("get_motion_kernel3d", device, dtype)
 
         def kernel(angles: tuple[float, float, float]) -> torch.Tensor:
@@ -1986,6 +1986,16 @@ class TestConventionsKernels(BaseTester):
         assert heaviest((0.0, 0.0, 90.0)) == (2, 0, 2)
         # the line lies along x, so yaw (about x) alone leaves the kernel unchanged
         self.assert_close(kernel((90.0, 0.0, 0.0)), kernel((0.0, 0.0, 0.0)))
+
+        # Rodrigues' formula for (90, 90, 0): rotate through 90 * sqrt(2) degrees about (1, 1, 0) / sqrt(2).
+        # The heavy-end direction (-1, 0, 0) becomes (-0.19715, -0.80285, 0.56264), unlike either Euler
+        # composition (0, 0, 1) or (0, -1, 0). Nearest resampling keeps the three central line taps, whose
+        # unnormalised weights are 0.1, 0.2 and 0.3, in (depth, row, column) order below.
+        expected = torch.zeros(5, 5, 5, device=device, dtype=dtype)
+        expected[1, 3, 2] = 1 / 6
+        expected[2, 2, 2] = 1 / 3
+        expected[3, 1, 2] = 1 / 2
+        self.assert_close(kernel((90.0, 90.0, 0.0)), expected)
 
     def test_wart_gaussian_discrete_kernel1d_tap_count_is_not_kernel_size_5158(self, device, dtype):
         """get_gaussian_discrete_kernel1d gives 3 taps for kernel_size=1 and k + 1 for an even force_even k (#5158)."""
