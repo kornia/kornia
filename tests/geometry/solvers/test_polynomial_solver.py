@@ -1431,19 +1431,52 @@ class TestConventionPolynomialSolvers(BaseTester):
         for root in (1e-3, 2e-3):
             assert (out - root).abs().min() <= 1e-5 * root, out
 
-    def test_wart_solve_quartic_scaled_large_roots_fall_back_to_cubic_4954(self, device, dtype):
+    def test_convention_solve_quartic_scale_invariant_large_roots_4954(self, device, dtype):
         if dtype != torch.float32:
             pytest.skip(
                 "pinned in float32, where this row's 6e-8 ratio of leading to largest coefficient is below 1e-6"
             )
-        # #4954: (x - 50)(x - 60)(x - 70)(x - 80) times 2^-21 (exact in float32) has a leading coefficient 4.8e-7 and
-        # a largest coefficient 8.01. The fallback tolerance is only relative below unit scale, so the row is solved
-        # as the cubic of its last four coefficients: one real root near 31.5 and none of 50, 60, 70, 80.
+        # #4954: (x - 50)(x - 60)(x - 70)(x - 80) times 2^-21 has a = 4.8e-7, below 1e-6 (its largest coefficient
+        # is 8.01, so the old test is absolute), but its root bound is 260, so it stays a quartic. Today's error is
+        # at most 1.5e-3; a cubic fallback misses by at least 18.
         row = torch.tensor([[1.0, -260.0, 25100.0, -1066000.0, 16800000.0]], device=device, dtype=dtype)
-        out = solver.solve_quartic(row * 2.0**-21)
-        self.assert_close(out[:, 1:], torch.zeros(1, 3, device=device, dtype=dtype))
-        for root in (50.0, 60.0, 70.0, 80.0):
-            assert (out - root).abs().min() > 1.0
+        out = solver.solve_quartic(row * 2.0**-21).sort(dim=-1).values
+        expected = torch.tensor([[50.0, 60.0, 70.0, 80.0]], device=device, dtype=dtype)
+        self.assert_close(out, expected, atol=1e-2, rtol=0.0)
+
+    def test_convention_solve_quartic_scale_invariant_large_roots_float64_4954(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("the float32 case is pinned in test_convention_solve_quartic_scale_invariant_large_roots_4954")
+        # Same shape as the float32 pin, at float64's 1e-12 tolerance: (x - 1e4)...(x - 4e4) scaled by 2^-50 has
+        # a = 8.9e-16, below 1e-12 (largest coefficient 213, so the old test is absolute), but its root bound is
+        # 1e5, so it stays a quartic. Today's error is at most 4.4e-11; a cubic fallback misses by at least 946.
+        row = torch.tensor([[1.0, -100000.0, 3500000000.0, -50000000000000.0, 2.4e17]], device=device, dtype=dtype)
+        out = solver.solve_quartic(row * 2.0**-50).sort(dim=-1).values
+        expected = torch.tensor([[10000.0, 20000.0, 30000.0, 40000.0]], device=device, dtype=dtype)
+        self.assert_close(out, expected, atol=1e-6, rtol=1e-9)
+
+    def test_convention_solve_quartic_tiny_leading_coefficient_real_roots_4954(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("pinned in float32, where the old absolute tolerance (1e-6) is what this row crosses")
+        # #4954: x^4 - 1 times 1e-7 has a = 1e-7, below 1e-6, but its root bound is 56.23 (|e/a|^(1/4)), so it
+        # stays a quartic, recovering the real roots +-56.23. Today's error is at most 3.8e-6; a cubic
+        # fallback misses by 56.23 (both roots lost to [0, 0, 0, 0]).
+        coeffs = torch.tensor([[1e-7, 0.0, 0.0, 0.0, -1.0]], device=device, dtype=dtype)
+        out = solver.solve_quartic(coeffs)
+        root = 1e7**0.25
+        for expected_root in (-root, root):
+            assert (out - expected_root).abs().min() <= 1e-4 * abs(expected_root)
+
+    def test_convention_solve_quartic_and_rule_keeps_dominant_root_4954(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("pinned in float32; this row's unit-scale absolute test is what the AND rule must not override")
+        # #4954: this row has a = 1e-5, above 1e-6, so the old test alone already keeps it a quartic, finding
+        # its root near -1e7. Its root bound is 1e7 (b/a): the bound ALONE, not ANDed to the old test, would
+        # wrongly fall back here. Today's error is at most 5.4e-7; a bound-alone regression loses the -1e7 root.
+        coeffs = torch.tensor([[1e-5, 100.0, -50.0, 3.0, -1.0]], device=device, dtype=dtype)
+        out = solver.solve_quartic(coeffs)
+        assert (out - (-10000000.5)).abs().min() <= 10.0
+        assert (out - 0.48086).abs().min() <= 1e-5 * 0.48086
 
     def test_convention_solve_quartic_relative_leading_tolerance_4905(self, device, dtype):
         # (x - 1)(x - 2)(x - 3)(x - 4), and the same row times a power of two (exact in every dtype) that brings the

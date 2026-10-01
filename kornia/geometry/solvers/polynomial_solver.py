@@ -491,14 +491,12 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         - Coefficient layout and zero padding as :func:`solve_quadratic`; the roots are unordered.
         - Known defects: the solver is not scale-invariant, so a quartic whose roots are all small can lose real
           roots and return values that are not roots (`#4833 <https://github.com/kornia/kornia/issues/4833>`_).
-        - A row is solved as the cubic of its last four coefficients when its leading coefficient is 0 or smaller in
-          magnitude than ``1e-6`` (``1e-12`` in float64) times ``min(1, max_i |coeffs_i|)``. For a row whose largest
-          coefficient is at most 1 the test is relative, so scaling the row down does not change how it is solved;
-          at unit scale and above it is absolute, as before.
-        - Known defects: a quartic with large roots has a leading coefficient that is small next to its largest
-          coefficient. Scaled so that the leading coefficient drops below the tolerance while the largest coefficient
-          is still above 1, it is solved as a cubic and its roots are lost
-          (`#4954 <https://github.com/kornia/kornia/issues/4954>`_).
+        - A row is solved as the cubic of its last four coefficients when its leading coefficient is 0, or when both
+          hold: ``|a|`` is smaller than ``1e-6`` (``1e-12`` in float64) times ``min(1, max_i |coeffs_i|)``, and the
+          scale-invariant root bound ``max(|b/a|, |c/a|^(1/2), |d/a|^(1/3), |e/a|^(1/4))`` exceeds ``1 / tol``
+          (tested as ``|coeffs_k| > |a| / tol^k``, without dividing by ``a``). Since the bound is at most 4 times
+          the largest root's magnitude, a quartic whose roots are all smaller than ``1 / (4 * tol)`` stays a
+          quartic at every scale; the bound can only move a row from the cubic path to the quartic path.
 
     Args:
         coeffs : The coefficients quartic equation : `(B, 5)`
@@ -530,6 +528,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     # Coefficients
     a = coeffs[:, 0]
+    b, c, d, e = coeffs[:, 1], coeffs[:, 2], coeffs[:, 3], coeffs[:, 4]
 
     solutions = torch.zeros((len(coeffs), 4), device=coeffs.device, dtype=coeffs.dtype)
 
@@ -537,10 +536,19 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # float32's cubic-fallback tolerance; float64's 1e-12 would also round to 0 in float16.
     zero_tol = 1e-6 if coeffs.dtype in (torch.float32, torch.float16, torch.bfloat16) else 1e-12
 
-    # Cubic fallback for a approx 0. Scaling a row does not move its roots, so a row whose largest coefficient is
-    # below 1 gets a proportionally smaller tolerance; rows at unit scale or above keep the absolute one.
+    # Cubic fallback for a approx 0. The first test is relative below unit scale and absolute above it, which on
+    # its own sends a scaled quartic whose roots are well below 1 / zero_tol to the cubic (#4954). The second is the
+    # scale-invariant root bound max(|b/a|, |c/a|^(1/2), |d/a|^(1/3), |e/a|^(1/4)) > 1 / zero_tol, written as
+    # |coeffs_k| > |a| / zero_tol**k so it never divides by a. ANDed in, it can only move a row to the quartic
+    # path. If |a| / zero_tol**k overflows, the bound exceeds any representable coefficient, so False is correct.
     row_scale = coeffs.abs().amax(dim=-1).clamp(max=1.0)
-    mask_a_zero = (torch.abs(a) < zero_tol * row_scale) | (a == 0)
+    bound = (
+        (b.abs() > a.abs() / zero_tol)
+        | (c.abs() > a.abs() / zero_tol**2)
+        | (d.abs() > a.abs() / zero_tol**3)
+        | (e.abs() > a.abs() / zero_tol**4)
+    )
+    mask_a_zero = ((torch.abs(a) < zero_tol * row_scale) & bound) | (a == 0)
     mask_quartic = ~mask_a_zero
 
     if torch.any(mask_a_zero):
