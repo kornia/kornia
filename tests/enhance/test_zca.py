@@ -31,7 +31,7 @@ class TestZCA(BaseTester):
         data = torch.arange(30 if shape[1] == 5 else 18, device=device, dtype=dtype).reshape(shape) / 100
         zca = kornia.enhance.ZCAWhitening(dim=dim, compute_inv=True, eps=1.0).fit(data)
         # A held-out query also exercises the fitted mean, rather than refitting.
-        query = (10 * data).cos()
+        query = (10 * data).cos() / 4
         actual = zca.inverse_transform(zca(query))
         assert actual.shape == query.shape
         self.assert_close(actual, query)
