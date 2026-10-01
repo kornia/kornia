@@ -25,7 +25,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
-from .kernels import _unpack_2d_ks, get_gaussian_kernel2d
+from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel2d
 from .median import _compute_zero_padding
 
 
@@ -55,6 +55,7 @@ def _bilateral_blur(
         sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1, 1)
 
     ky, kx = _unpack_2d_ks(kernel_size)
+    _check_kernel_size((ky, kx))
     pad_y, pad_x = _compute_zero_padding(kernel_size)
 
     # Keep both patch axes: flattening them would copy every overlapping window.
@@ -102,7 +103,7 @@ def bilateral_blur(
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
-        kernel_size: the size of the kernel.
+        kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.
@@ -148,7 +149,7 @@ def joint_bilateral_blur(
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         guidance: the guidance torch.Tensor with shape :math:`(B,C,H,W)`.
-        kernel_size: the size of the kernel.
+        kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.
@@ -185,6 +186,7 @@ class _BilateralBlur(nn.Module):
         color_distance_type: str = "l1",
     ) -> None:
         super().__init__()
+        _check_kernel_size(_unpack_2d_ks(kernel_size))
         self.kernel_size = kernel_size
         self.sigma_color = sigma_color
         self.sigma_space = sigma_space
@@ -210,7 +212,7 @@ class BilateralBlur(_BilateralBlur):
     to the center pixel, but also the difference in intensity or color.
 
     Arguments:
-        kernel_size: the size of the kernel.
+        kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.
@@ -274,7 +276,7 @@ class JointBilateralBlur(_BilateralBlur):
     a guidance image. See :class:`BilateralBlur` for more information.
 
     Arguments:
-        kernel_size: the size of the kernel.
+        kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.

@@ -64,6 +64,23 @@ class TestBilateralBlur(BaseTester):
             bilateral_blur(torch.rand(1, 1, 5, 5), 3, 0.1, (1, 1), color_distance_type="l3")
         assert "color_distance_type only accepts l1 or l2" in str(errinfo)
 
+    @pytest.mark.parametrize("kernel_size", [4, (3, 4), (4, 3), 0])
+    def test_exception_kernel_size(self, kernel_size):
+        # The window is centred on the pixel, so it needs an odd size. An even size used to fail inside the filter
+        # with a raw torch shape error; it is now rejected up front, by the module constructors as well.
+        from kornia.core.exceptions import BaseError
+
+        image = torch.rand(1, 1, 8, 9)
+        calls = (
+            lambda: bilateral_blur(image, kernel_size, 0.1, (1.0, 1.0)),
+            lambda: joint_bilateral_blur(image, image, kernel_size, 0.1, (1.0, 1.0)),
+            lambda: BilateralBlur(kernel_size, 0.1, (1.0, 1.0)),
+            lambda: JointBilateralBlur(kernel_size, 0.1, (1.0, 1.0)),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match="Kernel size must be an odd integer bigger than 0"):
+                call()
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
