@@ -482,6 +482,21 @@ class TestTensorWrapperProtocol(BaseTester):
             assert type(out) is type(expected)
             self.assert_close(out, expected, rtol=0, atol=0)
 
+    def test_result_class_with_a_wrapper_subclass_on_the_right(self, device, dtype):
+        # Arithmetic takes the left wrapper's class; a comparison takes the right operand's subclass, because Python
+        # tries a subclass's reflected comparison first.
+        class Sub(TensorWrapper):
+            pass
+
+        a = torch.tensor([1.0, 2.0, 4.0], device=device, dtype=dtype)
+        b = torch.tensor([2.0, 2.0, 3.0], device=device, dtype=dtype)
+        for op in (operator.add, operator.mul):
+            assert type(op(TensorWrapper(a), Sub(b))) is TensorWrapper
+        for op in (operator.eq, operator.ne, operator.lt, operator.le, operator.gt, operator.ge):
+            out = op(TensorWrapper(a), Sub(b))
+            assert type(out) is Sub
+            assert torch.equal(out.data, op(a, b))
+
     @pytest.mark.parametrize(
         "op",
         [operator.add, operator.sub, operator.mul, operator.truediv, operator.floordiv, operator.mod, operator.pow],

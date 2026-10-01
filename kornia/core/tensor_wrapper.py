@@ -84,7 +84,9 @@ class TensorWrapper:
         - Every arithmetic, bitwise and comparison operator (``+ - * / // % ** @ & | ^ << >>``,
           ``== != < <= > >=``, unary ``-``, ``+``, ``abs`` and ``~``) computes the wrapped tensor's result and
           wraps it in the class of the left operand when that is a wrapper (``w + x``), and otherwise in the class
-          of the right operand (``2 / w``, ``t + w``).
+          of the right operand (``2 / w``, ``t + w``). A comparison whose right operand is an instance of a subclass
+          of the left operand's wrapper class takes the subclass, because Python tries the subclass's reflected
+          comparison first.
         - An in-place operator (``+=``, ``-=``, ``*=``, ``/=``, ``//=``, ``%=``, ``**=``, ``&=``, ``|=``, ``^=``,
           ``<<=``, ``>>=``) updates the wrapped tensor in place and returns the same wrapper, so an alias sees the
           change. The wrapper does not copy the tensor it is built from, so the update also changes that tensor,
