@@ -164,6 +164,12 @@ class TestEdgeAwareBlurPool(BaseTester):
         blur = edge_aware_blur_pool2d(inp, kernel_size=kernel_size)
         assert blur.shape == inp.shape
 
+    @pytest.mark.parametrize(("kernel_size", "image_size"), [(3, 16), (5, 16), (7, 16), (9, 16), (9, 4)])
+    def test_constant_image_is_preserved_at_boundaries(self, kernel_size, image_size, device, dtype):
+        inp = torch.ones(1, 1, image_size, image_size, device=device, dtype=dtype)
+        actual = edge_aware_blur_pool2d(inp, kernel_size=kernel_size)
+        self.assert_close(actual, inp)
+
     def test_exception(self):
         from kornia.core.exceptions import BaseError, ShapeError
 
