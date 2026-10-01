@@ -167,6 +167,29 @@ class TestMotionBlur(BaseTester):
 
         self.assert_close(op(img, *params), op_module(img))
 
+    def test_python_float_parameters_preserve_float64_precision(self):
+        image = torch.ones(1, 1, 9, 9, dtype=torch.float64)
+        results = [
+            motion_blur(image, 5, 30.0, 0.3, "reflect"),
+            MotionBlur(5, 30.0, 0.3, "reflect")(image),
+        ]
+        for result in results:
+            assert result.dtype == torch.float64
+            assert (result - image).abs().max() < 1e-15
+
+    @pytest.mark.parametrize("angle", [60.0, 120.0, 150.0])
+    def test_python_float_parameters_match_cpu_tensor_kernel(self, angle, device, dtype):
+        # Python-number parameters build the kernel on the CPU in the input dtype, never below float32: a half
+        # kernel moves the nearest samples at these angles, and an MPS kernel differs at 120 degrees (#5181).
+        kernel_dtype = torch.promote_types(dtype, torch.float32)
+        img = torch.rand(1, 2, 9, 9, device=device, dtype=dtype)
+        kernel = get_motion_kernel2d(
+            7, torch.tensor([angle], dtype=kernel_dtype), torch.tensor([0.3], dtype=kernel_dtype)
+        )
+        expected = filter2d(img, kernel, "reflect")
+        self.assert_close(motion_blur(img, 7, angle, 0.3, "reflect"), expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur(7, angle, 0.3, "reflect")(img), expected, rtol=0, atol=0)
+
     # A blur of a constant image is that constant. ``(1, 1, 3, 9)`` and ``(1, 1, 9, 3)`` are shorter than the
     # 5-tap kernel along one axis.
     @pytest.mark.parametrize("shape", [(1, 1, 5, 7), (2, 3, 8, 6), (1, 1, 3, 9), (1, 1, 9, 3)])
@@ -326,6 +349,28 @@ class TestMotionBlur3D(BaseTester):
         img = torch.ones(1, 3, 1, 5, 5, device=device, dtype=dtype)
 
         self.assert_close(op(img, *params), op_module(img))
+
+    def test_python_float_parameters_preserve_float64_precision(self):
+        volume = torch.ones(1, 1, 5, 6, 7, dtype=torch.float64)
+        results = [
+            motion_blur3d(volume, 3, (10.0, 20.0, 30.0), 0.3, "replicate"),
+            MotionBlur3D(3, (10.0, 20.0, 30.0), 0.3, "replicate")(volume),
+        ]
+        for result in results:
+            assert result.dtype == torch.float64
+            assert (result - volume).abs().max() < 1e-15
+
+    @pytest.mark.parametrize("angle", [(0.0, 120.0, 35.0), (60.0, 150.0, 120.0)])
+    def test_python_float_parameters_match_cpu_tensor_kernel(self, angle, device, dtype):
+        # Python-number parameters build the kernel on the CPU in the input dtype, never below float32 (#5181).
+        kernel_dtype = torch.promote_types(dtype, torch.float32)
+        volume = torch.rand(1, 2, 6, 7, 8, device=device, dtype=dtype)
+        kernel = get_motion_kernel3d(
+            5, torch.tensor([angle], dtype=kernel_dtype), torch.tensor([0.3], dtype=kernel_dtype)
+        )
+        expected = filter3d(volume, kernel, "replicate")
+        self.assert_close(motion_blur3d(volume, 5, angle, 0.3, "replicate"), expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur3D(5, angle, 0.3, "replicate")(volume), expected, rtol=0, atol=0)
 
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
