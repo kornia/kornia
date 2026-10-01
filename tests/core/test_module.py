@@ -310,8 +310,8 @@ class TestLazyOutputCache(BaseTester):
 
     @pytest.mark.parametrize("output_type", ["numpy", "pil"])
     def test_converted_output_can_be_shown_and_saved_4964(self, module, output_type, device, dtype, tmp_path):
-        if dtype == torch.bfloat16:
-            pytest.skip("NumPy rendering does not support bfloat16")
+        if dtype == torch.bfloat16 and output_type == "numpy":
+            pytest.skip("NumPy does not support bfloat16")
         image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         module(image, output_type=output_type)
         cached = module._output_image
@@ -321,7 +321,8 @@ class TestLazyOutputCache(BaseTester):
         assert cached.grad_fn is None
         assert not cached.requires_grad
         self.assert_close(cached, image.sigmoid().detach())
-        expected = (image.sigmoid()[0].detach().cpu().permute(1, 2, 0) * 255).byte().numpy()
+        working = cached[0].to(torch.promote_types(dtype, torch.float32))
+        expected = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).cpu().permute(1, 2, 0).numpy()
         np.testing.assert_array_equal(np.asarray(module.show(display=False)), expected)
         path = tmp_path / "converted.png"
         module.save(name=str(path))
@@ -603,9 +604,9 @@ class TestTupleOutputCache(BaseTester):
                 assert output.requires_grad
                 self.assert_close(output, expected)
             elif output_type == "numpy":
-                np.testing.assert_array_equal(output, expected.cpu().numpy())
+                np.testing.assert_array_equal(output, expected.cpu().permute(1, 2, 0).numpy())
             else:
                 assert isinstance(output, PILImage.Image)
-                np.testing.assert_array_equal(
-                    np.asarray(output), (expected.cpu().permute(1, 2, 0) * 255).byte().numpy()
-                )
+                working = expected.cpu().to(torch.promote_types(dtype, torch.float32))
+                rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
+                np.testing.assert_array_equal(np.asarray(output), rendered)
