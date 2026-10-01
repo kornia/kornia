@@ -75,6 +75,10 @@ _LM_CANDIDATES = 8
 # Model types that DEGENSAC supports: seven-point fundamental matrices (Chum, Werner and Matas, CVPR 2005).
 _DEGENSAC_MODELS = ("fundamental", "fundamental_7pt")
 
+# At most this many residuals are materialized by one compiled CPU scoring batch.  Small/default inputs retain their
+# tuned batch sizes; large explicit batches are split without changing the minimal-sample budget.
+_COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
+
 
 @lru_cache(maxsize=32)
 def _prosac_growth(sample_size: int, pop_size: int, budget: int) -> Tuple[int, ...]:
@@ -209,8 +213,9 @@ class RANSAC(nn.Module):
           (torch 2.14 or later, CPU and CUDA). The graph is traced once per configuration and does not
           depend on the number of correspondences, the threshold, the confidence or the budget; it is also saved next
           to inductor's cache (``TORCHINDUCTOR_CACHE_DIR``), so a later process loads it instead of compiling. It
-          runs the same algorithm with its own random stream: a seeded call is reproducible, but its result is not
-          the eager one. PROSAC sampling and DEGENSAC are not supported.
+          runs the same algorithm with its own random stream: a seeded call is reproducible and leaves every global
+          generator unchanged, while an unseeded call consumes one global random seed. Its result is not the eager
+          one. PROSAC sampling and DEGENSAC are not supported.
 
     Args:
         model_type: "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
@@ -508,7 +513,10 @@ class RANSAC(nn.Module):
         batch would score more than ``2**22`` (CPU) or ``2**25`` (accelerators) residuals, counting the three models
         of a seven-point sample and the ten candidate slots of a five-point one. On accelerators scoring holds two or
         three times that many entries at its peak, about 0.5 GiB in float32; on CPU it scores tiles of about a million
-        residuals, independently of the batch. An integer ``batch_size`` is kept for every batch.
+        residuals, independently of the batch. An integer ``batch_size`` is kept for every batch, except that
+        compiled CPU RANSAC splits a batch whose candidate-by-correspondence score matrix would exceed the CPU
+        memory bound. This preserves the sample budget, though the extra batch boundaries can change when
+        confidence-based stopping is evaluated.
         """
         if isinstance(self.batch_size, int):
             return self.batch_size
@@ -987,21 +995,46 @@ class RANSAC(nn.Module):
         first, largest = self._lm_batch_range(num_tc, kp1.device)
         if largest > MAX_BATCH:
             raise ValueError(f"compile=True supports batches of at most {MAX_BATCH} samples")
-        scalars = [torch.tensor([value], dtype=torch.float64) for value in (self.inl_th, self.confidence)]
-        scalars += [torch.tensor(value, dtype=torch.int64) for value in (self.sample_budget, first, largest)]
-        inputs = (kp1, kp2, *scalars)
-        key = (self.model_type, self.score_type, self.max_lo_iters, self.refine_iters, kp1.dtype, str(kp1.device))
-        program = load_program(key, inputs)
+        if kp1.device.type == "cpu":
+            # The five-point solver can yield ten candidates and the seven-point solver three.  Cap batches by the
+            # resulting score matrix, not just sampled sets, so an explicit large batch cannot allocate O(B * N)
+            # unbounded memory.  The while-loop still draws exactly ``sample_budget`` sets.
+            slots = 10 if self.model_type == "essential" else 3 if self.minimal_sample_size == 7 else 1
+            cap = max(1, _COMPILED_CPU_SCORE_RESIDUALS // (slots * max(num_tc, 1)))
+            first, largest = min(first, cap), min(largest, cap)
+        host = torch.device("cpu")
+        scalars = [torch.tensor([value], dtype=torch.float64, device=host) for value in (self.inl_th, self.confidence)]
+        scalars += [
+            torch.tensor(value, dtype=torch.int64, device=host) for value in (self.sample_budget, first, largest)
+        ]
         if self.seed is None:
-            return program(*inputs)
-        devices = [kp1.device] if kp1.device.type == "cuda" else []
-        with torch.random.fork_rng(devices=devices):
-            # torch.manual_seed also seeds every accelerator. Seed only the generators this call forks.
-            torch.random.default_generator.manual_seed(self.seed)
-            if devices:
-                with torch.cuda.device(kp1.device):
-                    torch.cuda.manual_seed(self.seed)
-            return program(*inputs)
+            # One ordinary global draw chooses this invocation's private stream. Every batch thereafter is generated
+            # by the opaque custom op, so it cannot race a seeded call's RNG isolation.
+            random_seed = torch.randint(0, torch.iinfo(torch.int64).max, (), dtype=torch.int64, device=kp1.device)
+            random_seed = random_seed.to(host)
+        else:
+            # Match Generator.manual_seed's domain while carrying it through the graph as a signed int64 tensor.
+            if isinstance(self.seed, bool) or not isinstance(self.seed, int):
+                raise TypeError("seed must be an integer")
+            if self.seed < -(1 << 63) or self.seed > (1 << 64) - 1:
+                raise ValueError("seed must be within [-2**63, 2**64 - 1]")
+            signed_seed = ((self.seed + (1 << 63)) % (1 << 64)) - (1 << 63)
+            random_seed = torch.tensor(signed_seed, dtype=torch.int64, device=host)
+        scalars.append(random_seed)
+        inputs = (kp1, kp2, *scalars)
+        key = (
+            self.model_type,
+            self.score_type,
+            self.max_lo_iters,
+            self.refine_iters,
+            kp1.dtype,
+            str(kp1.device),
+            torch.get_num_threads(),
+            torch.get_default_dtype(),
+            str(torch.get_default_device()),
+        )
+        program = load_program(key, inputs)
+        return program(*inputs)
 
     def _lm_minimal_models(
         self, x1: torch.Tensor, x2: torch.Tensor, track_origins: bool = False

@@ -49,6 +49,15 @@ extraction, matching and homography quality on CPU, CUDA or MPS;
 
 ### CPU RANSAC base/branch comparison
 
+For a self-contained latency and recovery comparison without downloaded data, run
+`geometry/ransac_compile_synthetic.py --compile --json /tmp/ransac.json` from
+each checkout. It measures H/F7/F8/E public forward calls on fixed noisy scenes,
+with separate repeated medians for each estimator seed. Use `--confidence 1
+--max-samples 2048` to compare equal sample budgets, and `--sample-batch` to
+inspect explicit batch sizes. Compilation and loading are warmed outside the
+timed region. The JSON records the sampling configuration, artifact mode,
+source digests, inlier recall and false positives alongside latency.
+
 Run the same harness from each checkout, using a PhotoTourism NPZ prepared by
 [`ransac.py prepare`](geometry/ransac.py) and a HEB scene HDF5 file:
 

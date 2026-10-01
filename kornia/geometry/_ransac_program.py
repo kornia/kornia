@@ -35,6 +35,7 @@ import inspect
 import os
 import platform
 import sys
+import tempfile
 import threading
 import warnings
 from typing import Callable, Dict, Iterator, Tuple
@@ -78,15 +79,38 @@ MAX_BATCH = 1 << 20
 _SAMPLE_SIZES = {"homography": 4, "fundamental": 7, "fundamental_7pt": 7, "fundamental_8pt": 8, "essential": 5}
 
 
-def _draw_samples(m: int, num_tc: int, batch: int, device: torch.device) -> torch.Tensor:
-    """``batch`` uniform ``m``-subsets of ``range(num_tc)`` from the global generator, as :meth:`RANSAC.sample` draws.
+@torch.library.custom_op("kornia::_ransac_uniform", mutates_args=(), tags=torch.Tag.nondeterministic_seeded)
+def _ransac_uniform(
+    template: torch.Tensor, batch: int, columns: int, seed: torch.Tensor, drawn: torch.Tensor
+) -> torch.Tensor:
+    """Random keys from a per-call generator, opaque to the compiled RANSAC graph."""
+    generator = torch.Generator(device=template.device)
+    # Tensor int64 stores the user seed in two's-complement form. Restore Generator.manual_seed's full unsigned
+    # 64-bit domain before deriving a distinct stream for this batch.
+    generator.manual_seed((seed.item() + drawn.item()) & ((1 << 64) - 1))
+    return torch.rand((batch, columns), dtype=template.dtype, device=template.device, generator=generator)
 
-    Floyd's algorithm on CPU, random-key top-k elsewhere; without PROSAC and without a private generator, which a
-    compiled graph cannot hold (a seeded call forks the global generator instead).
+
+@_ransac_uniform.register_fake
+def _ransac_uniform_fake(
+    template: torch.Tensor, batch: int, columns: int, seed: torch.Tensor, drawn: torch.Tensor
+) -> torch.Tensor:
+    return torch.empty((batch, columns), dtype=template.dtype, device=template.device)
+
+
+def _draw_samples(
+    m: int, num_tc: int, batch: int, device: torch.device, seed: torch.Tensor, drawn: torch.Tensor
+) -> torch.Tensor:
+    """``batch`` uniform ``m``-subsets of ``range(num_tc)`` from a private, reproducible random stream.
+
+    Floyd's algorithm on CPU, random-key top-k elsewhere. The custom op only produces uniform values; all sampling
+    remains in the tensor graph. Its local generator makes seeded concurrent estimators independent of global RNG.
     """
     if device.type != "cpu":
-        return torch.rand(batch, num_tc, device=device).topk(k=m, dim=1, sorted=False).indices
-    rand = torch.rand(batch, m, device=device, dtype=torch.float64)
+        template = torch.empty((), device=device, dtype=torch.float32)
+        return _ransac_uniform(template, batch, num_tc, seed, drawn).topk(k=m, dim=1, sorted=False).indices
+    template = torch.empty((), device=device, dtype=torch.float64)
+    rand = _ransac_uniform(template, batch, m, seed, drawn)
     columns = []
     for i in range(m):
         last = num_tc - m + i
@@ -179,7 +203,8 @@ def _lm_refine(
 def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine_iters: int) -> Callable[..., Tuple]:
     """Return the tensor program of ``RANSAC(model_type, score_type=..., local_optimization="lm")``.
 
-    The program maps ``(kp1, kp2, inl_th, confidence, budget, first_batch, largest_batch)`` -- the correspondences
+    The program maps ``(kp1, kp2, inl_th, confidence, budget, first_batch, largest_batch, random_seed)`` --
+    the correspondences
     ``(N, 2)``, the threshold and confidence as float64 tensors ``(1,)`` and the sample budget and first and largest
     batch as 0-d int64 tensors, all on the host -- to the model ``(3, 3)`` and the inlier mask ``(N,)`` that
     :meth:`~kornia.geometry.ransac.RANSAC._forward_lm` returns for them. Batches double from ``first_batch`` up to
@@ -198,6 +223,7 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
         budget: torch.Tensor,
         first_batch: torch.Tensor,
         largest_batch: torch.Tensor,
+        random_seed: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # One-element threshold and confidence: dynamo would trace 0-d float inputs as Python scalars, which it cannot
         # keep symbolic here, and restart its analysis once with them as tensors.
@@ -215,7 +241,7 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
                 convert_points_to_homogeneous(kp.masked_fill(~finite[:, None], float("nan")))
                 for kp in (kp1_host, kp2_host)
             )
-            t1 = t2 = torch.eye(3, dtype=torch.float64)
+            t1 = t2 = torch.eye(3, dtype=torch.float64, device=host)
             threshold = inl_th.square()
         else:
             x1_host, x2_host, t1, t2, scales = _normalize_correspondences_core(kp1_host, kp2_host, not planar)
@@ -236,7 +262,7 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
             size = current.item()
             torch._check(size >= 1)
             torch._check(size <= MAX_BATCH)
-            indices = _draw_samples(m, num_tc, size, device)
+            indices = _draw_samples(m, num_tc, size, device, random_seed, drawn)
             models = _minimal_models(model_type, x1[indices], x2[indices])
             scores, counts = _scores(models, basis, threshold_work, planar, msac)
             # Insufficient support ranks below every supported model, as in RANSAC._forward_lm; the padding, which
@@ -261,10 +287,10 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
             return drawn + current, batch, max_samples, best_score, pool, pool_scores
 
         state = (
-            torch.zeros((), dtype=torch.int64),
+            torch.zeros((), dtype=torch.int64, device=host),
             first_batch.clone(),
             budget.clone(),
-            torch.full((), -1.0, dtype=torch.float64),
+            torch.full((), -1.0, dtype=torch.float64, device=host),
             pad_models.clone(),
             pad_scores.clone(),
         )
@@ -274,14 +300,16 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
         # RANSAC._forward_lm drops the non-finite correspondences here. Dropping them would leave an unbacked number
         # of points, whose strides inductor cannot lower: they stay as finite stand-ins of weight 0 instead, which
         # adds zeros to the same sums.
-        stand_in = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float64)
+        stand_in = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float64, device=host)
         x1_host = torch.where(finite[:, None], x1_host, stand_in)
         x2_host = torch.where(finite[:, None], x2_host, stand_in)
         weights = finite.to(torch.float64)[None]
         valid = (pool_scores >= 0).to(host)
         # An absent pool slot holds a finite stand-in, which the factorizations of the refinement accept, and is
         # never selected.
-        candidates = torch.where(valid[:, None, None], pool.to(host).double(), torch.eye(3, dtype=torch.float64))
+        candidates = torch.where(
+            valid[:, None, None], pool.to(host).double(), torch.eye(3, dtype=torch.float64, device=host)
+        )
         if max_lo_iters > 0:
             refits = _lm_refine(model_type, candidates, x1_host, x2_host, weights, "truncated", threshold, max_lo_iters)
             # Refits first: a tie goes to the refit, which is fitted to more than a minimal sample.
@@ -317,7 +345,7 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
             model = normalize_transformation(model).to(dtype)
         failed = failed | ~torch.isfinite(model).all()
         # The exact returned matrix, classified in pixel coordinates in float64, as RANSAC._forward_lm does.
-        model64 = torch.where(failed, torch.eye(3, dtype=torch.float64), model.to(torch.float64))
+        model64 = torch.where(failed, torch.eye(3, dtype=torch.float64, device=host), model.to(torch.float64))
         p1 = convert_points_to_homogeneous(kp1_host)
         if planar:
             pixel_errors = _transfer_errors(model64[None], p1, kp2_host)[0]
@@ -334,7 +362,7 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
 
 # ---- compiled programs, in memory and on disk ----
 
-_LOCK = threading.Lock()
+_PROGRAM_LOCK = threading.Lock()
 _PROGRAMS: Dict[Tuple, Callable[..., Tuple]] = {}
 
 
@@ -398,21 +426,27 @@ def _artifact_path(key: Tuple) -> str:
 
 
 def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callable[..., Tuple]:
-    """Return the compiled program of ``key``: ``(model_type, score_type, max_lo_iters, refine_iters, dtype, device)``.
+    """Return the compiled program of ``key``.
+
+    The key contains the model configuration, tensor dispatch configuration, and the ambient thread/default-dtype
+    settings which Dynamo guards.  Autocast is instead disabled while the program is traced and called, so an
+    estimator traced outside autocast is usable inside it too.
 
     Compiled once per process. The compiled function is also saved next to inductor's own cache
     (``TORCHINDUCTOR_CACHE_DIR``) and loaded from there by later processes, which then skip tracing. The number of
     correspondences is dynamic, so the program serves every ``N``. ``KORNIA_RANSAC_AOT=0`` disables the artifact.
     """
-    with _LOCK:
+    with _PROGRAM_LOCK:
         program = _PROGRAMS.get(key)
         if program is not None:
             return program
         compiled = torch.compile(build_lm_program(*key[:4]), fullgraph=True)
-        program = _traced(compiled)
+        traced = _traced(compiled)
+        program = traced
         if os.environ.get("KORNIA_RANSAC_AOT", "1") != "0":
             try:
-                program = _load_or_save_artifact(key, compiled, _mark_dynamic(example_inputs))
+                artifact = _load_or_save_artifact(key, compiled, _mark_dynamic(example_inputs))
+                program = _artifact_or_traced(artifact, traced)
             except Exception as error:  # noqa: BLE001 - the AOT API is experimental; the traced program is equivalent
                 warnings.warn(
                     f"RANSAC(compile=True) could not use its on-disk artifact: {type(error).__name__}: {error}",
@@ -438,8 +472,44 @@ def _traced(compiled: Callable[..., Tuple]) -> Callable[..., Tuple]:
     """``compiled`` called with the program's dynamo settings and dynamic correspondences."""
 
     def run(*args: torch.Tensor) -> Tuple:
-        with _dynamo_config():
+        with _compiled_autocast_disabled(), _dynamo_config():
             return compiled(*_mark_dynamic(args))
+
+    return run
+
+
+@contextlib.contextmanager
+def _compiled_autocast_disabled() -> Iterator[None]:
+    """Give a compiled program one autocast-free dispatch key on both trace and invocation."""
+    # A CUDA program is still guarded by CPU autocast state (and vice versa), so disable both rather than only the
+    # input device's context. Disabled CUDA autocast is valid on CPU-only builds.
+    with torch.autocast(device_type="cpu", enabled=False), torch.autocast(device_type="cuda", enabled=False):
+        yield
+
+
+def _artifact_or_traced(artifact: Callable[..., Tuple], traced: Callable[..., Tuple]) -> Callable[..., Tuple]:
+    """Use an AOT artifact until an ambient guard rejects it, then retain the equivalent traced program."""
+    rejected = False
+
+    def run(*args: torch.Tensor) -> Tuple:
+        nonlocal rejected
+        if rejected:
+            return traced(*args)
+        try:
+            with _compiled_autocast_disabled():
+                return artifact(*args)
+        except (AssertionError, RuntimeError) as error:
+            if "GuardManager" not in str(error):
+                raise
+            # AOT artifacts encode guards that are not all exposed in their filename.  The traced program has the
+            # same tensor semantics and can safely specialize for this process instead of making compile=True fail.
+            rejected = True
+            warnings.warn(
+                f"RANSAC(compile=True) artifact was incompatible at invocation; using the traced program: "
+                f"{type(error).__name__}: {error}",
+                stacklevel=3,
+            )
+            return traced(*args)
 
     return run
 
@@ -453,13 +523,22 @@ def _load_or_save_artifact(
             return torch.compiler.load_compiled_function(handle)
     from torch._dynamo.exc import TensorifyScalarRestartAnalysis
 
-    with _dynamo_config():
+    with _compiled_autocast_disabled(), _dynamo_config():
         try:
             artifact = compiled.aot_compile((example_inputs, {}))  # type: ignore[attr-defined]
         except TensorifyScalarRestartAnalysis:
             # torch.compile restarts its analysis once when a Python scalar cannot become a tensor; aot_compile
             # (torch 2.14) raises instead, and succeeds when called again.
             artifact = compiled.aot_compile((example_inputs, {}))  # type: ignore[attr-defined]
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    artifact.save_compiled_function(path)
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".tmp-", suffix=".bin", dir=directory)
+    os.close(descriptor)
+    try:
+        artifact.save_compiled_function(temporary)
+        # Readers either find no artifact or a complete one.  Concurrent compilers may replace equivalent files.
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
     return artifact

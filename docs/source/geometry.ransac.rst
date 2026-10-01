@@ -189,14 +189,27 @@ next to inductor's cache (``TORCHINDUCTOR_CACHE_DIR``); later processes load it
 in about a second. ``KORNIA_RANSAC_AOT=0`` disables that file, and each process
 then compiles again, in 17 to 35 s once inductor's kernels are cached.
 Ordinary calls and calls under ``torch.inference_mode()`` share the same artifact.
+Compiled arithmetic also runs with autocast disabled, using the input's working
+precision and float64 host refinement. The artifact cache distinguishes CPU
+thread counts, default dtypes and default devices; changing these settings may require another
+first-call compilation. On CPU, large explicit sampling batches are split so
+scoring holds at most ``2**22`` residuals per batch (or one hypothesis when
+``N`` alone exceeds that limit). This keeps the total sample budget and can
+check confidence stopping earlier than the requested batch size would.
+Random values are drawn by a sampler primitive with a private generator; the
+Floyd sampler or random-key top-k remains inside the graph. Seeded calls leave
+the global generators untouched, including during concurrent calls. An unseeded
+call draws one seed from the input device's global generator, then uses its own
+stream for the sampling batches.
 On CUDA the loop counters and stopping bound stay on the host, with a transfer
 of the leading score and inlier count after each batch; compilation therefore
 does not remove every host-device synchronization.
 
-On that CPU (4 threads, synthetic scenes of 500 to 5000 correspondences with
-20% or 50% inliers, averaged over seeds) a compiled call is 1.2 to 1.7 times
+For the initial implementation at revision ``ad91a621``, on that CPU
+(4 threads, synthetic scenes of 500 to 5000 correspondences with
+20% or 50% inliers, averaged over seeds), compiled calls were 1.2 to 1.7 times
 faster for homographies, 1.6 to 2.4 times for fundamental matrices and 1.1 to
-1.6 times for essential matrices, whose five-point solver gains nothing: its
+1.6 times for essential matrices, whose five-point solver gained nothing: its
 time goes to LAPACK factorizations and the eigenvalues of the companion matrix.
 The compiled call runs the same algorithm with its own random stream, so a
 seeded call is reproducible but differs from the eager one. On synthetic
@@ -205,6 +218,9 @@ recall was within 0.015 of eager's for homographies and essential matrices and
 within 0.03 for fundamental matrices, where eager runs with other seeds differ
 from each other as much (60 seeds per case at 20% and 30% inliers). PROSAC
 sampling, ``degensac=True`` and ``local_optimization="dlt"`` are not supported.
+The current sampler uses a private generator and a different seeded stream;
+use ``benchmarks/geometry/ransac_compile_synthetic.py`` to measure current
+latency and recovery, including ``--confidence 1`` for equal sample budgets.
 
 Dominant planes
 ---------------

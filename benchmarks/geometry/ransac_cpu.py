@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import sys
 from collections import defaultdict
 from functools import partial
@@ -202,10 +203,13 @@ def run(args: argparse.Namespace) -> None:
                 "kornia/geometry/homography.py",
                 "kornia/geometry/epipolar/fundamental.py",
                 "kornia/geometry/epipolar/essential.py",
+                "kornia/geometry/_ransac_program.py",
             )
         },
         units="pairs/s",
         dtype="float32",
+        compile=args.compile,
+        artifact_enabled=os.environ.get("KORNIA_RANSAC_AOT", "1") != "0",
         models=models,
         budgets=args.budgets,
         seeds=args.seeds,
