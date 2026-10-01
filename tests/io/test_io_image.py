@@ -269,6 +269,22 @@ class TestWiderThanUint8Decodes:
         assert loaded.dtype == dtype
         assert torch.equal(loaded, img)
 
+    def test_unchanged_loads_a_16_bit_grayscale_png(self, tmp_path):
+        img = torch.randint(0, 65535, (1, 4, 5), dtype=torch.int32).to(torch.uint16)
+        path = tmp_path / "image.png"
+        write_image(path, img)
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.dtype == torch.uint16
+        assert torch.equal(loaded, img)
+
+    def test_unchanged_loads_a_16_bit_rgba_png(self, tmp_path):
+        img_np = np.random.randint(0, 65535, (4, 5, 4)).astype(np.uint16)  # noqa: NPY002
+        path = tmp_path / "image.png"
+        kornia_rs.io.write_image_png_u16(str(path), img_np, mode="rgba")
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.dtype == torch.uint16
+        assert torch.equal(loaded, torch.from_numpy(img_np).permute(2, 0, 1))
+
     @pytest.mark.parametrize("load_type", [ImageLoadType.RGB8, ImageLoadType.GRAY8, ImageLoadType.RGB32])
     def test_eight_bit_load_types_reject_a_float_decode(self, tmp_path, load_type):
         path = tmp_path / "image.tiff"
