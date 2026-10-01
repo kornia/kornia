@@ -97,12 +97,17 @@ class ImageModuleMixIn:
         self,
         input_names_to_handle: Optional[List[Any]] = None,
         output_type: Literal["pt", "numpy", "pil"] = "pt",
+        *,
+        cache_output: bool = False,
     ) -> Callable[[Any], Any]:
         """Convert input and output types for a function.
 
         Args:
-            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            input_names_to_handle: List of input names to convert.
+                If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
+                path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
+            cache_output: Cache detached tensor outputs before converting their type, for visualization helpers.
 
         Returns:
             Callable: Decorated function with converted input and output types.
@@ -114,12 +119,16 @@ class ImageModuleMixIn:
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
-                # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:
-                    # Convert all args to tensors
-                    args = tuple(self.to_tensor(arg) if self._is_valid_arg(arg) else arg for arg in args)
-                    # Convert all kwargs to tensors
-                    kwargs = {k: self.to_tensor(v) if self._is_valid_arg(v) else v for k, v in kwargs.items()}
+                    # Convert image-like arguments while treating only the first positional string as an image path.
+                    args = tuple(
+                        self.to_tensor(arg) if (i == 0 or not isinstance(arg, str)) and self._is_valid_arg(arg) else arg
+                        for i, arg in enumerate(args)
+                    )
+                    kwargs = {
+                        k: self.to_tensor(v) if not isinstance(v, str) and self._is_valid_arg(v) else v
+                        for k, v in kwargs.items()
+                    }
                 else:
                     # Convert specified args to tensors
                     args = list(args)  # type:ignore
@@ -132,7 +141,10 @@ class ImageModuleMixIn:
                             kwargs[name] = self.to_tensor(value)
 
                 # Call the actual forward method and convert its outputs to the desired type
-                return self._convert_output(func(*args, **kwargs), output_type)
+                tensor_outputs = func(*args, **kwargs)
+                if cache_output:
+                    self._store_output_image(self._convert_output(tensor_outputs, "pt"), "pt")
+                return self._convert_output(tensor_outputs, output_type)
 
             return wrapper
 
