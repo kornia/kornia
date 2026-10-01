@@ -372,7 +372,10 @@ def edge_aware_blur_pool2d(
     kernel_size_y, kernel_size_x = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
     blur_pad_y, blur_pad_x = max(2, (kernel_size_y - 1) // 2), max(2, (kernel_size_x - 1) // 2)
     blur_input = _reflect_pad2d(input, blur_pad_y, blur_pad_x)
-    blurred_input = blur_pool2d(blur_input, kernel_size=kernel_size, stride=1)  # blurry version of the input
+    # The 2D Pascal kernel sum can overflow half precision for larger kernels
+    # (e.g. 9x9 sums to 65536), producing an all-zero normalized kernel.
+    blur_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
+    blurred_input = blur_pool2d(blur_input.to(dtype=blur_dtype), kernel_size=kernel_size, stride=1).to(input.dtype)
 
     # calculate the edges (add epsilon to avoid taking the log of 0)
     log_input, log_thresh = (edge_input + epsilon).log2(), (torch.tensor(edge_threshold)).log2()
