@@ -16,16 +16,89 @@
 #
 from __future__ import annotations
 
+import re
 from functools import partial
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 import torch
+import torch.nn.functional as F
 
 from kornia.core._compat import torch_version
+from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.filters import GuidedBlur, box_blur, guided_blur
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+
+# The guided filter is ill-conditioned in half precision: the window variance is E[g^2] - E[g]^2, a cancellation,
+# and the coefficient cov / (var + eps) amplifies its error by up to 1 / eps. Worst absolute error against float64
+# over 150 seeds: 0.008 (float16) and 0.092 (bfloat16) at eps=0.1, 0.0013 and 0.0102 at eps=1.0, 42 (bfloat16) at
+# eps=0.01; float32 2.4e-7 at eps=1.0. So the half dtypes use eps=1.0 and a tolerance a few times that error on
+# non-divisible sizes, float32 and float64 eps=0.1 and the harness's. bfloat16's 0.05 still catches only gross errors
+# (an align_corners=True mutant slips through most of them); float16's 0.01 catches it.
+_HALF_TOLERANCE = {torch.float16: 0.01, torch.bfloat16: 0.05}
+
+
+def _value_eps(dtype):
+    return 1.0 if dtype in _HALF_TOLERANCE else 0.1
+
+
+def _fast_guided_filter_reference(guidance, input, kernel_size, eps, subsample, border_type="reflect"):
+    """He and Sun, "Fast Guided Filter" (arXiv:1505.00996), Algorithm 1, per pixel in float64 on the CPU.
+
+    The coefficient maps ``a`` (``C x C_in`` per pixel) and ``b`` are solved on the subsampled grid, window-averaged and
+    resized back to the full ``(H, W)`` of the input, which is the contract for any ``H`` and ``W``.
+    """
+    guidance, input = guidance.cpu().double(), input.cpu().double()
+    (_, C, H, W), C_in = guidance.shape, input.shape[1]
+    size = (max(H // subsample, 1), max(W // subsample, 1))
+    g = F.interpolate(guidance, size=size, mode="nearest")
+    p = F.interpolate(input, size=size, mode="nearest")
+    kernel_size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
+    window = tuple((k - 1) // subsample + 1 for k in kernel_size)
+
+    def mean(x):
+        return box_blur(x, window, border_type)
+
+    mean_g, mean_p = mean(g), mean(p)
+    corr_gg = mean(torch.einsum("bihw,bjhw->bijhw", g, g).flatten(1, 2)).unflatten(1, (C, C))
+    corr_gp = mean(torch.einsum("bihw,bjhw->bijhw", g, p).flatten(1, 2)).unflatten(1, (C, C_in))
+    var_gg = corr_gg - torch.einsum("bihw,bjhw->bijhw", mean_g, mean_g)
+    cov_gp = corr_gp - torch.einsum("bihw,bjhw->bijhw", mean_g, mean_p)
+    a = torch.linalg.solve(
+        var_gg.permute(0, 3, 4, 1, 2) + eps * torch.eye(C, dtype=g.dtype), cov_gp.permute(0, 3, 4, 1, 2)
+    )
+    b = mean_p.permute(0, 2, 3, 1) - torch.einsum("bhwc,bhwcq->bhwq", mean_g.permute(0, 2, 3, 1), a)
+    mean_a = mean(a.permute(0, 3, 4, 1, 2).flatten(1, 2))
+    mean_b = mean(b.permute(0, 3, 1, 2))
+    mean_a = F.interpolate(mean_a, size=(H, W), mode="bilinear").unflatten(1, (C, C_in))
+    mean_b = F.interpolate(mean_b, size=(H, W), mode="bilinear")
+    return mean_b + torch.einsum("bchw,bcqhw->bqhw", guidance, mean_a)
+
+
+def _scale_factor_interpolate(x, size=None, scale_factor=None, mode=None, **kwargs):
+    """``interpolate`` as the filter called it before ``size=``: with ``scale_factor`` (``1 / s`` down, ``s`` up).
+
+    Stands in for ``kornia.filters.guided.interpolate``. A call that already passes ``scale_factor`` goes through
+    untouched; a ``size=`` call is turned into the call that was made before, for the same integer ratio, so the two can
+    be compared bit for bit: nearest with ``1 / s`` when it shrinks, bilinear with ``s`` when it grows. The mode of the
+    call under test is deliberately not taken over.
+    """
+    if size is None:
+        return F.interpolate(x, scale_factor=scale_factor, mode=mode, **kwargs)
+    assert not kwargs
+    (h, w), (H, W) = x.shape[-2:], size
+    ratio = max(h, H) // min(h, H)
+    assert (
+        ratio > 1
+        and ratio * min(h, H) == max(h, H)
+        and ratio * min(w, W) == max(w, W)
+        and max(w, W) // min(w, W) == ratio
+    )
+    if H < h:
+        return F.interpolate(x, scale_factor=1 / ratio, mode="nearest")
+    return F.interpolate(x, scale_factor=ratio, mode="bilinear")
 
 
 class TestGuidedBlur(BaseTester):
@@ -358,3 +431,212 @@ class TestGuidedBlur(BaseTester):
             self.assert_close(out, expected, rtol=4 * torch.finfo(dtype).eps, atol=4 * torch.finfo(dtype).eps)
         else:
             self.assert_close(out, expected)
+
+    @staticmethod
+    def _skip_without_padding(device, dtype, border_type):
+        supported = {"reflect": supports_reflect_padding, "replicate": supports_replicate_padding}
+        if border_type in supported and not supported[border_type](device, dtype):
+            pytest.skip(f"this torch build has no {border_type} padding kernel for {dtype} on {device.type}")
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("subsample", [2, 3])
+    @pytest.mark.parametrize("shape", [(7, 10), (9, 11), (8, 13), (13, 8)])
+    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
+    def test_subsample_size_not_divisible(self, guide_dim, subsample, shape, kernel_size, device, dtype):
+        """Any ``H`` and ``W`` work with ``subsample`` and the output has the input's size.
+
+        Before the fix the upsampled coefficient maps came out ``floor(H / s) * s`` pixels tall and wide, and the final
+        blend died with a raw broadcast error (1-channel guidance) or an ``einsum`` error (multi-channel guidance).
+        The values are checked against the fast guided filter of the paper, resized to the full size.
+        """
+        self._skip_without_padding(device, dtype, "reflect")
+        H, W = shape
+        guide = torch.rand(2, guide_dim, H, W, device=device, dtype=dtype)
+        inp = torch.rand(2, 2, H, W, device=device, dtype=dtype)
+
+        eps = _value_eps(dtype)
+        actual = guided_blur(guide, inp, kernel_size, eps, subsample=subsample)
+
+        assert actual.shape == inp.shape
+        assert actual.dtype == dtype
+        expected = _fast_guided_filter_reference(guide, inp, kernel_size, eps, subsample).to(device=device, dtype=dtype)
+        tolerance = _HALF_TOLERANCE.get(dtype)
+        self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
+        # the module forwards the same argument
+        self.assert_close(GuidedBlur(kernel_size, eps, subsample=subsample)(guide, inp), actual)
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("subsample", [2, 3])
+    @pytest.mark.parametrize("shape", [(1, 10), (10, 1), (1, 1), (2, 9), (9, 2)])
+    def test_subsample_larger_than_an_axis(self, guide_dim, subsample, shape, device, dtype):
+        """An axis shorter than ``subsample`` is subsampled to one pixel, not to none.
+
+        ``replicate`` padding, because ``reflect`` cannot pad a one-pixel axis with any window larger than one pixel,
+        with or without ``subsample``.
+        """
+        self._skip_without_padding(device, dtype, "replicate")
+        H, W = shape
+        guide = torch.rand(1, guide_dim, H, W, device=device, dtype=dtype)
+        inp = torch.rand(1, 2, H, W, device=device, dtype=dtype)
+
+        eps = _value_eps(dtype)
+        actual = guided_blur(guide, inp, 5, eps, border_type="replicate", subsample=subsample)
+
+        assert actual.shape == inp.shape
+        assert torch.isfinite(actual).all()
+        expected = _fast_guided_filter_reference(guide, inp, 5, eps, subsample, "replicate").to(
+            device=device, dtype=dtype
+        )
+        tolerance = _HALF_TOLERANCE.get(dtype)
+        self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("shape,subsample", [((8, 12), 2), ((12, 8), 2), ((9, 12), 3), ((16, 8), 4), ((6, 6), 6)])
+    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
+    def test_subsample_divisible_size_is_unchanged(self, guide_dim, shape, subsample, kernel_size, device, dtype):
+        """Sizes that worked before the resize fix give the same bits: ``size=`` and ``scale_factor=`` agree."""
+        self._skip_without_padding(device, dtype, "reflect")
+        H, W = shape
+        guide = torch.rand(2, guide_dim, H, W, device=device, dtype=dtype)
+        inp = torch.rand(2, 3, H, W, device=device, dtype=dtype)
+
+        actual = guided_blur(guide, inp, kernel_size, 0.01, subsample=subsample)
+        with patch("kornia.filters.guided.interpolate", side_effect=_scale_factor_interpolate) as scale_factor_call:
+            expected = guided_blur(guide, inp, kernel_size, 0.01, subsample=subsample)
+
+        assert scale_factor_call.call_count == 4  # guidance and input down, the two coefficient maps up
+        assert torch.equal(actual, expected)
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    def test_subsample_divisible_size_keeps_the_values_from_before_size_resize(self, guide_dim, device, dtype):
+        self._skip_without_padding(device, dtype, "replicate")
+        guide = torch.tensor(
+            [[11, 0, 7, 1, 13, 14], [7, 14, 14, 12, 2, 0], [10, 4, 11, 8, 3, 1], [14, 6, 3, 2, 6, 4]],
+            device=device,
+            dtype=dtype,
+        ).view(1, 1, 4, 6)
+        inp = torch.tensor(
+            [[15, 12, 8, 7, 14, 10], [0, 7, 6, 2, 5, 14], [10, 5, 12, 1, 6, 15], [13, 1, 8, 13, 4, 9]],
+            device=device,
+            dtype=dtype,
+        ).view(1, 1, 4, 6)
+        if guide_dim == 3:
+            guide = torch.cat([guide, guide.flip(-1), guide.flip(-2)], dim=1)
+        expected = {
+            # Generated with ``guided_blur(guide / 16, inp / 16, 3, 0.01, border_type="replicate", subsample=2)`` in
+            # float64 on kornia 4df7b3040, which resized by ``scale_factor`` (guide: 11, 0, 7, ... as above).
+            1: [
+                [0.7266702, 0.3351883, 0.5368115, 0.3295509, 0.6382735, 0.6360668],
+                [0.5934205, 0.7918876, 0.7382599, 0.6238963, 0.3651183, 0.3326832],
+                [0.6852125, 0.4912689, 0.6089832, 0.4800173, 0.3805514, 0.3665639],
+                [0.7858949, 0.5469661, 0.4165676, 0.3695447, 0.3933863, 0.375],
+            ],
+            3: [
+                [0.7919061, 0.4808834, 0.4991143, 0.3269996, 0.624895, 0.5421822],
+                [0.6066366, 0.6224128, 0.6795592, 0.5507318, 0.3280907, 0.3211122],
+                [0.5977503, 0.6155415, 0.6254567, 0.505276, 0.3778669, 0.354401],
+                [0.6942412, 0.4737252, 0.4527047, 0.3636655, 0.4088435, 0.375],
+            ],
+        }[guide_dim]
+        expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 1, 4, 6)
+
+        actual = guided_blur(guide / 16, inp / 16, 3, 0.01, border_type="replicate", subsample=2)
+
+        # measured against float64 on this fixture: 5e-4 for float16, 1.1e-2 for bfloat16
+        tolerance = {torch.float16: 0.01, torch.bfloat16: 0.05}.get(dtype)
+        self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize(
+        "subsample,error",
+        [
+            (0, BaseError),
+            (-1, BaseError),
+            (True, BaseError),
+            (False, BaseError),
+            (1.0, TypeCheckError),
+            (1.5, TypeCheckError),
+            (2.0, TypeCheckError),
+            (np.float64(2.0), TypeCheckError),
+            (np.True_, TypeCheckError),
+            ("2", TypeCheckError),
+            (None, TypeCheckError),
+        ],
+    )
+    def test_exception_subsample_not_a_positive_int(self, guide_dim, subsample, error):
+        """``subsample`` is a positive ``int``: a value outside the range raises ``BaseError``, a non-integer
+        ``TypeCheckError``, and the message shows the value.
+
+        Before the check, with 1-channel guidance ``0``, ``-1``, ``False``, ``True``, ``1.0`` and ``0.5`` ran as no
+        subsampling, and on images of 8 x 8 and up a float above 1 ran as that factor where the round trip lands on
+        ``H`` and ``W`` (``2.0`` on 8 x 12, ``1.5`` on 12 x 12) and failed at the final blend with a broadcast
+        ``RuntimeError`` otherwise. With multi-channel guidance ``0``, ``-1`` and ``False`` failed in ``view`` with a
+        ``RuntimeError``, ``True`` ran as 1, and on images of 8 x 8 and up every float failed in ``view`` with a
+        ``TypeError``. On a tiny image a float failed earlier, in ``interpolate`` (``1.5`` on 1 x 10) or in the reflect
+        ``pad`` (``2.0`` on 2 x 12). ``"2"`` and ``None`` failed in the comparison ``subsample > 1`` with a
+        ``TypeError``, with either guidance.
+        """
+        guide = torch.rand(1, guide_dim, 8, 12)
+        inp = torch.rand(1, 2, 8, 12)
+        message = rf"`subsample` must be a positive integer\. Got: {re.escape(repr(subsample))}"
+
+        # ``TypeCheckError`` is a ``BaseError``: the exact type tells the type check from the range check
+        with pytest.raises(error, match=message) as excinfo:
+            guided_blur(guide, inp, 5, 0.1, subsample=subsample)
+        assert type(excinfo.value) is error
+        # the module rejects it when it is built, not on the first call
+        with pytest.raises(error, match=message) as excinfo:
+            GuidedBlur(5, 0.1, subsample=subsample)
+        assert type(excinfo.value) is error
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("shape", [(8, 12), (7, 10)])
+    def test_subsample_one_is_no_subsampling(self, guide_dim, shape, device, dtype):
+        self._skip_without_padding(device, dtype, "reflect")
+        guide = torch.rand(1, guide_dim, *shape, device=device, dtype=dtype)
+        inp = torch.rand(1, 2, *shape, device=device, dtype=dtype)
+
+        actual = guided_blur(guide, inp, 5, 0.01, subsample=1)
+
+        assert torch.equal(actual, guided_blur(guide, inp, 5, 0.01))
+        assert torch.equal(GuidedBlur(5, 0.01, subsample=1)(guide, inp), actual)
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize(
+        "subsample,kernel_size",
+        [(np.int64(2), 5), (np.int32(3), 5), (np.uint8(2), 5), (np.uint8(2), 301)],
+        ids=["int64", "int32", "uint8", "uint8-wide-window"],
+    )
+    def test_subsample_accepts_an_integer_that_is_not_a_python_int(
+        self, guide_dim, subsample, kernel_size, device, dtype
+    ):
+        """``numpy`` integers worked before the check, and still do.
+
+        ``guided_blur`` continues with ``int(subsample)``: ``(301 - 1) // numpy.uint8(2)`` is 300, which does not fit
+        the ``uint8`` the window arithmetic would otherwise stay in (``OverflowError``).
+        """
+        guide = torch.rand(1, guide_dim, 64, 64, device=device, dtype=dtype)
+        inp = torch.rand(1, 2, 64, 64, device=device, dtype=dtype)
+
+        actual = guided_blur(guide, inp, kernel_size, 0.01, border_type="constant", subsample=subsample)
+
+        assert torch.equal(
+            actual, guided_blur(guide, inp, kernel_size, 0.01, border_type="constant", subsample=int(subsample))
+        )
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    def test_gradcheck_subsample_size_not_divisible(self, guide_dim, device) -> None:
+        guide = torch.rand(1, guide_dim, 7, 9, device=device, dtype=torch.float64)
+        img = torch.rand(1, 2, 7, 9, device=device, dtype=torch.float64)
+        self.gradcheck(partial(guided_blur, subsample=2), (guide, img, 5, 0.1), nondet_tol=1e-4)
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("shape", [(9, 11), (7, 10)])
+    def test_dynamo_subsample_size_not_divisible(self, guide_dim, shape, device, dtype, torch_optimizer) -> None:
+        self._skip_without_padding(device, dtype, "reflect")
+        guide = torch.rand(2, guide_dim, *shape, device=device, dtype=dtype)
+        data = torch.rand(2, 3, *shape, device=device, dtype=dtype)
+        op = GuidedBlur(5, 0.1, subsample=2)
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(guide, data), op_optimized(guide, data))

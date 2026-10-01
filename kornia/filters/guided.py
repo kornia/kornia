@@ -17,14 +17,23 @@
 
 from __future__ import annotations
 
+from numbers import Integral
+
 import torch
 from torch import nn
 from torch.nn.functional import interpolate
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 from .blur import box_blur
 from .kernels import _unpack_2d_ks
+
+
+def _check_subsample(subsample: int) -> None:
+    msg = f"`subsample` must be a positive integer. Got: {subsample!r}"
+    KORNIA_CHECK_TYPE(subsample, Integral, f"{msg} ({type(subsample).__name__})")
+    # ``bool`` is an ``int``, and ``subsample=True`` would otherwise run as 1.
+    KORNIA_CHECK(not isinstance(subsample, bool) and subsample >= 1, msg)
 
 
 def _preprocess_fast_guided_blur(
@@ -32,9 +41,11 @@ def _preprocess_fast_guided_blur(
 ) -> tuple[torch.Tensor, torch.Tensor, tuple[int, int]]:
     ky, kx = _unpack_2d_ks(kernel_size)
     if subsample > 1:
-        s = 1 / subsample
-        guidance_sub = interpolate(guidance, scale_factor=s, mode="nearest")
-        input_sub = guidance_sub if input is guidance else interpolate(input, scale_factor=s, mode="nearest")
+        # ``floor(H / s)`` rows, but never none: an axis shorter than ``s`` keeps one pixel. For ``H`` and ``W`` that
+        # are multiples of ``s``, ``size=`` selects the same pixels as ``scale_factor=1 / s``.
+        size = (max(guidance.shape[-2] // subsample, 1), max(guidance.shape[-1] // subsample, 1))
+        guidance_sub = interpolate(guidance, size=size, mode="nearest")
+        input_sub = guidance_sub if input is guidance else interpolate(input, size=size, mode="nearest")
         ky, kx = ((k - 1) // subsample + 1 for k in (ky, kx))
     else:
         guidance_sub = guidance
@@ -77,8 +88,9 @@ def _guided_blur_grayscale_guidance(
     mean_b = box_blur(b, kernel_size, border_type, separable=separable)
 
     if subsample > 1:
-        mean_a = interpolate(mean_a, scale_factor=subsample, mode="bilinear")
-        mean_b = interpolate(mean_b, scale_factor=subsample, mode="bilinear")
+        # back to the input's own size: it is ``subsample`` times the subsampled one only if it is a multiple of it
+        mean_a = interpolate(mean_a, size=guidance.shape[-2:], mode="bilinear")
+        mean_b = interpolate(mean_b, size=guidance.shape[-2:], mode="bilinear")
 
     return torch.addcmul(mean_b, mean_a, guidance)
 
@@ -135,9 +147,9 @@ def _guided_blur_multichannel_guidance(
     mean_b = box_blur(b.permute(0, 3, 1, 2), kernel_size, border_type, separable=separable)
 
     if subsample > 1:
-        mean_a = interpolate(mean_a, scale_factor=subsample, mode="bilinear")
-        mean_b = interpolate(mean_b, scale_factor=subsample, mode="bilinear")
-    mean_a = mean_a.view(B, C, -1, H * subsample, W * subsample)
+        mean_a = interpolate(mean_a, size=guidance.shape[-2:], mode="bilinear")
+        mean_b = interpolate(mean_b, size=guidance.shape[-2:], mode="bilinear")
+    mean_a = mean_a.view(B, C, -1, *guidance.shape[-2:])
 
     # torch.einsum might not be contiguous, thus mean_b is the first argument
     return mean_b + torch.einsum("BCHW,BCcHW->BcHW", guidance, mean_a)
@@ -167,12 +179,21 @@ def guided_blur(
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
+        subsample: subsampling factor for Fast Guided filtering, a positive integer (a ``bool`` is rejected).
+          Guidance and input are subsampled by nearest neighbour to ``max(H // subsample, 1)`` rows and
+          ``max(W // subsample, 1)`` columns, row ``i`` taking pixel ``floor(i * H / rows)``: every ``subsample``-th
+          pixel when ``H`` is a multiple of ``subsample`` (likewise ``W``), and a single pixel, the first, on an axis
+          shorter than ``subsample``. ``H`` and ``W`` need not be multiples of it: the coefficient maps are resized
+          back to the size of the input. Default: 1 (no subsampling)
         separable: use two one-dimensional box-filter passes, reducing work for
           large windows. Default: False
 
     Returns:
         the blurred torch.Tensor with same shape as `input` :math:`(B, C, H, W)`.
+
+    Raises:
+        TypeCheckError: if ``subsample`` is not an integer (NumPy integers are accepted).
+        BaseError: if ``subsample`` is not positive, or is a ``bool``.
 
     Examples:
         >>> guidance = torch.rand(2, 3, 5, 5)
@@ -184,6 +205,10 @@ def guided_blur(
     """
     KORNIA_CHECK_IS_TENSOR(guidance)
     KORNIA_CHECK_SHAPE(guidance, ["B", "C", "H", "W"])
+    _check_subsample(subsample)
+    # A NumPy integer passes the check. Its arithmetic stays in its own dtype, so ``(k - 1) // subsample + 1`` can
+    # overflow it (``numpy.uint8(2)`` with ``kernel_size=301``): continue with a Python ``int``.
+    subsample = int(subsample)
     if input is not guidance:
         KORNIA_CHECK_IS_TENSOR(input)
         KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -225,12 +250,21 @@ class GuidedBlur(nn.Module):
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
+        subsample: subsampling factor for Fast Guided filtering, a positive integer (a ``bool`` is rejected).
+          Guidance and input are subsampled by nearest neighbour to ``max(H // subsample, 1)`` rows and
+          ``max(W // subsample, 1)`` columns, row ``i`` taking pixel ``floor(i * H / rows)``: every ``subsample``-th
+          pixel when ``H`` is a multiple of ``subsample`` (likewise ``W``), and a single pixel, the first, on an axis
+          shorter than ``subsample``. ``H`` and ``W`` need not be multiples of it: the coefficient maps are resized
+          back to the size of the input. Default: 1 (no subsampling)
         separable: use two one-dimensional box-filter passes, reducing work for
           large windows. Default: False
 
     Returns:
         the blurred input torch.Tensor.
+
+    Raises:
+        TypeCheckError: if ``subsample`` is not an integer (NumPy integers are accepted).
+        BaseError: if ``subsample`` is not positive, or is a ``bool``. Both are raised by the constructor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
@@ -255,6 +289,7 @@ class GuidedBlur(nn.Module):
         separable: bool = False,
     ) -> None:
         super().__init__()
+        _check_subsample(subsample)
         self.kernel_size = kernel_size
         self.eps = eps
         self.border_type = border_type
