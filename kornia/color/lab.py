@@ -205,7 +205,7 @@ class LabToRgb(nn.Module):
     See the Convention block on :func:`lab_to_rgb`.
 
     Returns:
-        RGB version of the image, clipped to :math:`[0, 1]`.
+        RGB version of the image, clipped to :math:`[0, 1]` unless ``clip`` is False.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
