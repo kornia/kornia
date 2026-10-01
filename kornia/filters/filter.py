@@ -167,7 +167,7 @@ def filter2d(
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
-    input = input.view(-1, tmp_kernel.size(0), input.size(-2), input.size(-1))
+    input = input.reshape(-1, tmp_kernel.size(0), input.size(-2), input.size(-1))
 
     # convolve the tensor with the kernel.
     output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
@@ -352,7 +352,7 @@ def filter3d(
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, depth, height, width)
-    input_pad = input_pad.view(-1, tmp_kernel.size(0), input_pad.size(-3), input_pad.size(-2), input_pad.size(-1))
+    input_pad = input_pad.reshape(-1, tmp_kernel.size(0), input_pad.size(-3), input_pad.size(-2), input_pad.size(-1))
 
     # convolve the tensor with the kernel.
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)

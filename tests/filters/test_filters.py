@@ -394,6 +394,25 @@ class TestFilter2D(BaseTester):
         assert actual.is_contiguous()
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("layout", ["channels_last", "batch_transposed", "expanded_batch"])
+    def test_per_sample_kernel_on_a_non_contiguous_input(self, layout, padding, device, dtype):
+        """One kernel per sample merges the batch and channel axes, whatever the input strides are."""
+        kernel = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        if layout == "channels_last":
+            inp = torch.rand(2, 3, 6, 7, device=device, dtype=dtype).contiguous(memory_format=torch.channels_last)
+        elif layout == "batch_transposed":
+            inp = torch.rand(3, 2, 6, 7, device=device, dtype=dtype).transpose(0, 1)
+        else:
+            inp = torch.rand(1, 3, 6, 7, device=device, dtype=dtype).expand(2, -1, -1, -1)
+        assert not inp.is_contiguous()
+
+        actual = filter2d(inp, kernel, padding=padding)
+        self.assert_close(actual, filter2d(inp.contiguous(), kernel, padding=padding))
+        for i in range(2):  # sample i is filtered with kernel i
+            expected = filter2d(inp[i : i + 1].contiguous(), kernel[i : i + 1], padding=padding)
+            self.assert_close(actual[i : i + 1], expected)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_separable(self, padding, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 9, 9, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
@@ -762,6 +781,23 @@ class TestFilter3D(BaseTester):
 
         actual = filter3d(inp, kernel)
         assert actual.is_contiguous()
+
+    @pytest.mark.parametrize("layout", ["channels_last_3d", "batch_transposed", "expanded_batch"])
+    def test_per_sample_kernel_on_a_non_contiguous_input(self, layout, device, dtype):
+        """One kernel per sample merges the batch and channel axes, whatever the input strides are."""
+        kernel = torch.rand(2, 2, 3, 4, device=device, dtype=dtype)
+        if layout == "channels_last_3d":
+            inp = torch.rand(2, 3, 4, 6, 7, device=device, dtype=dtype).contiguous(memory_format=torch.channels_last_3d)
+        elif layout == "batch_transposed":
+            inp = torch.rand(3, 2, 4, 6, 7, device=device, dtype=dtype).transpose(0, 1)
+        else:
+            inp = torch.rand(1, 3, 4, 6, 7, device=device, dtype=dtype).expand(2, -1, -1, -1, -1)
+        assert not inp.is_contiguous()
+
+        actual = filter3d(inp, kernel)
+        self.assert_close(actual, filter3d(inp.contiguous(), kernel))
+        for i in range(2):  # sample i is filtered with kernel i
+            self.assert_close(actual[i : i + 1], filter3d(inp[i : i + 1].contiguous(), kernel[i : i + 1]))
 
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=torch.float64)
