@@ -1625,14 +1625,20 @@ class TestConventionsFilter2d(BaseTester):
         with pytest.raises(RuntimeError):
             filter3d(volume, kernel, "constant", normalized=True)
 
-    def test_wart_fft_conv_valid_padding_with_a_kernel_larger_than_the_input_5285(self, device, dtype):
-        """With padding='valid', a 7 x 3 kernel on a 5 x 6 image gives fft_conv a 4 x 4 output (#5285)."""
-        _fft_guard("fft_conv", device, dtype)
+    @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
+    def test_convention_filter2d_valid_padding_rejects_a_kernel_larger_than_the_input(self, name, device, dtype):
+        _fft_guard(name, device, dtype)
+        fn = _FILTER2D_FNS[name]
         image = _rand(1, 1, 5, 6, device=device, dtype=dtype)
-        kernel = _rand(1, 7, 3, device=device, dtype=dtype, seed=1)
-        with pytest.raises((RuntimeError, BaseError)):
-            filter2d(image, kernel, "constant", padding="valid")
-        assert fft_conv(image, kernel, "constant", padding="valid").shape == (1, 1, 4, 4)
+        # a kernel as large as the input gives one output pixel; one row or one column more raises
+        kernel = _rand(1, 5, 6, device=device, dtype=dtype, seed=1)
+        assert fn(image, kernel, "constant", padding="valid").shape == (1, 1, 1, 1)
+        for kh, kw in [(6, 3), (7, 3), (3, 7), (5, 7), (6, 6)]:
+            kernel = _rand(1, kh, kw, device=device, dtype=dtype, seed=1)
+            with pytest.raises(BaseError if name == "fft_conv" else RuntimeError):
+                fn(image, kernel, "constant", padding="valid")
+            # 'same' pads first, so the same kernel is accepted
+            assert fn(image, kernel, "constant", padding="same").shape == (1, 1, 5, 6)
 
 
 # (name, factory(device, dtype), shape) for non-square sizes, so every axis order is visible

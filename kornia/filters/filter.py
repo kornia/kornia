@@ -396,8 +396,6 @@ def fft_conv(
           - an integer input truncates a fractional kernel to 0, as in :func:`~kornia.filters.filter2d`, and the
             result is in torch's default floating dtype (float32) instead of the input's
             (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
-          - with ``padding='valid'`` and a kernel taller or wider than the input, it returns a wrongly sized tensor
-            where :func:`~kornia.filters.filter2d` raises (`#5285 <https://github.com/kornia/kornia/issues/5285>`_).
 
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.
@@ -469,8 +467,15 @@ def fft_conv(
         f"Invalid behaviour mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
 
-    _, c, _, _ = input.shape
+    _, c, h, w = input.shape
     kh, kw = kernel.shape[-2:]
+
+    # without padding the kernel has to fit inside the input, as F.conv2d requires in filter2d
+    KORNIA_CHECK(
+        padding == "same" or (kh <= h and kw <= w),
+        f"With padding='valid' the kernel must not be larger than the input. Got a {kh} x {kw} kernel for a {h} x {w}"
+        " input",
+    )
 
     if str(behaviour).lower() == "conv":
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
