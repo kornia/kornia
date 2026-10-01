@@ -410,7 +410,7 @@ class TestInRange(BaseTester):
             pytest.skip("Failing to compile on CPU see pytorch/pytorch#126619")
         data = torch.rand(batch_size, 3, 5, 5, device=device, dtype=dtype)
         op = InRange(lower=(0.2, 0.2, 0.2), upper=(0.6, 0.6, 0.6), return_mask=True)
-        op_optimized = torch_optimizer(op)
+        op_optimized = torch_optimizer(op, fullgraph=True)
         self.assert_close(op(data), op_optimized(data))
 
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -423,5 +423,5 @@ class TestInRange(BaseTester):
         lower = self._bounds_in_form(lower_c, form, batch_size)
         upper = self._bounds_in_form(upper_c, form, batch_size)
         op = InRange(lower=lower, upper=upper, return_mask=True)
-        op_optimized = torch_optimizer(op)
+        op_optimized = torch_optimizer(op, fullgraph=True)
         self.assert_close(op(data), op_optimized(data))
