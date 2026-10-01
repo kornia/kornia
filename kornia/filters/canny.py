@@ -24,11 +24,37 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_COLOR_OR_GRAY,
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SHAPE,
+)
 
 from .gaussian import gaussian_blur2d
-from .kernels import get_canny_nms_kernel, get_hysteresis_kernel
+from .kernels import get_hysteresis_kernel
 from .sobel import spatial_gradient
+
+
+def _check_thresholds(low_threshold: float, high_threshold: float) -> None:
+    # The thresholds are in the units of the unnormalised Sobel magnitude, which has no upper bound.
+    KORNIA_CHECK(
+        low_threshold <= high_threshold,
+        "Invalid input thresholds. low_threshold should be smaller than or equal to the high_threshold. Got: "
+        f"{low_threshold}>{high_threshold}",
+    )
+    KORNIA_CHECK(0 < low_threshold, f"Invalid low threshold. Should be positive. Got: {low_threshold}")
+
+
+# (dy, dx) of the neighbour in direction k = 0..7, counted from +x (right) towards +y (down) in steps of 45 degrees,
+# followed by the pixel itself at index 8.
+_WINDOW_OFFSETS = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1), (0, 0))
+
+
+def _beats(magnitude: torch.Tensor, neighbour: torch.Tensor, direction: torch.Tensor) -> torch.Tensor:
+    # Directions 0 (right) and 2 (down) accept a tie; the other six need a strictly larger magnitude.
+    accepts_tie = (direction == 0) | (direction == 2)
+    return (magnitude > neighbour) | (accepts_tie & (magnitude == neighbour))
 
 
 def canny(
@@ -44,10 +70,26 @@ def canny(
 
     .. image:: _static/img/canny.png
 
+    The thresholds are compared with the magnitude :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised**
+    Sobel gradient of the blurred grayscale image, ``sobel(blurred, normalized=False, eps=eps)``. That is eight times
+    what :func:`~kornia.filters.sobel` returns with its default ``normalized=True``, up to the ``eps`` inside the square
+    root, so on an image in :math:`[0, 1]` it is not bounded by 1: a unit step reaches 4 without the blur
+    (``kernel_size=1``) and about 2.59 with the default one.
+    In float16 the squared gradient overflows past 65504, which a step of 64 already reaches without the blur, so
+    keep a float16 image in :math:`[0, 1]` rather than scaling it and the thresholds up.
+
+    Non-maximum suppression compares each pixel with its two neighbours along the gradient direction, rounded to a
+    multiple of 45 degrees. As in OpenCV's ``cv2.Canny``, along a horizontal (vertical) gradient a pixel must be
+    strictly greater than its left (upper) neighbour and greater than or equal to its right (lower) one, so of two
+    pixels of equal magnitude across a step edge the left (upper) one is kept. Along a diagonal it must be strictly
+    greater than both. A pixel with zero gradient is never kept.
+
     Args:
-        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
-        low_threshold: lower threshold for the hysteresis procedure.
-        high_threshold: upper threshold for the hysteresis procedure.
+        input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1, or to 3 for an RGB
+            image, which is converted to grayscale.
+        low_threshold: lower threshold for the hysteresis procedure, in the units of the magnitude above. It must be
+            positive and at most ``high_threshold``.
+        high_threshold: upper threshold for the hysteresis procedure, in the same units. It has no upper bound.
         kernel_size: the size of the kernel for the gaussian blur.
         sigma: the standard deviation of the kernel for the gaussian blur.
         hysteresis: if True, applies the hysteresis edge tracking.
@@ -72,13 +114,8 @@ def canny(
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
-    KORNIA_CHECK(
-        low_threshold <= high_threshold,
-        "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: "
-        f"{low_threshold}>{high_threshold}",
-    )
-    KORNIA_CHECK(0 < low_threshold < 1, f"Invalid low threshold. Should be in range (0, 1). Got: {low_threshold}")
-    KORNIA_CHECK(0 < high_threshold < 1, f"Invalid high threshold. Should be in range (0, 1). Got: {high_threshold}")
+    KORNIA_CHECK_IS_COLOR_OR_GRAY(input, f"canny expects 1 or 3 channels. Got: {input.shape[1]}")
+    _check_thresholds(low_threshold, high_threshold)
 
     device = input.device
     dtype = input.dtype
@@ -97,18 +134,28 @@ def canny(
     gx: torch.Tensor = gradients[:, :, 0]
     gy: torch.Tensor = gradients[:, :, 1]
 
-    # Compute gradient magnitude and angle
-    magnitude: torch.Tensor = torch.sqrt(gx * gx + gy * gy + eps)
-    angle: torch.Tensor = torch.atan2(gy, gx)
+    # Compute gradient magnitude and angle. The magnitude is computed one pixel beyond the image, where there is no
+    # gradient: the border then has the magnitude sqrt(eps) of a flat pixel, so a flat pixel never beats it.
+    gx_padded: torch.Tensor = F.pad(gx, (1, 1, 1, 1))
+    gy_padded: torch.Tensor = F.pad(gy, (1, 1, 1, 1))
+    padded: torch.Tensor = torch.sqrt(gx_padded * gx_padded + gy_padded * gy_padded + eps)
+    # The legacy ONNX exporter's atan2 returns NaN at (0, 0), which casts to an out-of-range index on x86-64.
+    angle: torch.Tensor = torch.nan_to_num(torch.atan2(gy, gx))
 
     # Radians to degrees and round to nearest 45 degree
     # degrees = angle * (180.0 / math.pi)
     # angle = torch.round(degrees / 45) * 45
     angle_45 = (angle * (4 / math.pi)).round()
 
-    # Non-maximal suppression
-    nms_kernels: torch.Tensor = get_canny_nms_kernel(device, dtype)
-    nms_magnitude: torch.Tensor = F.conv2d(magnitude, nms_kernels, padding=nms_kernels.shape[-1] // 2)
+    # Non-maximal suppression: entry k < 8 along dimension 2 of window is the magnitude of the neighbour in direction k
+    # and entry 8 that of the pixel itself. Slicing copies the values, so a tie compares exactly equal, which a
+    # convolution does not guarantee, and reading the pixel and its neighbours from one tensor keeps them in the same
+    # precision under torch.compile.
+    height, width = gx.shape[-2:]
+    window: torch.Tensor = torch.stack(
+        [padded[..., 1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width] for dy, dx in _WINDOW_OFFSETS], 2
+    )
+    magnitude: torch.Tensor = window[:, :, 8]
 
     # Get the indices for both directions
     positive_idx: torch.Tensor = angle_45 % 8
@@ -117,15 +164,22 @@ def canny(
     negative_idx: torch.Tensor = (angle_45 + 4) % 8
     negative_idx = negative_idx.long()
 
-    # Apply the non-maximum suppression to the different directions
-    channel_select_filtered_positive: torch.Tensor = torch.gather(nms_magnitude, 1, positive_idx)
-    channel_select_filtered_negative: torch.Tensor = torch.gather(nms_magnitude, 1, negative_idx)
+    # The two neighbours along the gradient direction, read with one gather per channel
+    neighbour_both: torch.Tensor = torch.gather(window, 2, torch.stack([positive_idx, negative_idx], 2))
+    neighbour_positive: torch.Tensor = neighbour_both[:, :, 0]
+    neighbour_negative: torch.Tensor = neighbour_both[:, :, 1]
 
-    channel_select_filtered: torch.Tensor = torch.stack(
-        [channel_select_filtered_positive, channel_select_filtered_negative], 1
+    # As in OpenCV's Canny, a pixel must be strictly greater than its left (upper) neighbour but only greater than or
+    # equal to its right (lower) one along a horizontal (vertical) gradient, so of two equal pixels across a step the
+    # left (upper) one is kept. Along a diagonal both comparisons are strict: the neighbours along it are two lines
+    # apart, and the line between a tied pair carries the edge.
+    is_max: torch.Tensor = _beats(magnitude, neighbour_positive, positive_idx) & _beats(
+        magnitude, neighbour_negative, negative_idx
     )
 
-    is_max: torch.Tensor = channel_select_filtered.min(dim=1)[0] > 0.0
+    # A pixel no larger than the border, which has no gradient, is never kept. The comparisons above already exclude it,
+    # since one of them is strict for every direction; this states the rule independently of the angle.
+    is_max = is_max & (magnitude > padded[..., :1, :1])
 
     magnitude = magnitude * is_max
 
@@ -164,10 +218,12 @@ def canny(
 class Canny(nn.Module):
     r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
 
+    See :func:`~kornia.filters.canny` for the units of the thresholds and the non-maximum suppression.
+
     Args:
-        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
-        low_threshold: lower threshold for the hysteresis procedure.
-        high_threshold: upper threshold for the hysteresis procedure.
+        low_threshold: lower threshold for the hysteresis procedure, in the units of the unnormalised Sobel
+            magnitude. It must be positive and at most ``high_threshold``.
+        high_threshold: upper threshold for the hysteresis procedure, in the same units. It has no upper bound.
         kernel_size: the size of the kernel for the gaussian blur.
         sigma: the standard deviation of the kernel for the gaussian blur.
         hysteresis: if True, applies the hysteresis edge tracking.
@@ -202,15 +258,7 @@ class Canny(nn.Module):
     ) -> None:
         super().__init__()
 
-        KORNIA_CHECK(
-            low_threshold <= high_threshold,
-            "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: "
-            f"{low_threshold}>{high_threshold}",
-        )
-        KORNIA_CHECK(0 < low_threshold < 1, f"Invalid low threshold. Should be in range (0, 1). Got: {low_threshold}")
-        KORNIA_CHECK(
-            0 < high_threshold < 1, f"Invalid high threshold. Should be in range (0, 1). Got: {high_threshold}"
-        )
+        _check_thresholds(low_threshold, high_threshold)
 
         # Gaussian blur parameters
         self.kernel_size = kernel_size
@@ -249,8 +297,8 @@ class Canny(nn.Module):
             input: Image tensor with shape :math:`(B, C, H, W)`, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the image height, and :math:`W` is the
-                image width. Multi-channel inputs are handled by the underlying
-                functional implementation.
+                image width. :math:`C` must be 1, or 3 for an RGB image, which is
+                converted to grayscale.
 
         Returns:
             Tuple ``(magnitude, edges)``. ``magnitude`` contains the gradient
