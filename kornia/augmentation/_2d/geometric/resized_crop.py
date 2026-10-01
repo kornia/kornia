@@ -74,11 +74,12 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         torchvision, which centres the fallback crop, it is placed at a random position like any other crop.
 
         Both cropping modes use the configured interpolation and ``align_corners``. Slice mode ignores
-        ``align_corners`` for ``resample="nearest"``. At ``align_corners=False`` the two modes give
-        different images: slice mode uses half-pixel resizing for bilinear and bicubic interpolation,
-        while resample mode maps the crop corners to the output corners. Each matrix follows its image grid.
-        Only resample mode supports :meth:`inverse`,
-        which resamples onto the original canvas and cannot recover discarded information.
+        ``align_corners`` for ``resample="nearest"``. With bilinear or bicubic interpolation, each mode's image
+        follows its ``transform_matrix``, and at ``align_corners=False`` the two modes give different images: slice
+        mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
+        starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
+        onto the output's. Only resample mode supports :meth:`inverse`, which resamples onto the original canvas
+        and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,

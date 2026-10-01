@@ -180,3 +180,16 @@ class TestResizeMatrix(BaseTester):
         if kind == "crop":
             params[0].data["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 2], [0, 2]]])
         self.gradcheck(lambda x, p: tuple(seq(x, p, params=params)), (image, points))
+
+    @pytest.mark.parametrize("kind", ["resize", "longest", "smallest"])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_inverse_restores_ramp_4804(self, device, dtype, kind, align_corners):
+        # Bilinear resampling reproduces a ramp, so warping a 2x upscale back with the recorded matrix restores
+        # the interior exactly. The corner-to-corner matrix at align_corners=False missed by 0.21 px here.
+        image = self._ramp(9, 13, device, dtype)
+        aug = self._augmentation(kind, (18, 26), align_corners, device, dtype)
+        restored = aug.inverse(aug(image))
+        # Two half-precision warps round by up to one bfloat16 ulp at 12 (0.0625), below the 0.21 px defect.
+        tolerances = {torch.float64: (1e-12, 1e-12), torch.float16: (0.05, 0), torch.bfloat16: (0.1, 0)}
+        atol, rtol = tolerances.get(dtype, (1e-4, 1e-4))
+        self.assert_close(restored[..., 1:-1, 1:-1], image[..., 1:-1, 1:-1], atol=atol, rtol=rtol)
