@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
 import urllib.request
+from contextlib import suppress
 from typing import Any, Optional
 
 from kornia.config import kornia_config
@@ -56,7 +58,7 @@ class CachedDownloader:
         else:
             file_name = os.path.split(model_name)[-1]
 
-        return os.path.join(*cache_dir.split(os.sep), *model_name.split(os.sep)[:-1], file_name)
+        return os.path.join(cache_dir, *model_name.split(os.sep)[:-1], file_name)
 
     @classmethod
     def download_to_cache(cls, url: str, name: str, download: bool = True, **kwargs: Any) -> str:
@@ -114,10 +116,19 @@ class CachedDownloader:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Create the cache directory if it doesn't exist
 
         if url.startswith(("http:", "https:")):
+            # Keep incomplete transfers out of the cache, including while another
+            # caller is checking it. Close the temporary file before reopening it
+            # through urlretrieve so the same code also works on Windows.
+            with tempfile.NamedTemporaryFile(dir=os.path.dirname(file_path), delete=False) as temporary_file:
+                temporary_path = temporary_file.name
             try:
                 _logger.info(f"Downloading `{url}` to `{file_path}`.")
-                urllib.request.urlretrieve(url, file_path)  # noqa: S310
+                urllib.request.urlretrieve(url, temporary_path)  # noqa: S310
+                os.replace(temporary_path, file_path)
             except urllib.error.HTTPError as e:
                 raise ValueError(f"Error in resolving `{url}`.") from e
+            finally:
+                with suppress(FileNotFoundError):
+                    os.remove(temporary_path)
         else:
             raise ValueError("URL must start with 'http:' or 'https:'")
