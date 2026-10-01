@@ -66,6 +66,20 @@ def images_fn(png_image, jpg_image):
 
 
 class TestIoImage:
+    @pytest.mark.parametrize("dtype", [torch.uint8, torch.uint16])
+    def test_truncated_png_decode_error_includes_path(self, dtype, tmp_path: Path) -> None:
+        pixels = torch.arange(64 * 64, dtype=torch.int32).reshape(1, 64, 64).to(dtype)
+        path = tmp_path / f"truncated_{dtype}.png"
+        write_image(path, pixels)
+        data = path.read_bytes()
+        path.write_bytes(data[: len(data) // 2])
+
+        with pytest.raises(ValueError, match=path.name) as exc_info:
+            load_image(path, ImageLoadType.UNCHANGED)
+
+        assert exc_info.value.__cause__ is not None
+        assert str(exc_info.value.__cause__) in str(exc_info.value)
+
     def test_smoke(self, tmp_path: Path) -> None:
         height, width = 4, 5
         img_th: torch.Tensor = create_random_img8_torch(height, width, 3)
