@@ -90,7 +90,11 @@ class TestRandomMotionBlur(BaseTester):
             self.assert_close(aug._params[key], value, rtol=0, atol=0)
         self.assert_close(aug(image, params=params), output, rtol=0, atol=0)
         blurred = motion_blur(
-            image, int(params["ksize_factor"][params["idx"][0]]), params["angle_factor"], params["direction_factor"]
+            image,
+            int(params["ksize_factor"][params["idx"][0]]),
+            params["angle_factor"],
+            params["direction_factor"],
+            border_type=aug.flags["border_type"].name.lower(),
         )
         expected = torch.where(params["batch_prob"].to(device=device).view(-1, 1, 1, 1) > 0.5, blurred, image)
         self.assert_close(output, expected)
@@ -102,7 +106,8 @@ class TestRandomMotionBlur(BaseTester):
         params = aug.forward_parameters(image.shape)
         params["ksize_factor"] = torch.tensor([3, 5, 7], dtype=torch.int32)
         params["idx"] = torch.tensor([1])
-        expected = motion_blur(image, 5, params["angle_factor"], params["direction_factor"])
+        border_type = aug.flags["border_type"].name.lower()
+        expected = motion_blur(image, 5, params["angle_factor"], params["direction_factor"], border_type=border_type)
         self.assert_close(aug(image, params=params), expected)
 
     @pytest.mark.slow
@@ -123,6 +128,17 @@ class TestRandomMotionBlur(BaseTester):
             (inp, params),
             fast_mode=False,
         )
+
+    # The class zero-pads by its own default, although ``motion_blur`` now defaults to "reflect".
+    # Snippet used to generate expected:
+    #   import torch, kornia.augmentation as K
+    #   print(K.RandomMotionBlur(5, (0.0, 0.0), (0.0, 0.0), p=1.0)(torch.ones(1, 1, 5, 7))[0, 0, 2].tolist())
+    #   -> [0.6, 0.8, 1.0, 1.0, 1.0, 0.8, 0.6]
+    def test_default_border_still_zero_pads(self, device, dtype):
+        image = torch.ones(1, 1, 5, 7, device=device, dtype=dtype)
+        row = torch.tensor([0.6, 0.8, 1.0, 1.0, 1.0, 0.8, 0.6], device=device, dtype=dtype)
+
+        self.assert_close(RandomMotionBlur(5, (0.0, 0.0), (0.0, 0.0), p=1.0)(image), row.expand(1, 1, 5, 7))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         # A fixed (int) kernel size avoids the data-dependent kernel-size selection and
@@ -189,6 +205,18 @@ class TestRandomMotionBlur3D(BaseTester):
             output = RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)(input)
 
             assert output.shape == input.shape
+
+    # The class zero-pads by its own default, although ``motion_blur3d`` now defaults to "replicate".
+    # Snippet used to generate expected:
+    #   import torch, kornia.augmentation as K
+    #   print(K.RandomMotionBlur3D(3, (0.0, 0.0, 0.0), 0.0, p=1.0)(torch.ones(1, 1, 5, 6, 7))[0, 0, 2, 2].tolist())
+    #   -> [0.6667, 1.0, 1.0, 1.0, 1.0, 1.0, 0.6667]
+    def test_default_border_still_zero_pads(self, device, dtype):
+        volume = torch.ones(1, 1, 5, 6, 7, device=device, dtype=dtype)
+        row = torch.tensor([2.0 / 3.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0 / 3.0], device=device, dtype=dtype)
+
+        actual = RandomMotionBlur3D(3, (0.0, 0.0, 0.0), 0.0, p=1.0)(volume)
+        self.assert_close(actual, row.expand(1, 1, 5, 6, 7))
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
