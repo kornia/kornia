@@ -337,6 +337,18 @@ def _max_blur_pool_by_kernel2d(
     return _blur_pool_conv2d(input, kernel, stride)
 
 
+def _reflect_pad2d(input: torch.Tensor, padding_y: int, padding_x: int) -> torch.Tensor:
+    """Reflect-pad by arbitrary amounts, applying chunks accepted by ``F.pad``."""
+    remaining_y, remaining_x = padding_y, padding_x
+    while remaining_y > 0 or remaining_x > 0:
+        pad_y = min(remaining_y, input.shape[-2] - 1)
+        pad_x = min(remaining_x, input.shape[-1] - 1)
+        input = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode="reflect")
+        remaining_y -= pad_y
+        remaining_x -= pad_x
+    return input
+
+
 def edge_aware_blur_pool2d(
     input: torch.Tensor,
     kernel_size: tuple[int, int] | int,
@@ -362,11 +374,20 @@ def edge_aware_blur_pool2d(
     _check_kernel_size(edge_dilation_kernel_size)
     KORNIA_CHECK(edge_threshold > 0.0, f"edge threshold should be positive, but got '{edge_threshold}'")
 
-    input = F.pad(input, (2, 2, 2, 2), mode="reflect")  # F.pad to avoid artifacts near physical edges
-    blurred_input = blur_pool2d(input, kernel_size=kernel_size, stride=1)  # blurry version of the input
+    # Keep the edge comparison's fixed 2-pixel halo separate from the blur halo. The
+    # blur_pool2d convolution zero-pads by its kernel radius, so reflect-padding by at
+    # least that radius prevents zeros from reaching the retained image boundary.
+    edge_input = F.pad(input, (2, 2, 2, 2), mode="reflect")
+    kernel_size_y, kernel_size_x = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
+    blur_pad_y, blur_pad_x = max(2, kernel_size_y // 2), max(2, kernel_size_x // 2)
+    blur_input = _reflect_pad2d(input, blur_pad_y, blur_pad_x)
+    # Half-precision inputs are blurred in float32 and cast back, so the binomial weights and the accumulation keep
+    # float32 precision at every kernel size.
+    blur_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
+    blurred_input = blur_pool2d(blur_input.to(dtype=blur_dtype), kernel_size=kernel_size, stride=1).to(input.dtype)
 
     # calculate the edges (add epsilon to avoid taking the log of 0)
-    log_input, log_thresh = (input + epsilon).log2(), (torch.tensor(edge_threshold)).log2()
+    log_input, log_thresh = (edge_input + epsilon).log2(), (torch.tensor(edge_threshold)).log2()
     edges_x = log_input[..., :, 4:] - log_input[..., :, :-4]
     edges_y = log_input[..., 4:, :] - log_input[..., :-4, :]
     edges_x, edges_y = edges_x.mean(dim=-3, keepdim=True), edges_y.mean(dim=-3, keepdim=True)
@@ -377,8 +398,7 @@ def edge_aware_blur_pool2d(
     dilated_edges = F.max_pool3d(edges_xy_mask, edge_dilation_kernel_size, 1, edge_dilation_kernel_size // 2)
 
     # slice the padded regions
-    input = input[..., 2:-2, 2:-2]
-    blurred_input = blurred_input[..., 2:-2, 2:-2]
+    blurred_input = blurred_input[..., blur_pad_y:-blur_pad_y, blur_pad_x:-blur_pad_x]
 
     # fuse the input image on edges and blurry input everywhere else
     return dilated_edges * input + (1.0 - dilated_edges) * blurred_input

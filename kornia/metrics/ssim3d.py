@@ -75,11 +75,13 @@ def ssim3d(
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
-    Note:
-        Integer images are converted to float32 before computing the local moments.
-
     Returns:
        The ssim index map with shape :math:`(B, C, D, H, W)`.
+
+    Note:
+        Integer images are converted to float32 before computing the local moments.
+        Half-precision inputs are evaluated in float32 for numerical stability.
+        Filtering runs with autocast disabled; the result uses the promoted input dtype.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
@@ -102,6 +104,13 @@ def ssim3d(
     if not img2.is_floating_point() and not img2.is_complex():
         img2 = img2.to(torch.float32)
 
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    # Half-precision moments can overflow before the SSIM ratio is formed.
+    if img1.dtype in (torch.float16, torch.bfloat16):
+        img1 = img1.float()
+    if img2.dtype in (torch.float16, torch.bfloat16):
+        img2 = img2.float()
+
     # prepare kernel
     kernel: torch.Tensor = get_gaussian_kernel3d((window_size, window_size, window_size), (1.5, 1.5, 1.5))
 
@@ -110,8 +119,9 @@ def ssim3d(
     C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
-    mu1: torch.Tensor = filter3d(img1, kernel)
-    mu2: torch.Tensor = filter3d(img2, kernel)
+    with torch.autocast(device_type=img1.device.type, enabled=False):
+        mu1: torch.Tensor = filter3d(img1, kernel)
+        mu2: torch.Tensor = filter3d(img2, kernel)
 
     cropping_shape: List[int] = []
     if padding == "valid":
@@ -126,9 +136,10 @@ def ssim3d(
     mu2_sq = mu2**2
     mu1_mu2 = mu1 * mu2
 
-    mu_img1_sq = filter3d(img1**2, kernel)
-    mu_img2_sq = filter3d(img2**2, kernel)
-    mu_img1_img2 = filter3d(img1 * img2, kernel)
+    with torch.autocast(device_type=img1.device.type, enabled=False):
+        mu_img1_sq = filter3d(img1**2, kernel)
+        mu_img2_sq = filter3d(img2**2, kernel)
+        mu_img1_img2 = filter3d(img1 * img2, kernel)
 
     if padding == "valid":
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)
@@ -146,7 +157,7 @@ def ssim3d(
     num: torch.Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
     den: torch.Tensor = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
 
-    return num / (den + eps)
+    return (num / (den + eps)).to(output_dtype)
 
 
 class SSIM3D(nn.Module):
