@@ -22,15 +22,10 @@ from torch import nn
 
 from kornia.core.download import hf_url, load_state_dict_from_url
 
+# One source: the authors' own copies are not served over verifiable https.
 urls: Dict[str, str | list[str]] = {}
-urls["defmo_encoder"] = [
-    hf_url("defmo", "encoder_best.pt"),
-    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",
-]
-urls["defmo_rendering"] = [
-    hf_url("defmo", "rendering_best.pt"),
-    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt",
-]
+urls["defmo_encoder"] = hf_url("defmo", "encoder_best.pt")
+urls["defmo_rendering"] = hf_url("defmo", "rendering_best.pt")
 
 
 # conv1x1, conv3x3, Bottleneck, ResNet are taken from:

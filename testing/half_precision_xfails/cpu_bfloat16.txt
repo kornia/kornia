@@ -81,7 +81,6 @@ call	builtins.AssertionError	tests/filters/test_gaussian.py::test_gaussian[cpu-b
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_gaussian[cpu-bfloat16-11-5.0-8.0-expected2]
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_gaussian[cpu-bfloat16-11-5.0-None-expected1]
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_gaussian[cpu-bfloat16-5-1.0-None-expected0]
-call	builtins.AssertionError	tests/filters/test_otsu_thresholding.py::TestOtsuThreshold::test_differentiable_tensor_otsu[cpu-bfloat16]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-bfloat16-20]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-bfloat16-6]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam_weighted[cpu-bfloat16-16]

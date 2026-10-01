@@ -46,6 +46,8 @@ from kornia.core.exceptions import (
     ValueCheckError,
 )
 
+from testing.base import BaseTester
+
 
 class TestCheck:
     def test_valid(self):
@@ -295,7 +297,7 @@ class TestCheckLaf:
         assert KORNIA_CHECK_LAF(torch.rand(4, 2, 2), raises=False) is False
 
 
-class TestCheckIsImage:
+class TestCheckIsImage(BaseTester):
     def test_valid_float(self):
         assert KORNIA_CHECK_IS_IMAGE(torch.rand(3, 4, 4)) is True
         assert KORNIA_CHECK_IS_IMAGE(torch.rand(2, 3, 4, 4)) is True
@@ -318,16 +320,99 @@ class TestCheckIsImage:
 
     def test_invalid_shape(self):
         x = torch.rand(1, 4, 4, 4)
-        assert KORNIA_CHECK_IS_IMAGE(x) is True
+        with pytest.raises(ImageError):
+            KORNIA_CHECK_IS_IMAGE(x)
 
     def test_invalid_range_no_raise(self):
         bad = torch.tensor([[[-0.1, 2.0]]], dtype=torch.float32)
         assert KORNIA_CHECK_IS_IMAGE(bad, raises=False) is False
 
     def test_invalid_shape_no_raise(self):
-        # When raises=False, shape check is actually enforced
         bad = torch.rand(1, 4, 4, 4)
         assert KORNIA_CHECK_IS_IMAGE(bad, raises=False) is False
+
+    @pytest.mark.parametrize("shape", [(5, 4, 5), (2, 4, 4, 4), (4, 5), (7,), ()])
+    def test_shape_verdict_does_not_depend_on_raises(self, device, dtype, shape):
+        # The values lie in [0, 1], so only the shape can fail the check.
+        x = torch.rand(shape, device=device, dtype=dtype)
+        assert KORNIA_CHECK_IS_IMAGE(x, raises=False) is False
+        with pytest.raises(ImageError):
+            KORNIA_CHECK_IS_IMAGE(x)
+
+    @pytest.mark.parametrize("nan_count", ["one", "all"])
+    def test_nan_fails_the_range_check(self, device, dtype, nan_count):
+        x = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        if nan_count == "all":
+            x.fill_(float("nan"))
+        else:
+            x[1, 2, 3, 4] = float("nan")
+        assert KORNIA_CHECK_IS_IMAGE(x, raises=False) is False
+        with pytest.raises(ValueCheckError, match=r"expected \[0, 1\]"):
+            KORNIA_CHECK_IS_IMAGE(x)
+
+    def test_float_range_error_reports_the_unit_range(self, device, dtype):
+        x = torch.tensor([[[-0.5, 0.25, 1.5]]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match=r"expected \[0, 1\], got \[-0\.5, 1\.5\]\.") as err:
+            KORNIA_CHECK_IS_IMAGE(x)
+        assert err.value.actual_value == (-0.5, 1.5)
+        assert err.value.expected_range == (0.0, 1.0)
+
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (0, 1, 4, 5), (3, 0, 0)])
+    def test_empty_image_passes(self, device, dtype, shape):
+        # An empty image holds no value that could be out of range.
+        x = torch.rand(shape, device=device, dtype=dtype)
+        assert KORNIA_CHECK_IS_IMAGE(x, raises=False) is True
+        assert KORNIA_CHECK_IS_IMAGE(x) is True
+        u = torch.zeros(shape, device=device, dtype=torch.uint8)
+        assert KORNIA_CHECK_IS_IMAGE(u, raises=False) is True
+        assert KORNIA_CHECK_IS_IMAGE(u) is True
+
+    def test_empty_tensor_with_a_bad_shape_fails(self, device, dtype):
+        x = torch.rand(0, 5, 4, 5, device=device, dtype=dtype)
+        assert KORNIA_CHECK_IS_IMAGE(x, raises=False) is False
+        with pytest.raises(ImageError):
+            KORNIA_CHECK_IS_IMAGE(x)
+
+    @pytest.mark.parametrize("bits", [4, 8, 10, 16])
+    def test_integer_range_is_zero_to_two_to_the_bits_minus_one(self, device, bits):
+        top = 2**bits - 1
+        assert KORNIA_CHECK_IS_IMAGE(torch.full((3, 4, 5), top, device=device, dtype=torch.int32), bits=bits) is True
+        x = torch.full((3, 4, 5), top + 1, device=device, dtype=torch.int32)
+        assert KORNIA_CHECK_IS_IMAGE(x, bits=bits, raises=False) is False
+        with pytest.raises(ValueCheckError, match=rf"expected \[0, {top}\], got \[{top + 1}, {top + 1}\]\.") as err:
+            KORNIA_CHECK_IS_IMAGE(x, bits=bits)
+        assert err.value.actual_value == (top + 1, top + 1)
+        assert err.value.expected_range == (0, top)
+
+    @pytest.mark.parametrize(
+        ("int_dtype", "bits"),
+        [(torch.int8, 8), (torch.int8, 9), (torch.int16, 16), (torch.int32, 32), (torch.int64, 64), (torch.int64, 63)],
+    )
+    def test_signed_dtype_accepts_every_nonnegative_value_that_fits_the_bits(self, device, int_dtype, bits):
+        # 2**bits - 1 exceeds these dtypes' maximum, so every non-negative value of the dtype is in range.
+        top = torch.iinfo(int_dtype).max
+        x = torch.tensor([[[0, 5, top]]], device=device, dtype=int_dtype)
+        assert KORNIA_CHECK_IS_IMAGE(x, bits=bits, raises=False) is True
+        assert KORNIA_CHECK_IS_IMAGE(x, bits=bits) is True
+        x[0, 0, 0] = -1
+        assert KORNIA_CHECK_IS_IMAGE(x, bits=bits, raises=False) is False
+        with pytest.raises(ValueCheckError) as err:
+            KORNIA_CHECK_IS_IMAGE(x, bits=bits)
+        assert err.value.actual_value == (-1, top)
+        assert err.value.expected_range == (0, 2**bits - 1)
+
+    @pytest.mark.parametrize("uint_dtype", [torch.uint16, torch.uint32, torch.uint64])
+    def test_wide_unsigned_dtype_is_range_checked(self, device, uint_dtype):
+        info = torch.iinfo(uint_dtype)
+        x = torch.tensor([[[0, 1000, info.max]]], dtype=uint_dtype).to(device)
+        assert KORNIA_CHECK_IS_IMAGE(x, bits=info.bits, raises=False) is True
+        assert KORNIA_CHECK_IS_IMAGE(x, bits=info.bits) is True
+        # With one bit fewer the largest value is out of range, and the error reports it exactly.
+        assert KORNIA_CHECK_IS_IMAGE(x, bits=info.bits - 1, raises=False) is False
+        with pytest.raises(ValueCheckError) as err:
+            KORNIA_CHECK_IS_IMAGE(x, bits=info.bits - 1)
+        assert err.value.actual_value == (0, info.max)
+        assert err.value.expected_range == (0, 2 ** (info.bits - 1) - 1)
 
 
 class TestChecksEnableDisable:

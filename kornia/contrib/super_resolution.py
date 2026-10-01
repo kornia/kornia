@@ -243,12 +243,15 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
+        # The dummy input must agree with a fixed input size, which ``to_onnx`` checks.
+        pseudo_size = self.pseudo_image_size or self.input_image_size or 352
+
         return ONNXExportMixin.to_onnx(
             self,
             onnx_name,
             input_shape=[-1, 3, self.input_image_size or -1, self.input_image_size or -1],
             output_shape=[-1, 3, self.output_image_size or -1, self.output_image_size or -1],
-            pseudo_shape=[1, 3, self.pseudo_image_size or 352, self.pseudo_image_size or 352],
+            pseudo_shape=[1, 3, pseudo_size, pseudo_size],
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,
@@ -300,7 +303,8 @@ class RRDBNetBuilder:
             model_path = CachedDownloader.download_to_cache(
                 url, model_name, download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
             )
-            model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"))["params_ema"], strict=True)
+            state_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
+            model.load_state_dict(state_dict["params_ema"], strict=True)
         model.eval()
 
         return SuperResolution(

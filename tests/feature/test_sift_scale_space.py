@@ -21,10 +21,20 @@ import io
 
 import pytest
 import torch
+import torch.nn.functional as F
 from torch import nn
 
-from kornia.feature import SIFTFeatureScaleSpace, get_laf_center, get_laf_orientation, laf_is_filled
-from kornia.feature.sift.scale_space import _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
+from kornia.feature import (
+    LAFDescriptor,
+    SIFTDescriptor,
+    SIFTDescriptorFromPyramid,
+    SIFTFeatureScaleSpace,
+    convert_sift_descriptor_layout,
+    get_laf_center,
+    get_laf_orientation,
+    laf_is_filled,
+)
+from kornia.feature.sift.scale_space import _SIFTScalePyramid, _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
 from kornia.filters import spatial_gradient
 
 from testing.base import (
@@ -36,17 +46,75 @@ from testing.base import (
 )
 
 
+def _opencv_reference_image(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    """Three asymmetric blobs on a ramp, quantized to the uint8 image OpenCV described."""
+    # Built in float64 on the CPU, which every device can receive: MPS has no float64.
+    yy, xx = torch.meshgrid(torch.arange(48, dtype=torch.float64), torch.arange(48, dtype=torch.float64), indexing="ij")
+
+    def blob(cx: float, cy: float, sigma: float) -> torch.Tensor:
+        return torch.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma * sigma))
+
+    image = 0.5 + 0.3 * blob(26, 21, 2.5) - 0.25 * blob(19, 27, 2.0) + 0.15 * blob(30, 30, 1.5) + 0.004 * xx
+    return (torch.round(255 * image) / 255).to(device=device, dtype=dtype)[None, None]
+
+
+# OpenCV's SIFT descriptor of `_opencv_reference_image` at (24, 24): upright, sigma 1.6, taken from Gaussian layer 3 of
+# the doubled octave. Generated with OpenCV 5.0.0 from the same image built in numpy:
+#   image = np.round(255 * image).astype(np.uint8)
+#   keypoint = cv2.KeyPoint(24.0, 24.0, 3.2, 0.0, 0.0, (-1 & 255) | (3 << 8))  # size 2 * sigma; octave -1, layer 3
+#   _, descriptor = cv2.SIFT_create().compute(image, [keypoint])
+_OPENCV_SIFT_DESCRIPTOR = [
+    37, 3, 0, 0, 0, 0, 0, 7, 67, 2, 0, 0, 0, 0, 16, 123, 11, 0, 0, 0, 6, 47, 125, 92, 2, 0, 0, 0, 18, 66, 32, 3,
+    25, 45, 48, 23, 1, 0, 0, 2, 125, 125, 26, 2, 0, 0, 3, 54, 68, 100, 71, 56, 46, 40, 43, 51, 0, 0, 8, 63, 109, 45,
+    4, 0, 7, 29, 46, 64, 57, 32, 14, 7, 125, 125, 38, 7, 3, 4, 12, 39, 64, 125, 108, 36, 3, 0, 2, 8, 7, 3, 17, 49,
+    20, 20, 13, 7, 3, 0, 0, 1, 14, 49, 61, 19, 60, 6, 0, 0, 1, 5, 44, 105, 96, 43, 4, 0, 0, 0, 1, 17, 17, 22,
+    21, 15, 12, 11, 7, 6,
+]  # fmt: skip
+
+
+def _describe_reference_frame(device: torch.device, dtype: torch.dtype) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the pyramid backend's upright descriptor at the OpenCV reference frame, and the frame's image."""
+    # Build the pyramid in float32 for half inputs, as the detector does.
+    work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    image = _opencv_reference_image(device, work_dtype)
+    pyramid = [level.to(dtype) for level in _SIFTScalePyramid().to(device, work_dtype)(image)]
+    # LAF scale 6 sigma; the descriptor itself integrates over 1.25 times the frame, as OpenCV does.
+    lafs = torch.tensor([[[[9.6, 0.0, 24.0], [0.0, 9.6, 24.0]]]], device=device, dtype=dtype)
+    octaves = torch.zeros(1, 1, device=device, dtype=torch.long)
+    levels = torch.full((1, 1), 3, device=device, dtype=torch.long)
+    _, descriptor = _SIFTScaleSpaceDescriptor(rootsift=False)(pyramid, lafs, octaves, levels, upright=True)
+    return descriptor[0], image
+
+
 class TestSharedSIFTScaleSpace(BaseTester):
+    def test_descriptor_matches_opencv_after_layout_conversion(self, device, dtype):
+        descriptor, _ = _describe_reference_frame(device, dtype)
+        expected = torch.tensor(_OPENCV_SIFT_DESCRIPTOR, device=device, dtype=torch.float32)[None]
+        opencv = convert_sift_descriptor_layout(descriptor, "kornia", "opencv").float()
+        # 0.997 in float32 and float64; a descriptor stored in another order stays below 0.6.
+        assert F.cosine_similarity(opencv, expected).item() > 0.99
+
+    def test_descriptor_layout_matches_the_other_sift_descriptors(self, device, dtype):
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        descriptor, image = _describe_reference_frame(device, dtype)
+        # The same frame, integrated over the same 1.25 times its LAF by the two other kornia SIFT descriptors.
+        lafs = torch.tensor([[[[12.0, 0.0, 24.0], [0.0, 12.0, 24.0]]]], device=device, dtype=work_dtype)
+        patch = LAFDescriptor(SIFTDescriptor(41, rootsift=False), patch_size=41).to(device, work_dtype)(image, lafs)
+        pyramid = SIFTDescriptorFromPyramid(rootsift=False).to(device, work_dtype)(image, lafs)
+        # About 0.87 with either; the scale-space descriptor in its former (row, column, angle) order scored 0.44.
+        for other in (patch[0], pyramid[0]):
+            assert F.cosine_similarity(descriptor.to(work_dtype), other).item() > 0.8
+
     def test_trilinear_histogram_bins(self, device, dtype):
-        # Hand-computed votes in (row, column, angle) order. Cancel Gaussian
-        # weighting to isolate spatial interpolation and the angle 7 -> 0 seam.
+        # Hand-computed votes indexed (row, column, angle); the descriptor stores them angle-major. Cancel
+        # Gaussian weighting to isolate spatial interpolation and the angle 7 -> 0 seam.
         work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         xx = torch.tensor([-0.6, -0.2, 0.2, 0.6, 0.0], device=device, dtype=work_dtype)
         yy = torch.tensor([0.6, -0.6, 0.2, -0.2, 0.2], device=device, dtype=work_dtype)
         mass = xx.new_tensor([1.0, 2.0, 3.0, 4.0, 2.0])
         mag = (mass * torch.exp(0.78125 * (xx.square() + yy.square()))).view(1, 1, -1)
         angle = xx.new_tensor([0.25, 1.5, 7.75, 4.0, 2.5]).view(1, 1, -1) * (torch.pi / 4)
-        actual = _SIFTScaleSpaceDescriptor._descriptor_histograms(mag, angle, xx, yy).reshape(4, 4, 8)
+        actual = _SIFTScaleSpaceDescriptor._descriptor_histograms(mag, angle, xx, yy).reshape(8, 4, 4).permute(1, 2, 0)
         expected = torch.zeros_like(actual)
         expected[3, 0, 0], expected[3, 0, 1] = 0.75, 0.25
         expected[0, 1, 1:3] = 1.0
@@ -73,8 +141,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         angle = 2 * torch.pi + torch.arange(8, device=device, dtype=torch.float64).view(1, 8, 1) * (torch.pi / 4)
         centre = torch.zeros(1, device=device, dtype=torch.float64)
         votes = _SIFTScaleSpaceDescriptor._descriptor_histograms(torch.ones_like(angle), angle, centre, centre)
-        # Summing the 16 spatial cells leaves each frame's angular histogram.
-        histogram = votes.reshape(8, 16, 8).sum(1)
+        # Summing the 16 spatial cells, the trailing axis of each angle bin, leaves each frame's angular histogram.
+        histogram = votes.reshape(8, 8, 16).sum(2)
         self.assert_close(histogram, torch.eye(8, device=device, dtype=torch.float64), rtol=0.0, atol=1e-12)
 
     def test_histogram_gradcheck(self, device):
@@ -428,6 +496,84 @@ class TestSIFTScalePyramid(BaseTester):
         image = torch.full((1, 1, 96, 96), value, device=device, dtype=torch.float64)
         for octave in pyramid(image):
             assert (octave - value).abs().max() < 1e-14
+
+    def test_device_argument_and_device_only_move(self, device):
+        # Registered as float64 buffers, the reference kernels made `device="mps"` and `.to("mps")` raise, because
+        # MPS has no float64. Only a move that also cast the dtype, `.to("mps", torch.float32)`, worked.
+        # Built on the default device, they also made construction under `with torch.device("mps")` raise.
+        image = torch.rand(1, 1, 48, 52, device=device)
+        expected = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device, torch.float32)(image)
+        with device:
+            under_default_device = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid")
+        for feature in (
+            SIFTFeatureScaleSpace(8, descriptor_backend="pyramid", device=device),
+            SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device),
+            under_default_device,
+        ):
+            # Not bitwise: on MPS, the orientation histogram's scatter_add_ varies from run to run at float32 rounding.
+            for actual, reference in zip(feature(image), expected):
+                assert actual.device == image.device
+                self.assert_close(actual, reference)
+
+    def test_dynamo_on_device(self, device, torch_optimizer):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # A compiled graph must not build a float64 tensor on MPS, which rejects it: the kernels are float32 there, and
+        # forward casts a kernel's dtype before any move.
+        pyramid = _SIFTScalePyramid().to(device)
+        image = torch.rand(1, 1, 33, 37, device=device)
+        expected = pyramid(image)
+        for actual_octave, expected_octave in zip(torch_optimizer(pyramid)(image), expected):
+            self.assert_close(actual_octave, expected_octave)
+
+    @pytest.mark.parametrize("module_dtype", [torch.float16, torch.bfloat16])
+    def test_module_dtype_cast_keeps_reference_kernels(self, device, module_dtype):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The detector builds its pyramid in float32 for half inputs, so a half-cast module still blurs float32 images.
+        # Casting the module must not round the Gaussian kernels to its dtype: rounded kernels miss their unit sum, and
+        # a constant image drifts octave by octave, from 8e-5 in the first to 4.9e-4 in the fifth with float16 kernels,
+        # and from 1.1e-3 to 3.0e-3 with bfloat16 ones.
+        value = 0.37
+        image = torch.full((1, 1, 96, 96), value, device=device, dtype=torch.float32)
+        for octave in _SIFTScalePyramid().to(device, module_dtype)(image):
+            assert (octave - value).abs().max() < 1e-6
+
+    def test_kernels_are_buffers_that_follow_device_moves(self, device):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The kernels live on the module's device, so forward does not copy them there on every call. A move rebuilds
+        # them from float64, in float32 on MPS, which has no float64; a dtype cast of the module leaves them alone. They
+        # stay out of state_dict: loading a checkpoint saved on MPS would round a CPU module's kernels to float32.
+        reference = [getattr(_SIFTScalePyramid(), f"kernel_{index}") for index in range(6)]
+        pyramid = _SIFTScalePyramid().to(device).half()
+        kernel_dtype = torch.float32 if device.type == "mps" else torch.float64
+        assert not pyramid.state_dict()
+        for index, expected in enumerate(reference):
+            kernel = getattr(pyramid, f"kernel_{index}")
+            assert kernel.device.type == device.type and kernel.dtype == kernel_dtype
+            assert torch.equal(kernel.cpu(), expected.to(kernel_dtype))
+        pyramid.cpu()
+        for index, expected in enumerate(reference):
+            kernel = getattr(pyramid, f"kernel_{index}")
+            assert kernel.dtype == torch.float64 and torch.equal(kernel, expected)
+
+    def test_whole_module_pickle_rebuilds_kernels_where_they_land(self, device):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        # The pickle holds float32 copies of the kernels, which `map_location` can put on MPS, and loading rebuilds
+        # them on the device they land on. A float64 CPU copy could not be mapped to MPS, and float32 MPS kernels
+        # mapped to the CPU would cap float64 images at float32 accuracy.
+        for source, target in ((device, torch.device("cpu")), (torch.device("cpu"), device)):
+            checkpoint = io.BytesIO()
+            torch.save(_SIFTScalePyramid().to(source), checkpoint)
+            checkpoint.seek(0)
+            restored = torch.load(checkpoint, map_location=target, weights_only=False)
+            expected = _SIFTScalePyramid().to(target)
+            for index in range(6):
+                kernel, reference = getattr(restored, f"kernel_{index}"), getattr(expected, f"kernel_{index}")
+                assert kernel.device.type == target.type and kernel.dtype == reference.dtype
+                assert torch.equal(kernel, reference)
 
     def test_pyramid_backend_rejects_unknown_compile_component(self):
         with pytest.raises(ValueError, match="compile_modules"):

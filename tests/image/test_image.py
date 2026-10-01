@@ -25,6 +25,7 @@ from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import ShapeError
 from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from kornia.image.image import Image
+from kornia.image.image_print import image_to_string
 
 from testing.base import BaseTester
 
@@ -192,6 +193,14 @@ class TestImage(BaseTester):
         data = np.ones((4, 5, 3), dtype=np.uint8)
         img = Image.from_numpy(data, color_space=ColorSpace.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
         img.write(tmp_path / "image.jpg")
+
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_LAST, ChannelsOrder.CHANNELS_FIRST])
+    @pytest.mark.parametrize("height", [4, 3])
+    def test_print_renders_the_channels_first_image(self, device, order, height, capsys) -> None:
+        chw = (torch.arange(3 * height * 5, device=device).reshape(3, height, 5) * 4).to(torch.uint8)
+        data = chw.permute(1, 2, 0).contiguous() if order == ChannelsOrder.CHANNELS_LAST else chw
+        make_image(data, ColorSpace.RGB, order).print()
+        assert capsys.readouterr().out == image_to_string(chw) + "\n"
 
 
 def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Image:

@@ -246,8 +246,14 @@ class TestGeometricCropConventions(BaseTester):
             ],
         }
         expected = image.new_tensor(expected_rows[mode]).reshape(1, 1, 6, 4)
-        # float16 resampling also rounds its grid, so this is a bound; the matrix is pinned exactly above.
-        tolerance = {"rtol": 0.0, "atol": 3e-3} if dtype == torch.float16 and mode == "resample" else {}
+        # Half-precision resampling rounds its matrix and grid, so this is a bound in units of the dtype's eps (3e-3 in
+        # float16); the matrix is pinned exactly above. The dominant term is the forward matrix, which
+        # normalize_homography already builds in the half dtype: in bfloat16 its x scale 16/15 rounds to 1.0703125
+        # and its translation is several ulps off, which alone leaves the right column, next to the canvas edge, about
+        # 1.6 eps off with an exact inverse and a float64 grid. Measured 1.54 eps in bfloat16; a first-order worst
+        # case is about 3.4 eps.
+        half = dtype in (torch.float16, torch.bfloat16)
+        tolerance = {"rtol": 0.0, "atol": 3 * torch.finfo(dtype).eps} if half and mode == "resample" else {}
         self.assert_close(output, expected, **tolerance)
         self.assert_close(output[0, 0, 0], image.new_tensor([0, 0, 0, 0]))
         assert output.shape == (1, 1, 6, 4)
