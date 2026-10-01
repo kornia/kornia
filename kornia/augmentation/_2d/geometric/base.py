@@ -44,10 +44,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         - pixel coordinates are ``(x, y)`` at integer pixel centres, with corners ``(0, 0)`` and
           ``(W - 1, H - 1)`` (see :doc:`/get-started/conventions`); rotations, shears and affine maps are centred
           at ``((W - 1) / 2, (H - 1) / 2)``, and ``transform_matrix`` maps input pixel coordinates to output pixel
-          coordinates. At ``align_corners=False``, the bilinear and
-          bicubic interpolation of :class:`Resize`, :class:`LongestMaxSize`, :class:`SmallestMaxSize` and
-          slice-mode :class:`RandomResizedCrop` samples on a half-pixel grid that the matrix does not follow
-          (`#4804 <https://github.com/kornia/kornia/issues/4804>`_).
+          coordinates.
         - the resampling classes, including the non-rigid :class:`RandomElasticTransform` and
           :class:`RandomThinPlateSpline`, default to bilinear interpolation with zero sampler padding. The
           ``align_corners`` default is ``True`` for :class:`RandomRotation`, :class:`RandomRotation90` and the crop
