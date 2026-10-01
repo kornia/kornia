@@ -431,8 +431,8 @@ class TestFindEssential(BaseTester):
             [[2.0, 0.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 1.0]], device=device, dtype=dtype
         )
         for points in (lshape.expand(B, 5, 2), draw, on_axis.expand(B, 5, 2), repeated.expand(B, 5, 2)):
-            weights = torch.ones(points.shape[:2], device=device, dtype=dtype)
-            assert epi.essential.find_essential(points, points, weights).shape == (B, 10, 3, 3)
+            degenerate_weights = torch.ones(points.shape[:2], device=device, dtype=dtype)
+            assert epi.essential.find_essential(points, points, degenerate_weights).shape == (B, 10, 3, 3)
 
         # For a design matrix whose rows are unit vectors, the SVD returns a null space of unit vectors,
         # which makes the elimination matrix exactly singular. For this one, solving against the identity
@@ -1111,28 +1111,30 @@ class TestConventionEssential(BaseTester):
         self.assert_close(t_sw, -R.transpose(-2, -1) @ t, low_tolerance=True)
         assert (R_sw - R).abs().max() > 0.1 and (t_sw - t).abs().max() > 0.5
 
-    def test_wart_find_essential_ignores_weights_4876(self, device, dtype):
+    def test_find_essential_uses_weights_4876(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         _skip_find_essential(device, dtype)
-        # #4876: weights is documented per correspondence but ignored: an outlier with weight 0, all-zero weights and
-        # all-one weights give the same output (NaN slots compared as 0). Once weights are used these differ.
+
         n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
+
+        # Add an outlier so changing its correspondence weight changes the least-squares solution.
         p1 = torch.cat([n1, torch.tensor([[[0.4, -0.3]]], device=device, dtype=dtype)], 1)
         p2 = torch.cat([n2, torch.tensor([[[-0.35, 0.25]]], device=device, dtype=dtype)], 1)
+
         ones = torch.ones(1, 13, device=device, dtype=dtype)
         outlier_off = ones.clone()
         outlier_off[0, 12] = 0.0
+
         E_ones = epi.find_essential(p1, p2, ones)
-        assert torch.equal(epi.find_essential(p1, p2, outlier_off).nan_to_num(0.0), E_ones.nan_to_num(0.0))
-        assert torch.equal(epi.find_essential(p1, p2, torch.zeros_like(ones)).nan_to_num(0.0), E_ones.nan_to_num(0.0))
-        # Control: the outlier does move the estimate, so a working weight would change the result.
-        E_clean = epi.find_essential(n1, n2)
+        E_outlier_off = epi.find_essential(p1, p2, outlier_off)
 
-        def best(E):
-            real = E[0, torch.isfinite(E[0]).all(dim=-1).all(dim=-1)]
-            return min(_epipolar_residual(e[None], n1, n2).max() for e in real)
+        # #4876 convention: for N > 5, changing correspondence weights can change the least-squares solution.
+        assert not torch.equal(E_outlier_off.nan_to_num(0.0), E_ones.nan_to_num(0.0))
 
-        assert best(E_ones) > 1e3 * best(E_clean)
+        # All-zero weights leave no usable design rows and therefore produce no valid candidates.
+        all_zero = torch.zeros_like(ones)
+        E_zero = epi.find_essential(p1, p2, all_zero)
+        assert torch.isnan(E_zero).all()
 
     def test_decompose_unbatched_keeps_input_dims_4878(self, device, dtype):
         two_view = two_view_scene(device, dtype)

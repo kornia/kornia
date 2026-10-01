@@ -54,7 +54,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Args:
         points1: A set of calibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-        weights: Not used, kept for compatibility.
+        weights: Tensor containing the weights per point correspondence with a shape of (B, N).
 
     Returns:
         the computed essential matrix with shape :math:`(B, 10, 3, 3)`.
@@ -63,8 +63,12 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
     KORNIA_CHECK(points1.shape[1] >= 5, "Number of points should be >=5")
+    if weights is not None:
+        KORNIA_CHECK_SHAPE(weights, ["B", "N"])
     # Rows vec(x2 x1^T), so that a null vector reshapes row-major to E.
     design = _epipolar_design_rows(points1, points2)
+    if weights is not None:
+        design = design * weights.sqrt().unsqueeze(-1)
     # A sample without a real root keeps ten NaN slots, like the complex slots of any other sample.
     if design.shape[1] == 5:
         candidates, _ = _five_point_candidates(design)
@@ -856,12 +860,15 @@ def find_essential(
           copied back, which on an Apple M1 was also faster than a float32 solve on the device. A sample whose five
           design rows are rank deficient, such as one with a repeated correspondence, has no unique solution: ten
           ``NaN`` slots and a zero gradient.
-        - Known defects: ``weights`` is ignored (`#4876 <https://github.com/kornia/kornia/issues/4876>`_).
+        - ``weights`` has shape :math:`(B, N)` and scales each design row by the square root of its weight.
+          For exactly five correspondences, any strictly positive weights leave the null space unchanged; with more
+          than five correspondences, the weights can change the least-squares solution. Zero weights remove the
+          corresponding constraint row.
 
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Accepted with a shape of :math:`(B, N)` and ignored (see Known defects).
+         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
