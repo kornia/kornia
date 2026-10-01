@@ -36,16 +36,30 @@ def _check_subsample(subsample: int) -> None:
     KORNIA_CHECK(not isinstance(subsample, bool) and subsample >= 1, msg)
 
 
+def _subsample_indices(size: int, subsample: int, device: torch.device) -> torch.Tensor:
+    """Return the pixels an axis of ``size`` pixels keeps when it is subsampled by ``subsample``.
+
+    ``max(size // subsample, 1)`` pixels, never none: an axis shorter than ``subsample`` keeps its first pixel. Pixel
+    ``i`` of the subsampled axis is the one nearest to ``(i + 0.5) * size / rows - subsample / 2``, rounding a tie up:
+    where the bilinear upsample (``align_corners=False``) puts it back, less the ``(subsample - 1) / 2`` offset of
+    taking every ``subsample``-th pixel. On a ``size`` that is a multiple of ``subsample`` that is pixel
+    ``subsample * i`` exactly, and elsewhere the offset stays the same along the axis instead of drifting by up to a
+    pixel, as ``floor(i * size / rows)`` would. Integer arithmetic, so it is exact in every dtype.
+    """
+    rows = max(size // subsample, 1)
+    i = torch.arange(rows, device=device)
+    return ((2 * i + 1) * size + rows * (1 - subsample)).div(2 * rows, rounding_mode="floor").clamp(0, size - 1)
+
+
 def _preprocess_fast_guided_blur(
     guidance: torch.Tensor, input: torch.Tensor, kernel_size: tuple[int, int] | int, subsample: int = 1
 ) -> tuple[torch.Tensor, torch.Tensor, tuple[int, int]]:
     ky, kx = _unpack_2d_ks(kernel_size)
     if subsample > 1:
-        # ``floor(H / s)`` rows, but never none: an axis shorter than ``s`` keeps one pixel. For ``H`` and ``W`` that
-        # are multiples of ``s``, ``size=`` selects the same pixels as ``scale_factor=1 / s``.
-        size = (max(guidance.shape[-2] // subsample, 1), max(guidance.shape[-1] // subsample, 1))
-        guidance_sub = interpolate(guidance, size=size, mode="nearest")
-        input_sub = guidance_sub if input is guidance else interpolate(input, size=size, mode="nearest")
+        rows = _subsample_indices(guidance.shape[-2], subsample, guidance.device)
+        cols = _subsample_indices(guidance.shape[-1], subsample, guidance.device)
+        guidance_sub = guidance.index_select(-2, rows).index_select(-1, cols)
+        input_sub = guidance_sub if input is guidance else input.index_select(-2, rows).index_select(-1, cols)
         ky, kx = ((k - 1) // subsample + 1 for k in (ky, kx))
     else:
         guidance_sub = guidance
@@ -181,8 +195,10 @@ def guided_blur(
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         subsample: subsampling factor for Fast Guided filtering, a positive integer (a ``bool`` is rejected).
           Guidance and input are subsampled by nearest neighbour to ``max(H // subsample, 1)`` rows and
-          ``max(W // subsample, 1)`` columns, row ``i`` taking pixel ``floor(i * H / rows)``: every ``subsample``-th
-          pixel when ``H`` is a multiple of ``subsample`` (likewise ``W``), and a single pixel, the first, on an axis
+          ``max(W // subsample, 1)`` columns: every ``subsample``-th pixel when ``H`` is a multiple of ``subsample``
+          (likewise ``W``), and otherwise, for row ``i``, the pixel nearest to
+          ``(i + 0.5) * H / rows - subsample / 2`` (a tie rounds up), which keeps the subsampled grid aligned with the
+          bilinear upsample of the coefficient maps as it is on a multiple; a single pixel, the first, on an axis
           shorter than ``subsample``. ``H`` and ``W`` need not be multiples of it: the coefficient maps are resized
           back to the size of the input. Default: 1 (no subsampling)
         separable: use two one-dimensional box-filter passes, reducing work for
@@ -252,8 +268,10 @@ class GuidedBlur(nn.Module):
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         subsample: subsampling factor for Fast Guided filtering, a positive integer (a ``bool`` is rejected).
           Guidance and input are subsampled by nearest neighbour to ``max(H // subsample, 1)`` rows and
-          ``max(W // subsample, 1)`` columns, row ``i`` taking pixel ``floor(i * H / rows)``: every ``subsample``-th
-          pixel when ``H`` is a multiple of ``subsample`` (likewise ``W``), and a single pixel, the first, on an axis
+          ``max(W // subsample, 1)`` columns: every ``subsample``-th pixel when ``H`` is a multiple of ``subsample``
+          (likewise ``W``), and otherwise, for row ``i``, the pixel nearest to
+          ``(i + 0.5) * H / rows - subsample / 2`` (a tie rounds up), which keeps the subsampled grid aligned with the
+          bilinear upsample of the coefficient maps as it is on a multiple; a single pixel, the first, on an axis
           shorter than ``subsample``. ``H`` and ``W`` need not be multiples of it: the coefficient maps are resized
           back to the size of the input. Default: 1 (no subsampling)
         separable: use two one-dimensional box-filter passes, reducing work for

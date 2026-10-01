@@ -16,7 +16,9 @@
 #
 from __future__ import annotations
 
+import math
 import re
+from fractions import Fraction
 from functools import partial
 from unittest.mock import patch
 
@@ -28,6 +30,7 @@ import torch.nn.functional as F
 from kornia.core._compat import torch_version
 from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.filters import GuidedBlur, box_blur, guided_blur
+from kornia.filters.guided import _preprocess_fast_guided_blur, _subsample_indices
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
@@ -44,6 +47,17 @@ def _value_eps(dtype):
     return 1.0 if dtype in _HALF_TOLERANCE else 0.1
 
 
+def _subsampled_pixels(size, subsample):
+    """The pixels the subsampled grid keeps, in exact rational arithmetic.
+
+    ``max(size // s, 1)`` of them; pixel ``i`` is the one nearest (a tie rounding up) to the centre the bilinear
+    upsample gives it, ``(i + 1/2) * size / rows - 1/2``, less the ``(s - 1) / 2`` offset of every ``s``-th pixel.
+    """
+    rows = max(size // subsample, 1)
+    centres = (Fraction(2 * i + 1, 2) * size / rows - Fraction(1, 2) - Fraction(subsample - 1, 2) for i in range(rows))
+    return [min(max(math.floor(c + Fraction(1, 2)), 0), size - 1) for c in centres]
+
+
 def _fast_guided_filter_reference(guidance, input, kernel_size, eps, subsample, border_type="reflect"):
     """He and Sun, "Fast Guided Filter" (arXiv:1505.00996), Algorithm 1, per pixel in float64 on the CPU.
 
@@ -52,9 +66,9 @@ def _fast_guided_filter_reference(guidance, input, kernel_size, eps, subsample, 
     """
     guidance, input = guidance.cpu().double(), input.cpu().double()
     (_, C, H, W), C_in = guidance.shape, input.shape[1]
-    size = (max(H // subsample, 1), max(W // subsample, 1))
-    g = F.interpolate(guidance, size=size, mode="nearest")
-    p = F.interpolate(input, size=size, mode="nearest")
+    rows, cols = _subsampled_pixels(H, subsample), _subsampled_pixels(W, subsample)
+    g = guidance[..., rows, :][..., cols]
+    p = input[..., rows, :][..., cols]
     kernel_size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
     window = tuple((k - 1) // subsample + 1 for k in kernel_size)
 
@@ -494,18 +508,64 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("shape,subsample", [((8, 12), 2), ((12, 8), 2), ((9, 12), 3), ((16, 8), 4), ((6, 6), 6)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     def test_subsample_divisible_size_is_unchanged(self, guide_dim, shape, subsample, kernel_size, device, dtype):
-        """Sizes that worked before the resize fix give the same bits: ``size=`` and ``scale_factor=`` agree."""
+        """Sizes that worked before the resize fix give the same bits.
+
+        The subsampled grid is every ``subsample``-th pixel, which is what ``scale_factor=1 / s`` nearest selected, and
+        the upsample by ``size=`` agrees with the one by ``scale_factor=s``.
+        """
         self._skip_without_padding(device, dtype, "reflect")
         H, W = shape
         guide = torch.rand(2, guide_dim, H, W, device=device, dtype=dtype)
         inp = torch.rand(2, 3, H, W, device=device, dtype=dtype)
 
+        guide_sub, inp_sub, _ = _preprocess_fast_guided_blur(guide, inp, kernel_size, subsample)
+        assert torch.equal(guide_sub, F.interpolate(guide, scale_factor=1 / subsample, mode="nearest"))
+        assert torch.equal(guide_sub, guide[..., ::subsample, ::subsample])
+        assert torch.equal(inp_sub, inp[..., ::subsample, ::subsample])
+
         actual = guided_blur(guide, inp, kernel_size, 0.01, subsample=subsample)
         with patch("kornia.filters.guided.interpolate", side_effect=_scale_factor_interpolate) as scale_factor_call:
             expected = guided_blur(guide, inp, kernel_size, 0.01, subsample=subsample)
 
-        assert scale_factor_call.call_count == 4  # guidance and input down, the two coefficient maps up
+        assert scale_factor_call.call_count == 2  # the two coefficient maps up
         assert torch.equal(actual, expected)
+
+    @pytest.mark.parametrize("size,subsample", [(13, 2), (61, 2), (83, 4), (17, 3), (5, 3), (2, 3)])
+    def test_subsampled_grid_stays_aligned_with_the_upsample(self, size, subsample):
+        """On a size that is not a multiple of ``s`` the grid keeps the offset it has on a multiple.
+
+        The upsample puts subsampled pixel ``i`` at ``(i + 1/2) * size / rows - 1/2``; on a multiple of ``s`` the kept
+        pixel ``s * i`` is ``(s - 1) / 2`` before that. ``floor(i * size / rows)`` drifts from that offset by up to a
+        pixel along the axis, which doubled the error against ``subsample=1`` at ``s = 2``; the kept pixel is within
+        half a pixel of it, and is ``s * i`` on a multiple.
+        """
+        pixels = _subsample_indices(size, subsample, torch.device("cpu")).tolist()
+        assert pixels == _subsampled_pixels(size, subsample)
+        rows = max(size // subsample, 1)
+        for i, pixel in enumerate(pixels):
+            target = Fraction(2 * i + 1, 2) * size / rows - Fraction(subsample, 2)
+            assert abs(pixel - target) <= Fraction(1, 2) or pixel in (0, size - 1)
+        multiple = rows * subsample
+        on_a_multiple = _subsample_indices(multiple, subsample, torch.device("cpu")).tolist()
+        assert on_a_multiple == list(range(0, multiple, subsample))
+
+    def test_subsample_is_closer_to_the_full_filter_on_a_size_not_divisible(self):
+        """A smooth image of 61 x 83 at ``s = 2`` is about as close to ``subsample=1`` as one of 60 x 84.
+
+        Mean absolute difference 0.0079 against 0.0077; a grid that drifts along the axis (``floor(i * H / rows)``)
+        gives 0.0151.
+        """
+        errors = {}
+        for H, W in [(60, 84), (61, 83)]:
+            yy, xx = torch.meshgrid(
+                torch.linspace(0, 3, H, dtype=torch.float64),
+                torch.linspace(0, 4, W, dtype=torch.float64),
+                indexing="ij",
+            )
+            image = (torch.sin(yy * 2) * torch.cos(xx * 1.5) * 0.5 + 0.5)[None, None]
+            full = guided_blur(image, image, 9, 0.01)
+            errors[H, W] = (guided_blur(image, image, 9, 0.01, subsample=2) - full).abs().mean().item()
+        assert errors[61, 83] < 1.25 * errors[60, 84]
 
     @pytest.mark.parametrize("guide_dim", [1, 3])
     def test_subsample_divisible_size_keeps_the_values_from_before_size_resize(self, guide_dim, device, dtype):
