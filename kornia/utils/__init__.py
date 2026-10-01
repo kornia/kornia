@@ -326,8 +326,8 @@ def image_list_to_tensor(*args: Any, **kwargs: Any) -> Any:
 class ImageToTensor(_ImageToTensor):
     """Deprecated: Use `kornia.image.ImageToTensor` instead.
 
-    A real subclass (not the `@deprecated` decorator, which turns classes into plain
-    callables) so `isinstance` checks and further subclassing keep working.
+    A subclass of `kornia.image.ImageToTensor` that warns on construction, so the new class is not itself
+    deprecated; `isinstance` checks and further subclassing keep working.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
