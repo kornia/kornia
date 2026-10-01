@@ -44,6 +44,7 @@ REJECTED_NON_INTEGERS = {
     "bool-false": lambda: False,
     "numpy-float64": lambda: np.float64(2.0),
     "numpy-bool": lambda: np.bool_(True),
+    "numpy-bool-false": lambda: np.bool_(False),
     "tensor-0d-float": lambda: torch.tensor(2.0),
     "tensor-0d-bool": lambda: torch.tensor(True),
     "tensor-vector": lambda: torch.tensor([3, 3]),
@@ -139,6 +140,17 @@ class _BatchLikeMixin(BaseTester):
             self.op(2.0, x)
         with pytest.raises(TypeCheckError, match=r"n must be an integer\. Got: True \(bool\)"):
             self.op(True, x)
+
+    def test_numpy_1_bool_scalar_is_rejected_by_type(self, device, dtype):
+        # NumPy 1.x `np.bool_` implements `__index__` (NumPy 2 removed it), so `operator.index` reads `np.True_` as 1
+        # there. This stand-in has NumPy 1.x's type name and an `__index__`, so the rejection is pinned on NumPy 2 too.
+        numpy_1_bool = type(
+            "bool_", (), {"__module__": "numpy", "__index__": lambda self: 1, "__gt__": lambda s, o: 1 > o}
+        )
+        x = torch.zeros(2, 2, device=device, dtype=dtype)
+        with pytest.raises(TypeCheckError, match=r"n must be an integer\. Got: .* \(bool_\)") as excinfo:
+            self.op(numpy_1_bool(), x)
+        assert excinfo.value.actual_type is numpy_1_bool
 
     def test_non_integer_n_is_left_to_torch_when_checks_are_disabled(self, device, dtype):
         x = torch.zeros(2, 2, device=device, dtype=dtype)

@@ -24,15 +24,25 @@ from kornia.core.check import KORNIA_CHECK, are_checks_enabled
 from kornia.core.exceptions import TypeCheckError
 
 
+def _is_numpy_bool(n: Any) -> bool:
+    """Return whether ``n`` is a NumPy boolean scalar, read off its type so that this module does not import NumPy.
+
+    NumPy 1.x boolean scalars implement ``__index__`` (deprecated there, removed in NumPy 2.0), so ``operator.index``
+    reads ``np.True_`` as 1; the type is ``numpy.bool_`` on NumPy 1.x and ``numpy.bool`` on NumPy 2.
+    """
+    n_type = type(n)
+    return n_type.__module__ == "numpy" and n_type.__name__ in ("bool_", "bool")
+
+
 def _check_n_is_integer(n: Any) -> None:
     """Raise `TypeCheckError` naming ``n`` unless it is an integer size.
 
     Accepts an ``int``, a NumPy integer, an integer tensor with one element and a ``SymInt``: whatever
     ``operator.index`` reads as an integer. ``bool`` is an ``int`` subclass and ``operator.index`` accepts it, as it
-    does a boolean tensor, so both are rejected by name; ``torch.eye`` and ``torch.zeros`` refuse them as sizes
-    anyway. An integer tensor that cannot be read (a meta tensor) raises torch's own ``RuntimeError``. Python-only:
-    TorchScript cannot compile this body, and types ``n`` as ``int`` already. Like the ``KORNIA_CHECK*`` helpers, it
-    does nothing once `disable_checks` has been called.
+    does a boolean tensor and, on NumPy 1.x, a NumPy boolean scalar, so all three are rejected by name; ``torch.eye``
+    and ``torch.zeros`` refuse the first two as sizes anyway. An integer tensor that cannot be read (a meta tensor)
+    raises torch's own ``RuntimeError``. Python-only: TorchScript cannot compile this body, and types ``n`` as ``int``
+    already. Like the ``KORNIA_CHECK*`` helpers, it does nothing once `disable_checks` has been called.
     """
     if not are_checks_enabled():
         return
@@ -41,8 +51,9 @@ def _check_n_is_integer(n: Any) -> None:
         is_integer = False
     elif not isinstance(n, (int, torch.SymInt)):
         # Ask `hasattr` first, so a `float`, `str` or `None` never reaches `operator.index`: on torch 2.5.1 dynamo
-        # aborts the trace with `InternalTorchDynamoError` when a builtin raises inside a `try`.
-        if not hasattr(n, "__index__"):
+        # aborts the trace with `InternalTorchDynamoError` when a builtin raises inside a `try`. The NumPy bool test
+        # sits in this branch so that a plain `int` never meets it: torch 2.5.1 dynamo cannot trace its comparison.
+        if not hasattr(n, "__index__") or _is_numpy_bool(n):
             is_integer = False
         else:
             try:
