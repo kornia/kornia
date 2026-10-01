@@ -520,13 +520,14 @@ class TestDeprecatedClass:
         assert (init.__name__, init.__qualname__, init.__module__) == ("__init__", "_OldBare.__init__", __name__)
 
     def test_init_wrapper_of_an_inherited_init_is_named_like_it_but_does_not_wrap_it(self):
-        init = _OldModule.__init__
-        inherited = torch.nn.Module.__init__
-        assert (init.__name__, init.__qualname__, init.__module__) == (
-            inherited.__name__,
-            inherited.__qualname__,
-            inherited.__module__,
-        )
+        # A plain Python base with a known ``__init__``: ``nn.Module.__init__`` is replaced by dynamo's tagging
+        # ``__init__`` once any compiled test has run, which would make this depend on the order of the tests.
+        @deprecated(version="0.9.0")
+        class Cls(_Base):
+            pass
+
+        init = Cls.__init__
+        assert (init.__name__, init.__qualname__, init.__module__) == ("__init__", "_Base.__init__", __name__)
         # Under multiple inheritance another ``__init__`` may run, so ``inspect`` must not follow a fixed one.
         assert not hasattr(init, "__wrapped__")
 
