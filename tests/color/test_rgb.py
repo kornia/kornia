@@ -175,6 +175,31 @@ class TestRgbToRgba(BaseTester):
         x_bgr_new = kornia.color.rgba_to_bgr(x_rgba)
         self.assert_close(x_bgr, x_bgr_new)
 
+    @pytest.mark.parametrize("conversion", [kornia.color.rgb_to_rgba, kornia.color.bgr_to_rgba])
+    def test_alpha_tensor_must_be_single_channel(self, conversion, device, dtype):
+        image = torch.ones(3, 2, 2, device=device, dtype=dtype)
+        alpha = torch.ones(2, 2, 2, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="alpha"):
+            conversion(image, alpha)
+
+    @pytest.mark.parametrize("background", [(1.0, 0.0, 0.0), [1.0, 0.0, 0.0]])
+    @pytest.mark.parametrize("leading", [(), (2,), (2, 3)])
+    def test_rgba_custom_background_preserves_leading_dims(self, background, leading, device, dtype):
+        image = torch.tensor([0.2, 0.4, 0.6, 0.5], device=device, dtype=dtype).view(4, 1, 1)
+        expected = torch.tensor([0.6, 0.2, 0.3], device=device, dtype=dtype).view(3, 1, 1)
+        image = image.expand(*leading, 4, 1, 1)
+        expected = expected.expand(*leading, 3, 1, 1)
+
+        result = kornia.color.rgba_to_rgb(image, background)
+        assert result.shape == expected.shape
+        self.assert_close(result, expected)
+
+    def test_rgba_to_rgb_jit_with_default_background(self, device, dtype):
+        image = torch.rand(4, 2, 2, device=device, dtype=dtype)
+        scripted = torch.jit.script(kornia.color.rgba_to_rgb)
+        self.assert_close(scripted(image), kornia.color.rgba_to_rgb(image))
+
     @pytest.mark.parametrize("aval", [0.4, 45.0])
     def test_unit(self, device, dtype, aval):
         data = torch.tensor(
