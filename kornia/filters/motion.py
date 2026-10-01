@@ -30,6 +30,21 @@ from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 _VALID_BORDER = {"constant", "reflect", "replicate", "circular"}
 
 
+def _scalar_params_as_tensors(
+    input: torch.Tensor, angle: float | tuple[float, float, float] | torch.Tensor, direction: float | torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    # Python-number parameters build the kernel in the input's floating dtype, but never below float32: a float64
+    # input keeps float64 precision, while a half-precision kernel would quantise the rotation and move the
+    # nearest-neighbour samples. The kernel is built on the CPU, as before: MPS builds a different one at some
+    # angles (#5181). Tensor parameters keep their own device and dtype.
+    dtype = torch.promote_types(input.dtype, torch.float32) if input.is_floating_point() else torch.get_default_dtype()
+    if not isinstance(angle, torch.Tensor):
+        angle = torch.as_tensor(angle, dtype=dtype)
+    if not isinstance(direction, torch.Tensor):
+        direction = torch.as_tensor(direction, dtype=dtype)
+    return angle, direction
+
+
 class MotionBlur(nn.Module):
     r"""Blur 2D images (4D torch.Tensor) using the motion filter.
 
@@ -217,11 +232,7 @@ def motion_blur(
         False
 
     """
-    dtype = input.dtype if input.is_floating_point() else torch.get_default_dtype()
-    if not isinstance(angle, torch.Tensor):
-        angle = torch.as_tensor(angle, device=input.device, dtype=dtype)
-    if not isinstance(direction, torch.Tensor):
-        direction = torch.as_tensor(direction, device=input.device, dtype=dtype)
+    angle, direction = _scalar_params_as_tensors(input, angle, direction)
     kernel = get_motion_kernel2d(kernel_size, angle, direction, mode)
     return filter2d(input, kernel, border_type)
 
@@ -265,10 +276,6 @@ def motion_blur3d(
         False
 
     """
-    dtype = input.dtype if input.is_floating_point() else torch.get_default_dtype()
-    if not isinstance(angle, torch.Tensor):
-        angle = torch.as_tensor(angle, device=input.device, dtype=dtype)
-    if not isinstance(direction, torch.Tensor):
-        direction = torch.as_tensor(direction, device=input.device, dtype=dtype)
+    angle, direction = _scalar_params_as_tensors(input, angle, direction)
     kernel = get_motion_kernel3d(kernel_size, angle, direction, mode)
     return filter3d(input, kernel, border_type)

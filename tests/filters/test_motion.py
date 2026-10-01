@@ -21,6 +21,8 @@ import torch
 from kornia.filters import (
     MotionBlur,
     MotionBlur3D,
+    filter2d,
+    filter3d,
     get_motion_kernel2d,
     get_motion_kernel3d,
     motion_blur,
@@ -139,6 +141,19 @@ class TestMotionBlur(BaseTester):
             assert result.dtype == torch.float64
             assert (result - image).abs().max() < 1e-15
 
+    @pytest.mark.parametrize("angle", [60.0, 120.0, 150.0])
+    def test_python_float_parameters_match_cpu_tensor_kernel(self, angle, device, dtype):
+        # Python-number parameters build the kernel on the CPU in the input dtype, never below float32: a half
+        # kernel moves the nearest samples at these angles, and an MPS kernel differs at 120 degrees (#5181).
+        kernel_dtype = torch.promote_types(dtype, torch.float32)
+        img = torch.rand(1, 2, 9, 9, device=device, dtype=dtype)
+        kernel = get_motion_kernel2d(
+            7, torch.tensor([angle], dtype=kernel_dtype), torch.tensor([0.3], dtype=kernel_dtype)
+        )
+        expected = filter2d(img, kernel, "reflect")
+        self.assert_close(motion_blur(img, 7, angle, 0.3, "reflect"), expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur(7, angle, 0.3, "reflect")(img), expected, rtol=0, atol=0)
+
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
@@ -251,6 +266,18 @@ class TestMotionBlur3D(BaseTester):
         for result in results:
             assert result.dtype == torch.float64
             assert (result - volume).abs().max() < 1e-15
+
+    @pytest.mark.parametrize("angle", [(0.0, 120.0, 35.0), (60.0, 150.0, 120.0)])
+    def test_python_float_parameters_match_cpu_tensor_kernel(self, angle, device, dtype):
+        # Python-number parameters build the kernel on the CPU in the input dtype, never below float32 (#5181).
+        kernel_dtype = torch.promote_types(dtype, torch.float32)
+        volume = torch.rand(1, 2, 6, 7, 8, device=device, dtype=dtype)
+        kernel = get_motion_kernel3d(
+            5, torch.tensor([angle], dtype=kernel_dtype), torch.tensor([0.3], dtype=kernel_dtype)
+        )
+        expected = filter3d(volume, kernel, "replicate")
+        self.assert_close(motion_blur3d(volume, 5, angle, 0.3, "replicate"), expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur3D(5, angle, 0.3, "replicate")(volume), expected, rtol=0, atol=0)
 
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
