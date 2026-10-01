@@ -362,6 +362,28 @@ class TestLazyOutputCache(BaseTester):
             rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
             np.testing.assert_array_equal(np.asarray(output[0]), rendered)
 
+    @pytest.mark.parametrize("output_type", ["numpy", "pil"])
+    def test_converted_output_can_be_shown_and_saved_4964(self, module, output_type, device, dtype, tmp_path):
+        if dtype == torch.bfloat16 and output_type == "numpy":
+            pytest.skip("NumPy does not support bfloat16")
+        image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        module(image, output_type=output_type)
+        cached = module._output_image
+        assert isinstance(cached, torch.Tensor)
+        assert cached.device == image.device
+        assert cached.dtype == image.dtype
+        assert cached.grad_fn is None
+        assert not cached.requires_grad
+        self.assert_close(cached, image.sigmoid().detach())
+        working = cached[0].to(torch.promote_types(dtype, torch.float32))
+        expected = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).cpu().permute(1, 2, 0).numpy()
+        np.testing.assert_array_equal(np.asarray(module.show(display=False)), expected)
+        path = tmp_path / "converted.png"
+        module.save(name=str(path))
+        with PILImage.open(path) as saved:
+            np.testing.assert_array_equal(np.asarray(saved), expected)
+        assert module._output_image is cached
+
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_export_preserves_cache_4957(self, device, dtype):
         class CacheModule(torch.nn.Module, ImageModuleMixIn):
@@ -602,3 +624,43 @@ class TestImageModuleConversions(BaseTester):
         module.save(name=str(path))
         with PILImage.open(path) as saved:
             np.testing.assert_array_equal(pil, np.asarray(saved))
+
+
+class TestTupleOutputCache(BaseTester):
+    @pytest.mark.parametrize("container", [ImageModule, ImageSequential])
+    @pytest.mark.parametrize("count", [1, 2])
+    @pytest.mark.parametrize("output_type", ["pt", "numpy", "pil"])
+    def test_tuple_conversion_and_cache(self, container, count, output_type, device, dtype):
+        if dtype == torch.bfloat16 and output_type == "numpy":
+            pytest.skip("NumPy does not support bfloat16")
+
+        class TupleModule(container):
+            def forward(self, x):
+                return tuple(x.sigmoid() for _ in range(count))
+
+        module = TupleModule()
+        image = torch.rand(3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        result = module(image, output_type=output_type)
+        cached = module._output_image
+        if count == 1:
+            result, cached = [result], [cached]
+        else:
+            assert isinstance(result, list)
+            assert isinstance(cached, list)
+        assert len(result) == len(cached) == count
+        expected = image.sigmoid().detach()
+        for output, tensor in zip(result, cached):
+            assert isinstance(tensor, torch.Tensor)
+            assert tensor.device == image.device
+            assert not tensor.requires_grad
+            self.assert_close(tensor, expected)
+            if output_type == "pt":
+                assert output.requires_grad
+                self.assert_close(output, expected)
+            elif output_type == "numpy":
+                np.testing.assert_array_equal(output, expected.cpu().permute(1, 2, 0).numpy())
+            else:
+                assert isinstance(output, PILImage.Image)
+                working = expected.cpu().to(torch.promote_types(dtype, torch.float32))
+                rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
+                np.testing.assert_array_equal(np.asarray(output), rendered)

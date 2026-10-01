@@ -97,6 +97,8 @@ class ImageModuleMixIn:
         self,
         input_names_to_handle: Optional[List[Any]] = None,
         output_type: Literal["pt", "numpy", "pil"] = "pt",
+        *,
+        cache_output: bool = False,
     ) -> Callable[[Any], Any]:
         """Convert input and output types for a function.
 
@@ -105,6 +107,7 @@ class ImageModuleMixIn:
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
                 path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
+            cache_output: Cache detached tensor outputs before converting their type, for visualization helpers.
 
         Returns:
             Callable: Decorated function with converted input and output types.
@@ -138,7 +141,10 @@ class ImageModuleMixIn:
                             kwargs[name] = self.to_tensor(value)
 
                 # Call the actual forward method and convert its outputs to the desired type
-                return self._convert_output(func(*args, **kwargs), output_type)
+                tensor_outputs = func(*args, **kwargs)
+                if cache_output:
+                    self._store_output_image(self._convert_output(tensor_outputs, "pt"), "pt")
+                return self._convert_output(tensor_outputs, output_type)
 
             return wrapper
 
