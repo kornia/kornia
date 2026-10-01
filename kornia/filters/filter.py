@@ -299,7 +299,7 @@ def filter3d(
 
     if normalized:
         bk, dk, hk, wk = kernel.shape
-        tmp_kernel = normalize_kernel2d(tmp_kernel.view(bk, dk, hk * wk)).view_as(tmp_kernel)
+        tmp_kernel = normalize_kernel2d(tmp_kernel.reshape(bk, dk, hk * wk)).view_as(tmp_kernel)
 
     tmp_kernel = tmp_kernel.expand(-1, c, -1, -1, -1)
 

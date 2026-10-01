@@ -735,12 +735,46 @@ class TestFilter3D(BaseTester):
         actual = filter3d(inp, kernel)
         assert actual.is_contiguous()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("kernel_batch", [1, 2])
+    @pytest.mark.parametrize("normalized", [True, False])
+    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
+    def test_noncontiguous_kernel(self, kernel_batch, normalized, behaviour, device, dtype):
+        data = torch.arange(840, device=device, dtype=dtype).reshape(2, 2, 7, 6, 5) / 840
+        kernel = (torch.arange(30 * kernel_batch, device=device, dtype=dtype) % 7 - 3).reshape(kernel_batch, 2, 3, 5)
+        kernel = kernel.permute(0, 3, 2, 1)
+        assert not kernel.is_contiguous()
+
+        weights = kernel.flip((-3, -2, -1)) if behaviour == "conv" else kernel
+        if normalized:
+            weights = weights / weights.abs().sum(dim=(-3, -2, -1), keepdim=True)
+        expected = torch.cat(
+            [
+                torch.nn.functional.conv3d(
+                    torch.nn.functional.pad(data[i : i + 1], (0, 1, 1, 1, 2, 2), mode="replicate"),
+                    weights[0 if kernel_batch == 1 else i][None, None].expand(2, 1, -1, -1, -1),
+                    groups=2,
+                )
+                for i in range(2)
+            ]
+        )
+        actual = filter3d(data, kernel, normalized=normalized, behaviour=behaviour)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
+    @pytest.mark.parametrize("noncontiguous", [True, False])
+    def test_gradcheck(self, normalized, behaviour, noncontiguous, device):
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=torch.float64)
+        if noncontiguous:
+            kernel = kernel.permute(0, 3, 2, 1)
         sample = torch.ones(1, 1, 6, 7, 8, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        self.gradcheck(filter3d, (sample, kernel), nondet_tol=1e-8)
+        self.gradcheck(
+            lambda data, kernel: filter3d(data, kernel, normalized=normalized, behaviour=behaviour),
+            (sample, kernel),
+            nondet_tol=1e-8,
+        )
 
     @pytest.mark.skip(reason="filter3d do not have a module")
     def test_module(self): ...
