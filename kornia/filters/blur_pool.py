@@ -84,9 +84,9 @@ class BlurPool2D(nn.Module):
                 input width.
 
         Returns:
-            Downsampled tensor with shape :math:`(B, C, H_{out}, W_{out})`.
-            :math:`H_{out}` and :math:`W_{out}` are determined by the kernel
-            size, padding used inside the helper, and ``self.stride``.
+            Downsampled tensor of shape :math:`(B, C, H_{out}, W_{out})`, with
+            the sizes given in the Shape section of the class. They depend only
+            on the input size and ``self.stride``.
         """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
@@ -155,9 +155,10 @@ class MaxBlurPool2D(nn.Module):
                 :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H_{out}, W_{out})` after max
-            pooling and blur pooling. The spatial output sizes depend on the
-            configured max-pool size, stride, blur kernel, and ``ceil_mode``.
+            Tensor of shape :math:`(B, C, H_{out}, W_{out})` after max pooling
+            and blur pooling, with the sizes given in the Shape section of the
+            class. They depend only on the input size, ``self.max_pool_size``
+            and ``self.stride``.
         """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
@@ -296,10 +297,9 @@ def max_blur_pool2d(
 def _blur_pool_conv2d(input: torch.Tensor, kernel: torch.Tensor, stride: int) -> torch.Tensor:
     """Correlate every channel with its kernel at ``stride``, zero-padded so the output keeps ``ceil(H / stride)`` rows.
 
-    The padding is ``(k - 1) // 2`` pixels before and ``k // 2`` after along each spatial axis, as in antialiased-cnns.
-    For an odd ``k`` the two are equal and ``F.conv2d`` pads itself. An even ``k`` needs one pixel more after than
-    before, which ``F.pad`` adds; the symmetric ``(k - 1) // 2`` padding used before dropped the last row and column
-    (#5166).
+    The padding is ``(k - 1) // 2`` pixels before and ``k // 2`` after along each spatial axis, the amounts
+    antialiased-cnns uses. For an odd ``k`` the two are equal and ``F.conv2d`` pads itself. An even ``k`` needs one
+    pixel more after than before, which ``F.pad`` adds.
     """
     ky, kx = kernel.shape[-2], kernel.shape[-1]
     if ky % 2 == 1 and kx % 2 == 1:

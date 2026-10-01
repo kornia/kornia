@@ -32,6 +32,27 @@ from kornia.filters import (
 from testing.base import BaseTester
 
 
+def _zero_padded_reference(x: torch.Tensor, k: int, s: int) -> torch.Tensor:
+    """Blur pool as adobe/antialiased-cnns BlurPool with pad_type='zero', in float64 on CPU.
+
+    Pads ``(k - 1) // 2`` zeros before and ``k // 2`` after along each spatial axis, then correlates with the normalised
+    Pascal kernel at stride ``s``, one output pixel at a time, without F.pad or F.conv2d.
+    """
+    x = x.cpu().double()
+    *lead, h, w = x.shape
+    taps = torch.tensor([math.comb(k - 1, i) for i in range(k)], dtype=torch.float64)
+    kernel = torch.outer(taps, taps) / (2.0 ** (2 * (k - 1)))
+    before = (k - 1) // 2
+    padded = torch.zeros(*lead, h + k - 1, w + k - 1, dtype=torch.float64)
+    padded[..., before : before + h, before : before + w] = x
+    h_out, w_out = math.ceil(h / s), math.ceil(w / s)
+    out = torch.zeros(*lead, h_out, w_out, dtype=torch.float64)
+    for i in range(h_out):
+        for j in range(w_out):
+            out[..., i, j] = (padded[..., i * s : i * s + k, j * s : j * s + k] * kernel).sum(dim=(-2, -1))
+    return out
+
+
 class TestMaxBlurPool(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("ceil_mode", [True, False])
@@ -63,10 +84,11 @@ class TestMaxBlurPool(BaseTester):
 
         assert actual.is_contiguous()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("kernel_size", [3, 4])
+    def test_gradcheck(self, kernel_size, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        self.gradcheck(max_blur_pool2d, (img, 3))
+        self.gradcheck(max_blur_pool2d, (img, kernel_size))
 
     @pytest.mark.parametrize("kernel_size", [(3, 3), 5])
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -79,7 +101,7 @@ class TestMaxBlurPool(BaseTester):
         expected = op(img, kernel_size)
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
+    @pytest.mark.parametrize("kernel_size", [3, 4, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("ceil_mode", [True, False])
     def test_dynamo(self, batch_size, kernel_size, ceil_mode, device, dtype, torch_optimizer):
@@ -100,13 +122,16 @@ class TestMaxBlurPool(BaseTester):
         expected = tuple(math.ceil((n - max_pool_size + 1) / stride) for n in (7, 10))
         assert actual.shape == (1, 2, *expected)
 
-    @pytest.mark.parametrize("kernel_size", [2, 4])
-    def test_even_kernel_is_max_pool_then_blur_pool_5166(self, kernel_size, device, dtype):
+    @pytest.mark.parametrize("kernel_size", [2, 3, 4])
+    @pytest.mark.parametrize("stride", [1, 2])
+    @pytest.mark.parametrize("max_pool_size", [1, 2, 3])
+    def test_even_kernel_is_max_pool_then_blur_pool_5166(self, kernel_size, stride, max_pool_size, device, dtype):
+        # Max pooling at stride 1, then the float64 zero-padded reference blur pool instead of kornia's own helper.
         data = torch.rand(1, 2, 7, 10, device=device, dtype=dtype)
-        expected = blur_pool2d(torch.nn.functional.max_pool2d(data, 2, stride=1), kernel_size, stride=2)
-        actual = max_blur_pool2d(data, kernel_size, stride=2)
-        assert actual.shape == (1, 2, 3, 5)
-        self.assert_close(actual, expected)
+        pooled = torch.nn.functional.max_pool2d(data.cpu().double(), max_pool_size, stride=1)
+        expected = _zero_padded_reference(pooled, kernel_size, stride)
+        actual = max_blur_pool2d(data, kernel_size, stride=stride, max_pool_size=max_pool_size)
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
 
 
 class TestBlurPool(BaseTester):
@@ -140,10 +165,11 @@ class TestBlurPool(BaseTester):
         actual = blur_pool2d(inp, 3)
         assert actual.is_contiguous()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("kernel_size", [3, 4])
+    def test_gradcheck(self, kernel_size, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        self.gradcheck(blur_pool2d, (img, 3))
+        self.gradcheck(blur_pool2d, (img, kernel_size))
 
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -157,7 +183,7 @@ class TestBlurPool(BaseTester):
         expected = op(img, kernel_size)
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
+    @pytest.mark.parametrize("kernel_size", [3, 4, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("stride", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, stride, device, dtype, torch_optimizer):
@@ -179,23 +205,9 @@ class TestBlurPool(BaseTester):
     @pytest.mark.parametrize("kernel_size", [2, 3, 4, 5])
     @pytest.mark.parametrize("stride", [1, 2, 3])
     def test_matches_zero_padded_reference_5166(self, kernel_size, stride, device, dtype):
-        # adobe/antialiased-cnns BlurPool with pad_type='zero': pad (k - 1) // 2 pixels before and k // 2 after with
-        # zeros, then correlate with the normalised Pascal kernel at the given stride. Computed here in float64 on
-        # CPU, one output pixel at a time, without F.pad or F.conv2d.
-        k, s = kernel_size, stride
         data = torch.rand(2, 3, 7, 10, device=device, dtype=dtype)
-        x = data.cpu().double()
-        taps = torch.tensor([math.comb(k - 1, i) for i in range(k)], dtype=torch.float64)
-        kernel = torch.outer(taps, taps) / (2.0 ** (2 * (k - 1)))
-        before = (k - 1) // 2
-        padded = torch.zeros(2, 3, 7 + k - 1, 10 + k - 1, dtype=torch.float64)
-        padded[..., before : before + 7, before : before + 10] = x
-        h_out, w_out = math.ceil(7 / s), math.ceil(10 / s)
-        expected = torch.zeros(2, 3, h_out, w_out, dtype=torch.float64)
-        for i in range(h_out):
-            for j in range(w_out):
-                expected[..., i, j] = (padded[..., i * s : i * s + k, j * s : j * s + k] * kernel).sum(dim=(-2, -1))
-        self.assert_close(blur_pool2d(data, k, stride=s), expected.to(device=device, dtype=dtype))
+        expected = _zero_padded_reference(data, kernel_size, stride)
+        self.assert_close(blur_pool2d(data, kernel_size, stride=stride), expected.to(device=device, dtype=dtype))
 
 
 class TestEdgeAwareBlurPool(BaseTester):
@@ -245,9 +257,10 @@ class TestEdgeAwareBlurPool(BaseTester):
         expected = op(img, kernel_size)
         self.assert_close(actual, expected)
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("kernel_size", [3, 4])
+    def test_gradcheck(self, kernel_size, device):
         img = torch.rand((1, 2, 5, 4), device=device, dtype=torch.float64)
-        self.gradcheck(edge_aware_blur_pool2d, (img, 3))
+        self.gradcheck(edge_aware_blur_pool2d, (img, kernel_size))
 
     def test_smooth(self, device, dtype):
         img = torch.ones(1, 1, 5, 5, device=device, dtype=dtype)
@@ -255,7 +268,7 @@ class TestEdgeAwareBlurPool(BaseTester):
         blur = edge_aware_blur_pool2d(img, kernel_size=3, edge_threshold=32.0)
         self.assert_close(img, blur)
 
-    @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
+    @pytest.mark.parametrize("kernel_size", [3, 4, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
         op = edge_aware_blur_pool2d
@@ -271,3 +284,14 @@ class TestEdgeAwareBlurPool(BaseTester):
         # with the input raised a shape error.
         data = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
         assert edge_aware_blur_pool2d(data, kernel_size).shape == data.shape
+
+    @pytest.mark.parametrize("kernel_size", [2, 4])
+    @pytest.mark.parametrize("shape", [(8, 8), (8, 9)])
+    def test_even_kernel_matches_blur_without_edges_5166(self, kernel_size, shape, device, dtype):
+        # With edge_threshold=1e6 no pixel is an edge, so the output is the stride-1 blur of the input reflect-padded by
+        # 2 pixels, cropped back to the input size.
+        data = torch.rand(1, 3, *shape, device=device, dtype=dtype) + 0.1
+        actual = edge_aware_blur_pool2d(data, kernel_size, edge_threshold=1e6)
+        padded = torch.nn.functional.pad(data.cpu().double(), (2, 2, 2, 2), mode="reflect")
+        expected = _zero_padded_reference(padded, kernel_size, 1)[..., 2:-2, 2:-2]
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
