@@ -218,6 +218,28 @@ class TestHistcCast(BaseTester):
 
 class TestInverse3x3ClosedForm(BaseTester):
     @pytest.mark.parametrize("capture", [False, True], ids=["eager", "capture"])
+    def test_half_input_is_inverted_in_float32(self, device, dtype, capture, monkeypatch):
+        # #5197: inverted in float32 and rounded once to the half dtype, the result is within half an ulp-ish of the
+        # float64 inverse of the rounded matrix (0.47 eps measured on 256 matrices, float16 and bfloat16); the
+        # adjugate computed in the half dtype is 1.9 to 2.5 eps off. Pins the bfloat16 promotion as well, which no
+        # other CI leg exercises (the cross kernel it avoids is missing only on MPS with torch 2.5.1).
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("the float32 promotion applies to half dtypes only")
+        if capture:
+            monkeypatch.setattr("kornia.core.utils._is_tracing_or_exporting", lambda: True)
+        generator = torch.Generator().manual_seed(0)
+        eye = torch.eye(3, dtype=torch.float64)
+        matrix = torch.randn(256, 3, 3, generator=generator, dtype=torch.float64) + 3 * eye
+        matrix = matrix.to(device=device, dtype=dtype)
+        expected = torch.linalg.inv(matrix.cpu().double())
+
+        inverse = _inverse_3x3_closed_form(matrix)
+
+        assert inverse.dtype == dtype
+        error = (inverse.cpu().double() - expected).abs() / expected.abs().amax((-2, -1), keepdim=True)
+        assert error.max() <= torch.finfo(dtype).eps
+
+    @pytest.mark.parametrize("capture", [False, True], ids=["eager", "capture"])
     @pytest.mark.parametrize("side", [3000, 11600])
     def test_pixel_normalization_matrix_of_a_large_image(self, device, dtype, side, capture, monkeypatch):
         # #5197: the pixel-normalization matrix of a `side`-pixel image, [[s, 0, -1], [0, s, -1], [0, 0, 1]] with
