@@ -62,12 +62,14 @@ class TestSsim(BaseTester):
     def test_autocast_dynamic_range(self, device, dtype):
         if device.type not in ("cpu", "cuda"):
             pytest.skip("Autocast regression covers CPU and CUDA backends")
-        img = torch.full((1, 1) + (8,) * 2, 128.0, device=device, dtype=dtype)
+        img1 = torch.arange(8**2, device=device, dtype=dtype).reshape((1, 1) + (8,) * 2) % 17 * 15
+        img2 = img1.flip(-1) * 0.8
+        expected = ssim(img1.double(), img2.double(), 3, max_val=255.0).to(dtype)
         autocast_dtype = torch.float16 if device.type == "cuda" else torch.bfloat16
         with torch.autocast(device_type=device.type, dtype=autocast_dtype):
-            actual = ssim(img, img, 3, max_val=255.0)
+            actual = ssim(img1, img2, 3, max_val=255.0)
         assert actual.dtype == dtype
-        self.assert_close(actual, torch.ones_like(actual))
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("values", [(128.0, 128.0, 255.0), (128.0, 64.0, 255.0), (0.0, 0.0, 0.5)])
     @pytest.mark.parametrize("padding", ["same", "valid"])
