@@ -65,7 +65,7 @@ class TestSIFTScalePyramidCPUOptimized(BaseTester):
         self._cpu(device, dtype)
         pyramid = _SIFTScalePyramid().to(device, dtype)
         image = torch.rand(1, 1, *shape, device=device, dtype=dtype)
-        kernel = torch.rand_like(pyramid.kernel_4)
+        kernel = torch.rand_like(pyramid.kernel_4.to(image))
 
         actual = (
             pyramid._blur_cpu(image, kernel, kernel.numel() // 2)
@@ -108,7 +108,8 @@ class TestSIFTScalePyramidCPUOptimized(BaseTester):
         pyramid = _SIFTScalePyramid().to(device, dtype)
         actual_input = torch.rand(1, 1, 17, 19, device=device, dtype=dtype, requires_grad=True)
         expected_input = actual_input.detach().clone().requires_grad_()
-        kernel = pyramid.kernel_4
+        # ``forward`` casts the float64 reference kernels to the image before blurring.
+        kernel = pyramid.kernel_4.to(actual_input)
 
         actual = (
             pyramid._blur_cpu(actual_input, kernel, kernel.numel() // 2)
@@ -138,7 +139,7 @@ class TestSIFTScalePyramidCPUOptimized(BaseTester):
             pytest.skip("the CPU slice implementation uses full precision")
         pyramid = _SIFTScalePyramid().to(device, dtype)
         image = torch.rand(1, 1, 17, 19, device=device, dtype=dtype)
-        kernel = pyramid.kernel_4
+        kernel = pyramid.kernel_4.to(image)
         radius = kernel.numel() // 2
         expected = pyramid._blur_cpu(image, kernel, radius)
         torch._dynamo.reset()

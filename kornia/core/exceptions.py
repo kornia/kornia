@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import torch
+
 __all__ = [
     "BaseError",
     "DeviceError",
@@ -32,11 +34,16 @@ __all__ = [
 
 
 class BaseError(Exception):
-    """Base class of the exceptions raised by kornia's ``KORNIA_CHECK*`` validation helpers and a few functions."""
+    """Base class of the exceptions raised by kornia's ``KORNIA_CHECK*`` validation helpers and a few functions.
+
+    A failed ``KORNIA_CHECK`` raises it directly; it is neither a :exc:`ValueError` nor a :exc:`TypeError`. Each
+    subclass also derives from the one of those two built-ins that matches its failure, so the matching ``except``
+    clause catches the subclass as well.
+    """
 
 
-class ShapeError(BaseError):
-    """Raised when tensor shape validation fails.
+class ShapeError(BaseError, ValueError):
+    """Raised when tensor shape validation fails. Also a :exc:`ValueError`.
 
     Attributes:
         actual_shape: The actual shape of the tensor that failed validation.
@@ -55,28 +62,28 @@ class ShapeError(BaseError):
         self.expected_shape = expected_shape
 
 
-class TypeCheckError(BaseError):
-    """Raised when type validation fails.
+class TypeCheckError(BaseError, TypeError):
+    """Raised when type validation fails. Also a :exc:`TypeError`.
 
     Attributes:
-        actual_type: The actual type that failed validation.
-        expected_type: The expected type.
+        actual_type: The actual type (or tensor dtype) that failed validation.
+        expected_type: The expected type (or tensor dtype).
     """
 
     def __init__(
         self,
         message: str,
         *,
-        actual_type: Optional[type] = None,
-        expected_type: Optional[type | tuple[type, ...]] = None,
+        actual_type: Optional[type | torch.dtype] = None,
+        expected_type: Optional[type | tuple[type, ...] | torch.dtype] = None,
     ):
         super().__init__(message)
         self.actual_type = actual_type
         self.expected_type = expected_type
 
 
-class ValueCheckError(BaseError):
-    """Raised when value/range validation fails.
+class ValueCheckError(BaseError, ValueError):
+    """Raised when value/range validation fails. Also a :exc:`ValueError`.
 
     Attributes:
         actual_value: The actual value that failed validation.
@@ -95,8 +102,8 @@ class ValueCheckError(BaseError):
         self.expected_range = expected_range
 
 
-class DeviceError(BaseError):
-    """Raised when device mismatch validation fails.
+class DeviceError(BaseError, ValueError):
+    """Raised when device mismatch validation fails. Also a :exc:`ValueError`.
 
     Attributes:
         actual_devices: The actual device(s) that failed validation.
@@ -115,5 +122,5 @@ class DeviceError(BaseError):
         self.expected_device = expected_device
 
 
-class ImageError(BaseError):
-    """Raised when image-specific validation fails."""
+class ImageError(BaseError, ValueError):
+    """Raised when image-specific validation fails. Also a :exc:`ValueError`."""

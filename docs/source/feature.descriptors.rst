@@ -10,6 +10,7 @@ Descriptors
    :members: forward, orient_and_describe
 
 .. autoclass:: SIFTDescriptor
+.. autofunction:: convert_sift_descriptor_layout
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet
 .. autoclass:: HardNet8

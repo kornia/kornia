@@ -93,7 +93,7 @@ from .responses import (
 )
 from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
 from .sift import SIFTDescriptorFromPyramid
-from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
+from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor, convert_sift_descriptor_layout
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
@@ -154,6 +154,7 @@ __all__ = [
     "TFeat",
     "XFeat",
     "XFeatModel",
+    "convert_sift_descriptor_layout",
     "denormalize_laf",
     "dog_response",
     "dog_response_single",
