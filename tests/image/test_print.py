@@ -22,6 +22,14 @@ from kornia.image import image_to_string, print_image
 
 
 class TestImageToString:
+    @pytest.mark.parametrize(("height", "rows"), [(2, 1), (3, 1), (6, 1), (10, 2)])
+    def test_wide_image_keeps_at_least_one_row(self, height, rows, device, dtype):
+        # the resized height is max(1, H * max_width // W): a wide, short image keeps one row, taller ones are unchanged
+        image = torch.rand(3, height, 40, device=device, dtype=dtype)
+        out = image_to_string(image, max_width=10)
+        assert out.count("\n") == rows
+        assert out.count("\033[48;5;") == rows * 10
+
     def test_value(self):
         image = torch.arange(16).reshape(1, 4, 4).repeat(3, 1, 1).long() * 16
         out = image_to_string(image)

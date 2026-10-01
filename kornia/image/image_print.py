@@ -371,7 +371,7 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
         image = image / 255.0
 
     if image.shape[-1] > max_width:
-        new_h = image.size(-2) * max_width // image.size(-1)
+        new_h = max(1, image.size(-2) * max_width // image.size(-1))
         image = kornia.geometry.resize(image, (new_h, max_width))
 
     image = (image * 255).clamp(0, 255).long()
