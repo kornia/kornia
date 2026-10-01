@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
 import urllib.request
+import uuid
 from contextlib import suppress
 from typing import Any, Optional
 
@@ -80,8 +80,10 @@ class CachedDownloader:
             Local filesystem path to the cached file.
 
         Raises:
-            ValueError: If ``url`` is not an HTTP or HTTPS URL, or if download is
-                disabled and the file is missing.
+            ValueError: If ``url`` is not an HTTP or HTTPS URL, if download is
+                disabled and the file is missing, or if the server answers with an HTTP error.
+            urllib.error.URLError: If the server cannot be reached, or ``urllib.error.ContentTooShortError``
+                if the body is shorter than its ``Content-Length`` (see ``download``).
         """
         if url.startswith(("http:", "https:")):
             cache_dir = kwargs.get("cache_dir", None)
@@ -105,6 +107,13 @@ class CachedDownloader:
             file_path: The local path where the downloaded model should be saved.
             download_if_not_exists: If True, the file will be downloaded if it's not already downloaded.
 
+        Raises:
+            ValueError: If the file is missing and ``download_if_not_exists`` is ``False``, if ``url`` is not an
+                HTTP or HTTPS URL, or if the server answers with an HTTP error.
+            urllib.error.ContentTooShortError: If the body is shorter than its ``Content-Length``. Nothing is
+                left at ``file_path``, so the next call downloads again.
+            urllib.error.URLError: If the server cannot be reached.
+
         """
         if os.path.exists(file_path):
             _logger.info(f"Loading `{url}` from `{file_path}`.")
@@ -116,11 +125,11 @@ class CachedDownloader:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Create the cache directory if it doesn't exist
 
         if url.startswith(("http:", "https:")):
-            # Keep incomplete transfers out of the cache, including while another
-            # caller is checking it. Close the temporary file before reopening it
-            # through urlretrieve so the same code also works on Windows.
-            with tempfile.NamedTemporaryFile(dir=os.path.dirname(file_path), delete=False) as temporary_file:
-                temporary_path = temporary_file.name
+            # Keep incomplete transfers out of the cache, including while another caller is checking it: write
+            # beside the destination and publish with os.replace. Let urlretrieve create the file, so it gets the
+            # permissions of any new file (umask applied); a tempfile would be 0o600 and lock other users out of a
+            # shared cache.
+            temporary_path = f"{file_path}.{uuid.uuid4().hex}.partial"
             try:
                 _logger.info(f"Downloading `{url}` to `{file_path}`.")
                 urllib.request.urlretrieve(url, temporary_path)  # noqa: S310

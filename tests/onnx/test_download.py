@@ -19,8 +19,11 @@ from __future__ import annotations
 
 import http.server
 import os
+import sys
 import threading
+import time
 from pathlib import Path
+from unittest import mock
 from urllib.error import ContentTooShortError, HTTPError
 
 import pytest
@@ -123,3 +126,76 @@ class TestCachedDownloader:
         CachedDownloader.download(f"{base_url}/missing", str(path), download)
         assert path.read_bytes() == b"cached weights"
         assert hits == []
+
+    def test_interrupted_transfer_leaves_no_file(self, tmp_path):
+        # KeyboardInterrupt is a BaseException: the cleanup must not be an `except Exception`
+        path = tmp_path / "cache" / "model.pth"
+
+        def interrupted(url, filename):
+            Path(filename).write_bytes(b"partial")
+            raise KeyboardInterrupt
+
+        with mock.patch("urllib.request.urlretrieve", side_effect=interrupted):
+            with pytest.raises(KeyboardInterrupt):
+                CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
+
+        assert list(path.parent.iterdir()) == []
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+    def test_cache_file_has_default_permissions(self, tmp_path):
+        # a downloaded file gets the permissions of any new file (umask applied), not mkstemp's owner-only 0o600,
+        # so a cache filled by one user stays readable by another
+        path = tmp_path / "cache" / "model.pth"
+        reference = tmp_path / "reference"
+        reference.write_bytes(b"")
+
+        def write(url, filename):
+            Path(filename).write_bytes(b"weights")
+
+        with mock.patch("urllib.request.urlretrieve", side_effect=write):
+            CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
+
+        assert path.stat().st_mode == reference.stat().st_mode
+
+    def test_partial_transfer_is_not_visible_at_cache_path(self, monkeypatch, tmp_path):
+        # a second caller checking the cache mid-transfer must not find (and return) a half-written file
+        for var in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("no_proxy", "127.0.0.1")
+        monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+        payload = bytes(range(256)) * 400
+        half_sent, release = threading.Event(), threading.Event()
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload[: len(payload) // 2])
+                self.wfile.flush()
+                half_sent.set()
+                release.wait(10)
+                self.wfile.write(payload[len(payload) // 2 :])
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        path = tmp_path / "cache" / "model.pth"
+        url = f"http://127.0.0.1:{server.server_port}/model.pth"
+        worker = threading.Thread(target=CachedDownloader.download, args=(url, str(path)))
+        try:
+            worker.start()
+            assert half_sent.wait(10)
+            deadline = time.monotonic() + 10
+            while not (path.parent.exists() and any(p.stat().st_size > 0 for p in path.parent.iterdir())):
+                assert time.monotonic() < deadline, "the transfer never started writing"
+                time.sleep(0.01)
+            assert not path.exists()
+        finally:
+            release.set()
+            worker.join(10)
+            server.shutdown()
+            server.server_close()
+        assert path.read_bytes() == payload

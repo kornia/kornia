@@ -75,6 +75,25 @@ class TestONNXLoader:
             )
             mock_onnx_load.assert_called_once_with(str(tmp_path / "some_model.onnx"))
 
+    @pytest.mark.parametrize("absolute", [False, True])
+    def test_load_model_hf_default_cache_dir(self, absolute, monkeypatch, tmp_path):
+        # without cache_dir, an hf:// model is cached under <hub_onnx_dir>/<folder>/, also for an absolute hub_onnx_dir
+        from unittest import mock
+
+        from kornia.config import kornia_config
+
+        hub_dir = str(tmp_path / "onnx_models") if absolute else os.path.join("rel", "onnx_models")
+        monkeypatch.setattr(kornia_config, "hub_onnx_dir", hub_dir)
+
+        with mock.patch.object(ONNXLoader, "download") as mock_download, mock.patch("onnx.load"):
+            ONNXLoader.load_model("hf://operators/some_model")
+
+        mock_download.assert_called_once_with(
+            "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx",
+            os.path.join(hub_dir, "operators", "some_model.onnx"),
+            download_if_not_exists=True,
+        )
+
     def test_load_model_not_found(self):
         model_name = "non_existent_model.onnx"
         with pytest.raises(ValueError, match=f"File {model_name} not found"):
