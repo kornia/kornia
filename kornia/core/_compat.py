@@ -150,6 +150,17 @@ def _emit_deprecation_warning(
     )
 
 
+def _bind_init(raw_init: Any, instance: Any) -> Any:
+    """Bind a class's stored ``__init__`` to ``instance`` the way ``type.__call__`` does.
+
+    ``type.__call__`` binds the attribute through the descriptor protocol against the instance's type, so a
+    ``staticmethod`` gets no instance, a ``classmethod`` gets the class being instantiated and a callable without
+    ``__get__`` is called as stored.
+    """
+    get = getattr(type(raw_init), "__get__", None)
+    return raw_init if get is None else get(raw_init, instance, type(instance))
+
+
 def deprecated(
     replace_with: Optional[str] = None, version: Optional[str] = None, extra_reason: Optional[str] = None
 ) -> Any:
@@ -239,11 +250,14 @@ def deprecated(
             cls = cast("type[Any]", func)
             orig_init = cls.__init__
             has_own_init = "__init__" in cls.__dict__
+            # ``orig_init`` went through descriptor lookup on ``cls``; call the stored attribute bound to the instance
+            # instead, so a ``staticmethod`` or ``classmethod`` ``__init__`` gets the arguments it gets undecorated.
+            raw_init = next(k.__dict__["__init__"] for k in cls.__mro__ if "__init__" in k.__dict__)
 
             def class_init(self: Any, *args: Any, **kwargs: Any) -> None:
                 _emit_deprecation_warning(name, replace_with, version, extra_reason)
                 if has_own_init:
-                    orig_init(self, *args, **kwargs)
+                    _bind_init(raw_init, self)(*args, **kwargs)
                     return
                 # No ``__init__`` of its own: continue with the next one along the instance's MRO, as
                 # ``super(owner, self).__init__`` does, because under multiple inheritance that is not necessarily
@@ -256,7 +270,7 @@ def deprecated(
                     # a decorator above this one that wraps ``__init__``) and still calls it.
                     position = mro.index(cls)
                 if position is None:  # called on an object that is not an instance of ``cls``
-                    orig_init(self, *args, **kwargs)
+                    _bind_init(raw_init, self)(*args, **kwargs)
                     return
                 next_class = next(k for k in mro[position + 1 :] if "__init__" in k.__dict__)
                 if next_class is not object:

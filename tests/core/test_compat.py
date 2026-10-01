@@ -125,6 +125,35 @@ class _Mixin:
     """A mixin that defines no ``__init__``."""
 
 
+class _CallableWithoutGet:
+    """A callable with no ``__get__``: ``type.__call__`` calls it as stored, without the instance."""
+
+    def __init__(self, seen: list[Any]) -> None:
+        self.seen = seen
+
+    def __call__(self, x: int) -> None:
+        self.seen.append(("callable", x))
+
+
+def _classes_with_an_unusual_init(seen: list[Any]) -> dict[str, type]:
+    """Return fresh classes whose own ``__init__`` is not a plain function; each records what it receives."""
+
+    class StaticInit:
+        @staticmethod
+        def __init__(x: int) -> None:
+            seen.append(("static", x))
+
+    class ClassInit:
+        @classmethod
+        def __init__(cls, x: int) -> None:
+            seen.append(("class", cls.__name__, x))
+
+    class CallableInit:
+        __init__ = _CallableWithoutGet(seen)
+
+    return {"staticmethod": StaticInit, "classmethod": ClassInit, "callable": CallableInit}
+
+
 @deprecated(version="0.9.0")
 class _MixinWithInit:
     """A mixin that defines an ``__init__`` and continues along the MRO."""
@@ -571,6 +600,30 @@ class TestDeprecatedClass:
         assert isinstance(module, _OldModule)
         assert isinstance(module, torch.nn.Module)
         assert module(torch.zeros(1)).item() == 1.0
+
+    @pytest.mark.parametrize("kind", ["staticmethod", "classmethod", "callable"])
+    def test_an_init_that_is_not_a_plain_function_gets_the_arguments_it_gets_undecorated(self, kind):
+        undecorated_seen: list[Any] = []
+        decorated_seen: list[Any] = []
+        _classes_with_an_unusual_init(undecorated_seen)[kind](1)
+        old = deprecated(version="0.9.0")(_classes_with_an_unusual_init(decorated_seen)[kind])
+        with _caught() as caught:
+            obj = old(1)
+        assert isinstance(obj, old)
+        assert decorated_seen == undecorated_seen
+        assert len(caught) == 1
+
+    def test_a_classmethod_init_is_bound_to_the_subclass_being_instantiated(self):
+        seen: list[Any] = []
+        old = deprecated(version="0.9.0")(_classes_with_an_unusual_init(seen)["classmethod"])
+
+        class Sub(old):
+            pass
+
+        with _caught() as caught:
+            Sub(2)
+        assert seen == [("class", "Sub", 2)]
+        assert len(caught) == 1
 
     def test_copy_and_pickle_do_not_warn(self):
         with warnings.catch_warnings():
