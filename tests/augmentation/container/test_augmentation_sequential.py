@@ -116,6 +116,20 @@ class TestAugmentationSequential:
         out = aug(image)
         assert out.shape == image.shape
 
+    def test_call_time_data_keys_are_restored_after_successful_inverse(self, device, dtype):
+        # A successful ``inverse`` with call-time keys must not leave them behind either (#5136).
+        image = torch.rand(1, 3, 8, 10, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 8, 10, device=device, dtype=dtype)
+
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
+
+        out_image, out_mask = aug(image, mask, data_keys=["input", "mask"])
+        aug.inverse(out_image, out_mask, data_keys=["input", "mask"])
+
+        assert aug.transform_op.data_keys == aug.data_keys
+        out = aug(image)
+        assert out.shape == image.shape
+
     def test_video(self, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
         bbox = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype).expand(
