@@ -85,6 +85,27 @@ class TestONNXExportMixin(BaseTester):
             model.to_onnx(save=False, **_RGB)
         assert [m.training for m in (model, *model)] == [True, False, True]
 
+    def test_explicit_training_mode_is_the_legacy_exporters_opt_out(self):
+        # The documented opt-out from the eval-mode export: an explicit ``training=TRAINING`` reaches the legacy
+        # exporter, which traces the training graph. The flags still come back exactly.
+        model = ImageSequential(nn.Conv2d(3, 3, 1), nn.Dropout(0.5))
+        model[0].eval()
+        op = model.to_onnx(save=False, dynamo=False, training=torch.onnx.TrainingMode.TRAINING, **_RGB)
+
+        assert "Dropout" in {node.op_type for node in op.graph.node}
+        assert [m.training for m in (model, *model)] == [True, False, True]
+
+    @pytest.mark.skipif(
+        not torch_version_ge(2, 9, 0), reason="the torch.export-based exporter is the default from torch 2.9"
+    )
+    def test_default_exporter_from_torch_2_9_ignores_the_training_keyword(self):
+        model = ImageSequential(nn.Conv2d(3, 3, 1), nn.Dropout(0.5))
+        model.train()
+        op = model.to_onnx(save=False, training=torch.onnx.TrainingMode.TRAINING, **_RGB)
+
+        assert "Dropout" not in {node.op_type for node in op.graph.node}
+        assert model.training
+
     @pytest.mark.parametrize(
         "channels, module",
         [(3, lambda: nn.Conv2d(3, 3, 1)), (1, lambda: GaussianBlur2d((3, 3), (1.5, 1.5)))],
