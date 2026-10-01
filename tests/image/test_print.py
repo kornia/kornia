@@ -34,6 +34,14 @@ class TestImageToString:
         )
         assert out == expected
 
+    @pytest.mark.parametrize("max_width", [256, 3])
+    def test_grayscale_matches_its_rgb_copy(self, max_width):
+        gray = torch.rand(1, 5, 6)
+        assert image_to_string(gray, max_width) == image_to_string(gray.repeat(3, 1, 1), max_width)
+
+        gray = torch.arange(16).reshape(1, 4, 4).long() * 16
+        assert image_to_string(gray, max_width) == image_to_string(gray.repeat(3, 1, 1), max_width)
+
     def test_exception(self):
         img = torch.rand(3, 15, 15)
         image_to_string(img)
