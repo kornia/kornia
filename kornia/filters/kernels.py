@@ -38,6 +38,19 @@ def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, a
         )
 
 
+def _check_laplacian_kernel_size(kernel_size: tuple[int, ...] | int) -> None:
+    # The Laplacian centre is 1 - prod(kernel_size), so a single tap is the all-zero kernel (0 / 0 once normalized).
+    if isinstance(kernel_size, int):
+        sizes: tuple[int, ...] = (kernel_size,)
+    else:
+        sizes = kernel_size
+
+    KORNIA_CHECK(
+        any(size != 1 for size in sizes),
+        f"A Laplacian kernel needs a size of at least 3 along one axis: a single tap is all zeros. Got {kernel_size}",
+    )
+
+
 def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     if isinstance(kernel_size, int):
         ky = kx = kernel_size
@@ -996,12 +1009,15 @@ def get_laplacian_kernel1d(
           (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
-        kernel_size: filter size. It should be odd and positive.
+        kernel_size: filter size. It should be odd and at least 3.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
     Returns:
         1D tensor with laplacian filter coefficients.
+
+    Raises:
+        BaseError: if ``kernel_size`` is even, not positive, or ``1``: a single tap is the all-zero kernel.
 
     Shape:
         - Output: :math:`(\text{kernel_size})`
@@ -1016,6 +1032,7 @@ def get_laplacian_kernel1d(
     # TODO: add default dtype as None when kornia relies on torch > 1.12
 
     _check_kernel_size(kernel_size)
+    _check_laplacian_kernel_size(kernel_size)
 
     return laplacian_1d(kernel_size, device=device, dtype=dtype)
 
@@ -1034,12 +1051,16 @@ def get_laplacian_kernel2d(
         scikit-image Laplacians.
 
     Args:
-        kernel_size: filter size should be odd.
+        kernel_size: filter size should be odd, and at least 3 along one axis.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
     Returns:
         2D tensor with laplacian filter matrix coefficients.
+
+    Raises:
+        BaseError: if a size is even or not positive, if ``kernel_size`` is a sequence of other than 2 sizes, or if
+            it is ``1`` or ``(1, 1)``: a :math:`1 \times 1` kernel is the all-zero kernel.
 
     Shape:
         - Output: :math:`(\text{kernel_size}_y, \text{kernel_size}_x)`
@@ -1061,6 +1082,7 @@ def get_laplacian_kernel2d(
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
+    _check_laplacian_kernel_size((ky, kx))
 
     kernel = torch.ones((ky, kx), device=device, dtype=dtype)
     mid_x = kx // 2
@@ -1164,7 +1186,10 @@ def get_pascal_kernel_1d(
 
 
 def get_canny_nms_kernel(device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
-    """Return 3x3 kernels for the Canny Non-maximal suppression."""
+    """Return 3x3 kernels for the Canny Non-maximal suppression.
+
+    Not used by :func:`~kornia.filters.canny`, which compares the neighbours by slicing, so that ties compare exactly.
+    """
     return torch.tensor(
         [
             [[[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]]],

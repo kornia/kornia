@@ -154,6 +154,10 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
     def load_checkpoint(self, checkpoint: str | list[str], device: Optional[torch.device] = None) -> None:
         """Load checkpoint from a given url or file.
 
+        Either way the file is loaded with ``weights_only=True``, so it may hold
+        tensors, primitive types and plain containers only; see
+        :func:`kornia.core.download.load_state_dict_from_url`.
+
         Args:
             checkpoint: The url or filepath for the respective checkpoint
             device: The desired device to load the weights and move the model
@@ -161,7 +165,7 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
         """
         if isinstance(checkpoint, str) and os.path.isfile(checkpoint):
             with open(checkpoint, "rb") as f:
-                state_dict = torch.load(f, map_location=device)
+                state_dict = torch.load(f, map_location=device, weights_only=True)
         else:
             state_dict = load_state_dict_from_url(checkpoint, map_location=device)
 

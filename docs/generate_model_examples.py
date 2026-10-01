@@ -69,7 +69,9 @@ def sample(name: str, size: tuple[int, int] | None = None) -> torch.Tensor:
 
 
 def knchurch() -> tuple[torch.Tensor, torch.Tensor]:
-    d = torch.hub.load_state_dict_from_url(KNCHURCH, map_location="cpu")
+    # The file also stores DISK reference outputs, which ``weights_only`` accepts once their type is allowlisted.
+    with torch.serialization.safe_globals([K.feature.DISKFeatures]):
+        d = torch.hub.load_state_dict_from_url(KNCHURCH, map_location="cpu", weights_only=True)
     return d["img1"], d["img2"]
 
 
