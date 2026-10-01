@@ -2477,8 +2477,8 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         - shapes are strict: exactly :math:`(B, 3, 3)` and :math:`(B, 3, 1)`.
           An unbatched ``(3, 3)``, a ``(B, 3)`` translation, a ``(B, 1, 3)``
           translation and extra leading dimensions each raise ``ShapeError``;
-          ``R`` and ``t`` must also carry the same batch size, so a mismatched
-          pair raises ``ShapeError`` instead of failing inside ``torch.cat``
+          ``R`` and ``t`` must also carry the same batch size: a mismatched
+          pair raises ``ShapeError`` too
         - :func:`~kornia.geometry.conversions.matrix4x4_to_Rt` is the inverse:
           ``Rt -> 4x4 -> Rt`` is bitwise, while ``4x4 -> Rt -> 4x4`` is bitwise
           only when the bottom row is already ``[0, 0, 0, 1]``, because
