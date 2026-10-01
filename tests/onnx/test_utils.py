@@ -220,3 +220,39 @@ def test_add_metadata():
         ("test_key", "2"),
     ]
     onnx.checker.check_model(model)
+
+
+def test_add_metadata_merges_duplicate_keys_already_in_the_model():
+    from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+
+    import kornia
+    from kornia.onnx.utils import add_metadata
+
+    graph = make_graph(
+        [make_node("Identity", ["input"], ["output"])],
+        "identity",
+        [make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1])],
+        [make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1])],
+    )
+    model = make_model(graph)
+    # Earlier versions appended on every call, so a model exported and then tagged again repeats its keys. A key the
+    # call does not set keeps its last value, the one onnxruntime reads.
+    for key, value in [
+        ("source", "kornia"),
+        ("version", "0.8.0"),
+        ("author", "a"),
+        ("source", "kornia"),
+        ("version", "0.8.0"),
+        ("author", "b"),
+    ]:
+        entry = model.metadata_props.add()
+        entry.key, entry.value = key, value
+
+    model = add_metadata(model, [("date", "20261001")])
+    assert [(p.key, p.value) for p in model.metadata_props] == [
+        ("source", "kornia"),
+        ("version", kornia.__version__),
+        ("author", "b"),
+        ("date", "20261001"),
+    ]
+    onnx.checker.check_model(model)

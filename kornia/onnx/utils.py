@@ -214,7 +214,9 @@ def add_metadata(
     The metadata includes the source library (set to "kornia"), the version of kornia,
     and any additional metadata provided as a list of key-value pairs. A key that is already
     present in the model (or earlier in the list) is overwritten rather than repeated, since
-    ``onnx.checker.check_model`` rejects duplicate keys.
+    ``onnx.checker.check_model`` rejects duplicate keys. Duplicate keys already in the model, as
+    earlier kornia versions wrote them, are merged into one entry with the last value, the one
+    onnxruntime reads.
 
     Args:
         onnx_model: The ONNX model to add metadata to.
@@ -227,18 +229,19 @@ def add_metadata(
     """
     if additional_metadata is None:
         additional_metadata = []
-    existing = {metadata_props.key: metadata_props for metadata_props in onnx_model.metadata_props}
+    # Rebuilt from a mapping, which keeps each key at its first position with its last value.
+    metadata = {metadata_props.key: metadata_props.value for metadata_props in onnx_model.metadata_props}
     for key, value in [
         ("source", "kornia"),
         ("version", kornia.__version__),
         *additional_metadata,
     ]:
-        metadata_props = existing.get(key)
-        if metadata_props is None:
-            metadata_props = onnx_model.metadata_props.add()
-            metadata_props.key = key
-            existing[key] = metadata_props
-        metadata_props.value = str(value)
+        metadata[key] = str(value)
+    del onnx_model.metadata_props[:]
+    for key, value in metadata.items():
+        metadata_props = onnx_model.metadata_props.add()
+        metadata_props.key = key
+        metadata_props.value = value
     return onnx_model
 
 
