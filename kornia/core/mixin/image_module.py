@@ -119,7 +119,10 @@ class ImageModuleMixIn:
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
-                return self._call_converted(func, args, kwargs, input_names_to_handle, output_type)
+                tensor_outputs = self._call_converted(func, args, kwargs, input_names_to_handle, "pt")
+                if cache_output:
+                    self._store_output_image(tensor_outputs, "pt")
+                return self._convert_output(tensor_outputs, output_type)
 
             return wrapper
 
@@ -151,7 +154,7 @@ class ImageModuleMixIn:
                 if name in input_names_to_handle:
                     kwargs[name] = self.to_tensor(value)
 
-        return self._convert_output(func(*args, **kwargs), output_type)
+        return func(*args, **kwargs)
 
     @staticmethod
     def _check_output_type(output_type: str) -> None:

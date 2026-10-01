@@ -91,8 +91,9 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
         """
         # Convert inputs and outputs around the forward call
         if not self._disable_features:
-            _output_image = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, output_type)
-            self._store_output_image(_output_image, output_type)
+            tensor_output = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, "pt")
+            self._store_output_image(self._convert_output(tensor_output, "pt"), "pt")
+            _output_image = self._convert_output(tensor_output, output_type)
 
         else:
             _output_image = super().__call__(*inputs, **kwargs)
@@ -165,8 +166,9 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
         """
         # Convert inputs and outputs around the forward call
         if not self._disable_features:
-            _output_image = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, output_type)
-            self._store_output_image(_output_image, output_type)
+            tensor_output = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, "pt")
+            self._store_output_image(self._convert_output(tensor_output, "pt"), "pt")
+            _output_image = self._convert_output(tensor_output, output_type)
 
         else:
             _output_image = super().__call__(*inputs, **kwargs)
