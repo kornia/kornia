@@ -15,9 +15,11 @@
 # limitations under the License.
 #
 
+import numpy as np
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.filters import (
     BlurPool2D,
     EdgeAwareBlurPool2D,
@@ -148,15 +150,21 @@ class TestBlurPool(BaseTester):
 
 
 class TestEdgeAwareBlurPool(BaseTester):
-    @pytest.mark.parametrize("edge_dilation_kernel_size", [2, 4])
-    def test_even_edge_dilation_kernel_size_is_rejected(self, edge_dilation_kernel_size):
-        from kornia.core.exceptions import BaseError
-
-        data = torch.rand(1, 1, 8, 8)
+    @pytest.mark.parametrize("edge_dilation_kernel_size", [0, -1, 2, 4])
+    def test_exception_edge_dilation_kernel_size(self, edge_dilation_kernel_size, device, dtype):
+        data = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
         with pytest.raises(BaseError, match="Kernel size must be an odd integer"):
             edge_aware_blur_pool2d(data, 3, edge_dilation_kernel_size=edge_dilation_kernel_size)
         with pytest.raises(BaseError, match="Kernel size must be an odd integer"):
             EdgeAwareBlurPool2D(3, edge_dilation_kernel_size=edge_dilation_kernel_size)
+
+    @pytest.mark.parametrize("make_size", [np.int64, torch.tensor], ids=["numpy_int", "zero_dim_tensor"])
+    def test_edge_dilation_kernel_size_accepts_integer_like(self, make_size, device, dtype):
+        # integer-like sizes (numpy ints, 0-d integer tensors) are accepted like Python ints
+        data = torch.rand(1, 1, 8, 8, device=device, dtype=dtype) + 0.1
+        expected = edge_aware_blur_pool2d(data, 3, edge_dilation_kernel_size=3)
+        self.assert_close(edge_aware_blur_pool2d(data, 3, edge_dilation_kernel_size=make_size(3)), expected)
+        self.assert_close(EdgeAwareBlurPool2D(3, edge_dilation_kernel_size=make_size(3))(data), expected)
 
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
