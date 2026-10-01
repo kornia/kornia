@@ -17,6 +17,7 @@
 
 import os
 import urllib
+from pathlib import Path
 
 import pytest
 
@@ -52,50 +53,68 @@ class TestONNXLoader:
             assert model == mock_model
             mock_onnx_load.assert_called_once_with(model_name)
 
-    def test_load_model_download(self):
+    def test_load_model_download(self, tmp_path):
         from unittest import mock
 
         from onnx import ModelProto
 
         with (
-            mock.patch("urllib.request.urlretrieve") as mock_urlretrieve,
-            mock.patch("os.path.exists") as mock_exists,
+            mock.patch.object(ONNXLoader, "download") as mock_download,
             mock.patch("onnx.load") as mock_onnx_load,
         ):
             model_name = "hf://operators/some_model"
-            mock_exists.return_value = False
-            mock_urlretrieve.return_value = None  # Simulating successful download
-
             mock_model = mock.Mock(spec=ModelProto)
             mock_onnx_load.return_value = mock_model
 
-            model = ONNXLoader.load_model(model_name)
+            model = ONNXLoader.load_model(model_name, cache_dir=str(tmp_path))
             assert model == mock_model
-            mock_urlretrieve.assert_called_once_with(
+            mock_download.assert_called_once_with(
                 "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx",
-                os.path.join(".kornia_hub", "onnx_models", "operators", "some_model.onnx"),
+                str(tmp_path / "some_model.onnx"),
+                download_if_not_exists=True,
             )
+            mock_onnx_load.assert_called_once_with(str(tmp_path / "some_model.onnx"))
+
+    @pytest.mark.parametrize("absolute", [False, True])
+    def test_load_model_hf_default_cache_dir(self, absolute, monkeypatch, tmp_path):
+        # without cache_dir, an hf:// model is cached under <hub_onnx_dir>/<folder>/, also for an absolute hub_onnx_dir
+        from unittest import mock
+
+        from kornia.config import kornia_config
+
+        hub_dir = str(tmp_path / "onnx_models") if absolute else os.path.join("rel", "onnx_models")
+        monkeypatch.setattr(kornia_config, "hub_onnx_dir", hub_dir)
+
+        with mock.patch.object(ONNXLoader, "download") as mock_download, mock.patch("onnx.load"):
+            ONNXLoader.load_model("hf://operators/some_model")
+
+        mock_download.assert_called_once_with(
+            "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx",
+            os.path.join(hub_dir, "operators", "some_model.onnx"),
+            download_if_not_exists=True,
+        )
 
     def test_load_model_not_found(self):
         model_name = "non_existent_model.onnx"
         with pytest.raises(ValueError, match=f"File {model_name} not found"):
             ONNXLoader.load_model(model_name)
 
-    def test_download_success(self):
-        import os
+    def test_download_success(self, tmp_path):
         from unittest import mock
 
-        with mock.patch("urllib.request.urlretrieve") as mock_urlretrieve, mock.patch("os.makedirs") as mock_makedirs:
+        with mock.patch(
+            "urllib.request.urlretrieve", side_effect=lambda url, path: Path(path).write_bytes(b"model")
+        ) as mock_urlretrieve:
             url = "https://huggingface.co/some_model.onnx"
-            file_path = os.path.join(".test_cache", "some_model.onnx")
+            file_path = tmp_path / "cache" / "some_model.onnx"
 
-            ONNXLoader.download(url, file_path)
+            ONNXLoader.download(url, str(file_path))
 
-            mock_makedirs.assert_called_once_with(os.path.dirname(file_path), exist_ok=True)
-            mock_urlretrieve.assert_called_once_with(url, file_path)
+            mock_urlretrieve.assert_called_once()
+            assert mock_urlretrieve.call_args.args[0] == url
+            assert file_path.read_bytes() == b"model"
 
-    def test_download_failure(self):
-        import os
+    def test_download_failure(self, tmp_path):
         from unittest import mock
 
         with mock.patch(
@@ -103,7 +122,7 @@ class TestONNXLoader:
             side_effect=urllib.error.HTTPError(url=None, code=404, msg="Not Found", hdrs=None, fp=None),
         ) as _:
             url = "https://huggingface.co/non_existent_model.onnx"
-            file_path = os.path.join(".test_cache", "non_existent_model.onnx")
+            file_path = str(tmp_path / "non_existent_model.onnx")
 
             with pytest.raises(ValueError, match="Error in resolving"):
                 ONNXLoader.download(url, file_path)
