@@ -44,27 +44,34 @@ def without_onnxruntime(monkeypatch):
     monkeypatch.setattr(external.onnxruntime, "module", None)
     monkeypatch.setattr(external.onnxruntime, "_install_error", None)
 
+    # The constructor must settle onnxruntime before it fetches the weights; this also keeps the tests off the network.
+    def refuse_download(*args, **kwargs):
+        raise AssertionError("the constructor downloaded the weights")
+
+    monkeypatch.setattr("kornia.feature.lightglue_onnx.lightglue.download_onnx_from_url", refuse_download)
+
 
 def test_missing_onnxruntime_names_the_extra(without_onnxruntime):
     # Without onnxruntime the constructor must fail the way the LazyLoader handles do: an ImportError that
-    # says `pip install "kornia[onnx]"`, which the installation page promises. The module is hidden by hiding
-    # it in `sys.modules` rather than by patching a probe, because the constructor reaches the loader (#5279).
+    # says `pip install "kornia[onnx]"`, which the installation page promises.
     with pytest.raises(ImportError, match=r"kornia\[onnx\]"):
         OnnxLightGlue()
 
 
 def test_missing_onnxruntime_applies_the_installation_mode(monkeypatch, without_onnxruntime):
-    # #5279: an `importlib.util.find_spec` probe returned before anything reached the loader, so "auto" installed
-    # nothing and "ask" never asked. With the mode set to "auto" and every process start refused, the constructor
-    # has to reach the loader's install attempt, which the probe made unreachable.
+    # #5279: the constructor goes through the onnxruntime loader, so "auto" installs the `onnx` extra with this
+    # interpreter's pip. The installer is replaced, so nothing is installed.
     kornia_config.lazyloader.installation_mode = "auto"
+    commands = []
 
-    def refuse(*args, **kwargs):
+    def refuse(command, *args, **kwargs):
+        commands.append(command)
         raise AssertionError("the loader tried to start the installer")
 
     monkeypatch.setattr(subprocess, "run", refuse)
     with pytest.raises(AssertionError, match="tried to start the installer"):
         OnnxLightGlue()
+    assert commands == [[sys.executable, "-m", "pip", "install", "kornia[onnx]"]]
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")

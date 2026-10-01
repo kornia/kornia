@@ -58,11 +58,9 @@ class OnnxLightGlue:
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
     def __init__(self, weights: str | None = None, device: Union[str, torch.device, None] = "cpu") -> None:
-        # Touch the loader instead of probing with `importlib.util.find_spec`: the probe returned before anything
-        # reached `kornia.core.external.onnxruntime`, so the loader's installation mode never applied here and
-        # `installation_mode = "auto"` installed nothing while `"ask"` never asked. Reading `__version__` is the
-        # loader's own module-metadata access, so it imports the module -- applying the mode -- and, when the module
-        # is missing under the default mode, still raises the ImportError that names the extra.
+        # Import onnxruntime through the lazy loader, not an `importlib.util.find_spec` probe, so that
+        # `kornia_config.lazyloader.installation_mode` handles a missing module before the weights are downloaded.
+        # `__version__` is module metadata, which the loader imports the module for; `__doc__` would not import it.
         _ = ort.__version__
         KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
