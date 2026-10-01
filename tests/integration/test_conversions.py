@@ -47,7 +47,7 @@ class TestAngleAxisToQuaternionToAngleAxis(BaseTester):
         axis_angle_hat = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         self.assert_close(axis_angle_hat, axis_angle, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis", (0, 1, 2))
+    @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_small_angle(self, axis, device, dtype, atol, rtol):
         theta = 1.0e-2
         array = [0.0, 0.0, 0.0]
@@ -57,7 +57,7 @@ class TestAngleAxisToQuaternionToAngleAxis(BaseTester):
         axis_angle_hat = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         self.assert_close(axis_angle_hat, axis_angle, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis", (0, 1, 2))
+    @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_rotation(self, axis, device, dtype, atol, rtol):
         # half_sqrt2 = 0.5 * np.sqrt(2)
         array = [0.0, 0.0, 0.0]
@@ -75,7 +75,7 @@ class TestQuaternionToAngleAxisToQuaternion(BaseTester):
         quaternion_hat = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         self.assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis", (0, 1, 2))
+    @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_rotation(self, axis, device, dtype, atol, rtol):
         array = [0.0, 0.0, 0.0, 0.0]
         array[1 + axis] = 1.0
@@ -84,7 +84,7 @@ class TestQuaternionToAngleAxisToQuaternion(BaseTester):
         quaternion_hat = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         self.assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis", (0, 1, 2))
+    @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_small_angle(self, axis, device, dtype, atol, rtol):
         theta = 1.0e-2
         array = [np.cos(theta / 2), 0.0, 0.0, 0.0]
@@ -96,7 +96,7 @@ class TestQuaternionToAngleAxisToQuaternion(BaseTester):
 
 
 class TestQuaternionToRotationMatrixToAngleAxis(BaseTester):
-    @pytest.mark.parametrize("axis", (0, 1, 2))
+    @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_triplet_qma(self, axis, device, dtype, atol, rtol):
         array = [[0.0, 0.0, 0.0, 0.0]]
         array[0][1 + axis] = 1.0  # `1 + axis` this should fail when XYZW
@@ -117,7 +117,7 @@ class TestQuaternionToRotationMatrixToAngleAxis(BaseTester):
         quaternion_hat = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         self.assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis", (0, 1, 2))
+    @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_triplet_qam(self, axis, device, dtype, atol, rtol):
         array = [[0.0, 0.0, 0.0, 0.0]]
         array[0][1 + axis] = 1.0
@@ -134,7 +134,7 @@ class TestQuaternionToRotationMatrixToAngleAxis(BaseTester):
         quaternion_hat = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_m)
         self.assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis", (0, 1, 2))
+    @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_triplet_amq(self, axis, device, dtype, atol, rtol):
         array = [[0.0, 0.0, 0.0]]
         array[0][axis] = kornia.pi / 2.0
@@ -151,7 +151,7 @@ class TestQuaternionToRotationMatrixToAngleAxis(BaseTester):
         axis_angle_hat = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         self.assert_close(axis_angle_hat, axis_angle, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis", (0, 1, 2))
+    @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_triplet_aqm(self, axis, device, dtype, atol, rtol):
         array = [[0.0, 0.0, 0.0]]
         array[0][axis] = kornia.pi / 2.0
@@ -201,7 +201,7 @@ class TestAngleOfRotations(BaseTester):
 
         return rot_m, axis
 
-    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
+    @pytest.mark.parametrize("axis_name", ["x", "y", "z"])
     def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol, test_rng_seed):
         # Random angle in [-pi..pi]
         angle_values = np.random.default_rng(test_rng_seed).random(size=(2, 1)) * 2.0 * np.pi - np.pi
@@ -241,8 +241,8 @@ class TestAngleOfRotations(BaseTester):
         self.assert_close(rot_m[..., :3, 1].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
         self.assert_close(rot_m[..., :3, 2].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
-    @pytest.mark.parametrize("angle_deg", (-179.9, -135.0, -90.0, -45.0, 0.0, 45, 90, 135, 179.9))
+    @pytest.mark.parametrize("axis_name", ["x", "y", "z"])
+    @pytest.mark.parametrize("angle_deg", [-179.9, -135.0, -90.0, -45.0, 0.0, 45, 90, 135, 179.9])
     def test_matrix_angle(self, axis_name, angle_deg, device, dtype):
         angle = (angle_deg * kornia.pi / 180.0).to(dtype).to(device).view(1, 1)
         rot_m, _ = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
@@ -251,8 +251,8 @@ class TestAngleOfRotations(BaseTester):
         matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
         self.assert_close(torch.abs(angle), matrix_angle_abs)
 
-    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
-    @pytest.mark.parametrize("angle_deg", (-179.9, -90.0, -45.0, 0.0, 45, 90, 179.9))
+    @pytest.mark.parametrize("axis_name", ["x", "y", "z"])
+    @pytest.mark.parametrize("angle_deg", [-179.9, -90.0, -45.0, 0.0, 45, 90, 179.9])
     def test_quaternion(self, axis_name, angle_deg, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         angle = torch.tensor((angle_deg * kornia.pi / 180.0,), device=device, dtype=dtype).repeat(2, 1)
@@ -279,8 +279,8 @@ class TestAngleOfRotations(BaseTester):
         matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
         self.assert_close(torch.abs(angle_hat), matrix_angle_abs, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
-    @pytest.mark.parametrize("angle_deg", (-179.9, -90.0, -45.0, 0, 45, 90, 179.9))
+    @pytest.mark.parametrize("axis_name", ["x", "y", "z"])
+    @pytest.mark.parametrize("angle_deg", [-179.9, -90.0, -45.0, 0, 45, 90, 179.9])
     def test_axis_angle(self, axis_name, angle_deg, device, dtype, atol, rtol):
         angle = (angle_deg * kornia.pi / 180.0).to(dtype).to(device).repeat(2, 1)
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
@@ -298,8 +298,8 @@ class TestAngleOfRotations(BaseTester):
         matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
         self.assert_close(torch.abs(angle_hat), matrix_angle_abs, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
-    @pytest.mark.parametrize("angle_deg", (-179.9, -90.0, -45.0, 0, 45, 90, 179.9))
+    @pytest.mark.parametrize("axis_name", ["x", "y", "z"])
+    @pytest.mark.parametrize("angle_deg", [-179.9, -90.0, -45.0, 0, 45, 90, 179.9])
     def test_log_quaternion(self, axis_name, angle_deg, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         angle = (angle_deg * kornia.pi / 180.0).to(dtype).to(device).repeat(2, 1)
