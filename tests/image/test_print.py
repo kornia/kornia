@@ -35,12 +35,17 @@ class TestImageToString:
         assert out == expected
 
     @pytest.mark.parametrize("max_width", [256, 3])
-    def test_grayscale_matches_its_rgb_copy(self, max_width):
-        gray = torch.rand(1, 5, 6)
-        assert image_to_string(gray, max_width) == image_to_string(gray.repeat(3, 1, 1), max_width)
-
-        gray = torch.arange(16).reshape(1, 4, 4).long() * 16
-        assert image_to_string(gray, max_width) == image_to_string(gray.repeat(3, 1, 1), max_width)
+    @pytest.mark.parametrize("shape", [(1, 5, 6), (1, 4, 4), (1, 1, 2), (1, 7, 1)])
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64, torch.uint8, torch.int64])
+    def test_grayscale_matches_its_rgb_copy(self, shape, input_dtype, max_width):
+        generator = torch.Generator().manual_seed(0)
+        if input_dtype.is_floating_point:
+            gray = torch.rand(shape, generator=generator, dtype=input_dtype)
+        else:
+            gray = torch.randint(0, 256, shape, generator=generator).to(input_dtype)
+        out = image_to_string(gray, max_width)
+        assert out  # an empty string would make the comparison below vacuous
+        assert out == image_to_string(gray.repeat(3, 1, 1), max_width)
 
     def test_exception(self):
         img = torch.rand(3, 15, 15)
