@@ -1127,6 +1127,66 @@ class TestFilter2D_fftconv(BaseTester):
         self.assert_close(actual, expected)
 
 
+class TestCorrelateConvolveExports:
+    """The four correlate/convolve aliases are public in every sense kornia uses (#5161)."""
+
+    NAMES = ("correlate2d", "convolve2d", "correlate3d", "convolve3d")
+
+    def test_from_import_names_the_defining_objects(self):
+        import importlib
+
+        from kornia.filters import convolve2d, convolve3d, correlate2d, correlate3d
+
+        defining = importlib.import_module("kornia.filters.filter")
+        imported = {
+            "correlate2d": correlate2d,
+            "convolve2d": convolve2d,
+            "correlate3d": correlate3d,
+            "convolve3d": convolve3d,
+        }
+        assert set(imported) == set(self.NAMES)
+        for name, func in imported.items():
+            assert func is getattr(defining, name), name
+            assert func.__module__ == "kornia.filters.filter", name
+
+    @pytest.mark.parametrize("name", NAMES)
+    def test_listed_in_all(self, name):
+        import kornia.filters as KF
+
+        # `from kornia.filters import *` binds exactly the names in `__all__`.
+        assert name in KF.__all__
+
+    def test_all_is_well_formed(self):
+        import kornia.filters as KF
+
+        assert len(KF.__all__) == len(set(KF.__all__))
+        assert all(hasattr(KF, name) for name in KF.__all__)
+
+
+class TestCorrelateConvolveShapes(BaseTester):
+    """The output shapes the four docstrings state, for odd and even kernels."""
+
+    @pytest.mark.parametrize("func", [correlate2d, convolve2d])
+    @pytest.mark.parametrize("kernel_size", [(1, 1), (3, 3), (2, 2), (4, 3), (2, 5)])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_cardinality_2d(self, func, kernel_size, padding, device, dtype):
+        b, c, h, w = 2, 3, 7, 8
+        kh, kw = kernel_size
+        inp = torch.ones(b, c, h, w, device=device, dtype=dtype)
+        kernel = torch.ones(1, kh, kw, device=device, dtype=dtype)
+        expected = (b, c, h, w) if padding == "same" else (b, c, h - kh + 1, w - kw + 1)
+        # the shape does not depend on the border; "constant" also runs in half precision on old torch
+        assert func(inp, kernel, border_type="constant", padding=padding).shape == expected
+
+    @pytest.mark.parametrize("func", [correlate3d, convolve3d])
+    @pytest.mark.parametrize("kernel_size", [(1, 1, 1), (3, 3, 3), (2, 2, 2), (4, 3, 2)])
+    def test_cardinality_3d(self, func, kernel_size, device, dtype):
+        inp = torch.ones(2, 3, 5, 7, 8, device=device, dtype=dtype)
+        kernel = torch.ones(1, *kernel_size, device=device, dtype=dtype)
+        # the shape does not depend on the border; "constant" also runs in half precision on old torch
+        assert func(inp, kernel, border_type="constant").shape == inp.shape
+
+
 class TestCorrelate2d(BaseTester):
     def test_equivalent_to_filter2d_corr(self, device, dtype):
         inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
