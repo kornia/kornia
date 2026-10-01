@@ -447,6 +447,7 @@ class TestLinearRgb(BaseTester):
 
         assert torch.isfinite(image.grad).all()
 
+
 class TestRgb255Normals(BaseTester):
     # Smoke tests: check if the functions execute and return a tensor
     def test_smoke(self, device, dtype):
