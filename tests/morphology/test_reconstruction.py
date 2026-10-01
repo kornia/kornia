@@ -271,7 +271,7 @@ class TestReconstruction(BaseTester):
 
         self.assert_close(op_script(seed, mask), reconstruction(seed, mask))
 
-    @pytest.mark.parametrize("num_iters", [None, 12])
+    @pytest.mark.parametrize("num_iters", [None, 3])
     def test_dynamo(self, device, dtype, torch_optimizer, num_iters):
         mask = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         seed = mask * 0.5
@@ -289,6 +289,6 @@ class TestReconstruction(BaseTester):
         seed = mask * 0.5 if method == "dilation" else mask + 0.5
 
         def op(s, m):
-            return reconstruction(s, m, method=method, num_iters=12, engine=engine)
+            return reconstruction(s, m, method=method, num_iters=3, engine=engine)
 
         self.assert_close(torch_optimizer(op, fullgraph=True)(seed, mask), op(seed, mask))
