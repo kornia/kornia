@@ -1626,7 +1626,8 @@ class TestConventionsFilter2d(BaseTester):
             filter3d(volume, kernel, "constant", normalized=True)
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
-    def test_convention_filter2d_valid_padding_rejects_a_kernel_larger_than_the_input(self, name, device, dtype):
+    def test_convention_filter2d_valid_padding_rejects_a_kernel_larger_than_the_input_5285(self, name, device, dtype):
+        """With padding='valid', a kernel taller or wider than the input raises, in fft_conv as in filter2d (#5285)."""
         _fft_guard(name, device, dtype)
         fn = _FILTER2D_FNS[name]
         image = _rand(1, 1, 5, 6, device=device, dtype=dtype)
