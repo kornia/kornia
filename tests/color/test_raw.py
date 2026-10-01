@@ -175,6 +175,10 @@ class TestRgbToRaw(BaseTester):
         with pytest.raises(ValueError):
             assert kornia.color.rgb_to_raw(img, kornia.color.raw.CFA.BG)
 
+        img = torch.rand(1, 3, 2, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Unsupported CFA value"):
+            kornia.color.rgb_to_raw(img, "bad")
+
         # Reverse test in rawtorgb is sufficient functional test
 
     def test_gradcheck(self, device, dtype):

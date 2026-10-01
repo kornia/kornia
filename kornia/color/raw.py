@@ -229,6 +229,8 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     elif cfa == CFA.GR:
         output[..., :, 1::2, ::2] = image[..., 0:1, 1::2, ::2]  # red
         output[..., :, ::2, 1::2] = image[..., 2:3, ::2, 1::2]  # blue
+    else:
+        raise ValueError(f"Unsupported CFA value. Got {cfa}")
 
     return output
 
