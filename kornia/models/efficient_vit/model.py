@@ -93,7 +93,15 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
 
         # create and load the model weights without strict until we polish the model files
         model = getattr(vit, f"efficientvit_backbone_{model_type}")()
-        model.load_state_dict(model_file, strict=False)
+        # the checkpoints store the backbone under a "backbone." prefix, plus a "head." classifier the
+        # backbone has no slot for -- https://github.com/kornia/kornia/issues/5276
+        state_dict = {key[len("backbone.") :]: val for key, val in model_file.items() if key.startswith("backbone.")}
+        if not state_dict:
+            raise RuntimeError(
+                f"No 'backbone.*' entries found in the checkpoint {config.checkpoint!r} -- cannot load it into "
+                f"efficientvit_backbone_{model_type}."
+            )
+        model.load_state_dict(state_dict, strict=True)
 
         return EfficientViT(backbone=model)
 

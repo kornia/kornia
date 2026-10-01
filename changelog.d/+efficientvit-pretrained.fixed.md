@@ -1,0 +1,1 @@
+`EfficientViT.from_config` now loads the pretrained backbone weights: the hosted checkpoints store them under a `backbone.` prefix, which the previous non-strict load silently dropped, so every "pretrained" model was randomly initialised.
