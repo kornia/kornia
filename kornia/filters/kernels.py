@@ -265,6 +265,7 @@ def _modified_bessel_i(n: int, x: torch.Tensor, scaled: bool = False, max_order:
     # end instead of being compacted away, so the recurrence has no data-dependent control flow.
     is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
     order = n if max_order is None else max_order
+    # A ~1e-7 approximation mismatch here can make finite-difference gradcheck fail exactly at the branch switch.
     use_forward = x.abs() > order * order / 4 if scaled else torch.zeros_like(x, dtype=torch.bool)
     x_nz = torch.where(is_zero_mask | use_forward, torch.ones_like(x), x)
 

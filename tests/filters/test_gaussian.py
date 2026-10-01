@@ -259,6 +259,31 @@ class TestGaussianDiscreteStability(BaseTester):
         actual = get_gaussian_discrete_kernel1d(7, sigma, device=device, dtype=dtype)
         self.assert_close(actual, expected, atol=1e-6, rtol=1e-5)
 
+    @pytest.mark.parametrize(
+        "window_size,sigma,offsets,expected",
+        [
+            (11, 0.5, [0, 1, 5], [0.7910171688007969, 0.09811262952356505, 1.985756382484167e-07]),
+            (
+                121,
+                20.0,
+                [0, 3, 30, 60],
+                [0.02000335778883414, 0.01977930326376025, 0.006488429408783234, 0.00022284111702319516],
+            ),
+        ],
+    )
+    def test_reference_taps(self, window_size, sigma, offsets, expected, device, dtype):
+        # Reference: scipy.special.ive(abs(arange(window_size) - window_size // 2), sigma**2),
+        # normalized by its sum, then indexed at window_size // 2 + offsets.
+        actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+        taps = actual[0, [window_size // 2 + offset for offset in offsets]]
+        self.assert_close(taps, torch.tensor(expected, device=device, dtype=dtype))
+
+    def test_backward_finite_large_sigma(self, device, dtype):
+        sigma = torch.tensor([[100.0]], device=device, dtype=dtype, requires_grad=True)
+        kernel = get_gaussian_discrete_kernel1d(5, sigma)
+        (kernel * torch.arange(5, device=device, dtype=dtype)).sum().backward()
+        assert torch.isfinite(sigma.grad).all()
+
     def test_gradcheck(self, device):
         sigma = torch.tensor([[1.5], [7.0], [20.0]], device=device, dtype=torch.float64)
         self.gradcheck(get_gaussian_discrete_kernel1d, (7, sigma))
