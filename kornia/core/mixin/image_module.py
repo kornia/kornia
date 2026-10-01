@@ -34,14 +34,17 @@ def _image_to_float(image: torch.Tensor) -> torch.Tensor:
     A ``uint8`` image is divided by 255, a ``uint16`` one by 65535, and so on; a ``bool`` image becomes 0 and 1; a
     floating image is returned unchanged, since it is taken to be in ``[0, 1]`` already. Integer and ``bool`` images
     become the default floating dtype. A signed integer image maps to ``[iinfo.min / iinfo.max, 1]``: negative values
-    stay negative, and the minimum lands just below -1 (``int8`` -128 gives -128 / 127).
+    stay negative, and the minimum lands just below -1 (``int8`` -128 gives -128 / 127). The division runs in float32
+    when the default dtype is narrower, so a ``float16`` default still maps the ``uint16`` maximum 65535, which is
+    above the largest finite ``float16`` (65504), to 1 rather than ``inf``.
     """
     if image.is_floating_point():
         return image
-    converted = image.to(torch.get_default_dtype())
+    default_dtype = torch.get_default_dtype()
     if image.dtype == torch.bool:
-        return converted
-    return converted / float(torch.iinfo(image.dtype).max)
+        return image.to(default_dtype)
+    working_dtype = torch.promote_types(default_dtype, torch.float32)
+    return (image.to(working_dtype) / float(torch.iinfo(image.dtype).max)).to(default_dtype)
 
 
 def _array_to_float_image(array: Any) -> torch.Tensor:

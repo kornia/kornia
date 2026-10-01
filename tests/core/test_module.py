@@ -305,6 +305,24 @@ class TestImageModuleConversions(BaseTester):
         if info.min < 0:  # a signed minimum lands just below -1: int8 -128 -> -128 / 127
             assert out[0, 0, 0].item() == pytest.approx(info.min / info.max)
 
+    @pytest.mark.parametrize("default_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("np_dtype", [np.uint16, np.int32])
+    def test_to_tensor_scales_in_float32_under_a_half_default_dtype_5207(self, np_dtype, default_dtype):
+        # 65535 and 2**31 - 1 overflow float16 (largest finite 65504): converting before dividing gave inf.
+        info = np.iinfo(np_dtype)
+        pixel = np.array([0, 1, 65504, 65535, info.max], dtype=np_dtype)
+        image = np.broadcast_to(pixel, (2, 4, len(pixel))).copy()  # (H, W, C), every pixel is `pixel`
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(default_dtype)
+        try:
+            out = _Identity().to_tensor(image)
+        finally:
+            torch.set_default_dtype(previous)
+        assert out.dtype == default_dtype
+        assert torch.isfinite(out).all()
+        expected = torch.tensor(pixel.astype(np.float64) / info.max).to(default_dtype).view(-1, 1, 1)
+        self.assert_close(out, expected.expand(len(pixel), 2, 4), rtol=0.0, atol=0.0)
+
     @pytest.mark.parametrize("np_dtype", [np.float16, np.float32, np.float64])
     def test_to_tensor_passes_floating_numpy_through_5207(self, np_dtype):
         image = np.random.default_rng(0).random((2, 4, 3)).astype(np_dtype)
