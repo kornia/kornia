@@ -129,6 +129,16 @@ class TestMotionBlur(BaseTester):
 
         self.assert_close(op(img, *params), op_module(img))
 
+    def test_python_float_parameters_preserve_float64_precision(self):
+        image = torch.ones(1, 1, 9, 9, dtype=torch.float64)
+        results = [
+            motion_blur(image, 5, 30.0, 0.3, "reflect"),
+            MotionBlur(5, 30.0, 0.3, "reflect")(image),
+        ]
+        for result in results:
+            assert result.dtype == torch.float64
+            assert (result - image).abs().max() < 1e-15
+
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
@@ -231,6 +241,16 @@ class TestMotionBlur3D(BaseTester):
         img = torch.ones(1, 3, 1, 5, 5, device=device, dtype=dtype)
 
         self.assert_close(op(img, *params), op_module(img))
+
+    def test_python_float_parameters_preserve_float64_precision(self):
+        volume = torch.ones(1, 1, 5, 6, 7, dtype=torch.float64)
+        results = [
+            motion_blur3d(volume, 3, (10.0, 20.0, 30.0), 0.3, "replicate"),
+            MotionBlur3D(3, (10.0, 20.0, 30.0), 0.3, "replicate")(volume),
+        ]
+        for result in results:
+            assert result.dtype == torch.float64
+            assert (result - volume).abs().max() < 1e-15
 
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])

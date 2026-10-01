@@ -217,6 +217,11 @@ def motion_blur(
         False
 
     """
+    dtype = input.dtype if input.is_floating_point() else torch.get_default_dtype()
+    if not isinstance(angle, torch.Tensor):
+        angle = torch.as_tensor(angle, device=input.device, dtype=dtype)
+    if not isinstance(direction, torch.Tensor):
+        direction = torch.as_tensor(direction, device=input.device, dtype=dtype)
     kernel = get_motion_kernel2d(kernel_size, angle, direction, mode)
     return filter2d(input, kernel, border_type)
 
@@ -260,5 +265,10 @@ def motion_blur3d(
         False
 
     """
+    dtype = input.dtype if input.is_floating_point() else torch.get_default_dtype()
+    if not isinstance(angle, torch.Tensor):
+        angle = torch.as_tensor(angle, device=input.device, dtype=dtype)
+    if not isinstance(direction, torch.Tensor):
+        direction = torch.as_tensor(direction, device=input.device, dtype=dtype)
     kernel = get_motion_kernel3d(kernel_size, angle, direction, mode)
     return filter3d(input, kernel, border_type)
