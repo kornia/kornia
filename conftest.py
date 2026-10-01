@@ -1048,4 +1048,7 @@ def data(request):
     """
     if request.param not in TEST_DATA_URLS:
         raise ValueError(f"Unknown test data: {request.param}. Available: {list(TEST_DATA_URLS.keys())}")
-    return load_state_dict_from_url(TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))
+    # ``disk_outdoor`` stores its reference outputs as ``DISKFeatures``, a type ``weights_only`` loading accepts
+    # only once it is allowlisted.
+    with torch.serialization.safe_globals([kornia.feature.DISKFeatures]):
+        return load_state_dict_from_url(TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))

@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.core.exceptions import DeviceError
+from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.core.utils import (
     _adjugate_closed_form,
     _extract_device_dtype,
@@ -39,44 +39,108 @@ from testing.base import BaseTester, assert_close
 
 
 @pytest.mark.parametrize(
-    "tensor_list,out_device,out_dtype,will_throw_error",
+    "tensor_list,out_device,out_dtype,error",
     [
-        ([], torch.device("cpu"), torch.get_default_dtype(), False),
-        ([None, None], torch.device("cpu"), torch.get_default_dtype(), False),
-        ([torch.tensor(0, device="cpu", dtype=torch.float16), None], torch.device("cpu"), torch.float16, False),
-        ([torch.tensor(0, device="cpu", dtype=torch.float32), None], torch.device("cpu"), torch.float32, False),
-        ([torch.tensor(0, device="cpu", dtype=torch.float64), None], torch.device("cpu"), torch.float64, False),
-        ([torch.tensor(0, device="cpu", dtype=torch.float16)] * 2, torch.device("cpu"), torch.float16, False),
-        ([torch.tensor(0, device="cpu", dtype=torch.float32)] * 2, torch.device("cpu"), torch.float32, False),
-        ([torch.tensor(0, device="cpu", dtype=torch.float64)] * 2, torch.device("cpu"), torch.float64, False),
+        ([], torch.device("cpu"), torch.get_default_dtype(), None),
+        ([None, None], torch.device("cpu"), torch.get_default_dtype(), None),
+        ([torch.tensor(0, device="cpu", dtype=torch.float16), None], torch.device("cpu"), torch.float16, None),
+        ([torch.tensor(0, device="cpu", dtype=torch.float32), None], torch.device("cpu"), torch.float32, None),
+        ([torch.tensor(0, device="cpu", dtype=torch.float64), None], torch.device("cpu"), torch.float64, None),
+        ([torch.tensor(0, device="cpu", dtype=torch.float16)] * 2, torch.device("cpu"), torch.float16, None),
+        ([torch.tensor(0, device="cpu", dtype=torch.float32)] * 2, torch.device("cpu"), torch.float32, None),
+        ([torch.tensor(0, device="cpu", dtype=torch.float64)] * 2, torch.device("cpu"), torch.float64, None),
         (
             [torch.tensor(0, device="cpu", dtype=torch.float16), torch.tensor(0, device="cpu", dtype=torch.float64)],
             None,
             None,
-            True,
+            TypeCheckError,
         ),
         (
             [torch.tensor(0, device="cpu", dtype=torch.float32), torch.tensor(0, device="cpu", dtype=torch.float64)],
             None,
             None,
-            True,
+            TypeCheckError,
         ),
         (
             [torch.tensor(0, device="cpu", dtype=torch.float16), torch.tensor(0, device="cpu", dtype=torch.float32)],
             None,
             None,
-            True,
+            TypeCheckError,
+        ),
+        (
+            [torch.tensor(0, device="cpu", dtype=torch.float32), torch.tensor(0, device="meta", dtype=torch.float32)],
+            None,
+            None,
+            DeviceError,
+        ),
+        (
+            [torch.tensor(0, device="cpu", dtype=torch.float32), torch.tensor(0, device="meta", dtype=torch.float64)],
+            None,
+            None,
+            DeviceError,
+        ),
+        # A device mismatch anywhere in the list wins over a dtype mismatch, whichever comes first.
+        (
+            [
+                torch.tensor(0, device="cpu", dtype=torch.float32),
+                torch.tensor(0, device="cpu", dtype=torch.float64),
+                torch.tensor(0, device="meta", dtype=torch.float32),
+            ],
+            None,
+            None,
+            DeviceError,
+        ),
+        (
+            [
+                torch.tensor(0, device="meta", dtype=torch.float32),
+                torch.tensor(0, device="cpu", dtype=torch.float64),
+                torch.tensor(0, device="cpu", dtype=torch.float32),
+            ],
+            None,
+            None,
+            DeviceError,
         ),
     ],
 )
-def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_error):
-    if will_throw_error:
-        with pytest.raises(DeviceError):
+def test_extract_device_dtype(tensor_list, out_device, out_dtype, error):
+    if error is not None:
+        with pytest.raises(error) as excinfo:
             _extract_device_dtype(tensor_list)
+        assert type(excinfo.value) is error
     else:
         device, dtype = _extract_device_dtype(tensor_list)
         assert device == out_device
         assert dtype == out_dtype
+
+
+class TestExtractDeviceDtype(BaseTester):
+    def test_dtype_only_mismatch_raises_type_check_error(self, device):
+        # Same device, two dtypes: a dtype problem, reported as one (#5199).
+        a = torch.zeros(1, device=device, dtype=torch.float32)
+        b = torch.zeros(1, device=device, dtype=torch.float16)
+        with pytest.raises(TypeError) as excinfo:
+            _extract_device_dtype([a, None, b])
+        err = excinfo.value
+        assert type(err) is TypeCheckError
+        assert err.expected_type == torch.float32
+        assert err.actual_type == torch.float16
+        assert "expected torch.float32, got torch.float16" in str(err)
+
+    def test_device_mismatch_raises_device_error(self, device):
+        # A device mismatch stays a DeviceError, also when the dtypes differ too, and also when a same-device pair
+        # with two dtypes comes before it in the list.
+        a = torch.zeros(1, device=device, dtype=torch.float32)
+        other_dtype = torch.zeros(1, device=device, dtype=torch.float16)
+        for tensors in (
+            [a, torch.zeros(1, device="meta", dtype=torch.float32)],
+            [a, torch.zeros(1, device="meta", dtype=torch.float16)],
+            [a, other_dtype, torch.zeros(1, device="meta", dtype=torch.float32)],
+        ):
+            with pytest.raises(DeviceError) as excinfo:
+                _extract_device_dtype(tensors)
+            assert excinfo.value.actual_devices == [a.device, torch.device("meta")]
+            assert excinfo.value.expected_device == a.device
+            assert str(excinfo.value) == f"Passed tensors are not on the same device: expected {a.device}, got meta."
 
 
 class TestInverseCast:

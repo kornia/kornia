@@ -22,6 +22,14 @@ from kornia.image import image_to_string, print_image
 
 
 class TestImageToString:
+    @pytest.mark.parametrize(("height", "rows"), [(2, 1), (3, 1), (6, 1), (10, 2)])
+    def test_wide_image_keeps_at_least_one_row(self, height, rows, device, dtype):
+        # the resized height is max(1, H * max_width // W): a wide, short image keeps one row, taller ones are unchanged
+        image = torch.rand(3, height, 40, device=device, dtype=dtype)
+        out = image_to_string(image, max_width=10)
+        assert out.count("\n") == rows
+        assert out.count("\033[48;5;") == rows * 10
+
     def test_value(self):
         image = torch.arange(16).reshape(1, 4, 4).repeat(3, 1, 1).long() * 16
         out = image_to_string(image)
@@ -33,6 +41,19 @@ class TestImageToString:
             "\033[48;5;145m  \033[48;5;188m  \033[48;5;188m  \033[48;5;231m  \033[0m\n"
         )
         assert out == expected
+
+    @pytest.mark.parametrize("max_width", [256, 3])
+    @pytest.mark.parametrize("shape", [(1, 5, 6), (1, 4, 4), (1, 1, 2), (1, 7, 1)])
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64, torch.uint8, torch.int64])
+    def test_grayscale_matches_its_rgb_copy(self, shape, input_dtype, max_width):
+        generator = torch.Generator().manual_seed(0)
+        if input_dtype.is_floating_point:
+            gray = torch.rand(shape, generator=generator, dtype=input_dtype)
+        else:
+            gray = torch.randint(0, 256, shape, generator=generator).to(input_dtype)
+        out = image_to_string(gray, max_width)
+        assert out  # an empty string would make the comparison below vacuous
+        assert out == image_to_string(gray.repeat(3, 1, 1), max_width)
 
     def test_exception(self):
         img = torch.rand(3, 15, 15)

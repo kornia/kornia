@@ -300,7 +300,8 @@ class RRDBNetBuilder:
             model_path = CachedDownloader.download_to_cache(
                 url, model_name, download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
             )
-            model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"))["params_ema"], strict=True)
+            state_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
+            model.load_state_dict(state_dict["params_ema"], strict=True)
         model.eval()
 
         return SuperResolution(

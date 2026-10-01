@@ -25,6 +25,27 @@ from torch import nn
 from kornia.image.utils import perform_keep_shape_image
 
 
+def _as_bchw_bound(name: str, bound: torch.Tensor, input_shape: torch.Size) -> torch.Tensor:
+    """Validate a Tensor bound against the ``(B, C, H, W)`` input and return it as a 4-D Tensor.
+
+    A 1-D bound is read per channel: it must have ``C`` elements (or one) and becomes ``(1, C, 1, 1)``. A bound with
+    zero to four other dimensions is aligned with the input from the last dimension, and every dimension must be 1 or
+    the input's own size.
+    """
+    if bound.dim() == 1:
+        if bound.shape[0] in (1, input_shape[1]):
+            return bound.reshape(1, -1, 1, 1)
+    elif bound.dim() <= 4:
+        shape = (1,) * (4 - bound.dim()) + tuple(bound.shape)
+        if all(b in (1, i) for b, i in zip(shape, input_shape)):
+            return bound.reshape(shape)
+    raise ValueError(
+        f"`{name}` as a Tensor must be 0-d, have shape (C,) or (1,), or have two to four dimensions that, aligned "
+        f"with the input from the last dimension, are each 1 or equal to the input's. "
+        f"Got {tuple(bound.shape)} for an input viewed as (B, C, H, W) = {tuple(input_shape)}."
+    )
+
+
 @perform_keep_shape_image
 def in_range(
     input: torch.Tensor,
@@ -39,15 +60,15 @@ def in_range(
     The formula applied for single-channel torch.Tensor is:
 
     .. math::
-        \text{out}(I) = \text{lower}(I) \leq \text{input}(I) \geq \text{upper}(I)
+        \text{out}(I) = \text{lower}(I) \leq \text{input}(I) \leq \text{upper}(I)
 
     The formula applied for multi-channel torch.Tensor is:
 
     .. math::
-        \text{out}(I) = \bigwedge_{c=0}^{C}
-        \left( \text{lower}_c(I) \leq \text{input}_c(I) \geq \text{upper}_c(I) \right)
+        \text{out}(I) = \bigwedge_{c=0}^{C-1}
+        \left( \text{lower}_c(I) \leq \text{input}_c(I) \leq \text{upper}_c(I) \right)
 
-    where `C` is the number of channels.
+    where `C` is the number of channels. Both comparisons are inclusive.
 
     Args:
         input: The input torch.Tensor to be filtered in the shape of :math:`(*, *, H, W)`.
@@ -60,7 +81,10 @@ def in_range(
         or filtered input image :math:`(*, *, H, W)`.
 
     Raises:
-        ValueError: If the shape of `lower`, `upper`, and `input` image channels do not match.
+        TypeError: If `lower` or `upper` is neither a tuple nor a torch.Tensor, if one is a tuple and the other a
+            torch.Tensor, or if `return_mask` is not a bool.
+        ValueError: If a tuple bound does not have one element per channel, or a torch.Tensor bound does not fit the
+            input as described in the note.
 
     .. note::
         Clarification of `lower` and `upper`:
@@ -72,7 +96,19 @@ def in_range(
           The torch.Tensor shape should be (B, C, 1, 1), where B is the batch size and C is
           the number of channels.
 
-        - If the torch.Tensor has a 1-D shape, same bound will be applied across all batches.
+        - A 1-D torch.Tensor is read per channel, never per column: its shape is (C,) (or one element, for the
+          same bound in every channel) and the same bound is applied across all batches. A 1-D bound of any other
+          length, such as (W,) when W is neither C nor 1, raises. When W == C, a (W,) bound is the (C,) bound, not a
+          per-column one.
+
+        - Any other torch.Tensor with at most four dimensions is aligned with the input :math:`(B, C, H, W)` from the
+          last dimension, and every dimension must be 1 or the input's. For example (1, C, 1, 1) and (C, 1, 1) apply
+          the same per-channel bound to all batches, (B, C, H, W), (C, H, W) and (H, W) give a different bound at each
+          pixel, and a 0-d torch.Tensor applies one bound everywhere.
+
+        - Each torch.Tensor bound is checked on its own, so a mis-shaped one raises whatever the other bound is.
+          The input is read as :math:`(B, C, H, W)`: a 3-D input is :math:`(1, C, H, W)`, a 2-D input is
+          :math:`(1, 1, H, W)`, and for more than four dimensions the leading dimensions are flattened into B.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -130,13 +166,11 @@ def in_range(
         )
 
     elif isinstance(lower, torch.Tensor) and isinstance(upper, torch.Tensor):
-        valid_tensor_shape = (input_shape[0], input_shape[1], 1, 1)
-        if valid_tensor_shape not in (lower.shape, upper.shape):
-            raise ValueError(
-                "`lower` and `upper` bounds as Tensors must have compatible shapes with the input (B, C, 1, 1)."
-            )
-        lower = lower.to(input)
-        upper = upper.to(input)
+        lower = _as_bchw_bound("lower", lower, input_shape).to(input)
+        upper = _as_bchw_bound("upper", upper, input_shape).to(input)
+
+    else:
+        raise TypeError("Invalid `lower` and `upper` format. Both should be tuples or both torch.Tensor.")
 
     # Apply lower and upper bounds. Combine masks with logical_and.
     mask = torch.logical_and(input >= lower, input <= upper)

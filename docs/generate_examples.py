@@ -669,7 +669,11 @@ def main():
         print(f"Generated image example for {fn_name}. {sig}")
 
     # Image Matching and local features
-    img_matching_data = torch.hub.load_state_dict_from_url(BASE_IMAGEOUTDOOR_URL7, map_location=torch.device("cpu"))
+    # The file also stores DISK reference outputs, which ``weights_only`` accepts once their type is allowlisted.
+    with torch.serialization.safe_globals([K.feature.DISKFeatures]):
+        img_matching_data = torch.hub.load_state_dict_from_url(
+            BASE_IMAGEOUTDOOR_URL7, map_location=torch.device("cpu"), weights_only=True
+        )
     img_outdoor = img_matching_data["img2"]
     print("Generating local feature detections ")
     disk = K.feature.DISK.from_pretrained("depth")
