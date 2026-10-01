@@ -1805,8 +1805,12 @@ def normalize_homography(
           per sample; an unbatched input is returned as ``(1, 3, 3)``, and any
           other shape raises ``ValueError``
         - in eager mode ``inv(N_src)`` is a closed-form adjugate built from
-          ``torch.linalg.cross``, so no ``cusolver`` is needed, but a backend
-          without a ``cross`` kernel for the dtype raises here
+          ``torch.linalg.cross``, so no ``cusolver`` is needed. A ``float16`` or
+          ``bfloat16`` matrix is inverted in ``float32`` and the result cast back:
+          the ``float16`` determinant of a large image's normalization matrix is
+          subnormal or zero, and some backends lack a ``bfloat16`` ``cross`` kernel
+          (MPS on torch 2.5.1). For any other dtype, a backend without a ``cross``
+          kernel for it raises here
 
     .. warning::
         An integer matrix is not rejected: the normalization matrices are cast

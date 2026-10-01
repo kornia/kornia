@@ -188,11 +188,14 @@ def otsu_threshold(
         x (Tensor): Input tensor (image or batch of images).
         nbins (int): Number of bins for histogram computation, default is 256.
         slow_and_differentiable (bool): If True, use a differentiable histogram computation. Default is False.
-        return_mask (bool): If True, return a binary mask indicating the thresholded pixels. If False,
-            return the thresholded image.
+        return_mask (bool): If True, return the boolean mask ``x > threshold`` in place of the thresholded image,
+            with each pixel compared against the threshold of its own image and channel. If False, return the
+            thresholded image.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor and the computed threshold values.
+        Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, or the boolean mask ``x > threshold`` when
+        ``return_mask`` is True, and the computed threshold values. The thresholded tensor cannot tell a kept pixel
+        of value 0 from a dropped one; use the mask for that.
 
     Raises:
         ValueError: If the input tensor has unsupported dimensionality or dtype.
@@ -224,6 +227,9 @@ def otsu_threshold(
     result, threshold = module(x, nbins=nbins, slow_and_differentiable=slow_and_differentiable)
 
     if return_mask:
-        return result > 0, threshold
+        # `result > 0` is not the mask: it is False for a kept pixel whose value is 0 or below. Recompute the comparison
+        # `forward` applies, `x > threshold`, against the threshold of each image and channel of the flattened input.
+        x_flattened, _ = module.transform_input(x)
+        return (x_flattened > threshold[:, None]).reshape(x.shape), threshold
 
     return result, threshold
