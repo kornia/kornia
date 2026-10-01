@@ -358,7 +358,7 @@ def test_lighterglue_pretrained_smoke():
 
 
 # ---------------------------------------------------------------------------
-# Reference-data tests  (kornia/data_test  xfeat_reference.pt)
+# Reference-data tests  (kornia/data_test  xfeat_reference.safetensors)
 # ---------------------------------------------------------------------------
 
 

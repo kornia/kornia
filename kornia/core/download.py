@@ -17,11 +17,18 @@
 
 from __future__ import annotations
 
+import contextlib
+import errno
+import hashlib
 import http.client
+import inspect
 import math
 import os
 import sys
+import tempfile
+import threading
 import time
+import uuid
 import warnings
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -29,7 +36,8 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
+from urllib.request import Request, urlopen
 
 import torch
 
@@ -56,12 +64,20 @@ def _hf_repo_id(repo: str) -> str:
 def hf_url(repo: str, filename: str) -> str:
     """Return the HuggingFace URL for a file in a model repo.
 
+    Both arguments are percent-encoded, ``/`` excepted, because they are path
+    segments rather than URL syntax: unencoded, the ``#`` of ``"a#b.pth"`` would
+    start a fragment and fetch the file ``a``, and a space would make the URL
+    invalid. Names made of letters, digits, ``-``, ``_``, ``.`` and ``~`` are
+    unchanged. Pass the plain name: one that is already percent-encoded, such as
+    ``"a%20b.pth"``, is encoded again.
+
     Args:
         repo: repository name under the ``kornia`` HF org (e.g. ``"hardnet"``),
             or a full ``owner/name`` repository id for a repo owned by anyone
             else (e.g. ``"google/siglip2-base-patch16-224"``). The two are told
             apart by the ``/``, which a repository *name* cannot contain.
-        filename: file at the root of that repo (e.g. ``"HardNetPP.pth"``).
+        filename: path of the file in that repo (e.g. ``"HardNetPP.pth"``); a
+            ``/`` in it reaches into a subdirectory.
 
     Returns:
         A ``resolve/main`` URL that can be passed directly to
@@ -73,7 +89,7 @@ def hf_url(repo: str, filename: str) -> str:
         >>> hf_url("google/siglip2-base-patch16-224", "model.safetensors")
         'https://huggingface.co/google/siglip2-base-patch16-224/resolve/main/model.safetensors'
     """
-    return f"{_HF_BASE}/{_hf_repo_id(repo)}/resolve/main/{filename}"
+    return f"{_HF_BASE}/{quote(_hf_repo_id(repo), safe='/')}/resolve/main/{quote(filename, safe='/')}"
 
 
 def _hf_cache_file_name(repo: str, filename: str) -> str:
@@ -147,6 +163,276 @@ brief, and failing over to the next source -- or out to the caller with the
 cause named -- beats waiting longer. The budget is per call rather than per
 process so that a long-lived process is never left permanently unable to retry.
 """
+
+_DOWNLOAD_TIMEOUT_SECONDS = 30.0
+"""Default bound, in seconds, on each wait of a transfer: connecting, and every read.
+
+The fallback when neither ``timeout=`` nor :data:`_DOWNLOAD_TIMEOUT_ENV_VAR` is set.
+
+A server that accepts the connection and then sends nothing -- overloaded, or a
+half-open connection -- would otherwise hold the call forever, and the retry and
+fallback logic never got control, because nothing raised. The bound applies to
+each wait, not to the transfer as a whole: a multi-gigabyte checkpoint on a slow
+but live link takes as long as it takes. A timeout is a transient failure, so it
+is retried like a 503 and then hands over to the next source; a source that never
+answers therefore costs up to :data:`_MAX_ATTEMPTS` times this, plus the backoff.
+The public functions take ``timeout=`` to override it for one call.
+"""
+
+_DOWNLOAD_TIMEOUT_ENV_VAR = "KORNIA_DOWNLOAD_TIMEOUT"
+"""Environment variable holding the default download timeout, in seconds.
+
+Read at call time, whenever a download function is called without ``timeout=``, so
+it reaches callers that take no timeout -- a ``pretrained=True`` constructor -- and
+can be changed without restarting the process. Unset or blank means 30 s; anything
+that :func:`_usable_timeout` refuses raises :class:`ValueError` naming the
+variable, at the call rather than at import.
+"""
+
+
+def _usable_timeout(seconds: float) -> bool:
+    """Return whether *seconds* is more than 0 and at most ``threading.TIMEOUT_MAX``.
+
+    ``threading.TIMEOUT_MAX`` is the stdlib's documented ceiling on a blocking timeout. A
+    finite value far beyond it, such as ``1e300``, makes the socket raise ``OverflowError``
+    once the transfer starts, which the retry logic would then report as a failed source.
+    The bound does not promise that every value up to it is honoured: some platforms
+    truncate a wait longer than about 49 days (2**32 milliseconds), so such a timeout can
+    expire much sooner than asked. NaN and infinity fail the comparison, and an ``int`` too
+    large for a ``float`` is compared exactly rather than converted.
+    """
+    return 0 < seconds <= threading.TIMEOUT_MAX
+
+
+_READ_CHUNK_BYTES = 128 * 1024
+"""Bytes read per call during a transfer, the chunk :func:`torch.hub.download_url_to_file` uses."""
+
+
+class _TruncatedTransfer(http.client.IncompleteRead):
+    """A response body that ended before the ``Content-Length`` its headers announced.
+
+    urllib ends a ``read(n)`` loop on an early close without an error, so without this
+    check a server that dropped the connection part-way left a short file in the cache,
+    returned as a hit by every later call (the root cause of #4309). It is an
+    :class:`~http.client.IncompleteRead`, which :func:`_is_transient` retries before the
+    next source is tried. Its message counts the bytes on disk, which the parent class
+    would report as 0 because it counts only a partial body held in memory, and reads
+    as a sentence, because the failure summaries print it without the class name (see
+    :func:`_describe`).
+    """
+
+    def __init__(self, received: int, announced: int) -> None:
+        super().__init__(b"", announced - received)
+        # ``args`` is what pickle and copy rebuild an exception from.
+        self.args = (received, announced)
+        self.received = received
+        self.announced = announced
+
+    def __repr__(self) -> str:
+        return (
+            f"transfer truncated: the server sent {self.received} of the {self.announced} bytes "
+            f"its Content-Length announced"
+        )
+
+
+def _describe(exc: BaseException) -> str:
+    """Return ``"<type>: <message>"`` for a failure summary; a truncated transfer describes itself."""
+    if isinstance(exc, _TruncatedTransfer):
+        return str(exc)
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _resolve_timeout(timeout: float | None) -> float:
+    """Return the timeout a call runs with, validated.
+
+    Args:
+        timeout: the caller's value, or ``None`` for the ``KORNIA_DOWNLOAD_TIMEOUT``
+            environment variable, or 30 s when that is unset or blank. An explicit value
+            wins, and the variable is then not read at all.
+
+    Returns:
+        The timeout in seconds.
+
+    Raises:
+        TypeError: if *timeout* is not a number.
+        ValueError: if *timeout*, or the variable it falls back to, is not greater than
+            0 and at most ``threading.TIMEOUT_MAX`` (see :func:`_usable_timeout`); the
+            message names which of the two it came from.
+    """
+    if timeout is None:
+        raw = os.environ.get(_DOWNLOAD_TIMEOUT_ENV_VAR, "").strip()
+        if not raw:
+            return _DOWNLOAD_TIMEOUT_SECONDS
+        try:
+            value = float(raw)
+        except ValueError:
+            value = math.nan
+        if not _usable_timeout(value):
+            raise ValueError(
+                f"{_DOWNLOAD_TIMEOUT_ENV_VAR} must be a number of seconds greater than 0 and at most "
+                f"{threading.TIMEOUT_MAX!r} (threading.TIMEOUT_MAX), got {raw!r}. "
+                f"Unset it to use the default of {_DOWNLOAD_TIMEOUT_SECONDS:g} s."
+            )
+        return value
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+        raise TypeError(f"timeout must be a number of seconds or None, got {type(timeout).__name__}.")
+    if not _usable_timeout(timeout):
+        # An int too large for a float could also be too long to print.
+        huge = isinstance(timeout, int) and timeout.bit_length() > 64
+        shown = f"an int of {timeout.bit_length()} bits" if huge else repr(timeout)
+        raise ValueError(
+            f"timeout must be a number of seconds greater than 0 and at most {threading.TIMEOUT_MAX!r} "
+            f"(threading.TIMEOUT_MAX), got {shown}."
+        )
+    return float(timeout)
+
+
+def _is_timeout(exc: BaseException) -> bool:
+    """Return whether *exc* is a socket timeout, raised directly or wrapped by urllib."""
+    if isinstance(exc, TimeoutError):
+        return True
+    return isinstance(exc, URLError) and not isinstance(exc, HTTPError) and isinstance(exc.reason, TimeoutError)
+
+
+def _warn(message: str) -> None:
+    """Warn, attributed to the first frame outside this module.
+
+    The public functions call each other -- :func:`download_hf_file` goes through
+    :func:`download_file_from_url` -- so a fixed ``stacklevel`` that is right for one
+    entry point points into this file for another. Walking out of the module instead
+    names the caller's line whichever way it came in.
+
+    Args:
+        message: the warning text.
+    """
+    level = 1
+    frame = inspect.currentframe()
+    while frame is not None and frame.f_globals is globals():
+        frame = frame.f_back
+        level += 1
+    warnings.warn(message, stacklevel=level)
+
+
+def _url_list(url: object) -> list[str]:
+    """Return *url* as a non-empty list of URL strings, or raise naming what is wrong.
+
+    Args:
+        url: what the caller passed as ``url``.
+
+    Returns:
+        The URLs, in order.
+
+    Raises:
+        TypeError: if *url* is not a string or an iterable of strings.
+        ValueError: if there is no URL, or one of them is empty.
+    """
+    expected = "url must be a URL string or a list of them"
+    if isinstance(url, (str, bytes, os.PathLike)):
+        urls: list[object] = [url]
+    else:
+        try:
+            urls = list(url)
+        except TypeError:
+            raise TypeError(f"{expected}, got {type(url).__name__}.") from None
+        if not urls:
+            raise ValueError("url is an empty list; pass at least one URL.")
+    checked: list[str] = []
+    for u in urls:
+        if isinstance(u, os.PathLike):
+            raise TypeError(f"{expected}, got a {type(u).__name__}; for a local file pass its path.as_uri().")
+        if not isinstance(u, str):
+            raise TypeError(f"{expected}, got {type(u).__name__}.")
+        if not u:
+            raise ValueError(f"url must not be empty, got {url!r}.")
+        checked.append(u)
+    return checked
+
+
+_NOT_A_FILE_NAME = frozenset({"", ".", ".."})
+"""Names that would make the cache path the cache directory itself, or its parent."""
+
+
+def _check_cache_file_name(urls: list[str], file_name: str | os.PathLike[str] | None) -> str | None:
+    """Refuse a cache entry name that is not a single file inside the cache directory.
+
+    The cache is one flat directory and the entry is ``<model_dir>/<name>``. A
+    ``file_name`` carrying a separator, an absolute path or ``..`` would put it
+    outside, where the cache repair of :func:`load_state_dict_from_url` would move
+    a file it never wrote aside, write over it and delete the original. A URL whose
+    path ends in ``/``, ``/.`` or ``/..`` names no file, and the name derived from it
+    would make the entry the cache directory or its parent. The name derived from a
+    URL is held to the same bare-name test as ``file_name``: on Windows a last
+    segment such as ``d:x.pth`` is a drive-relative path, not a name in the cache.
+
+    Args:
+        urls: the URLs of the call; without ``file_name`` the first one names the entry.
+        file_name: the caller's ``file_name``, a ``str`` or an :class:`os.PathLike`, or ``None``.
+
+    Returns:
+        ``file_name`` as a ``str``, or ``None`` when it was not given.
+
+    Raises:
+        TypeError: if ``file_name`` is neither a ``str`` nor a path-like naming one.
+        ValueError: if the name is not a bare file name.
+    """
+    if file_name is not None:
+        name = os.fspath(file_name)
+        if not isinstance(name, str):
+            raise TypeError(f"file_name must be a str or a path-like object, got {type(file_name).__name__}.")
+        if name in _NOT_A_FILE_NAME or os.path.basename(name) != name:
+            raise ValueError(f"file_name must be a bare filename inside the cache directory, got {file_name!r}.")
+        return name
+    name = os.path.basename(urlparse(urls[0]).path)
+    if name in _NOT_A_FILE_NAME or os.path.basename(name) != name:
+        raise ValueError(
+            f"{urls[0]!r} does not end in a name that can be a file in the cache directory (its last path "
+            f"segment is {name!r}); pass file_name= to name the cache entry."
+        )
+    return None
+
+
+def _expand_model_dir(model_dir: Any) -> Any:
+    """Expand a leading ``~`` in *model_dir*, as a shell would; ``None`` passes through.
+
+    Neither the ``makedirs`` nor the existence check expands it, so ``"~/weights"``
+    used to create a directory literally named ``~`` in the working directory.
+    """
+    if model_dir is None:
+        return None
+    expanded = os.path.expanduser(model_dir)
+    return model_dir if expanded == os.fspath(model_dir) else expanded
+
+
+def _check_torch_keywords(kwargs: dict[str, Any]) -> None:
+    """Raise :class:`TypeError` for a keyword :func:`torch.hub.load_state_dict_from_url` does not take.
+
+    torch raises the same error, but only when it is called -- after the cache has been
+    consulted -- so the call's cache repair took a caller's typo for a corrupt entry: it
+    set the entry aside, downloaded the checkpoint again and reported ``RuntimeError``.
+
+    Args:
+        kwargs: the keyword arguments destined for the torch function.
+
+    Raises:
+        TypeError: naming the first keyword torch does not accept.
+    """
+    try:
+        parameters = inspect.signature(torch.hub.load_state_dict_from_url).parameters
+    except (TypeError, ValueError):  # pragma: no cover - a signature inspect cannot read
+        return
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
+        return  # a stand-in that takes anything, such as a test double
+    accepted = {
+        name
+        for name, p in parameters.items()
+        if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY) and name != "url"
+    }
+    unknown = sorted(set(kwargs) - accepted)
+    if unknown:
+        raise TypeError(
+            f"load_state_dict_from_url() got an unexpected keyword argument {unknown[0]!r}. "
+            f"It accepts timeout and the keywords of torch.hub.load_state_dict_from_url: {', '.join(sorted(accepted))}."
+        )
 
 
 class _SleepBudget:
@@ -305,10 +591,12 @@ def _is_transient(exc: BaseException) -> bool:
     """
     if isinstance(exc, HTTPError):  # a subclass of URLError, so it must be tested first
         return exc.code in _TRANSIENT_HTTP_STATUS or _rate_limited(exc)
-    # IncompleteRead is a mid-transfer truncation of a chunked response. It
-    # inherits from HTTPException alone -- neither URLError nor ConnectionError --
-    # so it needs naming, or a truncation burns the fallback instead of retrying
-    # the source that was already serving.
+    # IncompleteRead is a truncated body: http.client raises it when a chunked
+    # response is cut mid-chunk, and _download_url_to_file raises its subclass
+    # _TruncatedTransfer when a body ends short of its Content-Length. It inherits
+    # from HTTPException alone -- neither URLError nor ConnectionError -- so it needs
+    # naming, or a truncation burns the fallback instead of retrying the source
+    # that was already serving.
     return isinstance(exc, (URLError, TimeoutError, ConnectionError, http.client.IncompleteRead))
 
 
@@ -337,7 +625,107 @@ def _cached_file_path(url: str, kwargs: dict[str, Any]) -> str:
     return os.path.join(model_dir, filename)
 
 
-def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> bool:
+def _download_url_to_file(
+    url: str,
+    dst: str,
+    hash_prefix: str | None = None,
+    progress: bool = True,
+    timeout: float | None = None,
+) -> None:
+    """Download *url* to *dst*, failing an attempt that stalls for *timeout* seconds.
+
+    :func:`torch.hub.download_url_to_file` with a timeout. torch's function opens
+    the URL with no timeout and has no parameter for one, so a server that accepted
+    the connection and then went quiet held the call forever. Giving it one from
+    outside would mean replacing ``torch.hub.urlopen`` or the process-wide socket
+    default, which changes torch or every other thread for everyone, so kornia runs
+    the transfer itself. Everything else follows torch: the ``User-Agent``, the chunk
+    size, the progress bar (torch's own ``tqdm``, or its stand-in without tqdm), the
+    hash check and its message, and writing to a temporary file beside *dst* that
+    replaces it only once complete, so a failed or interrupted transfer never leaves
+    a partial file at *dst*. Unlike torch, a body shorter than the ``Content-Length``
+    that framed it counts as failed rather than complete; a chunked or close-delimited
+    body, or one whose header http.client ignores, is taken as torch takes it.
+
+    Args:
+        url: the URL to fetch; ``file://`` URLs work too.
+        dst: the destination path; a leading ``~`` is expanded.
+        hash_prefix: if given, the SHA256 of the download must start with it.
+        progress: whether to show a progress bar on stderr.
+        timeout: the bound on connecting and on each read, in seconds; ``None``
+            uses the ``KORNIA_DOWNLOAD_TIMEOUT`` environment variable, or 30 s. It
+            bounds each wait, not the whole transfer.
+
+    Raises:
+        TimeoutError: if the server went *timeout* seconds without answering.
+        http.client.IncompleteRead: if the body ended before its ``Content-Length``.
+        RuntimeError: if the download does not match *hash_prefix*.
+    """
+    timeout = _resolve_timeout(timeout)
+    dst = os.path.expanduser(dst)
+    for _ in range(tempfile.TMP_MAX):
+        partial = f"{dst}.{uuid.uuid4().hex}.partial"
+        try:
+            f = open(partial, "xb")
+        except FileExistsError:
+            continue
+        break
+    else:  # pragma: no cover - every uuid4 name already taken
+        raise FileExistsError(errno.EEXIST, "No usable temporary file name found")
+
+    sha256 = hashlib.sha256() if hash_prefix is not None else None
+    bar_type = getattr(torch.hub, "tqdm", None)  # tqdm, or torch's stand-in when it is absent
+    try:
+        with f:
+            # ``file://`` is deliberately accepted, as torch accepts it.
+            request = Request(url, headers={"User-Agent": "torch.hub"})  # noqa: S310
+            with urlopen(request, timeout=timeout) as response:  # noqa: S310
+                # The length http.client frames the body by: None for a chunked body and for
+                # a Content-Length that is missing, negative or not an integer, 0 for a
+                # bodiless status. A ``file://`` response has no such attribute.
+                framed = getattr(response, "length", None)
+                lengths = response.info().get_all("Content-Length")
+                total = int(lengths[0]) if lengths else None
+                bar = (
+                    bar_type(total=total, disable=not progress, unit="B", unit_scale=True, unit_divisor=1024)
+                    if bar_type is not None
+                    else contextlib.nullcontext()
+                )
+                received = 0
+                with bar:
+                    while chunk := response.read(_READ_CHUNK_BYTES):
+                        f.write(chunk)
+                        received += len(chunk)
+                        if sha256 is not None:
+                            sha256.update(chunk)
+                        if bar_type is not None:
+                            bar.update(len(chunk))
+        # Checked only when Content-Length framed the body, as torch has no check at all
+        # elsewhere; http.client clips a longer body there, so only a short one can occur.
+        # urllib does not decode a Content-Encoding, so the raw byte count is what it counts.
+        if isinstance(framed, int) and received < framed:
+            raise _TruncatedTransfer(received, framed)
+        if sha256 is not None and hash_prefix is not None:
+            digest = sha256.hexdigest()
+            if digest[: len(hash_prefix)] != hash_prefix:
+                raise RuntimeError(f'invalid hash value (expected "{hash_prefix}", got "{digest}")')
+        os.replace(partial, dst)
+    except (TimeoutError, URLError) as e:
+        if not _is_timeout(e):
+            raise
+        raise TimeoutError(
+            f"the server went {timeout:g} s without answering (the download timeout, which bounds connecting "
+            f"and each read). If the link is slow rather than stalled, pass a larger timeout= to "
+            f"load_state_dict_from_url, download_file_from_url or download_hf_file, or set the "
+            f"{_DOWNLOAD_TIMEOUT_ENV_VAR} environment variable (in seconds), which also reaches callers "
+            f"that take no timeout, such as pretrained model constructors"
+        ) from e
+    finally:
+        if os.path.exists(partial):
+            os.remove(partial)
+
+
+def _prefetch_to_cache(url: str, kwargs: dict[str, Any], timeout: float) -> bool:
     """Download *url* into the torch hub cache if it is not already there.
 
     Doing the fetch here rather than letting :func:`torch.hub.load_state_dict_from_url`
@@ -352,11 +740,17 @@ def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> bool:
         kwargs: the keyword arguments destined for the torch function;
             ``model_dir``, ``file_name``, ``check_hash`` and ``progress`` are
             honoured so the cache entry is identical to torch's.
+        timeout: the bound on connecting and on each read, in seconds, already
+            resolved by :func:`_resolve_timeout`.
 
     Returns:
         Whether a transfer happened. A cache hit returns ``False``, which is how
         :func:`load_state_dict_from_url` tells a source that was really fetched
         from one that was handed the file already on disk.
+
+    Raises:
+        TimeoutError: if the server stalled for *timeout* seconds; see
+            :func:`_download_url_to_file`, which leaves nothing at the cache path.
     """
     cached_file = _cached_file_path(url, kwargs)
     if os.path.exists(cached_file):
@@ -371,7 +765,7 @@ def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> bool:
 
     # torch writes this to stdout; status output belongs on stderr.
     sys.stderr.write(f'Downloading: "{url}" to {cached_file}\n')
-    torch.hub.download_url_to_file(url, cached_file, hash_prefix, progress=kwargs.get("progress", True))
+    _download_url_to_file(url, cached_file, hash_prefix, progress=kwargs.get("progress", True), timeout=timeout)
     return True
 
 
@@ -454,10 +848,9 @@ def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> str | None:
         # A read-only cache, or a Windows reader holding the file open. Renaming
         # it again would fail the same way, so the ledger is marked either way,
         # but a fallback that can never be reached is worth saying out loud.
-        warnings.warn(
+        _warn(
             f"Could not discard the cache entry at {path}: {e}. If that file is corrupt, "
-            f"the fallback sources cannot take effect until it is deleted by hand.",
-            stacklevel=3,
+            f"the fallback sources cannot take effect until it is deleted by hand."
         )
         # The entry is still there and still unloadable. Marking the ledger stops
         # a rename that can only fail the same way from being tried again, and a
@@ -505,16 +898,15 @@ def _settle_quarantine(path: str, quarantine: str, *, loaded: bool, downloaded: 
         try:
             os.remove(quarantine)
         except OSError as e:  # pragma: no cover - a cache that cannot be written to
-            warnings.warn(f"Could not remove the discarded cache entry at {quarantine}: {e}.", stacklevel=3)
+            _warn(f"Could not remove the discarded cache entry at {quarantine}: {e}.")
         return
 
     try:
         os.replace(quarantine, path)  # atomically overwrites whatever a source left there
     except OSError as e:  # pragma: no cover - a cache that cannot be written to
-        warnings.warn(
+        _warn(
             f"Could not restore the cache entry at {path} from {quarantine}: {e}. "
-            f"Move it back by hand to avoid re-downloading the checkpoint.",
-            stacklevel=3,
+            f"Move it back by hand to avoid re-downloading the checkpoint."
         )
         return
     if not downloaded:
@@ -548,14 +940,13 @@ def _drop_failed_download(path: str) -> None:
     except FileNotFoundError:  # pragma: no cover - torch removed it itself
         pass
     except OSError as e:  # pragma: no cover - a cache that cannot be written to
-        warnings.warn(
+        _warn(
             f"Could not remove the failed download at {path}: {e}. "
-            f"Delete it by hand if the fallback sources stop taking effect.",
-            stacklevel=3,
+            f"Delete it by hand if the fallback sources stop taking effect."
         )
 
 
-def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget) -> bool:
+def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget, timeout: float) -> bool:
     """Run :func:`_prefetch_to_cache`, retrying transient failures with backoff.
 
     Args:
@@ -563,6 +954,7 @@ def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget)
         kwargs: the keyword arguments destined for the torch function.
         budget: the waiting time the whole call has left; a retry that would
             exceed it is not taken.
+        timeout: forwarded to :func:`_prefetch_to_cache`.
 
     Returns:
         Whether a transfer happened; see :func:`_prefetch_to_cache`.
@@ -573,33 +965,54 @@ def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget)
     """
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
-            return _prefetch_to_cache(url, kwargs)
+            return _prefetch_to_cache(url, kwargs, timeout)
         except Exception as e:
             if attempt == _MAX_ATTEMPTS or not _is_transient(e):
                 raise
             delay = _retry_delay(e, attempt)
             if delay > budget.remaining:
                 raise
-            warnings.warn(
+            _warn(
                 f"Transient failure fetching {url!r}: {e}. Retrying in {delay:.0f}s "
-                f"(attempt {attempt + 1} of {_MAX_ATTEMPTS}).",
-                # 1 = here, 2 = load_state_dict_from_url, 3 = its caller, which is
-                # the frame the sibling warning below also points at.
-                stacklevel=3,
+                f"(attempt {attempt + 1} of {_MAX_ATTEMPTS})."
             )
             budget.sleep(delay)
     raise AssertionError("unreachable: the loop above always returns or raises")  # pragma: no cover
 
 
-def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, Any]:
+def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = None, **kwargs: Any) -> dict[str, Any]:
     """Load a state dict from a URL, trying fallback URLs on failure.
 
-    Drop-in replacement for :func:`torch.hub.load_state_dict_from_url` that
-    accepts either a single URL string or an ordered list of URLs. Each URL is
-    tried in turn; a :mod:`warnings` message is emitted for every failed
-    attempt before the next source is tried.
+    Replacement for :func:`torch.hub.load_state_dict_from_url` that also accepts
+    an ordered list of URLs. Each URL is tried in turn; a :mod:`warnings` message
+    is emitted for every failed attempt before the next source is tried. It
+    deliberately differs from the torch function in two ways, both described
+    below: the ``weights_only`` default and where progress is reported.
 
-    Progress reporting is written to :data:`sys.stderr`. This is the one
+    The checkpoint is loaded with ``weights_only=True`` unless the caller passes
+    ``weights_only=False``, whereas the torch function defaults to ``False`` on
+    every torch version kornia supports; ``weights_only=True`` is
+    ``torch.load``'s own default since torch 2.6. ``torch.load`` then unpickles
+    only tensors, primitive types and plain containers, and refuses a pickled
+    callable instead of running it. A checkpoint that stores any other type
+    fails with a :class:`RuntimeError` chained to the
+    :class:`pickle.UnpicklingError` that names the type. Allowlist the type for
+    the call with ``torch.serialization.safe_globals([...])``, or pass
+    ``weights_only=False``, but only for a file you trust, because unpickling it
+    can run arbitrary code.
+
+    On older torch, ``weights_only=True`` narrows what a checkpoint can do but
+    does not guarantee that it runs no code. PyTorch's advisories report
+    checkpoints crafted to run code despite it before torch 2.6
+    (`GHSA-53q9-r3pm-6pq6
+    <https://github.com/pytorch/pytorch/security/advisories/GHSA-53q9-r3pm-6pq6>`__)
+    and to corrupt memory, potentially running code, before torch 2.10
+    (`GHSA-63cw-57p8-fm3p
+    <https://github.com/pytorch/pytorch/security/advisories/GHSA-63cw-57p8-fm3p>`__).
+    kornia supports torch 2.5.1 and later, so load a checkpoint from a source
+    you do not trust only on torch 2.10 or later, which fixes both.
+
+    Progress reporting is written to :data:`sys.stderr`. This is the second
     deliberate deviation from the torch function, which since torch 2.x writes
     its ``Downloading: "<url>" to <path>`` line to :data:`sys.stdout` (the
     accompanying progress bar already goes to stderr). Status output on stdout
@@ -656,18 +1069,40 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     response that names its own delay in ``Retry-After`` -- or, on a rate-limit
     response, ``X-RateLimit-Reset`` -- is honoured instead of the guess, clamped
     to :data:`_MAX_BACKOFF_SECONDS`, and the call as a whole never waits longer
-    than :data:`_MAX_CALL_SLEEP_SECONDS`.
+    than :data:`_MAX_CALL_SLEEP_SECONDS`. A server that stalls -- accepts the
+    connection and then sends nothing -- fails the attempt after ``timeout``
+    seconds and counts as transient too.
+
+    The arguments are checked before the cache is consulted or a request made:
+    ``file_name`` must be a bare file name, as it names an entry in the flat cache
+    directory, and without it the first URL's path must end in one; a keyword
+    the torch function does not take raises :class:`TypeError` there and then,
+    rather than being mistaken for a corrupt cache entry. A leading ``~`` in
+    ``model_dir`` is expanded.
 
     Args:
         url: a URL string, or a list of URL strings tried left-to-right.
-        **kwargs: forwarded verbatim to
-            :func:`torch.hub.load_state_dict_from_url`
-            (``map_location``, ``check_hash``, ``file_name``, …).
+        timeout: seconds a connection attempt or a single read may stall before the
+            attempt fails; it bounds each wait, not the whole transfer. ``None``
+            uses the ``KORNIA_DOWNLOAD_TIMEOUT`` environment variable, read at
+            each call, or 30 s when it is unset. The variable is how to raise the
+            bound for callers that take no ``timeout``, such as ``pretrained=True``
+            model constructors.
+        **kwargs: forwarded to :func:`torch.hub.load_state_dict_from_url`
+            (``map_location``, ``check_hash``, ``file_name``, …), with
+            ``weights_only`` set to ``True`` unless it is passed as ``False``.
 
     Returns:
         The loaded state dict.
 
     Raises:
+        TypeError: if ``url`` is not a URL string or a list of them, ``timeout``
+            is not a number, or a keyword is not one the torch function takes.
+        ValueError: if ``url`` is empty; if ``timeout`` is not greater than 0 and
+            at most ``threading.TIMEOUT_MAX``, or it is omitted and
+            ``KORNIA_DOWNLOAD_TIMEOUT`` holds such a value or no number (the message
+            names which); if ``file_name`` is not a bare file name, or it is omitted
+            and the first URL does not end in one.
         RuntimeError: if every URL fails. The message carries the failing
             exception's type and text, the source it came from and the cache path in play, and the
             exception itself is chained; without them a rate limit is
@@ -684,7 +1119,20 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
         ...     "pretrained/pretrained_all_datasets/HardNet%2B%2B.pth",  # fallback
         ... ])
     """
-    urls = [url] if isinstance(url, str) else list(url)
+    urls = _url_list(url)
+    timeout = _resolve_timeout(timeout)
+    _check_torch_keywords(kwargs)
+    file_name = _check_cache_file_name(urls, kwargs.get("file_name"))
+    if file_name is not None:
+        kwargs["file_name"] = file_name
+    if kwargs.get("model_dir") is not None:
+        kwargs["model_dir"] = _expand_model_dir(kwargs["model_dir"])
+
+    # The one torch call below loads from every source, the fallbacks and the
+    # refetch after a quarantine alike, so setting this once covers them all.
+    # ``None`` is included because torch 2.5 reads it as ``False``.
+    if kwargs.get("weights_only") is None:
+        kwargs["weights_only"] = True
 
     # Pin the cache filename to the primary URL's basename so that all
     # attempts share one cache slot and hash validation stays consistent.
@@ -713,7 +1161,7 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
                 more_sources = i < len(sources) - 1
                 try:
                     # Populate the cache ourselves so torch's stdout line is never reached.
-                    fetched = _prefetch_with_retry(u, kwargs, budget)
+                    fetched = _prefetch_with_retry(u, kwargs, budget, timeout)
                     downloaded |= fetched
                     state_dict = torch.hub.load_state_dict_from_url(u, **kwargs)
                 except Exception as e:  # noqa: BLE001
@@ -735,10 +1183,7 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
                         if moved is not None:
                             quarantine, discarded_url, discard_exc = moved, u, e
                     if more_sources:
-                        warnings.warn(
-                            f"Failed to load weights from {u!r}: {e}. Trying next source.",
-                            stacklevel=2,
-                        )
+                        _warn(f"Failed to load weights from {u!r}: {e}. Trying next source.")
                     continue
                 if quarantine is not None:
                     _settle_quarantine(cache_path, quarantine, loaded=True, downloaded=downloaded)
@@ -771,14 +1216,14 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     if re_attempted and not downloaded and discard_exc is not None:
         refetch_note = (
             f" (the cache entry was set aside and refetching it from that same source "
-            f"failed too: {type(last_exc).__name__}: {last_exc})"
+            f"failed too: {_describe(last_exc)})"
         )
         last_exc, last_url = discard_exc, discarded_url
 
     raise RuntimeError(
         f"Failed to load weights from all {len(urls)} source(s). "
         f"Last URL tried: {last_url!r}. "
-        f"Last error: {type(last_exc).__name__}: {last_exc}{refetch_note}. "
+        f"Last error: {_describe(last_exc)}{refetch_note}. "
         # Unquoted: the point of naming the path is that it can be pasted into
         # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
         f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."
@@ -792,6 +1237,7 @@ def download_file_from_url(
     model_dir: str | None = None,
     progress: bool = True,
     validate: Callable[[str], None] | None = None,
+    timeout: float | None = None,
 ) -> str:
     """Download a file into the torch hub cache and return its path, without loading it.
 
@@ -799,7 +1245,8 @@ def download_file_from_url(
     cannot unpickle -- a ``.safetensors`` file, read afterwards with
     :func:`kornia.core.load_safetensors`. It shares that function's cache, its
     fallback-URL handling, its retry-with-backoff on transient failures and rate
-    limits (see :data:`_MAX_ATTEMPTS` and :func:`_retry_delay`), and its habit of
+    limits (see :data:`_MAX_ATTEMPTS` and :func:`_retry_delay`), its bound on a
+    stalled server (see ``timeout``), and its habit of
     announcing a transfer on :data:`sys.stderr` rather than stdout. A file
     already in the cache is returned as it is, with no request made.
 
@@ -843,20 +1290,33 @@ def download_file_from_url(
             the second model would silently load the first one's weights (see
             :func:`_hf_cache_file_name`). Must be a bare filename: the cache is
             one flat directory, so a value carrying a path separator or naming
-            ``.``/``..`` would write outside it.
+            ``.``/``..`` would write outside it. Without it, the first URL's path
+            must end in a file name.
         model_dir: directory to cache the file in. Defaults to torch's
-            ``<hub dir>/checkpoints``, which is the cache CI restores.
+            ``<hub dir>/checkpoints``, which is the cache CI restores. A leading
+            ``~`` is expanded.
         progress: whether to display a progress bar during a transfer.
         validate: called with the cache path after each attempt, to decide
             whether what is there is usable. Raising rejects the entry. Keep it
             cheap -- a header parse, not a full read -- since it runs on cache
             hits too.
+        timeout: seconds a connection attempt or a single read may stall before the
+            attempt fails, which then counts as transient; it bounds each wait, not
+            the whole transfer. ``None`` uses the ``KORNIA_DOWNLOAD_TIMEOUT``
+            environment variable, read at each call, or 30 s when it is unset.
 
     Returns:
         The path of the cached file.
 
     Raises:
-        ValueError: if ``file_name`` is not a single path component.
+        TypeError: if ``url`` is not a URL string or a list of them, or ``timeout``
+            is not a number.
+        ValueError: if ``file_name`` is not a single path component, or it is
+            omitted and the first URL's path does not end in a file name; if
+            ``url`` is empty; or if ``timeout`` is not greater than 0 and at most
+            ``threading.TIMEOUT_MAX``, or it is omitted and
+            ``KORNIA_DOWNLOAD_TIMEOUT`` holds such a value or no number (the message
+            names which).
         RuntimeError: if every URL fails. The message carries the last failure's
             type and text, the source it came from and the cache path in play,
             and the exception itself is chained.
@@ -867,9 +1327,10 @@ def download_file_from_url(
         ...     file_name="kornia--kimi-vl-a3b-instruct-vision--model.safetensors",
         ... )
     """
-    if file_name is not None and (file_name in {"", ".", ".."} or os.path.basename(file_name) != file_name):
-        raise ValueError(f"file_name must be a bare filename inside the cache directory, got {file_name!r}.")
-    urls = [url] if isinstance(url, str) else list(url)
+    urls = _url_list(url)
+    file_name = _check_cache_file_name(urls, file_name)
+    timeout = _resolve_timeout(timeout)
+    model_dir = _expand_model_dir(model_dir)
 
     # Pin the cache filename to the primary URL's basename so that all attempts
     # share one cache slot, exactly as :func:`load_state_dict_from_url` does.
@@ -894,7 +1355,7 @@ def download_file_from_url(
                 fetched = False
                 more_sources = i < len(sources) - 1
                 try:
-                    fetched = _prefetch_with_retry(u, kwargs, budget)
+                    fetched = _prefetch_with_retry(u, kwargs, budget, timeout)
                     downloaded |= fetched
                     if validate is not None:
                         validate(cache_path)
@@ -927,7 +1388,7 @@ def download_file_from_url(
                         if moved is not None:
                             quarantine, discarded_url, discard_exc = moved, u, e
                     if more_sources:
-                        warnings.warn(f"Failed to download {u!r}: {e}. Trying next source.", stacklevel=2)
+                        _warn(f"Failed to download {u!r}: {e}. Trying next source.")
                     continue
                 if quarantine is not None:
                     _settle_quarantine(cache_path, quarantine, loaded=True, downloaded=downloaded)
@@ -955,14 +1416,14 @@ def download_file_from_url(
     if re_attempted and not downloaded and discard_exc is not None:
         refetch_note = (
             f" (the cache entry was set aside and refetching it from that same source "
-            f"failed too: {type(last_exc).__name__}: {last_exc})"
+            f"failed too: {_describe(last_exc)})"
         )
         last_exc, last_url = discard_exc, discarded_url
 
     raise RuntimeError(
         f"Failed to download the file from all {len(urls)} source(s). "
         f"Last URL tried: {last_url!r}. "
-        f"Last error: {type(last_exc).__name__}: {last_exc}{refetch_note}. "
+        f"Last error: {_describe(last_exc)}{refetch_note}. "
         # Unquoted: the point of naming the path is that it can be pasted into
         # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
         f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."
@@ -976,6 +1437,7 @@ def download_hf_file(
     model_dir: str | None = None,
     progress: bool = True,
     validate: Callable[[str], None] | None = None,
+    timeout: float | None = None,
 ) -> str:
     """Download one file from a HuggingFace repo and return the path it is cached at.
 
@@ -997,14 +1459,23 @@ def download_hf_file(
             it. Pass :func:`kornia.core.check_safetensors` for a checkpoint, so
             that a truncated cache entry is re-fetched rather than handed back
             on every later call.
+        timeout: seconds a connection attempt or a single read may stall before the
+            attempt fails; it bounds each wait, not the whole transfer. ``None``
+            uses the ``KORNIA_DOWNLOAD_TIMEOUT`` environment variable, read at
+            each call, or 30 s when it is unset. Forwarded to
+            :func:`download_file_from_url`.
 
     Returns:
         The path of the cached file. Read a ``.safetensors`` one with
         :func:`kornia.core.load_safetensors`.
 
     Raises:
+        TypeError: if ``timeout`` is not a number.
         ValueError: if ``filename`` carries a path separator; only files at the
             repository root are supported, because the cache is one flat directory.
+            Also if ``timeout`` is not greater than 0 and at most
+            ``threading.TIMEOUT_MAX``, or it is omitted and ``KORNIA_DOWNLOAD_TIMEOUT``
+            holds such a value or no number (the message names which).
         RuntimeError: if the download fails; see :func:`download_file_from_url`.
 
     Example:
@@ -1018,4 +1489,5 @@ def download_hf_file(
         model_dir=model_dir,
         progress=progress,
         validate=validate,
+        timeout=timeout,
     )

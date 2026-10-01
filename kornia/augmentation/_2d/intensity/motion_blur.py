@@ -65,7 +65,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           ``-1`` and ``+1`` pile it at opposite ends. The rotation then resamples the kernel with ``resample``:
           ``"nearest"`` can drop or duplicate taps, so the line's length and end weights change with ``angle``, and
           ``"bilinear"`` or ``"bicubic"`` also spread weight off the line.
-        - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
+        - the default ``resample="nearest"`` is the function's own default. The default ``border_type="constant"``
+          is not: the class zero-pads by its own default, while :func:`kornia.filters.motion_blur` defaults to
+          ``"reflect"``. Pass ``border_type="reflect"`` to match the function.
         - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]`` with
           shape ``(B,)``, so every sample uses that size even with ``same_on_batch=False``; angle and direction
           are drawn per sample unless ``same_on_batch=True``. A tuple range draws each odd size inside it with

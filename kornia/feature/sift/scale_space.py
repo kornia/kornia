@@ -31,7 +31,7 @@ integration; gradients are transformed into LAF coordinates before voting.
 from __future__ import annotations
 
 import math
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import torch
 import torch.nn.functional as F
@@ -59,13 +59,44 @@ class _SIFTScalePyramid(nn.Module):
         step = 2.0 ** (1.0 / 3.0)
         sigmas = [math.sqrt(1.6**2 - 1.0)]
         sigmas += [1.6 * step**i * math.sqrt(step**2 - 1.0) for i in range(5)]
-        for index, sigma in enumerate(sigmas):
+        self._sigmas = sigmas
+        self._register_kernels(torch.device("cpu"))
+
+    def _register_kernels(self, device: torch.device) -> None:
+        # Keep the reference kernels in float64: rounding them here would cap a
+        # float64 pyramid at float32 accuracy. MPS has no float64 and its images
+        # are at most float32, so it gets float32 kernels. They are built on the
+        # CPU whatever the default device is, then moved. The buffers are
+        # non-persistent, so loading a state_dict saved on MPS cannot round a
+        # CPU module's kernels to float32.
+        dtype = torch.float32 if device.type == "mps" else torch.float64
+        for index, sigma in enumerate(self._sigmas):
             size = int(8.0 * sigma + 1.0) | 1
-            # Keep the reference kernel in float64. Rounding it at construction
-            # would cap a float64 pyramid at float32 accuracy, unlike
-            # ``ScalePyramid``, which builds its kernels in the input dtype.
-            kernel = get_gaussian_kernel1d(size, sigma, dtype=torch.float64).reshape(-1)
-            self.register_buffer(f"kernel_{index}", kernel)
+            kernel = get_gaussian_kernel1d(size, sigma, device=torch.device("cpu"), dtype=torch.float64)
+            self.register_buffer(f"kernel_{index}", kernel.reshape(-1).to(dtype).to(device), persistent=False)
+
+    def _apply(self, fn: Callable[[torch.Tensor], torch.Tensor], *args: Any, **kwargs: Any) -> _SIFTScalePyramid:
+        # Let the kernels follow the module's device but not its dtype: passing
+        # them through ``fn`` would round them on ``.half()`` and raise on
+        # ``.to("mps")``. Rebuild them on the target device instead.
+        kernels = [getattr(self, f"kernel_{index}") for index in range(len(self._sigmas))]
+        device = fn(torch.zeros((), device=kernels[0].device, dtype=torch.float32)).device
+        out = super()._apply(
+            lambda tensor: tensor if any(tensor is kernel for kernel in kernels) else fn(tensor), *args, **kwargs
+        )
+        self._register_kernels(device)
+        return out
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = super().__getstate__()
+        # Pickle float32 copies, which ``map_location`` can put on any device,
+        # MPS included. ``__setstate__`` rebuilds the reference kernels there.
+        state["_buffers"] = {name: buffer.float() for name, buffer in state["_buffers"].items()}
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        super().__setstate__(state)
+        self._register_kernels(self.kernel_0.device)
 
     @staticmethod
     def _double(image: torch.Tensor) -> torch.Tensor:
@@ -166,8 +197,11 @@ class _SIFTScalePyramid(nn.Module):
     def forward(self, image: torch.Tensor) -> list[torch.Tensor]:
         """Build doubled-image Gaussian octaves for normalized grayscale images."""
         doubled = self._double(image)
-        # Cast the float64 reference kernels once instead of on every blur.
-        kernels = [getattr(self, f"kernel_{index}").to(doubled) for index in range(6)]
+        # Cast the reference kernels once instead of on every blur. ``_apply``
+        # keeps them on the module's device. For an image on another device, cast
+        # the dtype before moving: a compiled graph that moves first builds a
+        # float64 tensor on the device, which MPS rejects.
+        kernels = [getattr(self, f"kernel_{index}").to(doubled.dtype).to(doubled.device) for index in range(6)]
         first = self._blur(doubled, kernels[0])
         pyramid = []
         while True:
@@ -660,7 +694,11 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         yy: torch.Tensor,
         spatial_weights: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Accumulate the two angular votes per sample into the 4 x 4 spatial cells."""
+        """Accumulate the two angular votes per sample into the 4 x 4 spatial cells.
+
+        The result is in the (angle, row, column) order of every kornia SIFT descriptor; see
+        :func:`~kornia.feature.convert_sift_descriptor_layout` for OpenCV's order.
+        """
         b, n, _ = mag.shape
         weight = torch.exp(-0.78125 * (xx.square() + yy.square())).to(mag.dtype)
         angular = (angle % (2 * math.pi)) * 8 / (2 * math.pi)
@@ -681,7 +719,8 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
             # (B,N,4,size,8), instead of multiplying each sample into 16 cells.
             size = spatial_weights.shape[0]
             rows = spatial_weights.T @ angular_weights.reshape(b, n, size, size * 8)
-            return (spatial_weights.T @ rows.reshape(b, n, 4, size, 8)).reshape(b, n, 128)
+            # (B, N, row, column, angle) -> (B, N, angle, row, column).
+            return (spatial_weights.T @ rows.reshape(b, n, 4, size, 8)).permute(0, 1, 4, 2, 3).reshape(b, n, 128)
         spatial_x = 2.5 * xx + 1.5
         spatial_y = 2.5 * yy + 1.5
         bins = torch.arange(4, device=mag.device, dtype=mag.dtype)
@@ -689,8 +728,8 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         spatial_weights = (1.0 - (spatial_x.unsqueeze(-1) - cell_x.reshape(-1)).abs()).clamp_min(0.0) * (
             1.0 - (spatial_y.unsqueeze(-1) - cell_y.reshape(-1)).abs()
         ).clamp_min(0.0)
-        # (B, N, 8, samples) @ (samples, 16) -> one 8-bin histogram per spatial cell.
-        return torch.matmul(angular_weights.transpose(-1, -2), spatial_weights).transpose(-1, -2).reshape(b, n, 128)
+        # (B, N, 8, samples) @ (samples, 16) -> (B, N, angle, cell): one 8-bin histogram per spatial cell.
+        return torch.matmul(angular_weights.transpose(-1, -2), spatial_weights).reshape(b, n, 128)
 
     def forward(
         self,
