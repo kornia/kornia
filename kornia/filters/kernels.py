@@ -991,7 +991,10 @@ def get_pascal_kernel_1d(
 
 
 def get_canny_nms_kernel(device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
-    """Return 3x3 kernels for the Canny Non-maximal suppression."""
+    """Return 3x3 kernels for the Canny Non-maximal suppression.
+
+    Not used by :func:`~kornia.filters.canny`, which compares the neighbours by slicing, so that ties compare exactly.
+    """
     return torch.tensor(
         [
             [[[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]]],
