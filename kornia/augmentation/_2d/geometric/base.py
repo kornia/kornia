@@ -44,10 +44,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         - pixel coordinates are ``(x, y)`` at integer pixel centres, with corners ``(0, 0)`` and
           ``(W - 1, H - 1)`` (see :doc:`/get-started/conventions`); rotations, shears and affine maps are centred
           at ``((W - 1) / 2, (H - 1) / 2)``, and ``transform_matrix`` maps input pixel coordinates to output pixel
-          coordinates. At ``align_corners=False``, the bilinear and
-          bicubic interpolation of :class:`Resize`, :class:`LongestMaxSize`, :class:`SmallestMaxSize` and
-          slice-mode :class:`RandomResizedCrop` samples on a half-pixel grid that the matrix does not follow
-          (`#4804 <https://github.com/kornia/kornia/issues/4804>`_).
+          coordinates.
         - the resampling classes, including the non-rigid :class:`RandomElasticTransform` and
           :class:`RandomThinPlateSpline`, default to bilinear interpolation with zero sampler padding. The
           ``align_corners`` default is ``True`` for :class:`RandomRotation`, :class:`RandomRotation90` and the crop
@@ -69,8 +66,10 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`RandomAffine`'s ``degrees`` and for :class:`RandomShear`'s and :class:`RandomAffine`'s
           ``shear``, ``(-1, 1)`` for :class:`RandomTranslate`'s ``translate_x`` and ``translate_y``,
           ``(0, 1)`` for :class:`RandomAffine`'s ``translate``, and ``(-3, 3)`` for
-          :class:`RandomRotation90`'s ``times``. The 3D classes read their scalar through a helper that
-          carries no bound, tracked in `#4617 <https://github.com/kornia/kornia/issues/4617>`_.
+          :class:`RandomRotation90`'s ``times``. The 3D angle ranges -- :class:`RandomRotation3D`'s and
+          :class:`RandomAffine3D`'s ``degrees``, :class:`RandomAffine3D`'s ``shears`` and
+          :class:`RandomMotionBlur3D`'s ``angle`` -- raise ``ValueError`` past ``(-360, 360)``, in scalar and
+          explicit form.
 
     Note:
         Masks are resampled with nearest neighbour whatever ``resample`` the augmentation uses for images,

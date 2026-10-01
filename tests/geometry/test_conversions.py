@@ -90,9 +90,8 @@ def _issue_msg(text: str):
 
 
 def _innermost_frame(err: BaseException) -> TracebackType | None:
-    # The frame an exception actually died in: the last link of its traceback chain. Two helpers
-    # below read that frame for different questions -- which routine failed, and which bytecode
-    # instruction raised -- so the walk itself is written once and cannot drift between them.
+    # The frame an exception actually died in: the last link of its traceback chain, read by the
+    # guard classifier below for the bytecode instruction that raised.
     frame = err.__traceback__
     while frame is not None and frame.tb_next is not None:
         frame = frame.tb_next
@@ -101,13 +100,10 @@ def _innermost_frame(err: BaseException) -> TracebackType | None:
 
 @cache
 def _dtype_allocation_error(device: torch.device, dtype: torch.dtype) -> str | None:
-    # "Can this backend hold this dtype at all?", as ONE probe with ONE exception set, shared by
-    # _skip_if_dtype_unavailable and _cross_is_unavailable below. Two copies of it with different
-    # exception tuples would mean a backend that starts rejecting an allocation with a new
-    # exception type makes one of them skip while the other errors, for the same fact. Cached
-    # because the answer is a property of the build, not of the caller, and the pins below ask it
-    # once per test; the message is returned rather than the exception so no traceback is kept
-    # alive between tests.
+    # "Can this backend hold this dtype at all?", as ONE probe with ONE exception set, for
+    # _skip_if_dtype_unavailable below. Cached because the answer is a property of the build, not
+    # of the caller, and the pins below ask it once per test; the message is returned rather than
+    # the exception so no traceback is kept alive between tests.
     try:
         torch.zeros(1, device=device, dtype=dtype)
     except (TypeError, RuntimeError, NotImplementedError) as err:
@@ -137,151 +133,6 @@ def _matmul_input_eps(device: torch.device, dtype: torch.dtype) -> float:
     if device.type == "cuda" and dtype == torch.float32 and torch.backends.cuda.matmul.allow_tf32:
         return 2.0**-10
     return torch.finfo(dtype).eps
-
-
-_healthy_closed_form_inverse_routes: set[tuple[torch.device, torch.dtype]] = set()
-
-
-def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.dtype) -> None:
-    # Visible skip for the pins that route through normalize_homography, one layer deeper than
-    # _skip_if_dtype_unavailable: a backend can REPRESENT a dtype and still have no kernel for an
-    # operation the route needs. kornia's cusolver-free 3x3 inverse dispatches to
-    # _inverse_3x3_cross (kornia/core/_small_linalg.py), which is three torch.linalg.cross calls, and
-    # MPS lacks a bfloat16 `cross` kernel in SOME builds -- executed: torch 2.5.1 raises
-    # `RuntimeError: Failed to create function state object for: cross_bfloat` there while torch
-    # 2.9.1 runs it, and torch.zeros in that dtype succeeds on both, so the allocation probe alone
-    # lets the pin fail with a message about torch's kernel coverage rather than about kornia's
-    # convention. Probed rather than version-gated: two builds are two data points, not a history.
-    # What is attempted is the PUBLIC operation, on a throwaway input, and a failure becomes a skip
-    # only when BOTH halves of the identification hold: the call died INSIDE the closed-form
-    # inverse (innermost frame, matched by code object rather than by name or message, so a rename
-    # is a re-raise and not a silent skip) AND the primitive that routine is built from raises on
-    # the same device and dtype. Every other failure is re-raised, so a kornia-side regression
-    # still fails the pin here rather than being skipped over. The frame half is what keeps an
-    # UNRELATED RuntimeError from riding the skip: on a backend that genuinely lacks the kernel the
-    # primitive probe always fails, so on its own it would turn any new failure raised before the
-    # inverse -- in the guard, in normal_transform_pixel, in the chain matmul -- into a skip, and
-    # the regression would be invisible exactly where the skip is live. The primitive half is what
-    # keeps the skip from outliving the limitation: the day kornia's inverse stops needing `cross`,
-    # these pins must run again on backends that lack it instead of skipping forever.
-    # Residual, stated rather than hidden: this identifies the failing KERNEL, not the individual
-    # `cross` line inside it. _inverse_3x3_cross is three `cross` calls, a multiply-sum and a
-    # divide, so a failure at one of the latter two on a backend whose `cross` is also missing
-    # would still skip. Narrowing further would mean pinning line numbers in another module.
-    # It reads the cross KERNEL rather than the mode dispatcher that calls it: the dispatcher owns
-    # only the eager/export choice, so its frame is never where a missing `cross` surfaces.
-    # Only the HEALTHY verdict is memoized, keyed by (device, dtype): a route that works is a
-    # property of the build, and four pins ask this question in every test configuration, each
-    # paying a matmul and a 3x3 inverse for the answer. A failing route is deliberately never
-    # memoized -- it has to be re-raised with its own traceback every time, and it is the branch
-    # this helper exists for.
-    # Imported here rather than at module scope on purpose: this is a PRIVATE kornia helper, and a
-    # module-level import of it would make the WHOLE file uncollectable if it is ever renamed --
-    # every test in it erroring over a rename that concerns the four pins routed through here.
-    # Inside the probe, the same rename is an ImportError on those four and nothing else.
-    from kornia.core._small_linalg import _inverse_3x3_cross
-
-    route = (device, dtype)
-    if route in _healthy_closed_form_inverse_routes:
-        return
-    try:
-        kornia.geometry.conversions.normalize_homography(torch.eye(3, device=device, dtype=dtype)[None], (2, 2), (2, 2))
-    except (RuntimeError, NotImplementedError) as err:
-        innermost = _innermost_frame(err)
-        died_in_the_closed_form_inverse = (
-            innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_cross.__code__
-        )
-        if died_in_the_closed_form_inverse and _cross_is_unavailable(device, dtype):
-            pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
-        raise
-    _healthy_closed_form_inverse_routes.add(route)
-
-
-@cache
-def _cross_is_unavailable(device: torch.device, dtype: torch.dtype) -> bool:
-    # "Can this build run torch.linalg.cross here?", for the helper above and the pin below.
-    # A dtype the backend cannot even allocate (mps rejects float8 outright) counts as unavailable
-    # rather than propagating as an error, and that half of the question is answered by the shared
-    # probe rather than by a second copy of it, so both helpers classify such a backend the same
-    # way. Cached for the same reason the probe is: it is a property of the build.
-    if _dtype_allocation_error(device, dtype) is not None:
-        return True
-    try:
-        probe = torch.ones(1, 3, device=device, dtype=dtype)
-        torch.linalg.cross(probe, probe, dim=-1)
-    except (RuntimeError, NotImplementedError, TypeError):
-        return True
-    return False
-
-
-def test_skip_probe_re_raises_everything_it_cannot_identify(monkeypatch):
-    # Direct pin for _skip_if_closed_form_inverse_unavailable above, for the same reason
-    # test_guard_classifier_reads_the_raising_instruction pins the guard classifier: four pins
-    # route their "does normalize_homography work here at all" question through that helper, and if
-    # it starts skipping too readily they go quiet instead of failing, which is the mode a skip
-    # helper fails in. Nothing else in this file would notice.
-    # Case B needs a REAL kernel gap rather than a patched `cross`: patching it with a Python
-    # function puts that function in the innermost frame, which is precisely what the helper reads,
-    # so a patch cannot reproduce the branch it is meant to exercise. torch has no `cross` kernel
-    # for bool or float8 on cpu (executed, torch 2.9.1: NotImplementedError, and the route dies
-    # inside _inverse_3x3_cross), which is the same shape as the mps bfloat16 gap on torch
-    # 2.5.1 that the helper exists for, reachable on the default device without that build. The
-    # candidate list is searched rather than asserted: mps DOES have a bool `cross`, so a build
-    # that grows the missing kernels must make this case skip visibly, not fail.
-    # Cases C and D patch normal_transform_pixel, which normalize_homography calls BEFORE the
-    # inverse, so the route dies without ever reaching `cross` and the patch stays out of the
-    # frame the helper reads. D is the one that matters: it is exactly C on a backend that also
-    # lacks the kernel, which a probe of the primitive alone cannot tell apart from a real gap --
-    # it would skip there, and a kornia-side regression would be invisible on exactly the backends
-    # where the skip is live.
-    # The helper's memo and the two cached probes are cleared first: they are performance
-    # shortcuts, and a pin whose whole subject is which branch the helper takes has to run the
-    # branches rather than a remembered verdict from an earlier test.
-    # The two globals that cases C and D patch go through monkeypatch rather than by hand: this is
-    # the one pin in the file that writes to torch and to the kornia module itself, and a leak from
-    # here would follow every later test in the process, so restoration belongs to pytest rather
-    # than to a nest of try/finally blocks that has to be read to be trusted.
-    cpu = torch.device("cpu")
-    conversions = kornia.geometry.conversions
-    _healthy_closed_form_inverse_routes.clear()
-    _cross_is_unavailable.cache_clear()
-    _dtype_allocation_error.cache_clear()
-
-    _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)  # A: healthy route, must not skip
-
-    # torch.float8_e4m3fn was added in torch 2.1 and kornia now declares torch>=2.5.1, so the
-    # getattr probe below is redundant; it is left in place with the rest of the sub-floor
-    # version guards rather than cleaned up piecemeal.
-    candidate_dtypes = (torch.bool, getattr(torch, "float8_e4m3fn", None))
-    unsupported = next(
-        (dtype for dtype in candidate_dtypes if dtype is not None and _cross_is_unavailable(cpu, dtype)),
-        None,
-    )
-    if unsupported is None:
-        pytest.skip("no dtype without a torch.linalg.cross cpu kernel on this build")
-    with pytest.raises(pytest.skip.Exception):  # B: the gap the helper exists for
-        _skip_if_closed_form_inverse_unavailable(cpu, unsupported)
-
-    def regression(*args, **kwargs):
-        raise RuntimeError("kornia-side regression")
-
-    def assert_the_injected_failure_propagates(case: str) -> None:
-        # Requiring RuntimeError still lets pytest.skip escape, so catch that skip separately
-        # and fail the pin. No error, a different error, or the wrong RuntimeError also fails.
-        try:
-            with pytest.raises(RuntimeError) as excinfo:
-                _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)
-        except pytest.skip.Exception as skipped:
-            raise AssertionError(f"{case}: an unrelated failure was skipped over: {skipped}") from skipped
-        assert "kornia-side regression" in str(excinfo.value), f"{case}: wrong error re-raised: {excinfo.value}"
-
-    # Cleared again: case A memoized (cpu, float32) as healthy, and C/D have to reach the body.
-    _healthy_closed_form_inverse_routes.clear()
-    monkeypatch.setattr(conversions, "normal_transform_pixel", regression)
-    assert_the_injected_failure_propagates("C, cross available")
-
-    monkeypatch.setattr(torch.linalg, "cross", regression)
-    assert_the_injected_failure_propagates("D, cross unavailable too")
 
 
 # The four deprecated aliases of this module, as (deprecated name, replacement name, call input),
@@ -3877,14 +3728,14 @@ class TestNormalizeHomography(BaseTester):
     # only at these sizes AND with a literal whose intermediates are exact. The invariant also
     # leans on the SHAPE of the normalization matrices -- upper-triangular with power-of-two
     # pivots -- surviving BOTH inverse routes actually in play (the functions do NOT share one):
-    # normalize_homography inverts through _inverse_3x3_closed_form (cofactor arithmetic --
-    # products and sums of dyadic values, then division by a power-of-two determinant, all
-    # exact), while denormalize_homography and normalize_homography3d go through
-    # _torch_inverse_cast (torch.linalg.inv in eager mode, rounding-free on such triangular
-    # matrices, with a float32 upcast for half dtypes and a closed-form 3x3 fallback under
-    # tracing -- each exactness-preserving on these values). A future non-triangular
-    # normalization (a #3904 align_corners variant, say) voids the atol=0 claim on EVERY route
-    # and needs a tolerance instead.
+    # normalize_homography inverts through _inverse_3x3_closed_form (cofactor arithmetic, in
+    # float32 for half dtypes -- products and sums of dyadic values, then division by a
+    # power-of-two determinant, all exact), while denormalize_homography and
+    # normalize_homography3d go through _torch_inverse_cast (torch.linalg.inv in eager mode,
+    # rounding-free on such triangular matrices, with a float32 upcast for half dtypes and a
+    # closed-form 3x3 fallback under tracing -- each exactness-preserving on these values). A
+    # future non-triangular normalization (a #3904 align_corners variant, say) voids the atol=0
+    # claim on EVERY route and needs a tolerance instead.
     # No pin asserts anything about kornia#3962 (no denormalize_homography3d, no
     # ColmapQTVecs_to_ARKitQTVecs) -- a missing symbol is a scope question, not a defect.
     # NOTE: kornia#3904 landed and moved none of these. normalize_homography and
@@ -3938,7 +3789,6 @@ class TestNormalizeHomography(BaseTester):
         #   src (1, 1) -> (2*1/4 - 1, 2*1/2 - 1) = (-0.5, 0.0)
         #   dst (3, 1) -> (2*3/4 - 1, 2*1/2 - 1) = ( 0.5, 0.0)
         _skip_if_dtype_unavailable(device, dtype)
-        _skip_if_closed_form_inverse_unavailable(device, dtype)
         translate_two_px = torch.tensor(
             [[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
@@ -3954,7 +3804,6 @@ class TestNormalizeHomography(BaseTester):
         # identity to within one float32 rounding step (2**-24); which sizes land on exactly 0 is a
         # property of the inverse-and-matmul chain and is not pinned.
         _skip_if_dtype_unavailable(device, torch.float32)
-        _skip_if_closed_form_inverse_unavailable(device, torch.float32)
         identity = torch.eye(3, device=device, dtype=torch.float32)[None]
 
         normalized = kornia.geometry.conversions.normalize_homography(identity, (size, size), (size, size))
@@ -3975,7 +3824,6 @@ class TestNormalizeHomography(BaseTester):
         #   normalize_homography(H, (5, 9), (3, 5))
         #     -> [[4.0, 0.5, 4.5], [-1.0, 2.0, 1.0], [0.0, 0.0, 1.0]]
         _skip_if_dtype_unavailable(device, dtype)
-        _skip_if_closed_form_inverse_unavailable(device, dtype)
         homography = torch.tensor(_DIRECTION_H, device=device, dtype=dtype)
 
         normalized = kornia.geometry.conversions.normalize_homography(homography, (3, 5), (5, 9))
@@ -4045,7 +3893,6 @@ class TestNormalizeHomography(BaseTester):
         #   denormalize_homography(normalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
         #   normalize_homography(denormalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
         _skip_if_dtype_unavailable(device, dtype)
-        _skip_if_closed_form_inverse_unavailable(device, dtype)
         normalize_homography = kornia.geometry.conversions.normalize_homography
         denormalize_homography = kornia.geometry.conversions.denormalize_homography
         homography = torch.tensor(_ROUND_TRIP_H, device=device, dtype=dtype)
@@ -4069,7 +3916,6 @@ class TestNormalizeHomography(BaseTester):
         # on a batch of two different homographies, comparing element 1 of the batched call against
         # the single-element call.
         _skip_if_dtype_unavailable(device, dtype)
-        _skip_if_closed_form_inverse_unavailable(device, dtype)
         normalize_homography = kornia.geometry.conversions.normalize_homography
         denormalize_homography = kornia.geometry.conversions.denormalize_homography
         batch = torch.tensor([_DIRECTION_H[0], _ROUND_TRIP_H[0]], device=device, dtype=dtype)
@@ -4712,34 +4558,58 @@ class TestRt2Extrinsics(BaseTester):
     def test_convention_shapes_are_strictly_batched(self, op_name, shapes, device):
         # Convention pin: both functions go through KORNIA_CHECK_SHAPE and accept exactly
         # (B, 3, 3) + (B, 3, 1) and (B, 4, 4) -- no unbatched form, no (B, 3) translation, no
-        # transposed (B, 1, 3) translation, no extra leading batch dimensions. This is the strict
-        # end of the family: camtoworld_to_worldtocam_Rt broadcasts a (1, 3, 1) translation across
-        # a (2, 3, 3) rotation where Rt_to_matrix4x4 raises, which
-        # test_wart_batch_size_mismatch_is_not_guarded_4774 below pins. Assertion policy and the
-        # float32 hardcoding are documented once on the shared _assert_strictly_batched helper.
+        # transposed (B, 1, 3) translation, no extra leading batch dimensions. The same-batch
+        # rule for (R, t) pairs is pinned by test_convention_batch_size_mismatch_raises_4774
+        # below. Assertion policy and the float32 hardcoding are documented once on the shared
+        # _assert_strictly_batched helper.
         _assert_strictly_batched(op_name, shapes, device)
 
-    def test_wart_batch_size_mismatch_is_not_guarded_4774(self, device):
-        # Wart pin for kornia#4774: no kornia guard compares the batch sizes of R and t.
-        # Rt_to_matrix4x4 fails inside torch.cat, while camtoworld_to_worldtocam_Rt broadcasts the
-        # same pair -- and with R of batch 1 and t of batch 2 returns outputs of different batch
-        # sizes. Flips under either fix: a shared guard (the Rt_to_matrix4x4 failure becomes a
-        # guard's, and the pose pair raises) or consistent broadcasting.
-        rotation_batch_2 = torch.eye(3, device=device, dtype=torch.float32).expand(2, 3, 3)
-        translation_batch_1 = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+    @pytest.mark.parametrize(
+        "op_name",
+        [
+            "Rt_to_matrix4x4",
+            "camtoworld_graphics_to_vision_Rt",
+            "camtoworld_vision_to_graphics_Rt",
+            "camtoworld_to_worldtocam_Rt",
+            "worldtocam_to_camtoworld_Rt",
+        ],
+    )
+    @pytest.mark.parametrize("batch_pair", [(2, 1), (1, 2)], ids=["R2-t1", "R1-t2"])
+    def test_convention_batch_size_mismatch_raises_4774(self, op_name, batch_pair, device):
+        # Convention pin: every (R, t) function in the family rejects a batch-size mismatch in a
+        # guard of its own -- a ShapeError naming the function and both shapes -- before torch.cat
+        # can fail or the matmul can broadcast. The graphics/vision pair calls Rt_to_matrix4x4,
+        # whose guard would raise too; matching the name pins each function's own guard.
+        ops = {
+            "Rt_to_matrix4x4": Rt_to_matrix4x4,
+            "camtoworld_graphics_to_vision_Rt": camtoworld_graphics_to_vision_Rt,
+            "camtoworld_vision_to_graphics_Rt": camtoworld_vision_to_graphics_Rt,
+            "camtoworld_to_worldtocam_Rt": camtoworld_to_worldtocam_Rt,
+            "worldtocam_to_camtoworld_Rt": worldtocam_to_camtoworld_Rt,
+        }
+        r_batch, t_batch = batch_pair
+        R = torch.eye(3, device=device, dtype=torch.float32).expand(r_batch, 3, 3)
+        t = torch.ones(t_batch, 3, 1, device=device, dtype=torch.float32)
 
-        with pytest.raises(Exception) as excinfo:
-            Rt_to_matrix4x4(rotation_batch_2, translation_batch_1)
-        assert not _raised_by_a_kornia_guard(excinfo.value), (
-            "kornia#4774: Rt_to_matrix4x4 now rejects mismatched batch sizes in a guard of its own"
-        )
+        with pytest.raises(ShapeError, match=f"^{op_name}: R and t must have the same batch size") as excinfo:
+            ops[op_name](R, t)
+        assert excinfo.value.actual_shape == [t_batch, 3, 1]
+        assert excinfo.value.expected_shape == [str(r_batch), "3", "1"]
 
-        inverted_R, inverted_t = camtoworld_to_worldtocam_Rt(
-            torch.eye(3, device=device, dtype=torch.float32)[None], torch.ones(2, 3, 1, device=device)
-        )
-        assert (inverted_R.shape[0], inverted_t.shape[0]) == (1, 2), (
-            "kornia#4774: camtoworld_to_worldtocam_Rt no longer returns mismatched batch sizes"
-        )
+    def test_convention_batch_size_guard_follows_disable_checks_4774(self, device):
+        # Convention pin: the same-batch guard is a kornia check, so disable_checks() turns it off
+        # together with the KORNIA_CHECK_SHAPE calls before it, and the pair reaches torch.cat.
+        R = torch.eye(3, device=device, dtype=torch.float32).expand(2, 3, 3)
+        t = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(Exception) as excinfo:
+                Rt_to_matrix4x4(R, t)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        assert not _raised_by_a_kornia_guard(excinfo.value)
 
 
 class TestCamtoworldGraphicsToVision(BaseTester):
@@ -5004,8 +4874,8 @@ class TestCamtoworldRtToPoseRt(BaseTester):
     )
     def test_convention_shapes_are_strictly_batched(self, op_name, shapes, device):
         # Convention pin: both functions accept exactly (B, 3, 3) + (B, 3, 1) -- no unbatched form,
-        # no (B, 3) translation, no extra leading batch dimensions. A mismatched batch size is not
-        # checked (kornia#4774, pinned in TestRt2Extrinsics).
+        # no (B, 3) translation, no extra leading batch dimensions. A mismatched batch size between
+        # R and t raises ShapeError (kornia#4774, pinned in TestRt2Extrinsics).
         # Assertion policy and the float32 hardcoding are documented once on the shared
         # _assert_strictly_batched helper.
         _assert_strictly_batched(op_name, shapes, device)

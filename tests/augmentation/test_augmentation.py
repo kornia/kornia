@@ -6365,7 +6365,7 @@ class TestRandomDissolving(BaseTester):
 
     @pytest.fixture(autouse=True)
     def _needs_diffusers(self):
-        # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader prompt under --runslow.
+        # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader's ImportError under --runslow.
         pytest.importorskip("diffusers", reason='`diffusers` is not installed: pip install "kornia[sd]"')
 
     def test_batch_proc(self, device, dtype):

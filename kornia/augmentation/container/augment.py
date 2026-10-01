@@ -26,10 +26,12 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
+from kornia.core.external import numpy as np
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
+from kornia.image.utils import image_to_tensor
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
@@ -396,32 +398,36 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # NOTE: how to right type to: unpacked args <-> tuple of args to unpack
         # issue with `self._preproc_dict_data` return args type
 
+        original_data_keys = self.transform_op.data_keys
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
-        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+        try:
+            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
-        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+            in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
-        if params is None:
-            if self._params is None:
-                raise ValueError(
-                    "No parameters available for inversing, please run a forward pass first "
-                    "or passing valid params into this function."
+            if params is None:
+                if self._params is None:
+                    raise ValueError(
+                        "No parameters available for inversing, please run a forward pass first "
+                        "or passing valid params into this function."
+                    )
+                params = self._params
+
+            outputs: List[DataType] = in_args
+            for param in params[::-1]:
+                module = self.get_submodule(param.name)
+                outputs = self.transform_op.inverse(  # type: ignore
+                    *outputs, module=module, param=param, extra_args=self.extra_args
                 )
-            params = self._params
+                if not isinstance(outputs, list | tuple):
+                    # Make sure we are unpacking a list whilst post-proc
+                    outputs = [outputs]
 
-        outputs: List[DataType] = in_args
-        for param in params[::-1]:
-            module = self.get_submodule(param.name)
-            outputs = self.transform_op.inverse(  # type: ignore
-                *outputs, module=module, param=param, extra_args=self.extra_args
-            )
-            if not isinstance(outputs, list | tuple):
-                # Make sure we are unpacking a list whilst post-proc
-                outputs = [outputs]
+            outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
 
-        outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
-
+        finally:
+            self.transform_op.data_keys = original_data_keys
         if isinstance(original_keys, tuple):
             result = {k: v for v, k in zip(outputs, original_keys)}
             if invalid_data:
@@ -548,64 +554,62 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         original_data_keys = self.transform_op.preproc_datakeys(data_keys)
         self.transform_op.data_keys = original_data_keys
 
-        self._validate_args_datakeys(*args, data_keys=original_data_keys)
+        try:
+            self._validate_args_datakeys(*args, data_keys=original_data_keys)
 
-        in_args = self._arguments_preproc(*args, data_keys=original_data_keys)
+            in_args = self._arguments_preproc(*args, data_keys=original_data_keys)
 
-        # Annotation handlers may read the matrix recorded by the image call. Process INPUT first for every child,
-        # including nested containers and policies, then restore the caller's order below.
-        input_first_order = list(range(len(original_data_keys)))
-        if DataKey.INPUT in original_data_keys:
-            image_index = original_data_keys.index(DataKey.INPUT)
-            input_first_order.insert(0, input_first_order.pop(image_index))
-            in_args = [in_args[i] for i in input_first_order]
-            self.transform_op.data_keys = [original_data_keys[i] for i in input_first_order]
+            # Annotation handlers may read the matrix recorded by the image call. Process INPUT first for every child,
+            # including nested containers and policies, then restore the caller's order below.
+            input_first_order = list(range(len(original_data_keys)))
+            if DataKey.INPUT in original_data_keys:
+                image_index = original_data_keys.index(DataKey.INPUT)
+                input_first_order.insert(0, input_first_order.pop(image_index))
+                in_args = [in_args[i] for i in input_first_order]
+                self.transform_op.data_keys = [original_data_keys[i] for i in input_first_order]
 
-        if DataKey.INPUT in original_data_keys:
-            inp = in_args[0]
-            if not isinstance(inp, torch.Tensor):
-                raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
-            if self.contains_3d_augmentation and len(inp.shape) == 4:
-                raise RuntimeError(
-                    f"3D augmentations in AugmentationSequential expect input shape "
-                    f"(D, H, W) or (B, C, D, H, W), but got {inp.shape}."
-                )
-
-        if params is None:
-            # image data must exist if params is not provided.
             if DataKey.INPUT in original_data_keys:
                 inp = in_args[0]
-                # A video input shall be BCDHW while an image input shall be BCHW
-                if self.contains_video_sequential:
-                    _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
-                elif self.contains_3d_augmentation:
-                    _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
+                if not isinstance(inp, torch.Tensor):
+                    raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
+                if self.contains_3d_augmentation and len(inp.shape) == 4:
+                    raise RuntimeError(
+                        f"3D augmentations in AugmentationSequential expect input shape "
+                        f"(D, H, W) or (B, C, D, H, W), but got {inp.shape}."
+                    )
+
+            if params is None:
+                # image data must exist if params is not provided.
+                if DataKey.INPUT in original_data_keys:
+                    inp = in_args[0]
+                    # A video input shall be BCDHW while an image input shall be BCHW
+                    if self.contains_video_sequential:
+                        _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
+                    elif self.contains_3d_augmentation:
+                        _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
+                    else:
+                        _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
+                    params = self.forward_parameters(out_shape)
                 else:
-                    _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
-                params = self.forward_parameters(out_shape)
-            else:
-                raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
+                    raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: Union[torch.Tensor, List[DataType]] = in_args
-        for param in params:
-            module = self.get_submodule(param.name)
-            outputs = self.transform_op.transform(  # type: ignore
-                *outputs, module=module, param=param, extra_args=self.extra_args
-            )
-            if not isinstance(outputs, list | tuple):
-                # Make sure we are unpacking a list whilst post-proc
-                outputs = [outputs]
-            self._update_transform_matrix_by_module(module)
+            outputs: Union[torch.Tensor, List[DataType]] = in_args
+            for param in params:
+                module = self.get_submodule(param.name)
+                outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
+                if not isinstance(outputs, list | tuple):
+                    # Make sure we are unpacking a list whilst post-proc
+                    outputs = [outputs]
+                self._update_transform_matrix_by_module(module)
 
-        if input_first_order != list(range(len(input_first_order))):
-            restore_order = [input_first_order.index(i) for i in range(len(input_first_order))]
-            outputs = [outputs[i] for i in restore_order]
-            self.transform_op.data_keys = original_data_keys
+            if input_first_order != list(range(len(input_first_order))):
+                restore_order = [input_first_order.index(i) for i in range(len(input_first_order))]
+                outputs = [outputs[i] for i in restore_order]
+                self.transform_op.data_keys = original_data_keys
 
-        outputs = self._arguments_postproc(args, outputs, data_keys=original_data_keys)  # type: ignore
-        # Restore it back
-        self.transform_op.data_keys = self.data_keys
-
+            outputs = self._arguments_postproc(args, outputs, data_keys=original_data_keys)  # type: ignore
+        finally:
+            self.transform_op.data_keys = self.data_keys
         if not is_exporting():
             self._params = params
 
@@ -631,7 +635,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         Args:
             inputs: Inputs to operate on.
-            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            input_names_to_handle: List of input names to convert.
+                If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
+                path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
@@ -641,6 +647,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """
         # Wrap the forward method with the decorator
         if not self._disable_features:
+            converted_inputs = inputs
+            if len(inputs) == 1 and isinstance(inputs[0], dict):
+                keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
+                converted_dict = dict(inputs[0])
+                for key, arg, data_key in zip(keys, args, data_keys):
+                    if isinstance(arg, np.ndarray):
+                        if data_key in _IMG_OPTIONS:
+                            converted_dict[key] = self.to_tensor(arg)
+                        else:
+                            converted_dict[key] = self._convert_numpy_non_image(arg, data_key)
+                converted_inputs = (converted_dict,)
+            else:
+                data_keys = self.transform_op.preproc_datakeys(kwargs.get("data_keys", self.data_keys))
+                # Arguments beyond the data keys pass through unconverted, so ``forward`` still rejects the count.
+                converted_inputs = tuple(
+                    self._convert_numpy_non_image(arg, data_key) for arg, data_key in zip(inputs, data_keys)
+                ) + tuple(inputs[len(data_keys) :])
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
             self._check_output_type(output_type)
@@ -649,6 +672,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             tensor_output = self._call_converted(
                 super(ImageSequential, self).__call__, inputs, kwargs, input_names_to_handle, "pt"
             )
+
 
             in_data_keys: Optional[List[DataKey]]
             original_keys: Optional[Tuple[str, ...]] = None
@@ -667,6 +691,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
+
+    @staticmethod
+    def _convert_numpy_non_image(arg: Any, data_key: DataKey) -> Any:
+        if not isinstance(arg, np.ndarray) or data_key in _IMG_OPTIONS:
+            return arg
+        if data_key in _MSK_OPTIONS:
+            return image_to_tensor(arg)
+        return torch.as_tensor(arg)
 
     def _select_output_image(
         self, output: Any, data_keys: List[DataKey], original_keys: Optional[Tuple[str, ...]]

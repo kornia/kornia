@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core._compat import deprecated
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, ShapeError, are_checks_enabled
 from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
 
 __all__ = [
@@ -1805,8 +1805,12 @@ def normalize_homography(
           per sample; an unbatched input is returned as ``(1, 3, 3)``, and any
           other shape raises ``ValueError``
         - in eager mode ``inv(N_src)`` is a closed-form adjugate built from
-          ``torch.linalg.cross``, so no ``cusolver`` is needed, but a backend
-          without a ``cross`` kernel for the dtype raises here
+          ``torch.linalg.cross``, so no ``cusolver`` is needed. A ``float16`` or
+          ``bfloat16`` matrix is inverted in ``float32`` and the result cast back:
+          the ``float16`` determinant of a large image's normalization matrix is
+          subnormal or zero, and some backends lack a ``bfloat16`` ``cross`` kernel
+          (MPS on torch 2.5.1). For any other dtype, a backend without a ``cross``
+          kernel for it raises here
 
     .. warning::
         An integer matrix is not rejected: the normalization matrices are cast
@@ -2472,18 +2476,13 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
           function's
         - shapes are strict: exactly :math:`(B, 3, 3)` and :math:`(B, 3, 1)`.
           An unbatched ``(3, 3)``, a ``(B, 3)`` translation, a ``(B, 1, 3)``
-          translation and extra leading dimensions each raise ``ShapeError``
+          translation and extra leading dimensions each raise ``ShapeError``;
+          ``R`` and ``t`` must also carry the same batch size: a mismatched
+          pair raises ``ShapeError`` too
         - :func:`~kornia.geometry.conversions.matrix4x4_to_Rt` is the inverse:
           ``Rt -> 4x4 -> Rt`` is bitwise, while ``4x4 -> Rt -> 4x4`` is bitwise
           only when the bottom row is already ``[0, 0, 0, 1]``, because
           :func:`~kornia.geometry.conversions.matrix4x4_to_Rt` drops it
-
-    .. warning::
-        The batch sizes of ``R`` and ``t`` are not compared by a kornia guard:
-        a mismatch raises from inside ``torch.cat``, while
-        :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`
-        broadcasts the same pair. Tracked in
-        `#4774 <https://github.com/kornia/kornia/issues/4774>`_.
 
     .. warning::
         Integer input is not guarded: an ``int64`` ``(R, t)`` raises from inside
@@ -2511,6 +2510,7 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    _check_Rt_same_batch(R, t, "Rt_to_matrix4x4")
     Rt = torch.cat([R, t], dim=2)
     return convert_affinematrix_to_homography3d(Rt)
 
@@ -2646,8 +2646,8 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
           function and splits the result again, so the two paths agree bitwise.
           Only the lines below differ
         - the shapes are strictly :math:`(B, 3, 3)` and :math:`(B, 3, 1)` in and
-          out; the batch-size and integer-input warnings of
-          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4` apply
+          out, with the same-batch-size rule and the integer-input warning of
+          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`
         - ``t`` is returned unchanged; only ``R`` has its second and third
           columns negated
 
@@ -2671,6 +2671,7 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    _check_Rt_same_batch(R, t, "camtoworld_graphics_to_vision_Rt")
     mat4x4 = camtoworld_graphics_to_vision_4x4(Rt_to_matrix4x4(R, t))
     return matrix4x4_to_Rt(mat4x4)
 
@@ -2760,8 +2761,26 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    _check_Rt_same_batch(R, t, "camtoworld_vision_to_graphics_Rt")
     mat4x4 = camtoworld_vision_to_graphics_4x4(Rt_to_matrix4x4(R, t))
     return matrix4x4_to_Rt(mat4x4)
+
+
+def _check_Rt_same_batch(R: torch.Tensor, t: torch.Tensor, fn_name: str) -> None:
+    # KORNIA_CHECK_SHAPE validates each argument on its own; this guard compares the two batch
+    # sizes, so a mismatched (R, t) pair raises here with both shapes in the message. Like the
+    # KORNIA_CHECK helpers it follows disable_checks(): read the flag at call time, not a copy
+    # bound at import.
+    if not torch.jit.is_scripting():
+        if not are_checks_enabled():
+            return
+
+    if R.shape[0] != t.shape[0]:
+        raise ShapeError(
+            f"{fn_name}: R and t must have the same batch size, got {list(R.shape)} and {list(t.shape)}.",
+            actual_shape=list(t.shape),
+            expected_shape=[str(R.shape[0]), "3", "1"],
+        )
 
 
 def _check_is_rotation(R: torch.Tensor, fn_name: str) -> None:
@@ -2816,7 +2835,8 @@ def camtoworld_to_worldtocam_Rt(
         - :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` is
           the **same function** under the other name: applying either one twice
           returns ``R`` exactly and ``t`` to rounding
-        - the shapes are :math:`(B, 3, 3)` and :math:`(B, 3, 1)`
+        - the shapes are :math:`(B, 3, 3)` and :math:`(B, 3, 1)`, and ``R`` and ``t``
+          must carry the same batch size: a mismatched pair raises ``ShapeError``
 
     .. warning::
         ``R`` is **assumed** to be a rotation and by default this is not
@@ -2825,13 +2845,6 @@ def camtoworld_to_worldtocam_Rt(
         gives ``max|M_inv @ M - I| = 3.0``. Pass ``check_rotation=True`` to
         raise a ``ValueError`` instead, which also rejects reflections
         (``det(R) < 0``).
-
-    .. warning::
-        The batch sizes of ``R`` and ``t`` are not checked: ``t`` is broadcast
-        across ``R``, where :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`
-        raises, and ``R`` of batch 1 with ``t`` of batch 2 returns outputs of
-        different batch sizes. Tracked in
-        `#4774 <https://github.com/kornia/kornia/issues/4774>`_.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -2857,6 +2870,7 @@ def camtoworld_to_worldtocam_Rt(
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    _check_Rt_same_batch(R, t, "camtoworld_to_worldtocam_Rt")
 
     if check_rotation:
         _check_is_rotation(R, "camtoworld_to_worldtocam_Rt")
@@ -2884,7 +2898,7 @@ def worldtocam_to_camtoworld_Rt(
         - read the other way round here: the input ``t`` is the world-to-camera
           translation and the returned ``-R^T t`` is the camera centre in world
           coordinates
-        - the shapes and both warnings are as documented there
+        - the shapes and the rotation warning are as documented there
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -2910,6 +2924,7 @@ def worldtocam_to_camtoworld_Rt(
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    _check_Rt_same_batch(R, t, "worldtocam_to_camtoworld_Rt")
 
     if check_rotation:
         _check_is_rotation(R, "worldtocam_to_camtoworld_Rt")

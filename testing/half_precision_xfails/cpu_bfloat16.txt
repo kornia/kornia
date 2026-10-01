@@ -81,7 +81,6 @@ call	builtins.AssertionError	tests/filters/test_gaussian.py::test_gaussian[cpu-b
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_gaussian[cpu-bfloat16-11-5.0-8.0-expected2]
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_gaussian[cpu-bfloat16-11-5.0-None-expected1]
 call	builtins.AssertionError	tests/filters/test_gaussian.py::test_gaussian[cpu-bfloat16-5-1.0-None-expected0]
-call	builtins.AssertionError	tests/filters/test_otsu_thresholding.py::TestOtsuThreshold::test_differentiable_tensor_otsu[cpu-bfloat16]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-bfloat16-20]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-bfloat16-6]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam_weighted[cpu-bfloat16-16]
@@ -446,5 +445,4 @@ call	builtins.AssertionError	tests/losses/test_dice.py::TestDiceLoss::test_weigh
 call	builtins.AssertionError	tests/losses/test_mutual_information.py::TestMutualInformationLoss::test_value_ranges[cpu-bfloat16]
 call	builtins.AssertionError	tests/losses/test_total_variation.py::TestTotalVariation::test_tv_on_3d[cpu-bfloat16-pred0-expected0]
 call	builtins.AssertionError	tests/losses/test_total_variation.py::TestTotalVariation::test_tv_on_4d[cpu-bfloat16-pred0-expected0]
-call	builtins.AssertionError	tests/metrics/test_ssim3d.py::TestSSIM3d::test_unit[cpu-bfloat16]
 call	builtins.AssertionError	tests/models/test_rt_detr.py::test_regvgg_optimize_for_deployment[cpu-bfloat16]

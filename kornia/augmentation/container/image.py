@@ -427,7 +427,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         Args:
             inputs: Inputs to operate on.
-            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            input_names_to_handle: List of input names to convert.
+                If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
+                path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 

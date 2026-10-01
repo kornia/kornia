@@ -104,7 +104,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     target_flatten: Tensor = target.reshape(target.shape[0], -1)
 
     # get shapes
-    B, C, N = pred_flatten.shape
+    _, C, N = pred_flatten.shape
 
     # compute softmax over the classes axis
     pred_soft: Tensor = pred_flatten.softmax(1)
@@ -115,8 +115,9 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     )
     errors: Tensor = (pred_soft - foreground).abs()
     errors_sorted, permutations = torch.sort(errors, dim=2, descending=True)
-    batch_index = torch.arange(B, device=pred.device).unsqueeze(1).unsqueeze(2).expand(B, C, N)
-    target_sorted = target_flatten[batch_index, permutations]
+    # The Jaccard gradient uses the foreground indicator for each class, not the class labels.
+    # Keep pixel counts integral, including for large half-precision images.
+    target_sorted = foreground.gather(2, permutations).to(torch.int64)
     target_sorted_sum = target_sorted.sum(2, keepdim=True)
     intersection = target_sorted_sum - target_sorted.cumsum(2)
     union = target_sorted_sum + (1.0 - target_sorted).cumsum(2)

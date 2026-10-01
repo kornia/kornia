@@ -79,7 +79,9 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
 
         Args:
             inputs: Inputs to operate on.
-            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            input_names_to_handle: List of input names to convert.
+                If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
+                path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
@@ -93,6 +95,7 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
                 super().__call__, inputs, kwargs, input_names_to_handle, output_type
             )
             self._store_output_image(_output_image, output_type)
+
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
@@ -152,7 +155,9 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
 
         Args:
             inputs: Inputs to operate on.
-            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            input_names_to_handle: List of input names to convert.
+                If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
+                path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
@@ -166,6 +171,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
                 super().__call__, inputs, kwargs, input_names_to_handle, output_type
             )
             self._store_output_image(_output_image, output_type)
+
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image

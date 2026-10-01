@@ -74,10 +74,12 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         torchvision, which centres the fallback crop, it is placed at a random position like any other crop.
 
         Both cropping modes use the configured interpolation and ``align_corners``. Slice mode ignores
-        ``align_corners`` for ``resample="nearest"``. At ``align_corners=False`` the two modes give
-        different images, and slice mode does not follow ``transform_matrix``
-        (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). Only resample mode supports :meth:`inverse`,
-        which resamples onto the original canvas and cannot recover discarded information.
+        ``align_corners`` for ``resample="nearest"``. With bilinear or bicubic interpolation, each mode's image
+        follows its ``transform_matrix``, and at ``align_corners=False`` the two modes give different images: slice
+        mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
+        starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
+        onto the output's. Only resample mode supports :meth:`inverse`, which resamples onto the original canvas
+        and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
@@ -140,6 +142,14 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        if (
+            flags["cropping_mode"] == "slice"
+            and not flags["align_corners"]
+            and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC)
+        ):
+            return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
+                input.shape[0], -1, -1
+            )
         if flags["cropping_mode"] in ("resample", "slice"):
             transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             return transform.expand(input.shape[0], -1, -1)
