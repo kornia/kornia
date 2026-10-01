@@ -42,8 +42,9 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
         cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
-        auto_ir_version_conversion: If True, automatically convert the model's IR version to 9, and OPSET version to 17.
-            Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
+        auto_ir_version_conversion: If True, convert the models to one IR version and one OPSET version before
+            combining them: IR version 9, and the highest OPSET version among the models, to which the others are
+            converted up. Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
         target_ir_version: The target IR version to convert to.
         target_opset_version: The target OPSET version to convert to.
 
@@ -78,7 +79,8 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         """Automatic conversion of the model's IR/OPSET version to the given target version.
 
         If `target_ir_version` is not provided, the model is converted to 9 by default.
-        If `target_opset_version` is not provided, the model is converted to 17 by default.
+        If `target_opset_version` is not provided, the models are converted to the highest OPSET version among
+        them.
 
         Args:
             args: List of operations to convert.
@@ -86,11 +88,11 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             target_opset_version: The target OPSET version to convert to.
 
         """
-        # TODO: maybe another logic for versioning.
         if target_ir_version is None:
             target_ir_version = 9
         if target_opset_version is None:
-            target_opset_version = 17
+            versions = [version for version in map(self._opset_version, args) if version is not None]
+            target_opset_version = max(versions) if versions else None
 
         op_list = []
         for op in args:

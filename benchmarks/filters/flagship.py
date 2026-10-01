@@ -47,8 +47,8 @@ calls run independently per channel. PIL uses ``BoxBlur(2)``
 ``GaussianBlur(radius=1.5)`` approximates a true Gaussian with repeated box passes, so the sigma is
 matched in spirit only.
 Canny thresholds are each library's standard
-defaults — kornia 0.1/0.2 on normalized float gradients, OpenCV 100/200 on uint8 gradients — the
-domains differ, so that row compares regimes, not identical outputs. kornia's canny converts to
+defaults — kornia 0.1/0.2 on the unnormalised Sobel magnitude of [0, 1] floats, OpenCV 100/200 on uint8
+gradients — the domains differ, so that row compares regimes, not identical outputs. kornia's canny converts to
 grayscale internally per its definition; the OpenCV canny loop therefore includes ``cv2.cvtColor``
 (sobel runs per-channel in both). Throughput is img/s.
 
