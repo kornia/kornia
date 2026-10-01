@@ -219,7 +219,6 @@ class Canny(nn.Module):
     See :func:`~kornia.filters.canny` for the units of the thresholds and the non-maximum suppression.
 
     Args:
-        input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1 or 3.
         low_threshold: lower threshold for the hysteresis procedure, in the units of the unnormalised Sobel
             magnitude. It must be positive and at most ``high_threshold``.
         high_threshold: upper threshold for the hysteresis procedure, in the same units. It has no upper bound.
@@ -296,8 +295,8 @@ class Canny(nn.Module):
             input: Image tensor with shape :math:`(B, C, H, W)`, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the image height, and :math:`W` is the
-                image width. Multi-channel inputs are handled by the underlying
-                functional implementation.
+                image width. :math:`C` must be 1, or 3 for an RGB image, which is
+                converted to grayscale.
 
         Returns:
             Tuple ``(magnitude, edges)``. ``magnitude`` contains the gradient
