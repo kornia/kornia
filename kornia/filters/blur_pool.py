@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
-from .kernels import get_pascal_kernel_2d
+from .kernels import _check_kernel_size, get_pascal_kernel_2d
 from .median import _compute_zero_padding  # TODO: Move to proper place
 
 __all__ = [
@@ -182,6 +182,7 @@ class EdgeAwareBlurPool2D(nn.Module):
         self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
     ) -> None:
         super().__init__()
+        _check_kernel_size(edge_dilation_kernel_size)
         self.kernel_size = kernel_size
         self.edge_threshold = edge_threshold
         self.edge_dilation_kernel_size = edge_dilation_kernel_size
@@ -351,6 +352,7 @@ def edge_aware_blur_pool2d(
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    _check_kernel_size(edge_dilation_kernel_size)
     KORNIA_CHECK(edge_threshold > 0.0, f"edge threshold should be positive, but got '{edge_threshold}'")
 
     input = F.pad(input, (2, 2, 2, 2), mode="reflect")  # F.pad to avoid artifacts near physical edges

@@ -148,6 +148,16 @@ class TestBlurPool(BaseTester):
 
 
 class TestEdgeAwareBlurPool(BaseTester):
+    @pytest.mark.parametrize("edge_dilation_kernel_size", [2, 4])
+    def test_even_edge_dilation_kernel_size_is_rejected(self, edge_dilation_kernel_size):
+        from kornia.core.exceptions import BaseError
+
+        data = torch.rand(1, 1, 8, 8)
+        with pytest.raises(BaseError, match="Kernel size must be an odd integer"):
+            edge_aware_blur_pool2d(data, 3, edge_dilation_kernel_size=edge_dilation_kernel_size)
+        with pytest.raises(BaseError, match="Kernel size must be an odd integer"):
+            EdgeAwareBlurPool2D(3, edge_dilation_kernel_size=edge_dilation_kernel_size)
+
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("edge_threshold", [1.25, 2.5])
