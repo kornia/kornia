@@ -49,3 +49,19 @@ def test_add_metadata_replaces_duplicate_keys_and_is_idempotent():
         ("version", "1"),
     ]
     onnx.checker.check_model(model)
+
+
+def test_add_metadata_accepts_a_dict():
+    graph = helper.make_graph(
+        [helper.make_node("Identity", ["x"], ["y"])],
+        "g",
+        [helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])],
+        [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+    loader = HFONNXComunnityModelLoader("test", cache_dir=".")
+
+    loader._add_metadata(model, {"version": 1})
+
+    assert [(prop.key, prop.value) for prop in model.metadata_props] == [("version", "1")]
+    onnx.checker.check_model(model)
