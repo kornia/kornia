@@ -121,8 +121,8 @@ def gaussian(
     Convention:
         See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`, which validates the size and
         calls this function; ``gaussian`` does not validate it. In a floating ``dtype``, for an even ``window_size``
-        the Gaussian is centred at ``mean - 0.5``, halfway between two samples: the default ``mean`` centres the
-        kernel on the middle of the window, and an explicit ``mean=m`` centres it at ``m - 0.5``.
+        the Gaussian is centred at ``mean - 0.5``: the default ``mean`` centres the kernel on the middle of the
+        window, halfway between the two middle samples, and an explicit ``mean=m`` centres it at ``m - 0.5``.
 
     Args:
         window_size: the size which drives the filter amount.
@@ -733,8 +733,7 @@ def get_gaussian_kernel1d(
           - a Python ``int`` ``sigma`` raises, while the 2d and 3d builders accept integers
             (`#5157 <https://github.com/kornia/kornia/issues/5157>`_).
           - an integer ``dtype`` truncates a fractional ``sigma``, and uint8 also wraps the negative offsets, so the
-            taps before the centre are wrong, exactly 0 for a ``sigma`` below about 15
-            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+            taps before the centre are wrong (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -791,8 +790,9 @@ def get_gaussian_discrete_kernel1d(
           - the tap count is not always ``kernel_size``: ``kernel_size=1`` gives 3 taps, and an even size with
             ``force_even=True`` gives one more than asked (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
           - the Bessel terms are computed unscaled and overflow, so the kernel is all NaN for a large ``sigma``
-            (from about 7 in float32) and, in float16, for any ``sigma > 0`` once ``kernel_size`` is 5 or more
-            (`#5227 <https://github.com/kornia/kornia/issues/5227>`_).
+            (from about 7 in float32) and, in float16, for any ``sigma > 0`` once ``kernel_size`` is 5 or more. In
+            float64, before it overflows at a ``sigma`` of about 19, it drifts from the discrete Gaussian from about
+            9 and is no longer unimodal from about 14 (`#5227 <https://github.com/kornia/kornia/issues/5227>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -835,7 +835,7 @@ def get_gaussian_erf_kernel1d(
     Convention:
         - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. In a floating ``dtype`` this
           kernel integrates the Gaussian over each pixel, :math:`\Phi((n + 1/2) / \sigma) - \Phi((n - 1/2) / \sigma)`
-          with :math:`\Phi` the normal CDF, so it blurs slightly more than the sampled kernel: for :math:`\sigma` of
+          with :math:`\Phi` the normal CDF, so it blurs more than the sampled kernel: for :math:`\sigma` of
           about 1 or more, on a window wide enough for the tails, its variance is :math:`\sigma^2 + 1/12`.
         - Known defect: with ``force_even=True`` an even kernel is centred on tap ``kernel_size // 2`` instead of
           the middle of the window, so it is not symmetric (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
@@ -1005,7 +1005,7 @@ def get_laplacian_kernel1d(
           ``[1, -2, 1]``; a larger size is not a wider second difference, and size 5 answers 5 to a unit second
           derivative.
         - The negative centre makes the response positive where the values curve upwards.
-        - Known defect: an unsigned ``dtype`` wraps the negative centre, to 252 for size 5 in uint8
+        - Known defect: uint8 wraps the negative centre, to 252 for size 5
           (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:

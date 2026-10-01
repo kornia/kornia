@@ -385,8 +385,10 @@ def fft_conv(
     on the device and the image size.
 
     Convention:
-        - See the Convention block on :func:`~kornia.filters.filter2d`: for the same arguments ``fft_conv`` returns
-          the same result, to roundoff.
+        - See the Convention block on :func:`~kornia.filters.filter2d`: for the same arguments and a finite input
+          ``fft_conv`` returns the same result, to roundoff. A NaN or inf in a channel of the input makes that
+          channel's whole output non-finite, where :func:`~kornia.filters.filter2d` keeps it to the pixels whose
+          window reaches it.
         - Known defects:
 
           - one input sample with a batch of kernels is broadcast, one output per kernel, where
@@ -394,6 +396,8 @@ def fft_conv(
           - an integer input truncates a fractional kernel to 0, as in :func:`~kornia.filters.filter2d`, and the
             result is in torch's default floating dtype (float32) instead of the input's
             (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+          - with ``padding='valid'`` and a kernel taller or wider than the input, it returns a wrongly sized tensor
+            where :func:`~kornia.filters.filter2d` raises (`#5285 <https://github.com/kornia/kornia/issues/5285>`_).
 
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.

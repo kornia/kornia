@@ -1625,6 +1625,15 @@ class TestConventionsFilter2d(BaseTester):
         with pytest.raises(RuntimeError):
             filter3d(volume, kernel, "constant", normalized=True)
 
+    def test_wart_fft_conv_valid_padding_with_a_kernel_larger_than_the_input_5285(self, device, dtype):
+        """With padding='valid', a 7 x 3 kernel on a 5 x 6 image gives fft_conv a 4 x 4 output (#5285)."""
+        _fft_guard("fft_conv", device, dtype)
+        image = _rand(1, 1, 5, 6, device=device, dtype=dtype)
+        kernel = _rand(1, 7, 3, device=device, dtype=dtype, seed=1)
+        with pytest.raises((RuntimeError, BaseError)):
+            filter2d(image, kernel, "constant", padding="valid")
+        assert fft_conv(image, kernel, "constant", padding="valid").shape == (1, 1, 4, 4)
+
 
 # (name, factory(device, dtype), shape) for non-square sizes, so every axis order is visible
 _KERNEL_SHAPES = [
@@ -1999,8 +2008,9 @@ class TestConventionsKernels(BaseTester):
         half[2] = torch.tensor([0.3, 0.25, 0.2, 0.15, 0.1], device=device, dtype=dtype)
         self.assert_close(kernel(0.5), half)
         self.assert_close(kernel(-0.5), half.flip(-1))
-        # direction is clamped to [-1, 1]
+        # direction is clamped to [-1, 1], at both ends
         self.assert_close(kernel(5.0), forward)
+        self.assert_close(kernel(-5.0), forward.flip(-1))
 
     def test_convention_motion_kernel2d_batched_angle_needs_a_matching_direction(self, device, dtype):
         _kernel_guard("get_motion_kernel2d", device, dtype)
@@ -2049,8 +2059,8 @@ class TestConventionsKernels(BaseTester):
 
         # Rodrigues' formula for (90, 90, 0): rotate through 90 * sqrt(2) degrees about (1, 1, 0) / sqrt(2).
         # The heavy-end direction (-1, 0, 0) becomes (-0.19715, -0.80285, 0.56264), unlike either Euler
-        # composition (0, 0, 1) or (0, -1, 0). Nearest resampling keeps the three central line taps, whose
-        # unnormalised weights are 0.1, 0.2 and 0.3, in (depth, row, column) order below.
+        # composition (0, 0, 1) or (0, -1, 0). Nearest resampling keeps the three central line taps, whose weights
+        # on the size-5 line are 0.1, 0.2 and 0.3, renormalised below in (depth, row, column) order.
         expected = torch.zeros(5, 5, 5, device=device, dtype=dtype)
         expected[1, 3, 2] = 1 / 6
         expected[2, 2, 2] = 1 / 3
@@ -2077,6 +2087,46 @@ class TestConventionsKernels(BaseTester):
         sigma = {torch.float16: 1.0, torch.bfloat16: 7.0, torch.float32: 7.0, torch.float64: 20.0}[dtype]
         kernel = get_gaussian_discrete_kernel1d(5, sigma, device=device, dtype=dtype)
         assert bool(torch.isnan(kernel).all())
+
+    def test_wart_gaussian_discrete_kernel1d_drifts_in_float64_for_a_large_sigma_5227(self, device, dtype):
+        """Before it overflows, the float64 discrete kernel drifts from the discrete Gaussian (#5227)."""
+        if dtype != torch.float64:
+            pytest.skip("the drift shows in float64; the other dtypes overflow first (#5227)")
+        kernel = get_gaussian_discrete_kernel1d(85, 14.0, device=device, dtype=dtype)[0]
+        # scipy.special.ive(abs(n), 14.0**2) is unimodal; here tap 39 (n = -3) dips below tap 38 (n = -4)
+        assert kernel[39] < kernel[38]
+
+    @pytest.mark.parametrize(
+        "builder", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]
+    )
+    def test_wart_gaussian_kernel1d_rejects_a_python_int_sigma_5157(self, builder, device, dtype):
+        """The 1d Gaussian builders raise for sigma=1, where the 2d builder accepts sigma=(1, 1) (#5157)."""
+        with pytest.raises((BaseError, AttributeError)):
+            builder(5, 1, device=device, dtype=dtype)
+        assert builder(5, 1.0, device=device, dtype=dtype).shape == (1, 5)
+        assert get_gaussian_kernel2d((5, 5), (1, 1), device=device, dtype=dtype).shape == (1, 5, 5)
+
+    @pytest.mark.parametrize("case", ["box_int32", "gaussian_uint8", "laplacian_uint8", "gradient3d_int32"])
+    def test_wart_kernel_builders_truncate_or_wrap_in_an_integer_dtype_5155(self, case, device):
+        """An integer dtype truncates fractional taps to 0, and uint8 wraps the negative ones (#5155)."""
+        if case == "box_int32":
+            assert bool((get_box_kernel1d(3, device=device, dtype=torch.int32) == 0).all())
+        elif case == "gaussian_uint8":
+            # the offsets -2 and -1 wrap to 254 and 255, so the taps before the centre vanish
+            kernel = get_gaussian_kernel1d(5, 1.5, device=device, dtype=torch.uint8)[0]
+            assert kernel[:2].tolist() == [0, 0]
+            assert bool((kernel[2:] > 0).all())
+        elif case == "laplacian_uint8":
+            assert get_laplacian_kernel1d(5, device=device, dtype=torch.uint8).tolist() == [1, 1, 252, 1, 1]
+        else:
+            # the first-order taps are +-0.5
+            assert bool((get_spatial_gradient_kernel3d("diff", 1, device=device, dtype=torch.int32) == 0).all())
+
+    def test_wart_motion_kernel2d_nearest_ties_change_with_a_full_turn_5181(self):
+        """At a sampling-tie angle roundoff picks the tap: 30 and -330 degrees build other kernels (#5181)."""
+        # a float angle builds the kernel on the CPU in float32, whatever the test device
+        difference = get_motion_kernel2d(5, 30.0, 1.0) - get_motion_kernel2d(5, -330.0, 1.0)
+        assert float(difference.abs().max()) > 0.1
 
     def test_wart_motion_kernel2d_on_mps_differs_from_cpu_for_some_angles_5181(self, device, dtype):
         """A tensor angle builds get_motion_kernel2d on its own device, and MPS gives other kernels (#5181)."""

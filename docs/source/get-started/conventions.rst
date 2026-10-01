@@ -548,19 +548,22 @@ such a window in a dilation and ``+inf`` in an erosion, whatever the data range.
 Filtering
 ---------
 
-:mod:`kornia.filters` follows torch's vocabulary: its kernels are correlated, ``border_type`` takes the
-:func:`torch.nn.functional.pad` mode names, and an even kernel is anchored where ``F.conv2d(padding='same')`` anchors
-it. The correlation matches ``cv2.filter2D`` and ``scipy.ndimage.correlate``; the border names and the even-kernel
-anchor do not.
+:doc:`kornia.filters </filters>` follows torch's vocabulary: its kernels are correlated by default, ``border_type``
+takes the :func:`torch.nn.functional.pad` mode names, and an even kernel is anchored where
+``F.conv2d(padding='same')`` anchors it. The correlation matches ``cv2.filter2D`` and ``scipy.ndimage.correlate``; the
+border names and the even-kernel anchor do not.
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
   **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
-  kernel first, as ``scipy.ndimage.convolve`` does.
+  kernel first, as ``scipy.ndimage.convolve`` does. :func:`~kornia.filters.correlate2d` and
+  :func:`~kornia.filters.convolve2d` are :func:`~kornia.filters.filter2d` with ``behaviour`` fixed to ``'corr'`` and
+  ``'conv'``; :func:`~kornia.filters.correlate3d` and :func:`~kornia.filters.convolve3d` are the same for
+  :func:`~kornia.filters.filter3d`.
 - :func:`~kornia.filters.filter2d_separable` takes ``kernel_x`` (along ``W``) before ``kernel_y``, the order of
   ``cv2.sepFilter2D(src, ddepth, kernelX, kernelY)``.
 
-The border modes, shown padding ``a b c d`` by two samples on each side. :mod:`kornia.morphology` uses the same names
-for its non-``geodesic`` borders:
+The border modes, shown padding ``a b c d`` by two samples on each side. :doc:`kornia.morphology </morphology>` uses
+the same names for its non-``geodesic`` borders:
 
 .. list-table::
    :header-rows: 1
@@ -592,7 +595,7 @@ for its non-``geodesic`` borders:
 
 An even kernel has no centre tap. The filters anchor a kernel ``k`` taps long at ``(k - 1) // 2``, the anchor of
 ``F.conv2d(padding='same')``. OpenCV and scipy anchor it at ``k // 2`` by default, and so does the default ``origin`` of
-:func:`~kornia.morphology.dilation` (see `Morphology`_), so along every even axis a correlated output sits one pixel
+:func:`~kornia.morphology.erosion` (see `Morphology`_), so along every even axis a correlated output sits one pixel
 before theirs; ``behaviour='conv'`` needs no shift (below). An odd kernel is anchored at its centre by all of them.
 For a kernel ``K`` of shape ``(kh, kw)``, with the border mapped by the table above:
 
@@ -607,8 +610,8 @@ The kernel builders against their references:
   ``cv2.getGaussianKernel(k, sigma)`` and the weights ``scipy.ndimage.gaussian_filter1d`` applies with
   ``radius=k // 2``. :func:`~kornia.filters.get_gaussian_erf_kernel1d` is the pixel-integrated Gaussian and
   :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is Lindeberg's discrete Gaussian,
-  ``scipy.special.ive(abs(n), sigma**2)`` normalized, while its taps stay finite: they overflow to NaN for a large
-  ``sigma`` and, in float16, for any ``sigma > 0`` once ``kernel_size`` is 5 or more
+  ``scipy.special.ive(abs(n), sigma**2)`` normalized, except for a large ``sigma`` (in float16, any ``sigma`` once
+  ``kernel_size`` is 5 or more), where its Bessel terms drift or overflow
   (`#5227 <https://github.com/kornia/kornia/issues/5227>`_).
 - :func:`~kornia.filters.get_hanning_kernel1d` is the symmetric window of ``numpy.hanning(k)``,
   ``scipy.signal.windows.hann(k)`` and ``torch.hann_window(k, periodic=False)``; torch's default periodic window
