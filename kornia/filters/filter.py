@@ -259,8 +259,6 @@ def filter3d(
           anchor ``((kD - 1) // 2, (kH - 1) // 2, (kW - 1) // 2)``.
         - The default ``border_type`` is ``'replicate'``, where :func:`~kornia.filters.filter2d` defaults to
           ``'reflect'``. There is no ``padding`` argument: the output always has the input's shape.
-        - Known defect: ``normalized=True`` raises for some non-contiguous kernels, such as a permuted one
-          (`#5159 <https://github.com/kornia/kornia/issues/5159>`_).
 
     Args:
         input: the input tensor with shape of
@@ -341,7 +339,7 @@ def filter3d(
 
     if normalized:
         bk, dk, hk, wk = kernel.shape
-        tmp_kernel = normalize_kernel2d(tmp_kernel.view(bk, dk, hk * wk)).view_as(tmp_kernel)
+        tmp_kernel = normalize_kernel2d(tmp_kernel.reshape(bk, dk, hk * wk)).view_as(tmp_kernel)
 
     tmp_kernel = tmp_kernel.expand(-1, c, -1, -1, -1)
 

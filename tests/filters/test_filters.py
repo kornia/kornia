@@ -763,12 +763,46 @@ class TestFilter3D(BaseTester):
         actual = filter3d(inp, kernel)
         assert actual.is_contiguous()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("kernel_batch", [1, 2])
+    @pytest.mark.parametrize("normalized", [True, False])
+    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
+    def test_noncontiguous_kernel(self, kernel_batch, normalized, behaviour, device, dtype):
+        data = torch.arange(840, device=device, dtype=dtype).reshape(2, 2, 7, 6, 5) / 840
+        kernel = (torch.arange(30 * kernel_batch, device=device, dtype=dtype) % 7 - 3).reshape(kernel_batch, 2, 3, 5)
+        kernel = kernel.permute(0, 3, 2, 1)
+        assert not kernel.is_contiguous()
+
+        weights = kernel.flip((-3, -2, -1)) if behaviour == "conv" else kernel
+        if normalized:
+            weights = weights / weights.abs().sum(dim=(-3, -2, -1), keepdim=True)
+        expected = torch.cat(
+            [
+                torch.nn.functional.conv3d(
+                    torch.nn.functional.pad(data[i : i + 1], (0, 1, 1, 1, 2, 2), mode="replicate"),
+                    weights[0 if kernel_batch == 1 else i][None, None].expand(2, 1, -1, -1, -1),
+                    groups=2,
+                )
+                for i in range(2)
+            ]
+        )
+        actual = filter3d(data, kernel, normalized=normalized, behaviour=behaviour)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
+    @pytest.mark.parametrize("noncontiguous", [True, False])
+    def test_gradcheck(self, normalized, behaviour, noncontiguous, device):
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=torch.float64)
+        if noncontiguous:
+            kernel = kernel.permute(0, 3, 2, 1)
         sample = torch.ones(1, 1, 6, 7, 8, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        self.gradcheck(filter3d, (sample, kernel), nondet_tol=1e-8)
+        self.gradcheck(
+            lambda data, kernel: filter3d(data, kernel, normalized=normalized, behaviour=behaviour),
+            (sample, kernel),
+            nondet_tol=1e-8,
+        )
 
     @pytest.mark.skip(reason="filter3d do not have a module")
     def test_module(self): ...
@@ -1615,15 +1649,15 @@ class TestConventionsFilter2d(BaseTester):
             calls[case]()
         assert not isinstance(error.value, BaseError)
 
-    def test_wart_filter3d_normalized_rejects_a_non_contiguous_kernel_5159(self, device, dtype):
-        """filter3d(normalized=True) calls .view on the kernel, which fails for a permuted kernel (#5159)."""
+    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
+    def test_convention_filter3d_normalized_accepts_a_non_contiguous_kernel_5159(self, behaviour, device, dtype):
+        """filter3d(normalized=True) gives a permuted kernel the result of its contiguous copy (#5159)."""
         volume = _rand(1, 1, 5, 6, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 4, 5, device=device, dtype=dtype, seed=1).permute(0, 3, 2, 1)  # (1, 5, 4, 3)
         assert not kernel.is_contiguous()
-        out = filter3d(volume, kernel.contiguous(), "constant", normalized=True)
-        assert out.shape == volume.shape
-        with pytest.raises(RuntimeError):
-            filter3d(volume, kernel, "constant", normalized=True)
+        expected = filter3d(volume, kernel.contiguous(), "constant", normalized=True, behaviour=behaviour)
+        out = filter3d(volume, kernel, "constant", normalized=True, behaviour=behaviour)
+        assert torch.equal(out, expected)
 
     def test_wart_fft_conv_valid_padding_with_a_kernel_larger_than_the_input_5285(self, device, dtype):
         """With padding='valid', a 7 x 3 kernel on a 5 x 6 image gives fft_conv a 4 x 4 output (#5285)."""
