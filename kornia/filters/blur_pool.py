@@ -17,13 +17,15 @@
 
 from __future__ import annotations
 
+import operator
+
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
-from .kernels import get_pascal_kernel_2d
+from .kernels import _check_kernel_size, get_pascal_kernel_2d
 
 __all__ = [
     "BlurPool2D",
@@ -175,13 +177,16 @@ class EdgeAwareBlurPool2D(nn.Module):
     Args:
         kernel_size: The size of the Gaussian blur kernel.
         edge_threshold: The threshold for detecting edges. Default: 1.25.
-        edge_dilation_kernel_size: The kernel size for dilating the edge map. Default: 3.
+        edge_dilation_kernel_size: The kernel size for dilating the edge map. It must be an odd positive integer.
+            Default: 3.
     """
 
     def __init__(
         self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
     ) -> None:
         super().__init__()
+        edge_dilation_kernel_size = operator.index(edge_dilation_kernel_size)
+        _check_kernel_size(edge_dilation_kernel_size)
         self.kernel_size = kernel_size
         self.edge_threshold = edge_threshold
         self.edge_dilation_kernel_size = edge_dilation_kernel_size
@@ -345,7 +350,7 @@ def edge_aware_blur_pool2d(
         input: the input image to blur with shape :math:`(B, C, H, W)`.
         kernel_size: the kernel size for max pooling.
         edge_threshold: positive threshold for the edge decision rule; edge/non-edge.
-        edge_dilation_kernel_size: the kernel size for dilating the edges.
+        edge_dilation_kernel_size: the kernel size for dilating the edges. It must be an odd positive integer.
         epsilon: for numerical stability.
 
     Returns:
@@ -353,6 +358,8 @@ def edge_aware_blur_pool2d(
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    edge_dilation_kernel_size = operator.index(edge_dilation_kernel_size)
+    _check_kernel_size(edge_dilation_kernel_size)
     KORNIA_CHECK(edge_threshold > 0.0, f"edge threshold should be positive, but got '{edge_threshold}'")
 
     input = F.pad(input, (2, 2, 2, 2), mode="reflect")  # F.pad to avoid artifacts near physical edges

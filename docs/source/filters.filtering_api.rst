@@ -3,7 +3,8 @@ Filtering API
 
 .. currentmodule:: kornia.filters
 
-Convolve an image with your own kernel. These are the primitives the blur and edge operators are built on.
+Filter an image with your own kernel, by correlation (the default) or convolution. The box, Gaussian and motion blurs
+and :func:`laplacian` are built on :func:`filter2d`, :func:`filter2d_separable` and :func:`filter3d`.
 
 .. autofunction:: filter2d
 .. autofunction:: correlate2d
@@ -12,3 +13,4 @@ Convolve an image with your own kernel. These are the primitives the blur and ed
 .. autofunction:: correlate3d
 .. autofunction:: convolve3d
 .. autofunction:: filter3d
+.. autofunction:: fft_conv
