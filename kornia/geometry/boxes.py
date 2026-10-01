@@ -94,6 +94,31 @@ def _boxes_to_polygons(
     polygons[..., 3, 1] += height - 1  # Bottom left
     return polygons
 
+def _validate_vertices(boxes: torch.Tensor) -> None:
+    """Validate that vertices form axis-aligned rectangles in TL, TR, BR, BL order."""
+    if not torch.isfinite(boxes).all():
+        raise ValueError("Some boxes have invalid vertex coordinates.")
+
+    xmin = boxes[..., :, 0].amin(dim=-1)
+    xmax = boxes[..., :, 0].amax(dim=-1)
+    ymin = boxes[..., :, 1].amin(dim=-1)
+    ymax = boxes[..., :, 1].amax(dim=-1)
+
+    if (xmax <= xmin).any() or (ymax <= ymin).any():
+        raise ValueError("Some boxes have invalid vertex dimensions.")
+
+    expected_vertices = torch.stack(
+        (
+            torch.stack((xmin, ymin), dim=-1),
+            torch.stack((xmax, ymin), dim=-1),
+            torch.stack((xmax, ymax), dim=-1),
+            torch.stack((xmin, ymax), dim=-1),
+        ),
+        dim=-2,
+    )
+
+    if not torch.allclose(boxes, expected_vertices):
+        raise ValueError("Some boxes have invalid vertices.")
 
 def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> torch.Tensor:
     """Convert from boxes to quadrilaterals."""
@@ -126,6 +151,11 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
             quadrilaterals = boxes.clone()
         else:
             raise ValueError(f"Unknown mode {mode}")
+
+        # Value validation reads the data, which graph capture cannot do; skip it under export.
+        if validate_boxes and not is_exporting() and boxes.numel() > 0:
+            _validate_vertices(boxes)
+
     elif mode.startswith("xy"):
         if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]

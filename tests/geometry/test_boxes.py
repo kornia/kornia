@@ -156,17 +156,17 @@ class TestBoxes2D(BaseTester):
         self.assert_close(widths, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
-    def test_wart_vertices_import_is_not_validated_4177(self, mode, device, dtype):
-        # Wart pin for kornia#4177: neither vertex mode is validated. The exclusive
-        # 'vertices' import also subtracts one from fixed positions, so a non-rectangular
-        # quadrilateral is silently reshaped instead of rejected with validate_boxes=True.
-        # The -1 deformation is the inclusive offset tracked in kornia#3934.
-        quadrilateral = torch.tensor([[[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]]], device=device, dtype=dtype)
-        boxes = Boxes.from_tensor(quadrilateral, mode=mode, validate_boxes=True)
-        expected = quadrilateral.clone()
-        if mode == "vertices":
-            expected = torch.tensor([[[0.0, 0.0], [8.0, 0.0], [2.0, 6.0], [0.0, 0.0]]], device=device, dtype=dtype)
-        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+    def test_vertices_import_validates_axis_aligned_rectangle_4177(self, mode, device, dtype):
+        # Kornia#4177: vertex modes must reject non-rectangular quadrilaterals
+        # when validate_boxes=True instead of silently reshaping them.
+        quadrilateral = torch.tensor(
+            [[[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        with pytest.raises(ValueError, match="invalid"):
+            Boxes.from_tensor(quadrilateral, mode=mode, validate_boxes=True)
 
     def test_convention_constructor_mode_is_only_an_export_label(self, device, dtype):
         vertices = torch.tensor([[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]], device=device, dtype=dtype)
