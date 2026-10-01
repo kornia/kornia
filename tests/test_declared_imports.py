@@ -293,8 +293,8 @@ def test_import_kornia_does_not_load_optional_dependencies():
     # S603: no untrusted input -- this interpreter, a literal program, and module names derived from
     # pyproject.toml and the registry above. check=False so a crashed probe reports its stderr instead
     # of an opaque CalledProcessError; the return-code assertion keeps the test from passing vacuously.
-    # stdin is closed and the call bounded so a LazyLoader that prompts during import (the default
-    # InstallationMode.ASK) fails with an EOFError report instead of waiting on a terminal.
+    # stdin is closed and the call bounded so a LazyLoader reached during import cannot wait on a
+    # terminal, whatever the installation mode (InstallationMode.ASK behaves as RAISE without one).
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", code, *checked],
         cwd=REPO_ROOT,

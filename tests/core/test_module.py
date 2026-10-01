@@ -16,6 +16,7 @@
 #
 
 import os
+import sys
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -174,6 +175,48 @@ class TestImageModuleMixIn:
             assert not cached.requires_grad
             assert cached.grad_fn is None
             torch.testing.assert_close(cached, output.detach())
+
+
+class TestPILLookupWithoutImport(BaseTester):
+    """A call that needs no PIL conversion never consults the PIL loader, whatever its other arguments are."""
+
+    @pytest.fixture
+    def pil_not_imported(self, monkeypatch):
+        from kornia.core.mixin import image_module
+
+        class Untouchable:
+            def __getattr__(self, name):
+                raise AssertionError(f"the PIL loader was consulted for {name!r}")
+
+        # As on an install without the "image" extra: PIL.Image is not imported, and the loader must not import it.
+        monkeypatch.setattr(image_module, "Image", Untouchable())
+        monkeypatch.delitem(sys.modules, "PIL.Image", raising=False)
+
+    def test_container_with_data_keys(self, pil_not_imported, device, dtype):
+        from kornia.augmentation import AugmentationSequential, RandomHorizontalFlip
+
+        image = torch.rand(1, 3, 4, 6, device=device, dtype=dtype)
+        mask = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        out_image, out_mask = AugmentationSequential(RandomHorizontalFlip(p=1.0))(
+            image, mask, data_keys=["input", "mask"]
+        )
+        self.assert_close(out_image, image.flip(-1))
+        self.assert_close(out_mask, mask.flip(-1))
+
+    def test_image_module_with_keyword_argument(self, pil_not_imported, device, dtype):
+        class Scale(ImageModule):
+            def forward(self, x, scale=1.0):
+                return x * scale
+
+        x = torch.rand(3, 4, 6, device=device, dtype=dtype)
+        self.assert_close(Scale()(x, scale=0.5), x * 0.5)
+
+    def test_pil_image_is_still_converted(self):
+        image = PILImage.fromarray(np.full((4, 6, 3), 255, dtype=np.uint8))
+        module = ImageModuleMixIn()
+        assert module._is_valid_arg(image)
+        assert module._is_valid_arg([image]) is False
+        assert module._is_valid_arg("not an existing path") is False
 
 
 class TestImageModule:
