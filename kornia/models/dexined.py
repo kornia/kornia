@@ -34,7 +34,7 @@ __all__ = ["DexiNed"]
 
 _url: str | list[str] = [
     hf_url("dexined", "DexiNed_BIPED_10.pth"),
-    "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+    "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
 ]
 
 

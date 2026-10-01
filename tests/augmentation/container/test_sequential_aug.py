@@ -115,7 +115,7 @@ class TestConventionImageSequential(BaseTester):
         output = aug(image, output_type=output_type)
 
         if output_type == "numpy":
-            assert output.shape == (2, 3, 6, 8) and not isinstance(output, torch.Tensor)
+            assert output.shape == (2, 6, 8, 3) and not isinstance(output, torch.Tensor)  # channels-last (#5207)
         else:
             assert len(output) == 2 and all(isinstance(out, PILImage.Image) for out in output)
         cached = aug._output_image
@@ -125,8 +125,7 @@ class TestConventionImageSequential(BaseTester):
         if container == "AugmentationSequential":
             assert cached.device == image.device  # no device-to-host copy in the forward pass (#4918)
 
-        if dtype != torch.bfloat16:  # `.show()` renders through `Tensor.numpy()`, which has no bfloat16 support
-            assert isinstance(aug.show(display=False), PILImage.Image)
+        assert isinstance(aug.show(display=False), PILImage.Image)
         output_path = tmp_path / "output.png"
         aug.save(name=str(output_path))
         assert output_path.is_file()
