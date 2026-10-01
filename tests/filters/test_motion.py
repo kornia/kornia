@@ -15,19 +15,51 @@
 # limitations under the License.
 #
 
+import inspect
+
 import pytest
 import torch
 
 from kornia.filters import (
     MotionBlur,
     MotionBlur3D,
+    box_blur,
+    filter2d,
+    filter3d,
+    gaussian_blur2d,
     get_motion_kernel2d,
     get_motion_kernel3d,
     motion_blur,
     motion_blur3d,
 )
 
-from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_nearest_3d_grid_sample
+from testing.base import (
+    BaseTester,
+    supports_bilinear_3d_grid_sample,
+    supports_nearest_3d_grid_sample,
+    supports_reflect_padding,
+    supports_replicate_padding_3d,
+)
+
+
+def _default_border_type(op) -> str:
+    return inspect.signature(op).parameters["border_type"].default
+
+
+# The motion filters share their sibling's default border: the 2-D ones that of ``filter2d``, ``gaussian_blur2d`` and
+# ``box_blur`` ("reflect"), the 3-D ones that of ``filter3d`` ("replicate").
+@pytest.mark.device_agnostic
+@pytest.mark.parametrize(
+    "op, siblings",
+    [
+        (motion_blur, (filter2d, gaussian_blur2d, box_blur)),
+        (MotionBlur, (filter2d, gaussian_blur2d, box_blur)),
+        (motion_blur3d, (filter3d,)),
+        (MotionBlur3D, (filter3d,)),
+    ],
+)
+def test_default_border_type_matches_the_sibling_filters(op, siblings):
+    assert {_default_border_type(op)} == {_default_border_type(sibling) for sibling in siblings}
 
 
 class TestMotionBlur(BaseTester):
@@ -51,6 +83,8 @@ class TestMotionBlur(BaseTester):
 
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     def test_cardinality(self, shape, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         ksize = 5
         angle = 200.0
         direction = 0.3
@@ -103,6 +137,8 @@ class TestMotionBlur(BaseTester):
             get_motion_kernel2d(3, angle, direction)
 
     def test_noncontiguous(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
@@ -122,12 +158,88 @@ class TestMotionBlur(BaseTester):
         self.gradcheck(motion_blur, (sample, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
 
     def test_module(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         params = [3, 20.0, 0.5]
         op = motion_blur
         op_module = MotionBlur(*params)
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
 
         self.assert_close(op(img, *params), op_module(img))
+
+    def test_python_float_parameters_preserve_float64_precision(self):
+        image = torch.ones(1, 1, 9, 9, dtype=torch.float64)
+        results = [
+            motion_blur(image, 5, 30.0, 0.3, "reflect"),
+            MotionBlur(5, 30.0, 0.3, "reflect")(image),
+        ]
+        for result in results:
+            assert result.dtype == torch.float64
+            assert (result - image).abs().max() < 1e-15
+
+    @pytest.mark.parametrize("angle", [60.0, 120.0, 150.0])
+    def test_python_float_parameters_match_cpu_tensor_kernel(self, angle, device, dtype):
+        # Python-number parameters build the kernel on the CPU in the input dtype, never below float32: a half
+        # kernel moves the nearest samples at these angles, and an MPS kernel differs at 120 degrees (#5181).
+        kernel_dtype = torch.promote_types(dtype, torch.float32)
+        img = torch.rand(1, 2, 9, 9, device=device, dtype=dtype)
+        kernel = get_motion_kernel2d(
+            7, torch.tensor([angle], dtype=kernel_dtype), torch.tensor([0.3], dtype=kernel_dtype)
+        )
+        expected = filter2d(img, kernel, "reflect")
+        self.assert_close(motion_blur(img, 7, angle, 0.3, "reflect"), expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur(7, angle, 0.3, "reflect")(img), expected, rtol=0, atol=0)
+
+    # A blur of a constant image is that constant. ``(1, 1, 3, 9)`` and ``(1, 1, 9, 3)`` are shorter than the
+    # 5-tap kernel along one axis.
+    @pytest.mark.parametrize("shape", [(1, 1, 5, 7), (2, 3, 8, 6), (1, 1, 3, 9), (1, 1, 9, 3)])
+    @pytest.mark.parametrize("angle", [0.0, 45.0, 90.0, 30.0])
+    @pytest.mark.parametrize("direction", [0.0, 0.7])
+    def test_constant_image_stays_constant_at_the_default_border(self, shape, angle, direction, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        image = torch.full(shape, 0.75, device=device, dtype=dtype)
+
+        self.assert_close(motion_blur(image, 5, angle, direction), image)
+        self.assert_close(MotionBlur(5, angle, direction)(image), image)
+
+    # "reflect" needs each spatial axis longer than the kernel radius (``kernel_size // 2 = 2`` here), as it does for
+    # ``filter2d``, ``gaussian_blur2d`` and ``box_blur`` at their defaults; "constant" and "replicate" do not.
+    @pytest.mark.parametrize("shape", [(1, 1, 2, 9), (1, 1, 9, 2), (1, 1, 1, 9)])
+    def test_default_border_raises_on_an_axis_of_at_most_the_kernel_radius(self, shape, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        image = torch.ones(shape, device=device, dtype=dtype)
+
+        with pytest.raises(RuntimeError, match="Padding size should be less than"):
+            motion_blur(image, 5, 0.0, 0.0)
+        with pytest.raises(RuntimeError, match="Padding size should be less than"):
+            MotionBlur(5, 0.0, 0.0)(image)
+        assert motion_blur(image, 5, 0.0, 0.0, border_type="constant").shape == shape
+
+    # Snippet used to generate expected:
+    #   import torch, kornia.filters as KF
+    #   print(KF.motion_blur(torch.ones(1, 1, 5, 7), 5, 0.0, 0.0, "constant")[0, 0, 2].tolist())
+    #   -> [0.6, 0.8, 1.0, 1.0, 1.0, 0.8, 0.6]   (zero padding darkens every pixel the kernel reaches past the edge)
+    def test_explicit_constant_border_zero_pads(self, device, dtype):
+        image = torch.ones(1, 1, 5, 7, device=device, dtype=dtype)
+        row = torch.tensor([0.6, 0.8, 1.0, 1.0, 1.0, 0.8, 0.6], device=device, dtype=dtype)
+        expected = row.expand(1, 1, 5, 7)
+
+        self.assert_close(motion_blur(image, 5, 0.0, 0.0, border_type="constant"), expected)
+        self.assert_close(MotionBlur(5, 0.0, 0.0, border_type="constant")(image), expected)
+
+    def test_function_and_module_agree_at_their_defaults(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 9, 11, device=device, dtype=dtype)
+        params = (5, 35.0, 0.5)
+
+        from_function = motion_blur(image, *params)
+        self.assert_close(MotionBlur(*params)(image), from_function)
+        # the shared default is "reflect"
+        self.assert_close(from_function, motion_blur(image, *params, border_type="reflect"))
 
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -169,6 +281,8 @@ class TestMotionBlur3D(BaseTester):
 
     @pytest.mark.parametrize("shape", [(1, 4, 1, 8, 15), (2, 3, 1, 11, 7)])
     def test_cardinality(self, shape, device, dtype):
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("replication_pad3d is unavailable for this device/dtype")
         ksize = 5
         angle = (200.0, 15.0, 120.0)
         direction = 0.3
@@ -206,6 +320,8 @@ class TestMotionBlur3D(BaseTester):
         self.assert_close(actual.sum(), expected.sum())
 
     def test_noncontiguous(self, device, dtype):
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("replication_pad3d is unavailable for this device/dtype")
         batch_size = 3
         inp = torch.rand(3, 1, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1, -1)
 
@@ -225,12 +341,36 @@ class TestMotionBlur3D(BaseTester):
         self.gradcheck(motion_blur3d, (sample, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
 
     def test_module(self, device, dtype):
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("replication_pad3d is unavailable for this device/dtype")
         params = [3, (0.0, 360.0, 150.0), 0.5]
         op = motion_blur3d
         op_module = MotionBlur3D(*params)
         img = torch.ones(1, 3, 1, 5, 5, device=device, dtype=dtype)
 
         self.assert_close(op(img, *params), op_module(img))
+
+    def test_python_float_parameters_preserve_float64_precision(self):
+        volume = torch.ones(1, 1, 5, 6, 7, dtype=torch.float64)
+        results = [
+            motion_blur3d(volume, 3, (10.0, 20.0, 30.0), 0.3, "replicate"),
+            MotionBlur3D(3, (10.0, 20.0, 30.0), 0.3, "replicate")(volume),
+        ]
+        for result in results:
+            assert result.dtype == torch.float64
+            assert (result - volume).abs().max() < 1e-15
+
+    @pytest.mark.parametrize("angle", [(0.0, 120.0, 35.0), (60.0, 150.0, 120.0)])
+    def test_python_float_parameters_match_cpu_tensor_kernel(self, angle, device, dtype):
+        # Python-number parameters build the kernel on the CPU in the input dtype, never below float32 (#5181).
+        kernel_dtype = torch.promote_types(dtype, torch.float32)
+        volume = torch.rand(1, 2, 6, 7, 8, device=device, dtype=dtype)
+        kernel = get_motion_kernel3d(
+            5, torch.tensor([angle], dtype=kernel_dtype), torch.tensor([0.3], dtype=kernel_dtype)
+        )
+        expected = filter3d(volume, kernel, "replicate")
+        self.assert_close(motion_blur3d(volume, 5, angle, 0.3, "replicate"), expected, rtol=0, atol=0)
+        self.assert_close(MotionBlur3D(5, angle, 0.3, "replicate")(volume), expected, rtol=0, atol=0)
 
     @pytest.mark.skip(reason="After the op be optimized the results are not the same")
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -241,3 +381,43 @@ class TestMotionBlur3D(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+    # A blur of a constant volume is that constant, thin volumes included: ``D = 1`` is why the default is
+    # "replicate" and not "reflect", which needs each axis longer than the kernel radius. "replicate" has no such
+    # limit, down to a single voxel, so unlike the 2-D default there is no size at which this one raises.
+    @pytest.mark.parametrize(
+        "shape", [(1, 1, 5, 6, 7), (2, 2, 3, 4, 5), (1, 1, 1, 5, 7), (2, 3, 1, 8, 9), (1, 1, 1, 1, 1)]
+    )
+    @pytest.mark.parametrize("angle", [(0.0, 0.0, 0.0), (45.0, 0.0, 0.0), (0.0, 90.0, 0.0), (30.0, 60.0, 120.0)])
+    @pytest.mark.parametrize("direction", [0.0, 0.7])
+    def test_constant_volume_stays_constant_at_the_default_border(self, shape, angle, direction, device, dtype):
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("replication_pad3d is unavailable for this device/dtype")
+        volume = torch.full(shape, 0.75, device=device, dtype=dtype)
+
+        self.assert_close(motion_blur3d(volume, 3, angle, direction), volume)
+        self.assert_close(MotionBlur3D(3, angle, direction)(volume), volume)
+
+    # Snippet used to generate expected:
+    #   import torch, kornia.filters as KF
+    #   print(KF.motion_blur3d(torch.ones(1, 1, 5, 6, 7), 3, (0.0, 0.0, 0.0), 0.0, "constant")[0, 0, 2, 2].tolist())
+    #   -> [0.6667, 1.0, 1.0, 1.0, 1.0, 1.0, 0.6667]   (the k = 3 kernel at angle 0 runs along the last axis)
+    def test_explicit_constant_border_zero_pads(self, device, dtype):
+        volume = torch.ones(1, 1, 5, 6, 7, device=device, dtype=dtype)
+        row = torch.tensor([2.0 / 3.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0 / 3.0], device=device, dtype=dtype)
+        expected = row.expand(1, 1, 5, 6, 7)
+
+        self.assert_close(motion_blur3d(volume, 3, (0.0, 0.0, 0.0), 0.0, border_type="constant"), expected)
+        self.assert_close(MotionBlur3D(3, (0.0, 0.0, 0.0), 0.0, border_type="constant")(volume), expected)
+
+    def test_function_and_module_agree_at_their_defaults(self, device, dtype):
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("replication_pad3d is unavailable for this device/dtype")
+        torch.manual_seed(0)
+        volume = torch.rand(2, 2, 4, 6, 7, device=device, dtype=dtype)
+        params = (3, (30.0, 10.0, 20.0), 0.5)
+
+        from_function = motion_blur3d(volume, *params)
+        self.assert_close(MotionBlur3D(*params)(volume), from_function)
+        # the shared default is "replicate"
+        self.assert_close(from_function, motion_blur3d(volume, *params, border_type="replicate"))
