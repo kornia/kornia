@@ -75,6 +75,9 @@ def ssim3d(
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
+    Note:
+        Integer images are converted to float32 before computing the local moments.
+
     Returns:
        The ssim index map with shape :math:`(B, C, D, H, W)`.
 
@@ -92,6 +95,12 @@ def ssim3d(
 
     if not isinstance(max_val, float):
         raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
+
+    # Preserve fractional Gaussian weights and avoid integer moment overflow.
+    if not img1.is_floating_point() and not img1.is_complex():
+        img1 = img1.to(torch.float32)
+    if not img2.is_floating_point() and not img2.is_complex():
+        img2 = img2.to(torch.float32)
 
     # prepare kernel
     kernel: torch.Tensor = get_gaussian_kernel3d((window_size, window_size, window_size), (1.5, 1.5, 1.5))

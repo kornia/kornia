@@ -24,6 +24,16 @@ from testing.base import BaseTester
 
 
 class TestSSIM3d(BaseTester):
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int16])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_integer_images(self, device, image_dtype, padding):
+        # Integer Gaussian weights must not truncate to zero (gh-5297).
+        black = torch.zeros((1, 1, 5, 5, 5), device=device, dtype=image_dtype)
+        white = torch.full_like(black, 255)
+        actual = kornia.metrics.ssim3d(black, white, 3, max_val=255.0, padding=padding)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, torch.full_like(actual, 0.0001), atol=1e-6, rtol=1e-4)
+
     @pytest.mark.parametrize(
         "shape,padding,window_size,max_value",
         [

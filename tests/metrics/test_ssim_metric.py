@@ -26,6 +26,16 @@ from testing.base import BaseTester
 
 
 class TestSsim(BaseTester):
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int16])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_integer_images(self, device, image_dtype, padding):
+        # Integer Gaussian weights must not truncate to zero (gh-5297).
+        black = torch.zeros((1, 1, 5, 5), device=device, dtype=image_dtype)
+        white = torch.full_like(black, 255)
+        actual = ssim(black, white, 3, max_val=255.0, padding=padding)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, torch.full_like(actual, 0.0001), atol=1e-6, rtol=1e-4)
+
     def test_same_image_returns_ones(self, device, dtype):
         img = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
         out = ssim(img, img, window_size=5)

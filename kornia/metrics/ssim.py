@@ -65,6 +65,9 @@ def ssim(
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
+    Note:
+        Integer images are converted to float32 before computing the local moments.
+
     Returns:
        The ssim index map with shape :math:`(B, C, H, W)`.
 
@@ -91,6 +94,12 @@ def ssim(
 
     if not img1.shape == img2.shape:
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
+
+    # Preserve fractional Gaussian weights and avoid integer moment overflow.
+    if not img1.is_floating_point() and not img1.is_complex():
+        img1 = img1.to(torch.float32)
+    if not img2.is_floating_point() and not img2.is_complex():
+        img2 = img2.to(torch.float32)
 
     # prepare kernel
     kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5, device=img1.device, dtype=img1.dtype)

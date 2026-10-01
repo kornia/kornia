@@ -1,0 +1,1 @@
+`ssim`, `ssim3d`, `SSIM`, `SSIM3D` and the SSIM loss wrappers now compute integer images in float32. Previously, fractional Gaussian weights truncated to zero, so different integer images could incorrectly score 1. Integer inputs now produce floating-point maps without rescaling their pixel values; floating-point inputs are unchanged.
