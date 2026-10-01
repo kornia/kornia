@@ -25,6 +25,63 @@ from kornia.models.efficient_vit import backbone as vit
 
 
 class TestEfficientViT:
+    @staticmethod
+    def _fake_checkpoint() -> dict[str, torch.Tensor]:
+        """Mimic the hosted checkpoints: backbone weights under a ``backbone.`` prefix plus a ``head.`` classifier."""
+        model = vit.efficientvit_backbone_b1()
+        state_dict = {
+            f"backbone.{key}": val.clone()
+            for key, val in model.state_dict().items()
+            if "num_batches_tracked" not in key
+        }
+        state_dict["head.classifier.weight"] = torch.randn(1000, 128)
+        state_dict["head.classifier.bias"] = torch.randn(1000)
+        return state_dict
+
+    def test_load_pretrained_loads_the_checkpoint_weights(self, monkeypatch):
+        # GH#5276: strict=False over the raw checkpoint silently loaded no weight at all
+        state_dict = self._fake_checkpoint()
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: {"state_dict": state_dict},
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig())
+
+        for key, val in state_dict.items():
+            if key.startswith("backbone."):
+                assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
+
+    @pytest.mark.parametrize("drift", ["missing", "unexpected"])
+    def test_load_pretrained_is_strict(self, monkeypatch, drift):
+        # a checkpoint that lacks a backbone entry, or holds one the backbone has no slot for, raises
+        state_dict = self._fake_checkpoint()
+        if drift == "missing":
+            del state_dict["backbone.input_stem.op_list.0.conv.weight"]
+        else:
+            state_dict["backbone.input_stem.extra.weight"] = torch.zeros(1)
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: {"state_dict": state_dict},
+        )
+
+        with pytest.raises(RuntimeError, match=f"{drift.capitalize()} key"):
+            EfficientViT.from_config(EfficientViTConfig())
+
+    def test_load_pretrained_accepts_a_backbone_state_dict(self, monkeypatch):
+        # a state dict saved from the backbone itself has no "backbone." prefix
+        state_dict = {key: val + 1 for key, val in vit.efficientvit_backbone_b1().state_dict().items()}
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig())
+
+        loaded = model.backbone.state_dict()
+        assert loaded.keys() == state_dict.keys()
+        for key, val in state_dict.items():
+            assert torch.equal(loaded[key], val)
+
     def _test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         model = getattr(vit, f"efficientvit_backbone_{model_name}")()
         model = model.to(device=device, dtype=dtype)
