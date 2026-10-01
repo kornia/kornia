@@ -24,7 +24,6 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 from .kernels import get_pascal_kernel_2d
-from .median import _compute_zero_padding  # TODO: Move to proper place
 
 __all__ = [
     "BlurPool2D",
@@ -47,15 +46,11 @@ class BlurPool2D(nn.Module):
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(N, C, H_{out}, W_{out})`, where
+        - Output: :math:`(B, C, H_{out}, W_{out})`, where
 
           .. math::
-              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{kernel\_size//2}[0] -
-                \text{kernel\_size}[0]}{\text{stride}[0]} + 1\right\rfloor
-
-          .. math::
-              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{kernel\_size//2}[1] -
-                \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
+              H_{out} = \left\lceil\frac{H}{\text{stride}}\right\rceil, \quad
+              W_{out} = \left\lceil\frac{W}{\text{stride}}\right\rceil
 
     Examples:
         >>> from kornia.filters.blur_pool import BlurPool2D
@@ -89,9 +84,9 @@ class BlurPool2D(nn.Module):
                 input width.
 
         Returns:
-            Downsampled tensor with shape :math:`(B, C, H_{out}, W_{out})`.
-            :math:`H_{out}` and :math:`W_{out}` are determined by the kernel
-            size, padding used inside the helper, and ``self.stride``.
+            Downsampled tensor of shape :math:`(B, C, H_{out}, W_{out})`, with
+            the sizes given in the Shape section of the class. They depend only
+            on the input size and ``self.stride``.
         """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
@@ -112,7 +107,11 @@ class MaxBlurPool2D(nn.Module):
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H / stride, W / stride)`
+        - Output: :math:`(B, C, H_{out}, W_{out})`, where
+
+          .. math::
+              H_{out} = \left\lceil\frac{H - \text{max\_pool\_size} + 1}{\text{stride}}\right\rceil, \quad
+              W_{out} = \left\lceil\frac{W - \text{max\_pool\_size} + 1}{\text{stride}}\right\rceil
 
     Returns:
         torch.Tensor: the transformed torch.tensor.
@@ -156,9 +155,10 @@ class MaxBlurPool2D(nn.Module):
                 :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H_{out}, W_{out})` after max
-            pooling and blur pooling. The spatial output sizes depend on the
-            configured max-pool size, stride, blur kernel, and ``ceil_mode``.
+            Tensor of shape :math:`(B, C, H_{out}, W_{out})` after max pooling
+            and blur pooling, with the sizes given in the Shape section of the
+            class. They depend only on the input size, ``self.max_pool_size``
+            and ``self.stride``.
         """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
@@ -230,21 +230,14 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(N, C, H_{out}, W_{out})`, where
+        - Output: :math:`(B, C, H_{out}, W_{out})`, where
 
           .. math::
-              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{kernel\_size//2}[0] -
-                \text{kernel\_size}[0]}{\text{stride}[0]} + 1\right\rfloor
-
-          .. math::
-              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{kernel\_size//2}[1] -
-                \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
+              H_{out} = \left\lceil\frac{H}{\text{stride}}\right\rceil, \quad
+              W_{out} = \left\lceil\frac{W}{\text{stride}}\right\rceil
 
     Returns:
         the transformed torch.Tensor.
-
-    .. note::
-        This function is tested against https://github.com/adobe/antialiased-cnns.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
@@ -284,9 +277,6 @@ def max_blur_pool2d(
         ceil_mode: should be true to match output size of conv2d with same kernel size.
 
     .. note::
-        This function is tested against https://github.com/adobe/antialiased-cnns.
-
-    .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
 
     Examples:
@@ -304,6 +294,20 @@ def max_blur_pool2d(
     return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size, ceil_mode)
 
 
+def _blur_pool_conv2d(input: torch.Tensor, kernel: torch.Tensor, stride: int) -> torch.Tensor:
+    """Correlate every channel with its kernel at ``stride``, zero-padded so the output keeps ``ceil(H / stride)`` rows.
+
+    The padding is ``(k - 1) // 2`` pixels before and ``k // 2`` after along each spatial axis, the amounts
+    antialiased-cnns uses. For an odd ``k`` the two are equal and ``F.conv2d`` pads itself. An even ``k`` needs one
+    pixel more after than before, which ``F.pad`` adds.
+    """
+    ky, kx = kernel.shape[-2], kernel.shape[-1]
+    if ky % 2 == 1 and kx % 2 == 1:
+        return F.conv2d(input, kernel, padding=((ky - 1) // 2, (kx - 1) // 2), stride=stride, groups=input.shape[1])
+    input = F.pad(input, ((kx - 1) // 2, kx // 2, (ky - 1) // 2, ky // 2))
+    return F.conv2d(input, kernel, stride=stride, groups=input.shape[1])
+
+
 def _blur_pool_by_kernel2d(input: torch.Tensor, kernel: torch.Tensor, stride: int) -> torch.Tensor:
     """Compute blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
     KORNIA_CHECK(
@@ -311,8 +315,7 @@ def _blur_pool_by_kernel2d(input: torch.Tensor, kernel: torch.Tensor, stride: in
         f"Invalid kernel shape. Expect CxC_(out, None)xNxN, Got {kernel.shape}",
     )
 
-    padding = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
-    return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.shape[1])
+    return _blur_pool_conv2d(input, kernel, stride)
 
 
 def _max_blur_pool_by_kernel2d(
@@ -326,8 +329,7 @@ def _max_blur_pool_by_kernel2d(
     # compute local maxima
     input = F.max_pool2d(input, kernel_size=max_pool_size, padding=0, stride=1, ceil_mode=ceil_mode)
     # blur and downsample
-    padding = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
-    return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))
+    return _blur_pool_conv2d(input, kernel, stride)
 
 
 def edge_aware_blur_pool2d(

@@ -149,7 +149,8 @@ def _public_operator_count() -> int:
                 continue
             for name, obj in vars(module).items():
                 # Type checks first: attribute access on a ``kornia.core.external.LazyLoader`` would
-                # try to import (and offer to install) the optional dependency behind it.
+                # try to import the optional dependency behind it (raising, or installing it in the "ask" and "auto"
+                # installation modes).
                 if not (inspect.isfunction(obj) or (inspect.isclass(obj) and issubclass(obj, torch.nn.Module))):
                     continue
                 if name.startswith("_") or obj.__name__ != name:
@@ -520,11 +521,14 @@ texinfo_documents = [
     )
 ]
 
-# Example configuration for intersphinx: refer to the Python standard library.
+# Cross-references into the Python, NumPy and PyTorch docs. Each project is fetched from its live site first; the copy
+# in _intersphinx/ is used only when that fetch fails, so an outage of one of those sites does not fail the -W build.
+# The links still point at the live site. Refresh a copy with
+# `curl -fsSLo docs/source/_intersphinx/<name>.inv <site>objects.inv`.
 intersphinx_mapping = {
-    "python": ("https://docs.python.org/3/", None),
-    "numpy": ("https://numpy.org/doc/stable/", None),
-    "torch": ("https://pytorch.org/docs/stable/", None),
+    "python": ("https://docs.python.org/3/", (None, "_intersphinx/python.inv")),
+    "numpy": ("https://numpy.org/doc/stable/", (None, "_intersphinx/numpy.inv")),
+    "torch": ("https://pytorch.org/docs/stable/", (None, "_intersphinx/torch.inv")),
 }
 
 # Optional third-party modules that autodoc must not try to import. Empty: the packages the documented

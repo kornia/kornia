@@ -26,7 +26,13 @@ from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .blur import _HAS_MKLDNN, _ONEDNN_LARGE_INPUT, _needs_convolution_for_extreme_cpu_values
 from .filter import filter2d
-from .kernels import _check_kernel_size, _unpack_2d_ks, get_laplacian_kernel2d, normalize_kernel2d
+from .kernels import (
+    _check_kernel_size,
+    _check_laplacian_kernel_size,
+    _unpack_2d_ks,
+    get_laplacian_kernel2d,
+    normalize_kernel2d,
+)
 
 
 def _laplacian_slices_eligible(input: torch.Tensor) -> bool:
@@ -42,6 +48,14 @@ def _laplacian_slices_eligible(input: torch.Tensor) -> bool:
     return input.device.type == "cuda" and is_compiling()
 
 
+def _check_laplacian_size(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
+    """Unpack ``kernel_size`` and reject what no Laplacian kernel can have: even, non-positive or 1x1 sizes."""
+    ky, kx = _unpack_2d_ks(kernel_size)
+    _check_kernel_size((ky, kx))
+    _check_laplacian_kernel_size((ky, kx))
+    return ky, kx
+
+
 def laplacian(
     input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", normalized: bool = True
 ) -> torch.Tensor:
@@ -54,7 +68,7 @@ def laplacian(
 
     Args:
         input: the input image tensor with shape :math:`(B, C, H, W)`.
-        kernel_size: the size of the kernel.
+        kernel_size: the size of the kernel. It should be odd and positive, and at least 3 along one axis.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
@@ -66,6 +80,10 @@ def laplacian(
 
     Return:
         the blurred image with shape :math:`(B, C, H, W)`.
+
+    Raises:
+        BaseError: if a size is even or not positive, if ``kernel_size`` is a sequence of other than 2 sizes, or if
+            it is ``1`` or ``(1, 1)``: a :math:`1 \times 1` kernel is all zeros, and its normalized form is ``0 / 0``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_edges.html>`__.
@@ -84,8 +102,7 @@ def laplacian(
         f"Invalid border, {border_type}. Expected one of {{'constant', 'reflect', 'replicate', 'circular'}}",
     )
 
-    ky, kx = _unpack_2d_ks(kernel_size)
-    _check_kernel_size((ky, kx))
+    ky, kx = _check_laplacian_size(kernel_size)
 
     if not _laplacian_slices_eligible(input) or _needs_convolution_for_extreme_cpu_values(input, ky * kx):
         kernel = get_laplacian_kernel2d((ky, kx), device=input.device, dtype=input.dtype)[None]
@@ -125,11 +142,16 @@ class Laplacian(nn.Module):
     it to each channel. It supports batched operation.
 
     Args:
-        kernel_size: the size of the kernel.
+        kernel_size: the size of the kernel. It should be odd and positive, and at least 3 along one axis.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         normalized: if True, L1 norm of the kernel is set to 1.
+
+    Raises:
+        BaseError: if a size is even or not positive, if ``kernel_size`` is a sequence of other than 2 sizes, or if
+            it is ``1`` or ``(1, 1)``. The size is checked when the module is built, as
+            :func:`~kornia.filters.laplacian` checks it when called.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -151,6 +173,8 @@ class Laplacian(nn.Module):
         self.kernel_size = kernel_size
         self.border_type: str = border_type
         self.normalized: bool = normalized
+
+        _check_laplacian_size(kernel_size)
 
     def __repr__(self) -> str:
         return (
