@@ -35,25 +35,6 @@ from testing.base import BaseTester, assert_close
 
 
 class TestAugmentationSequential:
-    def test_dynamo_color_jiggle(self, device, dtype, torch_optimizer):
-        input = torch.rand(4, 3, 64, 64, device=device, dtype=dtype)
-        aug = K.AugmentationSequential(
-            K.RandomHorizontalFlip(p=1.0),
-            K.ColorJiggle(
-                brightness=0.2,
-                contrast=0.2,
-                saturation=0.2,
-                hue=0.1,
-                p=1.0,
-            ),
-        )
-
-        compiled = torch_optimizer(aug, fullgraph=True)
-        output = compiled(input)
-
-        assert output.shape == input.shape
-        assert torch.isfinite(output).all()
-
     @pytest.mark.parametrize(
         "data_keys", ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )

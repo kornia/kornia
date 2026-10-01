@@ -30,6 +30,25 @@ from testing.base import BaseTester
 
 
 class TestAugmentationCompile(BaseTester):
+    def test_dynamo_color_jiggle(self, device, dtype, torch_optimizer):
+        input = torch.rand(4, 3, 64, 64, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            K.ColorJiggle(
+                brightness=0.2,
+                contrast=0.2,
+                saturation=0.2,
+                hue=0.1,
+                p=1.0,
+            ),
+        )
+
+        compiled = torch_optimizer(aug, fullgraph=True)
+        output = compiled(input)
+
+        assert output.shape == input.shape
+        assert torch.isfinite(output).all()
+
     def test_compile_distinct_classes(self, device, dtype, torch_optimizer):
         # More classes than Dynamo's default per-code-object cache limit (#4658).
         augmentations = [

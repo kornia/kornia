@@ -646,10 +646,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             self._check_output_type(output_type)
             # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
             # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
-            decorated_forward = self.convert_input_output(input_names_to_handle=input_names_to_handle)(
-                super(ImageSequential, self).__call__
+            tensor_output = self._call_converted(
+                super(ImageSequential, self).__call__, inputs, kwargs, input_names_to_handle, "pt"
             )
-            tensor_output = decorated_forward(*inputs, **kwargs)
 
             in_data_keys: Optional[List[DataKey]]
             original_keys: Optional[Tuple[str, ...]] = None

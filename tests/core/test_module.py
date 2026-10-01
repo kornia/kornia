@@ -91,6 +91,17 @@ class TestImageModuleMixIn:
         output = dummy_func(sample_image)
         assert isinstance(output, (np.ndarray,))
 
+    def test_convert_input_output_preserves_function_metadata(self, img_module):
+        def dummy_func(tensor):
+            """Test function docstring."""
+            return tensor
+
+        decorated = img_module.convert_input_output()(dummy_func)
+
+        assert decorated.__name__ == dummy_func.__name__
+        assert decorated.__doc__ == dummy_func.__doc__
+        assert decorated.__wrapped__ is dummy_func
+
     def test_show(self, img_module, sample_tensor):
         img_module._output_image = sample_tensor
         pil_image = img_module.show(display=False)

@@ -18,6 +18,7 @@
 import datetime
 import math
 import os
+from functools import wraps
 from typing import Any, Callable, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -55,30 +56,35 @@ class ImageModuleMixIn:
         self._check_output_type(output_type)
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
+            @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
-                # If input_names_to_handle is None, handle all inputs
-                if input_names_to_handle is None:
-                    # Convert all args to tensors
-                    args = tuple(self.to_tensor(arg) if self._is_valid_arg(arg) else arg for arg in args)
-                    # Convert all kwargs to tensors
-                    kwargs = {k: self.to_tensor(v) if self._is_valid_arg(v) else v for k, v in kwargs.items()}
-                else:
-                    # Convert specified args to tensors
-                    args = list(args)  # type:ignore
-                    for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
-                        if name in input_names_to_handle:
-                            args[i] = self.to_tensor(arg)  # type:ignore
-                    # Convert specified kwargs to tensors
-                    for name, value in kwargs.items():
-                        if name in input_names_to_handle:
-                            kwargs[name] = self.to_tensor(value)
-
-                # Call the actual forward method and convert its outputs to the desired type
-                return self._convert_output(func(*args, **kwargs), output_type)
+                return self._call_converted(func, args, kwargs, input_names_to_handle, output_type)
 
             return wrapper
 
         return decorator
+
+    def _call_converted(
+        self,
+        func: Callable[[Any], Any],
+        args: Tuple[Any, ...],
+        kwargs: dict[str, Any],
+        input_names_to_handle: Optional[List[Any]],
+        output_type: Literal["pt", "numpy", "pil"],
+    ) -> Union[Any, List[Any]]:
+        if input_names_to_handle is None:
+            args = tuple(self.to_tensor(arg) if self._is_valid_arg(arg) else arg for arg in args)
+            kwargs = {k: self.to_tensor(v) if self._is_valid_arg(v) else v for k, v in kwargs.items()}
+        else:
+            args = list(args)
+            for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
+                if name in input_names_to_handle:
+                    args[i] = self.to_tensor(arg)  # type:ignore
+            for name, value in kwargs.items():
+                if name in input_names_to_handle:
+                    kwargs[name] = self.to_tensor(value)
+
+        return self._convert_output(func(*args, **kwargs), output_type)
 
     @staticmethod
     def _check_output_type(output_type: str) -> None:

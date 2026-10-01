@@ -23,7 +23,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils._crop import _compiled_slice_resize
+from kornia.geometry.transform._crop import _compiled_slice_resize
 from kornia.augmentation.utils.helpers import _constant_tensor, _pad_with_fill
 from kornia.constants import Resample
 from kornia.core.utils import is_compiling, is_exporting

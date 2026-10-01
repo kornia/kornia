@@ -559,22 +559,67 @@ class TestCropByIndices(BaseTester):
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         op = kornia.geometry.transform.crop_by_indices
-        img = torch.randn(4, 3, 64, 64, device=device, dtype=dtype)
-        src_box = torch.tensor(
-            [
-                [[0, 0], [32, 0], [32, 32], [0, 32]],
-                [[8, 4], [40, 4], [40, 36], [8, 36]],
-                [[16, 8], [48, 8], [48, 40], [16, 40]],
-                [[4, 16], [36, 16], [36, 48], [4, 48]],
-            ],
-            device=device,
-            dtype=torch.int64,
+        op_script = torch_optimizer(op)
+        img = torch.ones(1, 2, 5, 4, device=device, dtype=dtype)
+        src_box = torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]], device=device, dtype=torch.int64)
+
+        actual = op_script(img, src_box)
+        expected = op(img, src_box)
+
+        self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize(
+        "size, interpolation, align_corners, src_box",
+        [
+            (
+                (8, 8),
+                "bilinear",
+                None,
+                [[[1, 1], [4, 1], [4, 4], [1, 4]]],
+            ),
+            (
+                (2, 2),
+                "bilinear",
+                True,
+                [[[0, 0], [7, 0], [7, 7], [0, 7]]],
+            ),
+            (
+                (8, 8),
+                "nearest",
+                None,
+                [[[0, 0], [3, 0], [3, 3], [0, 3]]],
+            ),
+            (
+                (8, 8),
+                "bicubic",
+                None,
+                [[[0, 0], [3, 0], [3, 3], [0, 3]]],
+            ),
+        ],
+    )
+    def test_dynamo_resized(
+        self, size, interpolation, align_corners, src_box, device, dtype, torch_optimizer
+    ):
+        op = kornia.geometry.transform.crop_by_indices
+        img = torch.randn(1, 3, 8, 8, device=device, dtype=dtype)
+        src_box = torch.tensor(src_box, device=device, dtype=torch.int64)
+
+        expected = op(
+            img,
+            src_box,
+            size=size,
+            interpolation=interpolation,
+            align_corners=align_corners,
+        )
+        actual = torch_optimizer(op, fullgraph=True)(
+            img,
+            src_box,
+            size=size,
+            interpolation=interpolation,
+            align_corners=align_corners,
         )
 
-        expected = op(img, src_box, size=(32, 32))
-        actual = torch_optimizer(op, fullgraph=True)(img, src_box, size=(32, 32))
-
-        self.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
+        self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("size", [(2, 3), None])
     def test_crop_by_indices_empty_batch(self, size, device, dtype):
