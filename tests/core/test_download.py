@@ -1337,7 +1337,7 @@ class TestDownloadFileFromUrl:
 
         path = download_file_from_url(url, model_dir=str(model_dir), progress=False)
 
-        assert path == str(model_dir / "model.safetensors")
+        assert Path(path) == model_dir / "model.safetensors"
         assert Path(path).read_bytes() == payload
 
     def test_second_call_is_a_cache_hit(self, monkeypatch, tmp_path) -> None:
@@ -1364,7 +1364,7 @@ class TestDownloadFileFromUrl:
 
         path = download_file_from_url(url, progress=False)
 
-        assert path == str(tmp_path / "hub" / "checkpoints" / "model.safetensors")
+        assert Path(path) == tmp_path / "hub" / "checkpoints" / "model.safetensors"
 
     def test_file_name_overrides_the_basename(self, tmp_path) -> None:
         """Two repositories publish a ``model.safetensors`` each; one cache slot is not enough."""
@@ -1392,7 +1392,7 @@ class TestDownloadFileFromUrl:
             path = download_file_from_url([dead, url], model_dir=str(model_dir), progress=False)
 
         # The cache name is pinned to the *first* URL, as in load_state_dict_from_url.
-        assert path == str(model_dir / "missing.safetensors")
+        assert Path(path) == model_dir / "missing.safetensors"
         assert Path(path).read_bytes() == payload
         assert any("Trying next source" in str(warning.message) for warning in caught)
 
@@ -2245,8 +2245,9 @@ class TestModelDirExpandsUser:
         cwd = tmp_path / "cwd"
         cwd.mkdir()
         monkeypatch.chdir(cwd)
-        # ``~`` must resolve inside the temporary directory before anything is fetched.
-        assert os.path.expanduser("~/kc") == str(home / "kc")
+        # ``~`` must resolve inside the temporary directory before anything is fetched. Compared as paths: on
+        # Windows ``expanduser("~/kc")`` keeps the ``/`` and gives ``...\home/kc``, the same directory.
+        assert Path(os.path.expanduser("~/kc")) == home / "kc"
         return home, cwd
 
     def test_download_file_from_url(self, scripted_server, home) -> None:
@@ -2256,7 +2257,7 @@ class TestModelDirExpandsUser:
 
         path = download_file_from_url(url("/t.bin"), model_dir="~/kc", progress=False)
 
-        assert path == str(home_dir / "kc" / "t.bin")
+        assert Path(path) == home_dir / "kc" / "t.bin"
         assert Path(path).read_bytes() == b"payload"
         assert list(cwd.iterdir()) == [], "a literal '~' directory was created"
 
