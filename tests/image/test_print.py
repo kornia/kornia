@@ -22,6 +22,13 @@ from kornia.image import image_to_string, print_image
 
 
 class TestImageToString:
+    def test_wide_image_with_subpixel_height_prints_one_row(self):
+        image = torch.rand(3, 2, 40)
+
+        out = image_to_string(image, max_width=10)
+
+        assert out != ""
+
     def test_value(self):
         image = torch.arange(16).reshape(1, 4, 4).repeat(3, 1, 1).long() * 16
         out = image_to_string(image)
