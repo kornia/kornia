@@ -319,7 +319,7 @@ class TestBlurConventions(BaseTester):
         self.assert_close(taps[0.0], image.new_tensor([0.1, 0.2, 0.3, 0.4]))
         self.assert_close(taps[45.0], image.new_tensor([1.0, 2.0, 3.0]) / 6.0)
 
-    # The class keeps kornia.filters.motion_blur's defaults.
+    # The class's resample="nearest" is motion_blur's mode="nearest", but it zero-pads by its own default, not reflect.
     @pytest.mark.device_agnostic
     def test_convention_random_motion_blur_defaults_are_constant_and_nearest(self):
         aug = K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)

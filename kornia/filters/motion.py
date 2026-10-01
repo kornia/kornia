@@ -41,7 +41,11 @@ class MotionBlur(nn.Module):
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
         border_type: the padding mode to be applied before convolving. The expected modes are:
-             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'reflect'``, which leaves
+             a constant image constant like :func:`~kornia.filters.box_blur` and
+             :func:`~kornia.filters.gaussian_blur2d`, but needs each spatial axis longer than ``kernel_size // 2``.
+             ``'constant'`` zero-pads, so pixels whose kernel reaches past an edge (at most
+             ``kernel_size // 2`` from it) are pulled toward ``0``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
@@ -59,7 +63,7 @@ class MotionBlur(nn.Module):
     """
 
     def __init__(
-        self, kernel_size: int, angle: float, direction: float, border_type: str = "constant", mode: str = "nearest"
+        self, kernel_size: int, angle: float, direction: float, border_type: str = "reflect", mode: str = "nearest"
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -106,7 +110,11 @@ class MotionBlur3D(nn.Module):
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
         border_type: the padding mode to be applied before convolving. The expected modes are:
-            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'replicate'``, which
+            leaves a constant volume constant like :func:`~kornia.filters.filter3d`, at any volume size
+            (``'reflect'`` needs each axis longer than ``kernel_size // 2``, so it raises on a thin volume such as
+            ``D = 1``). ``'constant'`` zero-pads, so voxels whose kernel reaches past a face
+            (at most ``kernel_size // 2`` from it) are pulled toward ``0``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
@@ -132,7 +140,7 @@ class MotionBlur3D(nn.Module):
         kernel_size: int,
         angle: float | tuple[float, float, float] | torch.Tensor,
         direction: float | torch.Tensor,
-        border_type: str = "constant",
+        border_type: str = "replicate",
         mode: str = "nearest",
     ) -> None:
         super().__init__()
@@ -181,7 +189,7 @@ def motion_blur(
     kernel_size: int,
     angle: float | torch.Tensor,
     direction: float | torch.Tensor,
-    border_type: str = "constant",
+    border_type: str = "reflect",
     mode: str = "nearest",
 ) -> torch.Tensor:
     r"""Perform motion blur on torch.Tensor images.
@@ -199,7 +207,11 @@ def motion_blur(
             uniformly (but still angled) motion blur.
             If torch.Tensor, it must be :math:`(B,)`.
         border_type: the padding mode to be applied before convolving. The expected modes are:
-            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
+            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'reflect'``, which leaves
+            a constant image constant like :func:`~kornia.filters.box_blur` and
+            :func:`~kornia.filters.gaussian_blur2d`, but needs each spatial axis longer than ``kernel_size // 2``.
+            ``'constant'`` zero-pads, so pixels whose kernel reaches past an edge (at most
+            ``kernel_size // 2`` from it) are pulled toward ``0``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Return:
@@ -226,7 +238,7 @@ def motion_blur3d(
     kernel_size: int,
     angle: tuple[float, float, float] | torch.Tensor,
     direction: float | torch.Tensor,
-    border_type: str = "constant",
+    border_type: str = "replicate",
     mode: str = "nearest",
 ) -> torch.Tensor:
     r"""Perform motion blur on 3D volumes (5D torch.Tensor).
@@ -242,7 +254,11 @@ def motion_blur3d(
             uniformly (but still angled) motion blur.
             If torch.Tensor, it must be :math:`(B,)`.
         border_type: the padding mode to be applied before convolving. The expected modes are:
-            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
+            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'replicate'``, which
+            leaves a constant volume constant like :func:`~kornia.filters.filter3d`, at any volume size
+            (``'reflect'`` needs each axis longer than ``kernel_size // 2``, so it raises on a thin volume such as
+            ``D = 1``). ``'constant'`` zero-pads, so voxels whose kernel reaches past a face
+            (at most ``kernel_size // 2`` from it) are pulled toward ``0``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Return:
