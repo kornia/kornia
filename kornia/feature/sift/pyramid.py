@@ -77,6 +77,9 @@ class SIFTDescriptorFromPyramid(nn.Module):
         - image: :math:`(B, 1, H, W)`
         - lafs: :math:`(B, N, 2, 3)` in image pixel coordinates
         - descriptors: :math:`(B, N, num_ang_bins * num_spatial_bins^2)`
+
+    The descriptors are in kornia's angle-major SIFT layout, as :class:`~kornia.feature.SIFTDescriptor`'s are;
+    :func:`~kornia.feature.convert_sift_descriptor_layout` reorders them to OpenCV's.
     """
 
     def __init__(

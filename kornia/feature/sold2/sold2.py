@@ -32,7 +32,7 @@ from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, pr
 urls: Dict[str, str | list[str]] = {}
 urls["wireframe"] = [
     hf_url("sold2", "sold2_wireframe.pth"),
-    "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+    "https://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
 ]
 
 
