@@ -51,19 +51,55 @@ class TestOtsuThreshold(BaseTester):
         with pytest.raises(ValueError, match="Unsupported tensor dimensionality"):
             op.transform_input(img)
 
+    @staticmethod
+    def _separated_image(device, dtype):
+        """A fixed 5x5 image whose ``nbins=3`` Otsu threshold is 0.5 and keeps 14 of 25 pixels.
+
+        Every pixel is at least 1.9e-3 from the threshold in each tested dtype (the smallest margin is 1.95e-3, in
+        float16), so a finite-difference step cannot move a pixel across it. The values are fixed rather than drawn: a
+        random draw often puts the threshold at the data maximum (empty output) or at a near-tie between two splits,
+        and gradcheck then fails.
+        """
+        values = [
+            [0.00, 0.00, 0.00, 0.502, 1.00],
+            [1.00, 0.08, 0.13, 0.21, 0.27],
+            [0.33, 0.38, 0.44, 0.47, 0.56],
+            [0.61, 0.66, 0.71, 0.77, 0.83],
+            [0.88, 0.91, 0.94, 0.96, 0.98],
+        ]
+        return torch.tensor(values, device=device, dtype=dtype).view(1, 1, 5, 5)
+
     def test_gradcheck(self, device, dtype):
-        img = torch.rand(1, 1, 5, 5, device=device, dtype=dtype, requires_grad=True)
+        img = self._separated_image(device, dtype)
+        # gradcheck evaluates the op in float64 on the (possibly half-rounded) fixture, so check that input.
+        img64 = img.to(torch.float64)
+        out, threshold = otsu_threshold(img64, 3, True)
+        # Guard against a vacuous pass: pixels must lie on both sides of the threshold, and none within 1e-3 of it,
+        # which is far above the finite-difference step.
+        assert (out > 0).any()
+        assert not (img64 > threshold).all()
+        assert (img64 - threshold).abs().min() > 1e-3
+        # The analytical gradient of the output is just the mask (no gradient flows through the threshold), so
+        # this only checks that no pixel crosses the threshold under the finite-difference perturbation.
         self.gradcheck(otsu_threshold, (img, 3, True, False))
 
     def test_differentiable_tensor_otsu(self, device, dtype):
-        differentiable_input = torch.rand(1, 1, 5, 5, device=device, dtype=dtype, requires_grad=True)
-
-        input = differentiable_input.clone().detach().requires_grad_(False)
+        img = self._separated_image(device, dtype).requires_grad_(True)
 
         op = OtsuThreshold()
-        diff_thresh_result, _diff_thresh_value = op(input, slow_and_differentiable=True)
-        thresh_result, _thresh_value = op(input)
-        self.assert_close(diff_thresh_result, thresh_result)
+        result, threshold = op(img, slow_and_differentiable=True)
+        mask = (img.detach() > threshold).to(dtype)
+        # A non-degenerate fixture: some pixels are kept and some are dropped.
+        assert mask.any()
+        assert not mask.all()
+
+        # The slow path returns the pixels above the threshold and zeros elsewhere.
+        self.assert_close(result.detach(), img.detach() * mask)
+
+        result.sum().backward()
+        # The thresholded image is ``mask * x`` with a constant mask, so its gradient is the mask.
+        assert img.grad is not None
+        self.assert_close(img.grad, mask)
 
     def test_threshold_result(self, device, dtype):
         input = torch.tensor(
