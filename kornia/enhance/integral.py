@@ -27,7 +27,7 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
     """Calculate integral of the input torch.Tensor.
 
     Convention:
-        Applies cumulative sums in the supplied order of axes; dim=None means
+        Applies an inclusive cumulative sum along each axis in dim; dim=None means
         only the last axis. :func:`integral_image` fixes the axes to (-2, -1),
         and the two module classes are wrappers for these functions.
 
@@ -37,8 +37,8 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
 
     The algorithm computes the integral image by summing over the specified dimensions.
 
-    In case dim is specified, the contained dimensions must be unique and sorted in ascending order
-    and not exceed the number of dimensions of the input torch.Tensor.
+    In case dim is specified, the contained dimensions must be unique and not exceed the number of
+    dimensions of the input torch.Tensor.
 
     Args:
         input: the input torch.Tensor with shape :math:`(*, D)`. Where D is the number of dimensions.
@@ -74,8 +74,8 @@ def integral_image(image: torch.Tensor) -> torch.Tensor:
     r"""Calculate integral of the input image torch.Tensor.
 
     Convention:
-        This is :func:`integral_tensor` with axes (-2, -1): height is accumulated before
-        width, with the original shape retained.
+        This is :func:`integral_tensor` with axes (-2, -1); the output has the input shape,
+        without an extra zero border.
 
     This particular version sums over the last two dimensions.
 

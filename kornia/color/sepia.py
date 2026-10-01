@@ -24,12 +24,16 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
     r"""Apply the sepia filter to an RGB tensor.
 
     Convention:
-        Applies the fixed sepia matrix to RGB channels at axis -3. rescale normalizes each output
-        channel by its spatial maximum; disable it to keep the raw matrix response.
+        Applies the fixed sepia matrix to RGB channels at axis -3. rescale divides each output
+        channel of each image by its own spatial maximum; disable it to keep the raw matrix response.
+
+    .. warning::
+        With the default rescale=True the output is almost grey: per-channel rescaling removes the
+        sepia tint (`#5322 <https://github.com/kornia/kornia/issues/5322>`_).
 
     Args:
         input: the input tensor with shape :math:`(*, C, H, W)`.
-        rescale: if True, rescale the output so the max channel value is 1.
+        rescale: if True, divide each output channel by its own maximum.
         eps: small constant added to the denominator for numerical stability.
 
     Returns:
@@ -70,7 +74,7 @@ class Sepia(nn.Module):
     See the Convention block on :func:`sepia_from_rgb`.
 
     Args:
-        rescale: if True, rescale the output so the max channel value is 1.
+        rescale: if True, divide each output channel by its own maximum.
         eps: small constant added to the denominator for numerical stability.
 
     Returns:
@@ -90,7 +94,7 @@ class Sepia(nn.Module):
         """Initialize Sepia.
 
         Args:
-            rescale: if True, rescale the output so the max channel value is 1.
+            rescale: if True, divide each output channel by its own maximum.
             eps: small constant added to the denominator for numerical stability.
         """
         self.rescale = rescale

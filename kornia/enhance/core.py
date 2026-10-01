@@ -33,9 +33,12 @@ def add_weighted(
     r"""Calculate the weighted sum of two Tensors.
 
     Convention:
-        src1 and src2 must have exactly the same shape. Tensor-valued alpha,
-        beta, and gamma must also have that exact shape; only Python scalar
-        coefficients broadcast. See :class:`AddWeighted` for the module wrapper.
+        src1 and src2 must have exactly the same shape; a Python number coefficient applies to
+        every element. See :class:`AddWeighted` for the module wrapper.
+
+    .. warning::
+        Tensor alpha, beta and gamma must have src1's exact shape: a 0-d or broadcastable
+        tensor raises (`#5325 <https://github.com/kornia/kornia/issues/5325>`_).
 
     .. image:: _static/img/add_weighted.png
 
@@ -82,8 +85,8 @@ class AddWeighted(nn.Module):
     r"""Calculate the weighted sum of two Tensors.
 
     Convention:
-        See :func:`add_weighted`: tensor coefficients are exact-shape inputs, while
-        Python scalars apply to every element.
+        See :func:`add_weighted`, including its tensor-coefficient defect
+        (`#5325 <https://github.com/kornia/kornia/issues/5325>`_).
 
     The function calculates the weighted sum of two Tensors as follows:
 

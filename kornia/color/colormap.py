@@ -192,16 +192,16 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
 
     Convention:
         Accepts a rank-3 (C, H, W) or rank-4 (B, C, H, W) tensor and returns
-        (B, 3*C, H, W). Each input channel is mapped independently. Unit-range floating inputs
-        and integer inputs in [0, 255] are the intended ranges.
+        (B, 3*C, H, W), with B = 1 for rank-3 input; input channel c becomes output channels
+        3c to 3c + 2. Unit-range floating inputs and integer inputs in [0, 255] are the intended ranges.
 
     .. warning::
-        Rank-3 inputs are modified in-place by the internal batch expansion; rank-4 float inputs
-        can also have their values modified, and rank-3 gradient leaves fail before evaluation:
-        `#5305 <https://github.com/kornia/kornia/issues/5305>`_. The current maximum-based
-        heuristic makes scaling depend on every sample in a batch:
-        `#5306 <https://github.com/kornia/kornia/issues/5306>`_. The highest
-        palette color is unreachable for inputs at the top of either documented range:
+        Rank-3 inputs gain a batch axis in place, float32 inputs in [0, 255] are divided by 255
+        in place, and leaf tensors that require grad raise when rank 3 or float32:
+        `#5305 <https://github.com/kornia/kornia/issues/5305>`_. The [0, 1] or [0, 255] range is
+        chosen from the maximum over the whole tensor, so scaling depends on every channel and
+        sample: `#5306 <https://github.com/kornia/kornia/issues/5306>`_. With three or more
+        palette colors the last one is never selected:
         `#5307 <https://github.com/kornia/kornia/issues/5307>`_.
 
     Args:
@@ -284,8 +284,8 @@ class ApplyColorMap(nn.Module):
         A tensor with the applied color map.
 
     .. warning::
-        Calling :meth:`~torch.nn.Module.to` on this module does not move or convert the palette:
-        `#5317 <https://github.com/kornia/kornia/issues/5317>`_.
+        Calling :meth:`~torch.nn.Module.to` on this module does not move or convert the palette,
+        and the palette is not in ``state_dict``: `#5317 <https://github.com/kornia/kornia/issues/5317>`_.
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])

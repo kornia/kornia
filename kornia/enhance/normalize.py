@@ -120,10 +120,8 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     r"""Normalize an image/video torch.Tensor with mean and standard deviation.
 
     Convention:
-        This function treats dimension 0 as batch and dimension 1 as channel,
-        then flattens all remaining dimensions. mean and std may be (C,),
-        (1, C), or (B, C); the output has the input shape. Normalize stores the
-        same statistics for repeated calls.
+        This function treats dimension 0 as batch and dimension 1 as channel.
+        mean and std may be (C,), (1, C), or (B, C); the output has the input shape.
 
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
@@ -216,8 +214,8 @@ class Denormalize(nn.Module):
         std: Standard deviations for each channel.
 
     Shape:
-        - Input: Image torch.Tensor of size :math:`(*, C, ...)`.
-        - Output: Denormalised torch.Tensor with same size as input :math:`(*, C, ...)`.
+        - Input: Image torch.Tensor of size :math:`(B, C, *)`.
+        - Output: Denormalised torch.Tensor with same size as input :math:`(B, C, *)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -285,8 +283,8 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
         on ``(B, C, *)`` input.
 
     .. warning::
-        Outside rank four, a ``(C,)`` mean or std can be checked against the wrong
-        or a missing axis. A ``(1, C)`` workaround succeeds
+        Outside rank four, a ``(C,)`` mean or std is checked against the wrong axis, so valid
+        statistics can be rejected and mismatched ones accepted; pass ``(1, C)`` instead
         (`#5318 <https://github.com/kornia/kornia/issues/5318>`_).
 
     .. math::
@@ -371,8 +369,8 @@ def normalize_min_max(
     r"""Normalise an image/video torch.Tensor by MinMax and re-scales the value between a range.
 
     Convention:
-        Minima and maxima are computed separately for every (B, C) plane, over
-        all remaining dimensions. Constant planes map to min_val.
+        Input is (*, C, H, W): minima and maxima are taken over H and W separately for every
+        leading index and channel. Constant planes map to min_val.
 
     The data is normalised using the following formulation:
 

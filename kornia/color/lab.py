@@ -96,16 +96,14 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
 
     Convention:
         Input channels are L*, a*, b* at axis -3 using D65 / 2° reference white. Set clip to
-        false to retain out-of-gamut RGB values; the default clips only the final sRGB output to
-        [0, 1].
+        false to skip the final [0, 1] clamp of the sRGB output.
 
     Args:
         image: Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
         clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
 
     Returns:
-        Lab version of the image with shape :math:`(*, 3, H, W)`.
-        The output RGB image are in the range of :math:`[0, 1]`.
+        RGB version of the image with shape :math:`(*, 3, H, W)`, in :math:`[0, 1]` when ``clip`` is True.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -207,7 +205,7 @@ class LabToRgb(nn.Module):
     See the Convention block on :func:`lab_to_rgb`.
 
     Returns:
-        RGB version of the image. Range may not be in :math:`[0, 1]`.
+        RGB version of the image, clipped to :math:`[0, 1]`.
 
     Shape:
         - image: :math:`(*, 3, H, W)`

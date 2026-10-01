@@ -131,7 +131,7 @@ class Threshold(Module):
     """Module wrapper for `kornia.enhance.threshold`.
 
     Convention:
-        See threshold for the strict comparison and broadcasting policy.
+        See threshold for the strict comparison; this module takes scalar thresh and maxval.
     """
 
     def __init__(

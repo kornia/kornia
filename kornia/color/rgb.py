@@ -166,8 +166,12 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     background color is provided, it defaults to a white background.
 
     Convention:
-        Alpha-composites RGBA over white by default. background_color supplies an RGB color in
-        the same units as the image.
+        Expects unit-range float RGBA with alpha in [0, 1]; the default background is white (1.0)
+        and background_color is a unit-range RGB color.
+
+    .. warning::
+        A rank-3 input with background_color returns a rank-4 result
+        (`#5323 <https://github.com/kornia/kornia/issues/5323>`_).
 
     Args:
         image: The RGBA image to be converted, with shape :math:`(*,4,H,W)`.
@@ -253,6 +257,10 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
         Converts nonlinear unit-range sRGB to linear RGB channelwise. It is the companion of
         linear_rgb_to_rgb and the required preparation for rgb_to_xyz.
 
+    .. warning::
+        Inputs below -0.055 have NaN gradients
+        (`#5324 <https://github.com/kornia/kornia/issues/5324>`_).
+
     Args:
         image: sRGB Image to be converted to linear RGB of shape :math:`(*,3,H,W)`.
 
@@ -310,7 +318,7 @@ def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
     r"""Convert surface normals to RGB [0, 255] for visualization purposes.
 
     Convention:
-        Maps normal components from [-1, 1] to RGB255 channels [0, 255].
+        Maps normal components from [-1, 1] to RGB255 channels [0, 255], clamping the result.
 
     Args:
         image: surface normals to be converted to RGB with quantization of shape :math:`(*,3,H,W)`.

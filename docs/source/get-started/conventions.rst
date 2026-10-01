@@ -332,7 +332,7 @@ channel units; converted data is not generally a unit-range RGB image.
      - Linear RGB; :func:`kornia.color.rgb_to_xyz` does not remove the sRGB transfer function
    * - Lab and Luv
      - L*, a*, b* or L*, u*, v*, with L* on the 0–100 scale
-     - Nonlinear sRGB, linearized internally using D65 reference white
+     - Nonlinear sRGB, linearized internally; D65 / 2° reference white
    * - YCbCr
      - Y, Cb, Cr; chroma is offset by 0.5
      - RGB in unit range
@@ -345,8 +345,6 @@ transfer encoding. :func:`kornia.color.lab_to_rgb` clips its final RGB output un
 :func:`kornia.color.luv_to_rgb` does not clip its output. :func:`kornia.color.ycbcr_to_rgb`
 clips its final RGB output to the unit range.
 
-:func:`kornia.color.grayscale_to_rgb` returns an expanded view: writing a channel also writes the
-input and the other channels. Clone the result when independent channel storage is needed.
 See the individual :doc:`color conversion pages </color.conversions>` for RAW mosaic layouts,
 chroma subsampling, and known defects.
 
@@ -358,13 +356,17 @@ Enhancement
 - :func:`kornia.enhance.adjust_brightness` adds its factor, while
   :func:`kornia.enhance.adjust_brightness_accumulative` multiplies by it.
   :func:`kornia.enhance.adjust_contrast` multiplies pixel values; the mean-subtraction variant
-  adjusts contrast around an image mean. These choices determine how to port existing adjustments.
-- :func:`kornia.enhance.adjust_hue` and :func:`kornia.enhance.adjust_hue_raw` take radians;
-  the raw hue and saturation helpers operate on HSV data.
+  adjusts contrast around an image mean. torchvision and PIL brightness, contrast and saturation
+  correspond to the ``_accumulative``, ``_with_mean_subtraction`` and ``_with_gray_subtraction``
+  variants.
+- :func:`kornia.enhance.adjust_hue` and :func:`kornia.enhance.adjust_hue_raw` take radians
+  (torchvision's ``hue_factor`` is ``factor / (2 * pi)``); the raw hue and saturation helpers
+  operate on HSV data.
 - :func:`kornia.enhance.normalize` and :func:`kornia.enhance.denormalize` use channel axis 1
-  in ``(B, C, ...)``. :func:`kornia.enhance.normalize_min_max` rescales each channel independently.
-  ``denormalize`` currently rejects some channel-vector statistics outside rank 4; see
-  `#5318 <https://github.com/kornia/kornia/issues/5318>`_ for the ``(1, C)`` workaround.
+  in ``(B, C, ...)``. :func:`kornia.enhance.normalize_min_max` takes ``(*, C, H, W)`` and rescales
+  each ``H x W`` plane independently. Outside rank 4, ``denormalize`` checks ``(C,)`` statistics
+  against the wrong axis; pass ``(1, C)``
+  (`#5318 <https://github.com/kornia/kornia/issues/5318>`_).
 - :func:`kornia.enhance.integral_image` sums inclusively over the last two axes. The returned
   image has the input shape, without an extra zero border.
 - :class:`kornia.enhance.ZCAWhitening` uses ``dim`` as the sample axis and flattens all other

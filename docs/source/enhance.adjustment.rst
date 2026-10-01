@@ -3,9 +3,9 @@ Adjustment
 
 .. currentmodule:: kornia.enhance
 
-Adjustment functions use RGB channels in the third-from-last dimension. Functions
-whose name ends in ``_raw`` instead take the converted color representation;
-their paired RGB functions perform that conversion.
+Hue and saturation adjustments and :func:`shift_rgb` take RGB channels at axis -3; the other
+adjustments are elementwise and accept any channel count. Functions whose name ends in ``_raw``
+take HSV instead; their RGB counterparts perform that conversion.
 
 Functions
 ---------
@@ -28,6 +28,7 @@ Functions
 .. autofunction:: sharpness
 .. autofunction:: shift_rgb
 .. autofunction:: solarize
+.. autofunction:: threshold
 
 Modules
 -------
@@ -44,3 +45,5 @@ Modules
 .. autoclass:: AdjustLog
 .. autoclass:: AddWeighted
 .. autoclass:: Invert
+.. autoclass:: Threshold
+.. autoclass:: ThresholdType

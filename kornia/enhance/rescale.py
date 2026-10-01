@@ -26,7 +26,7 @@ class Rescale(nn.Module):
 
     Convention:
         factor is a scalar float or 0-D tensor and multiplies every element;
-        it is stored as a module buffer so module device moves apply to it.
+        it is stored as a module buffer, so ``.to()`` device and dtype moves apply to it.
 
     Args:
         factor: The scaling factor. Could be a float or a 0-d torch.Tensor.

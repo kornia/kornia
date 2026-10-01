@@ -25,11 +25,13 @@ from testing.base import BaseTester
 
 
 class TestEnhanceConventions(BaseTester):
-    def test_convention_add_weighted_tensor_coefficients_are_exact_shape(self, device, dtype):
+    @pytest.mark.xfail(strict=True, reason="#5325: 0-d tensor coefficients are rejected")
+    def test_wart_add_weighted_scalar_tensor_coefficient_5325(self, device, dtype):
         src = torch.arange(6, device=device, dtype=dtype).reshape(2, 3)
-        alpha = torch.ones(1, 3, device=device, dtype=dtype)
-        with pytest.raises(BaseError):
-            kornia.enhance.add_weighted(src, alpha, src, 1.0, 0.0)
+        alpha = torch.tensor(0.5, device=device, dtype=dtype)
+        self.assert_close(
+            kornia.enhance.add_weighted(src, alpha, src, 1.0, 0.0), kornia.enhance.add_weighted(src, 0.5, src, 1.0, 0.0)
+        )
 
     def test_convention_normalize_channel_axis_is_one(self, device, dtype):
         data = torch.tensor([[[1.0], [4.0]], [[2.0], [8.0]]], device=device, dtype=dtype)
@@ -67,12 +69,14 @@ class TestEnhanceConventions(BaseTester):
         self.assert_close(kornia.enhance.denormalize(normalized, mean, std), data)
 
     def test_convention_image_histogram_triangular_range(self, device, dtype):
-        image = torch.tensor([[0.25, 1.25]], device=device, dtype=dtype)
+        # Centers are 0.25 and 0.75; 1.1 lies outside [0, 1] and keeps its triangular weight
+        # 1 - 0.35 / 0.5 = 0.3 for the 0.75 bin instead of being clipped to 1.0 (weight 0.5) or dropped.
+        image = torch.tensor([[0.25, 1.1]], device=device, dtype=dtype)
         hist, pdf = kornia.enhance.image_histogram2d(
             image, min=0.0, max=1.0, n_bins=2, bandwidth=0.5, kernel="triangular", return_pdf=True
         )
-        self.assert_close(hist, torch.tensor([1.0, 0.0], device=device, dtype=dtype))
-        self.assert_close(pdf, torch.tensor([1.0, 0.0], device=device, dtype=dtype))
+        self.assert_close(hist, torch.tensor([1.0, 0.3], device=device, dtype=dtype))
+        self.assert_close(pdf, torch.tensor([1.0, 0.3], device=device, dtype=dtype) / 1.3)
 
     def test_convention_image_histogram_automatic_centers_follow_bandwidth(self, device, dtype):
         image = torch.tensor([[0.125]], device=device, dtype=dtype)
@@ -86,6 +90,8 @@ class TestEnhanceConventions(BaseTester):
         image = torch.zeros(1, 3, 16, 17, device=device, dtype=dtype)
         with pytest.raises(ShapeError):
             kornia.enhance.jpeg_codec_differentiable(image, torch.tensor(50.0, device=device, dtype=dtype))
+        quality = torch.tensor([50.0], device=device, dtype=dtype)
+        assert kornia.enhance.jpeg_codec_differentiable(image[0], quality).shape == (3, 16, 17)
 
     def test_convention_brightness_is_additive_and_optionally_clipped(self, device, dtype):
         image = torch.tensor([[[[0.25, 0.75]]]], device=device, dtype=dtype)
@@ -99,9 +105,10 @@ class TestEnhanceConventions(BaseTester):
         self.assert_close(kornia.enhance.adjust_brightness_accumulative(image, 0.5, clip_output=False), image * 0.5)
 
     def test_convention_gamma_applies_gain_then_clamps(self, device, dtype):
+        # gain * x ** gamma = 2 * (0.0625, 0.5625) = (0.125, 1.125), then clamped to 1.
         image = torch.tensor([[[[0.25, 0.75]]]], device=device, dtype=dtype)
-        expected = torch.tensor([[[[0.5, 1.0]]]], device=device, dtype=dtype)
-        self.assert_close(kornia.enhance.adjust_gamma(image, gamma=1.0, gain=2.0), expected)
+        expected = torch.tensor([[[[0.125, 1.0]]]], device=device, dtype=dtype)
+        self.assert_close(kornia.enhance.adjust_gamma(image, gamma=2.0, gain=2.0), expected)
 
     def test_convention_hue_raw_wraps_and_preserves_saturation_value(self, device, dtype):
         hsv = torch.tensor([[[[6.0]], [[0.25]], [[0.75]]]], device=device, dtype=dtype)
@@ -110,16 +117,17 @@ class TestEnhanceConventions(BaseTester):
         self.assert_close(result[0, 0, 0, 0], expected_hue)
         self.assert_close(result[:, 1:], hsv[:, 1:])
 
-    def test_convention_hue_raw_keeps_negative_remainder(self, device, dtype):
+    @pytest.mark.xfail(strict=True, reason="#5326: negative hue sums are not wrapped into [0, 2*pi)")
+    def test_wart_hue_raw_wraps_negative_sum_5326(self, device, dtype):
         hsv = torch.tensor([[[[0.2]], [[0.25]], [[0.75]]]], device=device, dtype=dtype)
         result = kornia.enhance.adjust_hue_raw(hsv, -1.0)
-        # Expected from torch.fmod(0.2 - 1.0, 2*pi), Kornia's signed hue remainder.
-        self.assert_close(result[0, 0, 0, 0], torch.tensor(-0.8, device=device, dtype=dtype))
+        self.assert_close(result[0, 0, 0, 0], torch.tensor(2 * torch.pi - 0.8, device=device, dtype=dtype))
 
     def test_convention_saturation_raw_only_clamps_saturation(self, device, dtype):
-        hsv = torch.tensor([[[[0.2]], [[0.8]], [[0.6]]]], device=device, dtype=dtype)
+        # Hue 4.0 is outside [0, 1], so clamping every channel would change it.
+        hsv = torch.tensor([[[[4.0]], [[0.8]], [[0.6]]]], device=device, dtype=dtype)
         result = kornia.enhance.adjust_saturation_raw(hsv, 2.0)
-        expected = torch.tensor([[[[0.2]], [[1.0]], [[0.6]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[4.0]], [[1.0]], [[0.6]]]], device=device, dtype=dtype)
         self.assert_close(result, expected)
 
     def test_convention_shift_rgb_uses_per_batch_rgb_shifts_and_clamps(self, device, dtype):
@@ -136,8 +144,8 @@ class TestEnhanceConventions(BaseTester):
 
     def test_convention_integral_uses_requested_axes(self, device, dtype):
         data = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], device=device, dtype=dtype)
-        expected = torch.tensor([[1.0, 3.0, 6.0], [4.0, 9.0, 15.0]], device=device, dtype=dtype)
-        self.assert_close(kornia.enhance.integral_tensor(data, (1,)), expected)
+        expected = torch.tensor([[1.0, 2.0, 3.0], [5.0, 7.0, 9.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.enhance.integral_tensor(data, (0,)), expected)
 
     def test_convention_threshold_modes_use_strict_comparison(self, device, dtype):
         data = torch.tensor([[0.5, 0.6]], device=device, dtype=dtype)
@@ -163,7 +171,8 @@ class TestEnhanceConventions(BaseTester):
     def test_wart_zca_fitted_state_round_trips_5312(self, device, dtype):
         data = torch.tensor([[1.0, 2.0], [2.0, 0.0], [3.0, 1.0]], device=device, dtype=dtype)
         fitted = kornia.enhance.ZCAWhitening(compute_inv=True).fit(data)
-        restored = kornia.enhance.ZCAWhitening(compute_inv=True)
+        # Fit the target on other data first, so a fix that registers buffers in fit() can load into it.
+        restored = kornia.enhance.ZCAWhitening(compute_inv=True).fit(data.flip(0) * 2.0)
         restored.load_state_dict(fitted.state_dict())
         self.assert_close(restored(data), fitted(data), low_tolerance=True)
 
@@ -178,33 +187,58 @@ class TestEnhanceConventions(BaseTester):
     def test_wart_zca_unbiased_singleton_is_finite_5313(self, device, dtype):
         try:
             output = kornia.enhance.zca_whiten(torch.ones(1, 2, device=device, dtype=dtype), unbiased=True)
-        except ValueError:
+        except (ValueError, BaseError):
             return
         assert torch.isfinite(output).all()
 
     @pytest.mark.xfail(strict=True, reason="#5314: duplicate integral axes are silently applied twice")
     def test_wart_integral_duplicate_axis_is_rejected_5314(self, device, dtype):
         data = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
-        with pytest.raises(ValueError):
+        with pytest.raises((ValueError, BaseError)):
             kornia.enhance.integral_tensor(data, (1, -1))
 
     @pytest.mark.xfail(strict=True, reason="#5315: zero KDE bandwidth produces NaNs")
     def test_wart_histogram_zero_bandwidth_is_rejected_5315(self, device, dtype):
         values = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
         bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
-        with pytest.raises(ValueError):
+        with pytest.raises((ValueError, BaseError)):
             kornia.enhance.histogram(values, bins, torch.tensor(0.0, device=device, dtype=dtype))
 
     @pytest.mark.xfail(strict=True, reason="#5315: zero image-histogram range produces NaNs")
     def test_wart_image_histogram_empty_range_is_rejected_5315(self, device, dtype):
-        with pytest.raises(ValueError):
+        with pytest.raises((ValueError, BaseError)):
             kornia.enhance.image_histogram2d(torch.ones(2, 2, device=device, dtype=dtype), min=0.0, max=0.0)
 
     @pytest.mark.xfail(strict=True, reason="#5316: image histogram does not validate documented ranks")
-    @pytest.mark.parametrize("shape", [(1,), (1, 1, 1, 1, 1)])
-    def test_wart_image_histogram_rank_is_rejected_5316(self, shape, device, dtype):
-        with pytest.raises(ValueError):
-            kornia.enhance.image_histogram2d(torch.ones(*shape, device=device, dtype=dtype))
+    def test_wart_image_histogram_rank1_is_rejected_5316(self, device, dtype):
+        with pytest.raises((ValueError, BaseError)):
+            kornia.enhance.image_histogram2d(torch.ones(4, device=device, dtype=dtype))
+
+    @pytest.mark.xfail(strict=True, reason="#5316: rank-5 image histogram fails inside the computation")
+    def test_wart_image_histogram_rank5_is_rejected_or_supported_5316(self, device, dtype):
+        # Either fix direction in #5316 flips this pin: a kornia error, or a (1, 1, 1, n_bins) result.
+        try:
+            hist, _ = kornia.enhance.image_histogram2d(torch.ones(1, 1, 1, 2, 3, device=device, dtype=dtype), n_bins=2)
+        except (ValueError, BaseError):
+            return
+        assert hist.shape == (1, 1, 1, 2)
+
+    @pytest.mark.xfail(strict=True, reason="#5327: rank-5 input receives the shifts along the wrong axis")
+    def test_wart_shift_rgb_rank5_is_rejected_or_per_batch_5327(self, device, dtype):
+        image = torch.zeros(2, 2, 3, 1, 1, device=device, dtype=dtype)
+        shifts = torch.tensor([0.1, 0.2], device=device, dtype=dtype), torch.zeros(2, device=device, dtype=dtype)
+        try:
+            out = kornia.enhance.shift_rgb(image, shifts[0], shifts[1], shifts[1])
+        except (ValueError, BaseError):
+            return
+        expected = torch.tensor([0.1, 0.1, 0.2, 0.2], device=device, dtype=dtype)
+        self.assert_close(out[:, :, 0].flatten(), expected)
+
+    def test_convention_normalize_min_max_rescales_each_spatial_plane(self, device, dtype):
+        # (B, C, D, H, W): every depth slice is its own (H, W) plane, so each one spans [0, 1].
+        data = torch.tensor([[[[[0.0, 1.0]], [[0.0, 10.0]]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[[0.0, 1.0]], [[0.0, 1.0]]]]], device=device, dtype=dtype)
+        self.assert_close(kornia.enhance.normalize_min_max(data), expected, low_tolerance=True)
 
     @pytest.mark.xfail(strict=True, reason="#5220: equalize differs from float32 reference for float16 input")
     @pytest.mark.device_agnostic

@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -37,14 +38,13 @@ class TestColorConventions(BaseTester):
         self.assert_close(kornia.color.hls_to_rgb(hls), image)
 
     def test_convention_xyz_uses_linear_rgb(self, device, dtype):
-        # rgb_to_xyz is a matrix transform; sRGB transfer conversion is an explicit prior step.
+        # rgb_to_xyz applies the matrix directly, without sRGB decoding: a 0.5 gray maps to 0.5 times the
+        # row sums of the D65 matrix (0.950456, 1.0, 1.088754), not to the decoded 0.214 times them.
         srgb = torch.full((1, 3, 1, 1), 0.5, device=device, dtype=dtype)
 
-        direct = kornia.color.rgb_to_xyz(srgb)
-        linear = kornia.color.rgb_to_xyz(kornia.color.rgb_to_linear_rgb(srgb))
-
-        assert not torch.allclose(direct, linear)
-        self.assert_close(kornia.color.xyz_to_rgb(linear), kornia.color.rgb_to_linear_rgb(srgb))
+        expected = torch.tensor([0.475228, 0.5, 0.544377], device=device, dtype=dtype).view(1, 3, 1, 1)
+        self.assert_close(kornia.color.rgb_to_xyz(srgb), expected)
+        self.assert_close(kornia.color.xyz_to_rgb(expected), srgb)
 
     def test_convention_xyz_linear_rgb_matrix(self, device, dtype):
         image = torch.tensor([[[[1.0]], [[0.0]], [[0.0]]]], device=device, dtype=dtype)
@@ -54,13 +54,17 @@ class TestColorConventions(BaseTester):
         expected = torch.tensor([[[[0.412453]], [[0.212671]], [[0.019334]]]], device=device, dtype=dtype)
         self.assert_close(xyz, expected)
 
-    def test_convention_grayscale_to_rgb_is_expanded_view(self, device, dtype):
+    @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5321")
+    def test_wart_grayscale_to_rgb_5321_does_not_alias_input(self, device, dtype):
         image = torch.tensor([[[[0.2, 0.7]]]], device=device, dtype=dtype)
+        before = image.clone()
 
         rgb = kornia.color.grayscale_to_rgb(image)
-
         assert rgb.shape == (1, 3, 1, 2)
-        assert rgb.untyped_storage().data_ptr() == image.untyped_storage().data_ptr()
+        rgb[:, 0] = 0.9
+
+        self.assert_close(image, before)
+        self.assert_close(rgb[:, 1:], before.expand(1, 2, 1, 2))
 
     def test_convention_rgba_composites_over_white(self, device, dtype):
         rgba = torch.tensor([[[[0.2]], [[0.4]], [[0.6]], [[0.25]]]], device=device, dtype=dtype)
@@ -112,32 +116,41 @@ class TestColorConventions(BaseTester):
         raw_bg = kornia.color.rgb_to_raw(image, kornia.color.CFA.BG)
         flipped_gb = kornia.color.rgb_to_raw(image.flip(-1), kornia.color.CFA.GB).flip(-1)
 
+        # CFA.BG is an RGGB sensor: red at (0, 0), blue at (1, 1).
+        expected = torch.tensor([[[[1.0, 20.0, 3.0, 40.0], [50.0, 600.0, 70.0, 800.0]]]], device=device, dtype=dtype)
+        self.assert_close(raw_bg, expected)
         self.assert_close(flipped_gb, raw_bg)
 
-    def test_convention_sepia_rescale_is_per_channel_spatial(self, device, dtype):
-        image = torch.tensor([[[[1.0, 0.0]], [[0.0, 1.0]], [[0.0, 0.0]]]], device=device, dtype=dtype)
+    @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5322")
+    def test_wart_sepia_5322_default_keeps_tint(self, device, dtype):
+        # The sepia matrix maps gray 0.5 to (0.6755, 0.6015, 0.4685), so blue is about 0.69 of red;
+        # per-channel rescaling brings every channel to about 1.
+        image = torch.full((1, 3, 1, 1), 0.5, device=device, dtype=dtype)
 
-        rescaled = kornia.color.sepia_from_rgb(image, rescale=True)
+        out = kornia.color.Sepia()(image).flatten()
 
-        self.assert_close(rescaled.amax(dim=(-2, -1)), torch.ones((1, 3), device=device, dtype=dtype))
+        assert out[2] < 0.9 * out[0]
 
     def test_convention_rgb255_scaling_clipping_and_normalization(self, device, dtype):
         # Expected values follow the documented affine maps in rgb.py.
         rgb = torch.tensor([[[[-1.0]], [[0.5]], [[2.0]]]], device=device, dtype=dtype)
         encoded = kornia.color.rgb_to_rgb255(rgb)
-        white = torch.full((1, 3, 1, 1), 255.0, device=device, dtype=dtype)
+        red = torch.tensor([[[[255.0]], [[0.0]], [[0.0]]]], device=device, dtype=dtype)
 
         self.assert_close(encoded, torch.tensor([[[[0.0]], [[127.5]], [[255.0]]]], device=device, dtype=dtype))
-        self.assert_close(kornia.color.rgb255_to_normals(white), torch.full_like(white, 1.0 / math.sqrt(3.0)))
+        # (255, 0, 0) maps to (1, -1, -1) in [-1, 1], then to unit length.
+        expected = torch.tensor([1.0, -1.0, -1.0], device=device, dtype=dtype).view(1, 3, 1, 1) / math.sqrt(3.0)
+        self.assert_close(kornia.color.rgb255_to_normals(red), expected)
 
     def test_convention_ycbcr_to_rgb_clips_output(self, device, dtype):
-        # Out-of-gamut YCbCr is clipped after conversion by ycbcr_to_rgb.
-        ycbcr = torch.tensor([[[[0.0]], [[0.0]], [[0.0]]]], device=device, dtype=dtype)
+        # Out-of-gamut YCbCr is clipped after conversion: (0, 0, 0) undershoots red and blue below 0,
+        # and (1, 1, 1) overshoots them above 1 (unclipped red is 1 + 1.403 * 0.5).
+        ycbcr = torch.tensor([[[[0.0, 1.0]], [[0.0, 1.0]], [[0.0, 1.0]]]], device=device, dtype=dtype)
 
         rgb = kornia.color.ycbcr_to_rgb(ycbcr)
 
-        assert (rgb >= 0).all()
-        assert (rgb <= 1).all()
+        self.assert_close(rgb[:, [0, 2], 0, 0], torch.zeros(1, 2, device=device, dtype=dtype))
+        self.assert_close(rgb[:, [0, 2], 0, 1], torch.ones(1, 2, device=device, dtype=dtype))
 
     def test_convention_yuv420_plane_layout(self, device, dtype):
         image = torch.tensor(
@@ -171,14 +184,15 @@ class TestColorConventions(BaseTester):
         self.assert_close(image, before)
 
     @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5305")
-    def test_wart_apply_colormap_5305_does_not_mutate_rank4_values_or_leaf(self, device, dtype):
-        image = torch.tensor([[[[0.0, 255.0]]]], device=device, dtype=dtype)
+    def test_wart_apply_colormap_5305_does_not_mutate_float32_values_or_leaf(self, device):
+        # float32 is the dtype whose .float() returns the input itself, so the in-place division reaches it.
+        image = torch.tensor([[[[0.0, 255.0]]]], device=device, dtype=torch.float32)
         before = image.clone()
-        colormap = kornia.color.ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
+        colormap = kornia.color.ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], device=device)
 
         kornia.color.apply_colormap(image, colormap)
         self.assert_close(image, before)
-        leaf = torch.full((1, 1, 1), 0.5, device=device, dtype=dtype, requires_grad=True)
+        leaf = torch.full((1, 1, 1, 1), 0.5, device=device, dtype=torch.float32, requires_grad=True)
         kornia.color.apply_colormap(leaf, colormap)
 
     @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5306")
@@ -225,8 +239,8 @@ class TestColorConventions(BaseTester):
 
         output = module(torch.ones((1, 1, 2, 3), device=device, dtype=torch.float16))
 
-        assert module.colormap.colors.dtype == torch.float16
         assert output.dtype == torch.float16
+        assert len(module.state_dict()) > 0
 
     @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5309")
     def test_wart_rgb_to_hsv_5309_module_default_matches_function(self, device, dtype):
@@ -238,5 +252,19 @@ class TestColorConventions(BaseTester):
     def test_wart_rgb_to_raw_5310_rejects_invalid_cfa(self, device, dtype):
         image = torch.arange(18, device=device, dtype=dtype).reshape(1, 3, 2, 3)
 
-        with pytest.raises((TypeError, ValueError)):
+        with pytest.raises((TypeError, ValueError, BaseError)):
             kornia.color.rgb_to_raw(image, "invalid")  # type: ignore[arg-type]
+
+    @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5323")
+    def test_wart_rgba_to_rgb_5323_rank3_background_keeps_rank(self, device, dtype):
+        rgba = torch.rand(4, 2, 2, device=device, dtype=dtype)
+
+        assert kornia.color.rgba_to_rgb(rgba, (0.0, 0.0, 1.0)).shape == (3, 2, 2)
+
+    @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5324")
+    def test_wart_rgb_to_linear_rgb_5324_gradient_below_minus_0_055_is_finite(self, device, dtype):
+        image = torch.full((1, 3, 1, 1), -0.1, device=device, dtype=dtype, requires_grad=True)
+
+        kornia.color.rgb_to_linear_rgb(image).sum().backward()
+
+        assert torch.isfinite(image.grad).all()

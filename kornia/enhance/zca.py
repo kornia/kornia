@@ -36,10 +36,10 @@ class ZCAWhitening(nn.Module):
 
     .. warning::
         inverse_transform is incorrect when the sample axis is not zero
-        (`#5311 <https://github.com/kornia/kornia/issues/5311>`_), fitted
-        transforms are not restored reliably from serialized state
-        (`#5312 <https://github.com/kornia/kornia/issues/5312>`_), and an
-        unbiased one-sample fit divides by zero
+        (`#5311 <https://github.com/kornia/kornia/issues/5311>`_); fitted
+        tensors are absent from ``state_dict`` and do not follow ``.to()`` dtype or device moves
+        (`#5312 <https://github.com/kornia/kornia/issues/5312>`_); and an
+        unbiased one-sample fit returns NaN without an error
         (`#5313 <https://github.com/kornia/kornia/issues/5313>`_).
 
     The data torch.Tensor is flattened, and the mean :math:`\mathbf{\mu}`
@@ -192,7 +192,6 @@ def zca_mean(
 
     Convention:
         See :class:`ZCAWhitening`: dim selects samples and all other axes form features.
-        The returned matrix acts on row vectors at the right.
 
     The output can be used with :func:`linear_transform`. See :class:`ZCAWhitening` for details.
 

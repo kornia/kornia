@@ -60,9 +60,9 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     for simplicity reasons
 
     Convention:
-        Input is a single-channel Bayer mosaic at axis -3. cfa names follow OpenCV: its two
-        letters describe the 2x2 pattern from the second pixel in each direction. Height and width
-        must be even.
+        Input is a single-channel Bayer mosaic at axis -3. cfa uses OpenCV's Bayer names, which
+        read the pattern from pixel (1, 1): CFA.BG, GB, RG and GR are sensors whose top-left 2x2
+        cell is RGGB, GRBG, BGGR and GBRG. Height and width must be even.
 
     Args:
         image: raw image to be converted to RGB with shape :math:`(*,1,H,W)`.

@@ -391,8 +391,8 @@ def equalize_clahe(
     r"""Apply clahe equalization on the input tensor.
 
     Convention:
-        Expects values in [0, 1], partitions the final height and width axes
-        into grid_size=(grid_height, grid_width), and returns the input shape.
+        Expects values in [0, 1], splits the final two axes into grid_size[0] tiles along H and
+        grid_size[1] tiles along W, and returns the input shape.
         See :func:`equalize` for global equalization.
 
     .. image:: _static/img/equalize_clahe.png

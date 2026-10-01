@@ -44,7 +44,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         reference white.
 
     .. warning::
-        Float16 black pixels can produce NaN values: `#5308 <https://github.com/kornia/kornia/issues/5308>`_.
+        Float16 black pixels give NaN u*, v* and gradients: `#5308 <https://github.com/kornia/kornia/issues/5308>`_.
 
     Args:
         image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
@@ -102,7 +102,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         is nonlinear sRGB.
 
     .. warning::
-        Black float16 input and its gradients can be nonfinite with the default epsilon:
+        Black float16 input gives NaN output and gradients with the default epsilon:
         `#5308 <https://github.com/kornia/kornia/issues/5308>`_.
 
     Args:

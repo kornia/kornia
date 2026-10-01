@@ -116,7 +116,7 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
 
     Args:
         x: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
-        bins: The number of bins to use the histogram :math:`(N_{bins})`.
+        bins: The bin centers, with shape :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability.
 
@@ -148,9 +148,9 @@ def histogram2d(
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x1: Input torch.Tensor to compute the histogram with shape :math:`(B, D1)`.
-        x2: Input torch.Tensor to compute the histogram with shape :math:`(B, D2)`.
-        bins: The number of bins to use the histogram :math:`(N_{bins})`.
+        x1: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
+        x2: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
+        bins: The bin centers, with shape :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability. Default: 1e-10.
 
@@ -204,10 +204,10 @@ def image_histogram2d(
         clipped into an endpoint bin.
 
     .. warning::
-        Inputs outside the documented 2-D, 3-D, or 4-D ranks are not rejected
-        consistently (`#5316 <https://github.com/kornia/kornia/issues/5316>`_).
-        An empty range with automatic bandwidth, or an explicit zero bandwidth, can
-        produce NaNs (`#5315 <https://github.com/kornia/kornia/issues/5315>`_).
+        Rank-1 input returns spurious batch and channel axes, and rank-5 input fails inside the
+        computation (`#5316 <https://github.com/kornia/kornia/issues/5316>`_). An empty range with
+        automatic bandwidth or a zero bandwidth gives NaNs, and bandwidth=-1 is used as a negative
+        bandwidth rather than the automatic one (`#5315 <https://github.com/kornia/kornia/issues/5315>`_).
 
     The calculation uses triangular kernel density estimation.
 

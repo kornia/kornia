@@ -86,8 +86,8 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     items 2.5 and 2.6).
 
     Convention:
-        Returns (Y, UV): Y has shape (*, 1, H, W) and interleaved U,V has shape
-        (*, 2, H/2, W/2). Height and width must be even.
+        Returns (Y, UV): Y has shape (*, 1, H, W) and UV holds the U and V planes as two
+        channels, (*, 2, H/2, W/2). Height and width must be even.
 
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
@@ -137,8 +137,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     items 2.5 and 2.6).
 
     Convention:
-        Returns (Y, UV): Y has shape (*, 1, H, W) and interleaved U,V has shape
-        (*, 2, H, W/2). Width must be even.
+        Returns (Y, UV): Y has shape (*, 1, H, W) and UV holds the U and V planes as two
+        channels, (*, 2, H, W/2). Width must be even.
 
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
@@ -232,7 +232,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     items 2.5 and 2.6).
 
     Convention:
-        Expects Y and interleaved UV tensors returned by rgb_to_yuv420. UV is upsampled by
+        Expects the Y and two-plane UV tensors returned by rgb_to_yuv420. UV is upsampled by
         nearest-neighbor replication.
 
     Args:
@@ -287,7 +287,7 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     items 2.5 and 2.6).
 
     Convention:
-        Expects Y and interleaved UV tensors returned by rgb_to_yuv422. UV is upsampled along
+        Expects the Y and two-plane UV tensors returned by rgb_to_yuv422. UV is upsampled along
         width by nearest-neighbor replication.
 
     Args:

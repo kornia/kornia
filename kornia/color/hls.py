@@ -33,7 +33,7 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     Convention:
         Channels are H, L, S at axis -3. Hue is measured in radians in [0, 2π), unlike
-        OpenCV 8-bit HLS hue. eps only biases nonzero denominators.
+        OpenCV, which uses degrees (halved for 8-bit images).
 
     NOTE: this method cannot be compiled with JIT in pytohrch < 1.7.0
 
