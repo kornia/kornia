@@ -225,6 +225,7 @@ select = [
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
+  "SIM910",  # dict-get-with-none-default
   "SLOT",  # flake8-slots
   "T10",  # flake8-debugger
   "TID",  # flake8-tidy-imports
