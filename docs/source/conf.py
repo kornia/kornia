@@ -524,7 +524,7 @@ texinfo_documents = [
 # Cross-references into the Python, NumPy and PyTorch docs. Each project is fetched from its live site first; the copy
 # in _intersphinx/ is used only when that fetch fails, so an outage of one of those sites does not fail the -W build.
 # The links still point at the live site. Refresh a copy with
-# `curl -sSLo docs/source/_intersphinx/<name>.inv <site>objects.inv`.
+# `curl -fsSLo docs/source/_intersphinx/<name>.inv <site>objects.inv`.
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", (None, "_intersphinx/python.inv")),
     "numpy": ("https://numpy.org/doc/stable/", (None, "_intersphinx/numpy.inv")),
