@@ -1651,7 +1651,7 @@ _KERNEL_SIZE_RULES = [
         "get_laplacian_kernel1d",
         lambda k, d, t: get_laplacian_kernel1d(k, device=d, dtype=t),
         [0, 4],
-        [1, 3],
+        [3],  # 1 is rejected too, as the all-zero kernel, with its own message (#5175)
         "an odd integer bigger than 0",
     ),
     (
