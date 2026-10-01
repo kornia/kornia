@@ -103,6 +103,10 @@ class ColorMap:
     It can be created or selected from the built-in colour map. Please refer to
     the `ColorMapType` enum class to view all available colormaps.
 
+    Convention:
+        colors has shape (3, num_colors) in RGB channel order. Built-in names are case-insensitive;
+        a custom base is an ordered list of RGB triples and is linearly resampled to num_colors.
+
     Args:
         base: A list of RGB colors to define a new custom colormap or the name of a built-in colormap as str or
         using `ColorMapType` class.
@@ -186,18 +190,26 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
 
     .. image:: _static/img/apply_colormap.png
 
+    Convention:
+        Accepts a rank-3 (C, H, W) or rank-4 (B, C, H, W) tensor and returns
+        (B, 3*C, H, W). Each input channel is mapped independently. Unit-range floating inputs
+        and integer inputs in [0, 255] are the intended ranges.
+
+    .. warning::
+        Rank-3 inputs are modified in-place by the internal batch expansion; rank-4 float inputs
+        can also have their values modified, and rank-3 gradient leaves fail before evaluation:
+        `#5305 <https://github.com/kornia/kornia/issues/5305>`_. The current maximum-based
+        heuristic makes scaling depend on every sample in a batch:
+        `#5306 <https://github.com/kornia/kornia/issues/5306>`_. The highest
+        palette color is unreachable for inputs at the top of either documented range:
+        `#5307 <https://github.com/kornia/kornia/issues/5307>`_.
+
     Args:
         input_tensor: the input torch.Tensor of image.
         colormap: the colormap desired to be applied to the input torch.Tensor.
 
     Returns:
-        A RGB torch.Tensor with the applied color map into the input_tensor.
-
-    Raises:
-        ValueError: If `colormap` is not a ColorMap object.
-
-    .. note::
-        The input torch.Tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
+        A tensor with the applied color map.
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])
@@ -263,20 +275,17 @@ class ApplyColorMap(nn.Module):
 
     .. image:: _static/img/ApplyColorMap.png
 
+    See the Convention block on :func:`apply_colormap`.
+
     Args:
-        colormap: Either the name of a built-in colormap or a ColorMap object.
-        num_colors: Number of colors in the colormap. Default is 256.
-        device: The device to put the generated colormap on.
-        dtype: The data type of the generated colormap.
+        colormap: The ColorMap object to apply.
 
     Returns:
-        A RGB torch.Tensor with the applied color map into the input_tensor
+        A tensor with the applied color map.
 
-    Raises:
-        ValueError: If `colormap` is not a ColorMap object.
-
-    .. note::
-        The input torch.Tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
+    .. warning::
+        Calling :meth:`~torch.nn.Module.to` on this module does not move or convert the palette:
+        `#5317 <https://github.com/kornia/kornia/issues/5317>`_.
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])
@@ -310,7 +319,7 @@ class ApplyColorMap(nn.Module):
             input_tensor: The input torch.Tensor representing the grayscale image.
 
         .. note::
-        The input torch.Tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
+            The input torch.Tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
         Returns:
             The output torch.Tensor representing the image with the applied colormap.

@@ -3,6 +3,9 @@ Normalization
 
 .. currentmodule:: kornia.enhance
 
+Normalization treats dimension 0 as batch and dimension 1 as channel. ZCA uses
+its ``dim`` argument as the sample axis and flattens all other axes into features.
+
 Functions
 ---------
 

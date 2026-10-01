@@ -30,6 +30,11 @@ __all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_mi
 class Normalize(nn.Module):
     r"""Normalize a torch.Tensor image with mean and standard deviation.
 
+    Convention:
+        The channel axis is dimension 1: inputs are ``(B, C, *)`` and one statistic
+        per channel has shape (C,) (or (B, C) for separate batch statistics).
+        See :func:`normalize` for the functional contract.
+
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
@@ -40,8 +45,8 @@ class Normalize(nn.Module):
         std: Standard deviations for each channel.
 
     Shape:
-        - Input: Image torch.Tensor of size :math:`(*, C, ...)`.
-        - Output: Normalised torch.Tensor with same size as input :math:`(*, C, ...)`.
+        - Input: Image torch.Tensor of size :math:`(B, C, *)`.
+        - Output: Normalised torch.Tensor with same size as input :math:`(B, C, *)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -113,6 +118,12 @@ class Normalize(nn.Module):
 
 def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
     r"""Normalize an image/video torch.Tensor with mean and standard deviation.
+
+    Convention:
+        This function treats dimension 0 as batch and dimension 1 as channel,
+        then flattens all remaining dimensions. mean and std may be (C,),
+        (1, C), or (B, C); the output has the input shape. Normalize stores the
+        same statistics for repeated calls.
 
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
@@ -191,6 +202,10 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
 class Denormalize(nn.Module):
     r"""Denormalize a torch.Tensor image with mean and standard deviation.
 
+    Convention:
+        See :func:`denormalize`; the inverse uses dimension 1 as channel on
+        ``(B, C, *)`` input, matching :class:`Normalize`.
+
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
@@ -264,6 +279,15 @@ class Denormalize(nn.Module):
 
 def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
     r"""Denormalize an image/video torch.Tensor with mean and standard deviation.
+
+    Convention:
+        This is the elementwise inverse of :func:`normalize` for matching mean and std
+        on ``(B, C, *)`` input.
+
+    .. warning::
+        Outside rank four, a ``(C,)`` mean or std can be checked against the wrong
+        or a missing axis. A ``(1, C)`` workaround succeeds
+        (`#5318 <https://github.com/kornia/kornia/issues/5318>`_).
 
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
@@ -345,6 +369,10 @@ def normalize_min_max(
     input: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6
 ) -> torch.Tensor:
     r"""Normalise an image/video torch.Tensor by MinMax and re-scales the value between a range.
+
+    Convention:
+        Minima and maxima are computed separately for every (B, C) plane, over
+        all remaining dimensions. Constant planes map to min_val.
 
     The data is normalised using the following formulation:
 

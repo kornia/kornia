@@ -23,6 +23,10 @@ from torch import nn
 def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6) -> torch.Tensor:
     r"""Apply the sepia filter to an RGB tensor.
 
+    Convention:
+        Applies the fixed sepia matrix to RGB channels at axis -3. rescale normalizes each output
+        channel by its spatial maximum; disable it to keep the raw matrix response.
+
     Args:
         input: the input tensor with shape :math:`(*, C, H, W)`.
         rescale: if True, rescale the output so the max channel value is 1.
@@ -62,6 +66,8 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
 
 class Sepia(nn.Module):
     r"""Apply the sepia filter to image tensors.
+
+    See the Convention block on :func:`sepia_from_rgb`.
 
     Args:
         rescale: if True, rescale the output so the max channel value is 1.

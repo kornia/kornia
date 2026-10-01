@@ -3,6 +3,10 @@ Adjustment
 
 .. currentmodule:: kornia.enhance
 
+Adjustment functions use RGB channels in the third-from-last dimension. Functions
+whose name ends in ``_raw`` instead take the converted color representation;
+their paired RGB functions perform that conversion.
+
 Functions
 ---------
 

@@ -41,6 +41,10 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    Convention:
+        Uses channels Y, U, V at axis -3. RGB inputs are unit-range; U and V are signed
+        chroma components centered at zero.
+
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
@@ -80,6 +84,10 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     The YUV model adopted here follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    Convention:
+        Returns (Y, UV): Y has shape (*, 1, H, W) and interleaved U,V has shape
+        (*, 2, H/2, W/2). Height and width must be even.
 
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
@@ -128,6 +136,10 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    Convention:
+        Returns (Y, UV): Y has shape (*, 1, H, W) and interleaved U,V has shape
+        (*, 2, H, W/2). Width must be even.
+
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
@@ -165,6 +177,10 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     This is the exact inverse of :func:`~kornia.color.rgb_to_yuv`: its kernel is that function's
     kernel inverted rather than a separately rounded copy of the published inverse relations, so
     an RGB -> YUV -> RGB round trip is limited only by the precision of the input dtype.
+
+    Convention:
+        Expects Y, U, V at axis -3 in the unit-range/signed-chroma representation from
+        rgb_to_yuv.
 
     Args:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -214,6 +230,10 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    Convention:
+        Expects Y and interleaved UV tensors returned by rgb_to_yuv420. UV is upsampled by
+        nearest-neighbor replication.
 
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
@@ -266,6 +286,10 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    Convention:
+        Expects Y and interleaved UV tensors returned by rgb_to_yuv422. UV is upsampled along
+        width by nearest-neighbor replication.
+
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
         imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
@@ -305,6 +329,8 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
 class RgbToYuv(nn.Module):
     r"""Convert an image from RGB to YUV.
+
+    See the Convention block on :func:`rgb_to_yuv`.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -349,6 +375,8 @@ class RgbToYuv(nn.Module):
 
 class RgbToYuv420(nn.Module):
     r"""Convert an image from RGB to YUV420.
+
+    See the Convention block on :func:`rgb_to_yuv420`.
 
     Width and Height must be evenly divisible by 2.
 
@@ -399,6 +427,8 @@ class RgbToYuv420(nn.Module):
 class RgbToYuv422(nn.Module):
     r"""Convert an image from RGB to YUV422.
 
+    See the Convention block on :func:`rgb_to_yuv422`.
+
     Width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
@@ -448,6 +478,8 @@ class RgbToYuv422(nn.Module):
 class YuvToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
+    See the Convention block on :func:`yuv_to_rgb`.
+
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
 
@@ -492,6 +524,8 @@ class YuvToRgb(nn.Module):
 
 class Yuv420ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
+
+    See the Convention block on :func:`yuv420_to_rgb`.
 
     Width and Height must be evenly divisible by 2.
 
@@ -539,6 +573,8 @@ class Yuv420ToRgb(nn.Module):
 
 class Yuv422ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
+
+    See the Convention block on :func:`yuv422_to_rgb`.
 
     Width must be evenly divisible by 2; height may be odd.
 

@@ -6,8 +6,16 @@ kornia.color
 
 .. currentmodule:: kornia.color
 
-Color space conversions on float image tensors of shape :math:`(*, C, H, W)` with values in :math:`[0, 1]`,
-plus color maps and sepia. Every operation exists as a function and as an ``nn.Module``.
+Color space conversions on tensors with channels at axis -3, plus color maps and sepia.
+Individual operations define their channel order, range, and module-wrapper defaults.
+
+Conventions
+-----------
+
+Kornia uses channel-first color tensors with arbitrary leading dimensions. RGB conversion
+functions generally use unit-range nonlinear sRGB. The linear-RGB functions explicitly apply
+the sRGB transfer curve; XYZ transforms operate on linear RGB. HLS and HSV hue is measured in
+radians. The conversion pages define the remaining color-space channel order and range.
 
 .. note::
    Check a tutorial for color space conversions `here <https://www.kornia.org/tutorials/nbs/hello_world_tutorial.html>`__.

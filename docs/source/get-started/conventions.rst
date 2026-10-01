@@ -309,21 +309,68 @@ Bounding boxes
   ``"bbox_xywh"``. Keypoints are ``"keypoints"``, ``(B, N, 2)`` in
   ``(x, y)``.
 
+.. _color-conventions:
+
 Color
 -----
 
-- ``rgb_to_hsv`` returns hue in **radians** ``[0, 2π)`` — not degrees, not
-  ``[0, 1]``:
+Color-space conversions use channel axis ``-3`` in ``(*, C, H, W)``. The color space determines
+channel units; converted data is not generally a unit-range RGB image.
 
-.. code-block:: python
+.. list-table:: Color channel units
+   :header-rows: 1
+   :widths: 22 42 36
 
-    import torch
-    import kornia
+   * - Space
+     - Channels
+     - Input encoding
+   * - HSV and HLS
+     - Hue in radians; saturation and value or lightness in unit range
+     - Nonlinear RGB in unit range
+   * - XYZ
+     - X, Y, Z
+     - Linear RGB; :func:`kornia.color.rgb_to_xyz` does not remove the sRGB transfer function
+   * - Lab and Luv
+     - L*, a*, b* or L*, u*, v*, with L* on the 0–100 scale
+     - Nonlinear sRGB, linearized internally using D65 reference white
+   * - YCbCr
+     - Y, Cb, Cr; chroma is offset by 0.5
+     - RGB in unit range
+   * - YUV
+     - Y, U, V; chroma is signed
+     - RGB in unit range
 
-    green = torch.zeros(1, 3, 1, 1)
-    green[0, 1] = 1.0
-    hue = kornia.color.rgb_to_hsv(green)[0, 0].item()
-    assert abs(hue - 2.0943951) < 1e-4  # 120 degrees = 2*pi/3 radians
+Use :func:`kornia.color.rgb_to_linear_rgb` and :func:`kornia.color.linear_rgb_to_rgb` to change
+transfer encoding. :func:`kornia.color.lab_to_rgb` clips its final RGB output unless ``clip=False``;
+:func:`kornia.color.luv_to_rgb` does not clip its output. :func:`kornia.color.ycbcr_to_rgb`
+clips its final RGB output to the unit range.
+
+:func:`kornia.color.grayscale_to_rgb` returns an expanded view: writing a channel also writes the
+input and the other channels. Clone the result when independent channel storage is needed.
+See the individual :doc:`color conversion pages </color.conversions>` for RAW mosaic layouts,
+chroma subsampling, and known defects.
+
+.. _enhancement-conventions:
+
+Enhancement
+-----------
+
+- :func:`kornia.enhance.adjust_brightness` adds its factor, while
+  :func:`kornia.enhance.adjust_brightness_accumulative` multiplies by it.
+  :func:`kornia.enhance.adjust_contrast` multiplies pixel values; the mean-subtraction variant
+  adjusts contrast around an image mean. These choices determine how to port existing adjustments.
+- :func:`kornia.enhance.adjust_hue` and :func:`kornia.enhance.adjust_hue_raw` take radians;
+  the raw hue and saturation helpers operate on HSV data.
+- :func:`kornia.enhance.normalize` and :func:`kornia.enhance.denormalize` use channel axis 1
+  in ``(B, C, ...)``. :func:`kornia.enhance.normalize_min_max` rescales each channel independently.
+  ``denormalize`` currently rejects some channel-vector statistics outside rank 4; see
+  `#5318 <https://github.com/kornia/kornia/issues/5318>`_ for the ``(1, C)`` workaround.
+- :func:`kornia.enhance.integral_image` sums inclusively over the last two axes. The returned
+  image has the input shape, without an extra zero border.
+- :class:`kornia.enhance.ZCAWhitening` uses ``dim`` as the sample axis and flattens all other
+  axes into features. ``unbiased=True`` selects the ``N - 1`` covariance denominator.
+
+See the :doc:`enhancement API </enhance>` for clipping, histogram ranges, and known defects.
 
 Augmentations
 -------------

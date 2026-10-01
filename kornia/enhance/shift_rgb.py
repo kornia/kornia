@@ -24,6 +24,10 @@ from kornia.core.check import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR
 def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor, b_shift: torch.Tensor) -> torch.Tensor:
     """Shift rgb channels.
 
+    Convention:
+        Input has shape (B, 3, H, W). One RGB shift per batch element is
+        assembled as (B, 3, 1, 1), then results are clamped to [0, 1].
+
     Shift each image's channel by either r_shift for red, g_shift for green and b_shift for blue channels.
     """
     KORNIA_CHECK_IS_TENSOR(image)

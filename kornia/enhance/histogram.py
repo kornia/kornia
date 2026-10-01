@@ -103,6 +103,15 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
     """Estimate the histogram of the input torch.Tensor.
 
+    Convention:
+        Rows are independent samples: x has shape (B, D), bins is the shared
+        one-dimensional center grid, and the result has shape (B, N_bins).
+        histogram2d uses the same batch convention for a joint density.
+
+    .. warning::
+        A zero bandwidth produces NaNs instead of a validation error
+        (`#5315 <https://github.com/kornia/kornia/issues/5315>`_).
+
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
@@ -131,6 +140,10 @@ def histogram2d(
     x1: torch.Tensor, x2: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10
 ) -> torch.Tensor:
     """Estimate the 2d histogram of the input torch.Tensor.
+
+    Convention:
+        x1 and x2 supply one sample row per batch element and return
+        (B, N_bins, N_bins), where the first bin axis belongs to x1.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -182,6 +195,19 @@ def image_histogram2d(
     eps: float = 1e-10,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Estimate the histogram of the input image(s).
+
+    Convention:
+        Spatial axes are the final two axes; input (H, W), (C, H, W), and
+        (B, C, H, W) return matching leading axes followed by bins. Automatic
+        centers lie at min + (i + 0.5) * bandwidth; values outside the supplied
+        range contribute according to the selected kernel rather than being
+        clipped into an endpoint bin.
+
+    .. warning::
+        Inputs outside the documented 2-D, 3-D, or 4-D ranks are not rejected
+        consistently (`#5316 <https://github.com/kornia/kornia/issues/5316>`_).
+        An empty range with automatic bandwidth, or an explicit zero bandwidth, can
+        produce NaNs (`#5315 <https://github.com/kornia/kornia/issues/5315>`_).
 
     The calculation uses triangular kernel density estimation.
 

@@ -31,6 +31,10 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        Channels are H, L, S at axis -3. Hue is measured in radians in [0, 2π), unlike
+        OpenCV 8-bit HLS hue. eps only biases nonzero denominators.
+
     NOTE: this method cannot be compiled with JIT in pytohrch < 1.7.0
 
     Args:
@@ -118,6 +122,9 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        Expects H, L, S channels at axis -3 with hue in radians.
+
     Args:
         image: HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
@@ -157,6 +164,8 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 class RgbToHls(nn.Module):
     r"""Convert an image from RGB to HLS.
 
+    See the Convention block on :func:`rgb_to_hls`.
+
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
@@ -192,6 +201,8 @@ class RgbToHls(nn.Module):
 
 class HlsToRgb(nn.Module):
     r"""Convert an image from HLS to RGB.
+
+    See the Convention block on :func:`hls_to_rgb`.
 
     The image data is assumed to be in the range of (0, 1).
 

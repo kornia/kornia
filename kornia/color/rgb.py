@@ -31,6 +31,9 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_bgr.png
 
+    Convention:
+        Reverses the three channels at axis -3; leading dimensions are preserved.
+
     Args:
         image: RGB Image to be converted to BGRof of shape :math:`(*,3,H,W)`.
 
@@ -53,6 +56,9 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
 
 def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to RGB.
+
+    Convention:
+        Reverses the three channels at axis -3; it is its own inverse.
 
     Args:
         image: BGR Image to be converted to BGR of shape :math:`(*,3,H,W)`.
@@ -78,6 +84,10 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Convert an image from RGB to RGBA.
+
+    Convention:
+        Appends alpha as the fourth channel at axis -3. A Python float alpha is broadcast over the image;
+        a tensor alpha must have shape :math:`(*,1,H,W)` matching the image's leading and spatial axes.
 
     Args:
         image: RGB Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
@@ -117,6 +127,9 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Convert an image from BGR to RGBA.
 
+    Convention:
+        Reorders BGR to RGB and appends alpha as the fourth channel at axis -3.
+
     Args:
         image: BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
         alpha_val: A float number for the alpha value or a torch.Tensor
@@ -151,6 +164,10 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
 
     The function composites the input RGBA image over a background color. If no
     background color is provided, it defaults to a white background.
+
+    Convention:
+        Alpha-composites RGBA over white by default. background_color supplies an RGB color in
+        the same units as the image.
 
     Args:
         image: The RGBA image to be converted, with shape :math:`(*,4,H,W)`.
@@ -202,6 +219,9 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
 def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGBA to BGR.
 
+    Convention:
+        Alpha-composites RGBA over white, then reverses the RGB channels at axis -3.
+
     Args:
         image: RGBA Image to be converted to BGR of shape :math:`(*,4,H,W)`.
 
@@ -229,6 +249,10 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_linear_rgb.png
 
+    Convention:
+        Converts nonlinear unit-range sRGB to linear RGB channelwise. It is the companion of
+        linear_rgb_to_rgb and the required preparation for rgb_to_xyz.
+
     Args:
         image: sRGB Image to be converted to linear RGB of shape :math:`(*,3,H,W)`.
 
@@ -253,6 +277,9 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
 
 def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a linear RGB image to sRGB. Used in colorspace conversions.
+
+    Convention:
+        Converts linear RGB to nonlinear unit-range sRGB channelwise.
 
     Args:
         image: linear RGB Image to be converted to sRGB of shape :math:`(*,3,H,W)`.
@@ -282,6 +309,9 @@ def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
 def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
     r"""Convert surface normals to RGB [0, 255] for visualization purposes.
 
+    Convention:
+        Maps normal components from [-1, 1] to RGB255 channels [0, 255].
+
     Args:
         image: surface normals to be converted to RGB with quantization of shape :math:`(*,3,H,W)`.
 
@@ -301,6 +331,9 @@ def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGB to RGB [0, 255] for visualization purposes.
 
+    Convention:
+        Multiplies unit-range RGB values by 255 and clamps the result to [0, 255].
+
     Args:
         image: RGB Image to be converted to RGB [0, 255] of shape :math:`(*,3,H,W)`.
 
@@ -318,6 +351,9 @@ def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 
 def rgb255_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGB [0, 255] to RGB for visualization purposes.
+
+    Convention:
+        Divides RGB255 values by 255 without clipping.
 
     Args:
         image: RGB Image to be converted to RGB of shape :math:`(*,3,H,W)`.
@@ -338,6 +374,9 @@ def rgb255_to_rgb(image: torch.Tensor) -> torch.Tensor:
 def rgb255_to_normals(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGB [0, 255] to surface normals for visualization purposes.
 
+    Convention:
+        Maps RGB255 channels to [-1, 1], then normalizes each three-channel vector at axis -3.
+
     Args:
         image: RGB Image to be converted to surface normals of shape :math:`(*,3,H,W)`.
 
@@ -355,6 +394,8 @@ def rgb255_to_normals(image: torch.Tensor) -> torch.Tensor:
 
 class BgrToRgb(nn.Module):
     r"""Convert image from BGR to RGB.
+
+    See the Convention block on :func:`bgr_to_rgb`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -392,6 +433,8 @@ class BgrToRgb(nn.Module):
 class RgbToBgr(nn.Module):
     r"""Convert an image from RGB to BGR.
 
+    See the Convention block on :func:`rgb_to_bgr`.
+
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
@@ -427,6 +470,8 @@ class RgbToBgr(nn.Module):
 
 class RgbToRgba(nn.Module):
     r"""Convert an image from RGB to RGBA.
+
+    See the Convention block on :func:`rgb_to_rgba`.
 
     Add an alpha channel to existing RGB image.
 
@@ -474,6 +519,8 @@ class RgbToRgba(nn.Module):
 class BgrToRgba(nn.Module):
     r"""Convert an image from BGR to RGBA.
 
+    See the Convention block on :func:`bgr_to_rgba`.
+
     Add an alpha channel to existing RGB image.
 
     Args:
@@ -520,6 +567,8 @@ class BgrToRgba(nn.Module):
 class RgbaToRgb(nn.Module):
     r"""Convert an image from RGBA to RGB.
 
+    See the Convention block on :func:`rgba_to_rgb`.
+
     Remove an alpha channel from RGB image.
 
     Returns:
@@ -556,6 +605,8 @@ class RgbaToRgb(nn.Module):
 class RgbaToBgr(nn.Module):
     r"""Convert an image from RGBA to BGR.
 
+    See the Convention block on :func:`rgba_to_bgr`.
+
     Remove an alpha channel from BGR image.
 
     Returns:
@@ -591,6 +642,8 @@ class RgbaToBgr(nn.Module):
 
 class RgbToLinearRgb(nn.Module):
     r"""Convert an image from sRGB to linear RGB.
+
+    See the Convention block on :func:`rgb_to_linear_rgb`.
 
     Reverses the gamma correction of sRGB to get linear RGB values for colorspace conversions.
     The image data is assumed to be in the range of :math:`[0, 1]`
@@ -636,6 +689,8 @@ class RgbToLinearRgb(nn.Module):
 class LinearRgbToRgb(nn.Module):
     r"""Convert a linear RGB image to sRGB.
 
+    See the Convention block on :func:`linear_rgb_to_rgb`.
+
     Applies gamma correction to linear RGB values, at the end of colorspace conversions, to get sRGB.
 
     Returns:
@@ -679,6 +734,8 @@ class LinearRgbToRgb(nn.Module):
 class NormalsToRgb255(nn.Module):
     r"""Convert surface normals to RGB [0, 255] for visualization purposes.
 
+    See the Convention block on :func:`normals_to_rgb255`.
+
     Returns:
         RGB version of the image.
 
@@ -709,6 +766,8 @@ class NormalsToRgb255(nn.Module):
 
 class RgbToRgb255(nn.Module):
     r"""Convert an image from RGB to RGB [0, 255] for visualization purposes.
+
+    See the Convention block on :func:`rgb_to_rgb255`.
 
     Returns:
         RGB version of the image.
@@ -741,6 +800,8 @@ class RgbToRgb255(nn.Module):
 class Rgb255ToRgb(nn.Module):
     r"""Convert an image from RGB [0, 255] to RGB for visualization purposes.
 
+    See the Convention block on :func:`rgb255_to_rgb`.
+
     Returns:
         RGB version of the image.
 
@@ -771,6 +832,8 @@ class Rgb255ToRgb(nn.Module):
 
 class Rgb255ToNormals(nn.Module):
     r"""Convert an image from RGB [0, 255] to surface normals for visualization purposes.
+
+    See the Convention block on :func:`rgb255_to_normals`.
 
     Returns:
         surface normals version of the image.
