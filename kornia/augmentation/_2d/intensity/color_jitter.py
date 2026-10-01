@@ -168,7 +168,7 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
         self._fixed_order: Optional[Tuple[int, ...]] = order
         # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13).
         # Checked here because Dynamo cannot trace the check inside forward.
-        self._cond_fn = _apply_cond if torch._dynamo.is_dynamo_supported() else None
+        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
 
         # native functions
         self._brightness_fn = adjust_brightness_accumulative
