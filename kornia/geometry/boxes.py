@@ -94,6 +94,7 @@ def _boxes_to_polygons(
     polygons[..., 3, 1] += height - 1  # Bottom left
     return polygons
 
+
 def _validate_vertices(boxes: torch.Tensor) -> None:
     """Validate that vertices form axis-aligned rectangles in TL, TR, BR, BL order."""
     if not torch.isfinite(boxes).all():
@@ -119,6 +120,7 @@ def _validate_vertices(boxes: torch.Tensor) -> None:
 
     if not torch.allclose(boxes, expected_vertices):
         raise ValueError("Some boxes have invalid vertices.")
+
 
 def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> torch.Tensor:
     """Convert from boxes to quadrilaterals."""
