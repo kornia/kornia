@@ -109,11 +109,12 @@ class HFONNXComunnityModelLoader:
     def _add_metadata(
         self,
         model: onnx.ModelProto,  # type:ignore
-        additional_metadata: Optional[dict[str, Any]] = None,
+        additional_metadata: Optional[dict[str, Any] | list[tuple[str, Any]]] = None,
     ) -> onnx.ModelProto:  # type:ignore
-        if additional_metadata is None:
-            additional_metadata = {}
-        for key, value in additional_metadata.items():
+        metadata = {prop.key: prop.value for prop in model.metadata_props}
+        metadata.update(additional_metadata or {})
+        model.ClearField("metadata_props")
+        for key, value in metadata.items():
             metadata_props = model.metadata_props.add()
             metadata_props.key = key
             metadata_props.value = str(value)
