@@ -23,8 +23,8 @@ import torch
 from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
-from kornia.core.utils import _is_tracing_or_exporting
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _is_tracing_or_exporting
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -268,11 +268,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         self._fixed_order: Optional[Tuple[int, ...]] = order
         # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13).
         # Checked here because Dynamo cannot trace the check inside forward.
-        self._cond_fn = (
-            _apply_cond
-            if torch._dynamo.is_dynamo_supported() and not _is_tracing_or_exporting()
-            else None
-        )
+        self._cond_fn = _apply_cond if torch._dynamo.is_dynamo_supported() and not _is_tracing_or_exporting() else None
 
     def apply_transform(
         self,
