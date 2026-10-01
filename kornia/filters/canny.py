@@ -75,6 +75,8 @@ def canny(
     what :func:`~kornia.filters.sobel` returns with its default ``normalized=True``, up to the ``eps`` inside the square
     root, so on an image in :math:`[0, 1]` it is not bounded by 1: a unit step reaches 4 without the blur
     (``kernel_size=1``) and about 2.59 with the default one.
+    In float16 the squared gradient overflows past 65504, which a step of 64 already reaches without the blur, so
+    keep a float16 image in :math:`[0, 1]` rather than scaling it and the thresholds up.
 
     Non-maximum suppression compares each pixel with its two neighbours along the gradient direction, rounded to a
     multiple of 45 degrees. As in OpenCV's ``cv2.Canny``, along a horizontal (vertical) gradient a pixel must be
