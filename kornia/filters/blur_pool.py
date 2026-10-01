@@ -379,7 +379,7 @@ def edge_aware_blur_pool2d(
     # least that radius prevents zeros from reaching the retained image boundary.
     edge_input = F.pad(input, (2, 2, 2, 2), mode="reflect")
     kernel_size_y, kernel_size_x = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
-    blur_pad_y, blur_pad_x = max(2, (kernel_size_y - 1) // 2), max(2, (kernel_size_x - 1) // 2)
+    blur_pad_y, blur_pad_x = max(2, kernel_size_y // 2), max(2, kernel_size_x // 2)
     blur_input = _reflect_pad2d(input, blur_pad_y, blur_pad_x)
     # The 2D Pascal kernel sum can overflow half precision for larger kernels
     # (e.g. 9x9 sums to 65536), producing an all-zero normalized kernel.

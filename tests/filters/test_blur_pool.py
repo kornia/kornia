@@ -319,3 +319,18 @@ class TestEdgeAwareBlurPool(BaseTester):
         padded = torch.nn.functional.pad(data.cpu().double(), (2, 2, 2, 2), mode="reflect")
         expected = _zero_padded_reference(padded, kernel_size, 1)[..., 2:-2, 2:-2]
         self.assert_close(actual, expected.to(device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("kernel_size", [1, 2, 3, 4, 5, 6, 7, 8, 9, 15])
+    @pytest.mark.parametrize("shape", [(17, 19), (5, 6)])
+    def test_matches_reflect_padded_blur_without_edges_5228(self, kernel_size, shape, device, dtype):
+        # With edge_threshold=1e6 no pixel is an edge, so the output is the stride-1 blur of the input reflect-padded
+        # far enough for the kernel, cropped back to the input size: no zero padding reaches the image (#5228). On a
+        # 5 x 6 image the larger kernels reach past the reflected copy, which is reflected again, as numpy pads.
+        rows = torch.arange(shape[0], dtype=torch.float64)[:, None]
+        cols = torch.arange(shape[1], dtype=torch.float64)[None, :]
+        data = (0.5 + 0.25 * torch.sin(0.7 * rows + 1.3 * cols))[None, None]
+        pad = kernel_size
+        padded = torch.from_numpy(np.pad(data.numpy(), ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode="reflect"))
+        expected = _zero_padded_reference(padded, kernel_size, 1)[..., pad:-pad, pad:-pad]
+        actual = edge_aware_blur_pool2d(data.to(device=device, dtype=dtype), kernel_size, edge_threshold=1e6)
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
