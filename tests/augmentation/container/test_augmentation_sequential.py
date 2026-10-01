@@ -1490,8 +1490,7 @@ class TestConventionAugmentationSequential(BaseTester):
         assert cached.device == out_image.device  # no device-to-host copy in the forward pass
         self.assert_close(cached, out_image.detach())
 
-        if dtype != torch.bfloat16:  # `.show()` renders through `Tensor.numpy()`, which has no bfloat16 support
-            assert isinstance(aug.show(display=False), PILImage.Image)
+        assert isinstance(aug.show(display=False), PILImage.Image)
         path = tmp_path / "augmented.jpg"
         aug.save(name=str(path))
         assert path.is_file()

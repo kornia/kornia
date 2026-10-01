@@ -423,17 +423,6 @@ class TestConventionsKeypoints(BaseTester):
     """Pins for the coordinate, transform and aliasing conventions of :class:`Keypoints`."""
 
     @staticmethod
-    def _has_cross_kernel(device, dtype):
-        # The affine warp inverts its 3x3 matrix with kornia's closed-form inverse, built from torch.linalg.cross;
-        # some torch builds have no cross kernel for a dtype (torch 2.5.1 on MPS raises for bfloat16).
-        try:
-            probe = torch.ones(1, 3, device=device, dtype=dtype)
-            torch.linalg.cross(probe, probe, dim=-1)
-        except RuntimeError:
-            return False
-        return True
-
-    @staticmethod
     def _value_at(image, xy):
         # The image value at the pixel nearest to an (x, y) keypoint, or None when that pixel is outside the image.
         x, y = (int(v) for v in xy.round().tolist())
@@ -451,8 +440,6 @@ class TestConventionsKeypoints(BaseTester):
     def test_convention_keypoints_are_xy_pixel_coordinates(self, make_augmentation, device, dtype):
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip(f"this torch build has no bilinear 2D grid_sample kernel for {dtype} on {device.type}")
-        if not self._has_cross_kernel(device, dtype):
-            pytest.skip(f"this torch build has no torch.linalg.cross kernel for {dtype} on {device.type}")
         # A keypoint is (x, y) in pixels: x indexes the columns (W) and y the rows (H). Image-content oracle: the
         # single bright pixel at row 2, column 8 of a 7 x 11 image is the keypoint (8, 2), and wherever the
         # augmentation moves that pixel, the transformed keypoint lands on it.

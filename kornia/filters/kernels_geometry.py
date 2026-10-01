@@ -32,8 +32,28 @@ def get_motion_kernel2d(
 ) -> torch.Tensor:
     r"""Return 2D motion blur filter.
 
+    Convention:
+        - ``direction`` is clamped to ``[-1, 1]`` and weighs the line linearly before it is rotated: ``1`` gives
+          ``[0.4, 0.3, 0.2, 0.1, 0]`` along the middle row of a size-5 kernel, heavy at the left end and 0 at the
+          right, so only ``kernel_size - 1`` taps carry weight; ``-1`` mirrors it and ``0`` is uniform.
+        - ``angle`` is in degrees and turns the line counter-clockwise as displayed (row 0 at the top), as
+          :func:`~kornia.geometry.transform.rotate` does: at ``90`` the heavy end moves from the left to the bottom.
+        - Because :func:`~kornia.filters.filter2d` correlates, the streak that the kernel draws from a bright point
+          is heaviest on the side opposite the kernel's heavy end: to the point's right at ``angle=0``,
+          ``direction=1``.
+        - The rotation resamples the line with ``mode``: ``'nearest'`` copies each pixel from the nearest tap, so the
+          number of taps changes with the angle (3 at 45 degrees, 7 at 25 for a size-5 line), and ``'bilinear'``
+          spreads the weight off the line.
+        - A floating tensor ``angle`` of shape :math:`(B,)` gives :math:`(B, k, k)` in its dtype. A tensor
+          ``direction`` must match it in length, dtype and device; a float ``direction`` is not broadcast, so it
+          raises for ``B > 1``.
+        - Known defect: with ``'nearest'``, at angles where the rotated line falls on sampling ties, such as 30 or
+          60 degrees, roundoff breaks the ties, so the kernel can change with the dtype, the device or a full turn
+          added to the angle; on MPS a tensor angle and the same float angle can blur differently
+          (`#5181 <https://github.com/kornia/kornia/issues/5181>`_).
+
     Args:
-        kernel_size: motion kernel width and height. It should be odd and positive.
+        kernel_size: motion kernel width and height, an odd integer of at least 3.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
@@ -112,11 +132,22 @@ def get_motion_kernel3d(
 ) -> torch.Tensor:
     r"""Return 3D motion blur filter.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_motion_kernel2d` for ``direction`` and ``mode``.
+        ``angle`` is a Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, as applied by
+        :func:`~kornia.geometry.transform.rotate3d`: its direction is the rotation axis and its norm is the
+        rotation angle. :func:`~kornia.geometry.transform.rotate3d` and the 3D motion blurs call the components
+        ``yaw``, ``pitch`` and ``roll``, but they are not composed Euler rotations. The unrotated line lies along x,
+        so with the default ``mode='nearest'`` yaw alone leaves the kernel unchanged (``'bilinear'`` resamples it
+        off the line); a positive pitch alone turns the line's -x end, the heavy end for a positive ``direction``,
+        towards +z, and a positive roll alone turns the line clockwise as displayed, the opposite of the 2d
+        ``angle``.
+
     Args:
-        kernel_size: motion kernel width, height and depth. It should be odd and positive.
-        angle: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
+        angle: Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler angles.
             If tensor, it must be :math:`(B, 3)`.
-            If tuple, it must be (yaw, pitch, raw).
+            If tuple, it must be ``(rx, ry, rz)``.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
