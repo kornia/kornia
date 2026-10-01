@@ -82,11 +82,11 @@ def _apply_order_cond(
         index = order[position]
         input = torch.cond(
             index == 0,
-            lambda value: apply_selected(0, value),
-            lambda value: torch.cond(
+            lambda value, index=index: apply_selected(0, value),
+            lambda value, index=index: torch.cond(
                 index == 1,
-                lambda value: apply_selected(1, value),
-                lambda value: torch.cond(
+                lambda value, index=index: apply_selected(1, value),
+                lambda value, index=index: torch.cond(
                     index == 2,
                     lambda value: apply_selected(2, value),
                     lambda value: apply_selected(3, value),
@@ -104,7 +104,10 @@ def _dispatch_color_steps(
     params: Dict[str, torch.Tensor],
     fixed_order: Optional[Tuple[int, ...]],
     cond_fn: Optional[
-        Callable[[Union[Tuple[int, ...], torch.Tensor], torch.Tensor, Tuple[torch.Tensor, ...]], torch.Tensor]
+        Callable[
+            [Union[Tuple[int, ...], torch.Tensor], torch.Tensor, Tuple[torch.Tensor, ...]],
+            torch.Tensor,
+        ]
     ],
     neutral: Tuple[float, float, float, float],
     steps: _Steps,
@@ -177,8 +180,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
         order: a fixed application order, as indices into (brightness, contrast, saturation, hue); a subset
           applies only those, and a repeated index raises ``ValueError``. ``None`` (the default) draws a random
           order on every call. RGB inputs use a tensorized dispatcher so both fixed and sampled orders are
-          ``torch.compile`` fullgraph-safe. The parameter generator still draws an ``order`` entry into ``_params``, and with a fixed order that
-          entry is ignored, including on replay.
+          ``torch.compile`` fullgraph-safe. The parameter generator still draws an ``order`` entry into ``_params``,
+          and with a fixed order that entry is ignored, including on replay.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`

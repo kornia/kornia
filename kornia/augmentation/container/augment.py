@@ -647,7 +647,6 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """
         # Wrap the forward method with the decorator
         if not self._disable_features:
-            converted_inputs = inputs
             if len(inputs) == 1 and isinstance(inputs[0], dict):
                 keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
                 converted_dict = dict(inputs[0])
@@ -657,13 +656,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                             converted_dict[key] = self.to_tensor(arg)
                         else:
                             converted_dict[key] = self._convert_numpy_non_image(arg, data_key)
-                converted_inputs = (converted_dict,)
             else:
                 data_keys = self.transform_op.preproc_datakeys(kwargs.get("data_keys", self.data_keys))
-                # Arguments beyond the data keys pass through unconverted, so ``forward`` still rejects the count.
-                converted_inputs = tuple(
-                    self._convert_numpy_non_image(arg, data_key) for arg, data_key in zip(inputs, data_keys)
-                ) + tuple(inputs[len(data_keys) :])
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
             self._check_output_type(output_type)

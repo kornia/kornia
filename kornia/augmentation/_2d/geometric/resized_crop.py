@@ -27,7 +27,7 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.utils import is_compiling
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
-from kornia.geometry.transform._crop import _compiled_slice_resize
+from kornia.geometry.transform._crop import _compiled_slice_resize, _half_pixel_resize_transform
 
 
 class RandomResizedCrop(GeometricAugmentationBase2D):
