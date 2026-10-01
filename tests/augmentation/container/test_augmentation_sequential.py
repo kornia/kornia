@@ -18,6 +18,7 @@
 from functools import partial
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 import torch
 
@@ -35,6 +36,27 @@ from testing.base import BaseTester, assert_close
 
 
 class TestAugmentationSequential:
+    @pytest.mark.parametrize("as_dict", [False, True])
+    def test_numpy_annotations_are_not_scaled_like_images(self, as_dict):
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((8, 9), dtype=np.int64)
+        mask[2:5, 3:6] = 3
+        boxes = np.array([[[3.0, 2.0, 6.0, 5.0]]], dtype=np.float32)
+        keypoints = np.array([[[4.0, 3.0]]], dtype=np.float32)
+        data_keys = ["input", "mask", "bbox_xyxy", "keypoints"]
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None if as_dict else data_keys)
+
+        if as_dict:
+            output = aug(dict(zip(data_keys, (image, mask, boxes, keypoints))))
+            out_mask, out_boxes, out_keypoints = output["mask"], output["bbox_xyxy"], output["keypoints"]
+        else:
+            _, out_mask, out_boxes, out_keypoints = aug(image, mask, boxes, keypoints)
+
+        assert out_mask.dtype == torch.int64
+        assert set(out_mask.unique().tolist()) == {0, 3}
+        assert torch.equal(out_boxes, torch.from_numpy(boxes))
+        assert torch.equal(out_keypoints, torch.from_numpy(keypoints))
+
     @pytest.mark.parametrize(
         "data_keys", ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
