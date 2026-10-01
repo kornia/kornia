@@ -178,6 +178,18 @@ class TestFocalLoss(BaseTester):
         self.assert_close(loss, torch.zeros_like(loss))
         self.assert_close(torch.autograd.grad(loss, logits)[0], torch.zeros_like(logits))
 
+    @pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+    def test_ignored_non_finite_logits(self, device, dtype, value):
+        logits = torch.tensor([[value, 0.0], [0.3, -0.2]], device=device, dtype=dtype, requires_grad=True)
+        safe_logits = torch.tensor([[0.0, 0.0], [0.3, -0.2]], device=device, dtype=dtype, requires_grad=True)
+        labels = torch.tensor([-100, 1], device=device)
+        actual = kornia.losses.focal_loss(logits, labels, alpha=0.25, reduction="sum")
+        expected = kornia.losses.focal_loss(safe_logits, labels, alpha=0.25, reduction="sum")
+        self.assert_close(actual, expected)
+        grad = torch.autograd.grad(actual, logits)[0]
+        assert (grad[0] == 0).all()
+        self.assert_close(grad, torch.autograd.grad(expected, safe_logits)[0])
+
     def test_dynamo_ignored_extreme_logits(self, device, dtype, torch_optimizer):
         extreme = torch.finfo(dtype).max
         logits = torch.tensor([[extreme, -extreme]], device=device, dtype=dtype, requires_grad=True)
