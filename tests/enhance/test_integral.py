@@ -45,6 +45,19 @@ class TestIntegralTensor(BaseTester):
             integral_tensor(tensor, ())
         assert "dim must be a non-empty tuple." in str(errinfo)
 
+    @pytest.mark.parametrize("dim", [(1, 1), (-1, 1), (1, -1)])
+    def test_duplicate_dimensions(self, device, dtype, dim):
+        tensor = torch.ones(2, 2, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="unique dimensions"):
+            integral_tensor(tensor, dim)
+
+    @pytest.mark.parametrize("dim", [(0, 1), (1, 0), (-2, -1)])
+    def test_distinct_dimensions(self, device, dtype, dim):
+        tensor = torch.ones(2, 2, device=device, dtype=dtype)
+        output = integral_tensor(tensor, dim)
+        expected = torch.tensor([[1, 2], [2, 4]], device=device, dtype=dtype)
+        self.assert_close(output, expected)
+
     def test_module(self, device, dtype):
         mod = IntegralTensor()
         op = integral_tensor
