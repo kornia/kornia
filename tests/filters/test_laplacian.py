@@ -20,6 +20,7 @@ import importlib
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.filters import Laplacian, filter2d, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
 from kornia.filters.kernels import normalize_kernel2d
 
@@ -71,8 +72,32 @@ def test_get_laplacian_kernel2d_exact(device, dtype):
     assert_close(expected, actual)
 
 
+def test_get_laplacian_kernel1d_rejects_a_single_tap(device, dtype):
+    # A single tap is the all-zero kernel [0.0]: its centre is 1 - 1. The 1-D builder does not normalize, so the
+    # message must not talk about it, and it reports the size as given.
+    with pytest.raises(BaseError, match="size of at least 3 along one axis") as error:
+        get_laplacian_kernel1d(1, device=device, dtype=dtype)
+    assert "normaliz" not in str(error.value)
+    assert str(error.value).endswith("Got 1")
+
+
+@pytest.mark.parametrize("kernel_size", [1, (1, 1), [1, 1]])
+def test_get_laplacian_kernel2d_rejects_a_single_tap(kernel_size, device, dtype):
+    # A 1x1 kernel is the all-zero kernel [[0.0]]: its centre is 1 - 1 * 1.
+    with pytest.raises(BaseError, match="size of at least 3 along one axis"):
+        get_laplacian_kernel2d(kernel_size, device=device, dtype=dtype)
+
+
+def test_get_laplacian_kernel2d_accepts_a_single_tap_along_one_axis(device, dtype):
+    # (1, 3) and (3, 1) are the meaningful 1-D second difference, not the degenerate 1x1 kernel.
+    actual = get_laplacian_kernel2d((1, 3), device=device, dtype=dtype)
+    assert_close(actual, torch.tensor([[1.0, -2.0, 1.0]], device=device, dtype=dtype))
+    actual = get_laplacian_kernel2d((3, 1), device=device, dtype=dtype)
+    assert_close(actual, torch.tensor([[1.0], [-2.0], [1.0]], device=device, dtype=dtype))
+
+
 class TestLaplacian(BaseTester):
-    @pytest.mark.parametrize("kernel_size", [3, 5, (5, 7)])
+    @pytest.mark.parametrize("kernel_size", [3, 5, (5, 7), (1, 3), (3, 1)])
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     def test_matches_dense_kernel(self, kernel_size, border_type, normalized, device, dtype):
@@ -127,15 +152,56 @@ class TestLaplacian(BaseTester):
         actual = torch.vmap(lambda image: laplacian(image, 3))(data)
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("slices", [True, False])
+    @pytest.mark.parametrize("kernel_size", [1, (1, 1), [1, 1]])
     @pytest.mark.parametrize("normalized", [True, False])
-    def test_kernel_size_one(self, normalized, device, dtype):
+    def test_kernel_size_one_is_rejected(self, monkeypatch, kernel_size, normalized, slices, device, dtype):
+        # The 1x1 Laplacian is the all-zero kernel: zeros unnormalized, 0 / 0 = NaN normalized. The size is rejected
+        # up front, whichever of the slice and convolution paths would have run.
+        monkeypatch.setattr(laplacian_module, "_laplacian_slices_eligible", lambda _input: slices)
         data = torch.rand(1, 1, 3, 5, device=device, dtype=dtype)
-        actual = laplacian(data, 1, normalized=normalized)
+        with pytest.raises(BaseError, match="size of at least 3 along one axis"):
+            laplacian(data, kernel_size, normalized=normalized)
 
-        if normalized:
-            assert torch.isnan(actual).all()
+    @pytest.mark.parametrize("kernel_size", [1, (1, 1), [1, 1]])
+    def test_module_rejects_kernel_size_one(self, kernel_size):
+        with pytest.raises(BaseError, match="size of at least 3 along one axis"):
+            Laplacian(kernel_size)
+
+    @pytest.mark.parametrize(
+        "kernel_size, message",
+        [
+            (2, "Kernel size must be an odd integer bigger than 0"),
+            (0, "Kernel size must be an odd integer bigger than 0"),
+            ((2, 2), "Kernel size must be an odd integer bigger than 0"),
+            ((1, 2), "Kernel size must be an odd integer bigger than 0"),
+            ((-1, 1), "Kernel size must be an odd integer bigger than 0"),
+            ((3, 3, 3), "2D Kernel size should have a length of 2"),
+        ],
+    )
+    def test_module_rejects_invalid_kernel_size_at_construction(self, kernel_size, message):
+        # The module validates the whole size when it is built, as laplacian() does when it is called.
+        with pytest.raises(BaseError, match=message):
+            Laplacian(kernel_size)
+        data = torch.rand(1, 1, 5, 5)
+        with pytest.raises(BaseError, match=message):
+            laplacian(data, kernel_size)
+
+    @pytest.mark.parametrize("kernel_size", [(1, 3), (3, 1)])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_kernel_size_one_along_one_axis_is_a_second_difference(self, kernel_size, normalized, device, dtype):
+        # Squares have the constant second difference 2, except at the reflected last sample: 2 * 16 - 50 = -18.
+        row = torch.tensor([0.0, 1.0, 4.0, 9.0, 16.0, 25.0], device=device, dtype=dtype)
+        expected = torch.tensor([2.0, 2.0, 2.0, 2.0, 2.0, -18.0], device=device, dtype=dtype)
+        data = row.view(1, 1, 1, 6)
+        if kernel_size == (3, 1):
+            data = data.view(1, 1, 6, 1)
+            expected = expected.view(1, 1, 6, 1)
         else:
-            self.assert_close(actual, torch.zeros_like(actual))
+            expected = expected.view(1, 1, 1, 6)
+        if normalized:
+            expected = expected / 4.0  # the kernel [1, -2, 1] has an absolute sum of 4
+        self.assert_close(laplacian(data, kernel_size, normalized=normalized), expected)
 
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (11, 7), (3, 3)])

@@ -69,8 +69,10 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`RandomAffine`'s ``degrees`` and for :class:`RandomShear`'s and :class:`RandomAffine`'s
           ``shear``, ``(-1, 1)`` for :class:`RandomTranslate`'s ``translate_x`` and ``translate_y``,
           ``(0, 1)`` for :class:`RandomAffine`'s ``translate``, and ``(-3, 3)`` for
-          :class:`RandomRotation90`'s ``times``. The 3D classes read their scalar through a helper that
-          carries no bound, tracked in `#4617 <https://github.com/kornia/kornia/issues/4617>`_.
+          :class:`RandomRotation90`'s ``times``. The 3D angle ranges -- :class:`RandomRotation3D`'s and
+          :class:`RandomAffine3D`'s ``degrees``, :class:`RandomAffine3D`'s ``shears`` and
+          :class:`RandomMotionBlur3D`'s ``angle`` -- raise ``ValueError`` past ``(-360, 360)``, in scalar and
+          explicit form.
 
     Note:
         Masks are resampled with nearest neighbour whatever ``resample`` the augmentation uses for images,

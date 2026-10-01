@@ -361,7 +361,7 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     The torch.Tensor shall be either 0~1 float type or 0~255 long type.
 
     Args:
-        image: an RGB image with shape :math:`3HW`.
+        image: an RGB image with shape :math:`3HW` or a grayscale image with shape :math:`1HW`.
         max_width: maximum width of the input image.
     """
     KORNIA_CHECK_IS_IMAGE(image, None, raises=True)
@@ -371,10 +371,14 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
         image = image / 255.0
 
     if image.shape[-1] > max_width:
-        new_h = image.size(-2) * max_width // image.size(-1)
+        new_h = max(1, image.size(-2) * max_width // image.size(-1))
         image = kornia.geometry.resize(image, (new_h, max_width))
 
     image = (image * 255).clamp(0, 255).long()
+
+    if image.shape[0] == 1:
+        # a grey value is the same colour in each of the three terminal components
+        image = image.expand(3, -1, -1)
 
     H, W = image.shape[-2:]
     flat = image.permute(1, 2, 0).reshape(-1, 3)
