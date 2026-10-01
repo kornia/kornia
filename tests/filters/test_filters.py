@@ -1649,15 +1649,15 @@ class TestConventionsFilter2d(BaseTester):
             calls[case]()
         assert not isinstance(error.value, BaseError)
 
-    def test_wart_filter3d_normalized_rejects_a_non_contiguous_kernel_5159(self, device, dtype):
-        """filter3d(normalized=True) calls .view on the kernel, which fails for a permuted kernel (#5159)."""
+    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
+    def test_convention_filter3d_normalized_accepts_a_non_contiguous_kernel_5159(self, behaviour, device, dtype):
+        """filter3d(normalized=True) gives a permuted kernel the result of its contiguous copy (#5159)."""
         volume = _rand(1, 1, 5, 6, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 4, 5, device=device, dtype=dtype, seed=1).permute(0, 3, 2, 1)  # (1, 5, 4, 3)
         assert not kernel.is_contiguous()
-        out = filter3d(volume, kernel.contiguous(), "constant", normalized=True)
-        assert out.shape == volume.shape
-        with pytest.raises(RuntimeError):
-            filter3d(volume, kernel, "constant", normalized=True)
+        expected = filter3d(volume, kernel.contiguous(), "constant", normalized=True, behaviour=behaviour)
+        out = filter3d(volume, kernel, "constant", normalized=True, behaviour=behaviour)
+        assert torch.equal(out, expected)
 
     def test_wart_fft_conv_valid_padding_with_a_kernel_larger_than_the_input_5285(self, device, dtype):
         """With padding='valid', a 7 x 3 kernel on a 5 x 6 image gives fft_conv a 4 x 4 output (#5285)."""
