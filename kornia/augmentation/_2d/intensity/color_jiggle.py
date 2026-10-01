@@ -103,7 +103,9 @@ def _dispatch_color_steps(
     input: torch.Tensor,
     params: Dict[str, torch.Tensor],
     fixed_order: Optional[Tuple[int, ...]],
-    cond_fn: Optional[Callable[[Union[Tuple[int, ...], torch.Tensor], torch.Tensor, Tuple[torch.Tensor, ...]], torch.Tensor]],
+    cond_fn: Optional[
+        Callable[[Union[Tuple[int, ...], torch.Tensor], torch.Tensor, Tuple[torch.Tensor, ...]], torch.Tensor]
+    ],
     neutral: Tuple[float, float, float, float],
     steps: _Steps,
 ) -> torch.Tensor:

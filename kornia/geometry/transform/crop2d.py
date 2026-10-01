@@ -576,7 +576,6 @@ def _crop_by_indices_export(
     )
 
 
-
 class CenterCrop2D(nn.Module):
     """Center crop the input torch.Tensor.
 

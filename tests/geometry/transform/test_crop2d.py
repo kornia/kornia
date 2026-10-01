@@ -597,9 +597,7 @@ class TestCropByIndices(BaseTester):
             ),
         ],
     )
-    def test_dynamo_resized(
-        self, size, interpolation, align_corners, src_box, device, dtype, torch_optimizer
-    ):
+    def test_dynamo_resized(self, size, interpolation, align_corners, src_box, device, dtype, torch_optimizer):
         op = kornia.geometry.transform.crop_by_indices
         img = torch.randn(1, 3, 8, 8, device=device, dtype=dtype)
         src_box = torch.tensor(src_box, device=device, dtype=torch.int64)

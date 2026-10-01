@@ -673,7 +673,6 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 super(ImageSequential, self).__call__, inputs, kwargs, input_names_to_handle, "pt"
             )
 
-
             in_data_keys: Optional[List[DataKey]]
             original_keys: Optional[Tuple[str, ...]] = None
             if len(inputs) == 1 and isinstance(inputs[0], dict):
