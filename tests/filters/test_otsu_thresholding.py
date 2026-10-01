@@ -136,6 +136,23 @@ class TestOtsuThreshold(BaseTester):
         thresh_result, _thresh_value = op(input)
         self.assert_close(thresh_result, expected)
 
+    def test_large_image_threshold_matches_float32(self, device, dtype):
+        # #5196: the histogram counts of a 300 x 300 image (90000 pixels) came back in the input dtype, so in float16
+        # their sum overflowed to inf, the normalised histogram was all zeros and the threshold was 0; bfloat16 counts
+        # were rounded to 8 bits. The pixel levels k / 256 are exact in every dtype, so the float32 call sees the same
+        # pixels. For float16, bfloat16 and float32 the histogram arithmetic is then the same float32 computation, and
+        # the two thresholds agree up to rounding the float32 one to `dtype`. float64 bins and sums in float64, and
+        # the two best splits of this image differ by only about 50 float32 eps, so it is allowed one bin (1 / 256).
+        levels = torch.randint(0, 256, (1, 1, 300, 300), generator=torch.Generator().manual_seed(0))
+        img = (levels / 256).to(device=device, dtype=dtype)
+
+        _, threshold = otsu_threshold(img)
+        _, expected = otsu_threshold(img.float())
+
+        assert 0.25 < expected.item() < 0.75
+        atol = 1 / 256 if dtype == torch.float64 else 0.0
+        self.assert_close(threshold, expected.to(dtype), rtol=0.0, atol=atol)
+
 
 def test_mask(device, dtype):
     input = torch.tensor([[10, 20, 30], [40, 50, 60], [70, 80, 90]], device=device, dtype=dtype)

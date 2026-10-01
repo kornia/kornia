@@ -129,8 +129,10 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
-    hash1 = "8b98f44abbe92b7a84631ed06613b08fee7dae14"
-    BASE_IMAGEOUTDOOR_URL7: str = f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.pt"  # image matching
+    hash1 = "4ffed08df3d82af85aa9012d3104f19ca4b62604"
+    BASE_IMAGEOUTDOOR_URL7: str = (  # image matching
+        f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.safetensors"
+    )
     BASE_IMAGEOUTDOOR_URL8: str = (  # Response functions
         "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
     )
@@ -669,12 +671,8 @@ def main():
         print(f"Generated image example for {fn_name}. {sig}")
 
     # Image Matching and local features
-    # The file also stores DISK reference outputs, which ``weights_only`` accepts once their type is allowlisted.
-    with torch.serialization.safe_globals([K.feature.DISKFeatures]):
-        img_matching_data = torch.hub.load_state_dict_from_url(
-            BASE_IMAGEOUTDOOR_URL7, map_location=torch.device("cpu"), weights_only=True
-        )
-    img_outdoor = img_matching_data["img2"]
+    img_matching_path = K.core.download_file_from_url(BASE_IMAGEOUTDOOR_URL7, validate=K.core.check_safetensors)
+    img_outdoor = K.core.load_safetensors(img_matching_path)["img2"]
     print("Generating local feature detections ")
     disk = K.feature.DISK.from_pretrained("depth")
     with torch.no_grad():

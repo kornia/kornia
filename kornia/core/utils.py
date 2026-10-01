@@ -180,30 +180,41 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     The arithmetic lives in :mod:`kornia.core._small_linalg`; this function owns only the
     choice between the two kernels, which is execution-mode policy and therefore stays here.
 
+    A float16 or bfloat16 input is inverted in float32 and the result cast back, as
+    :func:`_torch_inverse_cast` does. The determinant is a sum of products of three entries, so it leaves
+    float16's range long before the entries do: the pixel-normalization matrix of a 3000 px image,
+    with entries ``2 / 2999``, has a subnormal float16 determinant, 6 % off, and one of 11600 px a zero one.
+    Running ``cross`` in float32 also avoids the missing bfloat16 ``cross`` kernel on MPS in
+    torch 2.5.1.
+
     Args:
         input: Tensor of shape ``(..., 3, 3)``.
 
     Returns:
         Tensor of shape ``(..., 3, 3)`` containing the matrix inverse for each
-        leading-dim slice. Numerically equivalent to ``torch.linalg.inv`` for
+        leading-dim slice, in the dtype of ``input``. Numerically equivalent to ``torch.linalg.inv`` for
         well-conditioned matrices; behavior on singular matrices is undefined
         (no explicit check, same as ``torch.linalg.inv`` itself).
     """
+    half = input.dtype in (torch.float16, torch.bfloat16)
+    x = input.float() if half else input
     if not _is_tracing_or_exporting():
         # Eager: three fused ``cross`` ops beat nine scalar cofactor expressions and four
         # stacks, because kernel launches dominate on matrices this small.
-        return _inverse_3x3_cross(input)
-
-    # Under tracing/export (legacy ONNX / jit.trace / dynamo ONNX) stick to the plain scalar
-    # adjugate. NOTE the original rationale here -- "whereas ``cross`` may not [lower]" -- does not
-    # hold on the torch versions CI runs: measured, ``torch.linalg.cross`` lowers on 2.5.1 (legacy
-    # exporter) and 2.9.1 and 2.14.0 (both exporters). The legacy exporter emits
-    # ``Slice``/``Mul``/``Sub``/``Concat``; the dynamo exporter emits ``Split`` in place of ``Slice``,
-    # on 2.9.1 as on 2.14.0. The split is kept because it is still the safer capture path (scalar
-    # arithmetic needs no per-dtype kernel at all, and ``cross`` has real kernel gaps -- no bfloat16
-    # on MPS in torch 2.5.1), not because ``cross`` fails to export.
-    # Collapsing the two branches is a behavior change and belongs in its own PR.
-    return _inverse_3x3_scalar(input)
+        out = _inverse_3x3_cross(x)
+    else:
+        # Under tracing/export (legacy ONNX / jit.trace / dynamo ONNX) stick to the plain scalar
+        # adjugate. NOTE the original rationale here -- "whereas ``cross`` may not [lower]" -- does not
+        # hold on the torch versions CI runs: measured, ``torch.linalg.cross`` lowers on 2.5.1 (legacy
+        # exporter) and 2.9.1 and 2.14.0 (both exporters). The legacy exporter emits
+        # ``Slice``/``Mul``/``Sub``/``Concat``; the dynamo exporter emits ``Split`` in place of ``Slice``,
+        # on 2.9.1 as on 2.14.0. The split is kept because it is still the safer capture path (scalar
+        # arithmetic needs no per-dtype kernel at all, and ``cross`` has real kernel gaps -- no bfloat16
+        # on MPS in torch 2.5.1, which the float32 promotion above keeps half input away from), not
+        # because ``cross`` fails to export.
+        # Collapsing the two branches is a behavior change and belongs in its own PR.
+        out = _inverse_3x3_scalar(x)
+    return out.to(input.dtype) if half else out
 
 
 def _is_tracing_or_exporting() -> bool:
@@ -260,14 +271,22 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
 
 
 def _torch_histc_cast(input: torch.Tensor, bins: int, min: Union[float, bool], max: Union[float, bool]) -> torch.Tensor:
-    """Make torch.histc work with other than fp32/64.
+    """Apply torch.histc to any real dtype, returning the counts in float32 or float64.
 
-    The function torch.histc is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
-    this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
+    The input is cast to float32 (float64 stays float64) before binning: ``torch.histc`` has no CPU
+    kernel for integer input, and on MPS in torch 2.5.1 none for anything but float32.
+
+    The counts are returned in that compute dtype, **not** cast back to the input dtype. A count grows
+    with the number of values, not with their range: float16 holds integers exactly only up to 2048 and
+    rounds them to ``inf`` from 65520, bfloat16 only up to 256, and an integer dtype can wrap (uint8 past
+    255). They stay floating rather than becoming int64: ``torch.histc`` counts in the floating dtype it
+    bins in, so a float32 count stops being exact past 2**24 per accumulating thread (single-threaded on
+    the CPU, 2**25 + 3 equal values come back as 2**24), an int64 result would be no more exact, and a
+    float64 input keeps float64 counts for float64 arithmetic downstream.
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
-    return torch.histc(input.to(dtype), bins, min, max).to(input.dtype)
+    return torch.histc(input.to(dtype), bins, min, max)
 
 
 def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
