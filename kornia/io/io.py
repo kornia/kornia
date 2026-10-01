@@ -51,7 +51,8 @@ _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 def _read_png_header(path_file: Path) -> tuple[int, int] | None:
     """Read the bit depth and color type bytes from a PNG file header.
 
-    Returns None if the file is truncated or has an invalid PNG signature.
+    Returns ``(bit_depth, color_type)``, in that order, or None if the file is truncated or has an invalid PNG
+    signature.
     PNG color types: 0=Grayscale, 2=RGB, 3=Indexed, 4=Grayscale+Alpha, 6=RGBA.
     """
     with open(path_file, "rb") as f:
