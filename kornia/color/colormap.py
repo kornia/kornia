@@ -234,7 +234,7 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
     )
     KORNIA_CHECK(len(input_tensor.shape) in (3, 4), "Wrong input torch.Tensor dimension.")
     if len(input_tensor.shape) == 3:
-        input_tensor = input_tensor.unsqueeze_(0)
+        input_tensor = input_tensor.unsqueeze(0)
 
     B, C, H, W = input_tensor.shape
     input_tensor = input_tensor.reshape(B, C, -1)
@@ -245,7 +245,7 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
         torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
         torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
     )
-    input_tensor = input_tensor.float().div_(max_value)
+    input_tensor = input_tensor.float() / max_value
 
     colors = colormap.colors.permute(1, 0)
     num_colors, channels_cmap = colors.shape
