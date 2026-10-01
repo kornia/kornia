@@ -1785,10 +1785,8 @@ _UNIT_SUM_KERNELS = [
 ]
 
 
-def _kernel_guard(name: str, device: torch.device, dtype: torch.dtype, values: bool = True) -> None:
-    """Skip a builder whose kernel cannot be built, or whose ``values`` are not usable, on this device/dtype."""
-    if values and name == "get_gaussian_discrete_kernel1d" and dtype == torch.float16:
-        pytest.skip("get_gaussian_discrete_kernel1d overflows to NaN in float16 (#5227)")
+def _kernel_guard(name: str, device: torch.device, dtype: torch.dtype) -> None:
+    """Skip a builder whose kernel cannot be built on this device/dtype."""
     if name == "get_motion_kernel2d" and not _supports_nearest_2d_grid_sample(device, dtype):
         pytest.skip("2D grid_sample (nearest) is unavailable for this device/dtype")
     if name == "get_motion_kernel3d" and not supports_nearest_3d_grid_sample(device, dtype):
@@ -1811,7 +1809,7 @@ def _correlate_at(kernel: torch.Tensor, field: torch.Tensor, centre: tuple[int, 
 class TestConventionsKernels(BaseTester):
     @pytest.mark.parametrize("name, factory, shape", _KERNEL_SHAPES, ids=[case[0] for case in _KERNEL_SHAPES])
     def test_convention_kernel_builder_output_shapes(self, name, factory, shape, device, dtype):
-        _kernel_guard(name, device, dtype, values=False)
+        _kernel_guard(name, device, dtype)
         kernel = factory(device, dtype)
         assert kernel.shape == shape
         assert kernel.dtype == dtype
@@ -2080,21 +2078,32 @@ class TestConventionsKernels(BaseTester):
         assert int(kernel.float().argmax()) == 2
         assert kernel[2] > kernel[1]
 
-    def test_wart_gaussian_discrete_kernel1d_overflows_to_nan_5227(self, device, dtype):
-        """get_gaussian_discrete_kernel1d computes its Bessel terms unscaled and overflows to NaN (#5227)."""
-        # the smallest failing sigma depends on the dtype: about 6.8 in float32 and bfloat16, about 19 in float64;
-        # in float16 every sigma > 0 fails once kernel_size is 5 or more
-        sigma = {torch.float16: 1.0, torch.bfloat16: 7.0, torch.float32: 7.0, torch.float64: 20.0}[dtype]
+    @pytest.mark.parametrize(
+        "sigma, expected",
+        [
+            (1.0, [0.05088223571, 0.2118383232, 0.4745588821, 0.2118383232, 0.05088223571]),
+            (7.0, [0.1958895744, 0.2020423257, 0.2041361999, 0.2020423257, 0.1958895744]),
+            (20.0, [0.1994995631, 0.2002500302, 0.2005008133, 0.2002500302, 0.1994995631]),
+        ],
+    )
+    def test_convention_gaussian_discrete_kernel1d_is_finite_for_a_large_sigma_5227(
+        self, sigma, expected, device, dtype
+    ):
+        """get_gaussian_discrete_kernel1d scales its Bessel terms by exp(-sigma**2), so it does not overflow (#5227)."""
+        # Unscaled terms overflow to an all-NaN kernel from sigma about 6.8 in float32 and bfloat16 and about 19 in
+        # float64, and in float16 for every sigma > 0 once kernel_size is 5 or more. Reference (scipy 1.17.1):
+        # scipy.special.ive(abs(n), sigma**2) for n = arange(-2, 3), normalized.
         kernel = get_gaussian_discrete_kernel1d(5, sigma, device=device, dtype=dtype)
-        assert bool(torch.isnan(kernel).all())
+        self.assert_close(kernel, torch.tensor([expected], device=device, dtype=dtype))
 
-    def test_wart_gaussian_discrete_kernel1d_drifts_in_float64_for_a_large_sigma_5227(self, device, dtype):
-        """Before it overflows, the float64 discrete kernel drifts from the discrete Gaussian (#5227)."""
-        if dtype != torch.float64:
-            pytest.skip("the drift shows in float64; the other dtypes overflow first (#5227)")
+    def test_convention_gaussian_discrete_kernel1d_is_unimodal_for_a_large_sigma_5227(self, device, dtype):
+        """The discrete kernel follows the discrete Gaussian at sigma 14, where float64 used to drift (#5227)."""
         kernel = get_gaussian_discrete_kernel1d(85, 14.0, device=device, dtype=dtype)[0]
-        # scipy.special.ive(abs(n), 14.0**2) is unimodal; here tap 39 (n = -3) dips below tap 38 (n = -4)
-        assert kernel[39] < kernel[38]
+        # scipy.special.ive(abs(n), 14.0**2) normalized (scipy 1.17.1) at taps 38, 39, 42 (n = -4, -3, 0). A Miller
+        # recurrence started too low for sigma**2 makes tap 39 dip below tap 38 in float64.
+        expected = torch.tensor([0.02743744108, 0.02793304819, 0.02858345732], device=device, dtype=dtype)
+        self.assert_close(kernel[[38, 39, 42]], expected)
+        assert kernel[39] > kernel[38]
 
     @pytest.mark.parametrize(
         "builder", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]

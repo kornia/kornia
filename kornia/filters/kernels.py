@@ -806,15 +806,10 @@ def get_gaussian_discrete_kernel1d(
         - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. In a floating ``dtype`` this
           kernel is Lindeberg's discrete Gaussian :math:`e^{-\sigma^2} I_{|n|}(\sigma^2)`, with :math:`I_n` the
           modified Bessel function of the first kind, normalized over the window: the smoothing kernel of discrete
-          scale space.
-        - Known defects:
-
-          - the tap count is not always ``kernel_size``: ``kernel_size=1`` gives 3 taps, and an even size with
-            ``force_even=True`` gives one more than asked (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
-          - the Bessel terms are computed unscaled and overflow, so the kernel is all NaN for a large ``sigma``
-            (from about 7 in float32) and, in float16, for any ``sigma > 0`` once ``kernel_size`` is 5 or more. In
-            float64, before it overflows at a ``sigma`` of about 19, it drifts from the discrete Gaussian from about
-            9 and is no longer unimodal from about 14 (`#5227 <https://github.com/kornia/kornia/issues/5227>`_).
+          scale space. A float16 or bfloat16 kernel is computed in float32 and rounded to its ``dtype``.
+        - Known defect: the tap count is not always ``kernel_size``. ``kernel_size=1`` gives 3 taps, and an even
+          size with ``force_even=True`` gives one more than asked
+          (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
