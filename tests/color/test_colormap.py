@@ -121,3 +121,5 @@ class TestApplyColorMap(BaseTester):
         img = torch.ones(1, 3, 3, device=device, dtype=dtype)
 
         self.assert_close(op(img, colormap=cm), op_module(img))
+        assert "colors" in dict(op_module.named_buffers())
+        assert op_module.colors is cm.colors
