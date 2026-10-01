@@ -56,7 +56,9 @@ with separate repeated medians for each estimator seed. Use `--confidence 1
 --max-samples 2048` to compare equal sample budgets, and `--sample-batch` to
 inspect explicit batch sizes. Compilation and loading are warmed outside the
 timed region. The JSON records the sampling configuration, artifact mode,
-source digests, inlier recall and false positives alongside latency.
+source digests, inlier recall and false positives alongside latency. PR #5117's
+[follow-up comparison](geometry/ransac_compile_results/followup.md) records the
+cache/RNG/refinement fixes and the speed/memory tradeoffs of splitting large CPU batches.
 
 Run the same harness from each checkout, using a PhotoTourism NPZ prepared by
 [`ransac.py prepare`](geometry/ransac.py) and a HEB scene HDF5 file:

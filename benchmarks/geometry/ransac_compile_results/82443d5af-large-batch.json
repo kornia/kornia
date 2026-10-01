@@ -1,0 +1,151 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "artifact_enabled": false,
+    "compile": true,
+    "confidence": 0.999,
+    "device": "cpu",
+    "git_commit": "82443d5af",
+    "inlier_ratios": [
+      0.5
+    ],
+    "inlier_threshold_px": 1.5,
+    "kornia": "0.9.0rc1",
+    "kornia_module": "kornia/__init__.py",
+    "kornia_rs": "0.1.14",
+    "load": {
+      "cpu_count": 8,
+      "load_avg_15m": 2.7607421875,
+      "load_avg_1m": 3.81787109375,
+      "load_avg_5m": 3.10107421875,
+      "mem_available_bytes": null,
+      "mem_total_bytes": null
+    },
+    "machine": "arm64",
+    "max_samples": 20480,
+    "min_run_time": 1.0,
+    "noise_px": 0.5,
+    "numpy": "2.4.0",
+    "opencv": null,
+    "opencv_num_threads": null,
+    "pillow": "12.3.0",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "poselib": null,
+    "python": "3.11.14",
+    "sample_batch": 8192,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "sizes": [
+      5000
+    ],
+    "skimage": "0.26.0",
+    "source_sha256": {
+      "benchmarks/geometry/ransac_compile_synthetic.py": "3ee1935ae39b6e45d4b6104b9d71e20977bc848c8eca4411744fef7cbd1f7b10",
+      "kornia/geometry/_ransac_program.py": "7f44429d68ca643e9cba519983a5b6772d95ce5051739e4c3bd33f151a660f24",
+      "kornia/geometry/epipolar/essential.py": "5a2102bade75e600a6811b07009c76664ac55833a052efe5795856edb56d4067",
+      "kornia/geometry/epipolar/fundamental.py": "2367925e86d1b26a9f2ac24b27ad2696659886939f4f2052f397ec37ddf091cf",
+      "kornia/geometry/homography.py": "bd05ff6fab1ca95b3a9902f59c26923955e17b5469eb9fe540c4709b82805a32",
+      "kornia/geometry/ransac.py": "c2cfffb0091349504ebd6d2f82956144d13e262ae4b92f6e5d7c90e2063d8189"
+    },
+    "timestamp_utc": "2026-10-01T19:47:41+00:00",
+    "torch": "2.14.0",
+    "torch_num_threads": 4,
+    "torchvision": null,
+    "units": "pairs/s"
+  },
+  "results": [
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "failed": false,
+      "false_positives": 0,
+      "inlier_ratio": 0.5,
+      "iqr_us": 2378.8957532815402,
+      "median_us": 72978.62500126939,
+      "n": 5000,
+      "op": "H",
+      "recall": 0.99,
+      "seed": 0,
+      "support": 2475,
+      "throughput_per_s": 13.702642383062246
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 1,
+      "failed": false,
+      "false_positives": 0,
+      "inlier_ratio": 0.5,
+      "iqr_us": 935.3749992442317,
+      "median_us": 17262.749999645166,
+      "n": 5000,
+      "op": "H",
+      "recall": 0.99,
+      "seed": 0,
+      "support": 2475,
+      "throughput_per_s": 57.92819799977147
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "failed": false,
+      "false_positives": 0,
+      "inlier_ratio": 0.5,
+      "iqr_us": 2052.4790015770122,
+      "median_us": 69810.33299962291,
+      "n": 5000,
+      "op": "H",
+      "recall": 0.99,
+      "seed": 1,
+      "support": 2475,
+      "throughput_per_s": 14.324527000972786
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 1,
+      "failed": false,
+      "false_positives": 0,
+      "inlier_ratio": 0.5,
+      "iqr_us": 659.708006423898,
+      "median_us": 17514.16700426489,
+      "n": 5000,
+      "op": "H",
+      "recall": 0.99,
+      "seed": 1,
+      "support": 2475,
+      "throughput_per_s": 57.096634955946755
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "failed": false,
+      "false_positives": 0,
+      "inlier_ratio": 0.5,
+      "iqr_us": 848.0415017402265,
+      "median_us": 68275.54199844599,
+      "n": 5000,
+      "op": "H",
+      "recall": 0.99,
+      "seed": 2,
+      "support": 2475,
+      "throughput_per_s": 14.646533307970824
+    },
+    {
+      "backend": "kornia (compiled)",
+      "batch": 1,
+      "failed": false,
+      "false_positives": 0,
+      "inlier_ratio": 0.5,
+      "iqr_us": 624.0840011741966,
+      "median_us": 16806.165996968048,
+      "n": 5000,
+      "op": "H",
+      "recall": 0.99,
+      "seed": 2,
+      "support": 2475,
+      "throughput_per_s": 59.50197089451616
+    }
+  ]
+}
