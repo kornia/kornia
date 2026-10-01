@@ -45,7 +45,9 @@ class ImageModuleMixIn:
         """Convert input and output types for a function.
 
         Args:
-            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            input_names_to_handle: List of input names to convert.
+                If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
+                path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
 
         Returns:
@@ -58,11 +60,16 @@ class ImageModuleMixIn:
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
-                # If input_names_to_handle is None, handle the first positional input.
                 if input_names_to_handle is None:
-                    # Convert only the image input; keyword arguments may contain string options.
-                    if args and self._is_valid_arg(args[0]):
-                        args = (self.to_tensor(args[0]), *args[1:])
+                    # Convert image-like arguments while treating only the first positional string as an image path.
+                    args = tuple(
+                        self.to_tensor(arg) if (i == 0 or not isinstance(arg, str)) and self._is_valid_arg(arg) else arg
+                        for i, arg in enumerate(args)
+                    )
+                    kwargs = {
+                        k: self.to_tensor(v) if not isinstance(v, str) and self._is_valid_arg(v) else v
+                        for k, v in kwargs.items()
+                    }
                 else:
                     # Convert specified args to tensors
                     args = list(args)  # type:ignore

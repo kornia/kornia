@@ -138,6 +138,31 @@ class TestImageModuleMixIn:
         result = dummy_func(sample_tensor)
         assert isinstance(result, PILImage.Image)
 
+    def test_convert_input_output_default_passes_later_strings_through(self, img_module, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "bilinear").touch()
+
+        @img_module.convert_input_output(output_type="pt")
+        def dummy_func(image, other, mode="nearest"):
+            return image, other, mode
+
+        image = torch.zeros(3, 4, 6)
+        result, other, mode = dummy_func(image, "bilinear", mode="bilinear")
+
+        assert result is image
+        assert other == "bilinear"
+        assert mode == "bilinear"
+
+    def test_convert_input_output_default_converts_arrays_and_pil_images_anywhere(self, img_module):
+        @img_module.convert_input_output(output_type="pt")
+        def dummy_func(a, b, c=None, d=None):
+            return a, b, c, d
+
+        array = np.full((4, 6, 3), 255, dtype=np.uint8)
+        pil = PILImage.new("RGB", (6, 4))
+
+        assert all(isinstance(t, torch.Tensor) for t in dummy_func(array, pil, c=array, d=pil))
+
     def test_convert_input_output_selective_input_names(self, img_module, sample_image):
         # Only convert arguments named "image", leave others unchanged
         @img_module.convert_input_output(input_names_to_handle=["image"], output_type="pt")
