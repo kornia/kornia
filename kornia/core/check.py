@@ -654,8 +654,15 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[str] = None, ra
     return True
 
 
+# The unsigned dtypes wider than 8 bits, each with the signed dtype of the same width.
+_UNSIGNED_AS_SIGNED = {torch.uint16: torch.int16, torch.uint32: torch.int32, torch.uint64: torch.int64}
+
+
 def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True, bits: int = 8) -> bool:
-    """Check whether an image tensor is ranged properly [0, 1] for float or [0, 2 ** bits] for int.
+    """Check whether a tensor is a color or gray image with values in [0, 1] for float or [0, 2 ** bits - 1] for int.
+
+    The shape must be :math:`(*, 3, H, W)` or :math:`(*, 1, H, W)`. A NaN value fails the range check, and an empty
+    image passes it.
 
     Args:
         x: image tensor to evaluate.
@@ -684,20 +691,30 @@ def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bo
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    # Combine the color or gray check with the range check
-    if not raises and not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
+    if not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
         return False
 
-    amin, amax = torch.aminmax(x)
+    if x.numel() == 0:
+        return True
 
+    offset = 0
     if x.dtype in (torch.bfloat16, float16, float32, float64):
-        invalid = (amin < 0) | (amax > 1)
+        low, high = 0.0, 1.0
     else:
-        max_int_value = (1 << bits) - 1
-        invalid = (amin < 0) | (amax > max_int_value)
+        low, high = 0, (1 << bits) - 1
+        signed = _UNSIGNED_AS_SIGNED.get(x.dtype)
+        if signed is not None:
+            # torch.aminmax has no kernel for these dtypes. Flipping the sign bit of a same-width signed view maps the
+            # unsigned order onto the signed order; the offset is added back to the Python numbers below.
+            x = x.view(signed) ^ torch.iinfo(signed).min
+            offset = 1 << (torch.iinfo(signed).bits - 1)
 
-    if invalid.item():
-        return _handle_invalid_range(msg, raises, amin, amax)
+    # The bounds are compared as Python numbers, so 2 ** bits - 1 cannot overflow the dtype, and in this form
+    # a NaN, which fails every comparison, fails the check.
+    amin, amax = torch.stack(torch.aminmax(x)).tolist()
+    amin, amax = amin + offset, amax + offset
+    if not (low <= amin and amax <= high):
+        return _handle_invalid_range(msg, raises, amin, amax, (low, high))
 
     return True
 
@@ -782,20 +799,17 @@ def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
 
 
 def _handle_invalid_range(
-    msg: Optional[str], raises: bool, min_val: float | torch.Tensor, max_val: float | torch.Tensor
+    msg: Optional[str], raises: bool, min_val: float, max_val: float, expected_range: tuple[float, float]
 ) -> bool:
     """Handle invalid range cases."""
-    # Extract scalar values if tensors
-    min_scalar = min_val.item() if isinstance(min_val, torch.Tensor) else min_val
-    max_scalar = max_val.item() if isinstance(max_val, torch.Tensor) else max_val
-
-    err_msg = f"Value range mismatch: expected [0, 1], got [{min_scalar}, {max_scalar}]."
+    low, high = (f"{b:g}" if isinstance(b, float) else f"{b}" for b in expected_range)
+    err_msg = f"Value range mismatch: expected [{low}, {high}], got [{min_val}, {max_val}]."
     if msg is not None:
         err_msg += f"\n  {msg}"
     if raises:
         raise ValueCheckError(
             err_msg,
-            actual_value=(min_scalar, max_scalar),
-            expected_range=(0.0, 1.0),
+            actual_value=(min_val, max_val),
+            expected_range=expected_range,
         )
     return False

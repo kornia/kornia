@@ -494,6 +494,25 @@ class TestHomographyNormalizePrecision(BaseTester):
         expected = dst_norm @ _torch_inverse_cast(src_norm)
         self.assert_close(out, expected, rtol=0.0, atol=1e-15)
 
+    @pytest.mark.parametrize("side", [3000, 11600])
+    def test_normalize_homography_of_a_large_image(self, device, dtype, side):
+        # #5197: normalize_homography inverts the source normalization matrix, whose determinant 4 / (side - 1)**2 is
+        # subnormal in float16 above about 256 px and rounds to zero there from about 11.6k px. The inverse ran
+        # in float16, so the result was 6.8 % off at 3000 px and NaN at 11600 px; it now runs in float32 for half
+        # input. Oracle: the same call in float64 on the CPU, on the same dtype-rounded homography. The bound is a
+        # few roundings in `dtype` at the largest entry: the normalization matrices are built in `dtype` and the
+        # chain of two products is rounded there.
+        homography = torch.tensor([[[1.0, 0.02, 3.0], [0.01, 0.98, -2.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+
+        out = kornia.geometry.conversions.normalize_homography(homography, (side, side), (side, side))
+
+        assert out.dtype == dtype
+        expected = kornia.geometry.conversions.normalize_homography(
+            homography.cpu().double(), (side, side), (side, side)
+        )
+        atol = 4 * torch.finfo(dtype).eps * expected.abs().max().item()
+        self.assert_close(out.cpu().double(), expected, rtol=0.0, atol=atol)
+
     def test_dtype_device_preserved(self, device, dtype):
         homo_2d = torch.eye(3, device=device, dtype=dtype)[None]
         homo_3d = torch.eye(4, device=device, dtype=dtype)[None]
