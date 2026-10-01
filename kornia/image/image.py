@@ -396,4 +396,7 @@ class Image:
         .. image:: https://github.com/kornia/data/blob/main/print_image.png?raw=true
 
         """
-        print(image_to_string(self.data, max_width))
+        data = self.data
+        if self.channels_order == ChannelsOrder.CHANNELS_LAST:
+            data = data.permute(2, 0, 1)
+        print(image_to_string(data, max_width))

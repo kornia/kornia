@@ -27,8 +27,9 @@ and ``linalg.det`` gives ``"lu_factor_cusolver" not implemented for 'Half'``.
 
 The contract is deliberately minimal, because the callers own the policy:
 
-- They compute in whatever dtype the caller supplies. **No promotion** -- that belongs to
-  :func:`kornia.core.utils._torch_inverse_cast`.
+- They compute in whatever dtype the caller supplies. **No promotion** -- that belongs to the
+  dispatchers :func:`kornia.core.utils._torch_inverse_cast` and
+  :func:`kornia.core.utils._inverse_3x3_closed_form`, which both invert half input in float32.
 - Exact shape and a real floating dtype are **caller preconditions, not runtime checks**.
   Behavior on anything else is unspecified: ``_adjugate_3x3`` of a 4x4 silently uses the
   leading 3x3 block, and of a 2x2 raises an incidental ``IndexError``. The contractual size
