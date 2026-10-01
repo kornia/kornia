@@ -30,32 +30,32 @@ prefetched or listed in :data:`NOT_PREFETCHED` with a reason.
 
 Scope: this guards the checkpoints that go through
 :func:`kornia.core.download.load_state_dict_from_url`, which is what the
-``weights/`` cache holds. Two other download paths live in ``kornia/`` and are
-invisible to the prefetch list -- its sibling
-:func:`kornia.core.download.download_file_from_url`, which the vision-language
-builders (``kornia/models/{kimi_vl,siglip2}/builder.py``) fetch a
-``model.safetensors`` with, and ``CachedDownloader`` into
+``weights/`` cache holds, and the ``.safetensors`` reference tensors that
+``conftest.py``'s ``data`` fixture fetches into the same cache with its sibling
+:func:`kornia.core.download.download_file_from_url` (``testing/reference_data.py``,
+enumerated in :data:`WEIGHT_REGISTRIES`). Two other download paths live in
+``kornia/`` and are invisible to the prefetch list -- ``download_file_from_url``
+as the vision-language builders (``kornia/models/{kimi_vl,siglip2}/builder.py``)
+call it, to fetch a ``model.safetensors``, and ``CachedDownloader`` into
 ``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
 ``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``,
 ``kornia/feature/lightglue_onnx/utils/download.py``). Nothing in the PR matrix
 downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
 
-``download_file_from_url`` does share the ``weights/`` cache, so its callers
-could in principle be prefetched -- they are not, for a reason the checkpoints
-above do not have: SigLIP2 takes the repository as an *argument*, so there is no
-fixed set of variants to enumerate, and the two checkpoints in play are hundreds
-of megabytes for a pair of integration tests. The call-site scan below covers
-both functions, so a model that starts downloading through either is caught here
-either way.
+Those builders' checkpoints could in principle be prefetched as the reference
+tensors are -- they are not, for a reason the checkpoints above do not have:
+SigLIP2 takes the repository as an *argument*, so there is no fixed set of
+variants to enumerate, and the two checkpoints in play are hundreds of megabytes
+for a pair of integration tests. The call-site scan below covers both functions,
+so a model that starts downloading through either is caught here either way.
 
-``docs/generate_examples.py`` also fetches one non-checkpoint tensor
-(``knchurch_disk.pt``, the image pair the matching examples are drawn on)
-straight through ``torch.hub.load_state_dict_from_url``. It lands in the same
-``weights/`` cache under the same name as the ``disk_outdoor`` reference tensor
-``conftest.py``'s ``data`` fixture loads, so the prefetch of that fixture's table
-(``testing/reference_data.py``, enumerated in :data:`WEIGHT_REGISTRIES`) serves the
-docs build too -- provided the two copies of the commit hash agree, which
+``docs/generate_examples.py`` and ``docs/generate_model_examples.py`` also fetch one
+non-checkpoint file (``knchurch_disk.safetensors``, the image pair the matching examples
+are drawn on) through ``download_file_from_url``. It lands in the same ``weights/`` cache
+under the same name as the ``disk_outdoor`` reference tensors ``conftest.py``'s ``data``
+fixture loads, so the prefetch of that fixture's table serves the docs build too --
+provided every copy of the commit hash agrees, which
 ``test_docs_reference_data_matches_the_fixture_table`` holds them to.
 """
 
@@ -126,6 +126,8 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     # Not a weight source: the reference tensors conftest.py's ``data`` fixture loads
     # into the same cache. Listed here so the same two-way guard covers them.
     "reference_data": (reference_data, reference_data.TEST_DATA_URLS),
+    # The library checkpoints the same fixture serves, from the library's own source lists.
+    "reference_checkpoints": (reference_data, reference_data.TEST_CHECKPOINT_URLS),
     "affine_shape": (affine_shape, affine_shape.urls),
     "orientation": (orientation, orientation.urls),
     "hardnet": (hardnet, hardnet.urls),
@@ -508,13 +510,14 @@ class TestWeightsPrefetchCoverage:
             f"_DOWNLOAD_CALL_ALLOWLIST with the reason it has no registry of its own."
         )
 
-    def test_docs_reference_data_matches_the_fixture_table(self) -> None:
-        """``docs/generate_examples.py`` spells its own copy of a ``data_test`` commit hash.
+    @pytest.mark.parametrize("script", ["generate_examples.py", "generate_model_examples.py"])
+    def test_docs_reference_data_matches_the_fixture_table(self, script: str) -> None:
+        """Each docs generator spells its own copy of a ``data_test`` commit hash.
 
         The cache is keyed by basename, so a docs URL that drifts to another
         revision of the same file is served the fixture's prefetched bytes
         without a download, silently. Hold every ``data_test`` URL in the docs
-        script to a (commit, file) pair the fixture table pins.
+        scripts to a (commit, file) pair the fixture table pins.
         """
         pinned = {
             (m.group(1), m.group(2))
@@ -522,12 +525,12 @@ class TestWeightsPrefetchCoverage:
             for m in [_DATA_TEST_URL.search(_as_list(url)[0])]
             if m is not None
         }
-        docs = (_REPO_ROOT / "docs" / "generate_examples.py").read_text(encoding="utf-8")
+        docs = (_REPO_ROOT / "docs" / script).read_text(encoding="utf-8")
         refs = _data_test_refs(docs)
-        assert refs, "docs/generate_examples.py no longer fetches from kornia/data_test; retire this check"
+        assert refs, f"docs/{script} no longer fetches from kornia/data_test; drop it from this check"
         unpinned = sorted(refs - pinned)
         assert not unpinned, (
-            f"docs/generate_examples.py fetches data_test files the fixture table does not pin: {unpinned}. "
+            f"docs/{script} fetches data_test files the fixture table does not pin: {unpinned}. "
             f"Update DATA_TEST_SHA in testing/reference_data.py, or the docs script, so the two agree."
         )
 

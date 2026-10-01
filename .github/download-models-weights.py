@@ -32,6 +32,10 @@ disagrees stores the file where nothing looks for it, leaving the cache
 silently useless. Values mirror the URL list in kornia, so the fallback source
 and the retry/backoff of :func:`kornia.core.download.load_state_dict_from_url`
 apply to the prefetch too.
+
+A ``.safetensors`` key is fetched with :func:`kornia.core.download_file_from_url`
+and checked with :func:`kornia.core.check_safetensors`, as kornia reads it; every
+other key is a pickle, loaded with ``load_state_dict_from_url``.
 """
 
 import argparse
@@ -40,8 +44,8 @@ import os
 
 import torch
 
+from kornia.core import check_safetensors, download_file_from_url
 from kornia.core.download import load_state_dict_from_url
-from kornia.feature import DISKFeatures
 
 logger = logging.getLogger(__name__)
 
@@ -49,22 +53,25 @@ logger = logging.getLogger(__name__)
 MODELS: dict[str, "str | list[str]"] = {
     # Reference tensors used by conftest.py's data fixture. Prefetch these once
     # before the matrix so every job does not download them on a cold cache.
-    "loftr_outdoor_and_homography_data.pt": (
+    "loftr_outdoor_and_homography_data.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "cb8f42bf28b9f347df6afba5558738f62a11f28a/loftr_outdoor_and_homography_data.pt"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/loftr_outdoor_and_homography_data.safetensors"
     ),
-    "loftr_indoor_and_fundamental_data.pt": (
+    "loftr_indoor_and_fundamental_data.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "cb8f42bf28b9f347df6afba5558738f62a11f28a/loftr_indoor_and_fundamental_data.pt"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/loftr_indoor_and_fundamental_data.safetensors"
     ),
-    "adalam_test.pt": (
-        "https://raw.githubusercontent.com/kornia/data_test/f7d8da661701424babb64850e03c5e8faec7ea62/adalam_test.pt"
+    "adalam_test.safetensors": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/adalam_test.safetensors"
     ),
-    "knchurch_disk.pt": (
-        "https://raw.githubusercontent.com/kornia/data_test/8b98f44abbe92b7a84631ed06613b08fee7dae14/knchurch_disk.pt"
+    "knchurch_disk.safetensors": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/knchurch_disk.safetensors"
     ),
-    "xfeat_reference.pt": (
-        "https://raw.githubusercontent.com/kornia/data_test/279e95e411f2d3926953dea3842347242190f4da/xfeat_reference.pt"
+    "xfeat_reference.safetensors": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "4ffed08df3d82af85aa9012d3104f19ca4b62604/xfeat_reference.safetensors"
     ),
     # -- detectors, descriptors and orientation estimators -------------------
     # AffNet + OriNet: LAFAffNetShapeEstimator / LAFOrienter, and every composite
@@ -215,9 +222,9 @@ if __name__ == "__main__":
             # Don't pass model_dir - use the default from torch.hub.set_dir()
             # This ensures files go to {hub_dir}/checkpoints/ matching test behavior.
             # file_name is pinned so the entry lands where kornia will look for it.
-            # ``knchurch_disk.pt`` (reference data for the ``data`` fixture) stores ``DISKFeatures``, which
-            # ``weights_only`` loading accepts only once it is allowlisted, as ``conftest.py`` does.
-            with torch.serialization.safe_globals([DISKFeatures]):
+            if file_name.endswith(".safetensors"):
+                download_file_from_url(url, file_name=file_name, validate=check_safetensors)
+            else:
                 load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
         except Exception as e:  # noqa: BLE001 - report every failure, not just the first
             logger.error(f"Failed to download `{file_name}`: {type(e).__name__}: {e}")
