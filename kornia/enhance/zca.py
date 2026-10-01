@@ -96,9 +96,36 @@ class ZCAWhitening(nn.Module):
 
         self.fitted = False
 
-        self.mean_vector: torch.Tensor
-        self.transform_matrix: torch.Tensor
-        self.transform_inv: Optional[torch.Tensor]
+        self.register_buffer("mean_vector", None)
+        self.register_buffer("transform_matrix", None)
+        self.register_buffer("transform_inv", None)
+
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: dict,
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        for name in ("mean_vector", "transform_matrix", "transform_inv"):
+            key = prefix + name
+            if key in state_dict and getattr(self, name) is None:
+                self._buffers[name] = torch.empty_like(state_dict[key])
+
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
+
+        self.fitted = self.transform_matrix is not None
 
     def fit(self, x: torch.Tensor) -> "ZCAWhitening":
         r"""Fit ZCA whitening matrices to the data.

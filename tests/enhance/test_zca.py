@@ -126,6 +126,75 @@ class TestZCA(BaseTester):
 
         self.gradcheck(zca, (data,))
 
+    def test_fitted_state_is_serialized(self, device, dtype):
+        data = torch.randn(8, 3, device=device, dtype=dtype)
+        zca = kornia.enhance.ZCAWhitening().fit(data)
+
+        state_dict = zca.state_dict()
+
+        assert "mean_vector" in state_dict
+        assert "transform_matrix" in state_dict
+        assert "transform_inv" in state_dict
+        assert state_dict["mean_vector"].shape == zca.mean_vector.shape
+        assert state_dict["transform_matrix"].shape == zca.transform_matrix.shape
+
+    def test_unfitted_state_is_empty(self):
+        zca = kornia.enhance.ZCAWhitening()
+
+        assert zca.state_dict() == {}
+
+    def test_fitted_state_follows_dtype_conversion(self, device):
+        data = torch.randn(8, 3, device=device, dtype=torch.float32)
+        zca = kornia.enhance.ZCAWhitening().fit(data)
+
+        expected = zca(data)
+        zca.double()
+
+        actual = zca(data.double())
+
+        assert zca.mean_vector.dtype == torch.float64
+        assert zca.transform_matrix.dtype == torch.float64
+        assert zca.transform_inv.dtype == torch.float64
+        self.assert_close(actual, expected.double(), low_tolerance=True)
+
+    def test_fitted_state_follows_device_conversion(self, device, dtype):
+        data = torch.randn(8, 3, device=device, dtype=dtype)
+        zca = kornia.enhance.ZCAWhitening().fit(data)
+
+        zca.to(device)
+
+        assert zca.mean_vector.device == device
+        assert zca.transform_matrix.device == device
+        assert zca.transform_inv.device == device
+
+        output = zca(data)
+
+        assert output.device == device
+
+    def test_fitted_state_round_trip(self, device, dtype):
+        data = torch.randn(8, 3, device=device, dtype=dtype)
+
+        zca = kornia.enhance.ZCAWhitening().fit(data)
+        expected = zca(data)
+
+        loaded = kornia.enhance.ZCAWhitening()
+        result = loaded.load_state_dict(zca.state_dict())
+
+        assert result.missing_keys == []
+        assert result.unexpected_keys == []
+        assert loaded.fitted
+        self.assert_close(loaded(data), expected, low_tolerance=True)
+
+    def test_unfitted_state_round_trip(self):
+        zca = kornia.enhance.ZCAWhitening()
+        loaded = kornia.enhance.ZCAWhitening()
+
+        result = loaded.load_state_dict(zca.state_dict())
+
+        assert result.missing_keys == []
+        assert result.unexpected_keys == []
+        assert not loaded.fitted
+
     def test_not_fitted(self, device, dtype):
         data = torch.rand(10, 2, device=device, dtype=dtype)
         zca = kornia.enhance.ZCAWhitening()
