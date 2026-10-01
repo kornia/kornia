@@ -196,6 +196,9 @@ def zca_mean(
         A tuple containing the ZCA matrix and the mean vector. If return_inverse is set to True,
         then it returns the inverse ZCA matrix, otherwise it returns None.
 
+    Raises:
+        ValueError: If ``unbiased`` is True and the sample dimension has fewer than two entries.
+
     .. note::
        See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
        blob/master/source/zca_whitening.ipynb>`__.
@@ -244,6 +247,9 @@ def zca_mean(
     inp_permute = inp.permute(new_order)
 
     N = inp_size[dim]
+
+    if unbiased and N < 2:
+        raise ValueError("Unbiased covariance requires at least two samples.")
 
     mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
 

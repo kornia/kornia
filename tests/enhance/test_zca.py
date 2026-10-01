@@ -24,6 +24,24 @@ from testing.base import BaseTester
 
 
 class TestZCA(BaseTester):
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    @pytest.mark.parametrize("sample_count", [0, 1])
+    def test_unbiased_sample_count(self, device, dtype, dim, sample_count):
+        """Unbiased covariance is undefined with fewer than two samples (gh-5313)."""
+        shape = (sample_count, 3) if dim == 0 else (3, sample_count)
+        data = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="at least two samples"):
+            kornia.enhance.zca_mean(data, dim=dim, unbiased=True)
+
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_biased_single_sample(self, device, dtype, dim):
+        """The population covariance of one sample is zero and remains supported."""
+        data = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        if dim != 0:
+            data = data.t()
+        actual = kornia.enhance.zca_whiten(data, dim=dim, unbiased=False)
+        self.assert_close(actual, torch.zeros_like(data))
+
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_zca_unbiased(self, unbiased, device, dtype):
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
