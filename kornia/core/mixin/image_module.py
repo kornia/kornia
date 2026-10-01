@@ -65,12 +65,14 @@ def _to_uint8_image(image: torch.Tensor) -> torch.Tensor:
 
     Values are clamped to ``[0, 1]``, scaled by 255 and rounded, so an image that overshoots the range saturates
     instead of wrapping modulo 256 (1.1 would otherwise become 24, black where it should be white), and a negative
-    value becomes 0 on every torch version. Non-floating images pass through untouched, so a ``uint8`` or ``uint16``
-    image keeps its values.
+    value becomes 0 on every torch version. A half-precision image is scaled in float32, so the product is not rounded
+    to the half dtype before ``round`` (``float16`` 0.0058823 is 1.49998 / 255 and gives 1, not 2). Non-floating
+    images pass through untouched, so a ``uint8`` or ``uint16`` image keeps its values.
     """
     if not image.is_floating_point():
         return image
-    return (image.detach().clamp(0.0, 1.0) * 255).round().to(torch.uint8)
+    working_dtype = torch.promote_types(image.dtype, torch.float32)
+    return (image.detach().to(working_dtype).clamp(0.0, 1.0) * 255).round().to(torch.uint8)
 
 
 class ImageModuleMixIn:

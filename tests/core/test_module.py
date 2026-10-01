@@ -235,7 +235,8 @@ class TestLazyOutputCache(BaseTester):
         image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         output = module(image)
         cached = module._output_image
-        expected = (output[0].detach().clamp(0.0, 1.0) * 255).round().to(torch.uint8).cpu().permute(1, 2, 0).numpy()
+        working = output[0].detach().to(torch.promote_types(dtype, torch.float32))
+        expected = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).cpu().permute(1, 2, 0).numpy()
         rendered = module.show(display=False)
         assert isinstance(rendered, PILImage.Image)
         np.testing.assert_array_equal(np.asarray(rendered), expected)
@@ -260,7 +261,8 @@ class TestLazyOutputCache(BaseTester):
             assert isinstance(output, list)
             assert len(output) == 1
             assert isinstance(output[0], PILImage.Image)
-            rendered = (expected[0].clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
+            working = expected[0].to(torch.promote_types(dtype, torch.float32))
+            rendered = (working.clamp(0.0, 1.0) * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
             np.testing.assert_array_equal(np.asarray(output[0]), rendered)
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
@@ -292,6 +294,18 @@ _ROW_UINT8 = [255, 128, 255, 0, 0, 255]
 
 class TestImageModuleConversions(BaseTester):
     """Value and layout contract of the ``ImageModule`` input and output conversions."""
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_half_images_round_like_their_exact_value_5209(self, half):
+        # Every half value in [0, 1]: the 8-bit pixel is round(v * 255) of the exact value, so the product must not be
+        # rounded to the half dtype first (float16 0.0058823 * 255 is 1.49998, which float16 rounds up to 1.5).
+        from kornia.core.mixin.image_module import _to_uint8_image
+
+        bits = torch.arange(-(2**15), 2**15, dtype=torch.int32).to(torch.int16)
+        values = bits.view(half)
+        values = values[values.isfinite() & (values >= 0) & (values <= 1)]
+        expected = (values.double() * 255).round().to(torch.uint8)
+        assert torch.equal(_to_uint8_image(values), expected)
 
     @pytest.mark.parametrize("np_dtype", [np.uint8, np.uint16, np.int8, np.int16, np.int32])
     def test_to_tensor_scales_integer_numpy_by_dtype_max_5207(self, np_dtype):
