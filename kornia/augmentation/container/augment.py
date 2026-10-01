@@ -656,9 +656,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 converted_inputs = (converted_dict,)
             else:
                 data_keys = self.transform_op.preproc_datakeys(kwargs.get("data_keys", self.data_keys))
+                # Arguments beyond the data keys pass through unconverted, so ``forward`` still rejects the count.
                 converted_inputs = tuple(
                     self._convert_numpy_non_image(arg, data_key) for arg, data_key in zip(inputs, data_keys)
-                )
+                ) + tuple(inputs[len(data_keys) :])
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
             self._check_output_type(output_type)
