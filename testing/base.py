@@ -292,6 +292,20 @@ def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool
     return _supports_kernel_probe(_replicate_padding_op, device.type, dtype)
 
 
+def _replicate_padding_3d_op(device_type: str, dtype: torch.dtype) -> None:
+    F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2, 2), (1, 1, 1, 1, 1, 1), mode="replicate")
+
+
+def supports_replicate_padding_3d(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 3D ``mode="replicate"`` pad kernel (``replication_pad3d``) for ``dtype``.
+
+    :func:`kornia.filters.filter3d` and :func:`kornia.filters.motion_blur3d` pad that way by default.
+    torch 2.5.1 has no float16 CPU ``replication_pad3d`` (bfloat16 is fine). Probed at runtime and cached per
+    (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_kernel_probe(_replicate_padding_3d_op, device.type, dtype)
+
+
 def _conv2d_op(device_type: str, dtype: torch.dtype) -> None:
     F.conv2d(_probe_zeros(device_type, dtype, 1, 1, 3, 3), _probe_zeros(device_type, dtype, 1, 1, 2, 2))
 

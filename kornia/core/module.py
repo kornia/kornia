@@ -79,7 +79,9 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
 
         Args:
             inputs: Inputs to operate on.
-            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            input_names_to_handle: List of input names to convert.
+                If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
+                path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
@@ -90,10 +92,9 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type
+                input_names_to_handle=input_names_to_handle, output_type=output_type, cache_output=True
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            self._store_output_image(_output_image, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
@@ -153,7 +154,9 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
 
         Args:
             inputs: Inputs to operate on.
-            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            input_names_to_handle: List of input names to convert.
+                If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
+                path only if it is the first positional argument.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
@@ -164,10 +167,9 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type
+                input_names_to_handle=input_names_to_handle, output_type=output_type, cache_output=True
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            self._store_output_image(_output_image, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image

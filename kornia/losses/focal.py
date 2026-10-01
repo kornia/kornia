@@ -96,6 +96,8 @@ def focal_loss(
     if target_mask is not None:
         target_mask.unsqueeze_(1)
         target_one_hot = target_one_hot * target_mask
+        # Exclude ignored logits before log-softmax: an overflowing log probability times zero is NaN.
+        pred = pred.masked_fill(~target_mask, 0.0)
 
     # compute F.softmax over the classes axis
     log_pred_soft: torch.Tensor = pred.log_softmax(1)

@@ -593,19 +593,19 @@ class LightGlue(nn.Module):
                 fname = "keynet_affnet_hardnet_lightglue.pth"
                 url = [
                     hf_url("lightglue", "keynet_affnet_hardnet_lightglue.pth"),
-                    "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth",
+                    "https://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth",
                 ]
             elif features in ["dedodeb"]:
                 fname = "dedodeb_lightglue.pth"
                 url = [
                     hf_url("lightglue", "dedodeb_lightglue.pth"),
-                    "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth",
+                    "https://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth",
                 ]
             elif features in ["dedodeg"]:
                 fname = "dedodeg_lightglue.pth"
                 url = [
                     hf_url("lightglue", "dedodeg_lightglue.pth"),
-                    "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth",
+                    "https://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth",
                 ]
             elif features == "xfeat":
                 fname = "xfeat-lighterglue.pt"
@@ -622,7 +622,7 @@ class LightGlue(nn.Module):
         elif conf.weights is not None:
             path = Path(__file__).parent
             path = path / f"weights/{self.conf.weights}.pth"
-            state_dict = torch.load(str(path), map_location="cpu")
+            state_dict = torch.load(str(path), map_location="cpu", weights_only=True)
         if state_dict:
             # xfeat-lighterglue weights are nested under a 'matcher.' prefix
             prefix = "matcher."
