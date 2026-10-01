@@ -110,16 +110,17 @@ def test_mask(device, dtype):
     assert_close(thresh_result, expected)
 
 
+@pytest.mark.parametrize("slow_and_differentiable", [False, True])
 @pytest.mark.parametrize(
     "values",
     [(-1.0, 0.0), (-2.0, -1.0), (0.0, 1.0), (1.0, 2.0)],
 )
-def test_mask_is_the_comparison_5173(values, device, dtype):
+def test_mask_is_the_comparison_5173(values, slow_and_differentiable, device, dtype):
     # #5173: the mask used to be `result > 0`, so a foreground pixel of value 0 or below, above the threshold but not
     # above 0, came out False. The mask is `x > threshold`, whatever the sign of the data.
     low, high = values
     x = torch.tensor([[low, low, high, high]], device=device, dtype=dtype)
-    mask, threshold = otsu_threshold(x, return_mask=True)
+    mask, threshold = otsu_threshold(x, slow_and_differentiable=slow_and_differentiable, return_mask=True)
     assert mask.dtype == torch.bool
     assert_close(mask, x > threshold)
     assert mask.tolist() == [[False, False, True, True]]
@@ -135,6 +136,18 @@ def test_mask_per_channel_threshold_5173(device, dtype):
     assert_close(mask, x > threshold.reshape(1, 2, 1, 1))
     assert mask[0, 0].tolist() == [[False, False], [True, True]]
     assert mask[0, 1].tolist() == [[False, False], [True, True]]
+
+
+@pytest.mark.parametrize("slow_and_differentiable", [False, True])
+def test_mask_agrees_with_the_thresholded_image_5173(slow_and_differentiable, device):
+    # Integer input: the threshold is truncated to the input dtype, so on the fast path one pixel (0) equals it, and a
+    # `>=` in the mask would keep that pixel while the thresholded image drops it.
+    x = torch.tensor([[-30, -20, -10], [0, 10, 20], [30, 40, 50]], device=device)
+    image, threshold = otsu_threshold(x, slow_and_differentiable=slow_and_differentiable)
+    mask, _ = otsu_threshold(x, slow_and_differentiable=slow_and_differentiable, return_mask=True)
+    assert torch.equal(mask, x > threshold)
+    assert torch.equal(image, torch.where(mask, x, torch.zeros_like(x)))
+    assert slow_and_differentiable or (x == threshold).any()  # the fixture does contain a pixel equal to the threshold
 
 
 @pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 1, 10, 10)])
