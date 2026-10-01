@@ -23,6 +23,34 @@ import kornia
 from testing.base import BaseTester
 
 
+def _lovasz_grad_reference(foreground_sorted):
+    """Berman's lovasz_grad in float64, with the counts kept as Python integers (foreground_sorted holds 0. and 1.)."""
+    total = int(foreground_sorted.sum().item())
+    seen_foreground = seen_background = 0
+    jaccard = []
+    for value in foreground_sorted.tolist():
+        if value:
+            seen_foreground += 1
+        else:
+            seen_background += 1
+        jaccard.append(1.0 - (total - seen_foreground) / (total + seen_background))
+    out = torch.tensor(jaccard, dtype=torch.float64)
+    out[1:] = out[1:] - out[:-1]
+    return out
+
+
+def _lovasz_hinge_reference(logits, labels):
+    """kornia's reduction of Berman's per-image Lovasz hinge, evaluated in float64 one sample at a time."""
+    logits = logits.double()
+    loss = torch.zeros((), dtype=torch.float64)
+    for b in range(logits.shape[0]):
+        target = labels[b].double().flatten()
+        errors = (1.0 - logits[b].flatten() * (2.0 * target - 1.0)).relu()
+        errors_sorted, permutation = errors.sort(descending=True)
+        loss = loss + errors_sorted.dot(_lovasz_grad_reference(target[permutation])) / logits.shape[0]
+    return loss
+
+
 class TestLovaszHingeLoss(BaseTester):
     def test_smoke(self, device, dtype):
         num_classes = 1
@@ -62,6 +90,39 @@ class TestLovaszHingeLoss(BaseTester):
         criterion = kornia.losses.LovaszHingeLoss()
         loss = criterion(prediction, labels)
         self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
+
+    def test_output_dtype_follows_the_prediction(self, device, dtype):
+        logits = torch.randn(2, 1, 4, 5, device=device, dtype=dtype)
+        labels = torch.randint(0, 2, (2, 4, 5), device=device)
+        assert kornia.losses.lovasz_hinge_loss(logits, labels).dtype == dtype
+        assert kornia.losses.LovaszHingeLoss()(logits, labels).dtype == dtype
+
+    def test_default_dtype_does_not_change_the_loss(self, device, dtype):
+        logits = torch.randn(2, 1, 4, 5, device=device, dtype=dtype)
+        labels = torch.randint(0, 2, (2, 4, 5), device=device)
+        expected = kornia.losses.lovasz_hinge_loss(logits, labels)
+        original = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float32 if original == torch.float64 else torch.float64)
+            loss = kornia.losses.lovasz_hinge_loss(logits, labels)
+        finally:
+            torch.set_default_dtype(original)
+        assert loss.dtype == dtype
+        self.assert_close(loss, expected)
+
+    def test_float64_matches_a_float64_reference(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        torch.manual_seed(0)
+        logits = torch.randn(2, 1, 16, 24, device=device, dtype=torch.float64, requires_grad=True)
+        labels = torch.randint(0, 2, (2, 16, 24), device=device)
+        reference_logits = logits.detach().cpu().clone().requires_grad_()
+        expected = _lovasz_hinge_reference(reference_logits, labels.cpu())
+        expected_grad = torch.autograd.grad(expected, reference_logits)[0]
+        loss = kornia.losses.lovasz_hinge_loss(logits, labels)
+        # the Jaccard weights are exact in float64: only the summation order differs from the reference
+        self.assert_close(loss, expected.to(device), rtol=1e-12, atol=1e-12)
+        self.assert_close(torch.autograd.grad(loss, logits)[0], expected_grad.to(device), rtol=1e-12, atol=1e-15)
 
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64

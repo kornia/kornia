@@ -60,7 +60,8 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
         target: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
-        a scalar with the computed loss.
+        a scalar with the computed loss, in the dtype of ``pred``. The Jaccard weights and the sum over
+        pixels are computed in float32 for a float16 or bfloat16 ``pred``.
 
     Example:
         >>> N = 1  # num_classes
@@ -81,8 +82,11 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
     # flatten pred and target [B, -1] and to float
+    # The labels, the Jaccard weights and the sum over pixels are accumulated in the prediction dtype, or in float32
+    # for a half-precision prediction, where pixel counts stay exact up to 2**24 pixels.
+    accumulation_dtype = torch.promote_types(pred.dtype, torch.float32)
     pred_flatten: Tensor = pred.reshape(pred.shape[0], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1)
+    target_flatten: Tensor = target.reshape(target.shape[0], -1).to(accumulation_dtype)
 
     # get shapes
     B, N = pred_flatten.shape
@@ -101,7 +105,7 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     if N > 1:
         gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
     loss: Tensor = (errors_sorted.relu() * gradient).sum(1).mean()
-    return loss
+    return loss.to(pred.dtype)
 
 
 class LovaszHingeLoss(nn.Module):
@@ -138,7 +142,8 @@ class LovaszHingeLoss(nn.Module):
         labels: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
-        a scalar with the computed loss.
+        a scalar with the computed loss, in the dtype of ``pred``. The Jaccard weights and the sum over
+        pixels are computed in float32 for a float16 or bfloat16 ``pred``.
 
     Example:
         >>> N = 1  # num_classes
