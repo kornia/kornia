@@ -100,6 +100,58 @@ class TestAugmentationSequential:
 
         assert out_input.shape == input.shape
 
+    def test_call_time_data_keys_are_restored_after_forward_exception(self, device, dtype):
+        image = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 16, 20, device=device, dtype=dtype)
+
+        aug = K.AugmentationSequential(
+            K.RandomThinPlateSpline(p=1.0),
+            data_keys=["input"],
+        )
+
+        with pytest.raises(NotImplementedError):
+            aug(image, mask, data_keys=["input", "mask"])
+
+        assert aug.transform_op.data_keys == aug.data_keys
+
+        # A later call without call-time data_keys must use the container defaults.
+        out = aug(image)
+        assert out.shape == image.shape
+
+    def test_call_time_data_keys_are_restored_after_inverse_exception(self, device, dtype):
+        image = torch.rand(1, 1, 4, 8, 8, device=device, dtype=dtype)
+        class_label = torch.tensor([1], device=device)
+
+        aug = K.AugmentationSequential(
+            K.RandomHorizontalFlip3D(p=1.0),
+            data_keys=["input"],
+        )
+
+        outputs = aug(image, class_label, data_keys=["input", "class"])
+
+        with pytest.raises(NotImplementedError, match="3d inverse"):
+            aug.inverse(*outputs, data_keys=["input", "class"])
+
+        assert aug.transform_op.data_keys == aug.data_keys
+
+        # The next keyless call must still use the container defaults.
+        out = aug(image)
+        assert out.shape == image.shape
+
+    def test_call_time_data_keys_are_restored_after_successful_inverse(self, device, dtype):
+        # A successful ``inverse`` with call-time keys must not leave them behind either (#5136).
+        image = torch.rand(1, 3, 8, 10, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 8, 10, device=device, dtype=dtype)
+
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
+
+        out_image, out_mask = aug(image, mask, data_keys=["input", "mask"])
+        aug.inverse(out_image, out_mask, data_keys=["input", "mask"])
+
+        assert aug.transform_op.data_keys == aug.data_keys
+        out = aug(image)
+        assert out.shape == image.shape
+
     def test_video(self, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
         bbox = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype).expand(
