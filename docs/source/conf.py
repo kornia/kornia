@@ -149,7 +149,8 @@ def _public_operator_count() -> int:
                 continue
             for name, obj in vars(module).items():
                 # Type checks first: attribute access on a ``kornia.core.external.LazyLoader`` would
-                # try to import (and offer to install) the optional dependency behind it.
+                # try to import the optional dependency behind it (raising, or installing it in the "ask" and "auto"
+                # installation modes).
                 if not (inspect.isfunction(obj) or (inspect.isclass(obj) and issubclass(obj, torch.nn.Module))):
                     continue
                 if name.startswith("_") or obj.__name__ != name:
