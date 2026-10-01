@@ -44,6 +44,9 @@ DOWNLOAD_ENV_VAR = "KORNIA_DOCTEST_DOWNLOAD"
 # ``kornia.feature.lightglue_onnx.utils.download`` binds ``download_url_to_file``
 # at import time, so patching ``torch.hub`` alone would not cover it.
 _DOWNLOAD_PRIMITIVES: tuple[tuple[str, str], ...] = (
+    # kornia.core.download runs its own transfer (torch's has no timeout), so every
+    # load_state_dict_from_url / download_file_from_url cache miss reaches the network here.
+    ("kornia.core.download", "_download_url_to_file"),
     ("torch.hub", "download_url_to_file"),
     ("kornia.feature.lightglue_onnx.utils.download", "download_url_to_file"),
     # kornia.onnx.download.CachedDownloader.download reaches the network here.
