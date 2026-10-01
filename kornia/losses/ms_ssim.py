@@ -98,10 +98,8 @@ class MS_SSIMLoss(nn.Module):
 
         self.num_scales: int = len(sigmas)
 
-        # One mask per scale; forward repeats them for every channel of the input. The window is odd and centred,
-        # 2 * int(2 * sigma) + 1 wide: int(4 * sigma + 1) is even for a sigma such as 1.3 or 3.3, which put the window
-        # half a pixel off centre and made the reduction="none" map one pixel short in each direction (#5126). The
-        # size is unchanged for every integer or half-integer sigma.
+        # One mask per scale; forward repeats them for every channel of the input. The window is odd, 2 * pad + 1
+        # wide, so it is centred and the convolutions padded by ``pad`` keep the input's height and width.
         filter_size = 2 * self.pad + 1
         g_masks = torch.stack([self._fspecial_gauss_2d(filter_size, sigma) for sigma in sigmas]).unsqueeze(1)
 
