@@ -932,13 +932,10 @@ def get_pascal_kernel_2d(
 
     """
     ky, kx = _unpack_2d_ks(kernel_size)
-    ax = get_pascal_kernel_1d(kx, device=device, dtype=dtype)
-    ay = get_pascal_kernel_1d(ky, device=device, dtype=dtype)
+    ax = get_pascal_kernel_1d(kx, norm=norm, device=device, dtype=dtype)
+    ay = get_pascal_kernel_1d(ky, norm=norm, device=device, dtype=dtype)
 
-    filt = ay[:, None] * ax[None, :]
-    if norm:
-        filt = filt / torch.sum(filt)
-    return filt
+    return ay[:, None] * ax[None, :]
 
 
 def get_pascal_kernel_1d(
@@ -981,6 +978,11 @@ def get_pascal_kernel_1d(
             if i != 2 * j:
                 cur[-j - 1] = value
         pre = cur
+
+    if norm and (dtype is None or dtype.is_floating_point or dtype.is_complex):
+        # Normalize before casting: even the row sum can overflow in the requested dtype.
+        total = sum(cur)
+        return torch.tensor([value / total for value in cur], device=device, dtype=dtype)
 
     out = torch.tensor(cur, device=device, dtype=dtype)
 
