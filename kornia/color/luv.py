@@ -57,6 +57,9 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
+    # Ensure the epsilon is representable for low-precision floating-point inputs.
+    eps = max(eps, torch.finfo(image.dtype).tiny)
+
     # Convert from sRGB to Linear RGB
     lin_rgb = rgb_to_linear_rgb(image)
 
@@ -107,6 +110,9 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    # Ensure the epsilon is representable for low-precision floating-point inputs.
+    eps = max(eps, torch.finfo(image.dtype).tiny)
 
     L: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]
