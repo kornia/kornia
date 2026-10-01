@@ -182,7 +182,7 @@ class _BatchLikeMixin(BaseTester):
             def run(t, shared_memory=shared_memory):
                 return self.op(3, t, shared_memory=shared_memory)
 
-            self.assert_close(torch_optimizer(run)(x), run(x))
+            self.assert_close(torch_optimizer(run, fullgraph=True)(x), run(x))
 
     @pytest.mark.parametrize(
         "make_n", [lambda: 2.0, lambda: True, lambda: "3", lambda: None], ids=["float", "bool", "str", "none"]
@@ -202,7 +202,7 @@ class _BatchLikeMixin(BaseTester):
         def run(t):
             return self.op(t.shape[-1], t)
 
-        compiled = torch_optimizer(run)
+        compiled = torch_optimizer(run, fullgraph=True)
         for size in (3, 4, 5):
             x = torch.zeros(2, size, device=device, dtype=dtype)
             self.assert_close(compiled(x), run(x))
