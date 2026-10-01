@@ -41,12 +41,12 @@ class TestRgbToHsv(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_hsv([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hsv(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hsv(img)
 
     def test_unit(self, device, dtype):
@@ -187,12 +187,12 @@ class TestHsvToRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.hsv_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.hsv_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.hsv_to_rgb(img)
 
     def test_unit(self, device, dtype):

@@ -22,6 +22,14 @@ from kornia.image import image_to_string, print_image
 
 
 class TestImageToString:
+    @pytest.mark.parametrize(("height", "rows"), [(2, 1), (3, 1), (6, 1), (10, 2)])
+    def test_wide_image_keeps_at_least_one_row(self, height, rows, device, dtype):
+        # the resized height is max(1, H * max_width // W): a wide, short image keeps one row, taller ones are unchanged
+        image = torch.rand(3, height, 40, device=device, dtype=dtype)
+        out = image_to_string(image, max_width=10)
+        assert out.count("\n") == rows
+        assert out.count("\033[48;5;") == rows * 10
+
     def test_value(self):
         image = torch.arange(16).reshape(1, 4, 4).repeat(3, 1, 1).long() * 16
         out = image_to_string(image)
@@ -34,6 +42,19 @@ class TestImageToString:
         )
         assert out == expected
 
+    @pytest.mark.parametrize("max_width", [256, 3])
+    @pytest.mark.parametrize("shape", [(1, 5, 6), (1, 4, 4), (1, 1, 2), (1, 7, 1)])
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64, torch.uint8, torch.int64])
+    def test_grayscale_matches_its_rgb_copy(self, shape, input_dtype, max_width):
+        generator = torch.Generator().manual_seed(0)
+        if input_dtype.is_floating_point:
+            gray = torch.rand(shape, generator=generator, dtype=input_dtype)
+        else:
+            gray = torch.randint(0, 256, shape, generator=generator).to(input_dtype)
+        out = image_to_string(gray, max_width)
+        assert out  # an empty string would make the comparison below vacuous
+        assert out == image_to_string(gray.repeat(3, 1, 1), max_width)
+
     def test_exception(self):
         img = torch.rand(3, 15, 15)
         image_to_string(img)
@@ -43,20 +64,26 @@ class TestImageToString:
 
         from kornia.core.exceptions import ShapeError
 
+        img = torch.rand(1, 3, 15, 15)
         with pytest.raises(ShapeError) as errinfo:
-            img = torch.rand(1, 3, 15, 15)
             image_to_string(img)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         from kornia.core.exceptions import ValueCheckError
 
+        img = torch.rand(3, 15, 15) * 10
         with pytest.raises(ValueCheckError) as errinfo:
-            img = torch.rand(3, 15, 15) * 10
             image_to_string(img)
         assert "Value range mismatch" in str(errinfo.value) or "Invalid image value range" in str(errinfo.value)
 
         with pytest.raises(RuntimeError):
             print_image([img])  # Do not accept list
+
+    def test_rejects_a_tensor_that_is_not_a_color_or_gray_image(self):
+        from kornia.core.exceptions import ImageError
+
+        with pytest.raises(ImageError):
+            image_to_string(torch.rand(6, 4, 4))
 
     def test_print_smoke(self):
         img = torch.rand(3, 15, 15)

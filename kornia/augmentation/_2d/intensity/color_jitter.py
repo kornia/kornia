@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -29,7 +30,6 @@ from kornia.augmentation._2d.intensity.color_jiggle import (
     _dispatch_color_steps,
     _Steps,
 )
-from kornia.constants import pi
 from kornia.enhance import (
     adjust_brightness_accumulative,
     adjust_contrast_with_mean_subtraction,
@@ -189,7 +189,7 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
         return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps)
 
     def _adjust_hue_turns(self, input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-        return self._hue_fn(input, factor * 2 * pi)
+        return self._hue_fn(input, factor * 2 * math.pi)
 
     def compile(
         self,

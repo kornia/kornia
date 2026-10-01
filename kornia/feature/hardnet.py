@@ -35,7 +35,7 @@ urls["liberty_aug"] = [
 ]
 urls["hardnet8v2"] = [
     hf_url("hardnet", "hardnet8v2.pt"),
-    "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
+    "https://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
 ]
 
 

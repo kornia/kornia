@@ -23,16 +23,19 @@ import pytest
 import torch
 
 import kornia
+import kornia.geometry.ransac as ransac_module
 from kornia.geometry import RANSAC, transform_points
+from kornia.geometry._degensac import _h_degenerate_sample
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_from_homogeneous
 from kornia.geometry.epipolar import find_fundamental, project_to_essential, sampson_epipolar_distance
-from kornia.geometry.epipolar._metrics import _sampson_errors
+from kornia.geometry.epipolar._metrics import _sampson_errors, _sampson_quadratic_basis
 from kornia.geometry.epipolar.fundamental import _rank2_projection, _refine_fundamental_lm
 from kornia.geometry.homography import _refine_homography_lm, _transfer_errors, oneway_transfer_error
 from kornia.geometry.ransac import _normalize_correspondences
 
 from testing.base import BaseTester
 from testing.casts import dict_to
+from testing.geometry.create import create_dominant_plane_scene
 
 # RANSAC's batched minimal solvers take the Metal shader compiler down on the paravirtualized GPU
 # of the hosted macOS runners, and the next MPS allocation aborts the pytest process (SIGABRT).
@@ -359,8 +362,8 @@ class TestRANSACLocalOptimization(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("line_segment_transfer_error_one_way overflows half precision on 600 px coordinates")
         # Segments about 100 px long, half of them outliers. The polisher's Gaussian weights are on the perpendicular
-        # distance in pixels, not on the length-scaled residual of line_segment_transfer_error_one_way (#4867), so
-        # local optimization refines the minimal-sample model instead of fitting a handful of segments.
+        # distance in pixels, not on that distance times the segment length (#4867), so local optimization refines
+        # the minimal-sample model instead of fitting a handful of segments.
         torch.manual_seed(0)
         H = torch.tensor([[1.1, 0.05, 20.0], [0.02, 0.95, -10.0], [1e-4, 2e-4, 1.0]], device=device, dtype=dtype)
         centers = torch.rand(300, 2, device=device, dtype=dtype) * 600
@@ -1958,10 +1961,11 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         E, mask = RANSAC("essential", inl_th=1.0, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
         assert torch.isfinite(E).all() and mask.shape == (100,)
 
-    def test_planar_scene(self, device, dtype):
+    @pytest.mark.parametrize("seed", [0, 1, 2])
+    def test_planar_scene(self, device, dtype, seed):
         self._skip_half(dtype)
-        # Every scene point on one plane: the five-point solver still determines E (a homography does not), and the
-        # pipeline recovers it among outliers.
+        # A calibrated plane admits multiple essential matrices with the same epipolar fit. Check the recovered
+        # consensus and essential manifold, not equality to one generating motion (which depends on sampled ties).
         generator = torch.Generator().manual_seed(12)
         f64 = torch.float64
         XY = (torch.rand(120, 2, generator=generator, dtype=f64) - 0.5) * 4
@@ -1971,13 +1975,15 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         Y = X @ R.T + t
         kp1, kp2 = X[:, :2] / X[:, 2:], Y[:, :2] / Y[:, 2:]
         kp2[:30] = (torch.rand(30, 2, generator=generator, dtype=f64) - 0.5) * 1.2
-        E_true = _skew(t) @ R
-        E_true = E_true / E_true.norm()
-        E, mask = RANSAC("essential", inl_th=1e-4, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
+        E, mask = RANSAC("essential", inl_th=1e-4, seed=seed)(kp1.to(device, dtype), kp2.to(device, dtype))
         assert torch.equal(mask.cpu(), torch.arange(120) >= 30)
         E = E.cpu().double()
-        tolerance = 1e-6 if dtype == torch.float64 else 1e-3
-        assert torch.minimum((E - E_true).norm(), (E + E_true).norm()) < tolerance
+        tolerance = 1e-9 if dtype == torch.float64 else 1e-6
+        self.assert_close(
+            torch.linalg.svdvals(E), E.new_tensor([0.5**0.5, 0.5**0.5, 0.0]), atol=tolerance, rtol=tolerance
+        )
+        error = sampson_epipolar_distance(kp1[None, 30:], kp2[None, 30:], E[None], eps=0.0)
+        assert error.max() < (1e-16 if dtype == torch.float64 else 1e-10)
 
     def test_batch_of_one_sample(self, device, dtype):
         self._skip_half(dtype)
@@ -2031,14 +2037,14 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
             refine, scale2, x2_arg = _refine_homography_lm, (2.0 / s2) ** 2, x2[:, :2]
 
             def errors(models):
-                return _transfer_errors(models, x1, x2[:, :2], 0.0)
+                return _transfer_errors(models, x1, x2[:, :2])
 
         else:
             start = torch.linalg.inv(t2).mT @ truth @ torch.linalg.inv(t1)
             refine, scale2, x2_arg = _refine_fundamental_lm, (2.0 / s1) ** 2, x2
 
             def errors(models):
-                return _sampson_errors(models, x1, x2, 0.0)
+                return _sampson_errors(models, x1, x2)
 
         start = start / start.norm()
         start = start + 1e-2 * torch.randn(3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
@@ -2056,3 +2062,582 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
         if model_type != "homography":
             neighbours = _rank2_projection(neighbours)
         assert (cost(neighbours) >= cost(refined) * (1 - 1e-9)).all()
+
+
+class TestRANSACScoring(BaseTester):
+    @pytest.mark.parametrize("model_type", ["homography", "fundamental", "essential"])
+    @pytest.mark.parametrize("score_type", ["ransac", "msac"])
+    @pytest.mark.parametrize("prosac", [False, True])
+    def test_score_and_support_match_full_residuals(self, device, dtype, model_type, score_type, prosac):
+        from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
+        from kornia.geometry.homography import _transfer_basis, _transfer_from_basis
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scoring uses at least float32")
+        generator = torch.Generator().manual_seed(10)
+        x1 = torch.rand(137, 3, generator=generator).to(device, dtype)
+        x2 = torch.rand(137, 3, generator=generator).to(device, dtype)
+        x1[:, 2] = x2[:, 2] = 1
+        x1[0] = float("nan")
+        models = torch.rand(29, 3, 3, generator=generator).to(device, dtype)
+        models[0] = float("nan")
+        planar = model_type == "homography"
+        basis = _transfer_basis(x1, x2[:, :2]) if planar else _sampson_quadratic_basis(x1, x2)
+        residual_fn = _transfer_from_basis if planar else _sampson_from_quadratic_basis
+        errors = residual_fn(models, basis)
+        threshold = 0.1
+        ransac = RANSAC(model_type, score_type=score_type, prosac_sampling=prosac)
+        expected_support = (errors <= threshold).sum(1)
+        expected_scores = ransac._lm_score(errors, threshold)
+        # Force several tiles, including a tail of one model, without allocating huge fixtures.
+        scores, support, masks = ransac._lm_score_models(models, basis, threshold, max_residuals=137 * 7)
+        self.assert_close(scores, expected_scores)
+        self.assert_close(support, expected_support.to(support.dtype), rtol=0, atol=0)
+        assert scores[0] == 0 and support[0] == 0
+        if prosac:
+            assert masks is not None
+            self.assert_close(support, masks.sum(1).to(support.dtype), rtol=0, atol=0)
+        else:
+            assert masks is None
+
+    def test_msac_does_not_mutate_residuals(self, device, dtype):
+        errors = torch.tensor([[0.0, 0.25, 1.0, 2.0, float("nan"), float("inf")]], device=device, dtype=dtype)
+        original = errors.clone()
+        score = RANSAC()._lm_score(errors, 1.0)
+        self.assert_close(score, errors.new_tensor([1.75]))
+        assert torch.equal(errors.isnan(), original.isnan())
+        self.assert_close(errors.nan_to_num(), original.nan_to_num(), rtol=0, atol=0)
+
+
+class TestRANSACDegensacOptions(BaseTester):
+    @pytest.mark.parametrize(
+        "model_type", ["fundamental", "fundamental_7pt", "fundamental_8pt", "homography", "essential"]
+    )
+    def test_default_is_off(self, model_type):
+        assert RANSAC(model_type).degensac is False
+
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_7pt"])
+    def test_explicit_opt_in(self, model_type):
+        assert RANSAC(model_type, degensac=True).degensac is True
+
+    def test_default_is_off_with_dlt(self):
+        assert RANSAC("fundamental", local_optimization="dlt").degensac is False
+
+    @pytest.mark.parametrize(
+        ("model_type", "local_optimization"),
+        [
+            ("homography", None),
+            ("essential", None),
+            ("fundamental_8pt", None),
+            ("fundamental", "dlt"),
+            ("homography_from_linesegments", None),
+        ],
+    )
+    def test_true_rejects_unsupported(self, model_type, local_optimization):
+        with pytest.raises(ValueError, match="degensac"):
+            RANSAC(model_type, local_optimization=local_optimization, degensac=True)
+
+    def test_rejects_non_bool(self):
+        with pytest.raises(ValueError, match="degensac"):
+            RANSAC("fundamental", degensac=1)
+
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_8pt", "homography", "essential"])
+    def test_minimal_models_omit_unused_origins(self, model_type, device, dtype):
+        ransac = RANSAC(model_type)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        x1 = torch.cat([torch.rand(8, ransac.minimal_sample_size, 2), torch.ones(8, ransac.minimal_sample_size, 1)], -1)
+        x2 = torch.cat([torch.rand_like(x1[..., :2]), torch.ones_like(x1[..., :1])], -1)
+        x1, x2 = x1.to(device, work), x2.to(device, work)
+        models, origin = ransac._lm_minimal_models(x1, x2)
+        assert origin is None
+        tracked_models, tracked_origin = ransac._lm_minimal_models(x1, x2, track_origins=True)
+        assert tracked_origin is not None and len(tracked_origin) == len(models)
+        assert torch.equal(models.isnan(), tracked_models.isnan())
+        self.assert_close(models.nan_to_num(), tracked_models.nan_to_num(), atol=0, rtol=0)
+
+    def test_raw_record_setters_are_draw_order_prefix_maxima(self):
+        scores = torch.tensor([0.5, 2.0, 1.0, 3.0, 3.0, -1.0, 4.0])
+        assert RANSAC._raw_record_setters(scores, 1.0) == [1, 3, 6]
+        assert RANSAC._raw_record_setters(scores, 5.0) == []
+        assert RANSAC._raw_record_setters(scores, -1.0) == [0, 1, 3, 6]
+
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_8pt", "homography", "essential"])
+    def test_lm_minimal_models_report_their_sample(self, model_type, device, dtype):
+        # Every model fits its own sample far better than the other fifteen, so the reported row identifies it; the
+        # eight-point model is not exact on its sample after the rank-2 projection, hence argmin rather than zero.
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        ransac = RANSAC(model_type)
+        generator = torch.Generator().manual_seed(0)
+        m = ransac.minimal_sample_size
+        x1 = torch.cat([torch.rand(16, m, 2, generator=generator), torch.ones(16, m, 1)], -1)
+        x2 = torch.cat([torch.rand(16, m, 2, generator=generator), torch.ones(16, m, 1)], -1)
+        models, rows = ransac._lm_minimal_models(x1.to(device, work), x2.to(device, work), track_origins=True)
+        assert rows is not None
+        assert rows.shape == (len(models),) and rows.dtype == torch.long
+        assert bool((rows[1:] >= rows[:-1]).all())  # draw order
+        finite = torch.isfinite(models).flatten(1).all(1)
+        models, rows = models[finite].cpu().double(), rows[finite].cpu()
+        s1, s2 = x1.double(), x2.double()
+        if model_type == "homography":
+            mapped = torch.einsum("mij,snj->msni", models, s1)
+            residual = (mapped[..., :2] / mapped[..., 2:] - s2[None, ..., :2]).norm(dim=-1).amax(-1)
+        else:
+            residual = torch.einsum("sni,mij,snj->msn", s2, models, s1).abs().amax(-1)
+        assert float((residual.argmin(1) == rows).double().mean()) >= 0.9
+
+
+def _degensac_inputs(kp1, kp2, inl_th, device, work):
+    """The normalized inputs ``_forward_lm`` builds for a seven-point fundamental matrix."""
+    x1_host, x2_host, t1, t2, s1, _ = _normalize_correspondences(kp1.cpu().double(), kp2.cpu().double(), True)
+    x1, x2 = x1_host.to(device, work), x2_host.to(device, work)
+    return x1, x2, x1_host, x2_host, t1, t2, _sampson_quadratic_basis(x1, x2), (inl_th / s1) ** 2
+
+
+def _degenerate_sample(labels, generator):
+    """Five plane correspondences and two outliers, an H-degenerate seven-point sample."""
+    plane = (labels == 0).nonzero().flatten().cpu()
+    outliers = (labels == 2).nonzero().flatten().cpu()
+    return torch.cat(
+        [
+            plane[torch.randperm(len(plane), generator=generator)[:5]],
+            outliers[torch.randperm(len(outliers), generator=generator)[:2]],
+        ]
+    )
+
+
+def _skip_half(dtype):
+    if dtype in (torch.float16, torch.bfloat16):
+        pytest.skip("the scene's pixel coordinates quantize at the noise scale in half precision")
+
+
+def _off_plane_error(F, clean1, clean2):
+    """Median Sampson distance, in pixels, of the noise-free off-plane correspondences to F, on the host."""
+    points1, points2 = clean1[None].cpu().double(), clean2[None].cpu().double()
+    return float(sampson_epipolar_distance(points1, points2, F[None].cpu().double(), squared=False)[0].median())
+
+
+def _explains_off_plane(F, clean1, clean2):
+    """Whether F puts the noise-free off-plane correspondences within 2 px of their epipolar lines (median)."""
+    return bool(F.abs().sum() > 0) and _off_plane_error(F, clean1, clean2) < 2.0
+
+
+class TestRANSACDegensacRecovery(BaseTester):
+    @pytest.mark.parametrize("max_lo_iters", [0, 5])
+    def test_degenerate_samples_are_recovered(self, device, dtype, max_lo_iters):
+        # Every sample the degeneracy test flags must come back as a model that explains the off-plane geometry;
+        # a sample it does not flag must come back as None.
+        _skip_half(dtype)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0, max_lo_iters=max_lo_iters, seed=0, degensac=True)
+        x1, x2, x1_host, x2_host, t1, t2, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        generator = torch.Generator().manual_seed(1)
+        flagged = 0
+        for _ in range(10):
+            sample = _degenerate_sample(labels, generator)
+            models, _ = ransac._lm_minimal_models(x1[sample.to(device)][None], x2[sample.to(device)][None])
+            models = models[torch.isfinite(models).flatten(1).all(1)]
+            scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
+            model = models[int(scores.masked_fill(counts <= 7, -1.0).argmax())]
+            result = ransac._degensac_recover(
+                model, sample.to(device), x1, x2, x1_host, x2_host, basis, threshold, torch.Generator().manual_seed(2)
+            )
+            degenerate = _h_degenerate_sample(model.cpu().double(), x1_host[sample], x2_host[sample], 3 * threshold)
+            if degenerate is None:
+                assert result is None
+                continue
+            flagged += 1
+            assert result is not None
+            out_models, scores, counts, masks = result
+            assert masks is None
+            # One model per recovery, as Chum's rFtH returns one: near-duplicates from one search would crowd the
+            # eight-model pool (on the loftr_fund pair they cost test_real_dirty_7pt its margin in 2 of 20 seeds).
+            assert out_models.shape == (1, 3, 3) and scores.shape == counts.shape == (1,)
+            best = out_models[int(scores.argmax())].cpu().double()
+            assert _explains_off_plane(t2.mT @ best @ t1, clean1.cpu(), clean2.cpu())
+        assert flagged >= 5
+
+    def test_record_checks_are_batched(self, device, dtype, monkeypatch):
+        _skip_half(dtype)
+        sizes = []
+        original = ransac_module._h_degenerate_samples
+
+        def check(models, *args):
+            sizes.append(len(models))
+            return original(models, *args)
+
+        def scalar_check(*args):
+            raise AssertionError("a record's already batched degeneracy test must not run again")
+
+        monkeypatch.setattr(ransac_module, "_h_degenerate_samples", check)
+        monkeypatch.setattr(ransac_module, "_h_degenerate_sample", scalar_check)
+        kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        F, _ = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
+        assert sizes and max(sizes) > 1
+        assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+
+    @pytest.mark.parametrize("score_type", ["msac", "ransac"])
+    def test_batched_recovery_matches_scalar_checks(self, device, dtype, score_type, monkeypatch):
+        _skip_half(dtype)
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 5, device=device, dtype=dtype)
+        estimator = RANSAC("fundamental", inl_th=1.0, seed=5, degensac=True, score_type=score_type)
+        batched = estimator(kp1, kp2)
+
+        def scalar_checks(models, x1, x2, threshold):
+            return [_h_degenerate_sample(f, a, b, threshold) for f, a, b in zip(models, x1, x2)]
+
+        monkeypatch.setattr(ransac_module, "_h_degenerate_samples", scalar_checks)
+        scalar = estimator(kp1, kp2)
+        assert torch.equal(batched[0], scalar[0]) and torch.equal(batched[1], scalar[1])
+
+    def test_unseeded_recoveries_leave_the_global_generator(self, device, dtype):
+        # The minimal samples of an unseeded call come from the global generator. Recoveries drawing from it too
+        # would shift every later sample, so an unseeded call with a recovery would sample a different sequence than
+        # degensac=False (on the loftr_fund pair: 9 of 20 global seeds with 2+ gross errors instead of 5).
+        _skip_half(dtype)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0, degensac=True)
+        x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        generator = torch.Generator().manual_seed(4)
+        samples = torch.stack([_degenerate_sample(labels, generator) for _ in range(8)]).to(device)
+        models, rows = ransac._lm_minimal_models(x1[samples], x2[samples], track_origins=True)
+        assert rows is not None
+        scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
+        scores = scores.masked_fill(counts <= 7, -1.0)
+        state = torch.get_rng_state()
+        recoveries = ransac._degensac_batch(
+            models, samples[rows], scores, -1.0, x1, x2, x1_host, x2_host, basis, threshold, 0
+        )
+        assert recoveries  # the recovery drew
+        assert torch.equal(torch.get_rng_state(), state)
+
+    def test_unseeded_recovery_draws_follow_the_samples(self, device, dtype, monkeypatch):
+        # An unseeded call seeds its private recovery generator from the sample that triggered the recovery, which
+        # comes from the global generator: the draws differ between calls without advancing it. A constant seed
+        # would repeat the same draws, and so the same luck, on every unseeded call.
+        _skip_half(dtype)
+        seeds = []
+        original = RANSAC._degensac_recover
+
+        def spy(
+            self,
+            model,
+            sample,
+            x1,
+            x2,
+            x1_host,
+            x2_host,
+            basis,
+            threshold,
+            generator,
+            seen_planes=None,
+            homography=None,
+        ):
+            seeds.append(generator.initial_seed())
+            return original(
+                self, model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator, seen_planes, homography
+            )
+
+        monkeypatch.setattr(RANSAC, "_degensac_recover", spy)
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        per_call = []
+        for global_seed in (0, 1):
+            seeds.clear()
+            torch.manual_seed(global_seed)
+            RANSAC("fundamental", inl_th=1.0, degensac=True)(kp1, kp2)
+            per_call.append(set(seeds))
+        assert per_call[0] and per_call[1] and per_call[0] != per_call[1]
+
+    def test_repeated_plane_is_searched_once(self, device, dtype, monkeypatch):
+        # Every degenerate record setter of a dominant plane finds the same plane (the refined planes of repeated
+        # recoveries have Jaccard index 0.997-1.0 on these scenes), and nine searches of it per call made DEGENSAC
+        # eleven times slower than plain RANSAC; VSAC skips a model whose inliers repeat (Jaccard index 0.95).
+        _skip_half(dtype)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)
+        x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        generator = torch.Generator().manual_seed(4)
+        samples = torch.stack([_degenerate_sample(labels, generator) for _ in range(8)]).to(device)
+        models, rows = ransac._lm_minimal_models(x1[samples], x2[samples], track_origins=True)
+        assert rows is not None
+        scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
+        scores = scores.masked_fill(counts <= 7, -1.0)
+        records = [
+            record
+            for record in RANSAC._raw_record_setters(scores.cpu(), -1.0)
+            if _h_degenerate_sample(
+                models[record].cpu().double(),
+                x1_host[samples[rows][record].cpu()],
+                x2_host[samples[rows][record].cpu()],
+                3 * threshold,
+            )
+            is not None
+        ]
+        assert len(records) >= 2  # several degenerate record setters of the same plane
+        calls = []
+        original = ransac_module._plane_parallax_search
+        monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
+        recoveries = ransac._degensac_batch(
+            models, samples[rows], scores, -1.0, x1, x2, x1_host, x2_host, basis, threshold, 0
+        )
+        assert len(calls) == 1 and len(recoveries) == 1
+
+    def test_dominant_plane_is_refined_once_per_call(self, device, dtype, monkeypatch):
+        # A later record setter's homography is noisier than the refined plane (Jaccard index 0.03-1.0 against it at
+        # N=4000), so a Jaccard test before innerH let one to five repeated refinements through per call; its inliers
+        # lie inside the refined plane (98.3-100% of them in every repeat measured), which a containment test sees.
+        _skip_half(dtype)
+        refinements = []
+        original = ransac_module._inner_homography
+        monkeypatch.setattr(ransac_module, "_inner_homography", lambda *a: refinements.append(1) or original(*a))
+        for seed in range(3):
+            refinements.clear()
+            kp1, kp2, _, _, _ = create_dominant_plane_scene(4000, 0.6, 0.95, seed, device=device, dtype=dtype)
+            RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=True)(kp1, kp2)
+            assert len(refinements) == 1, f"seed {seed}"
+
+    def test_dominant_plane_is_searched_at_most_twice_per_call(self, device, dtype, monkeypatch):
+        _skip_half(dtype)
+        calls = []
+        original = ransac_module._plane_parallax_search
+        monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
+        kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0, degensac=True)(kp1, kp2)
+        assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+        assert 1 <= len(calls) <= 2  # one plane; nine searches before deduplication
+
+    def _recover_once(self, max_lo_iters, score_type, scene_seed, device, dtype):
+        """Recover the scene's first degenerate sample (5 plane + 2 outliers) with a fixed recovery generator."""
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, scene_seed, device=device, dtype=dtype)
+        x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        sample = _degenerate_sample(labels, torch.Generator().manual_seed(scene_seed)).to(device)
+        ransac = RANSAC("fundamental", inl_th=1.0, score_type=score_type, max_lo_iters=max_lo_iters, degensac=True)
+        models, _ = ransac._lm_minimal_models(x1[sample][None], x2[sample][None])
+        models = models[torch.isfinite(models).flatten(1).all(1)]
+        scores, counts, _ = ransac._lm_score_models(models, basis, threshold)
+        model = models[int(scores.masked_fill(counts <= 7, -1.0).argmax())]
+        generator = torch.Generator().manual_seed(999)
+        return ransac._degensac_recover(model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator)
+
+    def test_refinement_never_lowers_the_recovered_score(self, device, dtype):
+        # With score_type="ransac" the truncated LM can trade inliers: on this sample it took the recovered model from
+        # 568 to 566. The recovery keeps the better of its raw and refined models.
+        _skip_half(dtype)
+        raw = self._recover_once(0, "ransac", 5, device, dtype)
+        refined = self._recover_once(5, "ransac", 5, device, dtype)
+        assert raw is not None and refined is not None
+        assert float(refined[1][0]) >= float(raw[1][0])
+
+    def test_worse_refinement_keeps_the_raw_model(self, device, dtype, monkeypatch):
+        _skip_half(dtype)
+        raw = self._recover_once(0, "msac", 0, device, dtype)
+        # A "refinement" that returns a scrambled model scores far below the raw one.
+        monkeypatch.setattr(RANSAC, "_lm_refine", lambda self, models, *args: models.roll(1, dims=-1))
+        kept = self._recover_once(5, "msac", 0, device, dtype)
+        assert raw is not None and kept is not None
+        assert torch.equal(kept[0], raw[0]) and torch.equal(kept[1], raw[1])
+
+    def test_non_degenerate_sample_returns_none(self, device, dtype):
+        # Seven off-plane correspondences are not always in general position at the test's tolerance: a five-point
+        # homography fit leaves two redundant constraints, and five of the first seven here fit one within 2.2 px^2
+        # < 3 t. The contract is the implication: a sample the test does not flag is not recovered.
+        _skip_half(dtype)
+        work = torch.float64 if dtype == torch.float64 else torch.float32
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.5, 0, device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)
+        x1, x2, x1_host, x2_host, _, _, basis, threshold = _degensac_inputs(kp1, kp2, 1.0, device, work)
+        off_plane = (labels == 1).nonzero().flatten().cpu()
+        unflagged = 0
+        for group in range(6):
+            sample = off_plane[7 * group : 7 * group + 7]
+            models, _ = ransac._lm_minimal_models(x1[sample.to(device)][None], x2[sample.to(device)][None])
+            for model in models[torch.isfinite(models).flatten(1).all(1)]:
+                if _h_degenerate_sample(model.cpu().double(), x1_host[sample], x2_host[sample], 3 * threshold) is None:
+                    unflagged += 1
+                    recovered = ransac._degensac_recover(
+                        model, sample.to(device), x1, x2, x1_host, x2_host, basis, threshold, None
+                    )
+                    assert recovered is None
+        assert unflagged >= 3
+
+
+_SCENES = {"frontal": {}, "zoom": {"zoom": 3.0}, "skew": {"skew": 0.5}}
+
+
+class TestRANSACDegensac(BaseTester):
+    @pytest.mark.parametrize("scene", sorted(_SCENES))
+    def test_recovers_dominant_plane(self, device, dtype, scene):
+        # On main (a7d177cbf) plain seven-point RANSAC fails every one of these seeds on every scene on CPU, so the
+        # explicit recovery's assertions fail there. Accelerators sample differently (MPS: plain succeeds on one
+        # frontal and zoomed seed), so the plain count only asserts that the scenes stay hard for it.
+        _skip_half(dtype)
+        plain_failures = 0
+        for seed in range(5):
+            kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(
+                1000, 0.6, 0.95, seed, device=device, dtype=dtype, **_SCENES[scene]
+            )
+            F, mask = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=seed, degensac=True)(kp1, kp2)
+            assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu()), f"seed {seed}"
+            off_plane = labels == 1
+            assert float((mask & off_plane).sum()) >= 0.8 * float(off_plane.sum()), f"seed {seed}"
+            F_plain, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=seed, degensac=False)(kp1, kp2)
+            plain_failures += int(not _explains_off_plane(F_plain.cpu(), clean1.cpu(), clean2.cpu()))
+        assert plain_failures >= 3
+
+    @pytest.mark.parametrize("score_type", ["msac", "ransac"])
+    def test_both_score_types(self, device, dtype, score_type):
+        _skip_half(dtype)
+        kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0, score_type=score_type, degensac=True)(
+            kp1, kp2
+        )
+        assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+
+    def test_never_degenerate_is_bitwise_plain(self, device, dtype, monkeypatch):
+        # With the test stubbed to find no degenerate sample, the record tracking, sample rows and host transfers
+        # must leave the result bit for bit the same, even where recoveries would fire.
+        _skip_half(dtype)
+        monkeypatch.setattr(ransac_module, "_h_degenerate_samples", lambda models, *args: [None] * len(models))
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
+        F_plain, mask_plain = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=False)(kp1, kp2)
+        assert torch.equal(F, F_plain) and torch.equal(mask, mask_plain)
+
+    def test_scene_without_plane_keeps_its_accuracy(self, device, dtype, monkeypatch):
+        # Without a dominant plane, record setters are still often H-degenerate at Chum's 3 t: five of seven
+        # correspondences fit one homography within 0.6-2.1 t in 5 of these 6 seeds. The recoveries then join the
+        # pool, so the estimate is not bitwise the plain one, but it must explain the geometry as well.
+        _skip_half(dtype)
+        calls = []
+        original = ransac_module._plane_parallax_search
+        monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
+        # plane_fraction=0 puts every inlier at a random depth: no dominant plane.
+        for seed in range(6):
+            kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.0, seed, device=device, dtype=dtype)
+            F, mask = RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=True)(kp1, kp2)
+            F_plain, mask_plain = RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=False)(kp1, kp2)
+
+            error, error_plain = _off_plane_error(F, clean1, clean2), _off_plane_error(F_plain, clean1, clean2)
+            assert error <= error_plain + 0.01, f"seed {seed}"
+            assert abs(int(mask.sum()) - int(mask_plain.sum())) <= 0.01 * len(mask), f"seed {seed}"
+        assert calls  # the recovered path ran
+
+    def test_recovered_incumbent_does_not_hide_later_records(self, device, dtype, monkeypatch):
+        # The stub's first model outscores every raw model. A trigger tied to the incumbent's score would stop
+        # testing after the first batch; the raw record keeps finding record setters in later batches.
+        _skip_half(dtype)
+        batches = []
+
+        def stub(
+            self,
+            model,
+            sample,
+            x1,
+            x2,
+            x1_host,
+            x2_host,
+            basis,
+            threshold,
+            generator,
+            seen_planes=None,
+            homography=None,
+        ):
+            batches.append(generator.initial_seed())
+            models = model[None].clone()
+            huge = torch.full((1,), 1e9, dtype=x1.dtype, device=x1.device)
+            return models, huge, torch.full((1,), float(len(x1)), dtype=x1.dtype, device=x1.device), None
+
+        monkeypatch.setattr(RANSAC, "_degensac_recover", stub)
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        RANSAC("fundamental", inl_th=1.0, batch_size=64, max_iter=20, confidence=1.0, seed=0, degensac=True)(kp1, kp2)
+        assert len(set(batches)) >= 2
+
+    def test_seeded_calls_are_reproducible_and_private(self, device, dtype, monkeypatch):
+        _skip_half(dtype)
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+
+        def device_state():
+            if device.type == "cuda":
+                return torch.cuda.get_rng_state(device)
+            if device.type == "mps":
+                return torch.mps.get_rng_state()
+            return None
+
+        calls = []
+        original = ransac_module._plane_parallax_search
+        monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
+        cpu_state, accelerator_state = torch.get_rng_state(), device_state()
+        first = RANSAC("fundamental", inl_th=1.0, seed=3, degensac=True)(kp1, kp2)
+        second = RANSAC("fundamental", inl_th=1.0, seed=3, degensac=True)(kp1, kp2)
+        assert calls  # the recovery drew
+        assert torch.equal(first[0], second[0]) and torch.equal(first[1], second[1])
+        assert torch.equal(torch.get_rng_state(), cpu_state)
+        if accelerator_state is not None:
+            assert torch.equal(device_state(), accelerator_state)
+
+    # Review focus 1: non-finite correspondences.
+    def test_non_finite_rows_are_skipped(self, device, dtype):
+        _skip_half(dtype)
+        kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        kp1[:5] = float("nan")
+        kp2[5:10] = float("inf")
+        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
+        assert not bool(mask[:10].any())
+        assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+
+    # Review focus 2: a fully planar scene. Its off-plane set is the outliers, so the pair search runs on them and may
+    # return a model consistent with the plane plus a few outliers (as Chum's code does; VSAC's DEGENSAC+ adds a
+    # randomness check against that). Every model consistent with the plane is valid here: the plane must stay in.
+    def test_fully_planar_scene(self, device, dtype):
+        _skip_half(dtype)
+        kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 1.0, 0, device=device, dtype=dtype)
+        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
+        assert F.shape == (3, 3) and bool(F.abs().sum() > 0)
+        plane = labels == 0
+        assert float((mask & plane).sum()) >= 0.9 * float(plane.sum())
+
+    # Review focus 3: tiny inputs.
+    @pytest.mark.parametrize("num_points", [7, 10, 20])
+    def test_tiny_inputs(self, device, dtype, num_points):
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(num_points, 0.8, 0.9, 0, device=device, dtype=dtype)
+        F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
+        assert F.shape == (3, 3) and mask.shape == (num_points,) and mask.dtype == torch.bool
+
+    # Review focus 4: PROSAC's stopping rule takes the recovered incumbent's mask.
+    def test_prosac(self, device, dtype, monkeypatch):
+        # The raw degenerate incumbent already certifies itself after the first batch here, so the final model alone
+        # cannot show which mask set the recovered incumbent's bound: spy on PROSAC's termination test instead.
+        _skip_half(dtype)
+        recovered, tested = [], []
+        original_recover, original_prosac = RANSAC._degensac_recover, RANSAC._prosac_max_samples
+
+        def spy_recover(self, *args):
+            result = original_recover(self, *args)
+            if result is not None:
+                recovered.append(result[3][0].clone())
+            return result
+
+        def spy_prosac(self, inliers, num_inliers):
+            tested.append(inliers.clone())
+            return original_prosac(self, inliers, num_inliers)
+
+        monkeypatch.setattr(RANSAC, "_degensac_recover", spy_recover)
+        monkeypatch.setattr(RANSAC, "_prosac_max_samples", spy_prosac)
+        kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
+        order = torch.argsort(labels.cpu(), stable=True).to(device)  # inliers first, a best-first ranking
+        F, _ = RANSAC("fundamental", inl_th=1.0, seed=0, prosac_sampling=True, degensac=True)(kp1[order], kp2[order])
+        assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
+        # The recovered incumbent's stopping bound is PROSAC's test on its own inlier mask.
+        assert recovered and any(torch.equal(mask, inliers) for mask in recovered for inliers in tested)
+
+    # Review focus 5: half-precision correspondences run the float64 host recovery and float32 device scoring.
+    def test_half_precision_smoke(self, device):
+        if device.type != "cpu":
+            pytest.skip("the half-precision RANSAC legs run on CPU; accelerator half kernels are covered elsewhere")
+        for dtype in (torch.float16, torch.bfloat16):
+            kp1, kp2, _, _, _ = create_dominant_plane_scene(500, 0.6, 0.95, 0, device=device, dtype=dtype)
+            F, mask = RANSAC("fundamental", inl_th=2.0, seed=0, degensac=True)(kp1, kp2)
+            assert F.shape == (3, 3) and F.dtype == dtype and mask.shape == (500,)

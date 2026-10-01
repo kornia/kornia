@@ -212,8 +212,8 @@ class TestAugmentationSequential:
 
     @pytest.mark.parametrize("num_boxes", [1, 2])
     def test_convention_padded_random_crop_accepts_rank2_bboxes_4244(self, num_boxes, device, dtype):
-        # kornia#4244: RandomCrop's padded path routes bounding boxes through Boxes.pad and
-        # Boxes.unpad. A rank-2 (N, 4) bbox for a single image builds an *unbatched* Boxes
+        # kornia#4244: RandomCrop's padded path routed bounding boxes through Boxes.pad and
+        # Boxes.unpad until #4801. A rank-2 (N, 4) bbox for a single image builds an *unbatched* Boxes
         # container, which those methods crashed on with "output with shape [1, 4] doesn't match
         # the broadcast shape [1, 1, 4]". This is the reproducer from the issue's follow-up, and it
         # is the only public route to that container: a rank-3 (B, N, 4) bbox builds a batched one,
@@ -1490,8 +1490,7 @@ class TestConventionAugmentationSequential(BaseTester):
         assert cached.device == out_image.device  # no device-to-host copy in the forward pass
         self.assert_close(cached, out_image.detach())
 
-        if dtype != torch.bfloat16:  # `.show()` renders through `Tensor.numpy()`, which has no bfloat16 support
-            assert isinstance(aug.show(display=False), PILImage.Image)
+        assert isinstance(aug.show(display=False), PILImage.Image)
         path = tmp_path / "augmented.jpg"
         aug.save(name=str(path))
         assert path.is_file()

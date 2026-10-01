@@ -34,11 +34,25 @@ __all__ = ["Hyperplane", "fit_plane"]
 
 
 class Hyperplane(nn.Module):
-    """Represent a hyperplane in n-dimensional space.
+    r"""Represent a plane in 3D space by its normal :math:`n` and offset :math:`d`.
+
+    Convention:
+        - The plane is :math:`n \cdot x + d = 0`, and :meth:`signed_distance` is :math:`n \cdot x + d`: positive on
+          the side the normal points to, and ``d`` at the origin. :meth:`from_vector` sets :math:`d = -n \cdot e`.
+          :func:`~kornia.geometry.depth.depth_from_plane_equation` takes :math:`n \cdot X = d` instead: pass it
+          ``-offset``.
+        - The normal must be unit for :meth:`signed_distance`, :meth:`abs_distance` and :meth:`projection` to give
+          Euclidean distances and the closest point. :meth:`through` and :func:`fit_plane` return a unit normal; the
+          constructor and :meth:`from_vector` do not normalise it.
+        - :meth:`through` points the normal along :math:`(p_2 - p_0) \times (p_1 - p_0)`, as Eigen's
+          ``Hyperplane::Through`` does: the opposite of the right-hand normal of the loop
+          :math:`p_0 \to p_1 \to p_2`. Swapping two points flips it.
+        - Known defect: ``normal`` and ``offset`` are not registered module state, so ``state_dict()`` is empty and
+          ``.to()`` neither moves nor casts them (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
 
     Args:
-        n: The normal vector of the hyperplane.
-        d: The scalar distance from the origin.
+        n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
+        d: The offset :math:`d`, a :class:`~kornia.geometry.vector.Scalar`.
     """
 
     def __init__(self, n: Vector3, d: Scalar) -> None:
@@ -188,7 +202,14 @@ class Hyperplane(nn.Module):
         KORNIA_CHECK(p0_data.shape == p1_data.shape)
         KORNIA_CHECK(p1_data.shape == p2_data.shape)
 
-        v0, v1 = (p2_data - p0_data), (p1_data - p0_data)
+        # Half-precision points are converted to float32 before the edges are taken. In float16 the cross product of
+        # a small triangle underflows (edges of 1e-4 give 1e-8, below the smallest subnormal 6e-8), that of a large
+        # one overflows (edges of 300 give 9e4, above the largest float16 65504), and so can the edges themselves.
+        # The triangle then took the SVD fallback, whose sign is arbitrary, or came back as nan (#5064). The unit
+        # normal is cast back to the input dtype.
+        work_dtype = torch.float32 if p0_data.dtype in (torch.float16, torch.bfloat16) else p0_data.dtype
+        p0_work = p0_data.to(work_dtype)
+        v0, v1 = (p2_data.to(work_dtype) - p0_work), (p1_data.to(work_dtype) - p0_work)
         normal = torch.linalg.cross(v0, v1, dim=-1)
 
         norm = torch.linalg.vector_norm(normal, dim=-1, keepdim=True)
@@ -196,30 +217,38 @@ class Hyperplane(nn.Module):
         v1_norm = torch.linalg.vector_norm(v1, dim=-1, keepdim=True)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
-        def compute_normal_svd(v0: torch.Tensor, v1: torch.Tensor) -> torch.Tensor:
+        def compute_normal_svd(v0: torch.Tensor, v1: torch.Tensor, use_svd: torch.Tensor) -> torch.Tensor:
             m = torch.stack((v0, v1), -2)  # Bx2x3
+            # The SVD runs on every row and torch.where only zeroes the gradient of the rows that take the cross
+            # product. Its backward divides by the difference of the squared singular values, which is 0 when v0 and
+            # v1 are orthogonal and of equal length, and 0 * inf is nan (#5056). Rows that do not use the fallback
+            # get a constant matrix with distinct singular values instead.
+            safe = torch.tensor([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]], device=m.device, dtype=m.dtype)
+            m = torch.where(use_svd[..., None], m, safe)
             _, _, V = _torch_svd_cast(m)  # kornia solution lies in the last row
             return V[..., :, -1]  # Bx3
 
         # Collinear or coincident points do not determine a plane: raise instead of taking the SVD
         # fallback, which returns an arbitrary valid-looking normal. The test is on the rank of
         # (v0, v1), as in fit_plane, from singular values that ``_torch_linalg_svdvals`` computes in
-        # float32 or float64. It is relative and scaled by the input's machine epsilon, so a small
-        # or thin valid triangle keeps working (also one whose cross product underflows in
-        # float16), and it does not depend on the fallback threshold below.
+        # float32 or float64. It is relative and scaled by the machine epsilon of the input, not of
+        # the float32 edges of a half-precision input, since the points carry the input's rounding.
+        # So a small or thin valid triangle keeps working, points that are collinear up to that
+        # rounding are rejected, and the test does not depend on the fallback threshold below.
         # Skipped under torch.compile/export and by disable_checks(), like every kornia value check.
         if not torch.jit.is_scripting() and not is_compiling() and are_checks_enabled():
             sv = _torch_linalg_svdvals(torch.stack((_unwrap(v0), _unwrap(v1)), -2))
-            if bool((sv[..., 1] <= sv[..., 0] * _rank_tolerance(sv.dtype)).any()):
+            if bool((sv[..., 1] <= sv[..., 0] * _rank_tolerance(p0_data.dtype)).any()):
                 raise ValueCheckError(
                     "Hyperplane.through requires three points that are not collinear; "
                     "the given points do not determine a plane."
                 )
 
-        eps = torch.finfo(p0_data.dtype).eps if p0_data.is_floating_point() else 1e-6
+        eps = torch.finfo(work_dtype).eps if v0.is_floating_point() else 1e-6
         normal_mask = norm <= v0_norm * v1_norm * eps
         norm_safe = torch.where(normal_mask, torch.ones_like(norm), norm)
-        normal = torch.where(normal_mask, compute_normal_svd(v0, v1), normal / norm_safe)
+        normal = torch.where(normal_mask, compute_normal_svd(v0, v1, normal_mask), normal / norm_safe)
+        normal = normal.to(p0_data.dtype)
         offset = -batched_dot_product(p0_data, normal)
 
         return Hyperplane(_wrap(normal, Vector3), _wrap(offset, Scalar))
@@ -236,9 +265,13 @@ def _rank_tolerance(dtype: torch.dtype) -> float:
 def fit_plane(points: Vector3) -> Hyperplane:
     """Fit a plane from a set of points using SVD.
 
+    Convention:
+        Returns a :class:`Hyperplane` (see its conventions) through the centroid of the points, with a unit normal
+        of unspecified sign. Each batch row is fitted on its own.
+
     Args:
-        points: tensor containing a batch of sets of n-dimensional points. The expected
-            shape of the tensor is :math:`(N, D)`.
+        points: a tensor or a :class:`~kornia.geometry.vector.Vector3` of 3D points, of shape :math:`(N, 3)` or
+            :math:`(B, N, 3)`. Another number of coordinates raises ``TypeError``.
 
     Return:
         The computed hyperplane object.

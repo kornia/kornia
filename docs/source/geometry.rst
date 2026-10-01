@@ -62,6 +62,7 @@ refinement.
    bbox <geometry.bbox>
    boxes <geometry.boxes>
    keypoints <geometry.keypoints>
+   vector <geometry.vector>
    subpix <geometry.subpix>
    solvers <geometry.solvers>
    grid <geometry.grid>

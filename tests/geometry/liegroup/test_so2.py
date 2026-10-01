@@ -34,7 +34,7 @@ class TestSo2(BaseTester):
         shape = input_shape[1:] if batch_size is None else input_shape
         return torch.rand(shape, device=device, dtype=dtype)
 
-    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_smoke(self, device, cdtype):
         z = torch.randn(2, 1, dtype=cdtype, device=device)
         s = So2(z)
@@ -43,7 +43,7 @@ class TestSo2(BaseTester):
         self.assert_close(s.z.data, z.data[:, 0])
 
     @pytest.mark.parametrize("input_shape", [(1,), (2,), (5,), ()])
-    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_cardinality(self, device, dtype, input_shape, cdtype):
         z = torch.randn(input_shape, dtype=cdtype, device=device)
         s = So2(z)
@@ -67,8 +67,8 @@ class TestSo2(BaseTester):
         s = So2.from_matrix(matrix)
         assert s.matrix().shape == input_shape
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_exception(self, batch_size, device, dtype, cdtype):
         z = torch.randn(batch_size, 2, dtype=cdtype, device=device)
         with pytest.raises(ValueError):
@@ -102,8 +102,8 @@ class TestSo2(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_init(self, device, dtype, batch_size, cdtype):
         z1 = self._make_rand_data(device, cdtype, (batch_size,))
         z2 = self._make_rand_data(device, cdtype, (batch_size, 1))
@@ -118,8 +118,8 @@ class TestSo2(BaseTester):
         self.assert_close(So2(z2).z, z2.flatten())  # (B, 1) is squeezed to (B,); (1,) for batch_size None stays
         self.assert_close(So2(z3).z, z3)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_getitem(self, device, batch_size, cdtype):
         z = self._make_rand_data(device, cdtype, (batch_size,))
         s = So2(z)
@@ -133,7 +133,7 @@ class TestSo2(BaseTester):
                 actual = z[i]
             self.assert_close(expected, actual)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul(self, device, dtype, batch_size):
         s1 = So2.identity(batch_size, device, dtype)
         z = self._make_rand_data(device, dtype, (batch_size, 2))
@@ -149,7 +149,7 @@ class TestSo2(BaseTester):
         self.assert_close((s1 * t1), t1)
         self.assert_close((So2.identity(device=device, dtype=dtype) * t2), t2)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
         s1 = So2.identity(batch_size, device, dtype)
         if batch_size is None:
@@ -161,26 +161,26 @@ class TestSo2(BaseTester):
         self.assert_close((s1 * t1), t1)
         self.assert_close((So2.identity(device=device, dtype=dtype) * t2), t2)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         s = So2.exp(theta)
         self.assert_close(s.z.real, theta.flatten().cos())
         self.assert_close(s.z.imag, theta.flatten().sin())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_log(self, device, batch_size, cdtype):
         z = self._make_rand_data(device, cdtype, (batch_size,))
         t = So2(z).log()
         self.assert_close(t, z.imag.atan2(z.real))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp_log(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         self.assert_close(So2.exp(theta).log(), theta.flatten())
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_wart_so2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
         # https://github.com/kornia/kornia/issues/4929: hat is symmetric rather than the so(2) generator and vee
         # reads its upper-right entry. Keep both layouts together because vee(hat(theta)) conceals the defect.
@@ -192,7 +192,7 @@ class TestSo2(BaseTester):
         self.assert_close(So2.vee(omega), omega[..., 0, 1])
         self.assert_close(So2.vee(m), theta)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size,))
         t = self._make_rand_data(device, dtype, (batch_size, 2))
@@ -201,7 +201,7 @@ class TestSo2(BaseTester):
         p2 = s.matrix() @ t[..., None]
         self.assert_close(p1, p2.squeeze(-1))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_matrix(self, device, dtype, batch_size):
         matrix = torch.eye(2, device=device, dtype=dtype)
         if batch_size is not None:
@@ -215,8 +215,8 @@ class TestSo2(BaseTester):
         self.assert_close(s.z.real, one)
         self.assert_close(s.z.imag, zero)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
+    @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_inverse(self, device, batch_size, cdtype):
         z = self._make_rand_data(device, cdtype, (batch_size,))
         s = So2(z)
@@ -224,7 +224,7 @@ class TestSo2(BaseTester):
         self.assert_close(s_in_in.z.real, z.real)
         self.assert_close(s_in_in.z.imag, z.imag)
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_random(self, device, dtype, batch_size):
         s = So2.random(batch_size=batch_size, device=device, dtype=dtype)
         s_in_s = s.inverse() * s
@@ -252,7 +252,7 @@ class TestSo2(BaseTester):
         assert theta.min() < -torch.pi + 0.05 and theta.max() > torch.pi - 0.05, (theta.min(), theta.max())
         self.assert_close(So2.random(device=device, dtype=dtype).z.abs(), torch.tensor(1.0, device=device, dtype=dtype))
 
-    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_adjoint(self, device, dtype, batch_size):
         s = So2.identity(batch_size, device=device, dtype=dtype)
         self.assert_close(s.matrix(), s.adjoint())

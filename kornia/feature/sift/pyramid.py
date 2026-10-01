@@ -19,13 +19,13 @@
 
 from __future__ import annotations
 
+import math
 from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
 from kornia.feature.laf import (
@@ -77,6 +77,9 @@ class SIFTDescriptorFromPyramid(nn.Module):
         - image: :math:`(B, 1, H, W)`
         - lafs: :math:`(B, N, 2, 3)` in image pixel coordinates
         - descriptors: :math:`(B, N, num_ang_bins * num_spatial_bins^2)`
+
+    The descriptors are in kornia's angle-major SIFT layout, as :class:`~kornia.feature.SIFTDescriptor`'s are;
+    :func:`~kornia.feature.convert_sift_descriptor_layout` reorders them to OpenCV's.
     """
 
     def __init__(
@@ -151,12 +154,12 @@ class SIFTDescriptorFromPyramid(nn.Module):
         histograms = histograms.to(working_dtype)
         affine = affine.to(working_dtype)
         angles = torch.arange(source_bins, dtype=histograms.dtype, device=histograms.device)
-        angles = 2.0 * pi * angles / float(source_bins)
+        angles = 2.0 * math.pi * angles / float(source_bins)
         directions = torch.stack([torch.cos(angles), torch.sin(angles)], dim=-1)
         transformed = torch.einsum("bnji,kj->bnki", affine, directions)
         magnitude = torch.linalg.vector_norm(transformed, dim=-1)
         local_angle = torch.atan2(transformed[..., 1], transformed[..., 0])
-        position = (local_angle % (2.0 * pi)) * float(output_bins) / (2.0 * pi)
+        position = (local_angle % (2.0 * math.pi)) * float(output_bins) / (2.0 * math.pi)
         lower = torch.floor(position).long() % output_bins
         upper = (lower + 1) % output_bins
         upper_weight = position - torch.floor(position)
@@ -246,7 +249,8 @@ class SIFTDescriptorFromPyramid(nn.Module):
         denominator = left + right - 2.0 * center
         safe_denominator = torch.where(denominator != 0, denominator, torch.ones_like(denominator))
         offset = torch.where(denominator != 0, 0.5 * (left - right) / safe_denominator, torch.zeros_like(denominator))
-        return 2.0 * pi * (index.to(lafs.dtype).reshape(b, n) + offset.reshape(b, n)) / float(self.orientation_bins)
+        angle = index.to(lafs.dtype).reshape(b, n) + offset.reshape(b, n)
+        return 2.0 * math.pi * angle / float(self.orientation_bins)
 
     def _descriptors(
         self,

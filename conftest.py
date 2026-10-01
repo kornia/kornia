@@ -41,7 +41,7 @@ from testing.half_precision_ci import (
     seed_test_rng,
 )
 from testing.known_failures import mark_known_failures
-from testing.reference_data import TEST_DATA_URLS
+from testing.reference_data import TEST_CHECKPOINT_URLS, TEST_DATA_URLS, load_reference_data
 
 try:
     import torch._dynamo
@@ -1046,6 +1046,8 @@ def data(request):
 
     Use with @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     """
-    if request.param not in TEST_DATA_URLS:
-        raise ValueError(f"Unknown test data: {request.param}. Available: {list(TEST_DATA_URLS.keys())}")
-    return load_state_dict_from_url(TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))
+    if request.param in TEST_DATA_URLS:
+        return load_reference_data(request.param)
+    if request.param in TEST_CHECKPOINT_URLS:
+        return load_state_dict_from_url(TEST_CHECKPOINT_URLS[request.param], map_location=torch.device("cpu"))
+    raise ValueError(f"Unknown test data: {request.param}. Available: {[*TEST_DATA_URLS, *TEST_CHECKPOINT_URLS]}")

@@ -25,13 +25,12 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
-from kornia.constants import pi
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
 
@@ -208,7 +207,7 @@ def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
     spatial_idx = idx.unsqueeze(0)
     freq_idx = idx.unsqueeze(1)
 
-    basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * pi / 16.0)
+    basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * math.pi / 16.0)
     alpha = torch.ones(8, dtype=dtype, device=device)
     alpha[0] = 1.0 / (2**0.5)
     dct_scale = torch.outer(alpha, alpha)
@@ -653,17 +652,31 @@ def jpeg_codec_differentiable(
 def _get_dct8_basis_scale(
     dtype: Union[torch.dtype, None], device: Union[str, torch.device, None]
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    # ``torch.compile``, ``torch.export`` and the dynamo ONNX exporter trace the forward: build the basis inside the
+    # graph and leave the cache alone, so that no traced tensor leaks into later eager calls and the captured graph
+    # does not depend on earlier calls.
+    if is_compiling():
+        return _build_dct8_basis_scale(dtype, device)
     key = (dtype, device)
     if key not in _DCT8_CACHE:
-        i = torch.arange(8, dtype=dtype, device=device)
-        freq = (2.0 * i + 1.0)[:, None] * i[None, :] * (pi / 16.0)
-        basis_1d = torch.cos(freq)
-        dct_tensor = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
-        alpha = torch.ones(8, dtype=dtype, device=device)
-        alpha[0] = 1.0 / (2**0.5)
-        dct_scale = torch.outer(alpha, alpha) * 0.25
-        _DCT8_CACHE[key] = (dct_tensor, dct_scale)
+        # Build outside inference mode: an inference tensor in the cache would make later calls in which autograd
+        # tracks the input fail, since autograd cannot save it for backward.
+        with torch.inference_mode(False):
+            _DCT8_CACHE[key] = _build_dct8_basis_scale(dtype, device)
     return _DCT8_CACHE[key]
+
+
+def _build_dct8_basis_scale(
+    dtype: Union[torch.dtype, None], device: Union[str, torch.device, None]
+) -> tuple[torch.Tensor, torch.Tensor]:
+    i = torch.arange(8, dtype=dtype, device=device)
+    freq = (2.0 * i + 1.0)[:, None] * i[None, :] * (math.pi / 16.0)
+    basis_1d = torch.cos(freq)
+    dct_tensor = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
+    alpha = torch.ones(8, dtype=dtype, device=device)
+    alpha[0] = 1.0 / (2**0.5)
+    dct_scale = torch.outer(alpha, alpha) * 0.25
+    return dct_tensor, dct_scale
 
 
 class JPEGCodecDifferentiable(nn.Module):

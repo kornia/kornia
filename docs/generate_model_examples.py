@@ -51,7 +51,7 @@ torch.manual_seed(0)
 
 OUT = Path(__file__).absolute().parent / "source/_static/img/models"
 DATA = "https://raw.githubusercontent.com/kornia/data/main/"
-KNCHURCH = "https://github.com/kornia/data_test/raw/8b98f44abbe92b7a84631ed06613b08fee7dae14/knchurch_disk.pt"
+KNCHURCH = "https://github.com/kornia/data_test/raw/4ffed08df3d82af85aa9012d3104f19ca4b62604/knchurch_disk.safetensors"
 IMAGENET_CLASSES = "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt"
 
 FIGURES: dict = {}
@@ -69,7 +69,7 @@ def sample(name: str, size: tuple[int, int] | None = None) -> torch.Tensor:
 
 
 def knchurch() -> tuple[torch.Tensor, torch.Tensor]:
-    d = torch.hub.load_state_dict_from_url(KNCHURCH, map_location="cpu")
+    d = K.core.load_safetensors(K.core.download_file_from_url(KNCHURCH, validate=K.core.check_safetensors))
     return d["img1"], d["img2"]
 
 

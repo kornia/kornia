@@ -132,14 +132,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           same per-entry gate. A flip round-trips each entry, subject to the working-dtype rounding above; other
           warps lose the pixels they move out of the frame and, when they resample, restore the rest only
           approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
-        - supported geometric data-key handlers share the recorded transform, subject to the mask limitations
-          above. Custom rigid subclasses are not dispatched solely because they supply a matrix
-          (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). A non-rigid warp child has no matrix, so
-          the coordinate keys are left unchanged; see the warning below.
-        - ``.inverse()`` undoes the 2D geometric steps and leaves intensity and non-rigid steps applied. Slice-mode
-          crops and 3D geometric children raise ``NotImplementedError``, mix children ``RuntimeError``. Tensor
-          boxes come back as axis-aligned enclosures; pass :class:`~kornia.geometry.boxes.Boxes` to keep rotated
-          corners. Content lost to cropping, padding or interpolation is not recovered.
+        - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform it recorded,
+          subject to the mask limitations above; a handler the subclass does not implement raises
+          ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are left unchanged;
+          see the warning below.
+        - ``.inverse()`` undoes the 2D geometric steps and leaves intensity, custom rigid and non-rigid steps
+          applied. Slice-mode crops and 3D geometric children raise ``NotImplementedError``, mix children
+          ``RuntimeError``. Tensor boxes come back as axis-aligned enclosures; pass
+          :class:`~kornia.geometry.boxes.Boxes` to keep rotated corners. Content lost to cropping, padding or
+          interpolation is not recovered.
         - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
           ``True`` or ``False`` overrides it.
         - ``.transform_matrix`` of a chain holding a nested container is unreliable: it can raise, omit the
@@ -543,14 +545,24 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if len(args) == 1 and isinstance(args[0], dict):
             original_keys, data_keys, args, invalid_data = self._preproc_dict_data(cast(Dict[str, DataType], args[0]))
 
-        self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
+        original_data_keys = self.transform_op.preproc_datakeys(data_keys)
+        self.transform_op.data_keys = original_data_keys
 
-        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+        self._validate_args_datakeys(*args, data_keys=original_data_keys)
 
-        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+        in_args = self._arguments_preproc(*args, data_keys=original_data_keys)
 
-        if DataKey.INPUT in self.transform_op.data_keys:
-            inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
+        # Annotation handlers may read the matrix recorded by the image call. Process INPUT first for every child,
+        # including nested containers and policies, then restore the caller's order below.
+        input_first_order = list(range(len(original_data_keys)))
+        if DataKey.INPUT in original_data_keys:
+            image_index = original_data_keys.index(DataKey.INPUT)
+            input_first_order.insert(0, input_first_order.pop(image_index))
+            in_args = [in_args[i] for i in input_first_order]
+            self.transform_op.data_keys = [original_data_keys[i] for i in input_first_order]
+
+        if DataKey.INPUT in original_data_keys:
+            inp = in_args[0]
             if not isinstance(inp, torch.Tensor):
                 raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
             if self.contains_3d_augmentation and len(inp.shape) == 4:
@@ -561,8 +573,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         if params is None:
             # image data must exist if params is not provided.
-            if DataKey.INPUT in self.transform_op.data_keys:
-                inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
+            if DataKey.INPUT in original_data_keys:
+                inp = in_args[0]
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
@@ -585,7 +597,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = [outputs]
             self._update_transform_matrix_by_module(module)
 
-        outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
+        if input_first_order != list(range(len(input_first_order))):
+            restore_order = [input_first_order.index(i) for i in range(len(input_first_order))]
+            outputs = [outputs[i] for i in restore_order]
+            self.transform_op.data_keys = original_data_keys
+
+        outputs = self._arguments_postproc(args, outputs, data_keys=original_data_keys)  # type: ignore
         # Restore it back
         self.transform_op.data_keys = self.data_keys
 

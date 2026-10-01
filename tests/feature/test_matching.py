@@ -583,6 +583,55 @@ class TestLightGlueHardNet(BaseTester):
         assert isinstance(lg, LightGlueMatcher)
 
 
+class TestLightGlueMatcherOrientations(BaseTester):
+    @staticmethod
+    def _record_lightglue_inputs(monkeypatch, device):
+        seen = {}
+
+        class _RecordingLightGlue(torch.nn.Module):
+            # Stands in for the network, whose construction downloads weights; the matcher only
+            # prepares its inputs.
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+
+            def forward(self, data):
+                seen.update(data)
+                matches = torch.full((1, data["image0"]["keypoints"].shape[1]), -1, device=device)
+                return {"matches0": matches, "matching_scores0": torch.zeros_like(matches, dtype=torch.float32)}
+
+        monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
+        return seen
+
+    def test_float64_orientations_wrap_by_full_precision_two_pi_5127(self, device, monkeypatch):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        seen = self._record_lightglue_inputs(monkeypatch, device)
+        degrees = torch.tensor([[-90.0, -45.0, 30.0], [-135.0, 60.0, -30.0]], device=device, dtype=torch.float64)
+        xy = torch.rand(2, 3, 2, device=device, dtype=torch.float64) * 50
+        scale = torch.full((2, 3, 1, 1), 4.0, device=device, dtype=torch.float64)
+        lafs = laf_from_center_scale_ori(xy, scale, degrees.unsqueeze(-1))
+        descriptors = torch.rand(3, 128, device=device, dtype=torch.float64)
+        LightGlueMatcher("disk")(descriptors, descriptors, lafs[:1], lafs[1:])
+        # Negative angles move into [0, 2 pi); the float32 pi added 1.7e-7 rad too much.
+        expected = torch.remainder(torch.deg2rad(degrees), 2 * torch.pi)
+        self.assert_close(seen["image0"]["oris"], expected[:1], rtol=0.0, atol=1e-12)
+        self.assert_close(seen["image1"]["oris"], expected[1:], rtol=0.0, atol=1e-12)
+
+    def test_sift_passes_the_training_keypoint_convention(self, device, dtype, monkeypatch):
+        seen = self._record_lightglue_inputs(monkeypatch, device)
+        degrees = torch.tensor([[30.0, -90.0, 180.0]], device=device, dtype=dtype)
+        xy = torch.tensor([[[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]]], device=device, dtype=dtype)
+        scale = torch.full((1, 3, 1, 1), 12.0, device=device, dtype=dtype)
+        lafs = laf_from_center_scale_ori(xy, scale, degrees.unsqueeze(-1))
+        descriptors = torch.rand(3, 128, device=device, dtype=dtype)
+        LightGlueMatcher("sift")(descriptors, descriptors, lafs, lafs)
+        # The negated orientation in (-pi, pi], and sigma of the 12-pixel 6-sigma frame.
+        expected = torch.tensor([[-torch.pi / 6, torch.pi / 2, torch.pi]], device=device, dtype=dtype)
+        for image in ("image0", "image1"):
+            self.assert_close(seen[image]["oris"], expected)
+            self.assert_close(seen[image]["scales"], torch.full((1, 3), 2.0, device=device, dtype=dtype))
+
+
 class TestMatchSteererGlobal(BaseTester):
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32), (32, 32, 8)])
     @pytest.mark.parametrize("matching_mode", ["nn", "mnn", "snn", "smnn"])

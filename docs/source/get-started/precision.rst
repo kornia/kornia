@@ -31,9 +31,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.filters``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 18 / 9
-     - Accuracy misses in Canny magnitudes, discrete Gaussian kernels and Otsu thresholding. On CPU,
-       ``fft_conv`` computes its FFTs in float32 and returns the input dtype.
+     - 14 / 8
+     - Accuracy misses in Canny magnitudes and discrete Gaussian kernels. On CPU, ``fft_conv`` computes its FFTs
+       in float32 and returns the input dtype.
    * - ``kornia.enhance``
      - ✅ Yes
      - ⚠️ Partial
@@ -101,9 +101,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.subpix``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 14 / 12
-     - ``ConvSoftArgmax3d`` raises because CPU ``avg_pool3d`` has no half-precision kernel; the remaining
-       entries are accuracy.
+     - 6 / 4
+     - Accuracy of ``SpatialSoftArgmax2d`` and of the ``ConvQuadInterp3d`` diagonal refinement; bfloat16 also
+       ``render_gaussian2d``.
    * - ``kornia.geometry.conversions``
      - ⚠️ Partial
      - ⚠️ Partial

@@ -17,6 +17,7 @@
 
 import os
 import struct
+from pathlib import Path
 
 import pytest
 import torch
@@ -80,16 +81,6 @@ class TestSaveLoadPointCloud(BaseTester):
         assert body.splitlines()[0] == "ply"
         for value in (0.1234567890123456, 5123456.789012, 612345.678901):
             assert repr(value) in body
-
-    def test_invalid_filename_type(self):
-        xyz_save = torch.rand(10, 3)
-        with pytest.raises(TypeError):
-            kornia.geometry.save_pointcloud_ply(1234, xyz_save)
-
-    def test_invalid_filename_extension(self):
-        xyz_save = torch.rand(10, 3)
-        with pytest.raises(TypeError):
-            kornia.geometry.save_pointcloud_ply("pointcloud.txt", xyz_save)
 
     def test_invalid_pointcloud_type(self):
         with pytest.raises(TypeError):
@@ -167,6 +158,81 @@ class TestSaveLoadPointCloud(BaseTester):
         # The finite rows around the invalid ones did not shift.
         torch.testing.assert_close(xyz_load[4 + 3], xyz_save[1, 3])
         torch.testing.assert_close(xyz_load[2 * 4 + 1], xyz_save[2, 1])
+
+
+@pytest.fixture
+def pathlike_type():
+    class CustomPathLike:
+        def __init__(self, path):
+            self.path = path
+
+        def __fspath__(self):
+            return self.path
+
+    return CustomPathLike
+
+
+@pytest.fixture(params=["str", "pathlib", "pathlike"])
+def filename_type(request, pathlike_type):
+    return {"str": str, "pathlib": Path, "pathlike": pathlike_type}[request.param]
+
+
+@pytest.mark.parametrize(
+    "saver, loader",
+    [
+        (kornia.geometry.save_pointcloud_ply, kornia.geometry.load_pointcloud_ply),
+        (kornia.geometry.save_pointcloud_ply_binary, kornia.geometry.load_pointcloud_ply_binary),
+    ],
+)
+class TestPointCloudFilenames(BaseTester):
+    @pytest.mark.parametrize("extension", [".ply", ".PLY"])
+    @pytest.mark.parametrize("operation", ["save", "load"])
+    @pytest.mark.parametrize("shape", [(2, 3), (1, 2, 3), (2, 1, 3)])
+    def test_pathlike_filename_5072(
+        self, tmp_path, device, dtype, saver, loader, filename_type, extension, operation, shape
+    ):
+        expected = torch.tensor([[1.0, -2.0, 3.25], [4.5, 0.0, -6.0]], dtype=torch.float32)
+        points = expected.to(device=device, dtype=dtype).reshape(shape)
+        filename = tmp_path / f"points{extension}"
+        path = filename_type(str(filename))
+
+        assert saver(path if operation == "save" else str(filename), points) is None
+        actual = loader(path if operation == "load" else str(filename))
+        assert actual.shape == (2, 3)
+        assert actual.dtype == torch.float32
+        assert actual.device.type == "cpu"
+        self.assert_close(actual, expected)
+
+        reference = tmp_path / "reference.ply"
+        saver(str(reference), points)
+        assert filename.read_bytes() == reference.read_bytes()
+
+    @pytest.mark.parametrize("filename", [1234, None, b"points.ply"])
+    def test_invalid_filename_type(self, saver, loader, filename):
+        with pytest.raises(TypeError):
+            saver(filename, torch.ones(1, 3))
+        with pytest.raises(TypeError):
+            loader(filename)
+
+    def test_bytes_pathlike(self, saver, loader, pathlike_type):
+        filename = pathlike_type(b"points.ply")
+        with pytest.raises(TypeError):
+            saver(filename, torch.ones(1, 3))
+        with pytest.raises(TypeError):
+            loader(filename)
+
+    @pytest.mark.parametrize("name", ["points.txt", "points", "points.ply.txt"])
+    def test_invalid_filename_extension(self, tmp_path, saver, loader, filename_type, name):
+        filename = filename_type(str(tmp_path / name))
+        with pytest.raises(TypeError, match=r"os\.PathLike\[str\] with the \.ply extension"):
+            saver(filename, torch.ones(1, 3))
+        with pytest.raises(TypeError, match=r"os\.PathLike\[str\] with the \.ply extension"):
+            loader(filename)
+
+    def test_missing_file(self, tmp_path, saver, loader, filename_type):
+        filename = filename_type(str(tmp_path / "missing.PLY"))
+        with pytest.raises(ValueError, match="Input filename is not an existing file"):
+            loader(filename)
 
 
 def _ply_header(fmt: str, count: int, properties: str, extra: str = "") -> bytes:
@@ -408,3 +474,66 @@ class TestLoadPointCloudPlyHeaderParsing(BaseTester):
         with pytest.warns(DeprecationWarning, match="header_size"):
             actual = getattr(kornia.geometry, loader)(str(filename), header_size=3)
         self.assert_close(actual, torch.tensor([[1.0, 2.0, 3.0]]))
+
+
+class TestConventionsPointCloudPly(BaseTester):
+    """Pins for the column order and value type the PLY writers declare."""
+
+    @pytest.mark.parametrize(
+        "saver, loader",
+        [
+            ("save_pointcloud_ply", "load_pointcloud_ply"),
+            ("save_pointcloud_ply_binary", "load_pointcloud_ply_binary"),
+        ],
+    )
+    def test_convention_save_pointcloud_ply_writes_xyz_double(self, tmp_path, saver, loader, device, dtype):
+        # One vertex per row, with the properties x, y and z in that order, all declared double. The ASCII file
+        # prints each row's three columns in that order and the binary file packs them as little-endian float64;
+        # both loaders return the float32 cast on the CPU. Every row holds three distinct values, so a column
+        # permutation is visible.
+        points = torch.tensor([[1.0, 2.0, 3.0], [7.25, 8.5, -9.75]], device=device, dtype=dtype)
+        filename = str(tmp_path / f"xyz_{saver}.ply")
+        getattr(kornia.geometry, saver)(filename, points)
+
+        with open(filename, "rb") as f:
+            raw = f.read()
+        header = raw[: raw.index(b"end_header")].decode("ascii").splitlines()
+        assert "element vertex 2" in header
+        properties = [line for line in header if line.startswith("property")]
+        assert properties == ["property double x", "property double y", "property double z"]
+        payload = raw[raw.index(b"end_header") + len(b"end_header") :]
+        if saver == "save_pointcloud_ply_binary":
+            assert payload[:1] == b"\n"
+            assert struct.unpack("<6d", payload[1:]) == (1.0, 2.0, 3.0, 7.25, 8.5, -9.75)
+        else:
+            # Parse the numbers rather than compare the text: the float format is not part of this convention.
+            rows = [tuple(float(v) for v in line.split()) for line in payload.decode("ascii").splitlines() if line]
+            assert rows == [(1.0, 2.0, 3.0), (7.25, 8.5, -9.75)]
+
+        loaded = getattr(kornia.geometry, loader)(filename)
+        assert loaded.dtype == torch.float32
+        assert loaded.device.type == "cpu"
+        self.assert_close(loaded, points.cpu().float(), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "function",
+        ["save_pointcloud_ply", "save_pointcloud_ply_binary", "load_pointcloud_ply", "load_pointcloud_ply_binary"],
+    )
+    def test_convention_ply_filename_ends_in_ply_any_case(self, tmp_path, function):
+        # The writers and loaders take filename as a str or os.PathLike[str] ending in .ply, in any case. Another
+        # suffix raises TypeError even when the file is a valid PLY file.
+        points = torch.tensor([[1.0, 2.0, 3.0]])
+        path = tmp_path / "upper_case.PLY"
+        saver = "save_pointcloud_ply_binary" if function.endswith("_binary") else "save_pointcloud_ply"
+        getattr(kornia.geometry, saver)(str(path), points)
+        wrong_suffix = tmp_path / "valid_ply_contents.txt"
+        wrong_suffix.write_bytes(path.read_bytes())
+
+        if function.startswith("save"):
+            getattr(kornia.geometry, function)(str(path), points)
+            with pytest.raises(TypeError):
+                getattr(kornia.geometry, function)(str(wrong_suffix), points)
+        else:
+            self.assert_close(getattr(kornia.geometry, function)(str(path)), points)
+            with pytest.raises(TypeError):
+                getattr(kornia.geometry, function)(str(wrong_suffix))

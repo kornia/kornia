@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from testing.known_failures import ISSUE_URL, load_known_failures, mark_known_failures
+from testing.known_failures import load_known_failures, mark_known_failures
 
 pytest_plugins = ["pytester"]
 
@@ -34,7 +34,7 @@ class TestLoadKnownFailures:
     def test_loads_nodeids_and_exception_types(self, tmp_path: Path) -> None:
         _write_manifest(
             tmp_path,
-            "# tracked in kornia#4159\n"
+            "# tracked in kornia#1234\n"
             "AssertionError\ttests/a.py::test_a[mps-float32]\n"
             "RuntimeError\ttests/b.py::TestB::test_b[mps]\n",
         )
@@ -92,7 +92,7 @@ class TestMarkKnownFailures:
             "reason": tracker.reason,
             "strict": True,
         }
-        assert tracker.reason == f"Known mps/float32 failure tracked in {ISSUE_URL}"
+        assert tracker.reason == "Known mps/float32 failure recorded in mps_float32.txt; see its tracking issue there"
 
     def test_rejects_manifest_entries_that_were_not_collected(self, tmp_path: Path) -> None:
         _write_manifest(tmp_path, "AssertionError\ttests/missing.py::test_missing[mps-float32]\n")
@@ -197,4 +197,3 @@ def test_recorded_mps_float32_baseline() -> None:
     # not a number.
     assert path.name == "mps_float32.txt"
     assert all(issubclass(exception, BaseException) for exception in failures.values())
-    assert ISSUE_URL == "https://github.com/kornia/kornia/issues/4159"

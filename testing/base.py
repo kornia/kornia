@@ -292,6 +292,20 @@ def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool
     return _supports_kernel_probe(_replicate_padding_op, device.type, dtype)
 
 
+def _replicate_padding_3d_op(device_type: str, dtype: torch.dtype) -> None:
+    F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2, 2), (1, 1, 1, 1, 1, 1), mode="replicate")
+
+
+def supports_replicate_padding_3d(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 3D ``mode="replicate"`` pad kernel (``replication_pad3d``) for ``dtype``.
+
+    :func:`kornia.filters.filter3d` and :func:`kornia.filters.motion_blur3d` pad that way by default.
+    torch 2.5.1 has no float16 CPU ``replication_pad3d`` (bfloat16 is fine). Probed at runtime and cached per
+    (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_kernel_probe(_replicate_padding_3d_op, device.type, dtype)
+
+
 def _conv2d_op(device_type: str, dtype: torch.dtype) -> None:
     F.conv2d(_probe_zeros(device_type, dtype, 1, 1, 3, 3), _probe_zeros(device_type, dtype, 1, 1, 2, 2))
 
@@ -341,20 +355,6 @@ def supports_topk(device: torch.device, dtype: torch.dtype) -> bool:
     cached per (device type, dtype), like :func:`supports_replicate_padding`.
     """
     return _supports_kernel_probe(_topk_op, device.type, dtype)
-
-
-def _avg_pool3d_op(device_type: str, dtype: torch.dtype) -> None:
-    F.avg_pool3d(_probe_zeros(device_type, dtype, 1, 1, 1, 1, 1), 1)
-
-
-def supports_avg_pool3d(device: torch.device, dtype: torch.dtype) -> bool:
-    """Whether this device has a 3D average-pooling kernel for ``dtype``.
-
-    :func:`kornia.geometry.subpix.conv_soft_argmax3d` pools its windows with ``avg_pool3d``, which
-    torch has no float16 / bfloat16 CPU kernel for. Probed at runtime and cached per (device type,
-    dtype), like :func:`supports_replicate_padding`.
-    """
-    return _supports_kernel_probe(_avg_pool3d_op, device.type, dtype)
 
 
 class BaseTester:

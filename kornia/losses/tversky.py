@@ -69,6 +69,11 @@ def tversky_loss(
     Return:
         the computed loss.
 
+    Note:
+        Spatial reductions and the ratio use float32 for float16 and bfloat16
+        inputs to avoid overflow on large images. The returned loss retains
+        the input dtype.
+
     Example:
         >>> N = 5  # num_classes
         >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)
@@ -95,15 +100,18 @@ def tversky_loss(
 
     p_true = pred_soft.gather(1, target.unsqueeze(1))  # (B,1,H,W)
 
+    # Half-precision pixel counts can overflow before the ratio is formed.
+    reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
+
     if target_mask is not None:
         m = target_mask.unsqueeze(1).to(dtype=pred.dtype)
         p_true = p_true * m
-        total = m.sum((1, 2, 3))
+        total = m.sum((1, 2, 3), dtype=reduction_dtype)
     else:
         B, _, H, W = pred.shape
-        total = torch.full((B,), H * W, dtype=pred.dtype, device=pred.device)
+        total = torch.full((B,), H * W, dtype=reduction_dtype, device=pred.device)
 
-    intersection = p_true.sum((1, 2, 3))
+    intersection = p_true.sum((1, 2, 3), dtype=reduction_dtype)
     # denominator = intersection + (alpha + beta) * (total - intersection) + eps
     # instead of multiple ops, do it in one fused step:
     denominator = torch.addcmul(
@@ -114,7 +122,7 @@ def tversky_loss(
     ).add_(eps)  # in-place add eps
     score = intersection.div(denominator)
 
-    return 1.0 - score.mean()
+    return (1.0 - score.mean()).to(pred.dtype)
 
 
 class TverskyLoss(nn.Module):

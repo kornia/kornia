@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 import sys
 import warnings
 
@@ -24,8 +25,8 @@ import torch
 import kornia
 from kornia.core._compat import torch_version
 from kornia.geometry import transform_points
-from kornia.geometry.conversions import denormalize_homography
-from kornia.geometry.transform import ImageRegistrator
+from kornia.geometry.conversions import angle_to_rotation_matrix, denormalize_homography, normalize_homography
+from kornia.geometry.transform import Homography, ImageRegistrator, Similarity, homography_warp
 
 from testing.base import BaseTester, supports_bilinear_2d_grid_sample_backward, supports_reflect_padding
 from testing.casts import dict_to
@@ -57,6 +58,43 @@ class TestSimilarity(BaseTester):
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             s = kornia.geometry.transform.Similarity(r, sc, sh).to(device, dtype)
             assert s is not None
+
+    @pytest.mark.parametrize(
+        "height, width, expected",
+        [
+            # diag(H / W, 1) @ R @ diag(W / H, 1) = [[c, s * H / W], [-s * W / H, c]], R = angle_to_rotation_matrix(6)
+            (32, 48, [[0.9945219, 0.0696856, 0.0], [-0.1567927, 0.9945219, 0.0], [0.0, 0.0, 1.0]]),
+            (48, 32, [[0.9945219, 0.1567927, 0.0], [-0.0696856, 0.9945219, 0.0], [0.0, 0.0, 1.0]]),
+            (40, 40, [[0.9945219, 0.1045285, 0.0], [-0.1045285, 0.9945219, 0.0], [0.0, 0.0, 1.0]]),
+            # without an image shape, R itself
+            (None, None, [[0.9945219, 0.1045285, 0.0], [-0.1045285, 0.9945219, 0.0], [0.0, 0.0, 1.0]]),
+        ],
+    )
+    def test_anisotropic_rotation(self, device, dtype, height, width, expected):
+        sim = kornia.geometry.transform.Similarity(True, False, False).to(device, dtype)
+        with torch.no_grad():
+            sim.rot.fill_(6.0)
+        if height is not None:
+            sim.set_image_shape(height, width)
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+        self.assert_close(sim(), expected)
+
+    @pytest.mark.parametrize("height, width", [(32, 48), (48, 32), (33, 47), (40, 40)])
+    def test_pixel_rotation_about_centre(self, device, dtype, height, width):
+        # With the image shape set, the model is scale * angle_to_rotation_matrix(rot) about the image centre in
+        # pixels, normalized like ImageRegistrator's warper (align_corners=False), for any aspect ratio (#5063).
+        sim = kornia.geometry.transform.Similarity(True, True, False).to(device, dtype)
+        with torch.no_grad():
+            sim.rot.fill_(30.0)
+            sim.scale.fill_(1.3)
+        sim.set_image_shape(height, width)
+        linear = 1.3 * angle_to_rotation_matrix(torch.tensor([30.0], dtype=torch.float64))[0]
+        centre = torch.tensor([(width - 1) / 2, (height - 1) / 2], dtype=torch.float64)
+        pixel = torch.eye(3, dtype=torch.float64)
+        pixel[:2, :2] = linear
+        pixel[:2, 2] = centre - linear @ centre
+        expected = normalize_homography(pixel[None], (height, width), (height, width), align_corners=False)
+        self.assert_close(sim(), expected.to(dtype).to(device))
 
 
 class TestHomography(BaseTester):
@@ -190,3 +228,182 @@ class TestImageRegistrator(BaseTester):
             ).to(device, dtype)
             ir.register(image, image)
             assert len(steps) == levels
+
+    def test_register_sets_full_resolution_shape_5063(self, device, dtype):
+        # register() gives a Similarity the shape of dst_img before the first level. Every pyramid level spans the whole
+        # image, so that is the pixel aspect ratio of each level, which a level's own rounded shape is not
+        # (33 x 47 -> 16 x 23 -> 8 x 11). A second register() on another size replaces it.
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"torch has no {dtype} reflection padding kernel on {device.type}")
+        seen = []
+
+        def l1(a: torch.Tensor, b: torch.Tensor, reduction: str = "none") -> torch.Tensor:
+            seen.append((ir.model.height, ir.model.width))
+            return torch.nn.functional.l1_loss(a, b, reduction=reduction)
+
+        ir = ImageRegistrator("similarity", loss_fn=l1, num_iterations=1, pyramid_levels=3).to(device, dtype)
+        for height, width in ((33, 47), (47, 33)):
+            seen.clear()
+            image = torch.zeros(1, 1, height, width, device=device, dtype=dtype)
+            ir.register(image, image)
+            assert len(seen) == 6  # two losses per level
+            assert set(seen) == {(height, width)}
+
+    def test_register_homography_has_no_image_shape(self, device, dtype):
+        # register() gives only a Similarity the image shape; a Homography has no set_image_shape.
+        image = torch.zeros(1, 1, 8, 12, device=device, dtype=dtype)
+        ir = ImageRegistrator("homography", num_iterations=0, pyramid_levels=1).to(device, dtype)
+        self.assert_close(ir.register(image, image).detach(), torch.eye(3, device=device, dtype=dtype)[None])
+
+    @pytest.mark.parametrize("height, width", [(32, 48), (48, 32)])
+    def test_register_rotation_non_square_5063(self, device, dtype, height, width):
+        # dst is src rotated by angle_to_rotation_matrix(6 deg) about the image centre, in pixels. The model maps dst to
+        # src, so rot converges to -6 on a non-square image as on a square one: measured -6.00 to -6.01 in float32 and
+        # float64, -5.78 to -5.85 in float16 and bfloat16. Rotating in the anisotropic normalized frame converged to
+        # -5.27 and -5.42 in float32, and -4.99 to -5.38 in half precision.
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
+
+        def scene(degrees: float) -> torch.Tensor:
+            # smooth analytic blobs, so the fixture needs no seed; sampled at R^-1 (x - c) + c
+            ys, xs = torch.meshgrid(
+                torch.arange(height, dtype=torch.float64), torch.arange(width, dtype=torch.float64), indexing="ij"
+            )
+            cx, cy, a = (width - 1) / 2, (height - 1) / 2, math.radians(degrees)
+            xr = math.cos(a) * (xs - cx) - math.sin(a) * (ys - cy) + cx
+            yr = math.sin(a) * (xs - cx) + math.cos(a) * (ys - cy) + cy
+            img = torch.zeros(height, width, dtype=torch.float64)
+            for bx, by, s, amp in [(0.3, 0.3, 0.12, 1.0), (0.7, 0.35, 0.1, 0.8), (0.45, 0.72, 0.09, 0.9)]:
+                img = img + amp * torch.exp(
+                    -(((xr - bx * width) / (s * width)) ** 2 + ((yr - by * height) / (s * height)) ** 2) / 2
+                )
+            return img[None, None].to(dtype).to(device)
+
+        ir = ImageRegistrator("rotation", lr=0.1, num_iterations=60, pyramid_levels=1, tolerance=0.0).to(device, dtype)
+        ir.register(scene(0.0), scene(6.0))
+        assert abs(ir.model.rot.item() + 6.0) < 0.4
+
+
+class TestConventionsImageRegistrator(BaseTester):
+    height, width = 32, 48
+
+    def _scene(self, dx: float, dy: float, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+        # Four Gaussian blobs, moved by (dx, dy) pixels. Analytic, so the fixture needs no seed; register() draws no
+        # random numbers either, so every run is deterministic.
+        ys, xs = torch.meshgrid(
+            torch.arange(self.height, device=device, dtype=dtype),
+            torch.arange(self.width, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        blobs = [(12.0, 9.0, 4.0, 1.0), (30.0, 20.0, 6.0, 0.8), (38.0, 7.0, 3.0, 0.6), (20.0, 24.0, 3.5, 0.9)]
+        img = torch.zeros(self.height, self.width, device=device, dtype=dtype)
+        for cx, cy, sigma, amplitude in blobs:
+            img = img + amplitude * torch.exp(-((xs - dx - cx) ** 2 + (ys - dy - cy) ** 2) / (2 * sigma**2))
+        return img[None, None]
+
+    @staticmethod
+    def _skip_without_kernels(device: torch.device, dtype: torch.dtype) -> None:
+        # Registration differentiates through a bilinear grid_sample and builds its pyramid with reflection padding.
+        # torch 2.5.1 has neither kernel for float16 on CPU, nor the grid_sample one for bfloat16.
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"torch has no {dtype} reflection padding kernel on {device.type}")
+
+    def _register(
+        self, device: torch.device, dtype: torch.dtype, num_iterations: int, pyramid_levels: int
+    ) -> tuple[ImageRegistrator, torch.Tensor, torch.Tensor, torch.Tensor]:
+        src = self._scene(0.0, 0.0, device, dtype)
+        dst = self._scene(3.0, -1.5, device, dtype)  # the content moves by (+3, -1.5) px from src to dst
+        ir = ImageRegistrator(
+            "translation", lr=1e-2, num_iterations=num_iterations, pyramid_levels=pyramid_levels, tolerance=1e-9
+        ).to(device, dtype)
+        model = ir.register(src, dst).detach()
+        return ir, model, src, dst
+
+    def test_convention_image_registrator_model_maps_dst_to_src(self, device, dtype):
+        # register(src, dst) returns the (1, 3, 3) model that maps destination coordinates to source coordinates
+        # (homography_warp's src_homo_dst: a pull warp), in normalised [-1, 1] coordinates with align_corners=False.
+        # Content moved by (+3, -1.5) px from src to dst gives a model shift of (-3, +1.5) px; the inverse model would
+        # give (+3, -1.5).
+        self._skip_without_kernels(device, dtype)
+        _, model, _, _ = self._register(device, dtype, num_iterations=60, pyramid_levels=2)
+        size = (self.height, self.width)
+        shift = denormalize_homography(model.float(), size, size, align_corners=False)[0, :2, 2]
+        # Measured about (-3.0, 1.5); the 0.5 px margins absorb the half-precision error.
+        assert -3.5 < shift[0].item() < -2.5
+        assert 1.0 < shift[1].item() < 2.0
+
+    def test_convention_image_registrator_warp_matches_homography_warp(self, device, dtype):
+        # warp_src_into_dst(src) is homography_warp(src, model, (H, W), align_corners=False): the default
+        # HomographyWarper reads the model in normalised coordinates with align_corners=False.
+        self._skip_without_kernels(device, dtype)
+        ir, model, src, _ = self._register(device, dtype, num_iterations=20, pyramid_levels=1)
+        assert (model[0, :2, 2].abs() > 0.05).all()  # a model far from the identity
+        size = (self.height, self.width)
+        warped = ir.warp_src_into_dst(src).detach()
+        self.assert_close(warped, homography_warp(src, model, size, align_corners=False))
+        # The other align_corners convention samples elsewhere under this model (0.015 in float32).
+        assert (warped - homography_warp(src, model, size, align_corners=True)).abs().max().item() > 5e-3
+
+    def test_convention_image_registrator_register_resets_model(self, device, dtype):
+        # A loaded state_dict drives the warps, but register() always starts again from the identity: the loaded
+        # state is not a warm start, so a register() without iterations returns the identity.
+        self._skip_without_kernels(device, dtype)
+        ir, model, src, dst = self._register(device, dtype, num_iterations=20, pyramid_levels=1)
+        assert (model[0, :2, 2].abs() > 0.05).all()  # a model far from the identity
+        loaded = ImageRegistrator("translation", num_iterations=0).to(device, dtype)
+        loaded.load_state_dict(ir.state_dict())
+        self.assert_close(loaded.model().detach(), model)
+        self.assert_close(loaded.warp_src_into_dst(src).detach(), ir.warp_src_into_dst(src).detach())
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        self.assert_close(loaded.register(src, dst).detach(), identity)
+
+    def test_convention_similarity_rotation_in_degrees(self, device, dtype):
+        # Without an image shape, Similarity.forward() is [[scale * R(rot), shift], [0, 0, 1]], with
+        # R = [[cos, sin], [-sin, cos]] from angle_to_rotation_matrix: rot is in degrees.
+        sim = Similarity().to(device, dtype)
+        with torch.no_grad():
+            sim.rot.fill_(30.0)
+            sim.scale.fill_(1.5)
+            sim.shift.copy_(torch.tensor([[[0.2], [-0.1]]], device=device, dtype=dtype))
+        c, s = 1.5 * math.cos(math.radians(30.0)), 1.5 * math.sin(math.radians(30.0))  # 1.299, 0.75
+        expected = torch.tensor([[[c, s, 0.2], [-s, c, -0.1], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(sim().detach(), expected)
+
+    @pytest.mark.parametrize(
+        ("model_type", "optimized"),
+        [
+            ("homography", ["model"]),
+            ("similarity", ["rot", "scale", "shift"]),
+            ("translation", ["shift"]),
+            ("rotation", ["rot"]),
+            ("scale", ["scale"]),
+        ],
+    )
+    def test_convention_image_registrator_model_type_parameters(self, model_type, optimized):
+        # 'homography' optimizes a Homography; the other strings a Similarity that optimizes only the named parameters.
+        ir = ImageRegistrator(model_type)
+        assert isinstance(ir.model, Homography if model_type == "homography" else Similarity)
+        assert sorted(name for name, _ in ir.model.named_parameters()) == optimized
+
+    def test_convention_image_registrator_shape_mismatch_resizes_src(self, device, dtype):
+        # allow_shape_mismatch=True resizes src_img to the height and width of dst_img before the loss, and a
+        # different channel count still raises.
+        self._skip_without_kernels(device, dtype)
+        seen = []
+
+        def l1(a: torch.Tensor, b: torch.Tensor, reduction: str = "none") -> torch.Tensor:
+            seen.append((tuple(a.shape), tuple(b.shape)))
+            return torch.nn.functional.l1_loss(a, b, reduction=reduction)
+
+        ir = ImageRegistrator(
+            "translation", num_iterations=1, pyramid_levels=1, loss_fn=l1, allow_shape_mismatch=True
+        ).to(device, dtype)
+        dst = self._scene(0.0, 0.0, device, dtype)
+        ir.register(dst[..., ::2, ::2], dst)
+        assert set(seen) == {((1, 1, self.height, self.width), (1, 1, self.height, self.width))}
+        with pytest.raises(ValueError):
+            ir.register(dst.expand(1, 3, -1, -1), dst)

@@ -42,21 +42,22 @@ class BaseModel(nn.Module):
 
     @abstractmethod
     def forward(self) -> torch.Tensor:
-        """Return the transform that maps source coordinates toward target coordinates.
+        """Return the transform used to warp the source image into the destination image.
+
+        The built-in models map destination coordinates to source coordinates. A custom model's coordinates must
+        match its supplied warper; see :class:`ImageRegistrator`.
 
         Returns:
-            Transform matrix tensor for the current model state. Concrete
-            models return the matrix shape required by their warp function.
+            Transform tensor for the current model state, in the shape required by the warper.
         """
         ...
 
     @abstractmethod
     def forward_inverse(self) -> torch.Tensor:
-        """Return the inverse mapping for the current registration transform.
+        """Return the transform used to warp the destination image into the source image.
 
         Returns:
-            Transform matrix tensor that maps target coordinates back toward
-            source coordinates.
+            Transform tensor for the inverse warp, in the coordinates expected by the warper.
         """
         ...
 
@@ -77,7 +78,7 @@ class Homography(BaseModel):
         torch.nn.init.eye_(self.model)
 
     def forward(self) -> torch.Tensor:
-        r"""Single-batch homography".
+        r"""Single-batch homography, scaled so that its ``[2, 2]`` entry is 1.
 
         Returns:
             Homography matrix with shape :math:`(1, 3, 3)`.
@@ -86,10 +87,10 @@ class Homography(BaseModel):
         return torch.unsqueeze(self.model / self.model[2, 2], dim=0)  # 1x3x3
 
     def forward_inverse(self) -> torch.Tensor:
-        r"""Interted Single-batch homography".
+        r"""Inverted single-batch homography.
 
         Returns:
-            Homography martix with shape :math:`(1, 3, 3)`.
+            Homography matrix with shape :math:`(1, 3, 3)`.
 
         """
         return torch.unsqueeze(_torch_inverse_cast(self.model), dim=0)
@@ -98,15 +99,30 @@ class Homography(BaseModel):
 class Similarity(BaseModel):
     """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
 
+    Convention:
+        - ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]`` in the normalized :math:`[-1, 1]` coordinates of
+          :class:`ImageRegistrator` (``align_corners=False``), where ``R`` comes from
+          :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` of ``rot`` in degrees.
+        - After :meth:`set_image_shape` with the image height ``H`` and width ``W``, ``R`` is
+          ``diag(H / W, 1) @ angle_to_rotation_matrix(rot) @ diag(W / H, 1)``. The normalized frame scales x by
+          ``2 / W`` and y by ``2 / H``, so in pixels the linear part is then ``scale * angle_to_rotation_matrix(rot)``
+          about the image centre, for any aspect ratio. :meth:`ImageRegistrator.register` sets the shape of
+          ``dst_img``. ``shift`` stays in normalized units.
+        - Without an image shape, ``R`` is ``angle_to_rotation_matrix(rot)``, which rotates the pixels only on a
+          square image. The shape is not part of ``state_dict()``: after ``load_state_dict``, call
+          :meth:`set_image_shape` again before using the model on a non-square image.
+
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
-        scale: if True, the scale is optimizable, else constant zero.
-        shift: if True, the shift is optimizable, else constant one.
+        scale: if True, the scale is optimizable, else constant one.
+        shift: if True, the shift is optimizable, else constant zero.
 
     """
 
     def __init__(self, rotation: bool = True, scale: bool = True, shift: bool = True) -> None:
         super().__init__()
+        self.height: Optional[int] = None
+        self.width: Optional[int] = None
         if rotation:
             self.rot = nn.Parameter(torch.zeros(1))
         else:
@@ -132,18 +148,34 @@ class Similarity(BaseModel):
         torch.nn.init.zeros_(self.shift)
         torch.nn.init.ones_(self.scale)
 
+    def set_image_shape(self, height: int, width: int) -> None:
+        """Set the image size in pixels, which makes ``rot`` and ``scale`` a rotation and scaling of the pixels.
+
+        Args:
+            height: image height ``H``.
+            width: image width ``W``.
+
+        """
+        self.height = height
+        self.width = width
+
     def forward(self) -> torch.Tensor:
-        r"""Single-batch similarity transform".
+        r"""Single-batch similarity transform.
 
         Returns:
             Similarity with shape :math:`(1, 3, 3)`
 
         """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
+        if self.height is not None and self.width is not None:
+            # diag(H / W, 1) @ rot @ diag(W / H, 1): the pixel rotation in the normalized frame, whose x unit is W / 2
+            # pixels and y unit H / 2 pixels. Only the off-diagonal entries change, so the diagonal stays exact.
+            aspect = self.height / self.width
+            rot = rot * rot.new_tensor([[1.0, aspect], [1.0 / aspect, 1.0]])
         return convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
 
     def forward_inverse(self) -> torch.Tensor:
-        r"""Single-batch inverse similarity transform".
+        r"""Single-batch inverse similarity transform.
 
         Returns:
             Similarity with shape :math:`(1, 3, 3)`
@@ -155,15 +187,35 @@ class Similarity(BaseModel):
 class ImageRegistrator(nn.Module):
     r"""nn.Module, which performs optimization-based image registration.
 
+    Convention:
+        - :meth:`register` returns ``self.model()`` unchanged. For the built-in string ``model_type`` values, this
+          maps **destination** coordinates to **source** coordinates, normalized to :math:`[-1, 1]` with
+          ``align_corners=False``: the ``src_homo_dst`` argument of
+          :func:`~kornia.geometry.transform.homography_warp`. :meth:`warp_src_into_dst` uses this model, and
+          :meth:`warp_dst_into_src` uses ``self.model.forward_inverse()``. A custom ``model_type`` and ``warper``
+          determine their own coordinate system; their forward and inverse mappings must agree with that warper.
+        - For the built-in models, ``denormalize_homography(M, (H, W), (H, W), align_corners=False)`` converts the
+          returned ``M`` to pixels: content that moves by :math:`(t_x, t_y)` pixels from ``src_img`` to ``dst_img``
+          gives a shift of :math:`(-t_x, -t_y)`.
+        - :meth:`register` always starts from the identity, so a loaded ``state_dict`` drives the warps but is not a
+          warm start.
+
     Args:
-        model_type: Geometrical model for registration. Can be string or nn.Module.
+        model_type: Geometrical model for registration: ``'homography'``, ``'similarity'``, or ``'translation'``,
+            ``'rotation'`` or ``'scale'`` (a :class:`Similarity` that optimizes only that parameter), or a
+            :class:`BaseModel` instance together with ``warper``.
         optimizer: optimizer class used for the optimization.
-        loss_fn: torch loss function.
+        loss_fn: torch loss function, called with ``reduction='none'``.
         pyramid_levels: number of scale pyramid levels.
         lr: learning rate for optimization.
-        num_iterations: maximum number of iterations.
-        tolerance: stop optimizing if loss difference is less. default 1e-4.
-        warper: if model_type is not string, one needs to provide warper object.
+        num_iterations: maximum number of iterations at each pyramid level, from coarse to fine.
+        tolerance: stop a pyramid level when successive losses at that level differ by less than this value.
+            The first iteration at each level always runs. Default 1e-4.
+        warper: the warper class, called as ``warper(height, width)``. Required when ``model_type`` is a module;
+            a string ``model_type`` uses :class:`~kornia.geometry.transform.HomographyWarper`.
+        allow_shape_mismatch: if True, :meth:`register` resizes ``src_img`` bilinearly to the height and width of
+            ``dst_img``, and a different batch or channel size still raises ``ValueError``; if False, images of
+            different shapes raise ``ValueError``.
 
     Example:
         >>> from kornia.geometry import ImageRegistrator
@@ -252,8 +304,6 @@ class ImageRegistrator(nn.Module):
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         r"""Estimate the transformation which warps src_img into dst_img by gradient descent.
 
-        The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration.
-
         Args:
             src_img: Input image torch.Tensor.
             dst_img: Input image torch.Tensor.
@@ -290,6 +340,10 @@ class ImageRegistrator(nn.Module):
         aux_models = []
         if len(img_dst_pyr) != len(img_src_pyr):
             raise ValueError("Cannot register images of different sizes")
+        if isinstance(self.model, Similarity):
+            # every pyramid level spans the same image, so the full-resolution shape is the pixel aspect ratio of each
+            # level; a level's own rounded shape is not
+            self.model.set_image_shape(dst_img.shape[-2], dst_img.shape[-1])
         for img_src_level, img_dst_level in zip(img_src_pyr, img_dst_pyr):
             # tolerance compares successive losses of one level; a loss from the coarser level is not one of them
             prev_loss: Optional[float] = None

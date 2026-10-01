@@ -77,6 +77,10 @@ class TestSSIMLoss(BaseTester):
         self.gradcheck(kornia.losses.ssim_loss, (img1, img2, window_size), nondet_tol=1e-8)
 
 
+# The variances are differences of Gaussian-filtered moments, which cancel badly in half precision.
+_MS_SSIM_TOL = {torch.float16: 1e-2, torch.bfloat16: 5e-2}
+
+
 class TestMS_SSIMLoss(BaseTester):
     def test_msssim_equal_none(self, device, dtype):
         # input data
@@ -105,7 +109,6 @@ class TestMS_SSIMLoss(BaseTester):
             criterion(torch.rand(1), torch.rand(1, 2))
         assert "Input shapes should be same. Got" in str(errinfo)
 
-    # TODO: implement for single channel image
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
     @pytest.mark.parametrize("batch_shape", [(2, 1, 2, 3), (1, 3, 10, 16)])
     def test_msssim(self, device, dtype, batch_shape, reduction_type):
@@ -115,6 +118,142 @@ class TestMS_SSIMLoss(BaseTester):
         loss = msssiml1(img, img)
 
         self.assert_close(loss.sum().item(), 0.0)
+
+    @pytest.mark.parametrize("channels", [1, 2, 3, 4])
+    def test_cardinality(self, device, dtype, channels):
+        img1 = torch.rand(2, channels, 10, 16, device=device, dtype=dtype)
+        img2 = torch.rand(2, channels, 10, 16, device=device, dtype=dtype)
+
+        loss = kornia.losses.MS_SSIMLoss(reduction="none").to(device, dtype)
+
+        assert loss(img1, img2).shape == (2, 10, 16)
+
+    def test_channel_order(self, device, dtype):
+        img1 = torch.rand(2, 3, 12, 12, device=device, dtype=dtype)
+        img2 = (img1 + 0.2 * torch.rand_like(img1)).clamp(0, 1)
+        bgr = [2, 1, 0]
+
+        loss = kornia.losses.MS_SSIMLoss(alpha=1.0, compensation=1.0, reduction="none").to(device, dtype)
+
+        tol = _MS_SSIM_TOL.get(dtype, 1e-4)
+        self.assert_close(loss(img1[:, bgr], img2[:, bgr]), loss(img1, img2), atol=tol, rtol=tol)
+
+    def test_brightness_shift_in_any_channel(self, device, dtype):
+        # Three copies of one plane: brightening any single copy must cost the same, and the luminance term must see it.
+        img = torch.rand(1, 1, 12, 12, device=device, dtype=dtype).repeat(1, 3, 1, 1) * 0.5
+        loss = kornia.losses.MS_SSIMLoss(alpha=1.0, compensation=1.0, reduction="none").to(device, dtype)
+
+        shifted = []
+        for channel in range(3):
+            img_shifted = img.clone()
+            img_shifted[:, channel] += 0.3
+            shifted.append(loss(img, img_shifted))
+
+        tol = _MS_SSIM_TOL.get(dtype, 1e-4)
+        self.assert_close(shifted[1], shifted[0], atol=tol, rtol=tol)
+        self.assert_close(shifted[2], shifted[0], atol=tol, rtol=tol)
+        assert shifted[0].mean() > 0.05
+
+    @pytest.mark.parametrize("channels", [1, 3])
+    def test_reference(self, device, dtype, channels):
+        # Snippet used to generate expected (requires numpy only): the per-pixel, Gaussian-window MS-SSIM of
+        # Zhao et al. (2017) for every channel, averaged over the channels as in their reference implementation
+        # (NVlabs/PL4NN, ``MSSSIML1`` in src/loss.py).
+        # import numpy as np
+        # def gauss(s, k):
+        #     g = np.exp(-((np.arange(k) - k // 2) ** 2) / (2 * s * s)); g /= g.sum(); return np.outer(g, g)
+        # def filt(a, w):  # zero-padded "same" correlation
+        #     k = w.shape[0]; a = np.pad(a, k // 2); h, v = a.shape[0] - k + 1, a.shape[1] - k + 1
+        #     return np.array([[(a[i : i + k, j : j + k] * w).sum() for j in range(v)] for i in range(h)])
+        # def ms_ssim_loss(x, y, sigmas=(0.5, 1.0, 2.0), c1=0.01**2, c2=0.03**2):  # x, y: (C, H, W)
+        #     k = int(4 * sigmas[-1] + 1); per_channel = []
+        #     for xc, yc in zip(x, y):
+        #         ms = np.ones(x.shape[1:])
+        #         for i, s in enumerate(sigmas):
+        #             w = gauss(s, k); mx, my = filt(xc, w), filt(yc, w)
+        #             vx, vy, cxy = filt(xc * xc, w) - mx * mx, filt(yc * yc, w) - my * my, filt(xc * yc, w) - mx * my
+        #             ms *= (2 * cxy + c2) / (vx + vy + c2)
+        #             if i == len(sigmas) - 1:
+        #                 ms *= (2 * mx * my + c1) / (mx * mx + my * my + c1)
+        #         per_channel.append(ms)
+        #     return 1 - np.mean(per_channel, axis=0)
+        # x = (np.arange(60).reshape(3, 4, 5) * np.array([1, 3, 7]).reshape(3, 1, 1) % 11) / 10
+        # expected = ms_ssim_loss(x[:channels], x[:channels] ** 2)
+        img1 = torch.arange(60, dtype=torch.float64).reshape(1, 3, 4, 5)
+        img1 = (img1 * torch.tensor([1.0, 3.0, 7.0], dtype=torch.float64).view(1, 3, 1, 1) % 11) / 10
+        img1 = img1[:, :channels].to(device, dtype)
+        img2 = img1**2
+        expected = {
+            1: [
+                [0.37865300, 0.31442640, 0.26742503, 0.25432102, 0.27785429],
+                [0.27414722, 0.26719022, 0.20145665, 0.17667983, 0.18669405],
+                [0.20643671, 0.23914177, 0.22795677, 0.17534234, 0.19646084],
+                [0.27640491, 0.33963748, 0.28366937, 0.22100261, 0.19366287],
+            ],
+            3: [
+                [0.30440426, 0.23147867, 0.22960489, 0.25790863, 0.31691969],
+                [0.21193412, 0.20488162, 0.19946196, 0.19401123, 0.22219212],
+                [0.18556347, 0.20465673, 0.18753592, 0.18937725, 0.21497141],
+                [0.22266887, 0.23662971, 0.21462762, 0.23004896, 0.21928525],
+            ],
+        }[channels]
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+
+        loss = kornia.losses.MS_SSIMLoss(sigmas=(0.5, 1.0, 2.0), alpha=1.0, compensation=1.0, reduction="none")
+        loss = loss.to(device, dtype)
+
+        tol = _MS_SSIM_TOL.get(dtype, 1e-4)
+        self.assert_close(loss(img1, img2), expected, atol=tol, rtol=tol)
+
+    @pytest.mark.parametrize("channels", [1, 3])
+    def test_reference_gaussian_l1(self, device, dtype, channels):
+        # With alpha=0 the loss is the l1 map filtered by the coarsest Gaussian and averaged over the channels.
+        # Generated with ``gauss`` and ``filt`` from the snippet in ``test_reference``:
+        # w = gauss(2.0, 9)
+        # expected = np.mean([filt(np.abs(c - c**2), w) for c in x[:channels]], axis=0)
+        img1 = torch.arange(60, dtype=torch.float64).reshape(1, 3, 4, 5)
+        img1 = (img1 * torch.tensor([1.0, 3.0, 7.0], dtype=torch.float64).view(1, 3, 1, 1) % 11) / 10
+        img1 = img1[:, :channels].to(device, dtype)
+        img2 = img1**2
+        expected = {
+            1: [
+                [0.04841360, 0.06432695, 0.07315782, 0.07117095, 0.05873239],
+                [0.05998628, 0.07880676, 0.08869681, 0.08553489, 0.07010512],
+                [0.06226608, 0.08101300, 0.09034629, 0.08643698, 0.07039810],
+                [0.05424314, 0.06998091, 0.07739282, 0.07348809, 0.05948054],
+            ],
+            3: [
+                [0.05252443, 0.06618850, 0.07189183, 0.06754884, 0.05445936],
+                [0.06308681, 0.07960642, 0.08649714, 0.08128649, 0.06559485],
+                [0.06331894, 0.08003596, 0.08705040, 0.08188926, 0.06620053],
+                [0.05316348, 0.06731125, 0.07329963, 0.06904758, 0.05593615],
+            ],
+        }[channels]
+        expected = torch.tensor([expected], device=device, dtype=dtype)
+
+        loss = kornia.losses.MS_SSIMLoss(sigmas=(0.5, 1.0, 2.0), alpha=0.0, compensation=1.0, reduction="none")
+        loss = loss.to(device, dtype)
+
+        tol = {torch.float16: 1e-3, torch.bfloat16: 1e-2}.get(dtype, 1e-4)
+        self.assert_close(loss(img1, img2), expected, atol=tol, rtol=tol)
+
+    def test_load_legacy_state_dict(self, device, dtype):
+        class Wrapper(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.criterion = kornia.losses.MS_SSIMLoss()
+
+        img1 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)
+        img2 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)
+        model = Wrapper().to(device, dtype)
+        expected = model.criterion(img1, img2)
+
+        assert "criterion._g_masks" not in model.state_dict()
+        # Older releases persisted three scale-major copies of each of the five default masks.
+        legacy_masks = model.criterion._g_masks.repeat_interleave(3, dim=0)
+        model.load_state_dict({"criterion._g_masks": legacy_masks}, strict=True)
+
+        self.assert_close(model.criterion(img1, img2), expected)
 
     def test_gradcheck(self, device, dtype):
         # input data
