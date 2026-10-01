@@ -250,9 +250,7 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
     return _apply_colormap(input_tensor, colormap.colors, B, C, H, W)
 
 
-def _apply_colormap(
-    input_tensor: torch.Tensor, colors: torch.Tensor, B: int, C: int, H: int, W: int
-) -> torch.Tensor:
+def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor, B: int, C: int, H: int, W: int) -> torch.Tensor:
     colors = colors.permute(1, 0)
     num_colors, channels_cmap = colors.shape
     keys = torch.linspace(0.0, 1.0, num_colors - 1, device=input_tensor.device, dtype=input_tensor.dtype)
