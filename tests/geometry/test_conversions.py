@@ -4559,32 +4559,10 @@ class TestRt2Extrinsics(BaseTester):
         # Convention pin: both functions go through KORNIA_CHECK_SHAPE and accept exactly
         # (B, 3, 3) + (B, 3, 1) and (B, 4, 4) -- no unbatched form, no (B, 3) translation, no
         # transposed (B, 1, 3) translation, no extra leading batch dimensions. The same-batch
-        # rule for (R, t) pairs is pinned by test_wart_batch_size_mismatch_is_not_guarded_4774
-        # below. Assertion policy and the
-        # float32 hardcoding are documented once on the shared _assert_strictly_batched helper.
+        # rule for (R, t) pairs is pinned by test_convention_batch_size_mismatch_raises_4774
+        # below. Assertion policy and the float32 hardcoding are documented once on the shared
+        # _assert_strictly_batched helper.
         _assert_strictly_batched(op_name, shapes, device)
-
-    def test_wart_batch_size_mismatch_is_not_guarded_4774(self, device):
-        # Pin for kornia#4774, fixed: all five (R, t) functions reject a batch-size mismatch
-        # with a kornia guard of their own instead of failing inside torch.cat or silently
-        # broadcasting mismatched outputs. The name keeps the 4774 anchor the issue was filed
-        # under; the assertions are the post-fix contract.
-        rotation_batch_2 = torch.eye(3, device=device, dtype=torch.float32).expand(2, 3, 3)
-        translation_batch_1 = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
-
-        with pytest.raises(Exception) as excinfo:
-            Rt_to_matrix4x4(rotation_batch_2, translation_batch_1)
-        assert _raised_by_a_kornia_guard(excinfo.value), (
-            "kornia#4774: Rt_to_matrix4x4 now rejects mismatched batch sizes in a guard of its own"
-        )
-
-        with pytest.raises(Exception) as excinfo:
-            camtoworld_to_worldtocam_Rt(
-                torch.eye(3, device=device, dtype=torch.float32)[None], torch.ones(2, 3, 1, device=device)
-            )
-        assert _raised_by_a_kornia_guard(excinfo.value), (
-            "kornia#4774: camtoworld_to_worldtocam_Rt no longer returns mismatched batch sizes"
-        )
 
     @pytest.mark.parametrize(
         "op_name",
@@ -4597,9 +4575,11 @@ class TestRt2Extrinsics(BaseTester):
         ],
     )
     @pytest.mark.parametrize("batch_pair", [(2, 1), (1, 2)], ids=["R2-t1", "R1-t2"])
-    def test_rt_batch_size_mismatch_raises_shape_error_4774(self, op_name, batch_pair, device):
-        # kornia#4774: every (R, t) function in the family rejects a batch-size mismatch with a
-        # ShapeError naming both shapes, before any torch.cat / matmul can fail or broadcast.
+    def test_convention_batch_size_mismatch_raises_4774(self, op_name, batch_pair, device):
+        # Convention pin: every (R, t) function in the family rejects a batch-size mismatch in a
+        # guard of its own -- a ShapeError naming the function and both shapes -- before torch.cat
+        # can fail or the matmul can broadcast. The graphics/vision pair calls Rt_to_matrix4x4,
+        # whose guard would raise too; matching the name pins each function's own guard.
         ops = {
             "Rt_to_matrix4x4": Rt_to_matrix4x4,
             "camtoworld_graphics_to_vision_Rt": camtoworld_graphics_to_vision_Rt,
@@ -4611,8 +4591,25 @@ class TestRt2Extrinsics(BaseTester):
         R = torch.eye(3, device=device, dtype=torch.float32).expand(r_batch, 3, 3)
         t = torch.ones(t_batch, 3, 1, device=device, dtype=torch.float32)
 
-        with pytest.raises(ShapeError, match="same batch size"):
+        with pytest.raises(ShapeError, match=f"^{op_name}: R and t must have the same batch size") as excinfo:
             ops[op_name](R, t)
+        assert excinfo.value.actual_shape == [t_batch, 3, 1]
+        assert excinfo.value.expected_shape == [str(r_batch), "3", "1"]
+
+    def test_convention_batch_size_guard_follows_disable_checks_4774(self, device):
+        # Convention pin: the same-batch guard is a kornia check, so disable_checks() turns it off
+        # together with the KORNIA_CHECK_SHAPE calls before it, and the pair reaches torch.cat.
+        R = torch.eye(3, device=device, dtype=torch.float32).expand(2, 3, 3)
+        t = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(Exception) as excinfo:
+                Rt_to_matrix4x4(R, t)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        assert not _raised_by_a_kornia_guard(excinfo.value)
 
 
 class TestCamtoworldGraphicsToVision(BaseTester):

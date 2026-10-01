@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core._compat import deprecated
-from kornia.core.check import _KORNIA_CHECKS_ENABLED, KORNIA_CHECK, KORNIA_CHECK_SHAPE, ShapeError
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, ShapeError, are_checks_enabled
 from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
 
 __all__ = [
@@ -2767,18 +2767,19 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
 
 
 def _check_Rt_same_batch(R: torch.Tensor, t: torch.Tensor, fn_name: str) -> None:
-    # KORNIA_CHECK_SHAPE above validates each argument on its own; this guard compares the two
-    # batch sizes so a mismatched (R, t) pair is rejected by kornia with both shapes in the
-    # message instead of reaching torch.cat / the matmul and raising there (#4774).
+    # KORNIA_CHECK_SHAPE validates each argument on its own; this guard compares the two batch
+    # sizes, so a mismatched (R, t) pair raises here with both shapes in the message. Like the
+    # KORNIA_CHECK helpers it follows disable_checks(): read the flag at call time, not a copy
+    # bound at import.
     if not torch.jit.is_scripting():
-        if not _KORNIA_CHECKS_ENABLED:
+        if not are_checks_enabled():
             return
 
     if R.shape[0] != t.shape[0]:
         raise ShapeError(
             f"{fn_name}: R and t must have the same batch size, got {list(R.shape)} and {list(t.shape)}.",
             actual_shape=list(t.shape),
-            expected_shape=list(R.shape),
+            expected_shape=[str(R.shape[0]), "3", "1"],
         )
 
 
