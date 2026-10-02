@@ -2200,11 +2200,20 @@ class TestConventionsKernels(BaseTester):
             self.assert_close(from_float[0], on_cpu_f32[index])
 
     @pytest.mark.parametrize("ndim", [1, 2])
-    def test_wart_box_kernel_is_a_stride_zero_view_5160(self, ndim, device, dtype):
-        """get_box_kernel1d/2d return an expanded view of one scalar, so writing one tap rewrites all (#5160)."""
+    def test_convention_box_kernel_is_a_contiguous_tensor_5160(self, ndim, device, dtype):
+        """get_box_kernel1d/2d return a contiguous tensor, so an in-place edit changes only its own taps (#5160)."""
         if ndim == 1:
             kernel = get_box_kernel1d(3, device=device, dtype=dtype)
+            expected = torch.full((1, 3), 1.0 / 3.0, device=device, dtype=dtype)
         else:
             kernel = get_box_kernel2d((3, 4), device=device, dtype=dtype)
+            expected = torch.full((1, 3, 4), 1.0 / 12.0, device=device, dtype=dtype)
+        assert kernel.is_contiguous()
+        self.assert_close(kernel, expected)
+        # zero the first tap, then the last column: one tap and several taps at once
         kernel[(0,) * kernel.dim()] = 0.0
-        assert bool((kernel == 0).all())
+        kernel[..., -1] = 0.0
+        expected[(0,) * kernel.dim()] = 0.0
+        expected[..., -1] = 0.0
+        self.assert_close(kernel, expected)
+        assert int((kernel == 0).sum()) == (2 if ndim == 1 else 4)

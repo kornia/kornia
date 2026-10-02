@@ -402,10 +402,9 @@ def get_box_kernel1d(
 
     Convention:
         - For a floating ``dtype`` every tap is ``1 / kernel_size``; an even ``kernel_size`` is accepted.
+        - The kernel is a contiguous tensor, so an in-place edit changes only the taps it addresses.
         - Known defects:
 
-          - the kernel is a stride-0 view of a single value, so writing one tap in place changes every tap
-            (`#5160 <https://github.com/kornia/kornia/issues/5160>`_).
           - an integer ``dtype`` truncates ``1 / kernel_size``, so every tap is 0 once ``kernel_size`` is above 1
             (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
@@ -419,8 +418,7 @@ def get_box_kernel1d(
         :math:`\frac{1}{\text{kernel\_size}}` for a floating ``dtype``.
 
     """
-    scale = torch.tensor(1.0 / kernel_size, device=device, dtype=dtype)
-    return scale.expand(1, kernel_size)
+    return torch.full((1, kernel_size), 1.0 / kernel_size, device=device, dtype=dtype)
 
 
 def get_box_kernel2d(
@@ -443,8 +441,7 @@ def get_box_kernel2d(
 
     """
     ky, kx = _unpack_2d_ks(kernel_size)
-    scale = torch.tensor(1.0 / (kx * ky), device=device, dtype=dtype)
-    return scale.expand(1, ky, kx)
+    return torch.full((1, ky, kx), 1.0 / (kx * ky), device=device, dtype=dtype)
 
 
 def get_binary_kernel2d(
