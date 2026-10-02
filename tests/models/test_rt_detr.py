@@ -31,7 +31,7 @@ from testing.base import BaseTester, assert_close
 
 @pytest.mark.parametrize(
     "backbone_factory",
-    (partial(ResNetD.from_config, 18), partial(ResNetD.from_config, 50), partial(PPHGNetV2.from_config, "L")),
+    [partial(ResNetD.from_config, 18), partial(ResNetD.from_config, 50), partial(PPHGNetV2.from_config, "L")],
 )
 @pytest.mark.slow
 def test_backbone(backbone_factory, device, dtype):
@@ -90,7 +90,7 @@ def test_regvgg_optimize_for_deployment(device, dtype):
 
 class TestRTDETR(BaseTester):
     @pytest.mark.slow  # This will be slow for the bigger variants
-    @pytest.mark.parametrize("variant", ("resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"))
+    @pytest.mark.parametrize("variant", ["resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"])
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 10)).to(device, dtype).eval()
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
@@ -99,7 +99,7 @@ class TestRTDETR(BaseTester):
         assert isinstance(out, tuple)
         assert len(out) == 2
 
-    @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 64, 96)))
+    @pytest.mark.parametrize("shape", [(1, 3, 96, 128), (2, 3, 64, 96)])
     def test_cardinality(self, shape, device, dtype):
         num_classes = 10
         num_queries = 10
@@ -122,7 +122,7 @@ class TestRTDETR(BaseTester):
     def test_module(self): ...
 
     @pytest.mark.skip("Needs more investigation")
-    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
+    @pytest.mark.parametrize("variant", ["resnet50d", "hgnetv2_l"])
     def test_dynamo(self, variant, device, dtype, torch_optimizer):
         # NOTE: This test passes on Mac M1 CPU, PyTorch 2.0.0,
         # but fails on GitHub Actions Ubuntu-latest CPU, PyTorch 2.0.0.

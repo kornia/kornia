@@ -394,6 +394,25 @@ class TestFilter2D(BaseTester):
         assert actual.is_contiguous()
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("layout", ["channels_last", "batch_transposed", "expanded_batch"])
+    def test_per_sample_kernel_on_a_non_contiguous_input(self, layout, padding, device, dtype):
+        """One kernel per sample merges the batch and channel axes, whatever the input strides are."""
+        kernel = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        if layout == "channels_last":
+            inp = torch.rand(2, 3, 6, 7, device=device, dtype=dtype).contiguous(memory_format=torch.channels_last)
+        elif layout == "batch_transposed":
+            inp = torch.rand(3, 2, 6, 7, device=device, dtype=dtype).transpose(0, 1)
+        else:
+            inp = torch.rand(1, 3, 6, 7, device=device, dtype=dtype).expand(2, -1, -1, -1)
+        assert not inp.is_contiguous()
+
+        actual = filter2d(inp, kernel, padding=padding)
+        self.assert_close(actual, filter2d(inp.contiguous(), kernel, padding=padding))
+        for i in range(2):  # sample i is filtered with kernel i
+            expected = filter2d(inp[i : i + 1].contiguous(), kernel[i : i + 1], padding=padding)
+            self.assert_close(actual[i : i + 1], expected)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_separable(self, padding, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 9, 9, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
@@ -762,6 +781,23 @@ class TestFilter3D(BaseTester):
 
         actual = filter3d(inp, kernel)
         assert actual.is_contiguous()
+
+    @pytest.mark.parametrize("layout", ["channels_last_3d", "batch_transposed", "expanded_batch"])
+    def test_per_sample_kernel_on_a_non_contiguous_input(self, layout, device, dtype):
+        """One kernel per sample merges the batch and channel axes, whatever the input strides are."""
+        kernel = torch.rand(2, 2, 3, 4, device=device, dtype=dtype)
+        if layout == "channels_last_3d":
+            inp = torch.rand(2, 3, 4, 6, 7, device=device, dtype=dtype).contiguous(memory_format=torch.channels_last_3d)
+        elif layout == "batch_transposed":
+            inp = torch.rand(3, 2, 4, 6, 7, device=device, dtype=dtype).transpose(0, 1)
+        else:
+            inp = torch.rand(1, 3, 4, 6, 7, device=device, dtype=dtype).expand(2, -1, -1, -1, -1)
+        assert not inp.is_contiguous()
+
+        actual = filter3d(inp, kernel)
+        self.assert_close(actual, filter3d(inp.contiguous(), kernel))
+        for i in range(2):  # sample i is filtered with kernel i
+            self.assert_close(actual[i : i + 1], filter3d(inp[i : i + 1].contiguous(), kernel[i : i + 1]))
 
     @pytest.mark.parametrize("kernel_batch", [1, 2])
     @pytest.mark.parametrize("normalized", [True, False])
@@ -1659,14 +1695,21 @@ class TestConventionsFilter2d(BaseTester):
         out = filter3d(volume, kernel, "constant", normalized=True, behaviour=behaviour)
         assert torch.equal(out, expected)
 
-    def test_wart_fft_conv_valid_padding_with_a_kernel_larger_than_the_input_5285(self, device, dtype):
-        """With padding='valid', a 7 x 3 kernel on a 5 x 6 image gives fft_conv a 4 x 4 output (#5285)."""
-        _fft_guard("fft_conv", device, dtype)
+    @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
+    def test_convention_filter2d_valid_padding_rejects_a_kernel_larger_than_the_input_5285(self, name, device, dtype):
+        """With padding='valid', a kernel taller or wider than the input raises, in fft_conv as in filter2d (#5285)."""
+        _fft_guard(name, device, dtype)
+        fn = _FILTER2D_FNS[name]
         image = _rand(1, 1, 5, 6, device=device, dtype=dtype)
-        kernel = _rand(1, 7, 3, device=device, dtype=dtype, seed=1)
-        with pytest.raises((RuntimeError, BaseError)):
-            filter2d(image, kernel, "constant", padding="valid")
-        assert fft_conv(image, kernel, "constant", padding="valid").shape == (1, 1, 4, 4)
+        # a kernel as large as the input gives one output pixel; one row or one column more raises
+        kernel = _rand(1, 5, 6, device=device, dtype=dtype, seed=1)
+        assert fn(image, kernel, "constant", padding="valid").shape == (1, 1, 1, 1)
+        for kh, kw in [(6, 3), (7, 3), (3, 7), (5, 7), (6, 6)]:
+            kernel = _rand(1, kh, kw, device=device, dtype=dtype, seed=1)
+            with pytest.raises(BaseError if name == "fft_conv" else RuntimeError):
+                fn(image, kernel, "constant", padding="valid")
+            # 'same' pads first, so the same kernel is accepted
+            assert fn(image, kernel, "constant", padding="same").shape == (1, 1, 5, 6)
 
 
 # (name, factory(device, dtype), shape) for non-square sizes, so every axis order is visible

@@ -38,6 +38,14 @@ def add_weighted(
 ) -> torch.Tensor:
     r"""Calculate the weighted sum of two Tensors.
 
+    Convention:
+        src1 and src2 must have exactly the same shape; a Python number coefficient applies to
+        every element. See :class:`AddWeighted` for the module wrapper.
+
+    .. warning::
+        Tensor alpha, beta and gamma must have src1's exact shape: a 0-d or broadcastable
+        tensor raises (`#5325 <https://github.com/kornia/kornia/issues/5325>`_).
+
     .. image:: _static/img/add_weighted.png
 
     The function calculates the weighted sum of two Tensors as follows:
@@ -62,9 +70,6 @@ def add_weighted(
         >>> output.shape
         torch.Size([1, 1, 5, 5])
 
-    Notes:
-        torch.Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
-
     """
     KORNIA_CHECK_IS_TENSOR(src1)
     KORNIA_CHECK_IS_TENSOR(src2)
@@ -82,6 +87,10 @@ def add_weighted(
 
 class AddWeighted(nn.Module):
     r"""Calculate the weighted sum of two Tensors.
+
+    Convention:
+        See :func:`add_weighted`, including its tensor-coefficient defect
+        (`#5325 <https://github.com/kornia/kornia/issues/5325>`_).
 
     The function calculates the weighted sum of two Tensors as follows:
 
@@ -104,9 +113,6 @@ class AddWeighted(nn.Module):
         >>> output = AddWeighted(0.5, 0.5, 1.0)(input1, input2)
         >>> output.shape
         torch.Size([1, 1, 5, 5])
-
-    Notes:
-        torch.Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
 
     """
 

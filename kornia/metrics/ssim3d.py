@@ -79,6 +79,7 @@ def ssim3d(
        The ssim index map with shape :math:`(B, C, D, H, W)`.
 
     Note:
+        Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
 
@@ -96,6 +97,12 @@ def ssim3d(
 
     if not isinstance(max_val, float):
         raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
+
+    # Preserve fractional Gaussian weights and avoid integer moment overflow.
+    if not img1.is_floating_point() and not img1.is_complex():
+        img1 = img1.to(torch.float32)
+    if not img2.is_floating_point() and not img2.is_complex():
+        img2 = img2.to(torch.float32)
 
     output_dtype = torch.promote_types(img1.dtype, img2.dtype)
     # Half-precision moments can overflow before the SSIM ratio is formed.
