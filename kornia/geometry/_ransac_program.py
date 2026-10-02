@@ -120,12 +120,12 @@ def _draw_samples(
 ) -> torch.Tensor:
     """``batch`` uniform ``m``-subsets of ``range(num_tc)`` from a private, reproducible random stream.
 
-    Floyd's algorithm on CPU, random-key top-k elsewhere. The custom op only produces uniform values; all sampling
-    remains in the tensor graph. Its local generator makes seeded concurrent estimators independent of global RNG.
+    Floyd's algorithm on every device. Eager RANSAC uses random-key top-k on accelerators, where Floyd's ``m`` small
+    steps are launch-bound; compiled, they fuse into one kernel over ``batch * m`` uniforms instead of ``batch * N``
+    keys and a top-k (about 13% of a CUDA homography call at N=2000). The custom op only produces uniform values; all
+    sampling remains in the tensor graph. Its local generator makes seeded concurrent estimators independent of global
+    RNG.
     """
-    if device.type != "cpu":
-        template = torch.empty((), device=device, dtype=torch.float32)
-        return _ransac_uniform(template, batch, num_tc, seed, drawn).topk(k=m, dim=1, sorted=False).indices
     template = torch.empty((), device=device, dtype=torch.float64)
     rand = _ransac_uniform(template, batch, m, seed, drawn)
     columns = []

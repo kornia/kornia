@@ -2273,6 +2273,24 @@ class TestRANSACCompiled(BaseTester):
         assert torch.equal(torch.get_rng_state(), state)
 
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_sampler_draws_uniform_subsets(self, device):
+        """Floyd's algorithm, which the program uses on every device: distinct indices, every 4-subset of 10 equally
+        likely (chi-square over the 210 subsets, 209 degrees of freedom, far below 4.5 standard deviations)."""
+        from kornia.geometry._ransac_program import _draw_samples
+
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        draws = 105_000
+        samples = _draw_samples(4, 10, draws, device, torch.tensor(5), torch.tensor(0)).cpu()
+        assert samples.shape == (draws, 4) and samples.min() >= 0 and samples.max() < 10
+        ordered = samples.sort(1).values
+        assert (ordered[:, 1:] != ordered[:, :-1]).all()
+        _, counts = (ordered * torch.tensor([1000, 100, 10, 1])).sum(1).unique(return_counts=True)
+        assert len(counts) == math.comb(10, 4)
+        expected = draws / math.comb(10, 4)
+        assert ((counts - expected) ** 2 / expected).sum() < 209 + 4.5 * math.sqrt(2 * 209)
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_seed_streams_do_not_overlap_across_seeds_and_batches(self):
         """A batch's stream depends on the seed and the batch offset jointly, not on their sum.
 
