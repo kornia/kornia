@@ -91,9 +91,11 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         if model_type not in ["b0", "b1", "b2", "b3", "l0", "l1", "l2", "l3"]:
             raise ValueError(f"Unknown model type: {model_type}.")
 
-        # create and load the model weights without strict until we polish the model files
         model = getattr(vit, f"efficientvit_backbone_{model_type}")()
-        model.load_state_dict(model_file, strict=False)
+        # The hosted checkpoints hold the backbone under a "backbone." prefix, next to a "head." classifier the
+        # backbone has no slot for. A state dict saved from the backbone itself has no prefix and loads as it is.
+        state_dict = {key[len("backbone.") :]: val for key, val in model_file.items() if key.startswith("backbone.")}
+        model.load_state_dict(state_dict or model_file, strict=True)
 
         return EfficientViT(backbone=model)
 
