@@ -90,7 +90,7 @@ class MotionBlur(nn.Module):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__} (kernel_size={self.kernel_size}, "
-            f"angle={self.angle}, direction={self.direction}, border_type={self.border_type})"
+            f"angle={self.angle}, direction={self.direction}, border_type={self.border_type}, mode={self.mode})"
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -111,7 +111,7 @@ class MotionBlur(nn.Module):
             blur response. The output uses the same batch, channel, and spatial
             layout as ``x``.
         """
-        return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type)
+        return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type, mode=self.mode)
 
 
 class MotionBlur3D(nn.Module):
@@ -119,7 +119,8 @@ class MotionBlur3D(nn.Module):
 
     Args:
         kernel_size: motion kernel width and height. It should be odd and positive.
-        angle: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        angle: Rotation components in degrees. A scalar sets all three components to the same value;
+            a three-element sequence sets each component, and a tensor must have shape :math:`(B, 3)`.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
@@ -153,7 +154,7 @@ class MotionBlur3D(nn.Module):
     def __init__(
         self,
         kernel_size: int,
-        angle: float | tuple[float, float, float] | torch.Tensor,
+        angle: float | tuple[float, float, float] | list[float] | torch.Tensor,
         direction: float | torch.Tensor,
         border_type: str = "replicate",
         mode: str = "nearest",
@@ -161,12 +162,16 @@ class MotionBlur3D(nn.Module):
         super().__init__()
         self.kernel_size = kernel_size
         KORNIA_CHECK(
-            isinstance(angle, (torch.Tensor, float, list, tuple)),
-            f"Angle should be a torch.Tensor, float or a sequence of floats. Got {angle}",
+            isinstance(angle, (torch.Tensor, int, float, list, tuple)),
+            f"Angle should be a torch.Tensor, int, float or a sequence of floats. Got {angle}",
         )
-        if isinstance(angle, float):
+        self.angle: tuple[float, float, float] | torch.Tensor
+        if isinstance(angle, torch.Tensor):
+            self.angle = angle
+        elif isinstance(angle, (int, float)):
             self.angle = (angle, angle, angle)
-        elif isinstance(angle, (tuple, list)) and len(angle) == 3:
+        else:
+            KORNIA_CHECK(len(angle) == 3, f"Angle sequence must have length 3. Got {len(angle)}")
             self.angle = (angle[0], angle[1], angle[2])
 
         self.direction = direction
@@ -176,7 +181,7 @@ class MotionBlur3D(nn.Module):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__} (kernel_size={self.kernel_size}, "
-            f"angle={self.angle}, direction={self.direction}, border_type={self.border_type})"
+            f"angle={self.angle}, direction={self.direction}, border_type={self.border_type}, mode={self.mode})"
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -196,7 +201,7 @@ class MotionBlur3D(nn.Module):
             Tensor with shape :math:`(B, C, D, H, W)` containing the blurred
             volume. The output keeps the same dimensional order as ``x``.
         """
-        return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type)
+        return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type, mode=self.mode)
 
 
 def motion_blur(

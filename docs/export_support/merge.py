@@ -254,7 +254,9 @@ def _load_results(pattern: str) -> dict[str, dict]:
     """
     out: dict[str, dict] = {}
     for f in sorted(glob.glob(pattern)):
-        for r in json.load(open(f)):
+        with open(f) as fh:
+            rows = json.load(fh)
+        for r in rows:
             bogus = "crashed" in (r.get("export"), r.get("status")) or "PythonDispatcherTLS" in str(r.get("error", ""))
             if bogus and r["name"] in out:
                 continue
@@ -281,7 +283,8 @@ def _validate(patterns: list[str], force: bool) -> dict[str, str]:
             problems.append(f"{f}: no {Path(inventory_path(f)).name} next to it (rerun the probe)")
             continue
         stamps.setdefault((inv.get("revision", "?"), inv.get("torch", "?")), []).append(Path(f).name)
-        have = {r["name"] for r in json.load(open(f)) if "crashed" not in (r.get("status"), r.get("export"))}
+        with open(f) as fh:
+            have = {r["name"] for r in json.load(fh) if "crashed" not in (r.get("status"), r.get("export"))}
         missing = [n for n in inv["names"] if n not in have]
         if missing:
             problems.append(f"{f}: {len(missing)} of {len(inv['names'])} cases have no record, e.g. {missing[:3]}")

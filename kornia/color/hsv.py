@@ -31,13 +31,17 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        Channels are H, S, V at axis -3. Hue is in radians in [0, 2π) and grayscale
+        pixels have hue zero. eps biases the saturation denominator.
+
     Args:
         image: RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
         eps: scalar to enforce numarical stability.
 
     Returns:
         HSV version of the image with shape of :math:`(*, 3, H, W)`.
-        The H channel values are in the range 0..2pi. S and V are in the range 0..1.
+        The H channel values are in the range [0, 2pi). S and V are in the range 0..1.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
@@ -77,6 +81,9 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h = h / deltac
     h = (h / 6.0) % 1.0
     h = 2.0 * math.pi * h  # we return 0/2pi output
+    # A tiny negative hue rounds up to the period itself, in the modulo (float32) or only in the scaling
+    # (float16: 2π * (1 - 2**-11) rounds to 6.28125); fold it to 0, as adjust_hue_raw does.
+    h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
 
     return torch.stack((h, s, v), dim=-3)
 
@@ -85,6 +92,9 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from HSV to RGB.
 
     The H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
+
+    Convention:
+        Expects H, S, V channels at axis -3 with hue in radians.
 
     Args:
         image: HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
@@ -137,6 +147,8 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 class RgbToHsv(nn.Module):
     r"""Convert an image from RGB to HSV.
 
+    See the Convention block on :func:`rgb_to_hsv`.
+
     The image data is assumed to be in the range of (0, 1).
 
     Args:
@@ -159,7 +171,7 @@ class RgbToHsv(nn.Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def __init__(self, eps: float = 1e-6) -> None:
+    def __init__(self, eps: float = 1e-8) -> None:
         super().__init__()
         self.eps = eps
 
@@ -179,6 +191,8 @@ class RgbToHsv(nn.Module):
 
 class HsvToRgb(nn.Module):
     r"""Convert an image from HSV to RGB.
+
+    See the Convention block on :func:`hsv_to_rgb`.
 
     H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
 

@@ -24,6 +24,10 @@ from torch import nn
 class Rescale(nn.Module):
     r"""Initialize the Rescale operator.
 
+    Convention:
+        factor is a scalar float or 0-D tensor and multiplies every element;
+        it is stored as a module buffer, so ``.to()`` device and dtype moves apply to it.
+
     Args:
         factor: The scaling factor. Could be a float or a 0-d torch.Tensor.
 

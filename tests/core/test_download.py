@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import collections
 import copy
+import errno
 import hashlib
 import http.client
 import http.server
@@ -2392,6 +2393,70 @@ class TestTruncatedTransfer:
             download_mod._download_url_to_file(url("/t.bin"), str(dst), progress=False, timeout=5.0)
 
         assert dst.read_bytes() == b"previous"
+        assert [p.name for p in tmp_path.iterdir()] == ["t.bin"]
+
+    @staticmethod
+    def _partial_in_use(monkeypatch, code: int = errno.EACCES) -> None:
+        # Removing the temporary file fails, as when another process holds it open on Windows. ``OSError`` maps
+        # EACCES to ``PermissionError``; EBUSY stays a plain ``OSError``.
+        remove = os.remove
+
+        def in_use(path):
+            if str(path).endswith(".partial"):
+                raise OSError(code, "in use by another process", path)
+            remove(path)
+
+        monkeypatch.setattr(download_mod.os, "remove", in_use)
+
+    @pytest.mark.parametrize("code", [errno.EACCES, errno.EBUSY], ids=["eacces", "ebusy"])
+    def test_a_failed_cleanup_does_not_replace_the_transfer_error(
+        self, scripted_server, monkeypatch, tmp_path, code
+    ) -> None:
+        responses, url, _ = scripted_server
+        responses["/t.bin"] = (1000, b"z" * 10)
+        self._partial_in_use(monkeypatch, code)
+
+        with pytest.warns(UserWarning, match="Could not remove the temporary download file"):
+            with pytest.raises(download_mod._TruncatedTransfer):
+                download_mod._download_url_to_file(url("/t.bin"), str(tmp_path / "t.bin"), progress=False, timeout=5.0)
+
+        assert [p.suffix for p in tmp_path.iterdir()] == [".partial"]
+
+    def test_a_failed_cleanup_does_not_replace_an_interrupt(self, monkeypatch, tmp_path) -> None:
+        def interrupted(*args, **kwargs):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(download_mod, "urlopen", interrupted)
+        self._partial_in_use(monkeypatch)
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(KeyboardInterrupt):
+                download_mod._download_url_to_file("http://127.0.0.1:9/t.bin", str(tmp_path / "t.bin"), progress=False)
+
+    def test_a_short_body_is_still_retried_when_cleanup_fails(self, scripted_server, monkeypatch, tmp_path) -> None:
+        # A PermissionError from the cleanup is not transient, so it used to end the retries after the first attempt.
+        responses, url, hits = scripted_server
+        responses["/t.bin"] = (1000, b"z" * 10)
+        self._partial_in_use(monkeypatch)
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError) as excinfo:
+                download_file_from_url(url("/t.bin"), model_dir=str(tmp_path / "cache"), progress=False)
+
+        assert isinstance(excinfo.value.__cause__, http.client.IncompleteRead)
+        assert hits["/t.bin"] == download_mod._MAX_ATTEMPTS
+
+    def test_a_complete_transfer_warns_nothing(self, scripted_server, tmp_path) -> None:
+        # The temporary file is already renamed into place, so the cleanup finds nothing to remove or report.
+        responses, url, _ = scripted_server
+        responses["/t.bin"] = b"z" * 10
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            download_mod._download_url_to_file(url("/t.bin"), str(tmp_path / "t.bin"), progress=False, timeout=5.0)
+
         assert [p.name for p in tmp_path.iterdir()] == ["t.bin"]
 
 
