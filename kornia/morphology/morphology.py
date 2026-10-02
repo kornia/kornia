@@ -20,6 +20,9 @@ from typing import List, Optional
 import torch
 import torch.nn.functional as F
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ValueCheckError
+
 __all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "reconstruction", "top_hat"]
 
 
@@ -1150,10 +1153,8 @@ def reconstruction(
         ``mask`` (below it for ``"erosion"``) is clipped to ``mask`` instead of raising.
 
     Args:
-        seed: Floating-point starting image with shape :math:`(B, C, H, W)`; any other dtype raises a
-            ``TypeError``.
-        mask: Floating-point image bounding the reconstruction, with the same shape as ``seed``; any other dtype
-            raises a ``TypeError``.
+        seed: Floating-point starting image with shape :math:`(B, C, H, W)`.
+        mask: Floating-point image bounding the reconstruction, with the same shape as ``seed``.
         kernel: Offsets from the center that a pixel's value spreads to in one step, with shape
             :math:`(k_h, k_w)` and odd sizes. Non-zero cells mark an offset; their magnitude and dtype are
             ignored. Default: ``None``, which uses a :math:`3 \times 3` square.
@@ -1167,11 +1168,19 @@ def reconstruction(
             the device with the host, and steps past convergence are wasted, so a larger value suits inputs that
             take many steps. For inputs without NaN, the output does not depend on it. Default: ``4``.
         engine: ``"unfold"``, ``"shift"`` or ``"auto"`` (default), passed to :func:`dilation`. ``"convolution"``
-            raises a ``ValueError``: it is not exact on every backend, and an inexact step can keep the loop
-            from converging.
+            is rejected: it is not exact on every backend, and an inexact step can keep the loop from converging.
 
     Returns:
         Reconstructed image with shape :math:`(B, C, H, W)` and the promoted dtype of ``seed`` and ``mask``.
+
+    Raises:
+        TypeCheckError: if ``seed``, ``mask`` or ``kernel`` is not a tensor.
+        ShapeError: if ``seed`` is not 4-dimensional, ``mask`` has another shape, or ``kernel`` is not
+            2-dimensional.
+        ValueCheckError: if ``engine`` is ``"convolution"``, also with checks disabled.
+        BaseError: if ``seed`` or ``mask`` is not floating point, a ``kernel`` size is even, ``method`` or
+            ``engine`` is not one of the values above, ``num_iters`` is negative, or ``check_every`` is not
+            positive.
 
     Example:
         >>> mask = torch.rand(1, 3, 5, 5)
@@ -1179,44 +1188,31 @@ def reconstruction(
         >>> output = reconstruction(seed, mask)
 
     """
-    if not isinstance(seed, torch.Tensor):
-        raise TypeError(f"Seed type is not a torch.Tensor. Got {type(seed)}")
-
-    if not isinstance(mask, torch.Tensor):
-        raise TypeError(f"Mask type is not a torch.Tensor. Got {type(mask)}")
-
-    if len(seed.shape) != 4:
-        raise ValueError(f"Seed size must have 4 dimensions. Got {seed.dim()}")
-
-    if not seed.is_floating_point():
-        raise TypeError(f"Seed must have a floating-point dtype. Got {seed.dtype}")
-
-    if not mask.is_floating_point():
-        raise TypeError(f"Mask must have a floating-point dtype. Got {mask.dtype}")
-
-    if seed.shape != mask.shape:
-        raise ValueError(f"`seed` and `mask` shapes must match. Got {seed.shape} and {mask.shape}.")
-
-    if method not in ["dilation", "erosion"]:
-        raise ValueError(f"Unknown `method`: {method}. Expected one of ['dilation', 'erosion'].")
-
-    if engine not in ["auto", "unfold", "shift"]:
-        raise ValueError(f"Unsupported `engine`: {engine}. Expected one of ['auto', 'unfold', 'shift'].")
-
-    if num_iters is not None and num_iters < 0:
-        raise ValueError(f"`num_iters` must be non-negative. Got {num_iters}.")
-
-    if check_every < 1:
-        raise ValueError(f"`check_every` must be positive. Got {check_every}.")
+    KORNIA_CHECK_IS_TENSOR(seed)
+    KORNIA_CHECK_IS_TENSOR(mask)
+    KORNIA_CHECK_SHAPE(seed, ["B", "C", "H", "W"])
+    KORNIA_CHECK_SAME_SHAPE(seed, mask)
+    KORNIA_CHECK(seed.is_floating_point(), f"`seed` must have a floating-point dtype. Got {seed.dtype}.")
+    KORNIA_CHECK(mask.is_floating_point(), f"`mask` must have a floating-point dtype. Got {mask.dtype}.")
+    KORNIA_CHECK(method in ["dilation", "erosion"], f"Unknown `method`: {method}. Expected 'dilation' or 'erosion'.")
+    # Not a KORNIA_CHECK, which `disable_checks()`, `KORNIA_CHECKS=0` and `python -O` turn off: an inexact
+    # `conv2d` step makes the convergence loop oscillate forever (macOS CPU float32), not return a wrong value.
+    if engine == "convolution":
+        raise ValueCheckError("Unsupported `engine`: convolution. Expected one of ['auto', 'unfold', 'shift'].")
+    KORNIA_CHECK(
+        engine in ["auto", "unfold", "shift"],
+        f"Unsupported `engine`: {engine}. Expected one of ['auto', 'unfold', 'shift'].",
+    )
+    KORNIA_CHECK(num_iters is None or num_iters >= 0, f"`num_iters` must be non-negative. Got {num_iters}.")
+    KORNIA_CHECK(check_every >= 1, f"`check_every` must be positive. Got {check_every}.")
 
     if kernel is None:
         kernel = torch.ones(3, 3, device=seed.device, dtype=torch.bool)
 
-    _validate_morphology_inputs(seed, kernel, None, "geodesic")
-
+    KORNIA_CHECK_IS_TENSOR(kernel)
+    KORNIA_CHECK_SHAPE(kernel, ["KH", "KW"])
     se_h, se_w = kernel.shape
-    if se_h % 2 == 0 or se_w % 2 == 0:
-        raise ValueError(f"Kernel sizes must be odd. Got {kernel.shape}.")
+    KORNIA_CHECK(se_h % 2 == 1 and se_w % 2 == 1, f"Kernel sizes must be odd. Got {se_h} x {se_w}.")
 
     # The kernel is only a membership mask, so a bool copy keeps its dtype out of the result. The center cell
     # keeps each pixel in its own neighborhood, as in scikit-image. It also makes every step non-decreasing,

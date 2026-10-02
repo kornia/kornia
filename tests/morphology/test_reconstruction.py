@@ -20,6 +20,8 @@ import math
 import pytest
 import torch
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError, ValueCheckError
 from kornia.morphology import reconstruction
 
 from testing.base import BaseTester
@@ -227,41 +229,60 @@ class TestReconstruction(BaseTester):
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeCheckError):
             reconstruction([0.0], tensor)
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeCheckError):
             reconstruction(tensor, [0.0])
 
-        with pytest.raises(TypeError, match="floating-point"):
+        with pytest.raises(BaseError, match="floating-point"):
             reconstruction(tensor.int(), tensor)
 
-        with pytest.raises(TypeError, match="floating-point"):
+        with pytest.raises(BaseError, match="floating-point"):
             reconstruction(tensor, tensor.int())
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             reconstruction(tensor[0], tensor[0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             reconstruction(tensor, tensor[..., :2])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(BaseError, match="method"):
             reconstruction(tensor, tensor, method="opening")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(BaseError, match="num_iters"):
             reconstruction(tensor, tensor, num_iters=-1)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(BaseError, match="check_every"):
             reconstruction(tensor, tensor, check_every=0)
 
-        with pytest.raises(ValueError, match="engine"):
+        with pytest.raises(ValueCheckError, match="engine"):
             reconstruction(tensor, tensor, engine="convolution")
 
-        with pytest.raises(ValueError, match="engine"):
+        with pytest.raises(BaseError, match="engine"):
             reconstruction(tensor, tensor, num_iters=0, engine="unknown")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeCheckError):
+            reconstruction(tensor, tensor, [[1.0]])
+
+        with pytest.raises(ShapeError):
+            reconstruction(tensor, tensor, torch.ones(3, 3, 3, device=device, dtype=dtype))
+
+        with pytest.raises(BaseError, match="odd"):
             reconstruction(tensor, tensor, torch.ones(2, 3, device=device, dtype=dtype))
+
+    def test_convolution_engine_rejected_with_checks_disabled(self, device, dtype):
+        # The rejection guards termination, not input validity: on macOS CPU float32 the inexact `conv2d` step
+        # makes the loop oscillate forever. It is not a KORNIA_CHECK, so disable_checks() leaves it on.
+        tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(ValueCheckError, match="engine"):
+                reconstruction(tensor, tensor, engine="convolution")
+        finally:
+            if checks_were_enabled:
+                enable_checks()
 
     def test_jit(self, device, dtype):
         op_script = torch.jit.script(reconstruction)
