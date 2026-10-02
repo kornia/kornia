@@ -804,10 +804,15 @@ def solarize(
             raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(additions)}")
 
         if isinstance(additions, float):
+            # Check the Python value on the host: rounded to float16/bfloat16, a value just past the bound
+            # passes, and the check is skipped for a tensor on MPS.
+            in_range = torch.tensor(-0.5 <= additions <= 0.5)
             additions = torch.as_tensor(additions, device=input.device, dtype=input.dtype)
+        else:
+            in_range = ((additions <= 0.5) & (additions >= -0.5)).all()
 
         _assert_async_value_check(
-            ((additions <= 0.5) & (additions >= -0.5)).all(),
+            in_range,
             "The addition must be in the closed range [-0.5, 0.5]. Clamp it first: min(max(additions, -0.5), 0.5) "
             "for floats, additions.clamp(-0.5, 0.5) for tensors.",
         )

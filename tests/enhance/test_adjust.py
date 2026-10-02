@@ -1322,6 +1322,14 @@ class TestSolarize(BaseTester):
         with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
             TestSolarize.f(img, 0.5, addition)
 
+    @pytest.mark.parametrize("addition", [0.5001, -0.5001])
+    def test_float_additions_checked_before_rounding(self, device, dtype, addition):
+        # A float is checked as given, on the host, for every device: float16/bfloat16 round 0.5001 to 0.5,
+        # and a check on an MPS tensor is skipped.
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, addition)
+
     # TODO: add better cases
     def test_value(self, device, dtype):
         torch.manual_seed(0)
