@@ -25,16 +25,11 @@ def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor,
     """Shift rgb channels.
 
     Convention:
-        Input has shape (B, 3, H, W). One RGB shift per batch element is
-        assembled as (B, 3, 1, 1), then results are clamped to [0, 1].
-
-    .. warning::
-        Input of another rank is not rejected; rank-5 input receives the shifts along the wrong
-        axis (`#5327 <https://github.com/kornia/kornia/issues/5327>`_).
+        Input must have shape (B, 3, H, W); another rank raises ``ShapeError`` and another channel
+        count raises ``ImageError``. One RGB shift per batch element is assembled as (B, 3, 1, 1),
+        then results are clamped to [0, 1].
 
     Shift each image's channel by either r_shift for red, g_shift for green and b_shift for blue channels.
-
-    The input image must have shape :math:`(B, 3, H, W)`.
     """
     KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_IS_COLOR(image, f"with shape {image.shape}")
