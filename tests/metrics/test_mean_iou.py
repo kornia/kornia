@@ -142,16 +142,18 @@ class TestMeanIoUBBox(BaseTester):
         assert actual.dtype == dtype
 
     def test_image_sized_boxes_backward(self, device, dtype):
-        first = torch.tensor([[0, 0, 512, 512]], device=device, dtype=dtype, requires_grad=True)
-        second = torch.tensor([[256, 128, 768, 640]], device=device, dtype=dtype)
+        first_coordinates = [[0, 0, 512, 512]]
+        second_coordinates = [[256, 128, 768, 640]]
+        first = torch.tensor(first_coordinates, device=device, dtype=dtype, requires_grad=True)
+        second = torch.tensor(second_coordinates, device=device, dtype=dtype)
         actual = kornia.metrics.mean_iou_bbox(first, second)
-        reference_input = first.detach().to(device="cpu", dtype=torch.float64).requires_grad_()
-        reference = kornia.metrics.mean_iou_bbox(reference_input, second.to(device="cpu", dtype=torch.float64))
+        reference_input = torch.tensor(first_coordinates, dtype=torch.float64, requires_grad=True)
+        reference = kornia.metrics.mean_iou_bbox(reference_input, torch.tensor(second_coordinates, dtype=torch.float64))
         actual.sum().backward()
         reference.sum().backward()
         assert first.grad is not None
         assert reference_input.grad is not None
-        self.assert_close(first.grad, reference_input.grad.to(device=device, dtype=dtype), atol=1e-6, rtol=1e-3)
+        self.assert_close(first.grad, reference_input.grad.to(dtype=dtype).to(device=device), atol=1e-6, rtol=1e-3)
 
     def test_bbox_xyxy_format(self, device, dtype):
         """Test XYXY format (original behavior)."""
