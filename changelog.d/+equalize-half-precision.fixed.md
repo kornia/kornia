@@ -1,0 +1,1 @@
+`equalize`, `equalize3d`, `RandomEqualize` and `RandomEqualize3D` now count float16 and bfloat16 histograms in float32. A float16 image or volume with 65520 or more pixels per channel used to return NaN, and bfloat16 rounded counts above 256, which shifted the output: a 300x300 two-level image equalized to 0.992 instead of 1.0.

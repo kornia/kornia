@@ -1006,6 +1006,14 @@ class TestEqualize(BaseTester):
 
         self.assert_close(f(inputs), expected, low_tolerance=True)
 
+    def test_counts_beyond_half_precision_range(self, device, dtype):
+        # 90000 pixels: the histogram total overflows float16 (inf above 65504) and bfloat16 rounds the counts.
+        inputs = torch.full((1, 1, 300, 300), 0.8, device=device, dtype=dtype)
+        inputs[..., :100, :] = 0.5
+        expected = torch.ones_like(inputs)
+        expected[..., :100, :] = 0.0
+        self.assert_close(kornia.enhance.equalize(inputs), expected, rtol=0.0, atol=0.0)
+
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1132,6 +1140,14 @@ class TestEqualize3D(BaseTester):
         f = kornia.enhance.equalize3d
 
         self.assert_close(f(inputs3d), expected, low_tolerance=True)
+
+    def test_counts_beyond_half_precision_range(self, device, dtype):
+        # 90000 voxels per channel: the histogram total overflows float16 and bfloat16 rounds the counts.
+        inputs3d = torch.full((1, 1, 4, 150, 150), 0.8, device=device, dtype=dtype)
+        inputs3d[..., :1, :, :] = 0.5
+        expected = torch.ones_like(inputs3d)
+        expected[..., :1, :, :] = 0.0
+        self.assert_close(kornia.enhance.equalize3d(inputs3d), expected, rtol=0.0, atol=0.0)
 
     def test_gradcheck(self, device):
         bs, channels, depth, height, width = 1, 2, 3, 4, 5
