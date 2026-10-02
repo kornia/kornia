@@ -49,6 +49,16 @@ class TestAugmentationCompile(BaseTester):
         assert output.shape == input.shape
         assert torch.isfinite(output).all()
 
+    def test_dynamo_sequential_does_not_import_numpy(self, device, dtype, torch_optimizer, monkeypatch):
+        # The container's NumPy-input check must not load NumPy through the lazy loader: Dynamo cannot trace
+        # ``importlib.import_module``, so the first compiled call in a fresh process broke the graph.
+        from kornia.core.external import numpy as lazy_numpy
+
+        monkeypatch.setattr(lazy_numpy, "module", None)
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0))
+        self.assert_close(torch_optimizer(aug, fullgraph=True)(input), input.flip(-1))
+
     def test_compile_distinct_classes(self, device, dtype, torch_optimizer):
         # More classes than Dynamo's default per-code-object cache limit (#4658).
         augmentations = [
