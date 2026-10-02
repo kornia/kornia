@@ -197,7 +197,9 @@ scoring holds at most ``2**22`` residuals per batch (or one hypothesis when
 ``N`` alone exceeds that limit). This keeps the total sample budget and can
 check confidence stopping earlier than the requested batch size would.
 Random values are drawn by a sampler primitive with a private generator; the
-Floyd sampler or random-key top-k remains inside the graph. Seeded calls leave
+Floyd sampler or random-key top-k remains inside the graph. Each batch's
+generator is seeded from the call's seed and the batch's offset, mixed with
+SplitMix64, so calls with different seeds do not share batches. Seeded calls leave
 the global generators untouched, including during concurrent calls. An unseeded
 call draws one seed from the input device's global generator, then uses its own
 stream for the sampling batches.

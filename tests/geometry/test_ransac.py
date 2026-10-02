@@ -2260,17 +2260,36 @@ class TestRANSACCompiled(BaseTester):
 
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_boundary_seed_streams_match_private_generator_without_global_state(self):
-        from kornia.geometry._ransac_program import _ransac_uniform
+        from kornia.geometry._ransac_program import _ransac_uniform, _stream_seed
 
         template = torch.empty((), dtype=torch.float64)
         seeds = [0, (1 << 63) - 1, -(1 << 63), -1]
         state = torch.get_rng_state()
         for seed in seeds:
             actual = _ransac_uniform(template, 1, 8, torch.tensor(seed), torch.tensor(0))
-            generator = torch.Generator().manual_seed(seed & ((1 << 64) - 1))
+            generator = torch.Generator().manual_seed(_stream_seed(seed, 0))
             expected = torch.rand(1, 8, dtype=torch.float64, generator=generator)
             assert torch.equal(actual, expected)
         assert torch.equal(torch.get_rng_state(), state)
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_seed_streams_do_not_overlap_across_seeds_and_batches(self):
+        """A batch's stream depends on the seed and the batch offset jointly, not on their sum.
+
+        The CPU generator keeps only the low 32 bits of its seed, so seeds that differ by ``2**32`` must not share a
+        stream either.
+        """
+        from kornia.geometry._ransac_program import _ransac_uniform, _stream_seed
+
+        def keys(seed, drawn):
+            template = torch.empty((), dtype=torch.float64)
+            return _ransac_uniform(template, 4, 8, torch.tensor(seed), torch.tensor(drawn))
+
+        assert not torch.equal(keys(0, 128), keys(128, 0))
+        assert not torch.equal(keys(0, 0), keys(1 << 32, 0))
+        offsets = list(range(0, 20480, 128)) + [32 * ((1 << k) - 1) for k in range(10)]
+        derived = {_stream_seed(seed, drawn) for seed in range(256) for drawn in offsets}
+        assert len(derived) == 256 * len(set(offsets))
 
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_normalizes_autocast_and_keys_ambient_guards(self, monkeypatch):

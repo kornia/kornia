@@ -78,6 +78,25 @@ MAX_BATCH = 1 << 20
 
 _SAMPLE_SIZES = {"homography": 4, "fundamental": 7, "fundamental_7pt": 7, "fundamental_8pt": 8, "essential": 5}
 
+_MASK64 = (1 << 64) - 1
+
+
+def _mix64(z: int) -> int:
+    """SplitMix64's finalizer (Steele, Lea and Flood, OOPSLA 2014), a bijection of 64-bit integers."""
+    z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & _MASK64
+    z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & _MASK64
+    return z ^ (z >> 31)
+
+
+def _stream_seed(seed: int, drawn: int) -> int:
+    """Generator seed of the sampling batch that starts at sample ``drawn`` of a call seeded with ``seed``.
+
+    SplitMix64: the seed is mixed before the batch offset is added, so calls whose seeds differ by a batch offset do
+    not share batches, and the result is mixed again because the CPU generator keeps only the low 32 bits of a seed.
+    ``seed & _MASK64`` restores ``Generator.manual_seed``'s unsigned domain from the two's-complement int64 tensor.
+    """
+    return _mix64((_mix64(seed & _MASK64) + drawn * 0x9E3779B97F4A7C15) & _MASK64)
+
 
 @torch.library.custom_op("kornia::_ransac_uniform", mutates_args=(), tags=torch.Tag.nondeterministic_seeded)
 def _ransac_uniform(
@@ -85,9 +104,7 @@ def _ransac_uniform(
 ) -> torch.Tensor:
     """Random keys from a per-call generator, opaque to the compiled RANSAC graph."""
     generator = torch.Generator(device=template.device)
-    # Tensor int64 stores the user seed in two's-complement form. Restore Generator.manual_seed's full unsigned
-    # 64-bit domain before deriving a distinct stream for this batch.
-    generator.manual_seed((seed.item() + drawn.item()) & ((1 << 64) - 1))
+    generator.manual_seed(_stream_seed(int(seed.item()), int(drawn.item())))
     return torch.rand((batch, columns), dtype=template.dtype, device=template.device, generator=generator)
 
 
