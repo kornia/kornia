@@ -280,15 +280,15 @@ def image_histogram2d(
         normalization = torch.sum(hist, dim=-1, keepdim=True) + eps
         pdf = hist / normalization
         if image.dim() == 2:
-            hist = hist.squeeze()
-            pdf = pdf.squeeze()
+            hist = hist[0, 0]
+            pdf = pdf[0, 0]
         elif image.dim() == 3:
             hist = hist.squeeze(0)
             pdf = pdf.squeeze(0)
         return hist, pdf
 
     if image.dim() == 2:
-        hist = hist.squeeze()
+        hist = hist[0, 0]
     elif image.dim() == 3:
         hist = hist.squeeze(0)
 
