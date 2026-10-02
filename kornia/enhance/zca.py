@@ -154,6 +154,8 @@ class ZCAWhitening(nn.Module):
     def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
         r"""Apply the inverse transform to the whitened data.
 
+        Uses the same sample dimension specified by ``dim`` when fitting.
+
         Args:
             x: Whitened data.
 
@@ -172,7 +174,7 @@ class ZCAWhitening(nn.Module):
 
         mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)
 
-        return linear_transform(x, self.transform_inv, mean_inv)
+        return linear_transform(x, self.transform_inv, mean_inv, self.dim)
 
 
 def zca_mean(
