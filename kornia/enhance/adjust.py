@@ -263,6 +263,8 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
     # transform the hue value and appl module
     divisor: float = 2 * pi
     h_out: torch.Tensor = torch.remainder(h + factor, divisor)
+    # A small negative sum rounds up to the period itself (0 - 1e-8 gives 2π in float32); fold it to 0.
+    h_out = h_out.masked_fill(h_out >= divisor, 0.0)
 
     # pack back back the corrected hue
     out: torch.Tensor = torch.cat([h_out, s, v], dim=-3)
