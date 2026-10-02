@@ -59,6 +59,11 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1). Image H/W is assumed to be evenly divisible by 2.
     for simplicity reasons
 
+    Convention:
+        Input is a single-channel Bayer mosaic at axis -3. cfa uses OpenCV's Bayer names, which
+        read the pattern from pixel (1, 1): CFA.BG, GB, RG and GR are sensors whose top-left 2x2
+        cell is RGGB, GRBG, BGGR and GBRG. Height and width must be even.
+
     Args:
         image: raw image to be converted to RGB with shape :math:`(*,1,H,W)`.
         cfa: The configuration of the color filter.
@@ -194,6 +199,10 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        Selects samples into a one-channel Bayer mosaic using the same OpenCV cfa naming as
+        raw_to_rgb. The inverse conversion requires even height and width.
+
     Args:
         image: RGB image to be converted to bayer raw with shape :math:`(*,3,H,W)`.
         cfa: Which color filter array do we want the output to mimic. I.e. which pixels are red/green/blue.
@@ -245,6 +254,10 @@ def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     We are assuming a CFA with 2 green, 1 red, 1 blue.
     The image data is assumed to be in the range of (0, 1). Image H/W is assumed to be evenly divisible by 2
     for simplicity reasons.
+
+    Convention:
+        Converts each 2x2 Bayer cell into one RGB pixel, so an even (H, W) mosaic produces
+        (H/2, W/2). cfa uses the same OpenCV naming as raw_to_rgb.
 
     Args:
         image: raw image to be converted to RGB and downscaled with shape :math:`(*,1,H,W)`.
@@ -298,6 +311,8 @@ def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 class RawToRgb(nn.Module):
     r"""nn.Module to convert a bayer raw image to RGB version of image.
 
+    See the Convention block on :func:`raw_to_rgb`.
+
     The image data is assumed to be in the range of (0, 1).
 
     Shape:
@@ -334,6 +349,8 @@ class RawToRgb(nn.Module):
 
 class RgbToRaw(nn.Module):
     r"""nn.Module to convert a RGB image to bayer raw version of image.
+
+    See the Convention block on :func:`rgb_to_raw`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -374,6 +391,8 @@ class RgbToRaw(nn.Module):
 
 class RawToRgb2x2Downscaled(nn.Module):
     r"""nn.Module version of the :func:`raw_to_rgb_2x2_downscaled()` function.
+
+    See the Convention block on :func:`raw_to_rgb_2x2_downscaled`.
 
     The image width and height have to be divisible by two. The image
     data is assumed to be in the range of (0, 1).

@@ -28,6 +28,12 @@ __all__ = ["ZCAWhitening", "linear_transform", "zca_mean", "zca_whiten"]
 class ZCAWhitening(nn.Module):
     r"""Compute the ZCA whitening matrix transform and the mean vector and applies the transform to the data.
 
+    Convention:
+        dim is the sample axis; every other axis is flattened into the feature
+        vector. unbiased=True divides covariance by N - 1 and False by N. Call
+        fit or pass include_fit=True before transforming. :func:`zca_whiten` computes
+        the same transform per call.
+
     The data torch.Tensor is flattened, and the mean :math:`\mathbf{\mu}`
     and covariance matrix :math:`\mathbf{\Sigma}` are computed from
     the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, where
@@ -50,7 +56,7 @@ class ZCAWhitening(nn.Module):
     Args:
         dim: Determines the dimension that represents the samples axis.
         eps: a small number used for numerical stability.
-        unbiased: Whether to use the biased estimate of the covariance matrix.
+        unbiased: Whether to divide covariance by N - 1 rather than N.
         compute_inv: Compute the inverse transform matrix.
         detach_transforms: Detaches gradient from the ZCA fitting.
 
@@ -224,8 +230,10 @@ def zca_mean(
 ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     r"""Compute the ZCA whitening matrix and mean vector.
 
-    The output can be used with :py:meth:`~kornia.color.linear_transform`.
-    See :class:`~kornia.color.ZCAWhitening` for details.
+    Convention:
+        See :class:`ZCAWhitening`: dim selects samples and all other axes form features.
+
+    The output can be used with :func:`linear_transform`. See :class:`ZCAWhitening` for details.
 
     Args:
         inp: input data torch.Tensor.
@@ -332,7 +340,11 @@ def zca_mean(
 def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6) -> torch.Tensor:
     r"""Apply ZCA whitening transform.
 
-    See :class:`~kornia.color.ZCAWhitening` for details.
+    Convention:
+        Fits and applies ZCA in one call; see :class:`ZCAWhitening` for sample-axis and
+        covariance-normalization conventions.
+
+    See :class:`ZCAWhitening` for details.
 
     Args:
         inp: input data torch.Tensor.
@@ -379,10 +391,16 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 def linear_transform(
     inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
 ) -> torch.Tensor:
-    r"""Given a transformation matrix and a mean vector, this function will flatten the input
-    torch.Tensor along the given dimension and subtract the mean vector from it. Then the dot
-    product with the transformation matrix will be computed and then the resulting torch.Tensor
-    is reshaped to the original input shape.
+    r"""Apply a transformation matrix after centering and flattening the input.
+
+    This function flattens the input torch.Tensor along the given dimension and subtracts
+    the mean vector. The dot product with the transformation matrix is then reshaped to the
+    original input shape.
+
+    Convention:
+        dim selects rows (samples); all other dimensions form a feature row.
+        The result is (X - mean) @ transform_matrix with the original layout
+        restored.
 
     .. math::
 
@@ -419,7 +437,7 @@ def linear_transform(
         >>> print(out.shape, out.unique()) # Should a be (10,2) torch.tensor of 2s
         torch.Size([10, 2]) tensor([2.])
 
-    """  # noqa: D205
+    """
     inp_size = inp.size()
 
     if dim >= len(inp_size) or dim < -len(inp_size):

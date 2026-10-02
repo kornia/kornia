@@ -112,11 +112,18 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
     """Estimate the histogram of the input torch.Tensor.
 
+    Convention:
+        Rows are independent samples: x has shape (B, D), bins is the shared
+        one-dimensional center grid, and the result has shape (B, N_bins).
+        histogram2d uses the same batch convention for a joint density. bandwidth must be
+        finite and positive; the check runs on CPU and CUDA via ``torch._assert_async`` and
+        raises ``RuntimeError``. kornia skips it on MPS by design, so invalid values do not raise there.
+
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
         x: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
-        bins: The number of bins to use the histogram :math:`(N_{bins})`.
+        bins: The bin centers, with shape :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability.
 
@@ -141,12 +148,16 @@ def histogram2d(
 ) -> torch.Tensor:
     """Estimate the 2d histogram of the input torch.Tensor.
 
+    Convention:
+        x1 and x2 supply one sample row per batch element and return
+        (B, N_bins, N_bins), where the first bin axis belongs to x1.
+
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x1: Input torch.Tensor to compute the histogram with shape :math:`(B, D1)`.
-        x2: Input torch.Tensor to compute the histogram with shape :math:`(B, D2)`.
-        bins: The number of bins to use the histogram :math:`(N_{bins})`.
+        x1: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
+        x2: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
+        bins: The bin centers, with shape :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability. Default: 1e-10.
 
@@ -224,6 +235,16 @@ def image_histogram2d(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Estimate the histogram of the input image(s).
 
+    Convention:
+        Spatial axes are the final two axes; input (H, W), (C, H, W), and
+        (B, C, H, W) return matching leading axes followed by bins; other ranks raise. Automatic
+        centers lie at min + (i + 0.5) * bandwidth; values outside the supplied range contribute
+        according to the selected kernel rather than being clipped into an endpoint bin.
+
+    .. warning::
+        Rank-2 input with a single bin or explicit center returns 0-d histogram and PDF tensors
+        instead of length-one vectors (`#5363 <https://github.com/kornia/kornia/issues/5363>`_).
+
     The calculation uses triangular kernel density estimation.
 
     Args:
@@ -250,7 +271,7 @@ def image_histogram2d(
           :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`, if return_pdf is ``True``. torch.Tensor of torch.zeros with shape
-          of the histogram otherwise.
+          of the histogram otherwise. For rank-2 input with one bin, both returned tensors are 0-d.
 
     """
     if image is not None and not isinstance(image, torch.Tensor):
