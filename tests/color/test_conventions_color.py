@@ -53,8 +53,7 @@ class TestColorConventions(BaseTester):
         expected = torch.tensor([[[[0.412453]], [[0.212671]], [[0.019334]]]], device=device, dtype=dtype)
         self.assert_close(xyz, expected)
 
-    @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5321")
-    def test_wart_grayscale_to_rgb_5321_does_not_alias_input(self, device, dtype):
+    def test_convention_grayscale_to_rgb_returns_independent_storage(self, device, dtype):
         image = torch.tensor([[[[0.2, 0.7]]]], device=device, dtype=dtype)
         before = image.clone()
 
@@ -64,6 +63,11 @@ class TestColorConventions(BaseTester):
 
         self.assert_close(image, before)
         self.assert_close(rgb[:, 1:], before.expand(1, 2, 1, 2))
+
+        rgb = kornia.color.grayscale_to_rgb(image)
+        rgb.add_(0.1)
+        self.assert_close(image, before)
+        self.assert_close(rgb, before.expand(1, 3, 1, 2) + 0.1)
 
     def test_convention_rgba_composites_over_white(self, device, dtype):
         rgba = torch.tensor([[[[0.2]], [[0.4]], [[0.6]], [[0.25]]]], device=device, dtype=dtype)
