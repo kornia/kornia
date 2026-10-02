@@ -424,6 +424,38 @@ class TestLinearRgb(BaseTester):
         fcn = kornia.color.linear_rgb_to_rgb
         self.assert_close(ops(img), fcn(img))
 
+    @pytest.mark.parametrize("value", [-1.0, -0.1, -0.055, -0.03, 0.0])
+    def test_negative_gradient(self, device, dtype, value):
+        image = torch.full((1, 3, 1, 1), value, device=device, dtype=dtype, requires_grad=True)
+
+        output = kornia.color.rgb_to_linear_rgb(image)
+        output.sum().backward()
+
+        expected = torch.full_like(image, 1.0 / 12.92)
+
+        assert torch.isfinite(output).all()
+        assert torch.isfinite(image.grad).all()
+        self.assert_close(image.grad, expected)
+
+    @pytest.mark.parametrize("values", [(-0.1, -0.03, 0.5), (-1.0, 0.0, 1.0)])
+    def test_gradient(self, device, dtype, values):
+        image = torch.tensor(values, device=device, dtype=dtype).view(1, 3, 1, 1)
+        image.requires_grad_(True)
+
+        output = kornia.color.rgb_to_linear_rgb(image)
+        output.sum().backward()
+
+        assert torch.isfinite(image.grad).all()
+
+    def test_gradient_at_threshold(self, device, dtype):
+        # sRGB decodes C <= 0.04045 on the linear segment, so the threshold takes the slope 1 / 12.92;
+        # the power segment's slope there is about 1.7% steeper.
+        image = torch.full((1, 3, 1, 1), 0.04045, device=device, dtype=dtype, requires_grad=True)
+
+        kornia.color.rgb_to_linear_rgb(image).sum().backward()
+
+        self.assert_close(image.grad, torch.full_like(image, 1.0 / 12.92))
+
 
 class TestRgb255Normals(BaseTester):
     # Smoke tests: check if the functions execute and return a tensor

@@ -48,10 +48,11 @@ class ImageLoadType(Enum):
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
-def _read_png_color_type(path_file: Path) -> int | None:
-    """Read the color type byte from a PNG file header.
+def _read_png_header(path_file: Path) -> tuple[int, int] | None:
+    """Read the bit depth and color type bytes from a PNG file header.
 
-    Returns None if the file is truncated or has an invalid PNG signature.
+    Returns ``(bit_depth, color_type)``, in that order, or None if the file is truncated or has an invalid PNG
+    signature.
     PNG color types: 0=Grayscale, 2=RGB, 3=Indexed, 4=Grayscale+Alpha, 6=RGBA.
     """
     with open(path_file, "rb") as f:
@@ -59,7 +60,7 @@ def _read_png_color_type(path_file: Path) -> int | None:
         header = f.read(26)
         if len(header) < 26 or header[:8] != _PNG_SIGNATURE:
             return None
-        return header[25]
+        return header[24], header[25]
 
 
 # Map PNG color type byte to kornia_rs read mode.
@@ -87,19 +88,27 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
-    if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-        img = _rs_io.read_image_jpegturbo(str(path_file))
-    elif path_file.suffix.lower() == ".png":
-        color_type = _read_png_color_type(path_file)
-        # None (truncated/invalid header) intentionally falls through to read_image
-        mode = _PNG_COLOR_TYPE_TO_MODE.get(color_type)
-        if mode is None or mode == "rgb":
-            # RGB is the default of read_image; use it for unknown types too
-            img = _rs_io.read_image(str(path_file))
+    try:
+        if path_file.suffix.lower() in [".jpg", ".jpeg"]:
+            img = _rs_io.read_image_jpegturbo(str(path_file))
+        elif path_file.suffix.lower() == ".png":
+            # None (truncated/invalid header) intentionally falls through to read_image
+            bit_depth, color_type = _read_png_header(path_file) or (None, None)
+            mode = _PNG_COLOR_TYPE_TO_MODE.get(color_type)
+            if mode is None or mode == "rgb":
+                # RGB is the default of read_image; use it for unknown types too
+                img = _rs_io.read_image(str(path_file))
+            elif bit_depth == 16:
+                # the u8 reader rejects a 16-bit buffer; UNCHANGED loads keep it as uint16
+                img = _rs_io.read_image_png_u16(str(path_file), mode)
+            else:
+                img = _rs_io.read_image_png_u8(str(path_file), mode)
         else:
-            img = _rs_io.read_image_png_u8(str(path_file), mode)
-    else:
-        img = _rs_io.read_image(str(path_file))
+            img = _rs_io.read_image(str(path_file))
+    except OSError:
+        raise  # a missing or unreadable file keeps its specific type (FileNotFoundError, PermissionError, ...)
+    except Exception as e:
+        raise ValueError(f"Failed to decode image '{path_file}': {e}") from e
 
     # convert the image to torch.Tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
@@ -185,6 +194,11 @@ def load_image(
 
     Return:
         Image torch.Tensor with shape :math:`(3,H,W)`.
+
+    Raises:
+        ValueError: if the file cannot be decoded, for example a truncated or corrupt image or an unsupported format.
+            The message names the file and keeps the decoder's reason; the decoder's exception is the ``__cause__``.
+        OSError: if the file cannot be read, for example ``FileNotFoundError`` when it does not exist.
 
     """
     if not isinstance(path_file, Path):

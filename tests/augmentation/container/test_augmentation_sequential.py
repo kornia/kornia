@@ -18,6 +18,7 @@
 from functools import partial
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 import torch
 
@@ -35,6 +36,27 @@ from testing.base import BaseTester, assert_close
 
 
 class TestAugmentationSequential:
+    @pytest.mark.parametrize("as_dict", [False, True])
+    def test_numpy_annotations_are_not_scaled_like_images(self, as_dict):
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((8, 9), dtype=np.int64)
+        mask[2:5, 3:6] = 3
+        boxes = np.array([[[3.0, 2.0, 6.0, 5.0]]], dtype=np.float32)
+        keypoints = np.array([[[4.0, 3.0]]], dtype=np.float32)
+        data_keys = ["input", "mask", "bbox_xyxy", "keypoints"]
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None if as_dict else data_keys)
+
+        if as_dict:
+            output = aug(dict(zip(data_keys, (image, mask, boxes, keypoints))))
+            out_mask, out_boxes, out_keypoints = output["mask"], output["bbox_xyxy"], output["keypoints"]
+        else:
+            _, out_mask, out_boxes, out_keypoints = aug(image, mask, boxes, keypoints)
+
+        assert out_mask.dtype == torch.int64
+        assert set(out_mask.unique().tolist()) == {0, 3}
+        assert torch.equal(out_boxes, torch.from_numpy(boxes))
+        assert torch.equal(out_keypoints, torch.from_numpy(keypoints))
+
     @pytest.mark.parametrize(
         "data_keys", ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
@@ -77,6 +99,58 @@ class TestAugmentationSequential:
         out_input = aug(input)
 
         assert out_input.shape == input.shape
+
+    def test_call_time_data_keys_are_restored_after_forward_exception(self, device, dtype):
+        image = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 16, 20, device=device, dtype=dtype)
+
+        aug = K.AugmentationSequential(
+            K.RandomThinPlateSpline(p=1.0),
+            data_keys=["input"],
+        )
+
+        with pytest.raises(NotImplementedError):
+            aug(image, mask, data_keys=["input", "mask"])
+
+        assert aug.transform_op.data_keys == aug.data_keys
+
+        # A later call without call-time data_keys must use the container defaults.
+        out = aug(image)
+        assert out.shape == image.shape
+
+    def test_call_time_data_keys_are_restored_after_inverse_exception(self, device, dtype):
+        image = torch.rand(1, 1, 4, 8, 8, device=device, dtype=dtype)
+        class_label = torch.tensor([1], device=device)
+
+        aug = K.AugmentationSequential(
+            K.RandomHorizontalFlip3D(p=1.0),
+            data_keys=["input"],
+        )
+
+        outputs = aug(image, class_label, data_keys=["input", "class"])
+
+        with pytest.raises(NotImplementedError, match="3d inverse"):
+            aug.inverse(*outputs, data_keys=["input", "class"])
+
+        assert aug.transform_op.data_keys == aug.data_keys
+
+        # The next keyless call must still use the container defaults.
+        out = aug(image)
+        assert out.shape == image.shape
+
+    def test_call_time_data_keys_are_restored_after_successful_inverse(self, device, dtype):
+        # A successful ``inverse`` with call-time keys must not leave them behind either (#5136).
+        image = torch.rand(1, 3, 8, 10, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 8, 10, device=device, dtype=dtype)
+
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
+
+        out_image, out_mask = aug(image, mask, data_keys=["input", "mask"])
+        aug.inverse(out_image, out_mask, data_keys=["input", "mask"])
+
+        assert aug.transform_op.data_keys == aug.data_keys
+        out = aug(image)
+        assert out.shape == image.shape
 
     def test_video(self, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
@@ -674,6 +748,68 @@ class TestAugmentationSequential:
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionAugmentationSequential(BaseTester):
     """Convention checks and pins for documented `AugmentationSequential` limitations."""
+
+    @pytest.mark.parametrize("mask_first", [True, False])
+    def test_inverse_mask_exception_preserves_next_image_5290(self, mask_first, device, dtype):
+        image = torch.arange(16 * 20, device=device, dtype=dtype).reshape(1, 1, 16, 20) / 320
+        mask = (image > 0.5).to(dtype)
+        seq = K.AugmentationSequential(K.RandomResizedCrop((12, 14), p=1.0), data_keys=["input", "mask"])
+        reference = K.AugmentationSequential(K.RandomResizedCrop((12, 14), p=1.0), data_keys=["input", "mask"])
+        out_image, out_mask = seq(image, mask)
+        params = seq._params
+        original_flags = dict(seq[0].flags)
+        inverse_args = (out_mask, out_image) if mask_first else (out_mask,)
+        inverse_keys = ["mask", "input"] if mask_first else ["mask"]
+
+        with pytest.raises(NotImplementedError, match=r"resample cropping mode\. Got slice\."):
+            seq.inverse(*inverse_args, data_keys=inverse_keys)
+
+        # Explicit keys keep this independent of the container's separate data_keys restoration bug.
+        actual, _ = seq(image, mask, params=params, data_keys=["input", "mask"])
+        expected, _ = reference(image, mask, params=params)
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        assert seq[0].flags == original_flags
+
+    @pytest.mark.parametrize("align_corners", [None, False, True])
+    @pytest.mark.parametrize("shared_flags", [True, False])
+    def test_direct_inverse_mask_exception_preserves_flags_5290(self, align_corners, shared_flags, device, dtype):
+        aug = K.RandomResizedCrop((4, 6), align_corners=True, p=1.0)
+        mask = aug(torch.ones(1, 1, 6, 8, device=device, dtype=dtype))
+        flags = aug.flags if shared_flags else dict(aug.flags)
+        original_flags = dict(flags)
+
+        with pytest.raises(NotImplementedError, match=r"resample cropping mode\. Got slice\."):
+            aug.inverse_masks(mask, aug._params, flags, transform=aug.transform_matrix, align_corners=align_corners)
+
+        assert flags["align_corners"] == original_flags["align_corners"]
+        assert flags == original_flags
+        assert aug.flags == original_flags
+
+    @pytest.mark.parametrize("align_corners", [None, False, True])
+    @pytest.mark.parametrize("resample", [None, Resample.BILINEAR])
+    def test_inverse_mask_preserves_sampling_overrides_5290(self, align_corners, resample, device, dtype):
+        aug = K.RandomAffine((17.0, 17.0), align_corners=True, p=1.0)
+        mask = (torch.arange(6 * 8, device=device).reshape(1, 1, 6, 8) % 3 == 0).to(dtype)
+        aug(mask)
+        transform = torch.linalg.inv(aug.transform_matrix.to(torch.float32)).to(dtype)
+        original_flags = dict(aug.flags)
+        kwargs = {"align_corners": align_corners}
+        if resample is not None:
+            kwargs["resample"] = resample
+
+        actual = aug.inverse_masks(mask, aug._params, aug.flags, transform=transform, **kwargs)
+        expected_flags = dict(original_flags)
+        expected_flags["resample"] = Resample.NEAREST if resample is None else resample
+        expected_flags["align_corners"] = True if align_corners is None else align_corners
+        expected = aug.inverse_inputs(mask, aug._params, expected_flags, transform=transform)
+
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        if resample is None:
+            assert ((actual == 0) | (actual == 1)).all()
+        else:
+            assert ((actual > 0) & (actual < 1)).any()
+        assert aug.flags == original_flags
+        assert kwargs["align_corners"] is align_corners
 
     def test_convention_flip_is_integer_centre_inclusive_for_every_data_key(self, device, dtype):
         # Convention pin: a horizontal flip maps column x to W - 1 - x, and a vertical flip row y to H - 1 - y,
@@ -1278,6 +1414,26 @@ class TestConventionAugmentationSequential(BaseTester):
         assert keys == [DataKey.BBOX, DataKey.BBOX, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL]
         assert metadata == []
 
+    def test_numpy_mask_is_read_channels_last_without_scaling_5236(self):
+        # A NumPy mask is laid out like a NumPy image, (H, W) or (H, W, C), and keeps its labels: an (8, 9, 1) mask
+        # becomes (1, 1, 8, 9) and flips with the image. The label block sits off the flip axis (columns 1-2 go to
+        # 6-7), and a mask read as (C, H, W) = (8, 9, 1) would come back with another shape.
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((8, 9, 1), dtype=np.int64)
+        mask[2:5, 1:3] = 3
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        _, out_mask = aug(image, mask)
+        expected = torch.zeros(1, 1, 8, 9, dtype=torch.int64)
+        expected[..., 2:5, 6:8] = 3
+        assert torch.equal(out_mask, expected)
+
+    def test_argument_without_a_data_key_raises(self):
+        # ``__call__`` converts NumPy arguments by data key; an argument with no key must still reach ``forward``,
+        # which rejects the count, instead of being dropped.
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
+        with pytest.raises(AssertionError, match="number of inputs must align"):
+            aug(torch.zeros(1, 3, 8, 9), torch.zeros(1, 1, 8, 9))
+
     def test_convention_same_on_batch_none_does_not_override_a_child(self, device, dtype):
         # Convention pin: `AugmentationSequential(same_on_batch=None)` - the default - keeps whatever each
         # child was built with, while `True` and `False` overwrite the child's own setting in both directions.
@@ -1490,8 +1646,7 @@ class TestConventionAugmentationSequential(BaseTester):
         assert cached.device == out_image.device  # no device-to-host copy in the forward pass
         self.assert_close(cached, out_image.detach())
 
-        if dtype != torch.bfloat16:  # `.show()` renders through `Tensor.numpy()`, which has no bfloat16 support
-            assert isinstance(aug.show(display=False), PILImage.Image)
+        assert isinstance(aug.show(display=False), PILImage.Image)
         path = tmp_path / "augmented.jpg"
         aug.save(name=str(path))
         assert path.is_file()

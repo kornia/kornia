@@ -44,10 +44,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         - pixel coordinates are ``(x, y)`` at integer pixel centres, with corners ``(0, 0)`` and
           ``(W - 1, H - 1)`` (see :doc:`/get-started/conventions`); rotations, shears and affine maps are centred
           at ``((W - 1) / 2, (H - 1) / 2)``, and ``transform_matrix`` maps input pixel coordinates to output pixel
-          coordinates. At ``align_corners=False``, the bilinear and
-          bicubic interpolation of :class:`Resize`, :class:`LongestMaxSize`, :class:`SmallestMaxSize` and
-          slice-mode :class:`RandomResizedCrop` samples on a half-pixel grid that the matrix does not follow
-          (`#4804 <https://github.com/kornia/kornia/issues/4804>`_).
+          coordinates.
         - the resampling classes, including the non-rigid :class:`RandomElasticTransform` and
           :class:`RandomThinPlateSpline`, default to bilinear interpolation with zero sampler padding. The
           ``align_corners`` default is ``True`` for :class:`RandomRotation`, :class:`RandomRotation90` and the crop
@@ -268,38 +265,24 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> torch.Tensor:
-        resample_method: Optional[Resample] = None
-        align_corners_value: Optional[bool] = None
-        align_corners_was_none_in_kwargs: bool = False
+        # Mask-specific overrides must not change the caller's flags, even if inverse_inputs raises.
+        flags = dict(flags)
         if "resample" in flags:
-            resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
         # Preserve align_corners from extra_args (kwargs) if provided
         # This ensures masks use the same align_corners setting in inverse as in forward
         if "align_corners" in kwargs:
-            align_corners_value = flags.get("align_corners")
             # When align_corners=None is in kwargs, use the module's default, as apply_transform_mask does.
             # We need to normalize it in kwargs too, because inverse_inputs will call
             # _process_kwargs_to_params_and_flags which merges kwargs into flags
             if kwargs["align_corners"] is None:
-                align_corners_was_none_in_kwargs = True
                 normalized_align_corners = self.flags.get("align_corners", False)
                 flags["align_corners"] = normalized_align_corners
                 # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
                 kwargs["align_corners"] = normalized_align_corners
             else:
                 flags["align_corners"] = kwargs["align_corners"]
-        output = self.inverse_inputs(input, params, flags, transform, **kwargs)
-        if resample_method is not None:
-            flags["resample"] = resample_method
-        # Restore align_corners if it was modified (mirror the modification condition)
-        # This ensures complete state restoration even if the original value was None
-        if "align_corners" in kwargs:
-            # Restore kwargs to original value if it was None
-            if align_corners_was_none_in_kwargs:
-                kwargs["align_corners"] = None
-            flags["align_corners"] = align_corners_value
-        return output
+        return self.inverse_inputs(input, params, flags, transform, **kwargs)
 
     def inverse_boxes(
         self,

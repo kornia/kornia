@@ -543,6 +543,84 @@ is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``
 The equivalences cover empty ``geodesic`` windows too: scipy, scikit-image and kornia all return ``-inf`` from
 such a window in a dilation and ``+inf`` in an erosion, whatever the data range.
 
+.. _filtering-conventions:
+
+Filtering
+---------
+
+:doc:`kornia.filters </filters>` follows torch's vocabulary: its kernels are correlated by default, ``border_type``
+takes the :func:`torch.nn.functional.pad` mode names, and an even kernel is anchored where
+``F.conv2d(padding='same')`` anchors it. The correlation matches ``cv2.filter2D`` and ``scipy.ndimage.correlate``; the
+border names and the even-kernel anchor do not.
+
+- :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
+  **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
+  kernel first, as ``scipy.ndimage.convolve`` does. :func:`~kornia.filters.correlate2d` and
+  :func:`~kornia.filters.convolve2d` are :func:`~kornia.filters.filter2d` with ``behaviour`` fixed to ``'corr'`` and
+  ``'conv'``; :func:`~kornia.filters.correlate3d` and :func:`~kornia.filters.convolve3d` are the same for
+  :func:`~kornia.filters.filter3d`.
+- :func:`~kornia.filters.filter2d_separable` takes ``kernel_x`` (along ``W``) before ``kernel_y``, the order of
+  ``cv2.sepFilter2D(src, ddepth, kernelX, kernelY)``.
+
+The border modes, shown padding ``a b c d`` by two samples on each side. :doc:`kornia.morphology </morphology>` uses
+the same names for its non-``geodesic`` borders:
+
+.. list-table::
+   :header-rows: 1
+
+   * - kornia ``border_type`` (the ``F.pad`` mode)
+     - pads ``a b c d`` to
+     - ``scipy.ndimage`` ``mode``
+     - OpenCV ``borderType``
+   * - ``reflect``, the default of ``filter2d``, ``filter2d_separable`` and ``fft_conv``
+     - ``c b | a b c d | c b``
+     - ``mirror``
+     - ``BORDER_REFLECT_101``, the ``cv2.filter2D`` default
+   * - ``replicate``, the default of ``filter3d``
+     - ``a a | a b c d | d d``
+     - ``nearest``
+     - ``BORDER_REPLICATE``
+   * - ``circular``
+     - ``c d | a b c d | a b``
+     - ``wrap``
+     - ``BORDER_WRAP``, which ``cv2.filter2D`` rejects for small kernels
+   * - ``constant``
+     - ``0 0 | a b c d | 0 0``
+     - ``constant`` with ``cval=0``
+     - ``BORDER_CONSTANT`` with value 0
+   * - no kornia mode
+     - ``b a | a b c d | d c``
+     - ``reflect``, the scipy default
+     - ``BORDER_REFLECT``
+
+An even kernel has no centre tap. The filters anchor a kernel ``k`` taps long at ``(k - 1) // 2``, the anchor of
+``F.conv2d(padding='same')``. OpenCV and scipy anchor it at ``k // 2`` by default, and so does the default ``origin`` of
+:func:`~kornia.morphology.erosion` (see `Morphology`_), so along every even axis a correlated output sits one pixel
+before theirs; ``behaviour='conv'`` needs no shift (below). An odd kernel is anchored at its centre by all of them.
+For a kernel ``K`` of shape ``(kh, kw)``, with the border mapped by the table above:
+
+- ``filter2d(x, K[None])`` equals ``scipy.ndimage.correlate(x, K, origin=o)`` with ``o = -1`` on each even axis and
+  ``0`` on each odd one, and ``cv2.filter2D(x, -1, K, anchor=((kw - 1) // 2, (kh - 1) // 2))``.
+- ``filter2d(x, K[None], behaviour='conv')`` equals ``scipy.ndimage.convolve(x, K)`` at scipy's default origin, even
+  for an even ``K``.
+
+The kernel builders against their references:
+
+- :func:`~kornia.filters.get_gaussian_kernel1d` samples the Gaussian: for an odd ``k`` and ``sigma > 0`` it equals
+  ``cv2.getGaussianKernel(k, sigma)`` and the weights ``scipy.ndimage.gaussian_filter1d`` applies with
+  ``radius=k // 2``. :func:`~kornia.filters.get_gaussian_erf_kernel1d` is the pixel-integrated Gaussian and
+  :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is Lindeberg's discrete Gaussian,
+  ``scipy.special.ive(abs(n), sigma**2)`` normalized.
+- :func:`~kornia.filters.get_hanning_kernel1d` is the symmetric window of ``numpy.hanning(k)``,
+  ``scipy.signal.windows.hann(k)`` and ``torch.hann_window(k, periodic=False)``; torch's default periodic window
+  differs.
+- :func:`~kornia.filters.get_spatial_gradient_kernel2d` with ``('sobel', 1)`` stacks the outer products of OpenCV's
+  ``getDerivKernels(1, 0, 3)`` and ``getDerivKernels(0, 1, 3)``, and answers 8 to a unit slope, as ``cv2.Sobel`` and
+  ``scipy.ndimage.sobel`` do; scikit-image's ``sobel_h`` and ``sobel_v`` answer 2.
+- :func:`~kornia.filters.get_laplacian_kernel2d` of size 3 is the 8-neighbour stencil and estimates :math:`3 \nabla^2`,
+  where ``scipy.ndimage.laplace`` and ``cv2.Laplacian(ksize=1)`` return :math:`\nabla^2`, ``cv2.Laplacian(ksize=3)``
+  :math:`4 \nabla^2` and ``skimage.filters.laplace`` :math:`-\nabla^2`.
+
 .. _two-view-conventions:
 
 Two-view geometry

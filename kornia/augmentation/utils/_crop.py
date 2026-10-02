@@ -22,6 +22,16 @@ from typing import Optional, Tuple
 import torch
 
 
+def _half_pixel_resize_transform(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    """Map pixel centres between inclusive, axis-aligned crop and output boxes."""
+    scale = (dst[:, 2] - dst[:, 0] + 1) / (src[:, 2] - src[:, 0] + 1)
+    # x' = (x - x0 + 0.5) * scale - 0.5 + dst0, and likewise for y.
+    offset = dst[:, 0] - scale * src[:, 0] + (scale - 1) / 2
+    transform = torch.diag_embed(torch.cat((scale, torch.ones_like(scale[:, :1])), dim=-1))
+    transform[:, :2, 2] = offset
+    return transform
+
+
 def _resize_coordinates(
     start: torch.Tensor,
     end: torch.Tensor,

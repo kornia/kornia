@@ -17,6 +17,7 @@
 
 import os
 import urllib
+from pathlib import Path
 
 import pytest
 
@@ -52,50 +53,68 @@ class TestONNXLoader:
             assert model == mock_model
             mock_onnx_load.assert_called_once_with(model_name)
 
-    def test_load_model_download(self):
+    def test_load_model_download(self, tmp_path):
         from unittest import mock
 
         from onnx import ModelProto
 
         with (
-            mock.patch("urllib.request.urlretrieve") as mock_urlretrieve,
-            mock.patch("os.path.exists") as mock_exists,
+            mock.patch.object(ONNXLoader, "download") as mock_download,
             mock.patch("onnx.load") as mock_onnx_load,
         ):
             model_name = "hf://operators/some_model"
-            mock_exists.return_value = False
-            mock_urlretrieve.return_value = None  # Simulating successful download
-
             mock_model = mock.Mock(spec=ModelProto)
             mock_onnx_load.return_value = mock_model
 
-            model = ONNXLoader.load_model(model_name)
+            model = ONNXLoader.load_model(model_name, cache_dir=str(tmp_path))
             assert model == mock_model
-            mock_urlretrieve.assert_called_once_with(
+            mock_download.assert_called_once_with(
                 "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx",
-                os.path.join(".kornia_hub", "onnx_models", "operators", "some_model.onnx"),
+                str(tmp_path / "some_model.onnx"),
+                download_if_not_exists=True,
             )
+            mock_onnx_load.assert_called_once_with(str(tmp_path / "some_model.onnx"))
+
+    @pytest.mark.parametrize("absolute", [False, True])
+    def test_load_model_hf_default_cache_dir(self, absolute, monkeypatch, tmp_path):
+        # without cache_dir, an hf:// model is cached under <hub_onnx_dir>/<folder>/, also for an absolute hub_onnx_dir
+        from unittest import mock
+
+        from kornia.config import kornia_config
+
+        hub_dir = str(tmp_path / "onnx_models") if absolute else os.path.join("rel", "onnx_models")
+        monkeypatch.setattr(kornia_config, "hub_onnx_dir", hub_dir)
+
+        with mock.patch.object(ONNXLoader, "download") as mock_download, mock.patch("onnx.load"):
+            ONNXLoader.load_model("hf://operators/some_model")
+
+        mock_download.assert_called_once_with(
+            "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx",
+            os.path.join(hub_dir, "operators", "some_model.onnx"),
+            download_if_not_exists=True,
+        )
 
     def test_load_model_not_found(self):
         model_name = "non_existent_model.onnx"
         with pytest.raises(ValueError, match=f"File {model_name} not found"):
             ONNXLoader.load_model(model_name)
 
-    def test_download_success(self):
-        import os
+    def test_download_success(self, tmp_path):
         from unittest import mock
 
-        with mock.patch("urllib.request.urlretrieve") as mock_urlretrieve, mock.patch("os.makedirs") as mock_makedirs:
+        with mock.patch(
+            "urllib.request.urlretrieve", side_effect=lambda url, path: Path(path).write_bytes(b"model")
+        ) as mock_urlretrieve:
             url = "https://huggingface.co/some_model.onnx"
-            file_path = os.path.join(".test_cache", "some_model.onnx")
+            file_path = tmp_path / "cache" / "some_model.onnx"
 
-            ONNXLoader.download(url, file_path)
+            ONNXLoader.download(url, str(file_path))
 
-            mock_makedirs.assert_called_once_with(os.path.dirname(file_path), exist_ok=True)
-            mock_urlretrieve.assert_called_once_with(url, file_path)
+            mock_urlretrieve.assert_called_once()
+            assert mock_urlretrieve.call_args.args[0] == url
+            assert file_path.read_bytes() == b"model"
 
-    def test_download_failure(self):
-        import os
+    def test_download_failure(self, tmp_path):
         from unittest import mock
 
         with mock.patch(
@@ -103,7 +122,7 @@ class TestONNXLoader:
             side_effect=urllib.error.HTTPError(url=None, code=404, msg="Not Found", hdrs=None, fp=None),
         ) as _:
             url = "https://huggingface.co/non_existent_model.onnx"
-            file_path = os.path.join(".test_cache", "non_existent_model.onnx")
+            file_path = str(tmp_path / "non_existent_model.onnx")
 
             with pytest.raises(ValueError, match="Error in resolving"):
                 ONNXLoader.download(url, file_path)
@@ -194,27 +213,65 @@ def test_io_name_conversion():
 
 
 def test_add_metadata():
-    from unittest import mock
+    from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 
+    import kornia
     from kornia.onnx.utils import add_metadata
 
-    with mock.patch("kornia.core.external.onnx.ModelProto") as mock_model_proto:
-        # Arrange
-        mock_model = mock_model_proto()
-        mock_metadata_props = mock.Mock()
-        mock_model.metadata_props.add.return_value = mock_metadata_props
+    graph = make_graph(
+        [make_node("Identity", ["input"], ["output"])],
+        "identity",
+        [make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1])],
+        [make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1])],
+    )
+    model = add_metadata(make_model(graph), [("test_key", "test_value")])
+    assert [(p.key, p.value) for p in model.metadata_props] == [
+        ("source", "kornia"),
+        ("version", kornia.__version__),
+        ("test_key", "test_value"),
+    ]
 
-        # Act
-        add_metadata(mock_model, [("test_key", "test_value")])
+    # A second call overwrites the existing keys instead of appending duplicates, which check_model rejects.
+    model = add_metadata(model, [("test_key", 2)])
+    assert [(p.key, p.value) for p in model.metadata_props] == [
+        ("source", "kornia"),
+        ("version", kornia.__version__),
+        ("test_key", "2"),
+    ]
+    onnx.checker.check_model(model)
 
-        # Assert
-        calls = [
-            mock.call(),  # for "source"
-            mock.call(),  # for "version"
-            mock.call(),  # for "test_key"
-        ]
-        mock_model.metadata_props.add.assert_has_calls(calls)
-        assert mock_model.metadata_props.add.call_count == 3
-        # Check if version was added
-        # (Since it's a mock, we just check if any call set value to kornia.__version__)
-        # Metadata logic: metadata_props.key = key; metadata_props.value = str(value)
+
+def test_add_metadata_merges_duplicate_keys_already_in_the_model():
+    from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+
+    import kornia
+    from kornia.onnx.utils import add_metadata
+
+    graph = make_graph(
+        [make_node("Identity", ["input"], ["output"])],
+        "identity",
+        [make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1])],
+        [make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1])],
+    )
+    model = make_model(graph)
+    # Earlier versions appended on every call, so a model exported and then tagged again repeats its keys. A key the
+    # call does not set keeps its last value, the one onnxruntime reads.
+    for key, value in [
+        ("source", "kornia"),
+        ("version", "0.8.0"),
+        ("author", "a"),
+        ("source", "kornia"),
+        ("version", "0.8.0"),
+        ("author", "b"),
+    ]:
+        entry = model.metadata_props.add()
+        entry.key, entry.value = key, value
+
+    model = add_metadata(model, [("date", "20261001")])
+    assert [(p.key, p.value) for p in model.metadata_props] == [
+        ("source", "kornia"),
+        ("version", kornia.__version__),
+        ("author", "b"),
+        ("date", "20261001"),
+    ]
+    onnx.checker.check_model(model)

@@ -31,9 +31,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.filters``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 18 / 9
-     - Accuracy misses in Canny magnitudes, discrete Gaussian kernels and Otsu thresholding. On CPU,
-       ``fft_conv`` computes its FFTs in float32 and returns the input dtype.
+     - 6 / 8
+     - Accuracy misses in Canny magnitudes, the sampled Gaussian kernel and separable blur. On CPU, ``fft_conv``
+       computes its FFTs in float32 and returns the input dtype.
    * - ``kornia.enhance``
      - ✅ Yes
      - ⚠️ Partial

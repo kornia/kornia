@@ -18,7 +18,8 @@
 from __future__ import annotations
 
 import collections.abc
-from typing import Any, Optional
+import pickle
+from typing import Any, Optional, Self
 
 import torch
 from torch import Tensor
@@ -43,6 +44,15 @@ def _wrap(v: Any, cls: type[TensorWrapper]) -> Any:
     return cls(v) if isinstance(v, Tensor) else v
 
 
+def _is_picklable(obj: Any) -> bool:
+    """Return whether pickle can store ``obj``."""
+    try:
+        pickle.dumps(obj)
+    except (pickle.PicklingError, AttributeError, TypeError):
+        return False
+    return True
+
+
 def _unwrap(v: Any) -> Any:
     """Unwrap nested type.
 
@@ -65,6 +75,26 @@ class TensorWrapper:
     tracking which attributes and functions are accessed. Useful for debugging
     and understanding tensor usage patterns.
 
+    Convention:
+        - An attribute the wrapper does not define is looked up on the wrapped tensor, and a tensor value is
+          wrapped in the wrapper's class. The wrapper's own names are never forwarded: its slots, ``data``,
+          ``__dict__`` and the copy and pickle hooks. So ``copy.copy``, ``copy.deepcopy`` and pickle return the
+          wrapper's class, and ``torch.compile`` can trace a function that builds a wrapper. The array and DLPack
+          hooks are forwarded, so ``numpy.asarray(w)`` and ``torch.from_dlpack(w)`` convert the wrapped tensor.
+        - Every arithmetic, bitwise and comparison operator (``+ - * / // % ** @ & | ^ << >>``,
+          ``== != < <= > >=``, unary ``-``, ``+``, ``abs`` and ``~``) computes the wrapped tensor's result and
+          wraps it in the class of the left operand when that is a wrapper (``w + x``), and otherwise in the class
+          of the right operand (``2 / w``, ``t + w``). A comparison whose right operand is an instance of a subclass
+          of the left operand's wrapper class takes the subclass, because Python tries the subclass's reflected
+          comparison first.
+        - An in-place operator (``+=``, ``-=``, ``*=``, ``/=``, ``//=``, ``%=``, ``**=``, ``&=``, ``|=``, ``^=``,
+          ``<<=``, ``>>=``) updates the wrapped tensor in place and returns the same wrapper, so an alias sees the
+          change. The wrapper does not copy the tensor it is built from, so the update also changes that tensor,
+          and it raises where the tensor's in-place operator raises: on a leaf that requires grad, or when the
+          result would change the dtype or the shape. ``w @= x`` rebinds ``w`` to ``w @ x``, as ``@=`` does for
+          a tensor.
+        - ``bool``, ``int``, ``float``, ``complex``, ``operator.index`` and ``len`` return Python values.
+
     Attributes:
         _data: The underlying PyTorch tensor.
         used_attrs: Set of attribute names that have been accessed.
@@ -72,6 +102,25 @@ class TensorWrapper:
     """
 
     __slots__ = ("_data", "used_attrs", "used_calls")
+
+    # Names ``__getattr__`` never forwards to the wrapped tensor: forwarding a slot recurses on an instance whose
+    # slots are not set yet (Dynamo builds one while it traces the constructor, and looks up ``__dict__`` on it),
+    # and a forwarded copy or pickle hook copies the tensor instead of the wrapper.
+    _OWNED_NAMES = frozenset(
+        {
+            *__slots__,
+            "data",
+            "__dict__",
+            "__copy__",
+            "__deepcopy__",
+            "__getnewargs__",
+            "__getnewargs_ex__",
+            "__getstate__",
+            "__reduce__",
+            "__reduce_ex__",
+            "__setstate__",
+        }
+    )
 
     def __init__(self, data: Tensor) -> None:
         """Initialize TensorWrapper with a PyTorch tensor.
@@ -101,11 +150,17 @@ class TensorWrapper:
         return self._data
 
     def __getstate__(self) -> dict[str, Any]:
-        """Support for pickle serialization."""
+        """Support for pickle serialization.
+
+        Both tracking sets are copied, so a ``copy.copy`` tracks its own usage. ``used_calls`` keeps only the
+        functions pickle can store. A few torch functions cannot be pickled, such as ``torch.unique`` or the
+        ``Tensor.__pow__`` that ``tensor ** wrapper`` dispatches, and they are left out of the state, so pickling,
+        ``torch.save`` and ``copy.deepcopy`` still work after them.
+        """
         return {
             "_data": self._data,
-            "used_attrs": self.used_attrs,
-            "used_calls": self.used_calls,
+            "used_attrs": set(self.used_attrs),
+            "used_calls": {func for func in self.used_calls if _is_picklable(func)},
         }
 
     def __setstate__(self, state: dict[str, Any]) -> None:
@@ -120,9 +175,8 @@ class TensorWrapper:
 
     def __getattr__(self, name: str) -> Any:
         """Get attribute from underlying tensor."""
-        # Handle special 'data' property
-        if name == "data":
-            return self._data
+        if name in TensorWrapper._OWNED_NAMES:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         # Track attribute usage
         self.used_attrs.add(name)
@@ -209,9 +263,134 @@ class TensorWrapper:
         """True division operation."""
         return self.__binary_op__(torch.true_divide, other)
 
+    def __rtruediv__(self, other: Any) -> TensorWrapper:
+        """Right-side true division operation."""
+        return self.__binary_op__(Tensor.__rtruediv__, other)
+
     def __floordiv__(self, other: Any) -> TensorWrapper:
         """Floor division operation."""
         return self.__binary_op__(torch.floor_divide, other)
+
+    def __rfloordiv__(self, other: Any) -> TensorWrapper:
+        """Right-side floor division operation."""
+        return self.__binary_op__(Tensor.__rfloordiv__, other)
+
+    def __mod__(self, other: Any) -> TensorWrapper:
+        """Remainder operation."""
+        return self.__binary_op__(Tensor.__mod__, other)
+
+    def __rmod__(self, other: Any) -> TensorWrapper:
+        """Right-side remainder operation."""
+        return self.__binary_op__(Tensor.__rmod__, other)
+
+    def __pow__(self, other: Any) -> TensorWrapper:
+        """Power operation."""
+        # ``torch.pow`` rather than ``Tensor.__pow__``, which pickle cannot store in ``used_calls``. Like
+        # ``Tensor.__pow__``, an operand ``torch.pow`` rejects returns NotImplemented, so Python tries its ``__rpow__``.
+        try:
+            return self.__binary_op__(torch.pow, other)
+        except TypeError:
+            return NotImplemented
+
+    def __rpow__(self, other: Any) -> TensorWrapper:
+        """Right-side power operation."""
+        return self.__binary_op__(Tensor.__rpow__, other)
+
+    def __matmul__(self, other: Any) -> TensorWrapper:
+        """Matrix multiplication operation."""
+        return self.__binary_op__(Tensor.__matmul__, other)
+
+    def __rmatmul__(self, other: Any) -> TensorWrapper:
+        """Right-side matrix multiplication operation."""
+        return self.__binary_op__(Tensor.__rmatmul__, other)
+
+    def __and__(self, other: Any) -> TensorWrapper:
+        """Bitwise and operation."""
+        return self.__binary_op__(Tensor.__and__, other)
+
+    def __rand__(self, other: Any) -> TensorWrapper:
+        """Right-side bitwise and operation."""
+        return self.__binary_op__(Tensor.__rand__, other)
+
+    def __or__(self, other: Any) -> TensorWrapper:
+        """Bitwise or operation."""
+        return self.__binary_op__(Tensor.__or__, other)
+
+    def __ror__(self, other: Any) -> TensorWrapper:
+        """Right-side bitwise or operation."""
+        return self.__binary_op__(Tensor.__ror__, other)
+
+    def __xor__(self, other: Any) -> TensorWrapper:
+        """Bitwise exclusive or operation."""
+        return self.__binary_op__(Tensor.__xor__, other)
+
+    def __rxor__(self, other: Any) -> TensorWrapper:
+        """Right-side bitwise exclusive or operation."""
+        return self.__binary_op__(Tensor.__rxor__, other)
+
+    def __lshift__(self, other: Any) -> TensorWrapper:
+        """Left shift operation."""
+        return self.__binary_op__(Tensor.__lshift__, other)
+
+    def __rlshift__(self, other: Any) -> TensorWrapper:
+        """Right-side left shift operation."""
+        return self.__binary_op__(Tensor.__rlshift__, other)
+
+    def __rshift__(self, other: Any) -> TensorWrapper:
+        """Right shift operation."""
+        return self.__binary_op__(Tensor.__rshift__, other)
+
+    def __rrshift__(self, other: Any) -> TensorWrapper:
+        """Right-side right shift operation."""
+        return self.__binary_op__(Tensor.__rrshift__, other)
+
+    def __iadd__(self, other: Any) -> Self:
+        """In-place add operation."""
+        return self.__inplace_op__(Tensor.__iadd__, other)
+
+    def __isub__(self, other: Any) -> Self:
+        """In-place subtract operation."""
+        return self.__inplace_op__(Tensor.__isub__, other)
+
+    def __imul__(self, other: Any) -> Self:
+        """In-place multiply operation."""
+        return self.__inplace_op__(Tensor.__imul__, other)
+
+    def __itruediv__(self, other: Any) -> Self:
+        """In-place true division operation."""
+        return self.__inplace_op__(Tensor.__itruediv__, other)
+
+    def __ifloordiv__(self, other: Any) -> Self:
+        """In-place floor division operation."""
+        return self.__inplace_op__(Tensor.__ifloordiv__, other)
+
+    def __imod__(self, other: Any) -> Self:
+        """In-place remainder operation."""
+        return self.__inplace_op__(Tensor.__imod__, other)
+
+    def __ipow__(self, other: Any) -> Self:
+        """In-place power operation."""
+        return self.__inplace_op__(Tensor.pow_, other)
+
+    def __iand__(self, other: Any) -> Self:
+        """In-place bitwise and operation."""
+        return self.__inplace_op__(Tensor.__iand__, other)
+
+    def __ior__(self, other: Any) -> Self:
+        """In-place bitwise or operation."""
+        return self.__inplace_op__(Tensor.__ior__, other)
+
+    def __ixor__(self, other: Any) -> Self:
+        """In-place bitwise exclusive or operation."""
+        return self.__inplace_op__(Tensor.__ixor__, other)
+
+    def __ilshift__(self, other: Any) -> Self:
+        """In-place left shift operation."""
+        return self.__inplace_op__(Tensor.__ilshift__, other)
+
+    def __irshift__(self, other: Any) -> Self:
+        """In-place right shift operation."""
+        return self.__inplace_op__(Tensor.__irshift__, other)
 
     def __ge__(self, other: Any) -> TensorWrapper:
         """Greater than or equal comparison."""
@@ -245,9 +424,33 @@ class TensorWrapper:
         """Convert to integer (unwrapped)."""
         return int(self._data)
 
+    def __float__(self) -> float:
+        """Convert to float (unwrapped)."""
+        return float(self._data)
+
+    def __complex__(self) -> complex:
+        """Convert to complex (unwrapped)."""
+        return complex(self._data)
+
+    def __index__(self) -> int:
+        """Convert to an index (unwrapped)."""
+        return self._data.__index__()
+
     def __neg__(self) -> TensorWrapper:
         """Negation operation."""
         return self.__unary_op__(torch.neg)
+
+    def __pos__(self) -> TensorWrapper:
+        """Unary plus operation."""
+        return self.__unary_op__(Tensor.__pos__)
+
+    def __abs__(self) -> TensorWrapper:
+        """Absolute value operation."""
+        return self.__unary_op__(Tensor.__abs__)
+
+    def __invert__(self) -> TensorWrapper:
+        """Bitwise not operation."""
+        return self.__unary_op__(Tensor.__invert__)
 
     def __len__(self) -> int:
         """Return length of tensor."""
@@ -269,6 +472,20 @@ class TensorWrapper:
         else:
             args = (self, other)
         return self.__torch_function__(func, (type(self),), args)
+
+    def __inplace_op__(self, func: Any, other: Any) -> Self:
+        """Helper for in-place operations.
+
+        Args:
+            func: The in-place tensor operator to call, such as ``Tensor.__iadd__``.
+            other: The other operand.
+
+        Returns:
+            This wrapper, whose tensor ``func`` updated in place. Whatever ``func`` raises propagates.
+        """
+        self.used_calls.add(func)
+        func(self._data, _unwrap(other))
+        return self
 
     def __unary_op__(self, func: Any) -> TensorWrapper:
         """Helper for unary operations.

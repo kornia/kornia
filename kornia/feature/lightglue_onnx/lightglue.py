@@ -58,9 +58,10 @@ class OnnxLightGlue:
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
     def __init__(self, weights: str | None = None, device: Union[str, torch.device, None] = "cpu") -> None:
-        # An ImportError that names the extra, like the LazyLoader handles raise, rather than a bare check.
-        if importlib.util.find_spec("onnxruntime") is None:
-            raise ImportError('onnxruntime is not installed. Install it with: pip install "kornia[onnx]".')
+        # Import onnxruntime through the lazy loader, not an `importlib.util.find_spec` probe, so that
+        # `kornia_config.lazyloader.installation_mode` handles a missing module before the weights are downloaded.
+        # `__version__` is module metadata, which the loader imports the module for; `__doc__` would not import it.
+        _ = ort.__version__
         KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
         device = torch.device(device)  # type: ignore

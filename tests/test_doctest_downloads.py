@@ -127,6 +127,23 @@ class TestPrimitivesStillExist:
 
         assert seen == ["http://example.com/model.onnx"]
 
+    def test_guard_covers_kornia_core_downloader(self, monkeypatch, tmp_path) -> None:
+        # kornia.core.download runs its own transfer rather than torch.hub's, so
+        # patching torch.hub alone would leave every pretrained model downloading.
+        # The URL points at a closed local port, so even an unguarded call stays on the host.
+        from kornia.core.download import download_file_from_url, load_state_dict_from_url
+
+        url = "http://127.0.0.1:9/w.pth"
+        seen: list[str] = []
+        with monkeypatch.context() as m:
+            install_download_guard(m.setattr, _record_and_raise(seen))
+            for fn in (load_state_dict_from_url, download_file_from_url):
+                with pytest.raises(RuntimeError) as excinfo:
+                    fn(url, model_dir=str(tmp_path / "cache"), progress=False)
+                assert isinstance(excinfo.value.__cause__, _Blocked)
+
+        assert seen == [url, url]
+
     def test_guard_covers_onnx_cached_downloader(self, monkeypatch, tmp_path) -> None:
         from kornia.onnx.download import CachedDownloader
 
