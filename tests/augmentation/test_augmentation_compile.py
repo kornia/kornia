@@ -39,6 +39,7 @@ class TestAugmentationCompile(BaseTester):
                 contrast=0.2,
                 saturation=0.2,
                 hue=0.1,
+                order=(0, 1, 2, 3),
                 p=1.0,
             ),
         )

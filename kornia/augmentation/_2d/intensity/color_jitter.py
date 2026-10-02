@@ -154,9 +154,9 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
         self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
         # A fixed application order (a permutation/subset of 0..3 for brightness, contrast,
-        # saturation, hue) is retained for deterministic ordering. RGB inputs use the same
-        # torch.cond dispatcher for fixed and sampled orders; default (None) keeps the original
-        # random per-call order.
+        # saturation, hue) makes apply_transform a static Python loop instead of iterating the
+        # random `order` tensor, so it becomes torch.compile fullgraph-safe. Default (None)
+        # keeps the original random per-call order.
         if order is not None:
             order = tuple(int(i) for i in order)
             if not set(order) <= {0, 1, 2, 3}:
@@ -166,8 +166,8 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13).
-        # Checked here because Dynamo cannot trace the check inside forward.
+        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
+        # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
         self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
 
         # native functions

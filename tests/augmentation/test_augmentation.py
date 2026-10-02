@@ -1419,30 +1419,6 @@ class TestColorJiggle(BaseTester):
         actual_grad = torch.autograd.grad(actual.sum(), image)[0]
         self.assert_close(actual_grad, expected_grad)
 
-    @pytest.mark.parametrize("out_of_range", [False, True])
-    @pytest.mark.parametrize("channels_last", [False, True])
-    def test_dynamo_random_order(self, out_of_range, channels_last):
-        image = torch.rand(2, 3, 8, 10)
-        if out_of_range:
-            image = image * 2.0 - 0.5
-        if channels_last:
-            image = image.to(memory_format=torch.channels_last)
-
-        op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0)
-        params = op.forward_parameters(image.shape)
-        params["order"] = torch.tensor([3, 2, 1, 0], dtype=torch.long)
-        params["brightness_factor"] = torch.tensor([1.15])
-        params["contrast_factor"] = torch.tensor([0.85])
-        params["saturation_factor"] = torch.tensor([1.10])
-        params["hue_factor"] = torch.tensor([0.05])
-
-        expected = op(image, params=params)
-        actual = torch.compile(op, fullgraph=True)(image, params=params)
-
-        self.assert_close(actual, expected)
-        assert actual.stride() == expected.stride()
-        assert actual.is_contiguous()
-
     def _get_expected_brightness(self, device, dtype):
         return torch.tensor(
             [
@@ -1921,8 +1897,8 @@ class TestColorJitter(BaseTester):
         ],
     )
     def test_fixed_order_guards_match_sampled_order(self, device, dtype, step, factors):
-        # Fixed and sampled orders on an RGB input dispatch through the same torch.cond path (#4813). Both must
-        # skip the same factors, and run a step on the whole batch when any factor in it is
+        # A fixed order on an RGB input dispatches through torch.cond, a sampled order through Python guards
+        # (#4813). Both must skip the same factors, and run a step on the whole batch when any factor in it is
         # not neutral: a skipped step returns the out-of-range pixels as they are, a step that runs clamps them,
         # and a hue step that runs zeroes the pixel whose largest channel is 0.
         pixels = torch.tensor([[-0.5, -0.5], [0.25, -0.2], [1.75, 0.0]], device=device, dtype=dtype)

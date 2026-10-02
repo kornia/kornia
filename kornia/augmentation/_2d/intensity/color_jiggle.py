@@ -24,7 +24,6 @@ from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core.utils import _is_tracing_or_exporting
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -63,40 +62,15 @@ _FACTOR_KEYS = ("brightness_factor", "contrast_factor", "saturation_factor", "hu
 def _apply_order_cond(
     branches: _Steps,
     neutral: Tuple[float, float, float, float],
-    order: Union[Tuple[int, ...], torch.Tensor],
+    order: Tuple[int, ...],
     input: torch.Tensor,
     factors: Tuple[torch.Tensor, ...],
 ) -> torch.Tensor:
     # torch.cond runs only the selected branch, so a neutral step is skipped without a data-dependent Python
-    # branch. A tensor order is dispatched with nested conds to avoid converting sampled indices to Python values.
-    if isinstance(order, tuple):
-        for idx in order:
-            factor = factors[idx]
-            input = torch.cond((factor != neutral[idx]).any(), branches[idx], _identity, (input, factor))
-        return input
-
-    def apply_selected(idx: int, value: torch.Tensor) -> torch.Tensor:
+    # branch and the loop stays fullgraph-compilable. It traces both branches, so it needs an RGB input.
+    for idx in order:
         factor = factors[idx]
-        return torch.cond((factor != neutral[idx]).any(), branches[idx], _identity, (value, factor))
-
-    for position in range(order.shape[0]):
-        index = order[position]
-        input = torch.cond(
-            index == 0,
-            lambda value, index=index: apply_selected(0, value),
-            lambda value, index=index: torch.cond(
-                index == 1,
-                lambda value, index=index: apply_selected(1, value),
-                lambda value, index=index: torch.cond(
-                    index == 2,
-                    lambda value: apply_selected(2, value),
-                    lambda value: apply_selected(3, value),
-                    (value,),
-                ),
-                (value,),
-            ),
-            (input,),
-        )
+        input = torch.cond((factor != neutral[idx]).any(), branches[idx], _identity, (input, factor))
     return input
 
 
@@ -104,31 +78,24 @@ def _dispatch_color_steps(
     input: torch.Tensor,
     params: Dict[str, torch.Tensor],
     fixed_order: Optional[Tuple[int, ...]],
-    cond_fn: Optional[
-        Callable[
-            [Union[Tuple[int, ...], torch.Tensor], torch.Tensor, Tuple[torch.Tensor, ...]],
-            torch.Tensor,
-        ]
-    ],
+    cond_fn: Optional[Callable[[Tuple[int, ...], torch.Tensor, Tuple[torch.Tensor, ...]], torch.Tensor]],
     neutral: Tuple[float, float, float, float],
     steps: _Steps,
 ) -> torch.Tensor:
     """Apply the four colour steps in order, skipping a step whose factors all equal its ``neutral`` value.
 
-    Shared by :class:`ColorJiggle` and :class:`ColorJitter`. An RGB input goes through ``cond_fn``
+    Shared by :class:`ColorJiggle` and :class:`ColorJitter`. A fixed order on an RGB input goes through ``cond_fn``
     (a :func:`_apply_order_cond` over the same ``neutral`` values) in eager and compiled mode alike; every other
     call uses Python ``.any()`` guards, which accept any channel count for the skipped steps. ``cond_fn`` is
-    ``None`` where Dynamo, which ``torch.cond`` requires, is unavailable.
+    ``None`` for a random order and where Dynamo, which ``torch.cond`` requires, is unavailable.
     """
     factors = tuple(params[key] for key in _FACTOR_KEYS)
-    if cond_fn is not None and input.shape[-3] == 3:
+    if fixed_order is not None and cond_fn is not None and input.shape[-3] == 3:
         # An eager torch.cond enters Dynamo, whose one-time setup calls
         # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
         validate_args = Distribution._validate_args
         try:
-            if fixed_order is not None:
-                return cond_fn(fixed_order, input, factors)
-            return cond_fn(params["order"], input, factors)
+            return cond_fn(fixed_order, input, factors)
         finally:
             if Distribution._validate_args != validate_args:
                 Distribution.set_default_validate_args(validate_args)
@@ -156,9 +123,7 @@ _STEPS: _Steps = (_brightness_step, adjust_contrast, adjust_saturation, _hue_ste
 _BRANCHES: _Steps = (_adjust_brightness, _adjust_contrast, _adjust_saturation, _adjust_hue)
 
 
-def _apply_cond(
-    order: Union[Tuple[int, ...], torch.Tensor], input: torch.Tensor, factors: Tuple[torch.Tensor, ...]
-) -> torch.Tensor:
+def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torch.Tensor, ...]) -> torch.Tensor:
     return _apply_order_cond(_BRANCHES, _NEUTRAL, order, input, factors)
 
 
@@ -180,9 +145,9 @@ class ColorJiggle(IntensityAugmentationBase2D):
                  to the batch form (False).
         order: a fixed application order, as indices into (brightness, contrast, saturation, hue); a subset
           applies only those, and a repeated index raises ``ValueError``. ``None`` (the default) draws a random
-          order on every call. RGB inputs use a tensorized dispatcher so both fixed and sampled orders are
-          ``torch.compile`` fullgraph-safe. The parameter generator still draws an ``order`` entry into ``_params``,
-          and with a fixed order that entry is ignored, including on replay.
+          order on every call. A fixed order makes the transform ``torch.compile`` fullgraph-safe for RGB inputs.
+          The parameter generator still draws an ``order`` entry into ``_params``, and with a fixed order that
+          entry is ignored, including on replay.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
@@ -266,9 +231,9 @@ class ColorJiggle(IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13).
-        # Checked here because Dynamo cannot trace the check inside forward.
-        self._cond_fn = _apply_cond if torch._dynamo.is_dynamo_supported() and not _is_tracing_or_exporting() else None
+        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
+        # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
+        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
 
     def apply_transform(
         self,
@@ -277,7 +242,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # RGB inputs use the same torch.cond dispatcher for fixed and sampled orders in eager and compiled mode.
-        # Non-RGB inputs fall back to the Python guards because all cond branches are traced.
-        cond_fn = None if torch.jit.is_tracing() else self._cond_fn
-        return _dispatch_color_steps(input, params, self._fixed_order, cond_fn, _NEUTRAL, _STEPS)
+        # A fixed order runs the same torch.cond dispatcher in eager and compiled mode. Every torch.cond
+        # branch is traced, including branches that are not selected at runtime, so the dispatcher is
+        # restricted to RGB inputs: tracing the hue/saturation branches would otherwise reject the neutral
+        # one- and four-channel configurations accepted by the Python dispatch.
+        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)
