@@ -103,22 +103,23 @@ class TestONNXLoader:
         from unittest import mock
 
         with mock.patch(
-            "urllib.request.urlretrieve", side_effect=lambda url, path: Path(path).write_bytes(b"model")
-        ) as mock_urlretrieve:
+            "kornia.core.download._download_url_to_file",
+            side_effect=lambda url, path, **kwargs: Path(path).write_bytes(b"model"),
+        ) as mock_download:
             url = "https://huggingface.co/some_model.onnx"
             file_path = tmp_path / "cache" / "some_model.onnx"
 
             ONNXLoader.download(url, str(file_path))
 
-            mock_urlretrieve.assert_called_once()
-            assert mock_urlretrieve.call_args.args[0] == url
+            mock_download.assert_called_once()
+            assert mock_download.call_args.args[0] == url
             assert file_path.read_bytes() == b"model"
 
     def test_download_failure(self, tmp_path):
         from unittest import mock
 
         with mock.patch(
-            "urllib.request.urlretrieve",
+            "kornia.core.download._download_url_to_file",
             side_effect=urllib.error.HTTPError(url=None, code=404, msg="Not Found", hdrs=None, fp=None),
         ) as _:
             url = "https://huggingface.co/non_existent_model.onnx"

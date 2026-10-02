@@ -86,6 +86,17 @@ class TestCachedDownloader:
         assert (tmp_path / "cache" / "operators" / "model.pth").read_bytes() == b"weights"
         assert hits == ["/model"]
 
+    def test_download_expands_user_directory(self, download_server, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        responses, base_url, _ = download_server
+        responses["/model"] = (b"weights", 7)
+
+        path = CachedDownloader.download_to_cache(f"{base_url}/model", "model", cache_dir="~/cache", suffix=".onnx")
+
+        assert Path(path) == tmp_path / "cache" / "model.onnx"
+        assert Path(path).read_bytes() == b"weights"
+
     def test_short_transfer_is_not_cached(self, download_server, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         responses, base_url, hits = download_server
@@ -103,6 +114,57 @@ class TestCachedDownloader:
         assert CachedDownloader.download_to_cache(url, "model", cache_dir="cache", suffix=".pth") == path
         assert hits == ["/model", "/model"]
         assert list((tmp_path / "cache").iterdir()) == [tmp_path / "cache" / "model.pth"]
+
+    def test_stalled_transfer_obeys_timeout_environment_variable(self, monkeypatch, tmp_path):
+        for var in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("no_proxy", "127.0.0.1")
+        monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+        monkeypatch.setenv("KORNIA_DOWNLOAD_TIMEOUT", "0.2")
+        stalled, release = threading.Event(), threading.Event()
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(200)
+                self.send_header("Content-Length", "100")
+                self.end_headers()
+                self.wfile.write(b"x" * 10)
+                self.wfile.flush()
+                stalled.set()
+                release.wait(5)
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        path = tmp_path / "cache" / "model.onnx"
+        url = f"http://127.0.0.1:{server.server_port}/model.onnx"
+        errors: list[BaseException] = []
+
+        def download() -> None:
+            try:
+                CachedDownloader.download(url, str(path))
+            except BaseException as exc:
+                errors.append(exc)
+
+        worker = threading.Thread(target=download, daemon=True)
+        try:
+            worker.start()
+            assert stalled.wait(5), "the server did not start the transfer"
+            worker.join(5)
+            assert not worker.is_alive(), "download remained blocked past KORNIA_DOWNLOAD_TIMEOUT"
+        finally:
+            release.set()
+            worker.join(5)
+            server.shutdown()
+            server.server_close()
+            server_thread.join(5)
+
+        assert len(errors) == 1 and isinstance(errors[0], TimeoutError), errors
+        assert not path.exists()
+        assert not list(path.parent.glob("*.partial"))
 
     def test_http_error_does_not_leave_cache_entry(self, download_server, tmp_path):
         _, base_url, _ = download_server
@@ -131,11 +193,10 @@ class TestCachedDownloader:
         # KeyboardInterrupt is a BaseException: the cleanup must not be an `except Exception`
         path = tmp_path / "cache" / "model.pth"
 
-        def interrupted(url, filename):
-            Path(filename).write_bytes(b"partial")
+        def interrupted(url, filename, **kwargs):
             raise KeyboardInterrupt
 
-        with mock.patch("urllib.request.urlretrieve", side_effect=interrupted):
+        with mock.patch("kornia.core.download._download_url_to_file", side_effect=interrupted):
             with pytest.raises(KeyboardInterrupt):
                 CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
 
@@ -149,10 +210,10 @@ class TestCachedDownloader:
         reference = tmp_path / "reference"
         reference.write_bytes(b"")
 
-        def write(url, filename):
+        def write(url, filename, **kwargs):
             Path(filename).write_bytes(b"weights")
 
-        with mock.patch("urllib.request.urlretrieve", side_effect=write):
+        with mock.patch("kornia.core.download._download_url_to_file", side_effect=write):
             CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
 
         assert path.stat().st_mode == reference.stat().st_mode
@@ -189,7 +250,7 @@ class TestCachedDownloader:
             worker.start()
             assert half_sent.wait(10)
             deadline = time.monotonic() + 10
-            while not (path.parent.exists() and any(p.stat().st_size > 0 for p in path.parent.iterdir())):
+            while not (path.parent.exists() and any(p != path for p in path.parent.iterdir())):
                 assert time.monotonic() < deadline, "the transfer never started writing"
                 time.sleep(0.01)
             assert not path.exists()

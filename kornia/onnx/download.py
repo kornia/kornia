@@ -17,14 +17,14 @@
 
 from __future__ import annotations
 
+import http.client
 import logging
 import os
-import urllib.request
-import uuid
-from contextlib import suppress
+import urllib.error
 from typing import Any, Optional
 
 from kornia.config import kornia_config
+from kornia.core import download as _core_download
 
 __all__ = ["CachedDownloader"]
 
@@ -51,6 +51,7 @@ class CachedDownloader:
         # Determine the local file path
         if cache_dir is None:
             cache_dir = kornia_config.hub_cache_dir
+        cache_dir = os.path.expanduser(cache_dir)
 
         # The filename is the model name (without directory path)
         if suffix is not None and not model_name.endswith(suffix):
@@ -110,11 +111,13 @@ class CachedDownloader:
         Raises:
             ValueError: If the file is missing and ``download_if_not_exists`` is ``False``, if ``url`` is not an
                 HTTP or HTTPS URL, or if the server answers with an HTTP error.
+            TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds without answering.
             urllib.error.ContentTooShortError: If the body is shorter than its ``Content-Length``. Nothing is
                 left at ``file_path``, so the next call downloads again.
             urllib.error.URLError: If the server cannot be reached.
 
         """
+        file_path = os.path.expanduser(file_path)
         if os.path.exists(file_path):
             _logger.info(f"Loading `{url}` from `{file_path}`.")
             return
@@ -122,22 +125,18 @@ class CachedDownloader:
         if not download_if_not_exists:
             raise ValueError(f"`{file_path}` not found. You may set `download=True`.")
 
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Create the cache directory if it doesn't exist
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         if url.startswith(("http:", "https:")):
-            # Keep incomplete transfers out of the cache, including while another caller is checking it: write
-            # beside the destination and publish with os.replace. Let urlretrieve create the file, so it gets the
-            # permissions of any new file (umask applied); a tempfile would be 0o600 and lock other users out of a
-            # shared cache.
-            temporary_path = f"{file_path}.{uuid.uuid4().hex}.partial"
             try:
                 _logger.info(f"Downloading `{url}` to `{file_path}`.")
-                urllib.request.urlretrieve(url, temporary_path)  # noqa: S310
-                os.replace(temporary_path, file_path)
-            except urllib.error.HTTPError as e:
-                raise ValueError(f"Error in resolving `{url}`.") from e
-            finally:
-                with suppress(FileNotFoundError):
-                    os.remove(temporary_path)
+                _core_download._download_url_to_file(url, file_path, progress=False)
+            except urllib.error.HTTPError as exc:
+                raise ValueError(f"Error in resolving `{url}`.") from exc
+            except http.client.IncompleteRead as exc:
+                received = getattr(exc, "received", len(exc.partial))
+                raise urllib.error.ContentTooShortError(
+                    f"retrieval incomplete: got only {received} out of {exc.expected} bytes", b""
+                ) from exc
         else:
             raise ValueError("URL must start with 'http:' or 'https:'")
