@@ -109,7 +109,7 @@ class ColorMap:
 
     Args:
         base: A list of RGB colors to define a new custom colormap or the name of a built-in colormap as str or
-        using `ColorMapType` class.
+            using `ColorMapType` class.
         num_colors: Number of colors in the colormap.
         device: The device to put the generated colormap on.
         dtype: The data type of the generated colormap.
