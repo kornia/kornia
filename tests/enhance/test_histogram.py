@@ -187,6 +187,44 @@ class TestImageHistogram2d(BaseTester):
         assert hist.dtype == torch.float64
         assert pdf.dtype == torch.float64
 
+    @pytest.mark.parametrize("bandwidth", [0.0, -2.0, float("nan"), float("inf"), float("-inf")])
+    def test_rejects_invalid_bandwidth(self, bandwidth):
+        image = torch.ones(4, 4)
+        with pytest.raises(ValueError, match="Bandwidth must be finite and greater than zero"):
+            TestImageHistogram2d.fcn(image, bandwidth=bandwidth)
+
+    @pytest.mark.parametrize("bounds", [(0.0, 0.0), (1.0, 0.0), (float("nan"), 1.0), (0.0, float("inf"))])
+    @pytest.mark.parametrize("empty_centers", [False, True])
+    def test_rejects_invalid_automatically_generated_range(self, bounds, empty_centers):
+        centers = torch.empty(0) if empty_centers else None
+        with pytest.raises(ValueError, match="automatically generated histogram range"):
+            TestImageHistogram2d.fcn(torch.ones(4, 4), min=bounds[0], max=bounds[1], centers=centers)
+
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
+    def test_negative_one_bandwidth_selects_automatic_value(self, kernel):
+        image = torch.rand(8, 8)
+        hist_auto, pdf_auto = TestImageHistogram2d.fcn(image, 0.0, 1.0, 4, kernel=kernel, return_pdf=True)
+        hist_sentinel, pdf_sentinel = TestImageHistogram2d.fcn(
+            image, 0.0, 1.0, 4, bandwidth=-1.0, kernel=kernel, return_pdf=True
+        )
+        torch.testing.assert_close(hist_sentinel, hist_auto)
+        torch.testing.assert_close(pdf_sentinel, pdf_auto)
+
+    def test_explicit_centers_and_bandwidth_do_not_require_an_automatic_range(self):
+        centers = torch.tensor([0.25, 0.75])
+        hist, pdf = TestImageHistogram2d.fcn(
+            torch.ones(4, 4), min=0.0, max=0.0, bandwidth=0.5, centers=centers, return_pdf=True
+        )
+        assert torch.isfinite(hist).all()
+        assert torch.isfinite(pdf).all()
+
+    def test_empty_centers_select_automatic_centers(self):
+        image = torch.rand(4, 4)
+        hist_none, pdf_none = TestImageHistogram2d.fcn(image, 0.0, 1.0, 4, return_pdf=True)
+        hist_empty, pdf_empty = TestImageHistogram2d.fcn(image, 0.0, 1.0, 4, centers=torch.empty(0), return_pdf=True)
+        torch.testing.assert_close(hist_empty, hist_none)
+        torch.testing.assert_close(pdf_empty, pdf_none)
+
 
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
@@ -279,3 +317,13 @@ class TestHistogram(BaseTester):
         pdf = TestHistogram.fcn(input1, input2, bandwidth)
         ans = 0.1 * torch.ones(1, 10, device=device, dtype=dtype)
         self.assert_close(ans, pdf)
+
+    @pytest.mark.parametrize("bandwidth", [0.0, -1.0, float("nan"), float("inf"), float("-inf")])
+    def test_rejects_invalid_bandwidth(self, bandwidth):
+        value = torch.tensor(bandwidth)
+        bins = torch.tensor([0.0, 1.0])
+        samples = torch.tensor([[0.0, 1.0]])
+        with pytest.raises(ValueError, match="Bandwidth must be finite and greater than zero"):
+            kornia.enhance.histogram(samples, bins, value)
+        with pytest.raises(ValueError, match="Bandwidth must be finite and greater than zero"):
+            kornia.enhance.histogram2d(samples, samples, bins, value)
