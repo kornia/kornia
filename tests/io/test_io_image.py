@@ -106,12 +106,14 @@ class TestIoImage:
         with pytest.raises(error, match=re.escape(f"missing{suffix}")):
             load_image(tmp_path / f"missing{suffix}")
 
-    def test_directory_path_raises_os_error_naming_the_path(self, tmp_path: Path) -> None:
-        # every format path goes through open(), so a directory names itself instead of a bare OSError;
-        # Windows raises PermissionError for open() on a directory, POSIX raises IsADirectoryError
-        (tmp_path / "dir.jpg").mkdir()
-        with pytest.raises((IsADirectoryError, PermissionError), match=re.escape("dir.jpg")):
-            load_image(tmp_path / "dir.jpg")
+    @pytest.mark.parametrize("suffix", [".jpg", ".tiff", ".xyz"])
+    def test_directory_path_raises_os_error_naming_the_path(self, suffix, tmp_path: Path) -> None:
+        # every format path goes through open(), so a directory names itself instead of a bare OSError (.jpg, .tiff)
+        # or a ValueError for an unrecognised format (.xyz); Windows raises PermissionError for open() on a directory,
+        # POSIX raises IsADirectoryError
+        (tmp_path / f"dir{suffix}").mkdir()
+        with pytest.raises((IsADirectoryError, PermissionError), match=re.escape(f"dir{suffix}")):
+            load_image(tmp_path / f"dir{suffix}")
 
     def test_smoke(self, tmp_path: Path) -> None:
         height, width = 4, 5
