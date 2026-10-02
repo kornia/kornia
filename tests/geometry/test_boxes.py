@@ -66,6 +66,9 @@ class TestBoxes2D(BaseTester):
     def test_convention_vertex_modes_reject_non_finite_coordinates_4177(self, mode, value, device, dtype):
         # Kornia#4177: vertex modes accept arbitrary finite quadrilaterals, but
         # validate_boxes=True rejects non-finite coordinates.
+        if device.type != "cpu":
+            # The check is torch._assert_async: skipped on MPS by design, a device-side assert on CUDA.
+            pytest.skip("the vertex check raises synchronously only on CPU")
         vertices = torch.tensor(
             [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]]],
             device=device,
@@ -73,8 +76,18 @@ class TestBoxes2D(BaseTester):
         )
         vertices[0, 1, 0] = value
 
-        with pytest.raises(ValueError, match="non-finite coordinates"):
+        with pytest.raises(RuntimeError, match="non-finite coordinates"):
             Boxes.from_tensor(vertices, mode=mode, validate_boxes=True)
+
+    @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
+    def test_dynamo_vertex_import_is_fullgraph_4177(self, mode, device, dtype, torch_optimizer):
+        # The vertex check is asynchronous, so a validated vertex import adds no graph break.
+        vertices = torch.tensor([[[1.0, 2.0], [4.0, 1.0], [5.0, 4.0], [2.0, 5.0]]], device=device, dtype=dtype)
+
+        def import_boxes(data: torch.Tensor) -> torch.Tensor:
+            return Boxes.from_tensor(data, mode=mode, validate_boxes=True).data
+
+        self.assert_close(torch_optimizer(import_boxes, fullgraph=True)(vertices), import_boxes(vertices))
 
     @pytest.mark.parametrize("container", ["Boxes", "Boxes3D"])
     def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, container, device, dtype):
@@ -1989,10 +2002,12 @@ class TestVideoBoxes(BaseTester):
 
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
     def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("the vertex check is torch._assert_async: synchronous only on CPU")
         boxes = self._sample_video_boxes(device, dtype)
         boxes[0, 0, 0, 0, 0] = value
 
-        with pytest.raises(ValueError, match="non-finite coordinates"):
+        with pytest.raises(RuntimeError, match="non-finite coordinates"):
             VideoBoxes.from_tensor(boxes, validate_boxes=True)
 
     def test_exception(self, device, dtype):
