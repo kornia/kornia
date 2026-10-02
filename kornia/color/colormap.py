@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 from torch import nn
@@ -216,6 +216,11 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
                   [0.0000, 0.0000, 0.0000]]]])
 
     """
+    return _apply_colormap(input_tensor, colormap.colors)
+
+
+def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.Tensor:
+    """Apply the palette ``colors`` of shape (3, N); shared by :func:`apply_colormap` and :class:`ApplyColorMap`."""
     KORNIA_CHECK(
         isinstance(input_tensor, torch.Tensor), f"`input_tensor` must be a torch.Tensor. Got: {type(input_tensor)}"
     )
@@ -247,10 +252,6 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
     )
     input_tensor = input_tensor.float().div_(max_value)
 
-    return _apply_colormap(input_tensor, colormap.colors, B, C, H, W)
-
-
-def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor, B: int, C: int, H: int, W: int) -> torch.Tensor:
     colors = colors.permute(1, 0)
     num_colors, channels_cmap = colors.shape
     keys = torch.linspace(0.0, 1.0, num_colors - 1, device=input_tensor.device, dtype=input_tensor.dtype)
@@ -308,6 +309,23 @@ class ApplyColorMap(nn.Module):
         self.colormap = colormap
         self.register_buffer("colors", colormap.colors)
 
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        # State dicts saved before the palette became a buffer have no ``colors`` key. Keep the palette this
+        # module was built with, so they still load with ``strict=True``, including when nested in another module.
+        state_dict.setdefault(prefix + "colors", self.colors)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
+
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         r"""Apply the colormap to the input torch.Tensor.
 
@@ -321,33 +339,4 @@ class ApplyColorMap(nn.Module):
             The output torch.Tensor representing the image with the applied colormap.
 
         """
-        KORNIA_CHECK(
-            isinstance(input_tensor, torch.Tensor), f"`input_tensor` must be a torch.Tensor. Got: {type(input_tensor)}"
-        )
-        valid_types = [
-            torch.bfloat16,
-            torch.half,
-            torch.float,
-            torch.double,
-            torch.uint8,
-            torch.int,
-            torch.long,
-            torch.short,
-        ]
-        KORNIA_CHECK(
-            input_tensor.dtype in valid_types, f"`input_tensor` must be a {valid_types}. Got: {input_tensor.dtype}"
-        )
-        KORNIA_CHECK(len(input_tensor.shape) in (3, 4), "Wrong input torch.Tensor dimension.")
-        if len(input_tensor.shape) == 3:
-            input_tensor = input_tensor.unsqueeze_(0)
-
-        B, C, H, W = input_tensor.shape
-        input_tensor = input_tensor.reshape(B, C, -1)
-        max_value = torch.where(
-            input_tensor.max() <= 1.0,
-            torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
-            torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
-        )
-        input_tensor = input_tensor.float().div_(max_value)
-
-        return _apply_colormap(input_tensor, self.colors, B, C, H, W)
+        return _apply_colormap(input_tensor, self.colors)
