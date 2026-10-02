@@ -440,8 +440,8 @@ class TestDrawLine(BaseTester):
 
 
 class TestDrawRectangle(BaseTester):
-    @pytest.mark.parametrize("batch", (4, 17))
-    @pytest.mark.parametrize("color", (torch.Tensor([1.0]), torch.Tensor([0.5])))
+    @pytest.mark.parametrize("batch", [4, 17])
+    @pytest.mark.parametrize("color", [torch.Tensor([1.0]), torch.Tensor([0.5])])
     def test_smoke(self, device, batch, color):
         black_image = torch.zeros(batch, 1, 3, 3, device=device)  # 1 channel 3x3 black_image
         points = torch.tensor([1.0, 1.0, 1.0, 1.0]).to(device).expand(batch, 1, 4)  # single pixel rectangle
@@ -453,10 +453,10 @@ class TestDrawRectangle(BaseTester):
 
         assert torch.all(black_image == target)
 
-    @pytest.mark.parametrize("batch", (8, 11))
-    @pytest.mark.parametrize("fill", (True, False))
-    @pytest.mark.parametrize("height", (12, 106, 298))
-    @pytest.mark.parametrize("width", (7, 123, 537))
+    @pytest.mark.parametrize("batch", [8, 11])
+    @pytest.mark.parametrize("fill", [True, False])
+    @pytest.mark.parametrize("height", [12, 106, 298])
+    @pytest.mark.parametrize("width", [7, 123, 537])
     def test_fill_and_edges(self, device, batch, fill, height, width):
         black_image = torch.zeros(batch, 3, height, width, device=device)
         # we should pass height - 1 and width - 1 but rectangle should clip correctly
@@ -471,9 +471,9 @@ class TestDrawRectangle(BaseTester):
             # corners are double counted
             assert image_w_rectangle.sum() == batch * 3 * (2 * height + 2 * width - 4)
 
-    @pytest.mark.parametrize("batch", (4, 6))
-    @pytest.mark.parametrize("N", (5, 12))
-    @pytest.mark.parametrize("fill", (True, False))
+    @pytest.mark.parametrize("batch", [4, 6])
+    @pytest.mark.parametrize("N", [5, 12])
+    @pytest.mark.parametrize("fill", [True, False])
     def test_n_rectangles(self, device, batch, N, fill):
         points_list = []
         h, w = 20, 20
@@ -533,7 +533,7 @@ class TestDrawRectangle(BaseTester):
                         == (points_list[b][n][2] - points_list[b][n][0] + 1) * 3
                     )
 
-    @pytest.mark.parametrize("color", (torch.tensor([0.5, 0.3, 0.15]), torch.tensor([0.23, 0.33, 0.8])))
+    @pytest.mark.parametrize("color", [torch.tensor([0.5, 0.3, 0.15]), torch.tensor([0.23, 0.33, 0.8])])
     def test_color_background(self, device, color):
         image = torch.zeros(1, 3, 40, 40, device=device)
         image[:, 0, :, :] = color[0]
@@ -555,7 +555,7 @@ class TestDrawRectangle(BaseTester):
             <= 0.0001
         )
 
-    @pytest.mark.parametrize("color", (torch.tensor([0.34, 0.63, 0.16]), torch.tensor([0.29, 0.13, 0.48])))
+    @pytest.mark.parametrize("color", [torch.tensor([0.34, 0.63, 0.16]), torch.tensor([0.29, 0.13, 0.48])])
     def test_color_foreground(self, device, color):
         image = torch.zeros(1, 3, 50, 40, device=device)
         image_w_rectangle = image.clone()
