@@ -121,7 +121,7 @@ class ImageModuleMixIn:
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
                 tensor_outputs = self._call_converted(func, args, kwargs, input_names_to_handle, "pt")
                 if cache_output:
-                    self._store_output_image(tensor_outputs, "pt")
+                    self._store_output_image(self._convert_output(tensor_outputs, "pt"), "pt")
                 return self._convert_output(tensor_outputs, output_type)
 
             return wrapper
