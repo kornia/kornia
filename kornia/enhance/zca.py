@@ -118,7 +118,7 @@ class ZCAWhitening(nn.Module):
         unexpected_keys: list[str],
         error_msgs: list[str],
     ) -> None:
-        version = local_metadata.get("version", None)
+        version = local_metadata.get("version")
         for name in ("mean_vector", "transform_matrix", "transform_inv"):
             key = prefix + name
             current = self._buffers[name]
