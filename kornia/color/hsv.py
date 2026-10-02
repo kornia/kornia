@@ -80,9 +80,10 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h = torch.where((r >= g) & (r >= b), h1, torch.where(g >= b, h2, h3))
     h = h / deltac
     h = (h / 6.0) % 1.0
-    # Modulo can round a tiny negative hue to the excluded upper endpoint.
-    h = h.masked_fill(h >= 1.0, 0.0)
     h = 2.0 * math.pi * h  # we return 0/2pi output
+    # A tiny negative hue rounds up to the period itself, in the modulo (float32) or only in the scaling
+    # (float16: 2π * (1 - 2**-11) rounds to 6.28125); fold it to 0, as adjust_hue_raw does.
+    h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
 
     return torch.stack((h, s, v), dim=-3)
 
