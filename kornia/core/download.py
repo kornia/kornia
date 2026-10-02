@@ -721,8 +721,17 @@ def _download_url_to_file(
             f"that take no timeout, such as pretrained model constructors"
         ) from e
     finally:
-        if os.path.exists(partial):
+        try:
             os.remove(partial)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            # Another process (an antivirus scanner on Windows, say) can still hold the file open. Raising here
+            # would replace the error that ended the transfer, which decides whether the download is retried.
+            _warn(
+                f"Could not remove the temporary download file {partial}: {e}. "
+                f"Delete it by hand once no other process holds it."
+            )
 
 
 def _prefetch_to_cache(url: str, kwargs: dict[str, Any], timeout: float) -> bool:

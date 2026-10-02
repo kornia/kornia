@@ -390,6 +390,11 @@ def equalize_clahe(
 ) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
 
+    Convention:
+        Expects values in [0, 1], splits the final two axes into grid_size[0] tiles along H and
+        grid_size[1] tiles along W, and returns the input shape.
+        See :func:`equalize` for global equalization.
+
     .. image:: _static/img/equalize_clahe.png
 
     NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
