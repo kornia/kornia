@@ -124,6 +124,32 @@ class TestLovaszHingeLoss(BaseTester):
         self.assert_close(loss, expected.to(device), rtol=1e-12, atol=1e-12)
         self.assert_close(torch.autograd.grad(loss, logits)[0], expected_grad.to(device), rtol=1e-12, atol=1e-15)
 
+    def test_large_foreground_counts(self, device, dtype):
+        # More than 65504 foreground pixels exceed float16's finite range, and cumulative counts above 256 (bfloat16)
+        # or 2048 (float16) are not exact in half precision.
+        logits = torch.zeros((1, 1, 257, 257), device=device, dtype=dtype, requires_grad=True)
+        labels = torch.ones((1, 257, 257), device=device, dtype=torch.int64)
+        loss = kornia.losses.lovasz_hinge_loss(logits, labels)
+        # every error is 1 and the Jaccard weights sum to the last Jaccard index, 1
+        self.assert_close(loss, torch.tensor(1.0, device=device, dtype=dtype))
+        assert torch.isfinite(torch.autograd.grad(loss, logits)[0]).all()
+
+    @pytest.mark.parametrize(
+        "logits, expected",
+        [
+            # errors 1 - logit * sign: [-1, 0, 1, -2]; sorted labels [0, 0, 1, 1] weigh them by [1/3, 1/6, 1/4, 1/4]
+            ([[2, -1], [0, 3]], 1 / 3),
+            # errors [0, 1, 1, 0]: the two errors of 1 take the weights 1/3 and 1/6
+            ([[True, False], [False, True]], 1 / 2),
+        ],
+    )
+    def test_integer_logits_return_a_float_loss(self, device, logits, expected):
+        logits = torch.tensor([[logits]], device=device)
+        labels = torch.tensor([[[1, 0], [0, 1]]], device=device)
+        loss = kornia.losses.lovasz_hinge_loss(logits, labels)
+        assert loss.dtype == torch.float32
+        self.assert_close(loss, torch.tensor(expected, device=device))
+
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
         num_classes = 1
