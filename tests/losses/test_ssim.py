@@ -82,6 +82,58 @@ _MS_SSIM_TOL = {torch.float16: 1e-2, torch.bfloat16: 5e-2}
 
 
 class TestMS_SSIMLoss(BaseTester):
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_high_pixel_values_use_float32_moments(self, device, dtype):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+
+        generator = torch.Generator().manual_seed(0)
+        img1 = (180 + torch.rand(1, 3, 64, 64, generator=generator) * 75).round()
+        img2 = (img1 + torch.randn(1, 3, 64, 64, generator=generator) * 20).clamp(0, 255).round()
+
+        reference = kornia.losses.MS_SSIMLoss(data_range=255.0).double()(img1.double(), img2.double())
+        criterion = kornia.losses.MS_SSIMLoss(data_range=255.0).to(device, dtype)
+        loss = criterion(img1.to(device, dtype), img2.to(device, dtype))
+
+        assert loss.dtype == dtype
+        assert torch.isfinite(loss)
+        self.assert_close(loss.float().cpu(), reference.float(), atol=0.02, rtol=0.02)
+
+    def test_int16_images_are_not_rounded_through_float16(self, device):
+        generator = torch.Generator().manual_seed(0)
+        img1 = (2048 + torch.rand(1, 3, 64, 64, generator=generator) * 8000).round().to(torch.int16)
+        img2 = (
+            (img1.float() + torch.randn(1, 3, 64, 64, generator=generator) * 200)
+            .clamp(0, 32767)
+            .round()
+            .to(torch.int16)
+        )
+
+        criterion = kornia.losses.MS_SSIMLoss(data_range=32767.0).to(device, torch.float16)
+        reference = kornia.losses.MS_SSIMLoss(data_range=32767.0).to(device, torch.float32)
+        loss = criterion(img1.to(device), img2.to(device))
+
+        assert loss.dtype == torch.float16
+        assert torch.isfinite(loss)
+        self.assert_close(
+            loss.float(),
+            reference(img1.to(device, torch.float32), img2.to(device, torch.float32)),
+            atol=0.01,
+            rtol=0.01,
+        )
+
+    def test_autocast_keeps_msssim_convolutions_in_float32(self):
+        generator = torch.Generator().manual_seed(0)
+        img1 = (180 + torch.rand(1, 3, 64, 64, generator=generator) * 75).round()
+        img2 = (img1 + torch.randn(1, 3, 64, 64, generator=generator) * 20).clamp(0, 255).round()
+        criterion = kornia.losses.MS_SSIMLoss(data_range=255.0)
+
+        expected = criterion(img1, img2)
+        with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
+            actual = criterion(img1, img2)
+
+        self.assert_close(actual, expected)
+
     def test_msssim_equal_none(self, device, dtype):
         # input data
         img1 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)
