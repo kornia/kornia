@@ -68,7 +68,7 @@ def _median_network(size: int) -> tuple[tuple[int, int, bool, bool], ...]:
 _MEDIAN_NETWORKS = {3: _median_network(9), 5: _median_network(25)}
 
 
-def _median_blur_network(input: torch.Tensor, size: int, border_type: str = "constant") -> torch.Tensor:
+def _median_blur_network(input: torch.Tensor, size: int, border_type: str = "reflect") -> torch.Tensor:
     """Select a small-window median without materializing patches or sorting them."""
     radius = size // 2
     padded = F.pad(input, (radius, radius, radius, radius), mode=border_type)
@@ -83,7 +83,8 @@ def _median_blur_network(input: torch.Tensor, size: int, border_type: str = "con
     # The original one-hot convolution propagates any NaN/Inf in a window to
     # every extracted feature (including 0 * Inf). Pool a finite-value mask:
     # max-pooling NaNs directly is version- and dtype-dependent on CPU.
-    invalid = F.max_pool2d((~torch.isfinite(input)).to(input.dtype), size, stride=1, padding=radius).bool()
+    padded_mask = F.pad((~torch.isfinite(input)).to(input.dtype), (radius, radius, radius, radius), mode=border_type)
+    invalid = F.max_pool2d(padded_mask, size, stride=1, padding=0).bool()
     selected = values[size * size // 2]
     return torch.where(invalid, torch.full_like(selected, float("nan")), selected).contiguous()
 
@@ -94,7 +95,7 @@ def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]
     return (ky - 1) // 2, (kx - 1) // 2
 
 
-def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "constant") -> torch.Tensor:
+def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect") -> torch.Tensor:
     r"""Blur an image using the median filter.
 
     .. image:: _static/img/median_blur.png
@@ -104,7 +105,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
         kernel_size: the blurring kernel size. Each entry must be a positive odd integer.
         border_type: the padding mode to be applied before filtering.
             The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
-            Default: `'constant'`.
+            Default: `'reflect'`.
 
     Returns:
         the blurred input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -184,7 +185,7 @@ class MedianBlur(nn.Module):
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before filtering.
             The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
-            Default: `'constant'`.
+            Default: `'reflect'`.
 
     Returns:
         the blurred input torch.Tensor.
@@ -202,7 +203,7 @@ class MedianBlur(nn.Module):
 
     """
 
-    def __init__(self, kernel_size: tuple[int, int] | int, border_type: str = "constant") -> None:
+    def __init__(self, kernel_size: tuple[int, int] | int, border_type: str = "reflect") -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.border_type = border_type

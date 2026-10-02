@@ -77,24 +77,22 @@ class TestMedianBlur(BaseTester):
     def test_default_border_type(self, device, dtype):
         inp = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
         actual_default = median_blur(inp, 3)
-        actual_constant = median_blur(inp, 3, "constant")
-        self.assert_close(actual_default, actual_constant)
+        actual_reflect = median_blur(inp, 3, "reflect")
+        self.assert_close(actual_default, actual_reflect)
 
         module_default = MedianBlur(3)
-        module_constant = MedianBlur(3, "constant")
-        self.assert_close(module_default(inp), module_constant(inp))
+        module_reflect = MedianBlur(3, "reflect")
+        self.assert_close(module_default(inp), module_reflect(inp))
         self.assert_close(actual_default, module_default(inp))
 
     @pytest.mark.parametrize("kernel_size", [3, 5, (3, 1), (1, 3)])
     def test_thin_input(self, kernel_size, device, dtype):
         inp = torch.rand(1, 1, 1, 8, device=device, dtype=dtype)
-        actual_default = median_blur(inp, kernel_size)
         actual_constant = median_blur(inp, kernel_size, "constant")
-        self.assert_close(actual_default, actual_constant)
-        assert actual_default.shape == inp.shape
+        assert actual_constant.shape == inp.shape
 
-        actual_module = MedianBlur(kernel_size)(inp)
-        self.assert_close(actual_default, actual_module)
+        actual_module_constant = MedianBlur(kernel_size, "constant")(inp)
+        self.assert_close(actual_constant, actual_module_constant)
 
         ky = kernel_size if isinstance(kernel_size, int) else kernel_size[0]
         kx = kernel_size if isinstance(kernel_size, int) else kernel_size[1]
@@ -102,7 +100,11 @@ class TestMedianBlur(BaseTester):
         pad_x = (kx - 1) // 2
         if pad_y >= inp.shape[-2] or pad_x >= inp.shape[-1]:
             with pytest.raises(RuntimeError, match="Padding size should be less"):
-                median_blur(inp, kernel_size, border_type="reflect")
+                median_blur(inp, kernel_size)
+        else:
+            actual_default = median_blur(inp, kernel_size)
+            actual_reflect = median_blur(inp, kernel_size, "reflect")
+            self.assert_close(actual_default, actual_reflect)
 
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     def test_border_type(self, border_type, device, dtype):
@@ -217,6 +219,20 @@ class TestMedianBlur(BaseTester):
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("kernel_size", [3, 5])
     @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -float("inf")])
+    def test_selection_nonfinite_border(self, border_type, kernel_size, invalid, device, dtype):
+        inp = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
+        inp[..., 0, 0] = invalid
+        radius = kernel_size // 2
+        padded = torch.nn.functional.pad(inp, (radius, radius, radius, radius), mode=border_type)
+        weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
+        expected = torch.nn.functional.conv2d(padded, weights, padding=0).median(1).values[:, None]
+        actual = median_blur(inp, kernel_size, border_type)
+        self.assert_close(actual.isnan(), expected.isnan())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -float("inf")])
     def test_nonfinite_autograd_fallback(self, border_type, kernel_size, invalid, device, dtype):
         inp = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
         inp[..., 3, 4] = invalid
@@ -254,8 +270,14 @@ class TestMedianBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, 5])
     def test_tied_gradients_unchanged(self, kernel_size, device, dtype):
         inp = torch.randint(-2, 3, (1, 1, 7, 9), device=device).to(dtype).requires_grad_()
+        radius = kernel_size // 2
+        padded = torch.nn.functional.pad(
+            inp,
+            (radius, radius, radius, radius),
+            mode="reflect",
+        )
         weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
-        expected = torch.nn.functional.conv2d(inp, weights, padding=kernel_size // 2).median(1).values[:, None]
+        expected = torch.nn.functional.conv2d(padded, weights, padding=0).median(1).values[:, None]
         expected_grad = torch.autograd.grad(expected.sum(), inp)[0]
         actual = median_blur(inp, kernel_size)
         self.assert_close(torch.autograd.grad(actual.sum(), inp)[0], expected_grad, atol=0, rtol=0)
@@ -267,7 +289,9 @@ class TestMedianBlur(BaseTester):
         weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
 
         def reference(value):
-            return torch.nn.functional.conv2d(value, weights, padding=kernel_size // 2).median(1).values[:, None]
+            radius = kernel_size // 2
+            padded = torch.nn.functional.pad(value, (radius, radius, radius, radius), mode="reflect")
+            return torch.nn.functional.conv2d(padded, weights, padding=0).median(1).values[:, None]
 
         expected, expected_jvp = torch.func.jvp(reference, (inp,), (tangent,))
         actual, actual_jvp = torch.func.jvp(lambda value: median_blur(value, kernel_size), (inp,), (tangent,))
@@ -281,7 +305,9 @@ class TestMedianBlur(BaseTester):
         inp = torch.rand(1, 1, 7, 9, dtype=torch.float32)
         weights = get_binary_kernel2d(3, dtype=torch.float32)
         with torch.autocast("cpu", dtype=autocast_dtype):
-            expected = torch.nn.functional.conv2d(inp, weights, padding=1).median(1).values[:, None]
+            radius = 1
+            padded = torch.nn.functional.pad(inp, (radius, radius, radius, radius), mode="reflect")
+            expected = torch.nn.functional.conv2d(padded, weights, padding=0).median(1).values[:, None]
             actual = median_blur(inp, 3)
         assert actual.dtype == expected.dtype == autocast_dtype
         self.assert_close(actual, expected)
