@@ -33,6 +33,23 @@ def _sync(device) -> None:
         torch.mps.synchronize()
 
 
+class TestFloatScalarPrecision(BaseTester):
+    @pytest.mark.parametrize(
+        "operation,kwargs",
+        [
+            (kornia.enhance.adjust_hue_raw, {"factor": 0.1}),
+            (kornia.enhance.adjust_gamma, {"gamma": 0.1}),
+            (kornia.enhance.adjust_gamma, {"gamma": 1.0, "gain": 0.1}),
+            (kornia.enhance.solarize, {"thresholds": 0.1}),
+            (kornia.enhance.solarize, {"thresholds": 0.5, "additions": 0.1}),
+        ],
+    )
+    def test_float_matches_image_dtype_tensor(self, device, dtype, operation, kwargs):
+        image = torch.tensor([0.05, 0.1], device=device, dtype=dtype).repeat(1, 3, 1, 1)
+        tensors = {key: image.new_tensor(value) for key, value in kwargs.items()}
+        self.assert_close(operation(image, **kwargs), operation(image, **tensors), rtol=0, atol=0)
+
+
 class TestInvert(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
