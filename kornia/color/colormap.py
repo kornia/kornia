@@ -250,7 +250,9 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
     colors = colormap.colors.permute(1, 0)
     num_colors, channels_cmap = colors.shape
     keys = torch.linspace(0.0, 1.0, num_colors - 1, device=input_tensor.device, dtype=input_tensor.dtype)
-    indices = torch.bucketize(input_tensor, keys).unsqueeze(-1).expand(-1, -1, -1, 3)
+    indices = torch.bucketize(input_tensor, keys)
+    indices = torch.where(input_tensor == 1.0, num_colors - 1, indices)
+    indices = indices.unsqueeze(-1).expand(-1, -1, -1, 3)
 
     output = torch.gather(colors.expand(B, C, -1, -1), 2, indices)
     # (B, C, H*W, channels_cmap) -> (B, C*channels_cmap, H, W)
