@@ -20,6 +20,8 @@ from typing import Optional, Tuple
 
 import torch
 
+from kornia.core.utils import is_compiling
+
 
 def marginal_pdf(
     values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10
@@ -56,7 +58,7 @@ def marginal_pdf(
     if not sigma.dim() == 0:
         raise ValueError(f"Input sigma must be a of the shape 1. Got {sigma.shape}")
 
-    if not torch.isfinite(sigma) or sigma <= 0:
+    if not torch.jit.is_scripting() and not is_compiling() and (not torch.isfinite(sigma) or sigma <= 0):
         raise ValueError("Bandwidth must be finite and greater than zero.")
 
     residuals = values - bins.unsqueeze(0).unsqueeze(0)
