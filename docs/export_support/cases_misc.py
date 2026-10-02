@@ -1244,7 +1244,7 @@ add(
     g,
     None,
     [],
-    skip="kornia.morphology exposes only the 7 functions already covered in the first pass",
+    skip="kornia.morphology exposes only functions, no module classes",
 )
 add(
     "morphology.dilation[3d_kernel_variants]",

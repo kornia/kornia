@@ -114,8 +114,9 @@ class Resize(GeometricAugmentationBase2D):
         # data-dependent `output_size` param).
         if isinstance(flags["size"], (tuple, list)):
             out_size: Tuple[int, int] = (int(flags["size"][0]), int(flags["size"][1]))
-        elif is_exporting():
+        elif is_exporting() or input.shape[0] == 0:
             # `output_size` is a function of the (static) input shape; recompute it rather than read the tensor.
+            # An empty batch has no row to read it from, and the generator returns no `output_size` for it (#4429).
             h, w = input.shape[-2:]
             out_size = _side_to_image_size(int(flags["size"]), w / h, flags["side"])
         else:
