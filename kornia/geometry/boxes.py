@@ -94,6 +94,7 @@ def _boxes_to_polygons(
     polygons[..., 3, 1] += height - 1  # Bottom left
     return polygons
 
+
 def _validate_box_coordinates(boxes: torch.Tensor) -> None:
     """Validate that box coordinates are finite."""
     if not torch.isfinite(boxes).all():
