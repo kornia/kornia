@@ -196,14 +196,14 @@ first-call compilation. On CPU, large explicit sampling batches are split so
 scoring holds at most ``2**22`` residuals per batch (or one hypothesis when
 ``N`` alone exceeds that limit). This keeps the total sample budget and can
 check confidence stopping earlier than the requested batch size would.
-Random values are drawn by a sampler primitive with a private generator; the
-Floyd sampler remains inside the graph, on CUDA too, where compilation fuses
-its steps into one kernel. Each batch's
-generator is seeded from the call's seed and the batch's offset, mixed with
-SplitMix64, so calls with different seeds do not share batches. Seeded calls leave
-the global generators untouched, including during concurrent calls. An unseeded
-call draws one seed from the input device's global generator, then uses its own
-stream for the sampling batches.
+The sampling keys are a counter-based hash of the call's seed and each
+sample's index, computed inside the graph, and Floyd's algorithm turns them
+into subsets on every device, where compilation fuses its steps into one
+kernel. A sample's keys therefore depend neither on batch boundaries nor on the
+device, calls with different seeds do not share samples, and seeded calls
+never touch a global generator, including during concurrent calls. An unseeded
+call draws one seed from the input device's global generator and then hashes it
+as a seeded call does.
 On CUDA the loop counters and stopping bound stay on the host, with a transfer
 of the leading score and inlier count after each batch; compilation therefore
 does not remove every host-device synchronization.
@@ -221,7 +221,7 @@ recall was within 0.015 of eager's for homographies and essential matrices and
 within 0.03 for fundamental matrices, where eager runs with other seeds differ
 from each other as much (60 seeds per case at 20% and 30% inliers). PROSAC
 sampling, ``degensac=True`` and ``local_optimization="dlt"`` are not supported.
-The current sampler uses a private generator and a different seeded stream;
+The current sampler draws a different seeded stream;
 use ``benchmarks/geometry/ransac_compile_synthetic.py`` to measure current
 latency and recovery, including ``--confidence 1`` for equal sample budgets.
 

@@ -2259,18 +2259,53 @@ class TestRANSACCompiled(BaseTester):
             RANSAC("homography", compile=True, seed=seed)(points, points)
 
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
-    def test_compile_boundary_seed_streams_match_private_generator_without_global_state(self):
-        from kornia.geometry._ransac_program import _ransac_uniform, _stream_seed
+    def test_compile_sampler_hash_matches_its_integer_reference(self, device):
+        """The int64 tensor form of lowbias32 equals the 32-bit integer hash: no signed product overflows."""
+        from kornia.geometry._ransac_program import _mix32
 
-        template = torch.empty((), dtype=torch.float64)
-        seeds = [0, (1 << 63) - 1, -(1 << 63), -1]
+        def lowbias32(x):
+            x ^= x >> 16
+            x = (x * 0x7FEB352D) & 0xFFFFFFFF
+            x ^= x >> 15
+            x = (x * 0x846CA68B) & 0xFFFFFFFF
+            return x ^ (x >> 16)
+
+        values = [0, 1, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF]
+        values += torch.randint(0, 1 << 32, (2000,), generator=torch.Generator().manual_seed(0)).tolist()
+        actual = _mix32(torch.tensor(values, dtype=torch.int64, device=device)).cpu().tolist()
+        assert actual == [lowbias32(v) for v in values]
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_sampler_keys_are_private_reproducible_and_batch_independent(self, device):
+        """A sample's keys are a hash of the seed and the sample's index alone.
+
+        No generator is involved, so seeded calls leave every global generator untouched; batch boundaries do not change
+        the stream; CPU and accelerators draw identical keys; and calls whose seeds differ by a batch offset or by
+        ``2**32`` do not share samples.
+        """
+        from kornia.geometry._ransac_program import _uniform_keys
+
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+
+        def keys(seed, drawn, batch=4, target=device):
+            return _uniform_keys(torch.tensor(seed), torch.tensor(drawn), batch, 8, target)
+
+        cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []
         state = torch.get_rng_state()
-        for seed in seeds:
-            actual = _ransac_uniform(template, 1, 8, torch.tensor(seed), torch.tensor(0))
-            generator = torch.Generator().manual_seed(_stream_seed(seed, 0))
-            expected = torch.rand(1, 8, dtype=torch.float64, generator=generator)
-            assert torch.equal(actual, expected)
+        for seed in [0, (1 << 63) - 1, -(1 << 63), -1]:
+            first = keys(seed, 0)
+            assert first.dtype == torch.float64 and first.shape == (4, 8)
+            assert bool(((first >= 0) & (first < 1)).all())
+            assert torch.equal(first, keys(seed, 0))
+            assert torch.equal(first.cpu(), keys(seed, 0, target=torch.device("cpu")))
         assert torch.equal(torch.get_rng_state(), state)
+        for index, cuda_state in enumerate(cuda_states):
+            assert torch.equal(torch.cuda.get_rng_state(index), cuda_state)
+        assert torch.equal(keys(7, 0, 256), torch.cat([keys(7, 0, 128), keys(7, 128, 128)]))
+        assert not torch.equal(keys(0, 128), keys(128, 0))
+        assert not torch.equal(keys(0, 0), keys(1 << 32, 0))
+        assert len({keys(seed, 0, 1)[0, 0].item() for seed in range(256)}) == 256
 
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_sampler_draws_uniform_subsets(self, device):
@@ -2289,25 +2324,6 @@ class TestRANSACCompiled(BaseTester):
         assert len(counts) == math.comb(10, 4)
         expected = draws / math.comb(10, 4)
         assert ((counts - expected) ** 2 / expected).sum() < 209 + 4.5 * math.sqrt(2 * 209)
-
-    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
-    def test_compile_seed_streams_do_not_overlap_across_seeds_and_batches(self):
-        """A batch's stream depends on the seed and the batch offset jointly, not on their sum.
-
-        The CPU generator keeps only the low 32 bits of its seed, so seeds that differ by ``2**32`` must not share a
-        stream either.
-        """
-        from kornia.geometry._ransac_program import _ransac_uniform, _stream_seed
-
-        def keys(seed, drawn):
-            template = torch.empty((), dtype=torch.float64)
-            return _ransac_uniform(template, 4, 8, torch.tensor(seed), torch.tensor(drawn))
-
-        assert not torch.equal(keys(0, 128), keys(128, 0))
-        assert not torch.equal(keys(0, 0), keys(1 << 32, 0))
-        offsets = list(range(0, 20480, 128)) + [32 * ((1 << k) - 1) for k in range(10)]
-        derived = {_stream_seed(seed, drawn) for seed in range(256) for drawn in offsets}
-        assert len(derived) == 256 * len(set(offsets))
 
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_normalizes_autocast_and_keys_ambient_guards(self, monkeypatch):

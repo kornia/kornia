@@ -1008,8 +1008,8 @@ class RANSAC(nn.Module):
             torch.tensor(value, dtype=torch.int64, device=host) for value in (self.sample_budget, first, largest)
         ]
         if self.seed is None:
-            # One ordinary global draw chooses this invocation's private stream. Every batch thereafter is generated
-            # by the opaque custom op, so it cannot race a seeded call's RNG isolation.
+            # One ordinary global draw chooses this invocation's private stream; the program hashes it with each
+            # sample's index and never reads a generator, so it cannot race a seeded call's RNG isolation.
             random_seed = torch.randint(0, torch.iinfo(torch.int64).max, (), dtype=torch.int64, device=kp1.device)
             random_seed = random_seed.to(host)
         else:

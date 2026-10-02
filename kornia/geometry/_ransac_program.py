@@ -78,41 +78,45 @@ MAX_BATCH = 1 << 20
 
 _SAMPLE_SIZES = {"homography": 4, "fundamental": 7, "fundamental_7pt": 7, "fundamental_8pt": 8, "essential": 5}
 
-_MASK64 = (1 << 64) - 1
+_LOW32 = 0xFFFFFFFF
 
 
-def _mix64(z: int) -> int:
-    """SplitMix64's finalizer (Steele, Lea and Flood, OOPSLA 2014), a bijection of 64-bit integers."""
-    z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & _MASK64
-    z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & _MASK64
-    return z ^ (z >> 31)
+def _mul32(x: torch.Tensor, constant: int) -> torch.Tensor:
+    """``x * constant mod 2**32`` for 32-bit values held in int64: 16-bit halves keep every product below ``2**63``."""
+    return ((x & 0xFFFF) * constant + ((((x >> 16) * constant) & 0xFFFF) << 16)) & _LOW32
 
 
-def _stream_seed(seed: int, drawn: int) -> int:
-    """Generator seed of the sampling batch that starts at sample ``drawn`` of a call seeded with ``seed``.
+def _mix32(x: torch.Tensor) -> torch.Tensor:
+    """Chris Wellons's lowbias32, a bijection of 32-bit integers (https://github.com/skeeto/hash-prospector)."""
+    x = x ^ (x >> 16)
+    x = _mul32(x, 0x7FEB352D)
+    x = x ^ (x >> 15)
+    x = _mul32(x, 0x846CA68B)
+    return x ^ (x >> 16)
 
-    SplitMix64: the seed is mixed before the batch offset is added, so calls whose seeds differ by a batch offset do
-    not share batches, and the result is mixed again because the CPU generator keeps only the low 32 bits of a seed.
-    ``seed & _MASK64`` restores ``Generator.manual_seed``'s unsigned domain from the two's-complement int64 tensor.
+
+def _uniform_keys(
+    seed: torch.Tensor, drawn: torch.Tensor, batch: int, columns: int, device: torch.device
+) -> torch.Tensor:
+    """Uniform float64 ``(batch, columns)`` in ``[0, 1)`` for samples ``drawn`` to ``drawn + batch - 1`` of ``seed``.
+
+    A counter-based stream: each 32-bit word hashes the element's index with two key words derived from the int64
+    seed, so it depends on the seed and the sample's index alone. No generator is involved, so seeded calls cannot
+    race on or change any global generator; the keys do not depend on batch boundaries or the device; and the whole
+    computation fuses into the compiled sampler instead of calling out to a generator for every batch. Each value
+    takes 53 bits from two words.
     """
-    return _mix64((_mix64(seed & _MASK64) + drawn * 0x9E3779B97F4A7C15) & _MASK64)
+    low, high = seed & _LOW32, (seed >> 32) & _LOW32
+    key1 = _mix32(low ^ _mix32(high ^ 0x9E3779B9)).to(device)
+    key2 = _mix32(high ^ _mix32(low ^ 0x85EBCA6B)).to(device)
+    sample = drawn.to(device) + torch.arange(batch, device=device, dtype=torch.int64)
+    counter = (sample[:, None] * columns + torch.arange(columns, device=device, dtype=torch.int64)) * 2
 
+    def word(index: torch.Tensor) -> torch.Tensor:
+        return _mix32(_mix32((index & _LOW32) ^ key1) ^ ((key2 + (index >> 32)) & _LOW32))
 
-@torch.library.custom_op("kornia::_ransac_uniform", mutates_args=(), tags=torch.Tag.nondeterministic_seeded)
-def _ransac_uniform(
-    template: torch.Tensor, batch: int, columns: int, seed: torch.Tensor, drawn: torch.Tensor
-) -> torch.Tensor:
-    """Random keys from a per-call generator, opaque to the compiled RANSAC graph."""
-    generator = torch.Generator(device=template.device)
-    generator.manual_seed(_stream_seed(int(seed.item()), int(drawn.item())))
-    return torch.rand((batch, columns), dtype=template.dtype, device=template.device, generator=generator)
-
-
-@_ransac_uniform.register_fake
-def _ransac_uniform_fake(
-    template: torch.Tensor, batch: int, columns: int, seed: torch.Tensor, drawn: torch.Tensor
-) -> torch.Tensor:
-    return torch.empty((batch, columns), dtype=template.dtype, device=template.device)
+    bits = (word(counter) >> 11) * 4294967296 + word(counter + 1)
+    return bits.to(torch.float64) * 2.0**-53
 
 
 def _draw_samples(
@@ -120,14 +124,11 @@ def _draw_samples(
 ) -> torch.Tensor:
     """``batch`` uniform ``m``-subsets of ``range(num_tc)`` from a private, reproducible random stream.
 
-    Floyd's algorithm on every device. Eager RANSAC uses random-key top-k on accelerators, where Floyd's ``m`` small
-    steps are launch-bound; compiled, they fuse into one kernel over ``batch * m`` uniforms instead of ``batch * N``
-    keys and a top-k (about 13% of a CUDA homography call at N=2000). The custom op only produces uniform values; all
-    sampling remains in the tensor graph. Its local generator makes seeded concurrent estimators independent of global
-    RNG.
+    Floyd's algorithm over :func:`_uniform_keys` on every device. Eager RANSAC uses random-key top-k on accelerators,
+    where Floyd's ``m`` small steps are launch-bound; compiled, they fuse into one kernel over ``batch * m`` keys
+    instead of ``batch * N`` keys and a top-k (about 13% of a CUDA homography call at N=2000).
     """
-    template = torch.empty((), device=device, dtype=torch.float64)
-    rand = _ransac_uniform(template, batch, m, seed, drawn)
+    rand = _uniform_keys(seed, drawn, batch, m, device)
     columns = []
     for i in range(m):
         last = num_tc - m + i
