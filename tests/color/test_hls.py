@@ -27,6 +27,30 @@ from testing.base import BaseTester
 
 
 class TestRgbToHls(BaseTester):
+    @pytest.mark.parametrize(
+        ("dtype", "blue"),
+        [
+            (torch.float32, 6e-8),
+            (torch.float16, 1e-3),
+            (torch.bfloat16, 1e-2),
+            (torch.float64, 1e-17),
+        ],
+    )
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_red_hue_rounded_to_period_is_wrapped(self, device, dtype, blue, requires_grad):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+
+        image = torch.tensor([1.0, 0.0, blue], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        image.requires_grad_(requires_grad)
+        hls = kornia.color.rgb_to_hls(image)
+
+        assert torch.equal(hls[:, 0], torch.zeros_like(hls[:, 0]))
+        if requires_grad:
+            hls.sum().backward()
+            assert image.grad is not None
+            assert torch.isfinite(image.grad).all()
+
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
