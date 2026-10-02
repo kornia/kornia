@@ -183,6 +183,14 @@ class TestRgbToRgba(BaseTester):
         with pytest.raises(ValueError, match="alpha"):
             conversion(image, alpha)
 
+    @pytest.mark.parametrize("conversion", [kornia.color.rgb_to_rgba, kornia.color.bgr_to_rgba])
+    def test_alpha_tensor_must_match_image_batch(self, conversion, device, dtype):
+        image = torch.ones(2, 3, 2, 2, device=device, dtype=dtype)
+        alpha = torch.ones(1, 1, 2, 2, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="alpha"):
+            conversion(image, alpha)
+
     @pytest.mark.parametrize("background", [(1.0, 0.0, 0.0), [1.0, 0.0, 0.0]])
     @pytest.mark.parametrize("leading", [(), (2,), (2, 3)])
     def test_rgba_custom_background_preserves_leading_dims(self, background, leading, device, dtype):
