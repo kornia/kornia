@@ -1,0 +1,1 @@
+`Sepia` and `sepia_from_rgb` now rescale all channels by a shared maximum per image, preserving the sepia tint instead of normalizing each channel toward grey.

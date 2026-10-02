@@ -133,15 +133,18 @@ class TestColorConventions(BaseTester):
         self.assert_close(raw_bg, expected)
         self.assert_close(flipped_gb, raw_bg)
 
-    @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5322")
-    def test_wart_sepia_5322_default_keeps_tint(self, device, dtype):
-        # The sepia matrix maps gray 0.5 to (0.6755, 0.6015, 0.4685), so blue is about 0.69 of red;
-        # per-channel rescaling brings every channel to about 1.
-        image = torch.full((1, 3, 1, 1), 0.5, device=device, dtype=dtype)
+    def test_convention_sepia_5322_default_keeps_tint(self, device, dtype):
+        # Gray maps to intensity * (1.351, 1.203, 0.937). Each image uses its red maximum,
+        # independently of the other batch member's intensity.
+        intensities = torch.tensor([0.25, 0.5], device=device, dtype=dtype).view(2, 1, 1, 1)
+        image = intensities.expand(2, 3, 2, 2)
+        coefficients = torch.tensor([1.351, 1.203, 0.937], device=device, dtype=dtype).view(1, 3, 1, 1)
+        expected = (intensities * coefficients / (intensities * 1.351 + 1e-6)).expand_as(image)
 
-        out = kornia.color.Sepia()(image).flatten()
+        out = kornia.color.Sepia()(image)
 
-        assert out[2] < 0.9 * out[0]
+        self.assert_close(out, expected)
+        assert (out[:, 2] < 0.9 * out[:, 0]).all()
 
     def test_convention_rgb255_scaling_clipping_and_normalization(self, device, dtype):
         # Expected values follow the documented affine maps in rgb.py.
