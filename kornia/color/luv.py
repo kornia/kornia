@@ -41,7 +41,9 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     Args:
         image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
-        eps: for numerically stability when dividing.
+        eps: for numerically stability when dividing. For float16 input a positive ``eps`` below
+            :math:`2^{-14}`, the smallest normal float16 value, is raised to it: smaller values underflow to
+            zero or overflow the backward pass.
 
     Returns:
         Luv version of the image with shape :math:`(*, 3, H, W)`.
@@ -56,6 +58,10 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    # float16 cannot represent the default eps, and a too-small eps can overflow its backward.
+    if image.dtype == torch.float16 and eps > 0.0:
+        eps = max(eps, 6.103515625e-05)
 
     # Convert from sRGB to Linear RGB
     lin_rgb = rgb_to_linear_rgb(image)
@@ -92,7 +98,9 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     Args:
         image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
-        eps: for numerically stability when dividing.
+        eps: for numerically stability when dividing. For float16 input a positive ``eps`` below
+            :math:`2^{-14}`, the smallest normal float16 value, is raised to it: smaller values underflow to
+            zero or overflow the backward pass.
 
     Returns:
         Luv version of the image with shape :math:`(*, 3, H, W)`.
@@ -107,6 +115,10 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    # float16 cannot represent the default eps, and a too-small eps can overflow its backward.
+    if image.dtype == torch.float16 and eps > 0.0:
+        eps = max(eps, 6.103515625e-05)
 
     L: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]

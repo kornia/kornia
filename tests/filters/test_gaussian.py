@@ -146,7 +146,7 @@ def test_get_gaussian_kernel2d_float(ksize_x, ksize_y, sigma, device, dtype):
 
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("sigma", ([[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]))
+@pytest.mark.parametrize("sigma", [[[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]])
 def test_get_gaussian_kernel2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
@@ -174,7 +174,7 @@ def test_get_gaussian_kernel3d_float(ksize_x, ksize_y, ksize_z, sigma, device, d
 @pytest.mark.parametrize("ksize_y", [3, 7])
 @pytest.mark.parametrize("ksize_z", [9, 3])
 @pytest.mark.parametrize(
-    "sigma", ([[1.5, 2.1, 3.5], [1.5, 2.1, 1.5], [5.0, 2.7, 2.1]], [[1.5, 3.5, 2.1], [1.2, 3.5, 2.1]])
+    "sigma", [[[1.5, 2.1, 3.5], [1.5, 2.1, 1.5], [5.0, 2.7, 2.1]], [[1.5, 3.5, 2.1], [1.2, 3.5, 2.1]]]
 )
 def test_get_gaussian_kernel3d_tensor(ksize_x, ksize_y, ksize_z, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
@@ -312,7 +312,7 @@ def test_gaussian_blur2d_float(ksize_x, ksize_y, sigma, device, dtype):
 
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("sigma", ([[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]))
+@pytest.mark.parametrize("sigma", [[[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]])
 def test_gaussian_blur2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]

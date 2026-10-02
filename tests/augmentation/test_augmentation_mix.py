@@ -1166,9 +1166,9 @@ class TestRandomTransplantation(BaseTester):
     @pytest.mark.parametrize(
         "input_shape_image, input_shape_mask, target_shape_image",
         [
-            [(1, 2, 3, 4), (1, 3, 4), (1, 2, 3, 4)],  # (B, C, H, W)
-            [(1, 2, 5, 3, 4), (1, 5, 3, 4), (1, 2, 5, 3, 4)],  # (B, C, D, H, W)
-            [(1, 1, 1, 1), (1, 1, 1), (1, 1, 1, 1)],  # (B, C, H, W)
+            ((1, 2, 3, 4), (1, 3, 4), (1, 2, 3, 4)),  # (B, C, H, W)
+            ((1, 2, 5, 3, 4), (1, 5, 3, 4), (1, 2, 5, 3, 4)),  # (B, C, D, H, W)
+            ((1, 1, 1, 1), (1, 1, 1), (1, 1, 1, 1)),  # (B, C, H, W)
         ],
     )
     def test_cardinality(self, input_shape_image, input_shape_mask, target_shape_image, device, dtype):

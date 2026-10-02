@@ -20,6 +20,8 @@ from typing import Optional, Tuple
 
 import torch
 
+from kornia.core.exceptions import ShapeError
+
 from .adjust import _assert_async_value_check
 
 
@@ -166,6 +168,12 @@ def histogram2d(
     return joint_pdf(kernel_values1, kernel_values2)
 
 
+def _check_image_rank(image: torch.Tensor) -> None:
+    """Reject the ranks that image_histogram2d does not document instead of failing inside the computation."""
+    if image.dim() < 2 or image.dim() > 4:
+        raise ShapeError(f"Input image must have shape (H, W), (C, H, W) or (B, C, H, W). Got {image.shape}.")
+
+
 def _restore_float_dtype(hist: torch.Tensor, image: torch.Tensor, auto_centers: bool) -> torch.Tensor:
     """Hand back the image's own dtype after wider bin centers promoted the result.
 
@@ -247,6 +255,8 @@ def image_histogram2d(
     """
     if image is not None and not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}.")
+
+    _check_image_rank(image)
 
     if centers is not None and not isinstance(centers, torch.Tensor):
         raise TypeError(f"Bins' centers type is not a torch.Tensor. Got {type(centers)}.")
