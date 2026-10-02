@@ -255,6 +255,19 @@ class TestMS_SSIMLoss(BaseTester):
 
         self.assert_close(model.criterion(img1, img2), expected)
 
+    @pytest.mark.parametrize("sigmas", [(0.5, 1.3), (1.0, 3.3), (0.5, 1.0, 2.0)])
+    def test_none_reduction_keeps_input_shape_5126(self, device, dtype, sigmas):
+        # int(4 * sigma + 1) is even for sigma 1.3 (6) and 3.3 (14): the window sat half a pixel off centre and the
+        # reduction="none" map came out (N, H - 1, W - 1) instead of (N, H, W). With an odd window the map keeps the
+        # input shape and is mirror-symmetric: flipping both inputs flips the map, with no one-pixel shift.
+        img1 = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
+        img2 = torch.rand(1, 3, 16, 20, device=device, dtype=dtype)
+        loss = kornia.losses.MS_SSIMLoss(sigmas=sigmas, reduction="none").to(device, dtype)
+        assert loss._g_masks.shape[-1] % 2 == 1
+        out = loss(img1, img2)
+        assert out.shape == (1, 16, 20)
+        self.assert_close(out, loss(img1.flip(-1), img2.flip(-1)).flip(-1))
+
     def test_gradcheck(self, device, dtype):
         # input data
         dtype = torch.float64

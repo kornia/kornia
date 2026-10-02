@@ -68,6 +68,10 @@ def ssim(
     Returns:
        The ssim index map with shape :math:`(B, C, H, W)`.
 
+    Note:
+        Half-precision inputs are evaluated in float32 for numerical stability.
+        Filtering runs with autocast disabled; the result uses the promoted input dtype.
+
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5)
@@ -92,6 +96,13 @@ def ssim(
     if not img1.shape == img2.shape:
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
 
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    # Half-precision moments can overflow before the SSIM ratio is formed.
+    if img1.dtype in (torch.float16, torch.bfloat16):
+        img1 = img1.float()
+    if img2.dtype in (torch.float16, torch.bfloat16):
+        img2 = img2.float()
+
     # prepare kernel
     kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5, device=img1.device, dtype=img1.dtype)
 
@@ -100,8 +111,9 @@ def ssim(
     C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
-    mu1: torch.Tensor = filter2d_separable(img1, kernel, kernel)
-    mu2: torch.Tensor = filter2d_separable(img2, kernel, kernel)
+    with torch.autocast(device_type=img1.device.type, enabled=False):
+        mu1: torch.Tensor = filter2d_separable(img1, kernel, kernel)
+        mu2: torch.Tensor = filter2d_separable(img2, kernel, kernel)
 
     cropping_shape: List[int] = []
     if padding == "valid":
@@ -116,9 +128,10 @@ def ssim(
     mu2_sq = mu2**2
     mu1_mu2 = mu1 * mu2
 
-    mu_img1_sq = filter2d_separable(img1**2, kernel, kernel)
-    mu_img2_sq = filter2d_separable(img2**2, kernel, kernel)
-    mu_img1_img2 = filter2d_separable(img1 * img2, kernel, kernel)
+    with torch.autocast(device_type=img1.device.type, enabled=False):
+        mu_img1_sq = filter2d_separable(img1**2, kernel, kernel)
+        mu_img2_sq = filter2d_separable(img2**2, kernel, kernel)
+        mu_img1_img2 = filter2d_separable(img1 * img2, kernel, kernel)
 
     if padding == "valid":
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)
@@ -136,7 +149,7 @@ def ssim(
     num: torch.Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
     den: torch.Tensor = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
 
-    return num / (den + eps)
+    return (num / (den + eps)).to(output_dtype)
 
 
 class SSIM(nn.Module):

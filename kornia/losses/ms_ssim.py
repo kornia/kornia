@@ -98,8 +98,9 @@ class MS_SSIMLoss(nn.Module):
 
         self.num_scales: int = len(sigmas)
 
-        # One mask per scale; forward repeats them for every channel of the input.
-        filter_size = int(4 * sigmas[-1] + 1)
+        # One mask per scale; forward repeats them for every channel of the input. The window is odd, 2 * pad + 1
+        # wide, so it is centred and the convolutions padded by ``pad`` keep the input's height and width.
+        filter_size = 2 * self.pad + 1
         g_masks = torch.stack([self._fspecial_gauss_2d(filter_size, sigma) for sigma in sigmas]).unsqueeze(1)
 
         # The masks are derived from ``sigmas``, so they are not persisted; see ``_load_from_state_dict``.

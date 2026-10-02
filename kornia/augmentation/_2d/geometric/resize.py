@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils._crop import _half_pixel_resize_transform
 from kornia.constants import Resample
 from kornia.core.utils import is_exporting
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
@@ -49,9 +50,10 @@ class Resize(GeometricAugmentationBase2D):
         ``"horz"`` the width. The derived side is truncated toward zero; if it becomes zero, the resize raises
         ``AssertionError`` (for example, ``Resize(4, side="long")`` or ``LongestMaxSize(4)`` on a 1-by-10 image).
         This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
-        bicubic sampling, and at ``align_corners=False`` the image does not follow ``transform_matrix``
-        (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). :meth:`inverse` resamples to the prior canvas
-        and cannot recover values discarded by a resize.
+        bicubic sampling, and ``transform_matrix`` follows the grid they sample: at ``align_corners=False`` it is
+        the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
+        the corner pixel centres onto each other. :meth:`inverse` resamples to the prior canvas and cannot recover
+        values discarded by a resize.
 
     """
 
@@ -83,6 +85,10 @@ class Resize(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        if not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC):
+            return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
+                input.shape[0], -1, -1
+            )
         # NOTE: a former `if params["output_size"] == input.shape[-2:]: return eye_like(...)`
         # short-circuit was dead code — comparing a tensor to a ``torch.Size`` falls back to
         # identity ``==`` and is *always* Python ``False``, so the branch never ran. It also

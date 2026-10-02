@@ -69,3 +69,11 @@ class TestVisionTransformer(BaseTester):
         out = vit(img)
         assert out.shape == (1, 197, 128)
         assert len(vit.encoder_results) == 12
+
+    @pytest.mark.device_agnostic
+    def test_from_config_pretrained(self):
+        # vit_s/32 is the checkpoint whose Hub repository does not follow the URL pattern (#5226).
+        model = VisionTransformer.from_config("vit_s/32", pretrained=True).eval()
+        with torch.no_grad():
+            out = model(torch.rand(1, 3, 224, 224))
+        assert out.shape == (1, 50, 384)

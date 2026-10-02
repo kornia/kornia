@@ -16,6 +16,7 @@
 #
 
 import io
+import re
 from pathlib import Path
 
 import kornia_rs
@@ -73,6 +74,36 @@ def images_fn(png_image, jpg_image):
 
 
 class TestIoImage:
+    @pytest.mark.parametrize(
+        ("suffix", "channels", "dtype"),
+        [
+            (".png", 1, torch.uint8),  # read_image_png_u8
+            (".png", 1, torch.uint16),  # read_image_png_u16
+            (".png", 3, torch.uint8),  # read_image (RGB PNG)
+            (".jpg", 3, torch.uint8),  # read_image_jpegturbo
+            (".tiff", 3, torch.uint8),  # read_image (any other extension)
+        ],
+        ids=["png-gray8", "png-gray16", "png-rgb8", "jpg-rgb8", "tiff-rgb8"],
+    )
+    def test_truncated_image_decode_error_includes_path(self, suffix, channels, dtype, tmp_path: Path) -> None:
+        pixels = (torch.arange(channels * 64 * 64, dtype=torch.int32) * 37 % 251).reshape(channels, 64, 64).to(dtype)
+        path = tmp_path / f"truncated_{channels}c_{str(dtype).removeprefix('torch.')}{suffix}"
+        write_image(path, pixels)
+        data = path.read_bytes()
+        path.write_bytes(data[: len(data) // 2])
+
+        with pytest.raises(ValueError, match=re.escape(path.name)) as exc_info:
+            load_image(path, ImageLoadType.UNCHANGED)
+
+        assert exc_info.value.__cause__ is not None
+        assert str(exc_info.value.__cause__) in str(exc_info.value)
+
+    @pytest.mark.parametrize(("suffix", "error"), [(".png", FileNotFoundError), (".jpg", OSError), (".tiff", OSError)])
+    def test_missing_file_keeps_its_os_error(self, suffix, error, tmp_path: Path) -> None:
+        # a missing file is not a decode failure: callers catching FileNotFoundError or OSError keep working
+        with pytest.raises(error):
+            load_image(tmp_path / f"missing{suffix}")
+
     def test_smoke(self, tmp_path: Path) -> None:
         height, width = 4, 5
         img_th: torch.Tensor = create_random_img8_torch(height, width, 3)

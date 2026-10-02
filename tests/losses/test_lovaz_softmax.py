@@ -94,6 +94,92 @@ class TestLovaszSoftmaxLoss(BaseTester):
 
         self.assert_close(loss, 0.5 * torch.ones_like(loss), rtol=1e-3, atol=1e-3)
 
+    @pytest.mark.parametrize("case", ["multiclass", "absent_classes", "single_pixel"])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_foreground_reference(self, device, dtype, case, weighted):
+        # Berman's reference with classes="all", per_image=True:
+        # https://github.com/bermanmaxim/LovaszSoftmax/blob/master/pytorch/lovasz_losses.py
+        # lovasz_softmax(probabilities, labels, classes="all", per_image=True).
+        probabilities = torch.tensor(
+            [[[[0.6, 0.21, 0.12]], [[0.29, 0.68, 0.19]], [[0.11, 0.11, 0.69]]]], device=device, dtype=dtype
+        )
+        labels = torch.tensor([[[0, 1, 2]]], device=device)
+        expected_per_class = [0.4, 0.32, 0.31]
+        if case == "absent_classes":
+            labels = torch.zeros_like(labels)
+            expected_per_class = [0.69, 0.68, 0.69]
+        elif case == "single_pixel":
+            probabilities = probabilities[..., :1]
+            labels = labels[..., :1]
+            expected_per_class = [0.4, 0.29, 0.11]
+        weight = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype) if weighted else None
+        expected = torch.tensor(expected_per_class, device=device, dtype=dtype)
+        if weight is not None:
+            expected = expected * weight
+        logits = probabilities.log()
+        loss = kornia.losses.lovasz_softmax_loss(logits, labels, weight)
+        self.assert_close(loss.to(dtype), expected.mean())
+        self.assert_close(kornia.losses.LovaszSoftmaxLoss(weight)(logits, labels).to(dtype), expected.mean())
+
+    @pytest.mark.parametrize("order", [(2, 0, 1), (1, 2, 0), (0, 2, 1)])
+    @pytest.mark.parametrize("absent_classes", [False, True])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_class_permutation(self, device, dtype, order, absent_classes, weighted):
+        logits = torch.tensor(
+            [[[[1.2, -0.3, 0.7]], [[0.1, 1.4, -0.2]], [[-0.8, 0.2, 1.6]]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        labels = torch.tensor([[[0, 1, 2]]], device=device)
+        if absent_classes:
+            labels = torch.zeros_like(labels)
+        permutation = torch.tensor(order, device=device)
+        inverse = permutation.argsort()
+        weight = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype) if weighted else None
+        original = kornia.losses.lovasz_softmax_loss(logits, labels, weight)
+        permuted = kornia.losses.lovasz_softmax_loss(
+            logits[:, permutation], inverse[labels], weight[permutation] if weight is not None else None
+        )
+        self.assert_close(permuted, original)
+        self.assert_close(torch.autograd.grad(permuted, logits)[0], torch.autograd.grad(original, logits)[0])
+
+    def test_foreground_gradient_reference(self, device, dtype):
+        # Same reference call as test_foreground_reference, differentiated through softmax.
+        # Errors have distinct maxima so rounding does not select a different subgradient at a tie.
+        probabilities = torch.tensor(
+            [[[[0.6, 0.21, 0.12]], [[0.29, 0.68, 0.19]], [[0.11, 0.11, 0.69]]]], device=device, dtype=dtype
+        )
+        logits = probabilities.log().requires_grad_()
+        labels = torch.tensor([[[0, 1, 2]]], device=device)
+        expected = torch.tensor(
+            [[[[-0.08, 0.0476, 0.0276]], [[0.058, -0.0725333333, 0.0437]], [[0.022, 0.0249333333, -0.0713]]]],
+            device=device,
+            dtype=dtype,
+        )
+        loss = kornia.losses.lovasz_softmax_loss(logits, labels)
+        self.assert_close(torch.autograd.grad(loss, logits)[0], expected)
+
+    def test_dynamo_foreground(self, device, dtype, torch_optimizer):
+        probabilities = torch.tensor(
+            [[[[0.6, 0.21, 0.12]], [[0.29, 0.68, 0.19]], [[0.11, 0.11, 0.69]]]], device=device, dtype=dtype
+        )
+        logits = probabilities.log().requires_grad_()
+        labels = torch.tensor([[[0, 1, 2]]], device=device)
+        op = kornia.losses.lovasz_softmax_loss
+        loss = op(logits, labels)
+        optimized = torch_optimizer(op)(logits, labels)
+        self.assert_close(optimized, torch.tensor(1.03 / 3, device=device, dtype=dtype))
+        self.assert_close(torch.autograd.grad(optimized, logits)[0], torch.autograd.grad(loss, logits)[0])
+
+    def test_large_foreground_counts(self, device, dtype):
+        # More than 65504 foreground pixels exceed float16's finite range.
+        logits = torch.zeros((1, 3, 257, 257), device=device, dtype=dtype, requires_grad=True)
+        labels = torch.zeros((1, 257, 257), device=device, dtype=torch.int64)
+        loss = kornia.losses.lovasz_softmax_loss(logits, labels)
+        self.assert_close(loss.to(dtype), torch.tensor(4 / 9, device=device, dtype=dtype))
+        assert torch.isfinite(torch.autograd.grad(loss, logits)[0]).all()
+
     def test_gradcheck(self, device, dtype):
         num_classes = 4
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)

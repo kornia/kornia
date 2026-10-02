@@ -93,7 +93,7 @@ covers CUDA or MPS half precision.
 | Module | float16 | bfloat16 | Known failures (fp16 / bf16) | Notes |
 |--------|:-------:|:--------:|:----------------------------:|-------|
 | `kornia.color` | ⚠️ | ⚠️ | 3 / 9 | float16: HLS JIT/module and RGB255 round-trip accuracy; bfloat16: Lab, Luv and RGB255 accuracy |
-| `kornia.filters` | ⚠️ | ⚠️ | 18 / 9 | Accuracy misses in Canny magnitudes, discrete Gaussian kernels and Otsu; on CPU `fft_conv` runs its FFTs in float32 |
+| `kornia.filters` | ⚠️ | ⚠️ | 6 / 8 | Accuracy misses in Canny magnitudes, the sampled Gaussian kernel and separable blur; on CPU `fft_conv` runs its FFTs in float32 |
 | `kornia.enhance` | ✅ | ⚠️ | 0 / 2 | bfloat16: `DiffJPEG` and ZCA accuracy |
 | `kornia.morphology` | ✅ | ✅ | 0 / 0 | |
 | `kornia.augmentation` | ⚠️ | ⚠️ | 200 / 56 | float16: 108 entries are `CutmixGenerator`, whose Dirichlet sampling rejects float16 parameters; bfloat16: mostly 3D-augmentation gradient checks (28 of 56 entries are `RandomMotionBlur3D`/`RandomRotation3D` backward) |
