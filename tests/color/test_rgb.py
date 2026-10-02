@@ -396,6 +396,22 @@ class TestLinearRgb(BaseTester):
         assert gradcheck(kornia.color.rgb_to_linear_rgb, (img,), raise_exception=True, fast_mode=True)
         assert gradcheck(kornia.color.linear_rgb_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.parametrize("value", [-2.0, -1.0, -0.1, -0.06, -0.055, 0.0, 0.02, 0.04045, 1.0, 2.0])
+    def test_gradient_below_srgb_range(self, device, dtype, value):
+        # #5324: an input below -0.055 gives the unselected power arm a negative base, whose NaN gradient
+        # survives the `where` mask because 0 * nan is nan. The guard must not depend on the torch version.
+        img = torch.full((1, 3, 1, 1), value, device=device, dtype=torch.float64, requires_grad=True)
+        out = kornia.color.rgb_to_linear_rgb(img)
+        out.sum().backward()
+        assert torch.isfinite(img.grad).all(), f"non-finite gradient at {value}: {img.grad.tolist()}"
+
+        expected = torch.full_like(out, value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4)
+        self.assert_close(out, expected)
+        self.assert_close(
+            img.grad,
+            torch.full_like(out, 1 / 12.92 if value <= 0.04045 else 2.4 * ((value + 0.055) / 1.055) ** 1.4 / 1.055),
+        )
+
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

@@ -246,7 +246,14 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
 
-    lin_rgb: torch.Tensor = torch.where(image > 0.04045, torch.pow(((image + 0.055) / 1.055), 2.4), image / 12.92)
+    threshold = 0.04045
+    # ``torch.where`` evaluates both arms, so the power arm is handed a base that stays positive where it is
+    # not selected. ``pow`` of a negative base is NaN in the forward pass and also poisons the backward pass,
+    # because ``where`` masks the incoming gradient with ``0`` and ``0 * nan`` is still ``nan``. Taking the
+    # substituted value from the other arm of a ``where`` keeps the guard version-independent, unlike ``clamp``,
+    # whose derivative at the bound differs across torch releases (#4229).
+    safe_base = torch.where(image > threshold, (image + 0.055) / 1.055, torch.ones_like(image))
+    lin_rgb: torch.Tensor = torch.where(image > threshold, torch.pow(safe_base, 2.4), image / 12.92)
 
     return lin_rgb
 
