@@ -22,10 +22,10 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils._crop import _half_pixel_resize_transform
 from kornia.constants import Resample
 from kornia.core.utils import is_exporting
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
+from kornia.geometry.transform._crop import _half_pixel_resize_transform
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
 
@@ -114,8 +114,9 @@ class Resize(GeometricAugmentationBase2D):
         # data-dependent `output_size` param).
         if isinstance(flags["size"], (tuple, list)):
             out_size: Tuple[int, int] = (int(flags["size"][0]), int(flags["size"][1]))
-        elif is_exporting():
+        elif is_exporting() or input.shape[0] == 0:
             # `output_size` is a function of the (static) input shape; recompute it rather than read the tensor.
+            # An empty batch has no row to read it from, and the generator returns no `output_size` for it (#4429).
             h, w = input.shape[-2:]
             out_size = _side_to_image_size(int(flags["size"]), w / h, flags["side"])
         else:

@@ -26,7 +26,7 @@ from testing.base import BaseTester
 class TestHausdorffLoss(BaseTester):
     @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
     @pytest.mark.parametrize(
-        "hd,shape", [[kornia.losses.HausdorffERLoss, (10, 10)], [kornia.losses.HausdorffERLoss3D, (10, 10, 10)]]
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (10, 10)), (kornia.losses.HausdorffERLoss3D, (10, 10, 10))]
     )
     def test_smoke_none(self, hd, shape, reduction, device, dtype):
         num_classes = 3
@@ -90,7 +90,7 @@ class TestHausdorffLoss(BaseTester):
         self.assert_close(actual, expected, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.parametrize(
-        "hd,shape", [[kornia.losses.HausdorffERLoss, (8, 8)], [kornia.losses.HausdorffERLoss3D, (6, 6, 6)]]
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (8, 8)), (kornia.losses.HausdorffERLoss3D, (6, 6, 6))]
     )
     def test_gradient_at_the_threshold_tie(self, hd, shape, device, dtype):
         # Quantized predictions land the dilation exactly on the 0.5 threshold, where the derivative of
@@ -136,7 +136,7 @@ class TestHausdorffLoss(BaseTester):
         self.assert_close(pred_actual.grad, pred_expected.grad, rtol=0.0, atol=0.0)
 
     @pytest.mark.parametrize(
-        "hd,shape", [[kornia.losses.HausdorffERLoss, (5, 5)], [kornia.losses.HausdorffERLoss3D, (5, 5, 5)]]
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (5, 5)), (kornia.losses.HausdorffERLoss3D, (5, 5, 5))]
     )
     def test_gradcheck(self, hd, shape, device, dtype):
         num_classes = 3
