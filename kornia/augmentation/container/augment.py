@@ -35,7 +35,7 @@ from kornia.image.utils import image_to_tensor
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
-from .ops import AugmentationSequentialOps, DataType
+from .ops import AugmentationSequentialOps, DataType, InputSequentialOps
 from .params import ParamItem
 from .patch import PatchSequential
 from .video import VideoSequential
@@ -153,8 +153,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           interpolation is not recovered.
         - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
           ``True`` or ``False`` overrides it.
-        - ``.transform_matrix`` of a chain holding a nested container is unreliable: it can raise, omit the
-          nested transform or return a stale one (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
+        - Nested :class:`AugmentationSequential` children contribute matrices from the current call.
+          A plain :class:`ImageSequential` child is still omitted from the outer matrix
+          (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 
     .. warning::
         A non-rigid child silently desynchronizes the coordinate data keys:
@@ -376,6 +377,30 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
         if not is_exporting():
             self._transform_matrices.append(module.transform_matrix)
+
+    def transform_inputs(
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
+        """Apply prepared parameters and record the current transformation matrix.
+
+        Nested containers use this entry point instead of :meth:`forward`.
+
+        Args:
+            input: Input tensor.
+            params: Parameters for each child in execution order.
+            extra_args: Optional overrides forwarded to child modules.
+
+        Returns:
+            Transformed tensor.
+        """
+        self.clear_state()
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            self._update_transform_matrix_by_module(module)
+        if not is_exporting():
+            self._params = params
+        return input
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return identity matrix."""

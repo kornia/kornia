@@ -1281,34 +1281,48 @@ class TestConventionAugmentationSequential(BaseTester):
             assert (restored_corners.min(dim=0).values < original_corners.min(dim=0).values - 1).all()
             assert (restored_corners.max(dim=0).values > original_corners.max(dim=0).values + 1).all()
 
-    def test_wart_nested_container_matrix_is_order_sensitive_4476(self, device, dtype):
-        # Wart pin (#4476): nesting itself, not a non-rigid child, breaks outer matrix accumulation. A rigid
-        # child followed by a nested rigid sequence raises, while the reverse ordering silently drops the
-        # nested transform. A directly-called nested container can also inject stale state.
-        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        nested_rigid = lambda: K.AugmentationSequential(  # noqa: E731
-            K.RandomVerticalFlip(p=1.0), data_keys=["input"]
-        )
-        rigid_then_nested = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), nested_rigid(), data_keys=["input"])
-        assert rigid_then_nested(image).shape == image.shape
-        with pytest.raises(TypeError):
-            _ = rigid_then_nested.transform_matrix
+    @pytest.mark.parametrize("nested_first", [False, True])
+    @pytest.mark.parametrize("warmed", [False, True])
+    @pytest.mark.parametrize("outer_cls", [K.AugmentationSequential, K.ImageSequential])
+    def test_convention_nested_container_matrix_4476(self, nested_first, warmed, outer_cls, device, dtype):
+        nested = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0), data_keys=["input"])
+        if warmed:
+            nested(torch.rand(2, 1, 8, 10, device=device, dtype=dtype))
+            _ = nested.transform_matrix
+        horizontal = K.RandomHorizontalFlip(p=1.0)
+        children = [nested, horizontal] if nested_first else [horizontal, nested]
+        outer = outer_cls(*children)
+        image = torch.arange(24, device=device, dtype=dtype).reshape(1, 1, 4, 6)
 
-        nested_then_rigid = K.AugmentationSequential(nested_rigid(), K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
-        assert nested_then_rigid(image).shape == image.shape
-        self.assert_close(
-            nested_then_rigid.transform_matrix,
-            torch.tensor([[[-1.0, 0.0, 7.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype),
-        )
+        output = outer(image)
+        params = outer._params
+        self.assert_close(output, image.flip((-2, -1)))
+        expected = torch.tensor([[[-1.0, 0.0, 5.0], [0.0, -1.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        if outer_cls is K.AugmentationSequential:
+            self.assert_close(outer.transform_matrix, expected)
+        self.assert_close(outer.get_transformation_matrix(image, params=params), expected)
+        self.assert_close(nested.transform_matrix[:, 1, 2], torch.tensor([3.0], device=device, dtype=dtype))
+        self.assert_close(outer(image, params=params), output)
+        self.assert_close(outer.inverse(output, params=params), image)
 
-        stale_child = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0), data_keys=["input"])
-        stale_child(image)
-        stale_outer = K.AugmentationSequential(stale_child, data_keys=["input"])
-        shorter = image[:, :, :6]
-        stale_outer(shorter)
-        stale = torch.tensor([[[1.0, 0.0, 0.0], [0.0, -1.0, 7.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
-        self.assert_close(stale_outer.transform_matrix, stale)
-        assert stale_outer.transform_matrix[0, 1, 2].item() != shorter.shape[-2] - 1
+    @pytest.mark.parametrize(
+        "outer_augmentation,expected_points",
+        [
+            (K.RandomHorizontalFlip(p=1.0), [[[4.0, 5.0]], [[3.0, 4.0]]]),
+            (K.RandomRotation((90.0, 90.0), p=1.0), [[[0.0, 1.0]], [[1.0, 2.0]]]),
+        ],
+    )
+    def test_nested_container_matrix_matches_keypoints_4476(self, outer_augmentation, expected_points, device, dtype):
+        inner = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0))
+        nested = K.AugmentationSequential(inner)
+        outer = K.AugmentationSequential(outer_augmentation, nested, data_keys=["input", "keypoints"])
+        image = torch.rand(2, 1, 6, 6, device=device, dtype=dtype)
+        points = torch.tensor([[[1.0, 0.0]], [[2.0, 1.0]]], device=device, dtype=dtype)
+        _, output_points = outer(image, points)
+        homogeneous = torch.cat((points, torch.ones_like(points[..., :1])), dim=-1)
+        matrix_points = homogeneous @ outer.transform_matrix.transpose(-2, -1)
+        self.assert_close(matrix_points[..., :2], output_points)
+        self.assert_close(output_points, torch.tensor(expected_points, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("crop_cls", [K.CenterCrop, K.RandomCrop, K.RandomResizedCrop])
     def test_convention_slice_crop_inverse_raises(self, crop_cls, device, dtype):

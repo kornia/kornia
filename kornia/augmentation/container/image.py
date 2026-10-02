@@ -352,7 +352,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             elif isinstance(module, ImageSequentialBase):
                 # If not augmentationSequential
                 if isinstance(module, K.AugmentationSequential) and not recompute:
-                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                    mat = torch.as_tensor(module.transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
