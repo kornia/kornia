@@ -2396,21 +2396,25 @@ class TestTruncatedTransfer:
         assert [p.name for p in tmp_path.iterdir()] == ["t.bin"]
 
     @staticmethod
-    def _partial_in_use(monkeypatch) -> None:
-        # Removing the temporary file fails, as when another process holds it open on Windows.
+    def _partial_in_use(monkeypatch, code: int = errno.EACCES) -> None:
+        # Removing the temporary file fails, as when another process holds it open on Windows. ``OSError`` maps
+        # EACCES to ``PermissionError``; EBUSY stays a plain ``OSError``.
         remove = os.remove
 
         def in_use(path):
             if str(path).endswith(".partial"):
-                raise PermissionError(errno.EACCES, "in use by another process", path)
+                raise OSError(code, "in use by another process", path)
             remove(path)
 
         monkeypatch.setattr(download_mod.os, "remove", in_use)
 
-    def test_a_failed_cleanup_does_not_replace_the_transfer_error(self, scripted_server, monkeypatch, tmp_path) -> None:
+    @pytest.mark.parametrize("code", [errno.EACCES, errno.EBUSY], ids=["eacces", "ebusy"])
+    def test_a_failed_cleanup_does_not_replace_the_transfer_error(
+        self, scripted_server, monkeypatch, tmp_path, code
+    ) -> None:
         responses, url, _ = scripted_server
         responses["/t.bin"] = (1000, b"z" * 10)
-        self._partial_in_use(monkeypatch)
+        self._partial_in_use(monkeypatch, code)
 
         with pytest.warns(UserWarning, match="Could not remove the temporary download file"):
             with pytest.raises(download_mod._TruncatedTransfer):
@@ -2443,6 +2447,17 @@ class TestTruncatedTransfer:
 
         assert isinstance(excinfo.value.__cause__, http.client.IncompleteRead)
         assert hits["/t.bin"] == download_mod._MAX_ATTEMPTS
+
+    def test_a_complete_transfer_warns_nothing(self, scripted_server, tmp_path) -> None:
+        # The temporary file is already renamed into place, so the cleanup finds nothing to remove or report.
+        responses, url, _ = scripted_server
+        responses["/t.bin"] = b"z" * 10
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            download_mod._download_url_to_file(url("/t.bin"), str(tmp_path / "t.bin"), progress=False, timeout=5.0)
+
+        assert [p.name for p in tmp_path.iterdir()] == ["t.bin"]
 
 
 class TestCacheNameEdgeCases:
