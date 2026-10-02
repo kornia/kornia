@@ -64,7 +64,8 @@ class TestResizeMatrix(BaseTester):
         out = aug(image, params=params)
         assert aug._transform_matrix is None  # construction remains lazy
         matrix = aug.transform_matrix
-        assert matrix.dtype == dtype and matrix.device == image.device
+        assert matrix.dtype == dtype
+        assert matrix.device == image.device
         assert matrix.shape == (2, 3, 3)
         assert aug.transform_matrix is matrix
         src = params["src"].to(image)
