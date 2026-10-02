@@ -348,15 +348,11 @@ def _sampson_cost(
     quad2 = F[:, :, :2] @ F[:, :, :2].mT
     numerator = F.flatten(1) @ algebraic
     denominator = torch.cat([quad1, quad2], 1).flatten(1) @ quadratic
-    if mask is None:
-        residual = numerator * denominator.rsqrt()
-    else:
-        # A zero mask excludes the correspondence. Guard the divisor before rsqrt, then make the residual zero before
-        # the loss: multiplying an infinite residual by zero afterwards leaves NaNs in its backward pass on old torch.
-        active = mask != 0
-        denominator = torch.where(active, denominator, torch.ones_like(denominator))
-        residual = torch.where(active, numerator * denominator.rsqrt(), torch.zeros_like(numerator))
-    r2 = residual.square()
+    if mask is not None:
+        # A zero mask excludes the correspondence. Guarding its divisor keeps the residual of a finite row finite, so
+        # the zero weight below removes it exactly; an infinite residual times zero would be NaN, also in backward.
+        denominator = torch.where(mask != 0, denominator, torch.ones_like(denominator))
+    r2 = (numerator * denominator.rsqrt()).square()
     rho = (
         torch.log1p(r2 / scale2)
         if loss == "cauchy"
@@ -389,18 +385,14 @@ def _sampson_normal_equations(
     quad2 = F[:, None, :, :2] @ stacked[:, :, :, :2].mT
     out_c = stacked.reshape(K, P + 1, 9) @ algebraic
     out_g = torch.cat([quad1, quad2], 2).reshape(K, P + 1, 18) @ quadratic
-    if mask is None:
-        inv = out_g[:, 0].rsqrt()
-    else:
-        # See _sampson_cost. Guard only the divisor and zero the finished residual/Jacobian: copying every monomial
-        # row is expensive for a batched program.
-        active = mask != 0
-        inv = torch.where(active, out_g[:, 0], torch.ones_like(out_g[:, 0])).rsqrt()
+    denominator = out_g[:, 0]
+    if mask is not None:
+        # See _sampson_cost. Only the divisor is guarded: masking the residual and the whole (K, P, N) Jacobian as
+        # well adds nothing to a zero weight and costs the compiled program time.
+        denominator = torch.where(mask != 0, denominator, torch.ones_like(denominator))
+    inv = denominator.rsqrt()
     r = out_c[:, 0] * inv
     J = (out_c[:, 1:] - (r * inv)[:, None] * out_g[:, 1:]) * inv[:, None]  # (K, P, N)
-    if mask is not None:
-        r = torch.where(active, r, torch.zeros_like(r))
-        J = torch.where(active[:, None], J, torch.zeros_like(J))
     w, rho = _robust_loss(r * r, loss, scale2)
     if mask is not None:
         w, rho = w * mask, rho * mask

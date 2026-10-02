@@ -450,18 +450,13 @@ def _refine_homography_lm(
         if mask is None:
             iz = 1.0 / P[:, 0, 2]
         else:
-            # A zero mask excludes the correspondence. Guard the projective divisor before division, then zero the
-            # residual and Jacobian. This avoids copying the full derivative stack for each masked program row.
-            active = mask != 0
-            iz = 1.0 / torch.where(active, P[:, 0, 2], torch.ones_like(P[:, 0, 2]))
+            # A zero mask excludes the correspondence. Guarding its projective divisor keeps the residual and
+            # Jacobian of a finite row finite, so the zero weight below removes it exactly; masking the whole
+            # derivative stack as well costs the compiled CUDA program about 10% of a homography call.
+            iz = 1.0 / torch.where(mask != 0, P[:, 0, 2], torch.ones_like(P[:, 0, 2]))
         uv = P[:, 0, :2] * iz[:, None]  # (K, 2, N)
-        residual = uv - x2.T
-        J = (P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]
-        if mask is not None:
-            residual = torch.where(active[:, None], residual, torch.zeros_like(residual))
-            J = torch.where(active[:, None, None], J, torch.zeros_like(J))
-        r = residual.flatten(1)  # (K, 2N): u residuals, then v residuals
-        J = J.flatten(2)
+        r = (uv - x2.T).flatten(1)  # (K, 2N): u residuals, then v residuals
+        J = ((P[:, 1:, :2] - uv[:, None] * P[:, 1:, 2:3]) * iz[:, None, None]).flatten(2)  # (K, 8, 2N)
         r2 = r[:, : x1.shape[0]].square() + r[:, x1.shape[0] :].square()
         w, rho = _robust_loss(r2, loss, scale2)
         if mask is not None:
@@ -476,15 +471,10 @@ def _refine_homography_lm(
         h_new = h_new * h_new.square().sum(1, keepdim=True).rsqrt()
         if cpu and iteration + 1 == iters:
             projection = h_new.reshape(K, 3, 3) @ x1.T
+            divisor = projection[:, 2]
             if mask is not None:
-                active = mask != 0
-                divisor = torch.where(active, projection[:, 2], torch.ones_like(projection[:, 2]))
-            else:
-                divisor = projection[:, 2]
-            residual = projection[:, :2] / divisor[:, None] - x2.T
-            if mask is not None:
-                residual = torch.where(active[:, None], residual, torch.zeros_like(residual))
-            r2 = residual.square().sum(1)
+                divisor = torch.where(mask != 0, divisor, torch.ones_like(divisor))
+            r2 = (projection[:, :2] / divisor[:, None] - x2.T).square().sum(1)
             rho = (
                 torch.log1p(r2 / scale2)
                 if loss == "cauchy"
