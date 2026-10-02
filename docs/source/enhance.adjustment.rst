@@ -3,9 +3,12 @@ Adjustment
 
 .. currentmodule:: kornia.enhance
 
-Hue and saturation adjustments and :func:`shift_rgb` take RGB channels at axis -3; the other
-adjustments are elementwise and accept any channel count. Functions whose name ends in ``_raw``
-take HSV instead; their RGB counterparts perform that conversion.
+Hue and saturation adjustments and :func:`shift_rgb` take RGB channels at axis -3. Functions
+whose name ends in ``_raw`` take HSV instead; their RGB counterparts perform that conversion.
+Brightness, gamma, logarithmic and sigmoid adjustments, :func:`adjust_contrast`, and
+:func:`threshold` are elementwise and accept any channel count. :func:`sharpness` filters
+neighboring pixels, :func:`equalize` uses each
+channel's histogram, and :func:`adjust_contrast_with_mean_subtraction` uses an image mean.
 
 Functions
 ---------

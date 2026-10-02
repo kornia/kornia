@@ -170,7 +170,8 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
         and background_color is a unit-range RGB color.
 
     .. warning::
-        A rank-3 input with background_color returns a rank-4 result
+        A rank-3 input with a tuple or list background_color returns a rank-4 result;
+        tensor backgrounds with shape (3, H, W) or (3, 1, 1) preserve rank three
         (`#5323 <https://github.com/kornia/kornia/issues/5323>`_).
 
     Args:

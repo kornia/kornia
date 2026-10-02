@@ -497,7 +497,7 @@ def jpeg_codec_differentiable(
     r"""Differentiable JPEG encoding-decoding module.
 
     Convention:
-        Input is RGB in [0, 1] with shape (*, 3, H, W); the leading axes flatten to N images.
+        Input is RGB in [0, 1] with shape ``(*, 3, H, W)``; the leading axes flatten to N images.
         jpeg_quality is a one-dimensional (1,) shared quality or (N,) per-image quality; a 0-D
         scalar is rejected. The codec pads on the bottom and right internally and crops back to
         the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.

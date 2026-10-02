@@ -86,6 +86,20 @@ class TestEnhanceConventions(BaseTester):
         # Centers are 0.125 and 0.375, generated as min + (i + 0.5) * bandwidth.
         self.assert_close(hist, torch.tensor([1.0, 0.0], device=device, dtype=dtype))
 
+    @pytest.mark.parametrize("explicit_center", [False, True])
+    @pytest.mark.parametrize("return_pdf", [False, True])
+    @pytest.mark.xfail(strict=True, reason="rank-2 image histogram squeezes away a single bin axis")
+    def test_wart_image_histogram_rank2_single_bin_preserves_bin_axis(self, device, dtype, explicit_center, return_pdf):
+        image = torch.tensor([[0.25, 0.75]], device=device, dtype=dtype)
+        centers = torch.tensor([0.5], device=device, dtype=dtype) if explicit_center else None
+
+        hist, pdf = kornia.enhance.image_histogram2d(
+            image, min=0.0, max=1.0, n_bins=1, centers=centers, return_pdf=return_pdf
+        )
+
+        assert hist.shape == (1,)
+        assert pdf.shape == (1,)
+
     def test_convention_jpeg_quality_is_one_dimensional(self, device, dtype):
         image = torch.zeros(1, 3, 16, 17, device=device, dtype=dtype)
         with pytest.raises(ShapeError):

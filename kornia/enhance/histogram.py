@@ -198,12 +198,15 @@ def image_histogram2d(
 
     Convention:
         Spatial axes are the final two axes; input (H, W), (C, H, W), and
-        (B, C, H, W) return matching leading axes followed by bins. Automatic
-        centers lie at min + (i + 0.5) * bandwidth; values outside the supplied
+        (B, C, H, W) return matching leading axes followed by bins, except for the single-bin
+        rank-2 case described below. Automatic centers lie at min + (i + 0.5) * bandwidth;
+        values outside the supplied
         range contribute according to the selected kernel rather than being
         clipped into an endpoint bin.
 
     .. warning::
+        Rank-2 input with a single bin or explicit center returns scalar histogram and PDF tensors
+        instead of length-one vectors.
         Rank-1 input returns spurious batch and channel axes, and rank-5 input fails inside the
         computation (`#5316 <https://github.com/kornia/kornia/issues/5316>`_). An empty range with
         automatic bandwidth or a zero bandwidth gives NaNs, and bandwidth=-1 is used as a negative
@@ -235,7 +238,7 @@ def image_histogram2d(
           :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`, if return_pdf is ``True``. torch.Tensor of torch.zeros with shape
-          of the histogram otherwise.
+          of the histogram otherwise. For rank-2 input with one bin, both returned tensors are scalars.
 
     """
     if image is not None and not isinstance(image, torch.Tensor):

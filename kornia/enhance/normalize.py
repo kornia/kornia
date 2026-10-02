@@ -369,7 +369,7 @@ def normalize_min_max(
     r"""Normalise an image/video torch.Tensor by MinMax and re-scales the value between a range.
 
     Convention:
-        Input is (*, C, H, W): minima and maxima are taken over H and W separately for every
+        Input is ``(*, C, H, W)``: minima and maxima are taken over H and W separately for every
         leading index and channel. Constant planes map to min_val.
 
     The data is normalised using the following formulation:

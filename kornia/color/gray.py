@@ -200,10 +200,6 @@ class RgbToGrayscale(nn.Module):
 
     See the Convention block on :func:`rgb_to_grayscale`.
 
-    .. warning::
-        With default weights this module returns zeros for uint8 input
-        (`#5109 <https://github.com/kornia/kornia/issues/5109>`_).
-
     The image data is assumed to be in the range of (0, 1).
 
     Shape:

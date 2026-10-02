@@ -80,6 +80,19 @@ class TestColorConventions(BaseTester):
         )
         self.assert_close(kornia.color.rgba_to_bgr(rgba), kornia.color.rgb_to_bgr(kornia.color.rgba_to_rgb(rgba)))
 
+    @pytest.mark.parametrize("per_pixel_background", [False, True])
+    def test_convention_rgba_rank3_tensor_background_preserves_shape(self, device, dtype, per_pixel_background):
+        rgba = torch.tensor([0.2, 0.4, 0.6, 0.25], device=device, dtype=dtype).view(4, 1, 1).expand(4, 2, 3)
+        background = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype).view(3, 1, 1)
+        if per_pixel_background:
+            background = background.expand(3, 2, 3)
+
+        result = kornia.color.rgba_to_rgb(rgba, background)
+
+        assert result.shape == (3, 2, 3)
+        expected = torch.tensor([0.05, 0.475, 0.9], device=device, dtype=dtype).view(3, 1, 1).expand(3, 2, 3)
+        self.assert_close(result, expected)
+
     def test_convention_bayer_rg_layout_and_transpose_relabeling(self, device, dtype):
         image = torch.tensor(
             [
