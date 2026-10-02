@@ -25,6 +25,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.core.exceptions import BaseError
 from kornia.filters import (
     GaussianBlur2d,
     gaussian,
@@ -558,14 +559,20 @@ class TestGaussianBlur2d(BaseTester):
         assert output.shape == sample.shape
 
     def test_batched_sigma_mismatched_batch_size(self, device, dtype):
-        """Test that batched sigma uses first batch element when shapes don't match."""
-        # Note: The function broadcasts sigma, so mismatched batch size is allowed
-        # but only the first sigma in the batch is used for all input samples
+        """A sigma batch that is neither 1 nor the input batch raises through the kernel batch check (#5154).
+
+        A check of the sigma shape at the entry of gaussian_blur2d is #5169.
+        """
         sample = torch.rand(4, 3, 8, 8, device=device, dtype=dtype)
-        sigma = torch.tensor([[1.5, 1.5], [2.0, 2.0]], device=device, dtype=dtype)
-        # Should not raise - will use broadcasting behavior
-        output = gaussian_blur2d(sample, (3, 3), sigma)
-        assert output.shape == sample.shape
+        # 2 rows divide the 4 samples and 3 do not: both raise the kornia error, not a torch reshape error
+        for rows in (2, 3):
+            sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
+            with pytest.raises(BaseError, match=f"kernel batch of {rows} for an input batch of 4"):
+                gaussian_blur2d(sample, (3, 3), sigma)
+        # one row for the whole batch and one row per sample run
+        for rows in (1, 4):
+            sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
+            assert gaussian_blur2d(sample, (3, 3), sigma).shape == sample.shape
 
     def test_all_border_types(self, device, dtype):
         """Test that all supported border types work."""
