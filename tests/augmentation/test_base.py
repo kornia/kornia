@@ -1159,8 +1159,8 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert container(empty).shape == (0, 3, 6, 8)
 
     def test_wart_zero_batch_raises_a_validation_error_4429(self, device, dtype):
-        # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". RandomAutoContrast still raises its
-        # deliberate validation error; the int-size resizes no longer raise `KeyError` (see the convention test below).
+        # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". RandomAutoContrast raises its
+        # deliberate validation error; the int-size resizes are pinned in the convention test below.
         with pytest.raises(ValueError, match=re.escape("Invalid input tensor, it is empty.")):
             K.RandomAutoContrast(p=1.0)(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
 
