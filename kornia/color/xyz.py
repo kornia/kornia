@@ -31,6 +31,10 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_xyz.png
 
+    Convention:
+        This is the D65 linear-RGB-to-XYZ matrix transform. Pass linear RGB, for example from
+        rgb_to_linear_rgb; nonlinear sRGB values are not linearized here.
+
     Args:
         image: RGB Image to be converted to XYZ with shape :math:`(*, 3, H, W)`.
 
@@ -64,6 +68,10 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
 def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a XYZ image to RGB.
 
+    Convention:
+        This is the inverse D65 XYZ-to-linear-RGB matrix transform. Convert its result with
+        linear_rgb_to_rgb when nonlinear sRGB is required.
+
     Args:
         image: XYZ Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
@@ -96,6 +104,8 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 class RgbToXyz(nn.Module):
     r"""Convert an image from RGB to XYZ.
+
+    See the Convention block on :func:`rgb_to_xyz`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -135,6 +145,8 @@ class RgbToXyz(nn.Module):
 
 class XyzToRgb(nn.Module):
     r"""Converts an image from XYZ to RGB.
+
+    See the Convention block on :func:`xyz_to_rgb`.
 
     Returns:
         RGB version of the image.

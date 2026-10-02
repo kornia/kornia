@@ -93,6 +93,10 @@ def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> tor
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
+    Convention:
+        Expects HSV, not RGB. The saturation channel is multiplied by factor
+        and clamped to [0, 1]; :func:`adjust_saturation` performs RGB conversion.
+
     Expecting image to be in hsv format already.
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
@@ -120,6 +124,10 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
 
 def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image by blending the image with its grayscaled version.
+
+    Convention:
+        factor=0 selects grayscale and factor=1 preserves RGB input; grayscale
+        input is returned unchanged. This differs from HSV saturation scaling.
 
     The image is expected to be an RGB image or a gray image in the range of [0, 1].
     If it is an RGB image, returns blending of the image with its grayscaled version.
@@ -175,6 +183,12 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
 
 def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
+
+    Convention:
+        Expects RGB in [0, 1] with channel dimension -3. factor=1 preserves the image;
+        factor=0 removes HSV saturation, so each pixel becomes max(R, G, B) rather than its luma.
+        :func:`adjust_saturation_with_gray_subtraction` blends with luma, as torchvision and PIL do;
+        see :func:`adjust_saturation_raw` for the HSV-domain primitive.
 
     .. image:: _static/img/adjust_saturation.png
 
@@ -242,6 +256,10 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
 def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image.
 
+    Convention:
+        Expects HSV. factor is an angle in radians added to the hue, and the sum is wrapped into
+        [0, 2π). :func:`adjust_hue` supplies the RGB-domain wrapper.
+
     Expecting image to be in hsv format already.
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
@@ -274,6 +292,10 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
 def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image.
+
+    Convention:
+        Expects RGB in [0, 1] with channel dimension -3. factor is a hue angle
+        in radians; see :func:`adjust_hue_raw` for the HSV operation.
 
     .. image:: _static/img/adjust_hue.png
 
@@ -319,6 +341,9 @@ def adjust_gamma(
     input: torch.Tensor, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.0
 ) -> torch.Tensor:
     r"""Perform gamma correction on an image.
+
+    Convention:
+        Applies gain * input ** gamma elementwise, then clamps to [0, 1].
 
     .. image:: _static/img/adjust_contrast.png
 
@@ -395,6 +420,10 @@ def adjust_gamma(
 
 def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], clip_output: bool = True) -> torch.Tensor:
     r"""Adjust the contrast of an image torch.Tensor.
+
+    Convention:
+        Contrast is a direct multiplicative scale of RGB values; factor=1
+        preserves input and clip_output controls the final [0, 1] clamp.
 
     .. image:: _static/img/adjust_contrast.png
 
@@ -526,6 +555,9 @@ def adjust_brightness(
 ) -> torch.Tensor:
     r"""Adjust the brightness of an image torch.Tensor.
 
+    Convention:
+        Adds factor to RGB values; clip_output controls the final [0, 1] clamp.
+
     .. image:: _static/img/adjust_brightness.png
 
     This implementation follows Szeliski's book convention, where brightness is defined as
@@ -594,6 +626,10 @@ def adjust_brightness_accumulative(
 ) -> torch.Tensor:
     r"""Adjust the brightness accumulatively of an image torch.Tensor.
 
+    Convention:
+        Multiplies each image by factor; factor=1 preserves it and factor=0
+        produces black, unlike :func:`adjust_brightness` which adds factor.
+
     This implementation follows PIL convention.
 
     The input image and factor is expected to be in the range of [0, 1].
@@ -645,6 +681,9 @@ def adjust_brightness_accumulative(
 def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> torch.Tensor:
     """Adjust sigmoid correction on the input image torch.Tensor.
 
+    Convention:
+        Applies a sigmoid around cutoff; inv selects its complementary curve.
+
     The input image is expected to be in the range of [0, 1].
 
     Reference:
@@ -678,6 +717,10 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
 
 def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_output: bool = True) -> torch.Tensor:
     """Adjust log correction on the input image torch.Tensor.
+
+    Convention:
+        inv selects exponential instead of logarithmic correction; clip_output
+        controls the final [0, 1] clamp.
 
     The input image is expected to be in the range of [0, 1].
 
@@ -752,6 +795,10 @@ def solarize(
     additions: Optional[Union[float, torch.Tensor]] = None,
 ) -> torch.Tensor:
     r"""Add an amount to every pixel, clamp, then invert the pixels at or above a threshold.
+
+    Convention:
+        additions are applied and clamped before values at or above thresholds
+        are inverted about one.
 
     .. image:: _static/img/solarize.png
 
@@ -830,6 +877,11 @@ def solarize(
 @perform_keep_shape_image
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
     r"""Reduce the number of bits for each color channel.
+
+    Convention:
+        Expects values in [0, 1] and quantizes them through 8-bit integers; bits=8 returns the
+        input unchanged. bits is a scalar, (1,), or a leading prefix of the input shape such as
+        (B,) or (B, C).
 
     .. image:: _static/img/posterize.png
 
@@ -924,6 +976,10 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 @perform_keep_shape_image
 def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Apply sharpness to the input torch.Tensor.
+
+    Convention:
+        factor=0 selects the blurred image and factor=1 preserves the input;
+        factor is a float or a (B,) tensor with one value per image.
 
     .. image:: _static/img/sharpness.png
 
@@ -1103,6 +1159,14 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input torch.Tensor.
 
+    Convention:
+        Equalizes each channel of each image independently over [0, 1].
+        :func:`equalize3d` applies the corresponding operation to volumes.
+
+    .. warning::
+        Float16 images larger than about 256x256 return NaN because the histogram counts overflow
+        (`#5220 <https://github.com/kornia/kornia/issues/5220>`_).
+
     .. image:: _static/img/equalize.png
 
     Implements Equalize function from PIL using PyTorch ops based on uint8 format:
@@ -1135,6 +1199,10 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 def equalize3d(input: torch.Tensor) -> torch.Tensor:
     r"""Equalize the values for a 3D volumetric torch.Tensor.
 
+    Convention:
+        Equalizes each channel of each volume independently over [0, 1]; see
+        :func:`equalize` for the image variant and :func:`equalize_clahe` for local tiling.
+
     Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
@@ -1161,6 +1229,10 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
 def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Invert the values of an input image torch.Tensor by its maximum value.
+
+    Convention:
+        Returns max_val - image elementwise. Omitting max_val uses one in the
+        input dtype and device; pass max_val=torch.tensor(255) for uint8 images.
 
     .. image:: _static/img/invert.png
 
@@ -1198,6 +1270,9 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
 
 class AdjustSaturation(nn.Module):
     r"""Adjust color saturation of an image.
+
+    Convention:
+        See :func:`adjust_saturation` for the RGB input and factor policy.
 
     The input image is expected to be an RGB image in the range of [0, 1].
 
@@ -1253,6 +1328,9 @@ class AdjustSaturation(nn.Module):
 
 class AdjustSaturationWithGraySubtraction(nn.Module):
     r"""Adjust color saturation of an image.
+
+    Convention:
+        See :func:`adjust_saturation_with_gray_subtraction` for blending.
 
     It blends the image with its grayscale, ``factor * image + (1 - factor) * gray``, as torchvision and PIL do.
     The input image is expected to be in the range of [0, 1].
@@ -1315,6 +1393,9 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
 class AdjustHue(nn.Module):
     r"""Adjust hue of an image.
 
+    Convention:
+        See :func:`adjust_hue` for RGB input and radians convention.
+
     ``factor`` is in radians: it matches torchvision's ``adjust_hue`` with ``hue_factor = factor / (2 * pi)``.
     The input image is expected to be in the range of [0, 1].
 
@@ -1375,6 +1456,9 @@ class AdjustHue(nn.Module):
 class AdjustGamma(nn.Module):
     r"""Perform gamma correction on an image.
 
+    Convention:
+        See :func:`adjust_gamma` for the elementwise power convention.
+
     The input image is expected to be in the range of [0, 1].
 
     Args:
@@ -1423,6 +1507,9 @@ class AdjustGamma(nn.Module):
 class AdjustContrast(nn.Module):
     r"""Adjust Contrast of an image.
 
+    Convention:
+        See :func:`adjust_contrast` for the multiplicative scale; this module always clips to [0, 1].
+
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
     The input image is expected to be in the range of [0, 1].
 
@@ -1468,6 +1555,9 @@ class AdjustContrast(nn.Module):
 
 class AdjustContrastWithMeanSubtraction(nn.Module):
     r"""Adjust Contrast of an image.
+
+    Convention:
+        See :func:`adjust_contrast_with_mean_subtraction` for its mean blend.
 
     For an RGB image it blends the image with its grayscale mean, ``factor * image + (1 - factor) * mean``, as
     torchvision and PIL do.
@@ -1520,6 +1610,9 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
 class AdjustBrightness(nn.Module):
     r"""Adjust Brightness of an image.
 
+    Convention:
+        See :func:`adjust_brightness` for the additive factor; this module always clips to [0, 1].
+
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
     The input image is expected to be in the range of [0, 1].
 
@@ -1565,6 +1658,9 @@ class AdjustBrightness(nn.Module):
 class AdjustSigmoid(nn.Module):
     r"""Adjust the contrast of an image torch.Tensor or performs sigmoid correction on the input image torch.Tensor.
 
+    Convention:
+        See :func:`adjust_sigmoid` for cutoff and inverse-curve policy.
+
     The input image is expected to be in the range of [0, 1].
 
     Reference:
@@ -1607,6 +1703,9 @@ class AdjustSigmoid(nn.Module):
 class AdjustLog(nn.Module):
     """Adjust log correction on the input image torch.Tensor.
 
+    Convention:
+        See :func:`adjust_log` for logarithmic and inverse behavior.
+
     The input image is expected to be in the range of [0, 1].
 
     Reference:
@@ -1647,6 +1746,10 @@ class AdjustLog(nn.Module):
 
 class AdjustBrightnessAccumulative(nn.Module):
     r"""Adjust Brightness of an image accumulatively.
+
+    Convention:
+        See :func:`adjust_brightness_accumulative` for the multiplicative factor; this module always clips
+        to [0, 1].
 
     It multiplies the image by ``factor``, as torchvision's and PIL's brightness does.
     The input image is expected to be in the range of [0, 1].
@@ -1692,6 +1795,9 @@ class AdjustBrightnessAccumulative(nn.Module):
 
 class Invert(nn.Module):
     r"""Invert the values of an input torch.Tensor by its maximum value.
+
+    Convention:
+        See :func:`invert` for max-value subtraction behavior.
 
     Args:
         input: The input torch.Tensor to invert with an arbitatry shape.
