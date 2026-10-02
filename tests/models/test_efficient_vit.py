@@ -52,6 +52,34 @@ class TestEfficientViT:
             if key.startswith("backbone."):
                 assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
 
+    def test_load_local_checkpoint(self, tmp_path, monkeypatch):
+        state_dict = self._fake_checkpoint()
+        checkpoint = tmp_path / "b1-local.pt"
+        torch.save(state_dict, checkpoint)
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: pytest.fail("local checkpoints must not be downloaded"),
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig(checkpoint=str(checkpoint)))
+
+        for key, val in state_dict.items():
+            if key.startswith("backbone."):
+                assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
+
+    def test_load_failure_preserves_cause(self, monkeypatch):
+        cause = RuntimeError("download failed")
+
+        def fail_download(*args, **kwargs):
+            raise cause
+
+        monkeypatch.setattr("kornia.models.efficient_vit.model.load_state_dict_from_url", fail_download)
+
+        with pytest.raises(RuntimeError, match="Unable to load the model") as exc_info:
+            EfficientViT.from_config(EfficientViTConfig())
+
+        assert exc_info.value.__cause__ is cause
+
     @pytest.mark.parametrize("drift", ["missing", "unexpected"])
     def test_load_pretrained_is_strict(self, monkeypatch, drift):
         # a checkpoint that lacks a backbone entry, or holds one the backbone has no slot for, raises

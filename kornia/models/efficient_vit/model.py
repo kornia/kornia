@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -80,12 +81,16 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         """
         # load the model from the checkpoint
         try:
-            model_file = load_state_dict_from_url(config.checkpoint, map_location="cpu")
+            if os.path.isfile(config.checkpoint):
+                with open(config.checkpoint, "rb") as f:
+                    model_file = torch.load(f, map_location="cpu", weights_only=True)
+            else:
+                model_file = load_state_dict_from_url(config.checkpoint, map_location="cpu")
             model_file = model_file["state_dict"] if "state_dict" in model_file else model_file
-        except RuntimeError:
-            raise RuntimeError(f"Unable to load the model from {config.checkpoint}.") from None
+        except RuntimeError as exc:
+            raise RuntimeError(f"Unable to load the model from {config.checkpoint}.") from exc
 
-        file_name = config.checkpoint.split("/")[-1]
+        file_name = os.path.basename(config.checkpoint)
         model_type = file_name.split("-")[0]
 
         if model_type not in ["b0", "b1", "b2", "b3", "l0", "l1", "l2", "l3"]:
