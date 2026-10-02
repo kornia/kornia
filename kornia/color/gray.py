@@ -36,11 +36,6 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     Convention:
         The singleton channel at axis -3 is repeated into R, G and B. Leading dimensions are preserved.
 
-    .. warning::
-        The result is an expanded view of the input: writing one channel also writes the input and
-        the other channels, and in-place operations over several channels raise
-        (`#5321 <https://github.com/kornia/kornia/issues/5321>`_).
-
     Args:
         image: grayscale image torch.Tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
 
@@ -59,8 +54,8 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     shape = list(image.shape)
     shape[-3] = 3
-    # Use expand to create a view that repeats along channel dimension, no memory overhead.
-    return image.expand(*shape)
+    # Use expand and clone to create independent memory storage.
+    return image.expand(*shape).clone()
 
 
 def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = None) -> torch.Tensor:
