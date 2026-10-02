@@ -219,14 +219,14 @@ add(
     g,
     KE.AddWeighted(torch.full((1, 3, 32, 40), 0.6), torch.full((1, 3, 32, 40), 0.4), torch.full((1, 3, 32, 40), 0.1)),
     [IMG, IMG2],
-    note="tensor alpha/beta/gamma must equal src shape (kornia check); constructed -> constants",
+    note="tensor alpha/beta/gamma must broadcast to src shape (kornia check); constructed -> constants",
 )
 add(
     "enhance.add_weighted[live_weights]",
     g,
     KE.add_weighted,
     [IMG, torch.full((1, 3, 32, 40), 0.6), IMG2, torch.full((1, 3, 32, 40), 0.4), torch.full((1, 3, 32, 40), 0.1)],
-    note="alpha/beta/gamma live tensors (must be full src shape)",
+    note="alpha/beta/gamma live tensors (full src shape here; broadcastable shapes also work)",
 )
 add("enhance.AdjustBrightness", g, KE.AdjustBrightness(0.2), [IMG])
 add("enhance.AdjustBrightnessAccumulative", g, KE.AdjustBrightnessAccumulative(0.2), [IMG])
