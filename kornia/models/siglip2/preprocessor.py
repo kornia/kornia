@@ -62,8 +62,8 @@ class SigLip2ImagePreprocessor(nn.Module):
     ) -> None:
         super().__init__()
         self.image_size = image_size
-        self.mean = torch.tensor([mean]) if isinstance(mean, list | tuple) else mean
-        self.std = torch.tensor([std]) if isinstance(std, list | tuple) else std
+        self.mean = torch.tensor([mean]) if isinstance(mean, (list, tuple)) else mean
+        self.std = torch.tensor([std]) if isinstance(std, (list, tuple)) else std
         self.rescale_factor = rescale_factor
 
         # build preprocessing pipeline
