@@ -27,6 +27,8 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
+from kornia.core.external import PILImage as Image
+from kornia.core.external import numpy as np
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -451,7 +453,20 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
-        # TODO: validate args batching, and its consistency
+        image = next((arg for arg, key in zip(args, data_keys) if key in _IMG_OPTIONS), None)
+        if not isinstance(image, torch.Tensor) or image.ndim not in (3, 4):
+            return
+        image_batch = image.shape[0] if image.ndim == 4 else 1
+        image_size = image.shape[-2:]
+        for mask, key in zip(args, data_keys):
+            if key not in _MSK_OPTIONS or not isinstance(mask, torch.Tensor) or mask.ndim not in (3, 4):
+                continue
+            mask_batch = mask.shape[0] if mask.ndim == 4 else 1
+            if mask_batch not in (1, image_batch) or mask.shape[-2:] != image_size:
+                raise ValueError(
+                    "Image and mask must have matching spatial dimensions and compatible batch sizes "
+                    f"(1 or {image_batch}); got image {tuple(image.shape)} and mask {tuple(mask.shape)}."
+                )
 
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
         # Resolve this call's image dtype before any mask is converted, so a mask that precedes the image in
@@ -659,17 +674,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
                 converted_dict = dict(inputs[0])
                 for key, arg, data_key in zip(keys, args, data_keys):
-                    if _is_numpy_array(arg):
-                        if data_key in _IMG_OPTIONS:
-                            converted_dict[key] = self.to_tensor(arg)
-                        else:
-                            converted_dict[key] = self._convert_numpy_non_image(arg, data_key)
+                    if data_key in _IMG_OPTIONS and _is_numpy_array(arg):
+                        converted_dict[key] = self.to_tensor(arg)
+                    else:
+                        converted_dict[key] = self._convert_non_image(arg, data_key)
                 converted_inputs = (converted_dict,)
             else:
                 data_keys = self.transform_op.preproc_datakeys(kwargs.get("data_keys", self.data_keys))
                 # Arguments beyond the data keys pass through unconverted, so ``forward`` still rejects the count.
                 converted_inputs = tuple(
-                    self._convert_numpy_non_image(arg, data_key) for arg, data_key in zip(inputs, data_keys)
+                    self._convert_non_image(arg, data_key) for arg, data_key in zip(inputs, data_keys)
                 ) + tuple(inputs[len(data_keys) :])
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
             # e.g. We convert only images, etc.
@@ -698,13 +712,21 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
 
-    @staticmethod
-    def _convert_numpy_non_image(arg: Any, data_key: DataKey) -> Any:
-        if not _is_numpy_array(arg) or data_key in _IMG_OPTIONS:
+    def _convert_non_image(self, arg: Any, data_key: DataKey) -> Any:
+        if data_key in _IMG_OPTIONS:
             return arg
         if data_key in _MSK_OPTIONS:
-            return image_to_tensor(arg)
-        return torch.as_tensor(arg)
+            if _is_numpy_array(arg):
+                return image_to_tensor(arg)
+            if isinstance(arg, Image.Image):  # type: ignore
+                return image_to_tensor(np.array(arg))
+            if isinstance(arg, str) and self._is_valid_arg(arg):
+                with Image.open(arg) as mask:  # type: ignore
+                    return image_to_tensor(np.array(mask))
+            return arg
+        if _is_numpy_array(arg):
+            return torch.as_tensor(arg)
+        return arg
 
     def _select_output_image(
         self, output: Any, data_keys: List[DataKey], original_keys: Optional[Tuple[str, ...]]

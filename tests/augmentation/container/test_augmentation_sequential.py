@@ -21,6 +21,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 import torch
+from PIL import Image
 
 import kornia
 import kornia.augmentation as K
@@ -56,6 +57,40 @@ class TestAugmentationSequential:
         assert set(out_mask.unique().tolist()) == {0, 3}
         assert torch.equal(out_boxes, torch.from_numpy(boxes))
         assert torch.equal(out_keypoints, torch.from_numpy(keypoints))
+
+    @pytest.mark.parametrize("as_dict", [False, True])
+    @pytest.mark.parametrize("as_path", [False, True])
+    @pytest.mark.parametrize("mode", ["L", "P"])
+    def test_pil_masks_keep_label_values(self, tmp_path, as_dict, as_path, mode):
+        image = np.zeros((8, 9, 3), dtype=np.uint8)
+        labels = np.zeros((8, 9), dtype=np.uint8)
+        labels[2:5, 1:3] = 3
+        mask = Image.fromarray(labels, mode=mode)
+        if mode == "P":
+            mask.putpalette([0, 0, 0, 128, 0, 0, 0, 128, 0, 128, 128, 0] + [0] * 756)
+        if as_path:
+            mask_path = tmp_path / "mask.png"
+            mask.save(mask_path)
+            mask = str(mask_path)
+
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=None if as_dict else ["input", "mask"])
+        if as_dict:
+            output = aug({"input": image, "mask": mask})
+            out_mask = output["mask"]
+        else:
+            _, out_mask = aug(image, mask)
+
+        assert out_mask.shape == (1, 1, 8, 9)
+        assert out_mask.dtype == torch.uint8
+        assert set(out_mask.unique().tolist()) == {0, 3}
+
+    def test_numpy_mask_with_incompatible_shape_raises(self):
+        image = np.zeros((2, 8, 9, 3), dtype=np.uint8)
+        mask = np.zeros((2, 8, 9), dtype=np.uint8)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input", "mask"])
+
+        with pytest.raises(ValueError, match="Image and mask must have matching spatial dimensions"):
+            aug(image, mask)
 
     @pytest.mark.parametrize(
         "data_keys", ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
