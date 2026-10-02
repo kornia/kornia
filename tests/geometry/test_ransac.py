@@ -17,13 +17,17 @@
 
 
 import math
+import os
+import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import torch
 
 import kornia
 import kornia.geometry.ransac as ransac_module
+from kornia.core._compat import torch_version_lt
 from kornia.geometry import RANSAC, transform_points
 from kornia.geometry._degensac import _h_degenerate_sample
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_from_homogeneous
@@ -33,7 +37,7 @@ from kornia.geometry.epipolar.fundamental import _rank2_projection, _refine_fund
 from kornia.geometry.homography import _refine_homography_lm, _transfer_errors, oneway_transfer_error
 from kornia.geometry.ransac import _normalize_correspondences
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 from testing.casts import dict_to
 from testing.geometry.create import create_dominant_plane_scene
 
@@ -2107,6 +2111,457 @@ class TestRANSACScoring(BaseTester):
         self.assert_close(score, errors.new_tensor([1.75]))
         assert torch.equal(errors.isnan(), original.isnan())
         self.assert_close(errors.nan_to_num(), original.nan_to_num(), rtol=0, atol=0)
+
+
+_COMPILED_MODELS = ["homography", "fundamental", "fundamental_8pt", "essential"]
+_NO_COMPILED_PROGRAM = torch_version_lt(2, 14, 0) or not dynamo_is_available()
+_NO_COMPILED_PROGRAM_REASON = "RANSAC(compile=True) needs torch 2.14 or later"
+
+
+class TestRANSACCompiled(BaseTester):
+    """``compile=True``: the whole of ``local_optimization="lm"`` as one compiled graph.
+
+    Every test that compiles has ``compile`` in its name, which keeps it to the dynamo CI job.
+    """
+
+    def test_graph_mode_rejects_unsupported_configurations(self):
+        if torch_version_lt(2, 14, 0):
+            with pytest.raises(ValueError, match=r"2\.14"):
+                RANSAC("homography", compile=True)
+            return
+        with pytest.raises(ValueError, match="local_optimization"):
+            RANSAC("homography_from_linesegments", compile=True)
+        with pytest.raises(ValueError, match="local_optimization"):
+            RANSAC("homography", local_optimization="dlt", compile=True)
+        with pytest.raises(ValueError, match="prosac"):
+            RANSAC("homography", prosac_sampling=True, compile=True)
+        with pytest.raises(ValueError, match="degensac"):
+            RANSAC("fundamental", degensac=True, compile=True)
+        # Checked before anything is compiled.
+        with pytest.raises(ValueError, match="batches of at most"):
+            RANSAC("homography", batch_size=1 << 21, compile=True)(torch.rand(8, 2), torch.rand(8, 2))
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("model_type", _COMPILED_MODELS)
+    def test_compile_recovers_the_eager_estimate(self, device, dtype, model_type):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the compiled program is checked in float32 and float64")
+        kp1, kp2, _, _, inliers = _scene(model_type, 300, 120, 0.5, seed=1)
+        kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
+        th = _px(model_type, 1.5)
+        _, eager_mask = RANSAC(model_type, inl_th=th, seed=0)(kp1, kp2)
+        model, mask = RANSAC(model_type, inl_th=th, seed=0, compile=True)(kp1, kp2)
+        assert model.shape == (3, 3) and model.dtype == dtype and model.device == kp1.device
+        assert mask.shape == (300,) and mask.dtype == torch.bool and mask.device == kp1.device
+        # The mask holds the inliers of the returned model, as in eager mode.
+        assert torch.equal(mask.cpu(), _model_errors(model_type, model, kp1, kp2) <= th)
+        # The same algorithm with its own random stream: the same consensus up to borderline correspondences.
+        assert (mask & eager_mask).sum() >= 0.98 * eager_mask.sum()
+        assert (mask.cpu() & ~inliers).sum() <= 2
+        assert (mask.cpu() & inliers).sum() >= 0.9 * inliers.sum()
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("artifact", ["0", "1"])
+    @pytest.mark.parametrize("model_type", _COMPILED_MODELS)
+    def test_compile_one_graph_for_every_input(self, monkeypatch, artifact, device, model_type):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        from torch._dynamo.utils import counters
+
+        from kornia.geometry import _ransac_program
+
+        # A fresh program per parametrization: with the on-disk artifact, a guard that an input violates raises.
+        monkeypatch.setenv("KORNIA_RANSAC_AOT", artifact)
+        monkeypatch.setattr(_ransac_program, "_PROGRAMS", {})
+        RANSAC(model_type, seed=0, compile=True)(
+            *(kp.to(device, torch.float32) for kp in _scene(model_type, 50, 10, 0.5, 0)[:2])
+        )
+        graphs = counters["stats"]["unique_graphs"]
+        # Sizes on both sides of inductor's 4096-element float32 reduction threshold, and every per-call number.
+        for n, inl_th, confidence, max_samples in ((9, 2.0, 0.99, 64), (1500, 1.0, 1.0, 300), (5000, 3.0, 0.9, 2000)):
+            kp1, kp2, _, _, _ = _scene(model_type, n, n // 4, 0.3, seed=n)
+            kp1, kp2 = kp1.to(device, torch.float32), kp2.to(device, torch.float32)
+            threshold = _px(model_type, inl_th)
+            ransac = RANSAC(model_type, inl_th=threshold, confidence=confidence, max_samples=max_samples, compile=True)
+            model, mask = ransac(kp1, kp2)
+            assert mask.shape == (n,)
+            assert torch.equal(mask.cpu(), _model_errors(model_type, model, kp1, kp2) <= threshold)
+        assert counters["stats"]["unique_graphs"] == graphs
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_seeded_calls_repeat_and_keep_the_global_generator(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        kp1, kp2, _, _, _ = _planar_scene(200, 80, 0.5, seed=3)
+        kp1, kp2 = kp1.to(device, torch.float32), kp2.to(device, torch.float32)
+        ransac = RANSAC("homography", seed=7, compile=True)
+        cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []
+        state = torch.get_rng_state()
+        first = ransac(kp1.float(), kp2.float())
+        second = ransac(kp1.float(), kp2.float())
+        assert torch.equal(first[0], second[0]) and torch.equal(first[1], second[1])
+        assert torch.equal(torch.get_rng_state(), state)
+        for index, cuda_state in enumerate(cuda_states):
+            assert torch.equal(torch.cuda.get_rng_state(index), cuda_state)
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_seeded_calls_are_thread_safe(self):
+        """Concurrent seeded estimators use private streams and do not perturb another thread's generator."""
+        points = torch.rand(32, 2, generator=torch.Generator().manual_seed(0)) * 100
+
+        def run(seed):
+            return RANSAC(
+                "homography", batch_size=32, max_samples=32, max_lo_iters=0, refine_iters=0, compile=True, seed=seed
+            )(points, points)[0]
+
+        expected = run(7)
+        torch.manual_seed(123)
+        unrelated_expected = torch.rand(32)
+        torch.manual_seed(123)
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            first = executor.submit(run, 7)
+            unrelated = executor.submit(torch.rand, 32)
+            second = executor.submit(run, 7)
+            first, unrelated, second = first.result(), unrelated.result(), second.result()
+        assert torch.equal(first, expected) and torch.equal(second, expected)
+        assert torch.equal(unrelated, unrelated_expected)
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("seed", [0, (1 << 63) - 1, 1 << 63, (1 << 64) - 1])
+    def test_compile_preserves_full_generator_seed_domain(self, monkeypatch, seed):
+        from kornia.geometry import _ransac_program
+
+        captured = []
+
+        def load(key, inputs):
+            captured.append(inputs[-1])
+            return lambda *args: (torch.zeros(3, 3), torch.zeros(len(args[0]), dtype=torch.bool))
+
+        monkeypatch.setattr(_ransac_program, "load_program", load)
+        points = torch.rand(8, 2)
+        RANSAC("homography", compile=True, seed=seed)(points, points)
+        expected = ((seed + (1 << 63)) % (1 << 64)) - (1 << 63)
+        assert captured[0].item() == expected
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("seed", [True, 1.2])
+    def test_compile_rejects_non_integer_seeds_before_compilation(self, monkeypatch, seed):
+        from kornia.geometry import _ransac_program
+
+        monkeypatch.setattr(
+            _ransac_program, "load_program", lambda *args: pytest.fail("invalid seeds must not compile")
+        )
+        points = torch.rand(8, 2)
+        with pytest.raises(TypeError, match="seed must be an integer"):
+            RANSAC("homography", compile=True, seed=seed)(points, points)
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_sampler_hash_matches_its_integer_reference(self, device):
+        """The int64 tensor form of lowbias32 equals the 32-bit integer hash: no signed product overflows."""
+        from kornia.geometry._ransac_program import _mix32
+
+        def lowbias32(x):
+            x ^= x >> 16
+            x = (x * 0x7FEB352D) & 0xFFFFFFFF
+            x ^= x >> 15
+            x = (x * 0x846CA68B) & 0xFFFFFFFF
+            return x ^ (x >> 16)
+
+        values = [0, 1, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF]
+        values += torch.randint(0, 1 << 32, (2000,), generator=torch.Generator().manual_seed(0)).tolist()
+        actual = _mix32(torch.tensor(values, dtype=torch.int64, device=device)).cpu().tolist()
+        assert actual == [lowbias32(v) for v in values]
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_sampler_keys_are_private_reproducible_and_batch_independent(self, device):
+        """A sample's keys are a hash of the seed and the sample's index alone.
+
+        No generator is involved, so seeded calls leave every global generator untouched; batch boundaries do not change
+        the stream; CPU and accelerators draw identical keys; and calls whose seeds differ by a batch offset or by
+        ``2**32`` do not share samples.
+        """
+        from kornia.geometry._ransac_program import _uniform_keys
+
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+
+        def keys(seed, drawn, batch=4, target=device):
+            return _uniform_keys(torch.tensor(seed), torch.tensor(drawn), batch, 8, target)
+
+        cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []
+        state = torch.get_rng_state()
+        for seed in [0, (1 << 63) - 1, -(1 << 63), -1]:
+            first = keys(seed, 0)
+            assert first.dtype == torch.float64 and first.shape == (4, 8)
+            assert bool(((first >= 0) & (first < 1)).all())
+            assert torch.equal(first, keys(seed, 0))
+            assert torch.equal(first.cpu(), keys(seed, 0, target=torch.device("cpu")))
+        assert torch.equal(torch.get_rng_state(), state)
+        for index, cuda_state in enumerate(cuda_states):
+            assert torch.equal(torch.cuda.get_rng_state(index), cuda_state)
+        assert torch.equal(keys(7, 0, 256), torch.cat([keys(7, 0, 128), keys(7, 128, 128)]))
+        assert not torch.equal(keys(0, 128), keys(128, 0))
+        assert not torch.equal(keys(0, 0), keys(1 << 32, 0))
+        assert len({keys(seed, 0, 1)[0, 0].item() for seed in range(256)}) == 256
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_sampler_draws_uniform_subsets(self, device):
+        """Floyd's algorithm, which the program uses on every device: distinct indices, every 4-subset of 10 equally
+        likely (chi-square over the 210 subsets, 209 degrees of freedom, far below 4.5 standard deviations)."""
+        from kornia.geometry._ransac_program import _draw_samples
+
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        draws = 105_000
+        samples = _draw_samples(4, 10, draws, device, torch.tensor(5), torch.tensor(0)).cpu()
+        assert samples.shape == (draws, 4) and samples.min() >= 0 and samples.max() < 10
+        ordered = samples.sort(1).values
+        assert (ordered[:, 1:] != ordered[:, :-1]).all()
+        _, counts = (ordered * torch.tensor([1000, 100, 10, 1])).sum(1).unique(return_counts=True)
+        assert len(counts) == math.comb(10, 4)
+        expected = draws / math.comb(10, 4)
+        assert ((counts - expected) ** 2 / expected).sum() < 209 + 4.5 * math.sqrt(2 * 209)
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_normalizes_autocast_and_keys_ambient_guards(self, monkeypatch):
+        """Artifact guards from ambient defaults do not collide, and caller autocast cannot alter a program."""
+        from kornia.geometry import _ransac_program
+
+        seen = []
+
+        def load(key, inputs):
+            seen.append(key)
+
+            def program(*args):
+                return torch.zeros(3, 3), torch.zeros(len(args[0]), dtype=torch.bool)
+
+            return program
+
+        monkeypatch.setattr(_ransac_program, "load_program", load)
+        points = torch.rand(16, 2)
+        estimator = RANSAC("homography", compile=True, seed=0)
+        original_dtype, original_threads = torch.get_default_dtype(), torch.get_num_threads()
+        changed_threads = 1 if original_threads != 1 else 2
+        try:
+            with torch.autocast("cpu", dtype=torch.bfloat16):
+                with _ransac_program._compiled_autocast_disabled():
+                    assert not torch.is_autocast_enabled("cpu") and not torch.is_autocast_enabled("cuda")
+                estimator(points, points)
+            torch.set_default_dtype(torch.float64)
+            torch.set_num_threads(changed_threads)
+            estimator(points, points)
+        finally:
+            torch.set_default_dtype(original_dtype)
+            torch.set_num_threads(original_threads)
+        assert seen[0][-3:] == (original_threads, original_dtype, str(torch.get_default_device()))
+        assert seen[1][-3:] == (changed_threads, torch.float64, str(torch.get_default_device()))
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_explicit_cpu_controls_ignore_default_device(self, monkeypatch):
+        from kornia.geometry import _ransac_program
+
+        captured = []
+
+        def load(key, inputs):
+            captured.append((key, inputs))
+            return lambda *args: (torch.zeros(3, 3), torch.zeros(len(args[0]), dtype=torch.bool))
+
+        monkeypatch.setattr(_ransac_program, "load_program", load)
+        points = torch.rand(8, 2)
+        original = torch.get_default_device()
+        try:
+            torch.set_default_device("meta")
+            RANSAC("homography", compile=True, seed=0)(points, points)
+        finally:
+            torch.set_default_device(original)
+        assert captured[0][0][-1] == "meta"
+        assert all(control.device.type == "cpu" for control in captured[0][1][2:])
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_caps_cpu_scoring_batches_without_changing_budget(self, monkeypatch):
+        """Large explicit batches are split before their candidate-by-correspondence score matrix grows unbounded."""
+        from kornia.geometry import _ransac_program
+
+        captured = []
+
+        def load(key, inputs):
+            captured.append(inputs)
+            return lambda *args: (torch.zeros(3, 3), torch.zeros(len(args[0]), dtype=torch.bool))
+
+        monkeypatch.setattr(_ransac_program, "load_program", load)
+        num_tc, budget = 100_000, 1_000_000
+        RANSAC("homography", batch_size=budget, max_samples=budget, compile=True)(
+            torch.rand(num_tc, 2), torch.rand(num_tc, 2)
+        )
+        # Homographies have one candidate per sample, so the limit is exactly the residual cap divided by N.
+        expected = ransac_module._COMPILED_CPU_SCORE_RESIDUALS // num_tc
+        assert captured[0][4].item() == budget
+        assert captured[0][5].item() == captured[0][6].item() == expected
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_cpu_score_cap_runs_explicit_confidence_one_budget(self):
+        # This crosses 2**22 residuals at an explicit batch of 256, so CPU compilation splits it into scoring-safe
+        # batches. confidence=1 makes the requested sample budget observable independent of consensus quality.
+        count, budget = (1 << 15) + 1, 256
+        generator = torch.Generator().manual_seed(0)
+        kp1 = torch.rand(count, 2, generator=generator) * 100
+        kp2 = kp1 * 1.1 + 5
+        model, mask = RANSAC(
+            "homography",
+            batch_size=budget,
+            max_samples=budget,
+            confidence=1.0,
+            max_lo_iters=0,
+            refine_iters=0,
+            seed=0,
+            compile=True,
+        )(kp1, kp2)
+        assert torch.isfinite(model).all() and mask.shape == (count,)
+        assert mask.sum() == count
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("error_type", [AssertionError, RuntimeError])
+    def test_compile_artifact_guard_rejection_recovers_with_traced_program(self, error_type):
+        from kornia.geometry._ransac_program import _artifact_or_traced
+
+        calls = {"artifact": 0, "traced": 0}
+
+        def artifact(*args):
+            calls["artifact"] += 1
+            raise error_type("GuardManager rejected ambient dispatch state")
+
+        def traced(*args):
+            calls["traced"] += 1
+            return torch.zeros(3, 3), torch.zeros(len(args[0]), dtype=torch.bool)
+
+        program = _artifact_or_traced(artifact, traced)
+        points = torch.rand(8, 2)
+        with pytest.warns(UserWarning, match="artifact was incompatible"):
+            first = program(points)
+        second = program(points)
+        assert calls == {"artifact": 1, "traced": 2}
+        assert torch.equal(first[0], second[0]) and torch.equal(first[1], second[1])
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_artifact_runtime_error_propagates(self):
+        from kornia.geometry._ransac_program import _artifact_or_traced
+
+        def artifact(*args):
+            raise RuntimeError("a compiled kernel failed")
+
+        def traced(*args):
+            pytest.fail("a runtime kernel failure must not be replayed through the traced program")
+
+        with pytest.raises(RuntimeError, match="kernel failed"):
+            _artifact_or_traced(artifact, traced)(torch.rand(8, 2))
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("artifact", ["0", "1"])
+    def test_compile_reuses_program_across_inference_contexts(self, monkeypatch, artifact, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        from torch._dynamo.utils import counters
+
+        from kornia.geometry import _ransac_program
+
+        monkeypatch.setenv("KORNIA_RANSAC_AOT", artifact)
+        monkeypatch.setattr(_ransac_program, "_PROGRAMS", {})
+        kp1 = torch.rand(100, 2, generator=torch.Generator().manual_seed(0)) * 100
+        kp2 = kp1 * 1.1 + 5
+        kp1, kp2 = kp1.to(device), kp2.to(device)
+        estimator = RANSAC("homography", seed=0, compile=True)
+        expected = estimator(kp1, kp2)
+        # The compiled program disables both autocast dispatch keys internally, so it reuses the same graph here.
+        autocast_dtype = torch.float16 if device.type == "cuda" else torch.bfloat16
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = estimator(kp1, kp2)
+        self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+        assert torch.equal(actual[1], expected[1])
+        graphs = counters["stats"]["unique_graphs"]
+        with torch.inference_mode():
+            inference_kp1, inference_kp2 = kp1.clone(), kp2.clone()
+            for points in ((kp1, kp2), (inference_kp1, inference_kp2)):
+                actual = estimator(*points)
+                self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+                assert torch.equal(actual[1], expected[1])
+        # Inference tensors can also arrive from a caller that already left its inference context.
+        actual = estimator(inference_kp1, inference_kp2)
+        self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+        # A differentiable/noncontiguous input must not invalidate an artifact traced from detached inputs.
+        actual = estimator(kp1.T.contiguous().T.requires_grad_(), kp2.T.contiguous().T.requires_grad_())
+        self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+        assert counters["stats"]["unique_graphs"] == graphs
+        if artifact == "1":
+            # Exercise the disk load, as well as reuse of the in-memory program.
+            monkeypatch.setattr(_ransac_program, "_PROGRAMS", {})
+            with torch.inference_mode():
+                actual = estimator(inference_kp1, inference_kp2)
+            self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+            assert counters["stats"]["unique_graphs"] == graphs
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_no_consensus_returns_the_failure_result(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        # Every sample maps a triangle onto a single point: sample_is_valid_for_homography rejects them all.
+        points1 = (10.0 * torch.rand(16, 2, generator=torch.Generator().manual_seed(123))).to(device)
+        points2 = torch.full((16, 2), 5.0)
+        for compile in (False, True):
+            model, mask = RANSAC("homography", inl_th=0.5, seed=0, compile=compile)(points1, points2.to(device))
+            assert torch.equal(model, torch.zeros(3, 3, device=device))
+            assert not mask.any()
+            # A minimal sample alone is never a consensus.
+            model, mask = RANSAC("homography", seed=0, compile=compile)(points1[:4], 2 * points1[:4])
+            assert torch.equal(model, torch.zeros(3, 3, device=device))
+            assert not mask.any()
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_non_finite_correspondences_are_never_inliers(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        kp1, kp2, _, _, inliers = _planar_scene(200, 40, 0.3, seed=4)
+        kp1, kp2 = kp1.to(device, torch.float32), kp2.to(device, torch.float32)
+        kp1[50], kp2[60, 1], kp2[70, 0] = float("nan"), float("inf"), float("-inf")
+        _, mask = RANSAC("homography", seed=0, compile=True)(kp1, kp2)
+        assert not mask[[50, 60, 70]].any()
+        expected = inliers.to(device).clone()
+        expected[[50, 60, 70]] = False
+        assert (mask & expected).sum() >= 0.95 * expected.sum() and (mask & ~expected).sum() == 0
+
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    def test_compile_artifact_serves_a_new_process(self, tmp_path):
+        script = (
+            "import torch\n"
+            "from torch._dynamo.utils import counters\n"
+            "from kornia.geometry import RANSAC\n"
+            "torch.set_num_threads(int(__import__('os').environ['RANSAC_TEST_THREADS']))\n"
+            "torch.set_default_dtype(getattr(torch, __import__('os').environ['RANSAC_TEST_DTYPE']))\n"
+            "g = torch.Generator().manual_seed(0)\n"
+            "kp1 = torch.rand(300, 2, generator=g, dtype=torch.float32) * 600\n"
+            "kp2 = kp1 * 1.1 + 5\n"
+            "model, mask = RANSAC('homography', seed=0, max_lo_iters=0, refine_iters=0, compile=True)(kp1, kp2)\n"
+            "print(int(mask.sum()), counters['stats']['unique_graphs'])\n"
+        )
+        env = {**os.environ, "TORCHINDUCTOR_CACHE_DIR": str(tmp_path), "KORNIA_RANSAC_AOT": "1"}
+        outputs = []
+        # The first process writes the float32/default one-thread artifact. A different ambient dtype and thread
+        # count must not load an artifact guarded for that process; the third process proves its own key is reusable.
+        for threads, dtype in ((1, "float32"), (2, "float64"), (2, "float64")):
+            result = subprocess.run(  # noqa: S603 - fixed script and interpreter; no shell or external input.
+                [sys.executable, "-c", script],
+                env={**env, "RANSAC_TEST_THREADS": str(threads), "RANSAC_TEST_DTYPE": dtype},
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=600,
+            )
+            outputs.append(result.stdout.split())
+        assert list((tmp_path / "kornia_ransac").glob("*.bin"))
+        assert [output[0] for output in outputs] == ["300"] * 3
+        assert int(outputs[0][1]) >= 1 and int(outputs[1][1]) >= 1 and outputs[2][1] == "0"
 
 
 class TestRANSACDegensacOptions(BaseTester):
