@@ -305,6 +305,18 @@ class TestMS_SSIMLoss(BaseTester):
         assert loss.dtype == torch.float64
         self.assert_close(loss, criterion(img1.double(), img2.double()))
 
+    def test_complex_images_are_not_cast_5351(self, device, dtype):
+        # Only integer and bool images are converted: casting a complex image to the real mask dtype would drop its
+        # imaginary part, so it still raises.
+        g = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 1, 12, 16, generator=g).to(device, dtype)
+        img2 = torch.rand(1, 1, 12, 16, generator=g).to(device, dtype)
+        criterion = kornia.losses.MS_SSIMLoss().to(device, dtype)
+        with pytest.raises(RuntimeError):
+            criterion(img1.to(torch.complex64), img2)
+        with pytest.raises(RuntimeError):
+            criterion(img1, img2.to(torch.complex64))
+
     def test_gradcheck(self, device, dtype):
         # input data
         dtype = torch.float64
