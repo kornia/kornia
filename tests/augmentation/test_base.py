@@ -1158,23 +1158,11 @@ class TestConventionAugmentationBase2D(BaseTester):
         container = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
         assert container(empty).shape == (0, 3, 6, 8)
 
-    @pytest.mark.parametrize(
-        "name,error,message",
-        [
-            ("LongestMaxSize", KeyError, "output_size"),
-            ("RandomAutoContrast", ValueError, "Invalid input tensor, it is empty."),
-        ],
-    )
-    def test_wart_zero_batch_raises_in_two_exception_families_4429(self, name, error, message, device, dtype):
-        # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". These representative
-        # augmentations raise through distinct failure paths; RandomAutoContrast is a deliberate validation
-        # error and the other exposes an implementation detail.
-        builders = {
-            "LongestMaxSize": lambda: K.LongestMaxSize(16, p=1.0),
-            "RandomAutoContrast": lambda: K.RandomAutoContrast(p=1.0),
-        }
-        with pytest.raises(error, match=re.escape(message)):
-            builders[name]()(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
+    def test_wart_zero_batch_raises_a_validation_error_4429(self, device, dtype):
+        # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". RandomAutoContrast raises its
+        # deliberate validation error; the int-size resizes are pinned in the convention test below.
+        with pytest.raises(ValueError, match=re.escape("Invalid input tensor, it is empty.")):
+            K.RandomAutoContrast(p=1.0)(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
 
     @pytest.mark.parametrize(
         ("augmentation", "shape"),
@@ -1182,11 +1170,10 @@ class TestConventionAugmentationBase2D(BaseTester):
             pytest.param(lambda: K.RandomCrop((4, 6), p=1.0), (0, 3, 4, 6), id="RandomCrop"),
             pytest.param(lambda: K.RandomCrop((8, 10), pad_if_needed=True, p=1.0), (0, 3, 8, 10), id="RandomCrop-pad"),
             pytest.param(lambda: K.RandomResizedCrop((4, 4), p=1.0), (0, 3, 4, 4), id="RandomResizedCrop"),
-            pytest.param(
-                lambda: K.LongestMaxSize(16, p=1.0),
-                (0, 3, 12, 16),
-                marks=pytest.mark.xfail(strict=True, raises=KeyError, reason="Tracked in #4429"),
-            ),
+            pytest.param(lambda: K.LongestMaxSize(16, p=1.0), (0, 3, 12, 16), id="LongestMaxSize"),
+            pytest.param(lambda: K.SmallestMaxSize(12, p=1.0), (0, 3, 12, 16), id="SmallestMaxSize"),
+            pytest.param(lambda: K.Resize(10, side="long"), (0, 3, 7, 10), id="Resize-int-long"),
+            pytest.param(lambda: K.Resize(10, side="short"), (0, 3, 10, 13), id="Resize-int-short"),
             pytest.param(
                 lambda: K.RandomAutoContrast(p=1.0),
                 (0, 3, 6, 8),

@@ -30,6 +30,9 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 class ThresholdType(IntEnum):
     """Threshold types compatible with OpenCV fixed thresholding types.
 
+    Convention:
+        These integer values match OpenCV's fixed threshold mode values.
+
     Note: THRESH_OTSU is intentionally not supported in this PR.
     """
 
@@ -50,6 +53,11 @@ def threshold(
     type: Union[int, ThresholdType] = ThresholdType.THRESH_BINARY,
 ) -> Tensor:
     """Apply a fixed-level threshold to each element in the input tensor.
+
+    Convention:
+        The comparison is strict (input > thresh). thresh and maxval broadcast
+        over input after being converted to its dtype and device. Threshold is
+        the module wrapper; ThresholdType supplies the fixed-mode values.
 
     Implements OpenCV-like behavior for the following threshold types:
     - THRESH_BINARY
@@ -120,7 +128,11 @@ def threshold(
 
 
 class Threshold(Module):
-    """Module wrapper for `kornia.enhance.threshold`."""
+    """Module wrapper for `kornia.enhance.threshold`.
+
+    Convention:
+        See threshold for the strict comparison; this module takes scalar thresh and maxval.
+    """
 
     def __init__(
         self,

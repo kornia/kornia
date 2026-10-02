@@ -171,11 +171,10 @@ class TestRgbToHsv(BaseTester):
         self.assert_close(op(img), op_jit(img))
 
     def test_module(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        data = torch.tensor([[[1e-4]], [[0.0]], [[0.0]]], device=device, dtype=dtype)
         ops = kornia.color.RgbToHsv().to(device, dtype)
         fcn = kornia.color.rgb_to_hsv
-        self.assert_close(ops(img), fcn(img))
+        self.assert_close(ops(data), fcn(data))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4

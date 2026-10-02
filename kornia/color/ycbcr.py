@@ -33,6 +33,10 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_ycbcr.png
 
+    Convention:
+        Channels are Y, Cb, Cr at axis -3. RGB inputs and all output channels use unit-range
+        full-range values.
+
     Args:
         image: RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
 
@@ -64,6 +68,10 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
 def rgb_to_y(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to Y.
 
+    Convention:
+        Returns the Y channel from the unit-range full-range YCbCr convention used by
+        rgb_to_ycbcr.
+
     Args:
         image: RGB Image to be converted to Y with shape :math:`(*, 3, H, W)`.
 
@@ -93,6 +101,10 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an YCbCr image to RGB.
 
     The image data is assumed to be in the range of (0, 1).
+
+    Convention:
+        Expects unit-range, full-range Y, Cb, Cr channels at axis -3 as produced by
+        rgb_to_ycbcr. The final RGB result is clamped to [0, 1].
 
     Args:
         image: YCbCr Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -132,6 +144,8 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 class RgbToYcbcr(nn.Module):
     r"""Convert an image from RGB to YCbCr.
 
+    See the Convention block on :func:`rgb_to_ycbcr`.
+
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
@@ -167,6 +181,8 @@ class RgbToYcbcr(nn.Module):
 
 class YcbcrToRgb(nn.Module):
     r"""Convert an image from YCbCr to Rgb.
+
+    See the Convention block on :func:`ycbcr_to_rgb`.
 
     The image data is assumed to be in the range of (0, 1).
 
