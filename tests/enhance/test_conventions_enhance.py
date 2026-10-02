@@ -25,8 +25,7 @@ from testing.base import BaseTester
 
 
 class TestEnhanceConventions(BaseTester):
-    @pytest.mark.xfail(strict=True, reason="#5325: 0-d tensor coefficients are rejected")
-    def test_wart_add_weighted_scalar_tensor_coefficient_5325(self, device, dtype):
+    def test_convention_add_weighted_scalar_tensor_coefficient_5325(self, device, dtype):
         src = torch.arange(6, device=device, dtype=dtype).reshape(2, 3)
         alpha = torch.tensor(0.5, device=device, dtype=dtype)
         self.assert_close(
