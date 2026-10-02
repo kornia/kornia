@@ -51,6 +51,18 @@ def _compute_padding(kernel_size: list[int]) -> list[int]:
     return out_padding
 
 
+def _check_kernel_batch(input: torch.Tensor, kernel: torch.Tensor) -> None:
+    """Check that the kernel batch is 1 or the input batch."""
+    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size,
+    # so a dynamic-shape torch.compile would recompile for each new batch.
+    if kernel.shape[0] not in (1, input.shape[0]):
+        KORNIA_CHECK(
+            False,
+            "The kernel batch must be 1 or the input batch. "
+            f"Got a kernel batch of {kernel.shape[0]} for an input batch of {input.shape[0]}",
+        )
+
+
 def filter2d(
     input: torch.Tensor,
     kernel: torch.Tensor,
@@ -131,11 +143,7 @@ def filter2d(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK_IS_TENSOR(kernel)
     KORNIA_CHECK_SHAPE(kernel, ["B", "H", "W"])
-    KORNIA_CHECK(
-        kernel.shape[0] in (1, input.shape[0]),
-        "The kernel batch must be 1 or the input batch. "
-        f"Got a kernel batch of {kernel.shape[0]} for an input batch of {input.shape[0]}",
-    )
+    _check_kernel_batch(input, kernel)
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
@@ -322,11 +330,7 @@ def filter3d(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "D", "H", "W"])
     KORNIA_CHECK_IS_TENSOR(kernel)
     KORNIA_CHECK_SHAPE(kernel, ["B", "D", "H", "W"])
-    KORNIA_CHECK(
-        kernel.shape[0] in (1, input.shape[0]),
-        "The kernel batch must be 1 or the input batch. "
-        f"Got a kernel batch of {kernel.shape[0]} for an input batch of {input.shape[0]}",
-    )
+    _check_kernel_batch(input, kernel)
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
@@ -455,11 +459,7 @@ def fft_conv(
 
     KORNIA_CHECK_IS_TENSOR(kernel)
     KORNIA_CHECK_SHAPE(kernel, ["B", "H", "W"])
-    KORNIA_CHECK(
-        kernel.shape[0] in (1, input.shape[0]),
-        "The kernel batch must be 1 or the input batch. "
-        f"Got a kernel batch of {kernel.shape[0]} for an input batch of {input.shape[0]}",
-    )
+    _check_kernel_batch(input, kernel)
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,

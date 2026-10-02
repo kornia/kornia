@@ -19,6 +19,7 @@
 import pytest
 import torch
 import torch.nn.functional as F
+from torch._dynamo.testing import CompileCounter
 
 from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError
@@ -1646,6 +1647,36 @@ class TestConventionsFilter2d(BaseTester):
         for fn in (fft_conv, filter2d):
             with pytest.raises(BaseError, match="kernel batch of 4 for an input batch of 1"):
                 fn(image, kernels, border_type="constant")
+
+    @pytest.mark.parametrize("per_sample", [False, True])
+    @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d", "fft_conv"])
+    def test_compile_kernel_batch_check_keeps_the_batch_dynamic_5154(
+        self, name, per_sample, device, dtype, torch_optimizer
+    ):
+        """The kernel batch check does not specialize the batch: one dynamic graph serves every batch (#5154)."""
+        _fft_guard(name, device, dtype)
+        if name == "fft_conv" and torch_version_le(2, 5, 1):
+            pytest.skip("torch 2.5.1 cannot trace torch.fft.rfftn with dynamic shapes")
+        if name == "filter2d_separable":
+
+            def op(x, k):
+                return filter2d_separable(x, k[:, 0], k[:, 1], "constant")
+
+        else:
+            fn = {"filter2d": filter2d, "filter3d": filter3d, "fft_conv": fft_conv}[name]
+
+            def op(x, k):
+                return fn(x, k, "constant")
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        depth = (5,) if name == "filter3d" else ()
+        # no batch equals another axis, so duck sizing cannot tie the batch to it
+        for batch in (2, 4, 6):
+            image = _rand(batch, 3, *depth, 7, 9, device=device, dtype=dtype)
+            kernel = _rand(batch if per_sample else 1, *((3,) if depth else ()), 3, 3, device=device, dtype=dtype)
+            self.assert_close(compiled(image, kernel), op(image, kernel))
+        assert counter.frame_count == 1
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d", "fft_conv"])
     def test_wart_integer_input_truncates_a_fractional_kernel_to_zero_5155(self, name, device, dtype):
