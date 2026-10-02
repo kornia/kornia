@@ -42,6 +42,11 @@ class ZCAWhitening(nn.Module):
     where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the corresponding
     eigenvalues of :math:`\Sigma`. After the transform is applied, the output is reshaped to same shape.
 
+    The fitted mean and transforms are buffers: ``state_dict`` saves them, ``.to()`` moves and casts them, and
+    loading a fitted state into an unfitted module fits it. An unfitted module holds no tensors, so the loaded
+    ones keep the device and dtype they were saved with; move the module after loading. A checkpoint saved
+    before the fitted state was persisted holds none of it, and loading it keeps the current fit.
+
     Args:
         dim: Determines the dimension that represents the samples axis.
         eps: a small number used for numerical stability.
@@ -78,6 +83,9 @@ class ZCAWhitening(nn.Module):
 
     """
 
+    # Version 2 persists the fitted tensors; checkpoints of earlier versions hold none of them.
+    _version: int = 2
+
     def __init__(
         self,
         dim: int = 0,
@@ -110,10 +118,17 @@ class ZCAWhitening(nn.Module):
         unexpected_keys: list[str],
         error_msgs: list[str],
     ) -> None:
+        version = local_metadata.get("version", None)
         for name in ("mean_vector", "transform_matrix", "transform_inv"):
             key = prefix + name
-            if key in state_dict and getattr(self, name) is None:
-                self._buffers[name] = torch.empty_like(state_dict[key])
+            current = self._buffers[name]
+            if key in state_dict:
+                if current is None:
+                    # An unfitted module has no tensor to copy into: take the saved one's shape, dtype and device.
+                    self._buffers[name] = torch.empty_like(state_dict[key])
+            elif current is not None and (version is None or version < 2):
+                # An older checkpoint did not save the fit: keep the current one, so strict loading still works.
+                state_dict[key] = current
 
         super()._load_from_state_dict(
             state_dict,
@@ -142,7 +157,7 @@ class ZCAWhitening(nn.Module):
         self.mean_vector = mean
         self.transform_matrix = T
         if T_inv is None:
-            self.transform_inv = torch.empty([0])
+            self.transform_inv = T.new_empty(0)
         else:
             self.transform_inv = T_inv
 

@@ -137,6 +137,9 @@ class TestZCA(BaseTester):
         assert "transform_inv" in state_dict
         assert state_dict["mean_vector"].shape == zca.mean_vector.shape
         assert state_dict["transform_matrix"].shape == zca.transform_matrix.shape
+        # Without compute_inv the inverse is an empty placeholder, made on the data's device and dtype.
+        assert state_dict["transform_inv"].shape == (0,)
+        assert all(tensor.device == device and tensor.dtype == dtype for tensor in state_dict.values())
 
     def test_unfitted_state_is_empty(self):
         zca = kornia.enhance.ZCAWhitening()
@@ -144,6 +147,8 @@ class TestZCA(BaseTester):
         assert zca.state_dict() == {}
 
     def test_fitted_state_follows_dtype_conversion(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         data = torch.randn(8, 3, device=device, dtype=torch.float32)
         zca = kornia.enhance.ZCAWhitening().fit(data)
 
@@ -159,31 +164,62 @@ class TestZCA(BaseTester):
 
     def test_fitted_state_follows_device_conversion(self, device, dtype):
         data = torch.randn(8, 3, device=device, dtype=dtype)
-        zca = kornia.enhance.ZCAWhitening().fit(data)
+        zca = kornia.enhance.ZCAWhitening(compute_inv=True).fit(data)
 
-        zca.to(device)
+        # The meta device needs no hardware, so every test leg moves the fit off the device it was made on.
+        zca.to("meta")
 
-        assert zca.mean_vector.device == device
-        assert zca.transform_matrix.device == device
-        assert zca.transform_inv.device == device
+        assert zca.mean_vector.device.type == "meta"
+        assert zca.transform_matrix.device.type == "meta"
+        assert zca.transform_inv.device.type == "meta"
 
-        output = zca(data)
+        output = zca(data.to("meta"))
 
-        assert output.device == device
+        assert output.device.type == "meta"
 
     def test_fitted_state_round_trip(self, device, dtype):
         data = torch.randn(8, 3, device=device, dtype=dtype)
 
-        zca = kornia.enhance.ZCAWhitening().fit(data)
+        zca = kornia.enhance.ZCAWhitening(compute_inv=True).fit(data)
         expected = zca(data)
 
-        loaded = kornia.enhance.ZCAWhitening()
+        loaded = kornia.enhance.ZCAWhitening(compute_inv=True)
         result = loaded.load_state_dict(zca.state_dict())
 
         assert result.missing_keys == []
         assert result.unexpected_keys == []
         assert loaded.fitted
         self.assert_close(loaded(data), expected, low_tolerance=True)
+        self.assert_close(loaded.inverse_transform(expected), zca.inverse_transform(expected), low_tolerance=True)
+
+    def test_checkpoint_without_fitted_state_keeps_the_fit(self, device, dtype):
+        data = torch.randn(8, 3, device=device, dtype=dtype)
+        model = torch.nn.Sequential(kornia.enhance.ZCAWhitening().fit(data))
+        expected = model(data)
+
+        # A checkpoint saved before the fitted state was persisted: no ZCA keys and module version 1.
+        checkpoint = torch.nn.Sequential(kornia.enhance.ZCAWhitening()).state_dict()
+        checkpoint._metadata["0"]["version"] = 1
+        result = model.load_state_dict(checkpoint)
+
+        assert result.missing_keys == []
+        assert model[0].fitted
+        self.assert_close(model(data), expected)
+
+        # A plain dict, e.g. one rebuilt with renamed keys, carries no version and is read the same way.
+        assert model.load_state_dict({}).missing_keys == []
+        self.assert_close(model(data), expected)
+
+        # An unfitted module stays unfitted.
+        unfitted = torch.nn.Sequential(kornia.enhance.ZCAWhitening())
+        result = unfitted.load_state_dict(checkpoint)
+        assert result.missing_keys == []
+        assert result.unexpected_keys == []
+        assert not unfitted[0].fitted
+
+        # A checkpoint of this version saved from an unfitted module lacks the keys, and strict loading says so.
+        with pytest.raises(RuntimeError, match="Missing key"):
+            model.load_state_dict(torch.nn.Sequential(kornia.enhance.ZCAWhitening()).state_dict())
 
     def test_unfitted_state_round_trip(self):
         zca = kornia.enhance.ZCAWhitening()
