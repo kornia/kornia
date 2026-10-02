@@ -1455,6 +1455,23 @@ class TestConventionPolynomialSolvers(BaseTester):
         expected = torch.tensor([[10000.0, 20000.0, 30000.0, 40000.0]], device=device, dtype=dtype)
         self.assert_close(out, expected, atol=1e-6, rtol=1e-9)
 
+    def test_quartic_keeps_small_real_roots_next_to_large_complex_pair_5348(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("this issue is specific to float32 resolvent accuracy")
+        # (x - 0.5)(x + 0.25)(x^2 + M): the real roots stay fixed while the other pair grows.
+        values = [1e5, 1e6, 1e7, 1e8]
+        coeffs = torch.tensor(
+            [[1.0, -0.25, value - 0.125, -0.25 * value, -0.125 * value] for value in values],
+            device=device,
+            dtype=dtype,
+        )
+
+        roots = solver.solve_quartic(coeffs)
+
+        assert torch.equal((roots != 0).sum(dim=-1), torch.full((len(values),), 2, device=device))
+        expected = torch.tensor([[-0.25, 0.0, 0.0, 0.5]] * len(values), device=device, dtype=dtype)
+        self.assert_close(roots.sort(dim=-1).values, expected, atol=1e-4, rtol=1e-4)
+
     def test_convention_solve_quartic_tiny_leading_coefficient_real_roots_4954(self, device, dtype):
         if dtype != torch.float32:
             pytest.skip("pinned in float32, where the old absolute tolerance (1e-6) is what this row crosses")

@@ -720,6 +720,12 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # candidates below, because from zero Newton can also stop anywhere |p| is merely small.
     root_candidates = torch.cat([roots1, roots2], dim=-1)
     is_candidate = root_candidates != 0
+    # When Ferrari loses a real pair beside roots at a much larger scale, Newton from zero
+    # needs more than two steps to reach it. Seed placeholders from the quadratic formed by
+    # the middle terms; the full quartic residual below still decides whether each seed is valid.
+    reduced_roots = solve_quadratic(torch.stack((B, C, D), dim=-1))
+    reduced_candidates = torch.cat((reduced_roots, reduced_roots), dim=-1)
+    root_candidates = torch.where(is_candidate, root_candidates, reduced_candidates)
     A_e, B_e, C_e, D_e = (t.unsqueeze(-1) for t in (A, B, C, D))
 
     def quartic(x: torch.Tensor) -> torch.Tensor:
