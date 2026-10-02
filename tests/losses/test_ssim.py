@@ -268,6 +268,43 @@ class TestMS_SSIMLoss(BaseTester):
         assert out.shape == (1, 16, 20)
         self.assert_close(out, loss(img1.flip(-1), img2.flip(-1)).flip(-1))
 
+    @pytest.mark.parametrize(
+        "input_dtype, data_range", [(torch.uint8, 255.0), (torch.int16, 255.0), (torch.int64, 255.0), (torch.bool, 1.0)]
+    )
+    def test_integer_images_are_computed_in_the_mask_dtype_5351(self, device, dtype, input_dtype, data_range):
+        # An integer or bool image is converted to the dtype of the Gaussian masks before filtering, so it gives the
+        # loss of the same values held in that dtype, for two integer images and for one integer and one float image.
+        g = torch.Generator().manual_seed(0)
+        values1 = torch.randint(0, 256, (1, 3, 12, 16), generator=g)
+        values2 = (values1 + torch.randn(1, 3, 12, 16, generator=g) * 40).round().clamp(0, 255).long()
+        if input_dtype is torch.bool:
+            values1, values2 = values1 > 127, values2 > 127
+        img1 = values1.to(device, input_dtype)
+        img2 = values2.to(device, input_dtype)
+        criterion = kornia.losses.MS_SSIMLoss(data_range=data_range).to(device, dtype)
+
+        expected = criterion(img1.to(dtype), img2.to(dtype))
+        assert expected.dtype == dtype
+        assert expected.item() > 0
+
+        loss = criterion(img1, img2)
+        assert loss.dtype == dtype
+        self.assert_close(loss, expected)
+        self.assert_close(criterion(img1, img2.to(dtype)), expected)
+        self.assert_close(criterion(img1.to(dtype), img2), expected)
+
+    def test_integer_images_follow_the_module_dtype_5351(self, device, dtype):
+        # The masks follow the module dtype, so a float64 module computes uint8 images in float64.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img1 = torch.randint(0, 256, (1, 1, 12, 16), device=device, dtype=torch.uint8)
+        img2 = torch.randint(0, 256, (1, 1, 12, 16), device=device, dtype=torch.uint8)
+        criterion = kornia.losses.MS_SSIMLoss(data_range=255.0).to(device, torch.float64)
+
+        loss = criterion(img1, img2)
+        assert loss.dtype == torch.float64
+        self.assert_close(loss, criterion(img1.double(), img2.double()))
+
     def test_gradcheck(self, device, dtype):
         # input data
         dtype = torch.float64

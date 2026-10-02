@@ -70,6 +70,10 @@ class MS_SSIMLoss(nn.Module):
         - Input2: :math:`(N, C, H, W)`.
         - Output: :math:`(N, H, W)` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
 
+    Note:
+        Integer and bool images are converted to the dtype of the Gaussian masks before filtering, float32 unless the
+        module was moved to another floating dtype, so the loss is returned in that dtype.
+
     Examples:
         >>> input1 = torch.rand(1, 3, 5, 5)
         >>> input2 = torch.rand(1, 3, 5, 5)
@@ -188,6 +192,12 @@ class MS_SSIMLoss(nn.Module):
         # A grouped convolution gives each input channel a contiguous block of output channels, so the masks are
         # repeated channel-major: output ``c * S + s`` is channel ``c`` filtered at scale ``s``.
         g_masks: torch.Tensor = torch.jit.annotate(torch.Tensor, self._g_masks).repeat(CH, 1, 1, 1)
+
+        # The masks carry fractional weights, so integer and bool images are filtered in the mask dtype.
+        if not img1.is_floating_point() and not img1.is_complex():
+            img1 = img1.to(g_masks.dtype)
+        if not img2.is_floating_point() and not img2.is_complex():
+            img2 = img2.to(g_masks.dtype)
 
         mux = F.conv2d(img1, g_masks, groups=CH, padding=self.pad)
         muy = F.conv2d(img2, g_masks, groups=CH, padding=self.pad)
