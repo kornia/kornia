@@ -46,14 +46,8 @@ class TestEnhanceConventions(BaseTester):
         expected = torch.tensor([[[0.0], [1.0]], [[1.0], [2.0]]], device=device, dtype=dtype)
         self.assert_close(kornia.enhance.normalize(data, mean, std), expected)
 
-    @pytest.mark.parametrize(
-        "shape",
-        [
-            pytest.param((2, 4), marks=pytest.mark.xfail(strict=True, reason="#5318: C vector indexes missing axis")),
-            pytest.param((2, 4, 3, 2, 2), marks=pytest.mark.xfail(strict=True, reason="#5318: C vector checks depth")),
-        ],
-    )
-    def test_wart_denormalize_is_inverse_for_channel_vector_5318(self, shape, device, dtype):
+    @pytest.mark.parametrize("shape", [(2, 4), (2, 4, 3, 2, 2)])
+    def test_convention_denormalize_is_inverse_for_channel_vector_5318(self, shape, device, dtype):
         data = torch.arange(torch.tensor(shape).prod(), device=device, dtype=dtype).reshape(shape) / 32.0
         mean = torch.tensor([0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         std = torch.tensor([0.5, 0.6, 0.7, 0.8], device=device, dtype=dtype)

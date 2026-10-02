@@ -318,6 +318,32 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
 
 
 class TestDenormalize(BaseTester):
+    @pytest.mark.parametrize("shape", [(2, 4), (2, 4, 3), (2, 4, 3, 2), (2, 4, 3, 2, 1)])
+    @pytest.mark.parametrize("statistics_shape", [(4,), (1, 4), (2, 4)])
+    def test_channel_statistics_5318(self, device, dtype, shape, statistics_shape):
+        data = torch.arange(torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape) / 16
+        mean = torch.arange(torch.Size(statistics_shape).numel(), device=device, dtype=dtype).reshape(statistics_shape)
+        std = torch.arange(1, 5, device=device, dtype=dtype).expand(statistics_shape)
+        broadcast_shape = (statistics_shape[0] if len(statistics_shape) == 2 else 1, 4) + (1,) * (len(shape) - 2)
+        expected = data * std.reshape(broadcast_shape) + mean.reshape(broadcast_shape)
+
+        actual = kornia.enhance.denormalize(data, mean, std)
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.enhance.Denormalize(mean, std)(data), expected)
+        self.assert_close(kornia.enhance.normalize(actual, mean, std), data)
+
+    @pytest.mark.parametrize("shape", [(2, 4), (2, 4, 3), (2, 4, 3, 2), (2, 4, 3, 2, 1)])
+    @pytest.mark.parametrize("statistic", ["mean", "std"])
+    def test_mismatched_channel_statistics_5318(self, device, dtype, shape, statistic):
+        data = torch.ones(shape, device=device, dtype=dtype)
+        statistics = {
+            "mean": torch.zeros(4, device=device, dtype=dtype),
+            "std": torch.ones(4, device=device, dtype=dtype),
+        }
+        statistics[statistic] = torch.ones(3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=f"{statistic} length and number of channels do not match"):
+            kornia.enhance.denormalize(data, **statistics)
+
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
