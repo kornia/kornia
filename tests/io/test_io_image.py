@@ -98,11 +98,17 @@ class TestIoImage:
         assert exc_info.value.__cause__ is not None
         assert str(exc_info.value.__cause__) in str(exc_info.value)
 
-    @pytest.mark.parametrize(("suffix", "error"), [(".png", FileNotFoundError), (".jpg", OSError), (".tiff", OSError)])
+    @pytest.mark.parametrize(("suffix", "error"), [(".png", FileNotFoundError), (".jpg", FileNotFoundError), (".tiff", FileNotFoundError)])
     def test_missing_file_keeps_its_os_error(self, suffix, error, tmp_path: Path) -> None:
         # a missing file is not a decode failure: callers catching FileNotFoundError or OSError keep working
-        with pytest.raises(error):
+        with pytest.raises(error, match=re.escape(f"missing{suffix}")):
             load_image(tmp_path / f"missing{suffix}")
+
+    def test_directory_path_raises_isadirectory_error(self, tmp_path: Path) -> None:
+        # every format path goes through open(), so a directory names itself instead of a bare OSError
+        (tmp_path / "dir.jpg").mkdir()
+        with pytest.raises(IsADirectoryError, match=re.escape("dir.jpg")):
+            load_image(tmp_path / "dir.jpg")
 
     def test_smoke(self, tmp_path: Path) -> None:
         height, width = 4, 5
