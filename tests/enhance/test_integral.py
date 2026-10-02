@@ -51,6 +51,13 @@ class TestIntegralTensor(BaseTester):
         with pytest.raises(Exception, match="unique dimensions"):
             integral_tensor(tensor, dim)
 
+    @pytest.mark.parametrize("dim", [(2,), (-3,), (0, -3)])
+    def test_out_of_range_dimensions(self, device, dtype, dim):
+        # -3 + 2 = -1 is a valid cumsum axis, so a missing bounds check would integrate the last axis silently.
+        tensor = torch.ones(2, 2, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="valid dimensions"):
+            integral_tensor(tensor, dim)
+
     @pytest.mark.parametrize("dim", [(0, 1), (1, 0), (-2, -1)])
     def test_distinct_dimensions(self, device, dtype, dim):
         tensor = torch.ones(2, 2, device=device, dtype=dtype)
