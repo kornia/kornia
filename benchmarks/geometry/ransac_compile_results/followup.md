@@ -151,11 +151,11 @@ case also add `--confidence 1 --max-samples 8192`. For the supplemental F7 case 
 
 | Raw case | Original PR head | Revised implementation |
 | --- | --- | --- |
-| default | [base](eedc9996b-default.json) | [revised](82443d5af-default.json) |
-| fixed-budget | [base](eedc9996b-fixed-budget.json) | [revised](82443d5af-fixed-budget.json) |
-| large-batch | [base](eedc9996b-large-batch.json) | [revised](82443d5af-large-batch.json) |
-| large-fixed-budget | [base](eedc9996b-large-fixed-budget.json) | [revised](82443d5af-large-fixed-budget.json) |
-| f7-seeds | [base](eedc9996b-f7-seeds.json) | [revised](82443d5af-f7-seeds.json) |
+| default | [base](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/eedc9996b-default.json) | [revised](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/82443d5af-default.json) |
+| fixed-budget | [base](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/eedc9996b-fixed-budget.json) | [revised](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/82443d5af-fixed-budget.json) |
+| large-batch | [base](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/eedc9996b-large-batch.json) | [revised](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/82443d5af-large-batch.json) |
+| large-fixed-budget | [base](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/eedc9996b-large-fixed-budget.json) | [revised](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/82443d5af-large-fixed-budget.json) |
+| f7-seeds | [base](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/eedc9996b-f7-seeds.json) | [revised](https://github.com/kornia/kornia/blob/733729055be12f2281625be82f0b4df350e2fc50/benchmarks/geometry/ransac_compile_results/82443d5af-f7-seeds.json) |
 
 ## Validation
 
