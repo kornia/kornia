@@ -292,7 +292,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase | K.MixAugmentationBaseV2 | ImageSequentialBase)):
+            if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2, ImageSequentialBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:

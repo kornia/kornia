@@ -1,0 +1,1 @@
+`ImageSequential` and `AugmentationSequential` compile with `torch.compile(..., fullgraph=True)` on torch 2.5.1 again: their `isinstance` checks use tuples of classes instead of `X | Y` unions, which that version of dynamo cannot trace.

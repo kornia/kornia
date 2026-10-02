@@ -351,3 +351,31 @@ class TestRandomCropCompile(BaseTester):
             [[[0, 0], [size - 1, 0], [size - 1, size - 1], [0, size - 1]]], device=device, dtype=dtype
         )
         self.assert_close(torch_optimizer(aug, fullgraph=True)(input, params=params), input, atol=0, rtol=0)
+
+
+class TestContainerCompile(BaseTester):
+    @pytest.mark.parametrize(
+        "container,data_keys",
+        [
+            (K.ImageSequential, None),
+            (K.AugmentationSequential, ["input"]),
+            (K.AugmentationSequential, ["input", "mask"]),
+        ],
+    )
+    def test_compile_container_features_disabled(self, device, dtype, torch_optimizer, container, data_keys):
+        # Dynamo on torch 2.5.1 cannot trace isinstance() against a PEP 604 union (#5223).
+        kwargs = {} if data_keys is None else {"data_keys": data_keys}
+        aug = container(K.RandomHorizontalFlip(p=1.0), **kwargs)
+        aug.disable_features = True
+        input = torch.rand(1, 3, 4, 6, device=device, dtype=dtype)
+        args = (input,) * len(data_keys or ["input"])
+        counter = CompileCounter()
+        fn = torch_optimizer(aug, backend=counter, fullgraph=True)
+        actual, expected = fn(*args), aug(*args)
+        if len(args) == 1:
+            actual, expected = [actual], [expected]
+        assert len(actual) == len(args)
+        for out, ref in zip(actual, expected, strict=True):
+            self.assert_close(out, ref)
+            self.assert_close(out, input.flip(-1))
+        assert counter.frame_count > 0
