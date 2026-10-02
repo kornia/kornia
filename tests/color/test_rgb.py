@@ -400,6 +400,11 @@ class TestLinearRgb(BaseTester):
     def test_gradient_below_srgb_range(self, device, dtype, value):
         # #5324: an input below -0.055 gives the unselected power arm a negative base, whose NaN gradient
         # survives the `where` mask because 0 * nan is nan. The guard must not depend on the torch version.
+        # float64 keeps the analytic values exact, so the backend has to compute in it; MPS has no float64
+        # at all and XLA runs a float64 request as float32.
+        if device.type == "mps" or "xla" in device.type:
+            pytest.skip(f"{device.type} does not compute in float64")
+
         img = torch.full((1, 3, 1, 1), value, device=device, dtype=torch.float64, requires_grad=True)
         out = kornia.color.rgb_to_linear_rgb(img)
         out.sum().backward()
