@@ -610,9 +610,7 @@ The kernel builders against their references:
   ``cv2.getGaussianKernel(k, sigma)`` and the weights ``scipy.ndimage.gaussian_filter1d`` applies with
   ``radius=k // 2``. :func:`~kornia.filters.get_gaussian_erf_kernel1d` is the pixel-integrated Gaussian and
   :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is Lindeberg's discrete Gaussian,
-  ``scipy.special.ive(abs(n), sigma**2)`` normalized, except for a large ``sigma`` (in float16, any ``sigma`` once
-  ``kernel_size`` is 5 or more), where its Bessel terms drift or overflow
-  (`#5227 <https://github.com/kornia/kornia/issues/5227>`_).
+  ``scipy.special.ive(abs(n), sigma**2)`` normalized.
 - :func:`~kornia.filters.get_hanning_kernel1d` is the symmetric window of ``numpy.hanning(k)``,
   ``scipy.signal.windows.hann(k)`` and ``torch.hann_window(k, periodic=False)``; torch's default periodic window
   differs.

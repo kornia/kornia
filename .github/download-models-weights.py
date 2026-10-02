@@ -172,6 +172,9 @@ MODELS: dict[str, "str | list[str]"] = {
         "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
     ],
     "vit_b-16.pth": "https://huggingface.co/kornia/vit_b16_augreg_i21k_r224/resolve/main/vit_b-16.pth",
+    # ViT-S/32: TestVisionTransformer.test_from_config_pretrained. Its Hub repository is the
+    # one ViT repository off the naming pattern, so the cached copy also guards that URL.
+    "vit_s-32.pth": "https://huggingface.co/kornia/vit_s32_i21k_augreg_i21k_r224/resolve/main/vit_s-32.pth",
     # ALIKED and XFeat: no pytest job builds them pretrained, but
     # ``generate_examples.main`` does, once per docs build, and the docs job
     # restores this same cache.

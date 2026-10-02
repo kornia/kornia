@@ -106,19 +106,6 @@ class HFONNXComunnityModelLoader:
         json_req = ONNXLoader.load_config(self.config_url)
         return PreprocessingLoader.from_json(json_req)
 
-    def _add_metadata(
-        self,
-        model: onnx.ModelProto,  # type:ignore
-        additional_metadata: Optional[dict[str, Any]] = None,
-    ) -> onnx.ModelProto:  # type:ignore
-        if additional_metadata is None:
-            additional_metadata = {}
-        for key, value in additional_metadata.items():
-            metadata_props = model.metadata_props.add()
-            metadata_props.key = key
-            metadata_props.value = str(value)
-        return model
-
 
 class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
     """ONNX model wrapper for Kornia pipelines loaded from onnx-community repositories.

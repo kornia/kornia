@@ -48,7 +48,7 @@ def _cpu_tolerance(dtype: torch.dtype) -> float:
 
 
 class TestGaussianBlurCpu(BaseTester):
-    @pytest.mark.parametrize("border_type", ("constant", "reflect", "replicate", "circular"))
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     def test_helper_matches_separable_convolution_per_sample_kernels(self, border_type, device, dtype):
         _require_native_cpu(device, dtype)
         image = torch.rand(2, 2, 257, 256, device=device, dtype=dtype)
@@ -250,8 +250,8 @@ class TestGaussianBlurCpu(BaseTester):
         assert autocast_output.dtype == autocast_reference.dtype
         self.assert_close(autocast_output, autocast_reference)
 
-    @pytest.mark.parametrize("border_type", ("constant", "reflect", "replicate", "circular"))
-    @pytest.mark.parametrize("has_mkldnn", (False, True))
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
+    @pytest.mark.parametrize("has_mkldnn", [False, True])
     def test_dynamo_large_input_dispatch(self, monkeypatch, device, dtype, torch_optimizer, border_type, has_mkldnn):
         _require_native_cpu(device, dtype)
         monkeypatch.setattr(gaussian_module, "_HAS_MKLDNN", has_mkldnn)

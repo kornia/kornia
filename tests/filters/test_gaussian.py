@@ -146,7 +146,7 @@ def test_get_gaussian_kernel2d_float(ksize_x, ksize_y, sigma, device, dtype):
 
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("sigma", ([[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]))
+@pytest.mark.parametrize("sigma", [[[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]])
 def test_get_gaussian_kernel2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
@@ -174,7 +174,7 @@ def test_get_gaussian_kernel3d_float(ksize_x, ksize_y, ksize_z, sigma, device, d
 @pytest.mark.parametrize("ksize_y", [3, 7])
 @pytest.mark.parametrize("ksize_z", [9, 3])
 @pytest.mark.parametrize(
-    "sigma", ([[1.5, 2.1, 3.5], [1.5, 2.1, 1.5], [5.0, 2.7, 2.1]], [[1.5, 3.5, 2.1], [1.2, 3.5, 2.1]])
+    "sigma", [[[1.5, 2.1, 3.5], [1.5, 2.1, 1.5], [5.0, 2.7, 2.1]], [[1.5, 3.5, 2.1], [1.2, 3.5, 2.1]]]
 )
 def test_get_gaussian_kernel3d_tensor(ksize_x, ksize_y, ksize_z, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
@@ -233,6 +233,71 @@ def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype
     assert_close(actual.sum(), expected.sum())
 
 
+class TestGaussianDiscreteStability(BaseTester):
+    @pytest.mark.parametrize("window_size,sigma", [(19, 3.0), (43, 7.0), (121, 20.0), (5, 100.0)])
+    def test_finite_normalized(self, window_size, sigma, device, dtype):
+        actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+        assert actual.shape == (1, window_size)
+        assert actual.device == device
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual).all()
+        assert (actual >= 0).all()
+        self.assert_close(actual, actual.flip(-1))
+        self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(
+        "sigma,expected",
+        [
+            (1.0, [0.00817354616137807, 0.050050459106933266, 0.208375382589111, 0.4668012242851553]),
+            (7.0, [0.1355957850107771, 0.14276597314552686, 0.14725015016551396, 0.1487761833563642]),
+            (20.0, [0.1419646295228945, 0.1428557999903338, 0.14339318752279784, 0.14357276592794782]),
+        ],
+    )
+    def test_reference(self, sigma, expected, device, dtype):
+        # scipy.special.ive(abs(arange(-3, 4)), sigma**2), divided by its sum.
+        expected = torch.tensor([expected + expected[-2::-1]], device=device, dtype=dtype)
+        actual = get_gaussian_discrete_kernel1d(7, sigma, device=device, dtype=dtype)
+        self.assert_close(actual, expected, atol=1e-6, rtol=1e-5)
+
+    @pytest.mark.parametrize(
+        "window_size,sigma,offsets,expected",
+        [
+            (11, 0.5, [0, 1, 5], [0.7910171688007969, 0.09811262952356505, 1.985756382484167e-07]),
+            (
+                121,
+                20.0,
+                [0, 3, 30, 60],
+                [0.02000335778883414, 0.01977930326376025, 0.006488429408783234, 0.00022284111702319516],
+            ),
+        ],
+    )
+    def test_reference_taps(self, window_size, sigma, offsets, expected, device, dtype):
+        # Reference: scipy.special.ive(abs(arange(window_size) - window_size // 2), sigma**2),
+        # normalized by its sum, then indexed at window_size // 2 + offsets.
+        actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+        taps = actual[0, [window_size // 2 + offset for offset in offsets]]
+        self.assert_close(taps, torch.tensor(expected, device=device, dtype=dtype))
+
+    def test_backward_finite_large_sigma(self, device, dtype):
+        sigma = torch.tensor([[100.0]], device=device, dtype=dtype, requires_grad=True)
+        kernel = get_gaussian_discrete_kernel1d(5, sigma)
+        (kernel * torch.arange(5, device=device, dtype=dtype)).sum().backward()
+        assert torch.isfinite(sigma.grad).all()
+
+    @pytest.mark.parametrize("window_size, sigma", [(5, 0.0), (121, 0.5)])
+    def test_backward_finite_small_sigma(self, window_size, sigma, device, dtype):
+        # The upward-recurrence lanes are computed and discarded here; they must run on a safe placeholder
+        # argument, or their division by sigma**2 (zero, or tiny next to the order) puts NaN in the gradient.
+        sigma = torch.tensor([[sigma]], device=device, dtype=dtype, requires_grad=True)
+        kernel = get_gaussian_discrete_kernel1d(window_size, sigma)
+        (kernel * torch.arange(window_size, device=device, dtype=dtype)).sum().backward()
+        assert torch.isfinite(sigma.grad).all()
+
+    def test_gradcheck(self, device):
+        sigma = torch.tensor([[1.5], [7.0], [20.0]], device=device, dtype=torch.float64)
+        self.gradcheck(get_gaussian_discrete_kernel1d, (7, sigma))
+
+
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
 @pytest.mark.parametrize("sigma", [(1.5, 1.5), (2.1, 2.1)])
@@ -247,7 +312,7 @@ def test_gaussian_blur2d_float(ksize_x, ksize_y, sigma, device, dtype):
 
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("sigma", ([[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]))
+@pytest.mark.parametrize("sigma", [[[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]])
 def test_gaussian_blur2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
