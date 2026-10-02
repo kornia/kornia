@@ -99,7 +99,7 @@ class TestHyperplane(BaseTester):
         p0 = Vector3.random(shape, device, dtype)
         n0 = Vector3.random(shape, device, dtype).normalized()
         pl0 = Hyperplane.from_vector(n0, p0)
-        assert pl0.normal.shape == shape or (3,)
+        assert pl0.normal.shape == ((*shape, 3) if shape is not None else (3,))
         assert pl0.offset.shape == ((*shape,) if shape is not None else ())
 
     def test_serialization(self, device, dtype, tmp_path):
@@ -130,7 +130,7 @@ class TestHyperplane(BaseTester):
         v2 = Vector3.random(shape, device, dtype)
         # TODO: improve api so that we can accept Vector too
         p0 = Hyperplane.through(v0, v1, v2)
-        assert p0.normal.shape == shape or (3,)
+        assert p0.normal.shape == ((*shape, 3) if shape is not None else (3,))
         assert p0.offset.shape == ((*shape,) if shape is not None else ())
 
     def test_through_orthogonal_equal_length_gradient_5056(self, device, dtype):
