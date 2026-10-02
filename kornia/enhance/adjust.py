@@ -257,13 +257,8 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
     r"""Adjust hue of an image.
 
     Convention:
-        Expects HSV. factor is an angle in radians added to the hue.
-        :func:`adjust_hue` supplies the RGB-domain wrapper.
-
-    .. warning::
-        The shifted hue is not wrapped into [0, 2π): a negative sum stays negative
-        (`#5326 <https://github.com/kornia/kornia/issues/5326>`_). :func:`~kornia.color.hsv_to_rgb`
-        accepts either.
+        Expects HSV. factor is an angle in radians added to the hue, and the sum is wrapped into
+        [0, 2π). :func:`adjust_hue` supplies the RGB-domain wrapper.
 
     Expecting image to be in hsv format already.
     """
@@ -285,7 +280,9 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
     # transform the hue value and appl module
     divisor: float = 2 * pi
-    h_out: torch.Tensor = torch.fmod(h + factor, divisor)
+    h_out: torch.Tensor = torch.remainder(h + factor, divisor)
+    # A small negative sum rounds up to the period itself (0 - 1e-8 gives 2π in float32); fold it to 0.
+    h_out = h_out.masked_fill(h_out >= divisor, 0.0)
 
     # pack back back the corrected hue
     out: torch.Tensor = torch.cat([h_out, s, v], dim=-3)

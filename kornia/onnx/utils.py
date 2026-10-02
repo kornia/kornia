@@ -90,9 +90,7 @@ class ONNXLoader(CachedDownloader):
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-            cache_dir = kwargs.get("cache_dir", None) or os.path.join(
-                kornia_config.hub_onnx_dir, model_name.split("/")[0]
-            )
+            cache_dir = kwargs.get("cache_dir") or os.path.join(kornia_config.hub_onnx_dir, model_name.split("/")[0])
             kwargs.update({"cache_dir": cache_dir})
             file_path = cls.download_to_cache(
                 url, model_name.split("/")[1], download=download, suffix=".onnx", **kwargs
@@ -105,7 +103,7 @@ class ONNXLoader(CachedDownloader):
             return onnx.load(file_path)  # type:ignore
 
         if model_name.startswith(("http://", "https://")):
-            cache_dir = kwargs.get("cache_dir", None) or kornia_config.hub_onnx_dir
+            cache_dir = kwargs.get("cache_dir") or kornia_config.hub_onnx_dir
             kwargs.update({"cache_dir": cache_dir})
             file_path = cls.download_to_cache(
                 model_name,

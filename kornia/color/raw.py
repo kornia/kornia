@@ -203,10 +203,6 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         Selects samples into a one-channel Bayer mosaic using the same OpenCV cfa naming as
         raw_to_rgb. The inverse conversion requires even height and width.
 
-    .. warning::
-        Invalid cfa values silently return the green channel instead of being rejected:
-        `#5310 <https://github.com/kornia/kornia/issues/5310>`_.
-
     Args:
         image: RGB image to be converted to bayer raw with shape :math:`(*,3,H,W)`.
         cfa: Which color filter array do we want the output to mimic. I.e. which pixels are red/green/blue.
@@ -242,6 +238,8 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     elif cfa == CFA.GR:
         output[..., :, 1::2, ::2] = image[..., 0:1, 1::2, ::2]  # red
         output[..., :, ::2, 1::2] = image[..., 2:3, ::2, 1::2]  # blue
+    else:
+        raise ValueError(f"Unsupported CFA value. Got {cfa}")
 
     return output
 

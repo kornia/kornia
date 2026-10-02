@@ -23,6 +23,38 @@ import kornia
 from testing.base import BaseTester
 
 
+def _lovasz_grad_reference(foreground_sorted):
+    """Berman's lovasz_grad in float64, with the counts kept as Python integers (foreground_sorted holds 0. and 1.)."""
+    total = int(foreground_sorted.sum().item())
+    seen_foreground = seen_background = 0
+    jaccard = []
+    for value in foreground_sorted.tolist():
+        if value:
+            seen_foreground += 1
+        else:
+            seen_background += 1
+        jaccard.append(1.0 - (total - seen_foreground) / (total + seen_background))
+    out = torch.tensor(jaccard, dtype=torch.float64)
+    out[1:] = out[1:] - out[:-1]
+    return out
+
+
+def _lovasz_softmax_reference(logits, labels, weight=None):
+    """kornia's reduction of Berman's per-image Lovasz-Softmax, evaluated in float64 one sample and class at a time."""
+    probabilities = logits.double().softmax(1)
+    B, C = probabilities.shape[:2]
+    per_class = torch.zeros(C, dtype=torch.float64)
+    for b in range(B):
+        for c in range(C):
+            foreground = (labels[b] == c).double().flatten()
+            errors = (foreground - probabilities[b, c].flatten()).abs()
+            errors_sorted, permutation = errors.sort(descending=True)
+            per_class[c] = per_class[c] + errors_sorted.dot(_lovasz_grad_reference(foreground[permutation])) / B
+    if weight is not None:
+        per_class = per_class * weight.double()
+    return per_class.mean()
+
+
 class TestLovaszSoftmaxLoss(BaseTester):
     def test_smoke(self, device, dtype):
         num_classes = 3
@@ -179,6 +211,46 @@ class TestLovaszSoftmaxLoss(BaseTester):
         loss = kornia.losses.lovasz_softmax_loss(logits, labels)
         self.assert_close(loss.to(dtype), torch.tensor(4 / 9, device=device, dtype=dtype))
         assert torch.isfinite(torch.autograd.grad(loss, logits)[0]).all()
+
+    def test_output_dtype_follows_the_prediction(self, device, dtype):
+        logits = torch.randn(2, 3, 4, 5, device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 5), device=device)
+        weight = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        assert kornia.losses.lovasz_softmax_loss(logits, labels).dtype == dtype
+        assert kornia.losses.lovasz_softmax_loss(logits, labels, weight).dtype == dtype
+        assert kornia.losses.LovaszSoftmaxLoss(weight)(logits, labels).dtype == dtype
+        # the weight dtype is promoted into the output, as in dice_loss
+        promoted = torch.promote_types(dtype, torch.float32)
+        assert kornia.losses.lovasz_softmax_loss(logits, labels, weight.float()).dtype == promoted
+
+    def test_default_dtype_does_not_change_the_loss(self, device, dtype):
+        logits = torch.randn(2, 3, 4, 5, device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 5), device=device)
+        expected = kornia.losses.lovasz_softmax_loss(logits, labels)
+        original = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float32 if original == torch.float64 else torch.float64)
+            loss = kornia.losses.lovasz_softmax_loss(logits, labels)
+        finally:
+            torch.set_default_dtype(original)
+        assert loss.dtype == dtype
+        self.assert_close(loss, expected)
+
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_float64_matches_a_float64_reference(self, device, weighted):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        torch.manual_seed(0)
+        logits = torch.randn(2, 3, 16, 24, device=device, dtype=torch.float64, requires_grad=True)
+        labels = torch.randint(0, 3, (2, 16, 24), device=device)
+        weight = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float64) if weighted else None
+        reference_logits = logits.detach().cpu().clone().requires_grad_()
+        expected = _lovasz_softmax_reference(reference_logits, labels.cpu(), None if weight is None else weight.cpu())
+        expected_grad = torch.autograd.grad(expected, reference_logits)[0]
+        loss = kornia.losses.lovasz_softmax_loss(logits, labels, weight)
+        # the Jaccard weights are exact in float64: only the summation order differs from the reference
+        self.assert_close(loss, expected.to(device), rtol=1e-12, atol=1e-12)
+        self.assert_close(torch.autograd.grad(loss, logits)[0], expected_grad.to(device), rtol=1e-12, atol=1e-15)
 
     def test_gradcheck(self, device, dtype):
         num_classes = 4

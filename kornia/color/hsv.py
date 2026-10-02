@@ -146,10 +146,6 @@ class RgbToHsv(nn.Module):
 
     See the Convention block on :func:`rgb_to_hsv`.
 
-    .. warning::
-        The module default eps is 1e-6 while rgb_to_hsv defaults to 1e-8:
-        `#5309 <https://github.com/kornia/kornia/issues/5309>`_.
-
     The image data is assumed to be in the range of (0, 1).
 
     Args:
@@ -172,7 +168,7 @@ class RgbToHsv(nn.Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def __init__(self, eps: float = 1e-6) -> None:
+    def __init__(self, eps: float = 1e-8) -> None:
         super().__init__()
         self.eps = eps
 

@@ -43,12 +43,11 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         Input is nonlinear sRGB in RGB order at axis -3. Output is CIE L*u*v* with D65 / 2°
         reference white.
 
-    .. warning::
-        Float16 black pixels give NaN u*, v* and gradients: `#5308 <https://github.com/kornia/kornia/issues/5308>`_.
-
     Args:
         image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
-        eps: for numerically stability when dividing.
+        eps: for numerically stability when dividing. For float16 input a positive ``eps`` below
+            :math:`2^{-14}`, the smallest normal float16 value, is raised to it: smaller values underflow to
+            zero or overflow the backward pass.
 
     Returns:
         Luv version of the image with shape :math:`(*, 3, H, W)`.
@@ -63,6 +62,10 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    # float16 cannot represent the default eps, and a too-small eps can overflow its backward.
+    if image.dtype == torch.float16 and eps > 0.0:
+        eps = max(eps, 6.103515625e-05)
 
     # Convert from sRGB to Linear RGB
     lin_rgb = rgb_to_linear_rgb(image)
@@ -101,13 +104,11 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         Input channels are CIE L*, u*, v* at axis -3 with D65 / 2° reference white. The result
         is nonlinear sRGB.
 
-    .. warning::
-        Black float16 input gives NaN output and gradients with the default epsilon:
-        `#5308 <https://github.com/kornia/kornia/issues/5308>`_.
-
     Args:
         image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
-        eps: for numerically stability when dividing.
+        eps: for numerically stability when dividing. For float16 input a positive ``eps`` below
+            :math:`2^{-14}`, the smallest normal float16 value, is raised to it: smaller values underflow to
+            zero or overflow the backward pass.
 
     Returns:
         Luv version of the image with shape :math:`(*, 3, H, W)`.
@@ -122,6 +123,10 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    # float16 cannot represent the default eps, and a too-small eps can overflow its backward.
+    if image.dtype == torch.float16 and eps > 0.0:
+        eps = max(eps, 6.103515625e-05)
 
     L: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]

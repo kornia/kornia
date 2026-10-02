@@ -20,7 +20,10 @@ from typing import List, Optional
 import torch
 import torch.nn.functional as F
 
-__all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "top_hat"]
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ValueCheckError
+
+__all__ = ["bottom_hat", "closing", "dilation", "erosion", "gradient", "opening", "reconstruction", "top_hat"]
 
 
 def _validate_morphology_inputs(
@@ -1097,3 +1100,127 @@ def bottom_hat(
         )
         - tensor
     )
+
+
+def _reconstruct_up(
+    seed: torch.Tensor,
+    mask: torch.Tensor,
+    kernel: torch.Tensor,
+    num_iters: Optional[int],
+    check_every: int,
+    engine: str,
+) -> torch.Tensor:
+    output = torch.minimum(seed, mask)
+
+    if num_iters is not None:
+        for _ in range(num_iters):
+            output = torch.minimum(dilation(output, kernel, engine=engine), mask)
+        return output
+
+    # Each step can only raise a pixel, so the loop has converged once a batch of steps raises none.
+    changed = True
+    while changed:
+        previous = output
+        for _ in range(check_every):
+            output = torch.minimum(dilation(output, kernel, engine=engine), mask)
+        changed = bool((output > previous).any())
+
+    return output
+
+
+def reconstruction(
+    seed: torch.Tensor,
+    mask: torch.Tensor,
+    kernel: Optional[torch.Tensor] = None,
+    method: str = "dilation",
+    num_iters: Optional[int] = None,
+    check_every: int = 4,
+    engine: str = "auto",
+) -> torch.Tensor:
+    r"""Return the morphological reconstruction of ``seed`` bounded by ``mask``, applied to each channel.
+
+    Reconstruction by dilation repeats the geodesic dilation :math:`\min(\delta_B(x), \text{mask})`, starting
+    from :math:`\min(\text{seed}, \text{mask})`, until the result stops changing. Reconstruction by erosion is
+    its dual, :math:`-\text{reconstruction}(-\text{seed}, -\text{mask})`. See L. Vincent, "Morphological
+    grayscale reconstruction in image analysis: applications and efficient algorithms", IEEE TIP 1993.
+    Under autograd every step keeps its intermediates, so memory grows with the number of steps.
+
+    Convention:
+        Matches ``skimage.morphology.reconstruction``: the default ``kernel`` is a :math:`3 \times 3` square,
+        its center cell is always part of the neighborhood, and both methods spread a pixel's value to the
+        kernel's offsets, as :func:`dilation` does. scikit-image's ``dilation`` spreads the other way, but its
+        ``reconstruction`` agrees. The image border is ``geodesic``. Unlike scikit-image, a ``seed`` above
+        ``mask`` (below it for ``"erosion"``) is clipped to ``mask`` instead of raising.
+
+    Args:
+        seed: Floating-point starting image with shape :math:`(B, C, H, W)`.
+        mask: Floating-point image bounding the reconstruction, with the same shape as ``seed``.
+        kernel: Offsets from the center that a pixel's value spreads to in one step, with shape
+            :math:`(k_h, k_w)` and odd sizes. Non-zero cells mark an offset; their magnitude and dtype are
+            ignored. Default: ``None``, which uses a :math:`3 \times 3` square.
+        method: ``"dilation"`` (default) or ``"erosion"``.
+        num_iters: Number of steps to run. Default: ``None``, which runs until the result stops changing.
+            That can take far more steps than :math:`\max(H, W)` when ``mask`` has winding paths. A fixed
+            count always runs that many steps, even past convergence. It has no data-dependent exit, so
+            ``torch.compile`` captures it as one graph, but the loop is unrolled and compile time grows with the
+            count.
+        check_every: Number of steps between convergence checks when ``num_iters`` is ``None``. Each check syncs
+            the device with the host, and steps past convergence are wasted, so a larger value suits inputs that
+            take many steps. For inputs without NaN, the output does not depend on it. Default: ``4``.
+        engine: ``"unfold"``, ``"shift"`` or ``"auto"`` (default), passed to :func:`dilation`. ``"convolution"``
+            is rejected: it is not exact on every backend, and an inexact step can keep the loop from converging.
+
+    Returns:
+        Reconstructed image with shape :math:`(B, C, H, W)` and the promoted dtype of ``seed`` and ``mask``.
+
+    Raises:
+        TypeCheckError: if ``seed``, ``mask`` or ``kernel`` is not a tensor.
+        ShapeError: if ``seed`` is not 4-dimensional, ``mask`` has another shape, or ``kernel`` is not
+            2-dimensional.
+        ValueCheckError: if ``engine`` is ``"convolution"``, also with checks disabled.
+        BaseError: if ``seed`` or ``mask`` is not floating point, a ``kernel`` size is even, ``method`` or
+            ``engine`` is not one of the values above, ``num_iters`` is negative, or ``check_every`` is not
+            positive.
+
+    Example:
+        >>> mask = torch.rand(1, 3, 5, 5)
+        >>> seed = mask * 0.5
+        >>> output = reconstruction(seed, mask)
+
+    """
+    KORNIA_CHECK_IS_TENSOR(seed)
+    KORNIA_CHECK_IS_TENSOR(mask)
+    KORNIA_CHECK_SHAPE(seed, ["B", "C", "H", "W"])
+    KORNIA_CHECK_SAME_SHAPE(seed, mask)
+    KORNIA_CHECK(seed.is_floating_point(), f"`seed` must have a floating-point dtype. Got {seed.dtype}.")
+    KORNIA_CHECK(mask.is_floating_point(), f"`mask` must have a floating-point dtype. Got {mask.dtype}.")
+    KORNIA_CHECK(method in ["dilation", "erosion"], f"Unknown `method`: {method}. Expected 'dilation' or 'erosion'.")
+    # Not a KORNIA_CHECK, which `disable_checks()`, `KORNIA_CHECKS=0` and `python -O` turn off: an inexact
+    # `conv2d` step makes the convergence loop oscillate forever (macOS CPU float32), not return a wrong value.
+    if engine == "convolution":
+        raise ValueCheckError("Unsupported `engine`: convolution. Expected one of ['auto', 'unfold', 'shift'].")
+    KORNIA_CHECK(
+        engine in ["auto", "unfold", "shift"],
+        f"Unsupported `engine`: {engine}. Expected one of ['auto', 'unfold', 'shift'].",
+    )
+    KORNIA_CHECK(num_iters is None or num_iters >= 0, f"`num_iters` must be non-negative. Got {num_iters}.")
+    KORNIA_CHECK(check_every >= 1, f"`check_every` must be positive. Got {check_every}.")
+
+    if kernel is None:
+        kernel = torch.ones(3, 3, device=seed.device, dtype=torch.bool)
+
+    KORNIA_CHECK_IS_TENSOR(kernel)
+    KORNIA_CHECK_SHAPE(kernel, ["KH", "KW"])
+    se_h, se_w = kernel.shape
+    KORNIA_CHECK(se_h % 2 == 1 and se_w % 2 == 1, f"Kernel sizes must be odd. Got {se_h} x {se_w}.")
+
+    # The kernel is only a membership mask, so a bool copy keeps its dtype out of the result. The center cell
+    # keeps each pixel in its own neighborhood, as in scikit-image. It also makes every step non-decreasing,
+    # which the convergence test relies on.
+    kernel = kernel != 0
+    kernel[se_h // 2, se_w // 2] = True
+
+    if method == "erosion":
+        return -_reconstruct_up(-seed, -mask, kernel, num_iters, check_every, engine)
+
+    return _reconstruct_up(seed, mask, kernel, num_iters, check_every, engine)

@@ -19,6 +19,8 @@ from typing import Optional, Tuple
 
 import torch
 
+from kornia.core.exceptions import ShapeError
+
 
 def marginal_pdf(
     values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10
@@ -172,6 +174,12 @@ def histogram2d(
     return joint_pdf(kernel_values1, kernel_values2)
 
 
+def _check_image_rank(image: torch.Tensor) -> None:
+    """Reject the ranks that image_histogram2d does not document instead of failing inside the computation."""
+    if image.dim() < 2 or image.dim() > 4:
+        raise ShapeError(f"Input image must have shape (H, W), (C, H, W) or (B, C, H, W). Got {image.shape}.")
+
+
 def _restore_float_dtype(hist: torch.Tensor, image: torch.Tensor, auto_centers: bool) -> torch.Tensor:
     """Hand back the image's own dtype after wider bin centers promoted the result.
 
@@ -198,19 +206,16 @@ def image_histogram2d(
 
     Convention:
         Spatial axes are the final two axes; input (H, W), (C, H, W), and
-        (B, C, H, W) return matching leading axes followed by bins, except for the single-bin
-        rank-2 case described below. Automatic centers lie at min + (i + 0.5) * bandwidth;
-        values outside the supplied
-        range contribute according to the selected kernel rather than being
-        clipped into an endpoint bin.
+        (B, C, H, W) return matching leading axes followed by bins; other ranks raise. Automatic
+        centers lie at min + (i + 0.5) * bandwidth; values outside the supplied range contribute
+        according to the selected kernel rather than being clipped into an endpoint bin.
 
     .. warning::
-        Rank-2 input with a single bin or explicit center returns scalar histogram and PDF tensors
-        instead of length-one vectors.
-        Rank-1 input returns spurious batch and channel axes, and rank-5 input fails inside the
-        computation (`#5316 <https://github.com/kornia/kornia/issues/5316>`_). An empty range with
-        automatic bandwidth or a zero bandwidth gives NaNs, and bandwidth=-1 is used as a negative
-        bandwidth rather than the automatic one (`#5315 <https://github.com/kornia/kornia/issues/5315>`_).
+        Rank-2 input with a single bin or explicit center returns 0-d histogram and PDF tensors
+        instead of length-one vectors (`#5363 <https://github.com/kornia/kornia/issues/5363>`_). An
+        empty range with automatic bandwidth or a zero bandwidth gives NaNs, and bandwidth=-1 is
+        used as a negative bandwidth rather than the automatic one
+        (`#5315 <https://github.com/kornia/kornia/issues/5315>`_).
 
     The calculation uses triangular kernel density estimation.
 
@@ -238,11 +243,13 @@ def image_histogram2d(
           :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`, if return_pdf is ``True``. torch.Tensor of torch.zeros with shape
-          of the histogram otherwise. For rank-2 input with one bin, both returned tensors are scalars.
+          of the histogram otherwise. For rank-2 input with one bin, both returned tensors are 0-d.
 
     """
     if image is not None and not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}.")
+
+    _check_image_rank(image)
 
     if centers is not None and not isinstance(centers, torch.Tensor):
         raise TypeError(f"Bins' centers type is not a torch.Tensor. Got {type(centers)}.")

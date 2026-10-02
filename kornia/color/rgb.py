@@ -91,8 +91,8 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
     Args:
         image: RGB Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
-        alpha_val (float, torch.Tensor): A float number for the alpha value or a torch.tensor
-          of shape :math:`(*,1,H,W)`.
+        alpha_val (float, torch.Tensor): A float number for the alpha value or a torch.Tensor
+          of shape :math:`(*,1,H,W)` matching the image's leading and spatial dimensions.
 
     Returns:
         RGBA version of the image with shape :math:`(*,4,H,W)`.
@@ -120,6 +120,8 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
     if isinstance(alpha_val, float):
         a = torch.full_like(r, fill_value=float(alpha_val))
+    elif alpha_val.shape != r.shape:
+        raise ValueError(f"alpha_val must have shape {r.shape}. Got {alpha_val.shape}")
 
     return torch.cat([r, g, b, a], dim=-3)
 
@@ -133,7 +135,7 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     Args:
         image: BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
         alpha_val: A float number for the alpha value or a torch.Tensor
-          of shape :math:`(*,1,H,W)`.
+          of shape :math:`(*,1,H,W)` matching the image's leading and spatial dimensions.
 
     Returns:
         RGBA version of the image with shape :math:`(*,4,H,W)`.
@@ -169,11 +171,6 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
         Expects unit-range float RGBA with alpha in [0, 1]; the default background is white (1.0)
         and background_color is a unit-range RGB color.
 
-    .. warning::
-        A rank-3 input with a tuple or list background_color returns a rank-4 result;
-        tensor backgrounds with shape (3, H, W) or (3, 1, 1) preserve rank three
-        (`#5323 <https://github.com/kornia/kornia/issues/5323>`_).
-
     Args:
         image: The RGBA image to be converted, with shape :math:`(*,4,H,W)`.
         background_color: An optional background color. It can be a *tuple or list* of 3 floats,
@@ -205,7 +202,8 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     elif isinstance(background_color, (tuple, list)):
         if len(background_color) != 3:
             raise ValueError("background_color as a list/tuple must have 3 elements (R, G, B).")
-        background_rgb = torch.as_tensor(background_color, device=image.device, dtype=image.dtype).view(-1, 3, 1, 1)
+        # A channel-first color broadcasts over any leading dimensions without adding a batch axis.
+        background_rgb = torch.as_tensor(background_color, device=image.device, dtype=image.dtype).view(3, 1, 1)
 
     elif isinstance(background_color, torch.Tensor):
         if background_color.shape[-3] != 3:
@@ -258,10 +256,6 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
         Converts nonlinear unit-range sRGB to linear RGB channelwise. It is the companion of
         linear_rgb_to_rgb and the required preparation for rgb_to_xyz.
 
-    .. warning::
-        Inputs below -0.055 have NaN gradients
-        (`#5324 <https://github.com/kornia/kornia/issues/5324>`_).
-
     Args:
         image: sRGB Image to be converted to linear RGB of shape :math:`(*,3,H,W)`.
 
@@ -279,7 +273,12 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
 
-    lin_rgb: torch.Tensor = torch.where(image > 0.04045, torch.pow(((image + 0.055) / 1.055), 2.4), image / 12.92)
+    threshold = 0.04045
+    lin_rgb: torch.Tensor = torch.where(
+        image > threshold,
+        torch.pow(((image + 0.055).clamp(min=0.0) / 1.055), 2.4),
+        image / 12.92,
+    )
 
     return lin_rgb
 

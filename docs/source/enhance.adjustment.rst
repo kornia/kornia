@@ -5,10 +5,11 @@ Adjustment
 
 Hue and saturation adjustments and :func:`shift_rgb` take RGB channels at axis -3. Functions
 whose name ends in ``_raw`` take HSV instead; their RGB counterparts perform that conversion.
-Brightness, gamma, logarithmic and sigmoid adjustments, :func:`adjust_contrast`, and
-:func:`threshold` are elementwise and accept any channel count. :func:`sharpness` filters
-neighboring pixels, :func:`equalize` uses each
-channel's histogram, and :func:`adjust_contrast_with_mean_subtraction` uses an image mean.
+Brightness, gamma, logarithmic and sigmoid adjustments, :func:`adjust_contrast`, :func:`invert`,
+:func:`posterize`, :func:`solarize` and :func:`threshold` are elementwise and accept any channel
+count. :func:`sharpness` filters neighboring pixels and
+:func:`adjust_contrast_with_mean_subtraction` subtracts an image mean, so their output also
+depends on the rest of the image.
 
 Functions
 ---------

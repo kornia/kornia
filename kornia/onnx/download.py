@@ -86,8 +86,8 @@ class CachedDownloader:
                 if the body is shorter than its ``Content-Length`` (see ``download``).
         """
         if url.startswith(("http:", "https:")):
-            cache_dir = kwargs.get("cache_dir", None)
-            suffix = kwargs.get("suffix", None)
+            cache_dir = kwargs.get("cache_dir")
+            suffix = kwargs.get("suffix")
             file_path = cls._get_file_path(name, cache_dir, suffix=suffix)
             cls.download(url, file_path, download_if_not_exists=download)
             return file_path
