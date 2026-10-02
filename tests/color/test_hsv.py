@@ -49,6 +49,23 @@ class TestRgbToHsv(BaseTester):
         with pytest.raises(ValueError):
             assert kornia.color.rgb_to_hsv(img)
 
+    def test_hue_period_endpoint(self, device, dtype):
+        # A tiny negative hue can round to the excluded upper endpoint after modulo.
+        delta = torch.finfo(dtype).eps
+        image = torch.tensor([[1.0, 1.0, 1.0], [0.0, delta, 0.0], [delta, 0.0, 0.0]], device=device, dtype=dtype)
+        image = image.reshape(1, 3, 1, 3)
+        hsv = kornia.color.rgb_to_hsv(image)
+        hue = hsv[:, 0]
+        assert hue[0, 0, 0] == 0
+        assert hue[0, 0, 1] > 0
+        assert hue[0, 0, 2] == 0
+        assert torch.all((hue >= 0) & (hue < 2 * math.pi))
+        self.assert_close(kornia.color.hsv_to_rgb(hsv), image)
+        # This hue is the largest below one turn, 1 - delta / 2. In float16, 2π * (1 - 2**-11) rounds to 6.28125,
+        # float16's 2π, only when scaled to radians; the comparison rounds 2π to the dtype, as adjust_hue_raw does.
+        near_seam = torch.tensor([1.0, 0.0, 3 * delta], device=device, dtype=dtype).view(1, 3, 1, 1)
+        assert kornia.color.rgb_to_hsv(near_seam)[0, 0, 0, 0] < 2 * math.pi
+
     def test_unit(self, device, dtype):
         data = torch.tensor(
             [
