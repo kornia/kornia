@@ -226,6 +226,7 @@ select = [
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
+  "SIM114",  # if-with-same-arms
   "SIM222",  # expr-or-true
   "SIM910",  # dict-get-with-none-default
   "SLOT",  # flake8-slots
