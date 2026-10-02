@@ -282,12 +282,11 @@ NOT_PREFETCHED: dict[str, str] = {
     "b1-r288.pt": "test_config only checks the URL string; nothing downloads it",
     "b2-r288.pt": "test_config only checks the URL string; nothing downloads it",
     "b3-r288.pt": "test_config only checks the URL string; nothing downloads it",
-    # ViT: the from_config doctest builds vit_b/16, which is prefetched.
+    # ViT: the from_config doctest builds vit_b/16 and a pretrained test builds vit_s/32; both are prefetched.
     "vit_l-16.pth": "no test or doctest selects this ViT variant",
     "vit_s-16.pth": "no test or doctest selects this ViT variant",
     "vit_ti-16.pth": "no test or doctest selects this ViT variant",
     "vit_b-32.pth": "no test or doctest selects this ViT variant",
-    "vit_s-32.pth": "no test or doctest selects this ViT variant",
 }
 
 

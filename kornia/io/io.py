@@ -88,22 +88,27 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
-    if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-        img = _rs_io.read_image_jpegturbo(str(path_file))
-    elif path_file.suffix.lower() == ".png":
-        # None (truncated/invalid header) intentionally falls through to read_image
-        bit_depth, color_type = _read_png_header(path_file) or (None, None)
-        mode = _PNG_COLOR_TYPE_TO_MODE.get(color_type)
-        if mode is None or mode == "rgb":
-            # RGB is the default of read_image; use it for unknown types too
-            img = _rs_io.read_image(str(path_file))
-        elif bit_depth == 16:
-            # the u8 reader rejects a 16-bit buffer; UNCHANGED loads keep it as uint16
-            img = _rs_io.read_image_png_u16(str(path_file), mode)
+    try:
+        if path_file.suffix.lower() in [".jpg", ".jpeg"]:
+            img = _rs_io.read_image_jpegturbo(str(path_file))
+        elif path_file.suffix.lower() == ".png":
+            # None (truncated/invalid header) intentionally falls through to read_image
+            bit_depth, color_type = _read_png_header(path_file) or (None, None)
+            mode = _PNG_COLOR_TYPE_TO_MODE.get(color_type)
+            if mode is None or mode == "rgb":
+                # RGB is the default of read_image; use it for unknown types too
+                img = _rs_io.read_image(str(path_file))
+            elif bit_depth == 16:
+                # the u8 reader rejects a 16-bit buffer; UNCHANGED loads keep it as uint16
+                img = _rs_io.read_image_png_u16(str(path_file), mode)
+            else:
+                img = _rs_io.read_image_png_u8(str(path_file), mode)
         else:
-            img = _rs_io.read_image_png_u8(str(path_file), mode)
-    else:
-        img = _rs_io.read_image(str(path_file))
+            img = _rs_io.read_image(str(path_file))
+    except OSError:
+        raise  # a missing or unreadable file keeps its specific type (FileNotFoundError, PermissionError, ...)
+    except Exception as e:
+        raise ValueError(f"Failed to decode image '{path_file}': {e}") from e
 
     # convert the image to torch.Tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
@@ -189,6 +194,11 @@ def load_image(
 
     Return:
         Image torch.Tensor with shape :math:`(3,H,W)`.
+
+    Raises:
+        ValueError: if the file cannot be decoded, for example a truncated or corrupt image or an unsupported format.
+            The message names the file and keeps the decoder's reason; the decoder's exception is the ``__cause__``.
+        OSError: if the file cannot be read, for example ``FileNotFoundError`` when it does not exist.
 
     """
     if not isinstance(path_file, Path):

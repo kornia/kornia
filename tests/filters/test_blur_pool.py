@@ -137,6 +137,13 @@ class TestMaxBlurPool(BaseTester):
 
 
 class TestBlurPool(BaseTester):
+    @pytest.mark.parametrize("kernel_size", [5, 7, 9, 11, 17])
+    @pytest.mark.parametrize("op", [blur_pool2d, max_blur_pool2d, edge_aware_blur_pool2d])
+    def test_large_kernel_matches_float32(self, kernel_size, op, device, dtype):
+        data = torch.ones(1, 2, 32, 32, device=device, dtype=dtype)
+        expected = op(data.float(), kernel_size).to(dtype)
+        self.assert_close(op(data, kernel_size), expected)
+
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("stride", [1, 2])
     def test_smoke(self, kernel_size, stride, device, dtype):

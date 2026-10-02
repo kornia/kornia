@@ -104,6 +104,61 @@ class TestApplyColorMap(BaseTester):
 
         self.gradcheck(apply_colormap, (input_tensor, cm))
 
+    def test_preserves_input_shape(self, device):
+        cm = ColorMap(
+            base="autumn",
+            num_colors=256,
+            device=device,
+            dtype=torch.float32,
+        )
+        input_tensor = torch.zeros(1, 2, 3, device=device, dtype=torch.float32)
+        original = input_tensor.clone()
+
+        apply_colormap(input_tensor, cm)
+
+        assert input_tensor.shape == original.shape
+        self.assert_close(input_tensor, original)
+
+    def test_preserves_float_values(self, device):
+        cm = ColorMap(
+            base="autumn",
+            num_colors=256,
+            device=device,
+            dtype=torch.float32,
+        )
+        input_tensor = torch.tensor(
+            [[[0.0, 255.0]]],
+            device=device,
+            dtype=torch.float32,
+        )
+        original = input_tensor.clone()
+
+        apply_colormap(input_tensor, cm)
+
+        self.assert_close(input_tensor, original)
+
+    def test_accepts_leaf_tensor_requires_grad(self, device):
+        cm = ColorMap(
+            base="autumn",
+            num_colors=256,
+            device=device,
+            dtype=torch.float32,
+        )
+        input_tensor = torch.ones(
+            1,
+            1,
+            2,
+            3,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+
+        output = apply_colormap(input_tensor, cm)
+
+        assert output.shape == (1, 3, 2, 3)
+        assert input_tensor.requires_grad
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         op = apply_colormap
         op_script = torch_optimizer(op)
