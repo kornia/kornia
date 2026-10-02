@@ -441,10 +441,12 @@ def crop_by_indices(
           the batch — each row's output depends only on its own box.
 
     .. note::
-        When exporting, ``size`` is required and the crop is always resampled with
-        ``align_corners=True``. During ``torch.compile``, the tensorized crop path is used
-        when ``size`` is given, ``antialias=False``, and ``shape_compensation='resize'``.
-        Other combinations retain the eager path.
+        Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'``,
+        ``'bicubic'`` or ``'nearest'`` interpolation, ``antialias=False`` and
+        ``shape_compensation='resize'`` is cropped by a gather that keeps the box coordinates
+        on the device, so it traces with ``fullgraph=True`` and matches the eager result up to
+        float rounding. Every other call keeps the eager path, which reads the box coordinates
+        back to Python and breaks the graph. Graph export is described in the note below.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -492,7 +494,16 @@ def crop_by_indices(
 
     if size is not None and is_exporting():
         return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
-    if size is not None and is_compiling() and not antialias and shape_compensation == "resize":
+    if (
+        size is not None
+        and is_compiling()
+        and B > 0
+        and (interpolation in ("bilinear", "bicubic") or (interpolation == "nearest" and align_corners is None))
+        and not antialias
+        and shape_compensation == "resize"
+    ):
+        # ``_compiled_slice_resize`` implements only these three modes (any other one would be resampled as
+        # bicubic) and cannot gather from an empty batch; ``interpolate`` rejects ``align_corners`` for nearest.
         return _compiled_slice_resize(input_tensor, src_box, size, interpolation, align_corners)
 
     # Move the four coordinate columns to Python in a single device sync (one ``tolist`` over a

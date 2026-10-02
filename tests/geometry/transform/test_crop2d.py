@@ -619,6 +619,32 @@ class TestCropByIndices(BaseTester):
 
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize(
+        ("batch", "interpolation"),
+        [(1, "area"), (1, "nearest-exact"), (0, "bilinear")],
+    )
+    def test_dynamo_resized_keeps_eager_path(self, batch, interpolation, device, dtype, torch_optimizer):
+        # The compiled gather implements bilinear, bicubic and nearest only, and needs a box to gather from:
+        # other modes and an empty batch must keep the eager path instead of being resampled as bicubic.
+        op = kornia.geometry.transform.crop_by_indices
+        img = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 8, 8).repeat(batch, 1, 1, 1)
+        src_box = torch.tensor([[[1, 1], [4, 1], [4, 4], [1, 4]]] * batch, device=device, dtype=torch.int64)
+        src_box = src_box.reshape(batch, 4, 2)
+
+        expected = op(img, src_box, size=(6, 6), interpolation=interpolation)
+        actual = torch_optimizer(op)(img, src_box, size=(6, 6), interpolation=interpolation)
+
+        assert actual.shape == (batch, 1, 6, 6)
+        self.assert_close(actual, expected)
+
+    def test_dynamo_resized_nearest_rejects_align_corners(self, device, dtype, torch_optimizer):
+        # ``interpolate`` rejects ``align_corners`` for nearest; the compiled crop must not accept it silently.
+        img = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        src_box = torch.tensor([[[1, 1], [4, 1], [4, 4], [1, 4]]], device=device, dtype=torch.int64)
+        op = torch_optimizer(kornia.geometry.transform.crop_by_indices)
+        with pytest.raises((ValueError, RuntimeError), match="align_corners option can only be set"):
+            op(img, src_box, size=(6, 6), interpolation="nearest", align_corners=True)
+
     @pytest.mark.parametrize("size", [(2, 3), None])
     def test_crop_by_indices_empty_batch(self, size, device, dtype):
         # Empty in, empty out (#4429): the uniform-box fast path read the first box of an empty batch
