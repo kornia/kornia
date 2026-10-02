@@ -69,6 +69,7 @@ def ssim(
        The ssim index map with shape :math:`(B, C, H, W)`.
 
     Note:
+        Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
 
@@ -95,6 +96,12 @@ def ssim(
 
     if not img1.shape == img2.shape:
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
+
+    # Preserve fractional Gaussian weights and avoid integer moment overflow.
+    if not img1.is_floating_point() and not img1.is_complex():
+        img1 = img1.to(torch.float32)
+    if not img2.is_floating_point() and not img2.is_complex():
+        img2 = img2.to(torch.float32)
 
     output_dtype = torch.promote_types(img1.dtype, img2.dtype)
     # Half-precision moments can overflow before the SSIM ratio is formed.
