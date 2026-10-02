@@ -20,7 +20,7 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.core.utils import is_compiling
+from .adjust import _assert_async_value_check
 
 
 def marginal_pdf(
@@ -58,8 +58,9 @@ def marginal_pdf(
     if not sigma.dim() == 0:
         raise ValueError(f"Input sigma must be a of the shape 1. Got {sigma.shape}")
 
-    if not torch.jit.is_scripting() and not is_compiling() and (not torch.isfinite(sigma) or sigma <= 0):
-        raise ValueError("Bandwidth must be finite and greater than zero.")
+    # Asynchronous like the other tensor-parameter checks in kornia.enhance: no host sync, and a compiled graph
+    # keeps the check instead of skipping it.
+    _assert_async_value_check(torch.isfinite(sigma) & (sigma > 0), "Bandwidth must be finite and greater than zero.")
 
     residuals = values - bins.unsqueeze(0).unsqueeze(0)
     kernel_values = torch.exp(-0.5 * (residuals / sigma).pow(2))
@@ -176,6 +177,11 @@ def _restore_float_dtype(hist: torch.Tensor, image: torch.Tensor, auto_centers: 
     return hist
 
 
+def _is_finite(value: float) -> bool:
+    """Same as ``math.isfinite``, but traceable when Dynamo turns a changed float argument into a symbolic float."""
+    return -math.inf < value < math.inf
+
+
 def _validate_histogram_bandwidth(
     min: float, max: float, n_bins: int, bandwidth: Optional[float], auto_centers: bool
 ) -> float:
@@ -184,7 +190,7 @@ def _validate_histogram_bandwidth(
     if auto_centers or auto_bandwidth:
         if n_bins <= 0:
             raise ValueError(f"n_bins must be greater than zero for automatically generated values. Got {n_bins}.")
-        if not math.isfinite(min) or not math.isfinite(max) or max <= min:
+        if not _is_finite(min) or not _is_finite(max) or max <= min:
             raise ValueError(
                 f"The automatically generated histogram range must be finite and non-empty. Got [{min}, {max}]."
             )
@@ -192,7 +198,7 @@ def _validate_histogram_bandwidth(
     if bandwidth is None or bandwidth == -1.0:
         bandwidth = (max - min) / n_bins
 
-    if not math.isfinite(bandwidth) or bandwidth <= 0.0:
+    if not _is_finite(bandwidth) or bandwidth <= 0.0:
         raise ValueError(f"Bandwidth must be finite and greater than zero. Got {bandwidth}.")
     return bandwidth
 
