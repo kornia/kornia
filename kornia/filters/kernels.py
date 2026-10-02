@@ -211,7 +211,10 @@ def gaussian_discrete_erf(
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
     batch_size = sigma.shape[0]
 
-    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - window_size // 2).expand(batch_size, -1)
+    # Centre the window at (window_size - 1) / 2: the middle tap of an odd window, and halfway between the two
+    # middle taps of an even one, as the sampled kernel in `gaussian` is.
+    centre = (window_size - 1) / 2
+    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - centre).expand(batch_size, -1)
 
     t = 0.70710678 / sigma.abs()
     # t = torch.tensor(2, device=sigma.device, dtype=sigma.dtype).sqrt() / (sigma.abs() * 2)
@@ -338,7 +341,7 @@ def gaussian_discrete(
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     Args:
-        window_size: the size which drives the filter amount.
+        window_size: the size which drives the filter amount. It must be odd.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
@@ -352,17 +355,19 @@ def gaussian_discrete(
         sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
+    # The discrete Gaussian is defined at the integer offsets of the taps from the centre tap, so there is no even
+    # window: the window must be odd, and holds the offsets 0 .. window_size // 2 on either side of the centre.
+    KORNIA_CHECK(window_size % 2 == 1, f"The discrete Gaussian kernel needs an odd window. Got {window_size}")
 
     output_dtype = sigma.dtype
     if sigma.dtype in (torch.float16, torch.bfloat16):
         sigma = sigma.float()
     sigma2 = sigma * sigma
     tail = int(window_size // 2) + 1
-    bessels = [
-        _modified_bessel_0(sigma2, scaled=True),
-        _modified_bessel_1(sigma2, scaled=True),
-        *(_modified_bessel_i(k, sigma2, scaled=True, max_order=tail) for k in range(2, tail)),
-    ]
+    bessels = [_modified_bessel_0(sigma2, scaled=True)]
+    if tail > 1:
+        bessels.append(_modified_bessel_1(sigma2, scaled=True))
+    bessels.extend(_modified_bessel_i(k, sigma2, scaled=True, max_order=tail) for k in range(2, tail))
     # The exp(-sigma²) factor is already included in the scaled Bessel terms.
     out = torch.cat(bessels[:0:-1] + bessels, -1)
 
@@ -804,20 +809,20 @@ def get_gaussian_discrete_kernel1d(
           kernel is Lindeberg's discrete Gaussian :math:`e^{-\sigma^2} I_{|n|}(\sigma^2)`, with :math:`I_n` the
           modified Bessel function of the first kind, normalized over the window: the smoothing kernel of discrete
           scale space. A float16 or bfloat16 kernel is computed in float32 and rounded to its ``dtype``.
-        - Known defect: the tap count is not always ``kernel_size``. ``kernel_size=1`` gives 3 taps, and an even
-          size with ``force_even=True`` gives one more than asked
-          (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
+        - The kernel has ``kernel_size`` taps, and ``kernel_size=1`` is the single tap ``[1.0]``. The discrete
+          Gaussian is defined at integer offsets from the centre tap, so there is no even window: an even
+          ``kernel_size`` raises with and without ``force_even``.
 
     Args:
         kernel_size: filter size. It should be odd and positive.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
-        force_even: overrides requirement for odd kernel size.
+        force_even: accepted for parity with the other Gaussian builders. The discrete Gaussian needs an odd
+            ``kernel_size`` either way.
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
     Returns:
-        1D tensor with gaussian filter coefficients. With shape :math:`(B, \text{kernel_size})` for an odd
-        ``kernel_size`` greater than 1 (see the known defects).
+        1D tensor with gaussian filter coefficients. Shape :math:`(B, \text{kernel_size})`
 
     Examples:
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
@@ -851,8 +856,8 @@ def get_gaussian_erf_kernel1d(
           kernel integrates the Gaussian over each pixel, :math:`\Phi((n + 1/2) / \sigma) - \Phi((n - 1/2) / \sigma)`
           with :math:`\Phi` the normal CDF, so it blurs more than the sampled kernel: for :math:`\sigma` of
           about 1 or more, on a window wide enough for the tails, its variance is :math:`\sigma^2 + 1/12`.
-        - Known defect: with ``force_even=True`` an even kernel is centred on tap ``kernel_size // 2`` instead of
-          the middle of the window, so it is not symmetric (`#5158 <https://github.com/kornia/kornia/issues/5158>`_).
+        - With ``force_even=True`` an even kernel is symmetric about the middle of the window,
+          ``(kernel_size - 1) / 2``, as the sampled kernel is.
 
     Args:
         kernel_size: filter size. It should be odd and positive.
