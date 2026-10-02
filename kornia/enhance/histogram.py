@@ -115,11 +115,9 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
     Convention:
         Rows are independent samples: x has shape (B, D), bins is the shared
         one-dimensional center grid, and the result has shape (B, N_bins).
-        histogram2d uses the same batch convention for a joint density.
-
-    .. warning::
-        A zero bandwidth produces NaNs instead of a validation error
-        (`#5315 <https://github.com/kornia/kornia/issues/5315>`_).
+        histogram2d uses the same batch convention for a joint density. bandwidth must be
+        finite and positive; the check runs on CPU and CUDA via ``torch._assert_async`` and
+        raises ``RuntimeError``. kornia skips it on MPS by design, so invalid values do not raise there.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -245,10 +243,7 @@ def image_histogram2d(
 
     .. warning::
         Rank-2 input with a single bin or explicit center returns 0-d histogram and PDF tensors
-        instead of length-one vectors (`#5363 <https://github.com/kornia/kornia/issues/5363>`_). An
-        empty range with automatic bandwidth or a zero bandwidth gives NaNs, and bandwidth=-1 is
-        used as a negative bandwidth rather than the automatic one
-        (`#5315 <https://github.com/kornia/kornia/issues/5315>`_).
+        instead of length-one vectors (`#5363 <https://github.com/kornia/kornia/issues/5363>`_).
 
     The calculation uses triangular kernel density estimation.
 

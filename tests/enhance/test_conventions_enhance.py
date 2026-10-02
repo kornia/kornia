@@ -181,17 +181,15 @@ class TestEnhanceConventions(BaseTester):
         zca = kornia.enhance.ZCAWhitening(dim=1, compute_inv=True).fit(data)
         self.assert_close(zca.inverse_transform(zca(data)), data, low_tolerance=True)
 
-    @pytest.mark.xfail(strict=True, reason="#5312: fitted ZCA state is not serializable")
-    def test_wart_zca_fitted_state_round_trips_5312(self, device, dtype):
+    def test_convention_zca_fitted_state_round_trips_5312(self, device, dtype):
         data = torch.tensor([[1.0, 2.0], [2.0, 0.0], [3.0, 1.0]], device=device, dtype=dtype)
         fitted = kornia.enhance.ZCAWhitening(compute_inv=True).fit(data)
-        # Fit the target on other data first, so a fix that registers buffers in fit() can load into it.
+        # Fit the target on other data first, so the load has to replace an existing fit.
         restored = kornia.enhance.ZCAWhitening(compute_inv=True).fit(data.flip(0) * 2.0)
         restored.load_state_dict(fitted.state_dict())
         self.assert_close(restored(data), fitted(data), low_tolerance=True)
 
-    @pytest.mark.xfail(strict=True, reason="#5312: fitted tensors do not migrate with module dtype")
-    def test_wart_zca_fitted_state_migrates_dtype_5312(self, device):
+    def test_convention_zca_fitted_state_migrates_dtype_5312(self, device):
         data = torch.tensor([[1.0, 2.0], [2.0, 0.0], [3.0, 1.0]], device=device)
         fitted = kornia.enhance.ZCAWhitening().fit(data).to(dtype=torch.float16)
         output = fitted(data.to(dtype=torch.float16))
@@ -206,16 +204,17 @@ class TestEnhanceConventions(BaseTester):
         with pytest.raises(BaseError, match="unique"):
             kornia.enhance.integral_tensor(data, (1, -1))
 
-    @pytest.mark.xfail(strict=True, reason="#5315: zero KDE bandwidth produces NaNs")
-    def test_wart_histogram_zero_bandwidth_is_rejected_5315(self, device, dtype):
+    def test_convention_histogram_zero_bandwidth_is_rejected_5315(self, device, dtype):
+        if device.type != "cpu":
+            # The check is torch._assert_async: skipped on MPS by design, a device-side assert on CUDA.
+            pytest.skip("bandwidth check raises synchronously only on CPU")
         values = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
         bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
-        with pytest.raises((ValueError, BaseError)):
+        with pytest.raises(RuntimeError, match="Bandwidth must be finite"):
             kornia.enhance.histogram(values, bins, torch.tensor(0.0, device=device, dtype=dtype))
 
-    @pytest.mark.xfail(strict=True, reason="#5315: zero image-histogram range produces NaNs")
-    def test_wart_image_histogram_empty_range_is_rejected_5315(self, device, dtype):
-        with pytest.raises((ValueError, BaseError)):
+    def test_convention_image_histogram_empty_range_is_rejected_5315(self, device, dtype):
+        with pytest.raises(ValueError, match="range must be finite and non-empty"):
             kornia.enhance.image_histogram2d(torch.ones(2, 2, device=device, dtype=dtype), min=0.0, max=0.0)
 
     def test_convention_image_histogram_rank1_is_rejected_5316(self, device, dtype):

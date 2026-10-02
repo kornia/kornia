@@ -34,10 +34,6 @@ class ZCAWhitening(nn.Module):
         fit or pass include_fit=True before transforming. :func:`zca_whiten` computes
         the same transform per call.
 
-    .. warning::
-        Fitted tensors are absent from ``state_dict`` and do not follow ``.to()`` dtype or device
-        moves (`#5312 <https://github.com/kornia/kornia/issues/5312>`_).
-
     The data torch.Tensor is flattened, and the mean :math:`\mathbf{\mu}`
     and covariance matrix :math:`\mathbf{\Sigma}` are computed from
     the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, where
