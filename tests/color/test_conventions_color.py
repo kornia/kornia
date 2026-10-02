@@ -184,6 +184,27 @@ class TestColorConventions(BaseTester):
         expected = kornia.color.yuv_to_rgb(torch.cat((y, F.interpolate(uv, scale_factor=2.0, mode="nearest")), dim=-3))
         self.assert_close(kornia.color.yuv420_to_rgb(y, uv), expected)
 
+    def test_convention_apply_colormap_5305_does_not_mutate_rank3_input(self, device, dtype):
+        image = torch.tensor([[[0.0, 1.0], [0.5, 0.25]]], device=device, dtype=dtype)
+        before = image.clone()
+        colormap = kornia.color.ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
+
+        kornia.color.apply_colormap(image, colormap)
+
+        assert image.shape == before.shape
+        self.assert_close(image, before)
+
+    def test_convention_apply_colormap_5305_does_not_mutate_float32_values_or_leaf(self, device):
+        # float32 is the dtype whose .float() returns the input itself, so an in-place division would reach it.
+        image = torch.tensor([[[[0.0, 255.0]]]], device=device, dtype=torch.float32)
+        before = image.clone()
+        colormap = kornia.color.ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], device=device)
+
+        kornia.color.apply_colormap(image, colormap)
+        self.assert_close(image, before)
+        leaf = torch.full((1, 1, 1, 1), 0.5, device=device, dtype=torch.float32, requires_grad=True)
+        kornia.color.apply_colormap(leaf, colormap)
+
     @pytest.mark.xfail(strict=True, reason="https://github.com/kornia/kornia/issues/5306")
     def test_wart_apply_colormap_5306_is_batch_independent(self, device, dtype):
         colormap = kornia.color.ColorMap(
@@ -199,3 +220,54 @@ class TestColorConventions(BaseTester):
             kornia.color.apply_colormap(paired, colormap)[0],
             kornia.color.apply_colormap(sample, colormap)[0],
         )
+
+    def test_convention_apply_colormap_5307_reaches_last_palette_color(self, device, dtype):
+        colormap = kornia.color.ColorMap(
+            base=[[0.0, 0.0, 0.0], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75], [1.0, 1.0, 1.0]],
+            num_colors=4,
+            device=device,
+            dtype=dtype,
+        )
+        output = kornia.color.apply_colormap(torch.ones((1, 1, 1, 1), device=device, dtype=dtype), colormap)
+
+        self.assert_close(output, torch.ones_like(output))
+
+    def test_convention_luv_5308_black_float16_is_finite(self, device):
+        for conversion in (kornia.color.rgb_to_luv, kornia.color.luv_to_rgb):
+            black = torch.zeros((1, 3, 1, 1), device=device, dtype=torch.float16, requires_grad=True)
+            result = conversion(black)
+            result.sum().backward()
+            assert torch.isfinite(result).all()
+            assert torch.isfinite(black.grad).all()
+
+    def test_convention_apply_colormap_5317_module_to_migrates_palette(self, device):
+        colormap = kornia.color.ColorMap(base="viridis", device=device, dtype=torch.float32)
+        module = kornia.color.ApplyColorMap(colormap).to(dtype=torch.float16)
+
+        output = module(torch.ones((1, 1, 2, 3), device=device, dtype=torch.float16))
+
+        assert output.dtype == torch.float16
+        assert len(module.state_dict()) > 0
+
+    def test_convention_rgb_to_hsv_5309_module_default_matches_function(self, device, dtype):
+        image = torch.tensor([[[[1e-6]], [[0.0]], [[0.0]]]], device=device, dtype=dtype)
+
+        self.assert_close(kornia.color.RgbToHsv()(image), kornia.color.rgb_to_hsv(image))
+
+    def test_convention_rgb_to_raw_5310_rejects_invalid_cfa(self, device, dtype):
+        image = torch.arange(18, device=device, dtype=dtype).reshape(1, 3, 2, 3)
+
+        with pytest.raises(ValueError, match="Unsupported CFA"):
+            kornia.color.rgb_to_raw(image, "invalid")  # type: ignore[arg-type]
+
+    def test_convention_rgba_to_rgb_5323_rank3_background_keeps_rank(self, device, dtype):
+        rgba = torch.rand(4, 2, 2, device=device, dtype=dtype)
+
+        assert kornia.color.rgba_to_rgb(rgba, (0.0, 0.0, 1.0)).shape == (3, 2, 2)
+
+    def test_convention_rgb_to_linear_rgb_5324_gradient_below_minus_0_055_is_finite(self, device, dtype):
+        image = torch.full((1, 3, 1, 1), -0.1, device=device, dtype=dtype, requires_grad=True)
+
+        kornia.color.rgb_to_linear_rgb(image).sum().backward()
+
+        assert torch.isfinite(image.grad).all()

@@ -133,6 +133,11 @@ class TestEnhanceConventions(BaseTester):
         self.assert_close(result[0, 0, 0, 0], expected_hue)
         self.assert_close(result[:, 1:], hsv[:, 1:])
 
+    def test_convention_hue_raw_wraps_negative_sum_5326(self, device, dtype):
+        hsv = torch.tensor([[[[0.2]], [[0.25]], [[0.75]]]], device=device, dtype=dtype)
+        result = kornia.enhance.adjust_hue_raw(hsv, -1.0)
+        self.assert_close(result[0, 0, 0, 0], torch.tensor(2 * torch.pi - 0.8, device=device, dtype=dtype))
+
     def test_convention_saturation_raw_only_clamps_saturation(self, device, dtype):
         # Hue 4.0 is outside [0, 1], so clamping every channel would change it.
         hsv = torch.tensor([[[[4.0]], [[0.8]], [[0.6]]]], device=device, dtype=dtype)
@@ -171,6 +176,11 @@ class TestEnhanceConventions(BaseTester):
                 kornia.enhance.threshold(data, 0.5, 2.0, mode), torch.tensor([values], device=device, dtype=dtype)
             )
 
+    def test_convention_zca_inverse_preserves_nonzero_sample_axis_5311(self, device, dtype):
+        data = torch.tensor([[1.0, 2.0, 4.0], [2.0, 0.0, 3.0]], device=device, dtype=dtype)
+        zca = kornia.enhance.ZCAWhitening(dim=1, compute_inv=True).fit(data)
+        self.assert_close(zca.inverse_transform(zca(data)), data, low_tolerance=True)
+
     @pytest.mark.xfail(strict=True, reason="#5312: fitted ZCA state is not serializable")
     def test_wart_zca_fitted_state_round_trips_5312(self, device, dtype):
         data = torch.tensor([[1.0, 2.0], [2.0, 0.0], [3.0, 1.0]], device=device, dtype=dtype)
@@ -187,6 +197,15 @@ class TestEnhanceConventions(BaseTester):
         output = fitted(data.to(dtype=torch.float16))
         assert output.dtype == torch.float16
 
+    def test_convention_zca_unbiased_singleton_is_rejected_5313(self, device, dtype):
+        with pytest.raises(ValueError, match="at least two samples"):
+            kornia.enhance.zca_whiten(torch.ones(1, 2, device=device, dtype=dtype), unbiased=True)
+
+    def test_convention_integral_duplicate_axis_is_rejected_5314(self, device, dtype):
+        data = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="unique"):
+            kornia.enhance.integral_tensor(data, (1, -1))
+
     @pytest.mark.xfail(strict=True, reason="#5315: zero KDE bandwidth produces NaNs")
     def test_wart_histogram_zero_bandwidth_is_rejected_5315(self, device, dtype):
         values = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
@@ -198,6 +217,14 @@ class TestEnhanceConventions(BaseTester):
     def test_wart_image_histogram_empty_range_is_rejected_5315(self, device, dtype):
         with pytest.raises((ValueError, BaseError)):
             kornia.enhance.image_histogram2d(torch.ones(2, 2, device=device, dtype=dtype), min=0.0, max=0.0)
+
+    def test_convention_image_histogram_rank1_is_rejected_5316(self, device, dtype):
+        with pytest.raises(ShapeError):
+            kornia.enhance.image_histogram2d(torch.ones(4, device=device, dtype=dtype))
+
+    def test_convention_image_histogram_rank5_is_rejected_5316(self, device, dtype):
+        with pytest.raises(ShapeError):
+            kornia.enhance.image_histogram2d(torch.ones(1, 1, 1, 2, 3, device=device, dtype=dtype), n_bins=2)
 
     @pytest.mark.xfail(strict=True, reason="#5327: rank-5 input receives the shifts along the wrong axis")
     def test_wart_shift_rgb_rank5_is_rejected_or_per_batch_5327(self, device, dtype):
