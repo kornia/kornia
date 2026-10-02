@@ -119,29 +119,7 @@ class ImageModuleMixIn:
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
-                if input_names_to_handle is None:
-                    # Convert image-like arguments while treating only the first positional string as an image path.
-                    args = tuple(
-                        self.to_tensor(arg) if (i == 0 or not isinstance(arg, str)) and self._is_valid_arg(arg) else arg
-                        for i, arg in enumerate(args)
-                    )
-                    kwargs = {
-                        k: self.to_tensor(v) if not isinstance(v, str) and self._is_valid_arg(v) else v
-                        for k, v in kwargs.items()
-                    }
-                else:
-                    # Convert specified args to tensors
-                    args = list(args)  # type:ignore
-                    for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
-                        if name in input_names_to_handle:
-                            args[i] = self.to_tensor(arg)  # type:ignore
-                    # Convert specified kwargs to tensors
-                    for name, value in kwargs.items():
-                        if name in input_names_to_handle:
-                            kwargs[name] = self.to_tensor(value)
-
-                # Call the actual forward method and convert its outputs to the desired type
-                tensor_outputs = func(*args, **kwargs)
+                tensor_outputs = self._call_converted(func, args, kwargs, input_names_to_handle, "pt")
                 if cache_output:
                     self._store_output_image(self._convert_output(tensor_outputs, "pt"), "pt")
                 return self._convert_output(tensor_outputs, output_type)
@@ -149,6 +127,34 @@ class ImageModuleMixIn:
             return wrapper
 
         return decorator
+
+    def _call_converted(
+        self,
+        func: Callable[[Any], Any],
+        args: Tuple[Any, ...],
+        kwargs: dict[str, Any],
+        input_names_to_handle: Optional[List[Any]],
+        output_type: Literal["pt", "numpy", "pil"],
+    ) -> Union[Any, List[Any]]:
+        if input_names_to_handle is None:
+            args = tuple(
+                self.to_tensor(arg) if (i == 0 or not isinstance(arg, str)) and self._is_valid_arg(arg) else arg
+                for i, arg in enumerate(args)
+            )
+            kwargs = {
+                k: self.to_tensor(v) if not isinstance(v, str) and self._is_valid_arg(v) else v
+                for k, v in kwargs.items()
+            }
+        else:
+            args = list(args)
+            for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
+                if name in input_names_to_handle:
+                    args[i] = self.to_tensor(arg)  # type:ignore
+            for name, value in kwargs.items():
+                if name in input_names_to_handle:
+                    kwargs[name] = self.to_tensor(value)
+
+        return func(*args, **kwargs)
 
     @staticmethod
     def _check_output_type(output_type: str) -> None:

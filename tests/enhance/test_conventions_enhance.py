@@ -25,8 +25,7 @@ from testing.base import BaseTester
 
 
 class TestEnhanceConventions(BaseTester):
-    @pytest.mark.xfail(strict=True, reason="#5325: 0-d tensor coefficients are rejected")
-    def test_wart_add_weighted_scalar_tensor_coefficient_5325(self, device, dtype):
+    def test_convention_add_weighted_scalar_tensor_coefficient_5325(self, device, dtype):
         src = torch.arange(6, device=device, dtype=dtype).reshape(2, 3)
         alpha = torch.tensor(0.5, device=device, dtype=dtype)
         self.assert_close(
@@ -225,16 +224,11 @@ class TestEnhanceConventions(BaseTester):
         with pytest.raises(ShapeError):
             kornia.enhance.image_histogram2d(torch.ones(1, 1, 1, 2, 3, device=device, dtype=dtype), n_bins=2)
 
-    @pytest.mark.xfail(strict=True, reason="#5327: rank-5 input receives the shifts along the wrong axis")
-    def test_wart_shift_rgb_rank5_is_rejected_or_per_batch_5327(self, device, dtype):
+    def test_convention_shift_rgb_rank5_is_rejected_5327(self, device, dtype):
         image = torch.zeros(2, 2, 3, 1, 1, device=device, dtype=dtype)
         shifts = torch.tensor([0.1, 0.2], device=device, dtype=dtype), torch.zeros(2, device=device, dtype=dtype)
-        try:
-            out = kornia.enhance.shift_rgb(image, shifts[0], shifts[1], shifts[1])
-        except (ValueError, BaseError):
-            return
-        expected = torch.tensor([0.1, 0.1, 0.2, 0.2], device=device, dtype=dtype)
-        self.assert_close(out[:, :, 0].flatten(), expected)
+        with pytest.raises(ShapeError):
+            kornia.enhance.shift_rgb(image, shifts[0], shifts[1], shifts[1])
 
     def test_convention_normalize_min_max_rescales_each_spatial_plane(self, device, dtype):
         # (B, C, D, H, W): every depth slice is its own (H, W) plane, so each one spans [0, 1].

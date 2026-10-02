@@ -23,8 +23,9 @@ from torch import nn
 
 from kornia.constants import Resample
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
+from kornia.geometry.transform._crop import _compiled_slice_resize
 
 from .affwarp import resize
 from .imgwarp import get_perspective_transform, warp_affine, warp_perspective
@@ -437,8 +438,15 @@ def crop_by_indices(
           ``antialias=False`` option
         - ``shape_compensation`` (``'resize'`` by default) applies whenever the cropped
           slice does not match ``size``, whether or not ``src_box`` is identical across
-          the batch — each row's output depends only on its own box. Graph export is the
-          exception: it always resamples (see the note below)
+          the batch — each row's output depends only on its own box.
+
+    .. note::
+        Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'``,
+        ``'bicubic'`` or ``'nearest'`` interpolation, ``antialias=False`` and
+        ``shape_compensation='resize'`` is cropped by a gather that keeps the box coordinates
+        on the device, so it traces with ``fullgraph=True`` and matches the eager result up to
+        float rounding. Every other call keeps the eager path, which reads the box coordinates
+        back to Python and breaks the graph. Graph export is described in the note below.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -486,6 +494,17 @@ def crop_by_indices(
 
     if size is not None and is_exporting():
         return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
+    if (
+        size is not None
+        and is_compiling()
+        and B > 0
+        and (interpolation in ("bilinear", "bicubic") or (interpolation == "nearest" and align_corners is None))
+        and not antialias
+        and shape_compensation == "resize"
+    ):
+        # ``_compiled_slice_resize`` implements only these three modes (any other one would be resampled as
+        # bicubic) and cannot gather from an empty batch; ``interpolate`` rejects ``align_corners`` for nearest.
+        return _compiled_slice_resize(input_tensor, src_box, size, interpolation, align_corners)
 
     # Move the four coordinate columns to Python in a single device sync (one ``tolist`` over a
     # stacked tensor) instead of a ``unique`` per column plus a device-to-host ``int(...)`` inside
