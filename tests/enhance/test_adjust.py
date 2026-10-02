@@ -269,6 +269,17 @@ class TestAdjustHue(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_hue, (img, 2.0))
 
+    def test_hue_raw_wraps_negative_sum_5326(self, device, dtype):
+        data = torch.tensor([[[[1.0, 0.0]]], [[[0.0, 1.0]]], [[[0.0, 0.0]]]], device=device, dtype=dtype).view(
+            1, 3, 1, 2
+        )
+
+        hsv = kornia.color.rgb_to_hsv(data)
+        out = kornia.enhance.adjust_hue_raw(hsv, -0.5)
+
+        self.assert_close(out[:, 0], torch.remainder(hsv[:, 0] - 0.5, 2 * pi))
+        assert (out[:, 0] >= 0).all()
+
 
 class TestAdjustGamma(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
