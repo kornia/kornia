@@ -184,9 +184,10 @@ class TestBoxes2D(BaseTester):
             [[[0.0, 0.0], [0.0, 5.0], [6.0, 5.0], [6.0, 0.0]]],
         ],
     )
-    def test_vertices_import_preserves_arbitrary_quadrilaterals_4177(self, mode, quadrilateral, device, dtype):
-        # Kornia#4177: vertex modes validate finiteness only and must preserve
-        # arbitrary quadrilaterals such as rotated, sheared, projective, and reordered boxes.
+    def test_convention_vertex_modes_accept_arbitrary_quadrilaterals_4177(self, mode, quadrilateral, device, dtype):
+        # kornia#4177: the vertex modes validate finiteness only, so validate_boxes=True accepts rotated, sheared,
+        # projective and reordered quadrilaterals. 'vertices_plus' stores them unchanged; 'vertices' subtracts the
+        # inclusive offset at fixed vertex slots, which deforms them (kornia#3934).
         quadrilateral = torch.tensor(quadrilateral, device=device, dtype=dtype)
 
         boxes = Boxes.from_tensor(quadrilateral, mode=mode, validate_boxes=True)

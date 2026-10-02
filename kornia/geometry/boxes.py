@@ -218,8 +218,9 @@ class Boxes:
         - :func:`~kornia.geometry.bbox.infer_bbox_shape` and :func:`~kornia.geometry.bbox.bbox_to_mask` read
           their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
-        - With ``validate_boxes=True``, the ``'xy*'`` modes reject a non-finite coordinate and non-positive
-          extents.
+        - With ``validate_boxes=True``, every mode rejects a non-finite coordinate, and the ``'xy*'`` modes also
+          reject non-positive extents. The vertex modes take no extent or shape check, so the arbitrary
+          quadrilaterals of :meth:`transform_boxes` import unchanged.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
           checked by its first element's dtype); :meth:`from_tensor` casts integer input to the default dtype.
         - :meth:`merge` and :meth:`index_put` are non-mutating by default.
@@ -235,8 +236,10 @@ class Boxes:
         `#4008 <https://github.com/kornia/kornia/issues/4008>`_. :meth:`to_mask` and
         :func:`~kornia.geometry.bbox.bbox_to_mask` take opposite size orders:
         `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input split is
-        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. Vertex modes only validate that coordinates
-        are finite, and ``trim``, ``translate(method='fast')`` and tuple-bound ``clamp`` are unimplemented:
+        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. ``'vertices'`` subtracts the inclusive offset at
+        fixed vertex slots, so it deforms a quadrilateral that is not an axis-aligned rectangle in clockwise order:
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_. ``trim``, ``translate(method='fast')`` and
+        tuple-bound ``clamp`` are unimplemented:
         `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
 
     """
