@@ -98,7 +98,9 @@ class TestIoImage:
         assert exc_info.value.__cause__ is not None
         assert str(exc_info.value.__cause__) in str(exc_info.value)
 
-    @pytest.mark.parametrize(("suffix", "error"), [(".png", FileNotFoundError), (".jpg", FileNotFoundError), (".tiff", FileNotFoundError)])
+    @pytest.mark.parametrize(
+        ("suffix", "error"), [(".png", FileNotFoundError), (".jpg", FileNotFoundError), (".tiff", FileNotFoundError)]
+    )
     def test_missing_file_keeps_its_os_error(self, suffix, error, tmp_path: Path) -> None:
         # a missing file is not a decode failure: callers catching FileNotFoundError or OSError keep working
         with pytest.raises(error, match=re.escape(f"missing{suffix}")):
