@@ -1,0 +1,1 @@
+`rgb_to_hsv` wraps hues rounded to the upper period endpoint back to zero, keeping hue values in `[0, 2π)`.

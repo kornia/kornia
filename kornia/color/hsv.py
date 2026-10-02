@@ -37,7 +37,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     Returns:
         HSV version of the image with shape of :math:`(*, 3, H, W)`.
-        The H channel values are in the range 0..2pi. S and V are in the range 0..1.
+        The H channel values are in the range [0, 2pi). S and V are in the range 0..1.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
@@ -76,6 +76,8 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h = torch.where((r >= g) & (r >= b), h1, torch.where(g >= b, h2, h3))
     h = h / deltac
     h = (h / 6.0) % 1.0
+    # Modulo can round a tiny negative hue to the excluded upper endpoint.
+    h = h.masked_fill(h >= 1.0, 0.0)
     h = 2.0 * math.pi * h  # we return 0/2pi output
 
     return torch.stack((h, s, v), dim=-3)
