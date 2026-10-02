@@ -24,6 +24,18 @@ from testing.base import BaseTester
 
 
 class TestZCA(BaseTester):
+    @pytest.mark.parametrize("shape", [(3, 5, 2), (3, 3, 2)])
+    @pytest.mark.parametrize("dim", [0, 1, -2, -1])
+    def test_inverse_sample_axis(self, device, dtype, shape, dim):
+        """Inverse uses the fitted sample axis, including equal-sized axis aliases (gh-5311)."""
+        data = torch.arange(30 if shape[1] == 5 else 18, device=device, dtype=dtype).reshape(shape) / 100
+        zca = kornia.enhance.ZCAWhitening(dim=dim, compute_inv=True, eps=1.0).fit(data)
+        # A held-out query also exercises the fitted mean, rather than refitting.
+        query = (10 * data).cos() / 4
+        actual = zca.inverse_transform(zca(query))
+        assert actual.shape == query.shape
+        self.assert_close(actual, query)
+
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_zca_unbiased(self, unbiased, device, dtype):
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)

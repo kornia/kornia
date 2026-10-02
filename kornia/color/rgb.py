@@ -246,7 +246,12 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
 
-    lin_rgb: torch.Tensor = torch.where(image > 0.04045, torch.pow(((image + 0.055) / 1.055), 2.4), image / 12.92)
+    threshold = 0.04045
+    lin_rgb: torch.Tensor = torch.where(
+        image > threshold,
+        torch.pow(((image + 0.055).clamp(min=0.0) / 1.055), 2.4),
+        image / 12.92,
+    )
 
     return lin_rgb
 

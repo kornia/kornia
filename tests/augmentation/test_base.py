@@ -86,7 +86,7 @@ class TestBasicAugmentationBase(BaseTester):
             assert len(output["degrees"]) == input_shape[0]
             assert output["batch_prob"].sum().item() == num
 
-    @pytest.mark.parametrize("keepdim", (True, False))
+    @pytest.mark.parametrize("keepdim", [True, False])
     def test_forward(self, device, dtype, keepdim):
         torch.manual_seed(42)
         input = torch.rand((12, 3, 4, 5), device=device, dtype=dtype)

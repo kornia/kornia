@@ -71,6 +71,29 @@ class TestApplyColorMap(BaseTester):
 
         self.assert_close(actual, expected_tensor)
 
+    def test_upper_endpoint_selects_last_color(self, device, dtype):
+        cm = ColorMap(
+            base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+            num_colors=4,
+            device=device,
+            dtype=dtype,
+        )
+        input_tensor = torch.ones(1, 1, 1, device=device, dtype=dtype)
+
+        actual = apply_colormap(input_tensor, cm)
+        expected = cm.colors[..., -1].reshape(1, 3, 1, 1)
+
+        self.assert_close(actual, expected)
+
+    def test_uint8_selects_color_by_value(self, device, dtype):
+        # With 256 colors every byte value v selects palette color v, including 255 (the last color).
+        cm = ColorMap(base=[[i / 255.0] * 3 for i in range(256)], num_colors=256, device=device, dtype=dtype)
+        input_tensor = torch.arange(256, device=device).to(torch.uint8).reshape(1, 1, 1, 256)
+
+        actual = apply_colormap(input_tensor, cm)
+
+        self.assert_close(actual, cm.colors.reshape(1, 3, 1, 256), rtol=0.0, atol=0.0)
+
     def test_exception(self, device, dtype):
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
         with pytest.raises(Exception):
@@ -103,6 +126,61 @@ class TestApplyColorMap(BaseTester):
         input_tensor = torch.randint(0, 63, (1, 2, 1), device=device, dtype=torch.float64)
 
         self.gradcheck(apply_colormap, (input_tensor, cm))
+
+    def test_preserves_input_shape(self, device):
+        cm = ColorMap(
+            base="autumn",
+            num_colors=256,
+            device=device,
+            dtype=torch.float32,
+        )
+        input_tensor = torch.zeros(1, 2, 3, device=device, dtype=torch.float32)
+        original = input_tensor.clone()
+
+        apply_colormap(input_tensor, cm)
+
+        assert input_tensor.shape == original.shape
+        self.assert_close(input_tensor, original)
+
+    def test_preserves_float_values(self, device):
+        cm = ColorMap(
+            base="autumn",
+            num_colors=256,
+            device=device,
+            dtype=torch.float32,
+        )
+        input_tensor = torch.tensor(
+            [[[0.0, 255.0]]],
+            device=device,
+            dtype=torch.float32,
+        )
+        original = input_tensor.clone()
+
+        apply_colormap(input_tensor, cm)
+
+        self.assert_close(input_tensor, original)
+
+    def test_accepts_leaf_tensor_requires_grad(self, device):
+        cm = ColorMap(
+            base="autumn",
+            num_colors=256,
+            device=device,
+            dtype=torch.float32,
+        )
+        input_tensor = torch.ones(
+            1,
+            1,
+            2,
+            3,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+
+        output = apply_colormap(input_tensor, cm)
+
+        assert output.shape == (1, 3, 2, 3)
+        assert input_tensor.requires_grad
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         op = apply_colormap
