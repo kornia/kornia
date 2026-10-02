@@ -70,29 +70,15 @@ class Normalize(nn.Module):
     ) -> None:
         super().__init__()
 
-        if isinstance(mean, (int, float)):
-            mean = torch.tensor([mean])
+        if isinstance(mean, torch.Tensor):
+            self.register_buffer("mean", mean, persistent=False)
+        else:
+            self.mean = mean
 
-        if isinstance(std, (int, float)):
-            std = torch.tensor([std])
-
-        if isinstance(mean, (tuple, list)):
-            mean = torch.tensor(mean)[None]
-
-        if isinstance(std, (tuple, list)):
-            std = torch.tensor(std)[None]
-
-        # Buffers, not plain attributes: `.to(device)` has to move them, or a
-        # module living on an accelerator keeps CPU constants. Eager tolerates
-        # the mix (a broadcastable CPU tensor combines with a CUDA/MPS one),
-        # which is why this went unnoticed, but `torch.export` traces with fake
-        # tensors and refuses it.
-        #
-        # persistent=False: these are constructor arguments, not learned state.
-        # Putting them in `state_dict()` would make every existing checkpoint
-        # report unexpected keys, for values the constructor already supplies.
-        self.register_buffer("mean", mean, persistent=False)
-        self.register_buffer("std", std, persistent=False)
+        if isinstance(std, torch.Tensor):
+            self.register_buffer("std", std, persistent=False)
+        else:
+            self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Normalize an input tensor channel-wise with this module's statistics.
@@ -109,7 +95,13 @@ class Normalize(nn.Module):
             A tensor with the same shape as ``input`` whose channel values are
             normalized by ``(x - mean) / std``.
         """
-        return normalize(input, self.mean, self.std)
+        mean = self.mean
+        std = self.std
+        if not isinstance(mean, torch.Tensor):
+            mean = torch.as_tensor(mean, device=input.device, dtype=input.dtype).reshape(1, -1)
+        if not isinstance(std, torch.Tensor):
+            std = torch.as_tensor(std, device=input.device, dtype=input.dtype).reshape(1, -1)
+        return normalize(input, mean, std)
 
     def __repr__(self) -> str:
         repr = f"(mean={self.mean}, std={self.std})"
@@ -235,24 +227,15 @@ class Denormalize(nn.Module):
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
         super().__init__()
 
-        # A float has to become a tensor before it can be a buffer. Wrap a
-        # scalar in a list so it becomes 1-D, exactly as `Normalize` does: the
-        # ONNX export branch indexes `mean.shape[0]`, which a 0-d tensor would
-        # turn into `IndexError: tuple index out of range`.
-        if isinstance(mean, (int, float)):
-            mean = torch.tensor([mean])
-        elif not isinstance(mean, torch.Tensor):
-            mean = torch.tensor(mean)
+        if isinstance(mean, torch.Tensor):
+            self.register_buffer("mean", mean, persistent=False)
+        else:
+            self.mean = mean
 
-        if isinstance(std, (int, float)):
-            std = torch.tensor([std])
-        elif not isinstance(std, torch.Tensor):
-            std = torch.tensor(std)
-
-        # See Normalize: buffers so `.to(device)` moves them; non-persistent so
-        # they stay out of `state_dict()`.
-        self.register_buffer("mean", mean, persistent=False)
-        self.register_buffer("std", std, persistent=False)
+        if isinstance(std, torch.Tensor):
+            self.register_buffer("std", std, persistent=False)
+        else:
+            self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Restore scale/offset from a tensor normalized by mean and std.
@@ -268,7 +251,13 @@ class Denormalize(nn.Module):
             A tensor with the same shape as ``input`` where each channel is
             transformed by ``x * std + mean``.
         """
-        return denormalize(input, self.mean, self.std)
+        mean = self.mean
+        std = self.std
+        if not isinstance(mean, torch.Tensor):
+            mean = torch.as_tensor(mean, device=input.device, dtype=input.dtype).reshape(1, -1)
+        if not isinstance(std, torch.Tensor):
+            std = torch.as_tensor(std, device=input.device, dtype=input.dtype).reshape(1, -1)
+        return denormalize(input, mean, std)
 
     def __repr__(self) -> str:
         repr = f"(mean={self.mean}, std={self.std})"
