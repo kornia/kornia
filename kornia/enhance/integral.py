@@ -28,8 +28,8 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
 
     The algorithm computes the integral image by summing over the specified dimensions.
 
-    In case dim is specified, the contained dimensions must be unique and sorted in ascending order
-    and not exceed the number of dimensions of the input torch.Tensor.
+    In case dim is specified, the contained dimensions must be unique
+    and within the dimensions of the input torch.Tensor.
 
     Args:
         input: the input torch.Tensor with shape :math:`(*, D)`. Where D is the number of dimensions.
@@ -55,8 +55,18 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
     KORNIA_CHECK(len(dim) > 0, "dim must be a non-empty tuple.")
     KORNIA_CHECK(len(dim) <= len(input.shape), "dim must be a tuple of length <= input.shape.")
 
+    normalized_dim = tuple(d if d >= 0 else d + input.ndim for d in dim)
+    KORNIA_CHECK(
+        all(0 <= d < input.ndim for d in normalized_dim),
+        "dim must contain valid dimensions for the input.",
+    )
+    KORNIA_CHECK(
+        len(set(normalized_dim)) == len(normalized_dim),
+        "dim must contain unique dimensions.",
+    )
+
     output = input
-    for i in dim:
+    for i in normalized_dim:
         output = output.cumsum(i)
     return output
 
