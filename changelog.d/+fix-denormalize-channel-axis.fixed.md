@@ -1,0 +1,1 @@
+`denormalize` now validates channel vectors against dimension 1, matching `normalize` for rank-2 and higher `(B, C, *)` inputs.
