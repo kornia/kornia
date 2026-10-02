@@ -537,7 +537,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     zero_tol = 1e-6 if coeffs.dtype in (torch.float32, torch.float16, torch.bfloat16) else 1e-12
 
     # Cubic fallback for a approx 0. The first test is relative below unit scale and absolute above it, which on
-    # its own sends a scaled quartic whose roots are well below 1 / zero_tol to the cubic (#4954). The second is the
+    # its own sends a scaled quartic whose roots are well below 1 / zero_tol to the cubic. The second is the
     # scale-invariant root bound max(|b/a|, |c/a|^(1/2), |d/a|^(1/3), |e/a|^(1/4)) > 1 / zero_tol, written as
     # |coeffs_k| > |a| / zero_tol**k so it never divides by a. ANDed in, it can only move a row to the quartic
     # path. If |a| / zero_tol**k overflows, the bound exceeds any representable coefficient, so False is correct.

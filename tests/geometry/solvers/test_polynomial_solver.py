@@ -1478,6 +1478,21 @@ class TestConventionPolynomialSolvers(BaseTester):
         assert (out - (-10000000.5)).abs().min() <= 10.0
         assert (out - 0.48086).abs().min() <= 1e-5 * 0.48086
 
+    def test_convention_solve_quartic_roots_below_quarter_inverse_tolerance_any_scale_4954(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the constant term of these rows overflows float16 and keeps 3 digits in bfloat16")
+        # The root bound is at most 4 times the largest root, so roots all below 1 / (4 * tol) (2.5e5 in float32,
+        # 2.5e11 in float64) keep a row on the quartic path at every scale, here down to a leading coefficient of
+        # 8e-25. Each term of the bound crosses 1 / tol here if its power of tol is off by one, and the row then
+        # falls back to the cubic, as the leading-coefficient test alone does once a drops below tol (#4954).
+        unit = 1.0 if dtype == torch.float32 else 1e6
+        roots = [-2.4e5 * unit, -1.5e5 * unit, 1e5 * unit, 2e5 * unit]
+        monic = [1.0, 9e4 * unit, -6.1e10 * unit**2, -3e15 * unit**3, 7.2e20 * unit**4]
+        coeffs = torch.tensor([[c * 2.0**-k for c in monic] for k in (0, 20, 40, 60, 80)], device=device, dtype=dtype)
+        out = solver.solve_quartic(coeffs).sort(dim=-1).values
+        expected = torch.tensor([roots] * 5, device=device, dtype=dtype)
+        self.assert_close(out, expected, rtol=1e-4, atol=0.0)
+
     def test_convention_solve_quartic_relative_leading_tolerance_4905(self, device, dtype):
         # (x - 1)(x - 2)(x - 3)(x - 4), and the same row times a power of two (exact in every dtype) that brings the
         # leading coefficient below the fallback tolerance (1e-6, or 1e-12 in float64).
