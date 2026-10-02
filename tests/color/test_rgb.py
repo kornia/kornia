@@ -447,6 +447,15 @@ class TestLinearRgb(BaseTester):
 
         assert torch.isfinite(image.grad).all()
 
+    def test_gradient_at_threshold(self, device, dtype):
+        # sRGB decodes C <= 0.04045 on the linear segment, so the threshold takes the slope 1 / 12.92;
+        # the power segment's slope there is about 1.7% steeper.
+        image = torch.full((1, 3, 1, 1), 0.04045, device=device, dtype=dtype, requires_grad=True)
+
+        kornia.color.rgb_to_linear_rgb(image).sum().backward()
+
+        self.assert_close(image.grad, torch.full_like(image, 1.0 / 12.92))
+
 
 class TestRgb255Normals(BaseTester):
     # Smoke tests: check if the functions execute and return a tensor
