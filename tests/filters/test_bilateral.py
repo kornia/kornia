@@ -81,6 +81,30 @@ class TestBilateralBlur(BaseTester):
             with pytest.raises(BaseError, match="Kernel size must be an odd integer bigger than 0"):
                 call()
 
+    @pytest.mark.parametrize(
+        "sigma_color",
+        [0.0, 0, -0.1, [0.0, 0.0], [0.1, 0.0], [-0.1, 0.1]],
+        ids=["float_zero", "int_zero", "negative_float", "zero_tensor", "one_zero_row", "negative_row"],
+    )
+    def test_convention_sigma_color_must_be_positive_5169(self, sigma_color, device, dtype):
+        # The colour kernel divides by sigma_color squared, so a zero entry divides by zero and the sign of a negative
+        # one is lost: every entry must be positive. The check names the argument, runs before any padding and covers
+        # the joint filter and the modules.
+        from kornia.core.exceptions import BaseError
+
+        image = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
+        if isinstance(sigma_color, list):
+            sigma_color = torch.tensor(sigma_color, device=device, dtype=dtype)
+        calls = (
+            lambda: bilateral_blur(image, 3, sigma_color, (1.0, 1.0)),
+            lambda: joint_bilateral_blur(image, image, 3, sigma_color, (1.0, 1.0)),
+            lambda: BilateralBlur(3, sigma_color, (1.0, 1.0))(image),
+            lambda: JointBilateralBlur(3, sigma_color, (1.0, 1.0))(image, image),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match="sigma_color must be positive"):
+                call()
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)

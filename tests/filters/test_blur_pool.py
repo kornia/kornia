@@ -268,7 +268,18 @@ class TestEdgeAwareBlurPool(BaseTester):
         data = torch.rand(1, 1, 3, 3)
         with pytest.raises(BaseError) as errinfo:
             edge_aware_blur_pool2d(data, 3, edge_threshold=-1)
-        assert "edge threshold should be positive, but got" in str(errinfo.value)
+        assert "edge_threshold must be greater than 1. Got -1" in str(errinfo.value)
+
+    @pytest.mark.parametrize("edge_threshold", [0.5, 1, 1.0], ids=["half", "int_one", "float_one"])
+    def test_convention_edge_threshold_must_be_greater_than_1_5169(self, edge_threshold, device, dtype):
+        # The threshold is an intensity ratio compared through log2, so a value of 1 or less marks every pixel as an
+        # edge and the blur never runs: the function and the module reject it, and the bound is strict.
+        data = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match=f"edge_threshold must be greater than 1. Got {edge_threshold}"):
+            edge_aware_blur_pool2d(data, 3, edge_threshold=edge_threshold)
+        with pytest.raises(BaseError, match=f"edge_threshold must be greater than 1. Got {edge_threshold}"):
+            EdgeAwareBlurPool2D(3, edge_threshold=edge_threshold)(data)
+        assert edge_aware_blur_pool2d(data, 3, edge_threshold=1.0001).shape == data.shape
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):
