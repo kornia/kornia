@@ -42,6 +42,29 @@ class TestZCA(BaseTester):
         actual = kornia.enhance.zca_whiten(data, dim=dim, unbiased=False)
         self.assert_close(actual, torch.zeros_like(data))
 
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_biased_empty_sample_axis(self, device, dtype, dim):
+        """The biased covariance divides by N, so an empty sample axis is rejected as well."""
+        shape = (0, 3) if dim == 0 else (3, 0)
+        data = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="at least one sample"):
+            kornia.enhance.zca_mean(data, dim=dim, unbiased=False)
+
+    @pytest.mark.parametrize("unbiased", [True, False])
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_two_samples(self, device, dtype, dim, unbiased):
+        """Two samples are the fewest that unbiased whitening accepts; the divisor is N - 1 = 1, or N = 2 if biased."""
+        data = torch.tensor([[2.0, 1.0], [0.0, 3.0]], device=device, dtype=dtype)
+        # The centred samples (1, -1) and (-1, 1) have scatter eigenvalue 4 along (1, -1) and 0 across it, so with
+        # eps = 1 the output is the centred data divided by sqrt(4 / divisor + 1).
+        expected = (
+            torch.tensor([[1.0, -1.0], [-1.0, 1.0]], device=device, dtype=dtype) / (5.0 if unbiased else 3.0) ** 0.5
+        )
+        if dim != 0:
+            data, expected = data.t(), expected.t()
+        actual = kornia.enhance.ZCAWhitening(dim=dim, unbiased=unbiased, eps=1.0)(data, include_fit=True)
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_zca_unbiased(self, unbiased, device, dtype):
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)

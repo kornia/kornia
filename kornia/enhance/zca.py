@@ -109,6 +109,10 @@ class ZCAWhitening(nn.Module):
         Returns:
             Returns a fitted ZCAWhiten object instance.
 
+        Raises:
+            ValueError: If the sample dimension has fewer than two entries with ``unbiased=True``, or none with
+                ``unbiased=False``.
+
         """
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
 
@@ -197,7 +201,8 @@ def zca_mean(
         then it returns the inverse ZCA matrix, otherwise it returns None.
 
     Raises:
-        ValueError: If ``unbiased`` is True and the sample dimension has fewer than two entries.
+        ValueError: If the sample dimension has fewer than two entries with ``unbiased=True``, or none with
+            ``unbiased=False``.
 
     .. note::
        See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
@@ -248,8 +253,11 @@ def zca_mean(
 
     N = inp_size[dim]
 
+    # The covariance divides by N - 1 (unbiased) or by N (biased), so fewer samples leave it undefined.
     if unbiased and N < 2:
-        raise ValueError("Unbiased covariance requires at least two samples.")
+        raise ValueError(f"Unbiased covariance requires at least two samples, got {N}.")
+    if N < 1:
+        raise ValueError("Covariance requires at least one sample, got 0.")
 
     mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
 
@@ -290,6 +298,10 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 
     Returns:
         Whiten Input data.
+
+    Raises:
+        ValueError: If the sample dimension has fewer than two entries with ``unbiased=True``, or none with
+            ``unbiased=False``.
 
     .. note::
        See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
