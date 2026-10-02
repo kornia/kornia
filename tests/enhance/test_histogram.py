@@ -20,6 +20,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version_lt
+from kornia.core.exceptions import ShapeError
 
 from testing.base import BaseTester
 
@@ -47,6 +48,13 @@ class TestImageHistogram2d(BaseTester):
         hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 32, kernel=kernel)
         assert hist.shape == (4, 3, 32)
         assert pdf.shape == (4, 3, 32)
+
+    @pytest.mark.parametrize("shape", [(), (4,), (1, 1, 1, 2, 3)])
+    def test_rejects_unsupported_rank(self, device, dtype, shape):
+        # Rank 0 and 1 used to return spurious (1, 1, n_bins) batch and channel axes; rank 5 failed inside permute.
+        image = torch.zeros(shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"Input image must have shape \(H, W\), \(C, H, W\) or \(B, C, H, W\)"):
+            TestImageHistogram2d.fcn(image, n_bins=2)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, kernel):
