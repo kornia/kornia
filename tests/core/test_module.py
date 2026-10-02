@@ -96,6 +96,27 @@ class TestImageModuleMixIn:
         output = dummy_func(sample_image)
         assert isinstance(output, (np.ndarray,))
 
+    def test_convert_input_output_preserves_function_metadata(self, img_module):
+        def dummy_func(tensor):
+            """Test function docstring."""
+            return tensor
+
+        decorated = img_module.convert_input_output()(dummy_func)
+
+        assert decorated.__name__ == dummy_func.__name__
+        assert decorated.__doc__ == dummy_func.__doc__
+        assert decorated.__wrapped__ is dummy_func
+
+    def test_convert_input_output_caches_single_output_tuple_as_tensor(self, img_module, sample_tensor):
+        # A one-element tuple is returned as its element; the cache must hold the same tensor for ``show()``.
+        decorated = img_module.convert_input_output(cache_output=True)(lambda tensor: (tensor,))
+
+        output = decorated(sample_tensor)
+
+        assert isinstance(output, torch.Tensor)
+        assert isinstance(img_module._output_image, torch.Tensor)
+        assert torch.equal(img_module._output_image, sample_tensor)
+
     def test_show(self, img_module, sample_tensor):
         img_module._output_image = sample_tensor
         pil_image = img_module.show(display=False)

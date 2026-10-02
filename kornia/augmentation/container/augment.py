@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import sys
 import warnings
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union, cast
 
@@ -26,7 +27,6 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
-from kornia.core.external import numpy as np
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -51,6 +51,13 @@ _MSK_OPTIONS = (DataKey.MASK,)
 _CLS_OPTIONS = (DataKey.CLASS, DataKey.LABEL)
 
 MaskDataType = Union[torch.Tensor, List[torch.Tensor]]
+
+
+def _is_numpy_array(arg: Any) -> bool:
+    # Look NumPy up instead of importing it through the lazy loader: an array can exist only once NumPy is
+    # imported, and an import inside a compiled ``forward`` is a graph break (``importlib.import_module``).
+    numpy_module = sys.modules.get("numpy")
+    return numpy_module is not None and isinstance(arg, numpy_module.ndarray)
 
 
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
@@ -652,7 +659,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
                 converted_dict = dict(inputs[0])
                 for key, arg, data_key in zip(keys, args, data_keys):
-                    if isinstance(arg, np.ndarray):
+                    if _is_numpy_array(arg):
                         if data_key in _IMG_OPTIONS:
                             converted_dict[key] = self.to_tensor(arg)
                         else:
@@ -669,10 +676,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             self._check_output_type(output_type)
             # run the forward pass in tensor mode and convert the output to ``output_type`` only after the image
             # has been cached, so ``.show()`` / ``.save()`` never receive a NumPy array or PIL images
-            decorated_forward = self.convert_input_output(input_names_to_handle=input_names_to_handle)(
-                super(ImageSequential, self).__call__
+            tensor_output = self._call_converted(
+                super(ImageSequential, self).__call__, converted_inputs, kwargs, input_names_to_handle, "pt"
             )
-            tensor_output = decorated_forward(*converted_inputs, **kwargs)
 
             in_data_keys: Optional[List[DataKey]]
             original_keys: Optional[Tuple[str, ...]] = None
@@ -694,7 +700,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     @staticmethod
     def _convert_numpy_non_image(arg: Any, data_key: DataKey) -> Any:
-        if not isinstance(arg, np.ndarray) or data_key in _IMG_OPTIONS:
+        if not _is_numpy_array(arg) or data_key in _IMG_OPTIONS:
             return arg
         if data_key in _MSK_OPTIONS:
             return image_to_tensor(arg)

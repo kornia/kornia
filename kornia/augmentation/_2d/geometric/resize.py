@@ -22,10 +22,10 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils._crop import _half_pixel_resize_transform
 from kornia.constants import Resample
 from kornia.core.utils import is_exporting
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
+from kornia.geometry.transform._crop import _half_pixel_resize_transform
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
 

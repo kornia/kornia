@@ -89,12 +89,12 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
             Callable: Decorated function with converted input and output types.
 
         """
-        # Wrap the forward method with the decorator
+        # Convert inputs and outputs around the forward call
         if not self._disable_features:
-            decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type, cache_output=True
-            )(super().__call__)
-            _output_image = decorated_forward(*inputs, **kwargs)
+            tensor_output = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, "pt")
+            self._store_output_image(self._convert_output(tensor_output, "pt"), "pt")
+            _output_image = self._convert_output(tensor_output, output_type)
+
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
@@ -164,12 +164,12 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
             Callable: Decorated function with converted input and output types.
 
         """
-        # Wrap the forward method with the decorator
+        # Convert inputs and outputs around the forward call
         if not self._disable_features:
-            decorated_forward = self.convert_input_output(
-                input_names_to_handle=input_names_to_handle, output_type=output_type, cache_output=True
-            )(super().__call__)
-            _output_image = decorated_forward(*inputs, **kwargs)
+            tensor_output = self._call_converted(super().__call__, inputs, kwargs, input_names_to_handle, "pt")
+            self._store_output_image(self._convert_output(tensor_output, "pt"), "pt")
+            _output_image = self._convert_output(tensor_output, output_type)
+
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
