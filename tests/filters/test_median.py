@@ -223,9 +223,18 @@ class TestMedianBlur(BaseTester):
         inp = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
         inp[..., 0, 0] = invalid
         radius = kernel_size // 2
-        padded = torch.nn.functional.pad(inp, (radius, radius, radius, radius), mode=border_type)
-        weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
-        expected = torch.nn.functional.conv2d(padded, weights, padding=0).median(1).values[:, None]
+        expected = torch.ones_like(inp)
+        if border_type == "constant":
+            for y in range(7):
+                for x in range(9):
+                    rows = min(7, y + radius + 1) - max(0, y - radius)
+                    cols = min(9, x + radius + 1) - max(0, x - radius)
+                    expected[..., y, x] = float(rows * cols > kernel_size**2 // 2)
+        expected[..., : radius + 1, : radius + 1] = float("nan")
+        if border_type == "circular":
+            expected[..., : radius + 1, -radius:] = float("nan")
+            expected[..., -radius:, : radius + 1] = float("nan")
+            expected[..., -radius:, -radius:] = float("nan")
         actual = median_blur(inp, kernel_size, border_type)
         self.assert_close(actual.isnan(), expected.isnan())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num())
