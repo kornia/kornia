@@ -72,7 +72,9 @@ class MS_SSIMLoss(nn.Module):
 
     Note:
         Integer and bool images are converted to the dtype of the Gaussian masks before filtering, float32 unless the
-        module was moved to another floating dtype, so the loss is returned in that dtype.
+        module was moved to another floating dtype, so the loss is returned in that dtype. Pixel values are not
+        rescaled: pass ``data_range=255.0`` for 8-bit images, which gives the loss of the images divided by 255 at the
+        default ``data_range=1.0``.
 
     Examples:
         >>> input1 = torch.rand(1, 3, 5, 5)
