@@ -20,6 +20,7 @@ import inspect
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.filters import (
     MotionBlur,
     MotionBlur3D,
@@ -166,6 +167,22 @@ class TestMotionBlur(BaseTester):
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
 
         self.assert_close(op(img, *params), op_module(img))
+
+    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
+    @pytest.mark.parametrize("params_as_tensor", [False, True])
+    def test_module_forwards_mode(self, mode, params_as_tensor, device, dtype):
+        image = torch.rand(2, 2, 7, 9, device=device, dtype=dtype)
+        angle, direction = 30.0, 0.3
+        if params_as_tensor:
+            angle = torch.tensor([30.0, 60.0], device=device, dtype=dtype)
+            direction = torch.tensor([0.3, -0.5], device=device, dtype=dtype)
+        actual = MotionBlur(5, angle, direction, "constant", mode)(image)
+        expected = motion_blur(image, 5, angle, direction, "constant", mode)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    def test_repr_includes_mode(self):
+        assert "mode=bilinear" in repr(MotionBlur(3, 30.0, 0.3, mode="bilinear"))
 
     def test_python_float_parameters_preserve_float64_precision(self):
         image = torch.ones(1, 1, 9, 9, dtype=torch.float64)
@@ -349,6 +366,58 @@ class TestMotionBlur3D(BaseTester):
         img = torch.ones(1, 3, 1, 5, 5, device=device, dtype=dtype)
 
         self.assert_close(op(img, *params), op_module(img))
+
+    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
+    @pytest.mark.parametrize("angle_form", ["float", "int", "tuple", "list", "tensor"])
+    def test_module_forwards_mode_and_angle(self, mode, angle_form, device, dtype):
+        volume = torch.rand(2, 2, 5, 6, 7, device=device, dtype=dtype)
+        direction = 0.3
+        expected_angle = (10.0, 20.0, 30.0)
+        if angle_form in ("float", "int"):
+            angle = 35.0 if angle_form == "float" else 35
+            expected_angle = (35.0, 35.0, 35.0)
+        elif angle_form == "tensor":
+            supports_mode = (
+                supports_nearest_3d_grid_sample(device, dtype)
+                if mode == "nearest"
+                else supports_bilinear_3d_grid_sample(device, dtype)
+            )
+            if not supports_mode:
+                pytest.skip(f"This device does not support {mode} interpolation for 3D grid_sample")
+            angle = torch.tensor([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]], device=device, dtype=dtype)
+            expected_angle = angle
+            direction = torch.tensor([0.3, -0.5], device=device, dtype=dtype)
+        else:
+            angle = list(expected_angle) if angle_form == "list" else expected_angle
+        actual = MotionBlur3D(3, angle, direction, "constant", mode)(volume)
+        expected = motion_blur3d(volume, 3, expected_angle, direction, "constant", mode)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("angle", [[], [10.0, 20.0], (10.0, 20.0, 30.0, 40.0)])
+    def test_module_rejects_wrong_angle_length(self, angle):
+        with pytest.raises(BaseError, match="Angle sequence must have length 3"):
+            MotionBlur3D(3, angle, 0.3)
+
+    @pytest.mark.device_agnostic
+    def test_repr_includes_mode(self):
+        assert "mode=bilinear" in repr(MotionBlur3D(3, (10.0, 20.0, 30.0), 0.3, mode="bilinear"))
+
+    def test_module_tensor_parameter_gradients(self, device):
+        dtype = torch.float32 if device.type == "mps" else torch.float64
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("This device does not support bilinear interpolation for 3D grid_sample")
+        volume = torch.rand(2, 1, 5, 6, 7, device=device, dtype=dtype, requires_grad=True)
+        angle = torch.tensor([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]], device=device, dtype=dtype)
+        angle.requires_grad_()
+        direction = torch.tensor([0.3, -0.5], device=device, dtype=dtype, requires_grad=True)
+        actual = MotionBlur3D(3, angle, direction, "constant", "bilinear")(volume)
+        expected = motion_blur3d(volume, 3, angle, direction, "constant", "bilinear")
+        actual_grads = torch.autograd.grad(actual.square().sum(), (volume, angle, direction))
+        expected_grads = torch.autograd.grad(expected.square().sum(), (volume, angle, direction))
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            assert torch.isfinite(actual_grad).all()
+            self.assert_close(actual_grad, expected_grad)
 
     def test_python_float_parameters_preserve_float64_precision(self):
         volume = torch.ones(1, 1, 5, 6, 7, dtype=torch.float64)

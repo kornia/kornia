@@ -17,13 +17,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
@@ -106,7 +103,7 @@ def gaussian_blur2d(
             with shape :math:`(B, 2)`. Values must be positive.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+          ``'replicate'`` or ``'circular'``, case-insensitive. Default: ``'reflect'``.
         separable: run as composition of two 1d-convolutions. Default: ``True``.
 
     Returns:
@@ -168,13 +165,14 @@ def gaussian_blur2d(
         bs = sigma.shape[0]
         kernel_x = get_gaussian_kernel1d(kx, sigma[:, 1].view(bs, 1))
         kernel_y = get_gaussian_kernel1d(ky, sigma[:, 0].view(bs, 1))
+        border = str(border_type).lower()
         if (
             _gaussian_blur2d_cpu_eligible(input)
             and not (torch.is_grad_enabled() and sigma.requires_grad)
             and bs in (1, input.shape[0])
-            and border_type in ("constant", "reflect", "replicate", "circular")
+            and border in ("constant", "reflect", "replicate", "circular")
         ):
-            out = _gaussian_blur2d_cpu(input, kernel_x, kernel_y, border_type)
+            out = _gaussian_blur2d_cpu(input, kernel_x, kernel_y, border)
         else:
             out = filter2d_separable(input, kernel_x, kernel_y, border_type)
     else:
@@ -257,8 +255,3 @@ class GaussianBlur2d(nn.Module):
             reducing high-frequency noise and fine texture.
         """
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
-
-
-@deprecated(replace_with="gaussian_blur2d", version="0.6.10")
-def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
-    return gaussian_blur2d(*args, **kwargs)

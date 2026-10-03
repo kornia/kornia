@@ -110,6 +110,29 @@ class TestGaussianBlurCpu(BaseTester):
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
         assert calls == 1
 
+    def test_convention_upper_case_border_type_takes_the_slice_path_5156(self, monkeypatch, device, dtype):
+        """'REFLECT', 'Replicate', 'CIRCULAR' and 'Constant' take the slice path of the lower-case spelling (#5156)."""
+        _require_native_cpu(device, dtype)
+        _use_native_cpu_path(monkeypatch)
+        image = torch.rand(1, 2, 256, 256, device=device, dtype=dtype)
+        helper = gaussian_module._gaussian_blur2d_cpu
+        borders = []
+
+        def recording_helper(input, kernel_x, kernel_y, border_type):
+            borders.append(border_type)
+            return helper(input, kernel_x, kernel_y, border_type)
+
+        monkeypatch.setattr(gaussian_module, "_gaussian_blur2d_cpu", recording_helper)
+        for upper, lower in [
+            ("REFLECT", "reflect"),
+            ("Replicate", "replicate"),
+            ("CIRCULAR", "circular"),
+            ("Constant", "constant"),
+        ]:
+            expected = gaussian_blur2d(image, (5, 7), (0.9, 1.3), lower)
+            assert torch.equal(gaussian_blur2d(image, (5, 7), (0.9, 1.3), upper), expected)
+        assert borders == [b for b in ("reflect", "replicate", "circular", "constant") for _ in range(2)]
+
     def test_public_reverse_mode_gradients_match_convolution(self, monkeypatch, device, dtype):
         _require_native_cpu(device, dtype)
         _use_native_cpu_path(monkeypatch)

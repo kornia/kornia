@@ -226,8 +226,12 @@ select = [
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit
+  "SIM103",  # needless-bool
   "SIM114",  # if-with-same-arms
   "SIM115",  # open-file-with-context-handler
+  "SIM201",  # negate-equal-op
+  "SIM210",  # if-expr-with-true-false
+  "SIM211",  # if-expr-with-false-true
   "SIM222",  # expr-or-true
   "SIM910",  # dict-get-with-none-default
   "SLOT",  # flake8-slots

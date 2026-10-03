@@ -40,7 +40,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
 
     Args:
         input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, can be: `sobel` or `diff`, case-insensitive.
         order: the order of the derivatives.
         normalized: if ``True``, scale the kernels so that every output channel estimates the derivative
           itself, exact on linear surfaces for ``order=1`` and on quadratic surfaces for ``order=2``. If
@@ -68,7 +68,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
     # of allocating one kernel, transposing it, stacking both directions, and
     # normalizing at runtime. Keep the generic construction for integer and
     # complex inputs, whose division semantics are part of the public API.
-    if mode == "sobel" and order == 1 and input.is_floating_point():
+    if mode.lower() == "sobel" and order == 1 and input.is_floating_point():
         if normalized:
             kernel = torch.tensor(
                 [
@@ -109,7 +109,7 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
 
     Args:
         input: input features torch.Tensor with shape :math:`(B, C, D, H, W)`.
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, can be: `sobel` or `diff`, case-insensitive.
         order: the order of the derivatives.
 
     Return:
@@ -130,7 +130,7 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
     b, c, d, h, w = input.shape
     dev = input.device
     dtype = input.dtype
-    if (mode == "diff") and (order == 1):
+    if mode.lower() == "diff" and order == 1:
         # we go for the special case implementation due to conv3d bad speed
         x: torch.Tensor = F.pad(input, 6 * [1], "replicate")
         center = slice(1, -1)
@@ -207,7 +207,7 @@ class SpatialGradient(nn.Module):
     r"""Compute the first order image derivative in both x and y using a Sobel operator.
 
     Args:
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, can be: `sobel` or `diff`, case-insensitive.
         order: the order of the derivatives.
         normalized: whether the output is normalized.
 
@@ -263,7 +263,7 @@ class SpatialGradient3d(nn.Module):
     r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, can be: `sobel` or `diff`, case-insensitive.
         order: the order of the derivatives.
 
     Return:
