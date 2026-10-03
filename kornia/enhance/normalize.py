@@ -95,12 +95,14 @@ class Normalize(nn.Module):
             A tensor with the same shape as ``input`` whose channel values are
             normalized by ``(x - mean) / std``.
         """
+        # A Python number becomes (1,) and a sequence (1, *shape), the shapes the
+        # constructor used to store, built in the input dtype so float64 keeps its bits.
         mean = self.mean
         std = self.std
         if not isinstance(mean, torch.Tensor):
-            mean = torch.as_tensor(mean, device=input.device, dtype=input.dtype).reshape(1, -1)
+            mean = torch.as_tensor(mean, device=input.device, dtype=input.dtype)[None]
         if not isinstance(std, torch.Tensor):
-            std = torch.as_tensor(std, device=input.device, dtype=input.dtype).reshape(1, -1)
+            std = torch.as_tensor(std, device=input.device, dtype=input.dtype)[None]
         return normalize(input, mean, std)
 
     def __repr__(self) -> str:
@@ -251,12 +253,16 @@ class Denormalize(nn.Module):
             A tensor with the same shape as ``input`` where each channel is
             transformed by ``x * std + mean``.
         """
+        # A Python number becomes (1,) and a sequence keeps its own shape, as the
+        # constructor used to store them: a (C,) list is still checked against the
+        # channel count, a (B, C) list still gives per-sample statistics, and the
+        # ONNX branch, which indexes ``mean.shape[0]``, never sees a 0-d tensor.
         mean = self.mean
         std = self.std
         if not isinstance(mean, torch.Tensor):
-            mean = torch.as_tensor(mean, device=input.device, dtype=input.dtype).reshape(1, -1)
+            mean = torch.atleast_1d(torch.as_tensor(mean, device=input.device, dtype=input.dtype))
         if not isinstance(std, torch.Tensor):
-            std = torch.as_tensor(std, device=input.device, dtype=input.dtype).reshape(1, -1)
+            std = torch.atleast_1d(torch.as_tensor(std, device=input.device, dtype=input.dtype))
         return denormalize(input, mean, std)
 
     def __repr__(self) -> str:

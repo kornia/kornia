@@ -295,6 +295,25 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
 
         assert torch.equal(module(x), (x - mean.reshape(1, 2, 1, 1)) / std.reshape(1, 2, 1, 1))
 
+    def test_denormalize_sequence_is_checked_against_the_channels(self):
+        """A (C,) list must not broadcast a 1-channel input to C channels."""
+        module = kornia.enhance.Denormalize([0.1, 0.2, 0.3], [1.0, 1.0, 1.0])
+        with pytest.raises(ValueError):
+            module(torch.ones(2, 1, 4, 4))
+
+    def test_denormalize_nested_sequence_gives_per_sample_statistics(self):
+        x = torch.ones(2, 3, 1, 1)
+        out = kornia.enhance.Denormalize([[0.0] * 3, [1.0] * 3], [[1.0] * 3, [2.0] * 3])(x)
+        expected = torch.tensor([1.0, 3.0]).view(2, 1, 1, 1).expand(2, 3, 1, 1)
+        assert torch.equal(out, expected)
+
+    def test_python_constants_take_the_onnx_branch(self, monkeypatch):
+        """The ONNX branch indexes ``mean.shape[0]``, so a 0-d constant would raise IndexError."""
+        monkeypatch.setattr(torch.onnx, "is_in_onnx_export", lambda: True)
+        x = torch.full((1, 3, 2, 2), 0.5)
+        self.assert_close(kornia.enhance.Normalize(0.1, 0.4)(x), torch.full_like(x, 1.0))
+        self.assert_close(kornia.enhance.Denormalize(0.1, 0.4)(x), torch.full_like(x, 0.3))
+
     def test_forward_is_unchanged(self, device, dtype):
         x = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         mean = torch.zeros(3, device=device, dtype=dtype)

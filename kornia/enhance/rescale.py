@@ -25,8 +25,10 @@ class Rescale(nn.Module):
     r"""Initialize the Rescale operator.
 
     Convention:
-        factor is a scalar float or 0-D tensor and multiplies every element;
-        it is stored as a module buffer, so ``.to()`` device and dtype moves apply to it.
+        factor is a scalar float or 0-D tensor and multiplies every element.
+        A float is kept as a Python number and applied like one: a float64 input keeps
+        its precision and an integer input promotes to the default float dtype. A tensor
+        is stored as a non-persistent buffer, so ``.to()`` moves apply to it.
 
     Args:
         factor: The scaling factor. Could be a float or a 0-d torch.Tensor.
@@ -55,7 +57,6 @@ class Rescale(nn.Module):
             A tensor with the same shape as ``input``, where each element is
             multiplied by ``self.factor``.
         """
-        factor = self.factor
-        if isinstance(factor, float):
-            factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
-        return input * factor
+        # A float factor multiplies as a Python number: float64 keeps its bits, half
+        # inputs are scaled in float32 arithmetic, and integer inputs promote to float.
+        return input * self.factor
