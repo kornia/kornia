@@ -128,8 +128,8 @@ def gaussian(
         window_size: the size which drives the filter amount.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`.
         mean: Mean of the Gaussian function (center); see the Convention block for an even
-            ``window_size``. If not provided, it defaults to ``window_size // 2``. If a tensor,
-            should be in a shape :math:`(B, 1)`.
+            ``window_size``. If not provided, it defaults to ``window_size // 2``. A Python ``int`` is
+            treated as its ``float``. If a tensor, should be in a shape :math:`(B, 1)`.
         device: This value will be used if sigma is an int or float. Device desired to compute.
         dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
@@ -151,8 +151,8 @@ def gaussian(
     batch_size = sigma.shape[0]
 
     mean = float(window_size // 2) if mean is None else mean
-    if isinstance(mean, float):
-        mean = torch.tensor([[mean]], device=sigma.device, dtype=sigma.dtype)
+    if isinstance(mean, (int, float)):
+        mean = torch.tensor([[float(mean)]], device=sigma.device, dtype=sigma.dtype)
 
     KORNIA_CHECK_IS_TENSOR(mean)
     KORNIA_CHECK_SHAPE(mean, ["B", "1"])

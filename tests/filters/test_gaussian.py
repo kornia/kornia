@@ -283,6 +283,21 @@ class TestGaussianIntegerSigma(BaseTester):
         self.gradcheck(builder, (7, sigma))
 
 
+class TestGaussianIntegerMean(BaseTester):
+    def test_int_mean_matches_float_mean(self, device, dtype):
+        # gaussian() annotates mean as a float, like sigma: an int mean is the same Gaussian (#5157)
+        actual = gaussian(5, 1.5, mean=1, device=device, dtype=dtype)
+        expected = gaussian(5, 1.5, mean=1.0, device=device, dtype=dtype)
+        self.assert_close(actual, expected)
+
+    def test_int_sigma_keeps_a_fractional_mean(self, device):
+        # with dtype=None an int sigma must not build an integer tensor, which would truncate mean=1.5 to 1
+        actual = gaussian(4, 1, mean=1.5, device=device)
+        expected = gaussian(4, 1.0, mean=1.5, device=device)
+        assert actual.dtype == torch.get_default_dtype()
+        self.assert_close(actual, expected)
+
+
 class TestGaussianDiscreteStability(BaseTester):
     @pytest.mark.parametrize("window_size,sigma", [(19, 3.0), (43, 7.0), (121, 20.0), (5, 100.0)])
     def test_finite_normalized(self, window_size, sigma, device, dtype):
