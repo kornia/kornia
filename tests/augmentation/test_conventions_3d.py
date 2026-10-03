@@ -375,9 +375,10 @@ class Test3DAugmentationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_degrees_are_one_axis_angle_vector_not_euler_5286(self):
-        # The two tests above each move ONE angle, which cannot tell the axis-angle reading apart
-        # from per-axis Euler rotations: a single non-zero component behaves the same under both.
-        # Two non-zero components do not, so this moves two.
+        # test_convention_degrees_and_motion_angle_follow_xyz_order and
+        # test_convention_motion_blur3d_kernel_uses_the_yaw_pitch_roll_order each move ONE angle, which cannot
+        # tell the axis-angle reading apart from per-axis Euler rotations: a single non-zero component behaves
+        # the same under both. Two non-zero components do not, so this moves two.
         augmentation = K.RandomRotation3D(((90.0, 90.0), (90.0, 90.0), (0.0, 0.0)), p=1.0)
         augmentation(torch.zeros(1, 1, 3, 3, 3))
         rotation = augmentation.transform_matrix[0, :3, :3].to(dtype=torch.float64)

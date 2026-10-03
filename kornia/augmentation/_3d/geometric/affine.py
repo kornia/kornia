@@ -75,9 +75,9 @@ class RandomAffine3D(GeometricAugmentationBase3D):
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
-        - ``degrees`` is **one axis-angle vector** ``(yaw, pitch, roll) = (rx, ry, rz)`` in degrees
-          and is concatenated into a single Rodrigues rotation, not composed as per-axis Euler
-          rotations; see :class:`RandomRotation3D` for the convention and its mixed-axis pin.
+        - each sampled ``degrees`` triple ``(yaw, pitch, roll) = (rx, ry, rz)`` is **one axis-angle vector**
+          in degrees and is converted into a single Rodrigues rotation, not composed as per-axis Euler
+          rotations; see :class:`RandomRotation3D` for the convention.
         - A positive roll turns a displayed ``H x W`` slice counter-clockwise, and the rotation
           block is the transpose of :class:`RandomRotation3D`'s
           (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
