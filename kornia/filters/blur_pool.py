@@ -177,7 +177,7 @@ class MaxBlurPool2D(nn.Module):
 class EdgeAwareBlurPool2D(nn.Module):
     """Apply an edge-aware anti-aliasing blur that keeps the input size.
 
-    This module performs blur pooling while preserving edges by using an
+    This module blurs while preserving edges by using an
     edge-intensity threshold.
 
     Convention:

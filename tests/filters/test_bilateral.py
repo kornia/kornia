@@ -514,6 +514,20 @@ class TestConventionsBilateralBlur(BaseTester):
         # the same filter on the same values in floating point keeps the stripes
         self.assert_close(bilateral_blur(stripes.float(), 3, 50.0, (1.0, 1.0)), stripes.float(), rtol=0.0, atol=0.01)
 
+    def test_wart_bilateral_blur_sigma_batch_broadcasts_a_batch_1_input_5430(self, device, dtype):
+        """A tensor sigma with a batch of 3 turns a batch-1 input into a batch of 3, in both filters (#5430)."""
+        # The sigma batch is not checked against B, and B = 1 broadcasts against it. A fix that accepts only a sigma
+        # batch of 1 or B rejects these calls and fails this pin.
+        self._skip_without_reflect_padding(device, dtype)
+        torch.manual_seed(0)
+        image = torch.rand(1, 2, 9, 11).to(device=device, dtype=dtype)
+        three_colors = torch.tensor([0.1, 0.2, 0.3], device=device, dtype=dtype)
+        three_spaces = torch.full((3, 2), 1.5, device=device, dtype=dtype)
+        assert bilateral_blur(image, 5, three_colors, (1.5, 1.5)).shape == (3, 2, 9, 11)
+        assert bilateral_blur(image, 5, 0.1, three_spaces).shape == (3, 2, 9, 11)
+        assert joint_bilateral_blur(image, image, 5, three_colors, (1.5, 1.5)).shape == (3, 2, 9, 11)
+        assert joint_bilateral_blur(image, image, 5, 0.1, three_spaces).shape == (3, 2, 9, 11)
+
     @pytest.mark.parametrize("kernel_size", [4, (3, 4)])
     def test_convention_bilateral_blur_even_kernel_size_is_rejected_up_front_5163(self, kernel_size, device, dtype):
         """The bilateral filters reject an even kernel_size with a kornia error, the modules at construction (#5163)."""

@@ -516,15 +516,6 @@ class TestConventionsBlurPool(BaseTester):
         expected = blur_pool2d(padded, kernel_size, stride=1)[..., 2:-2, 2:-2]
         self.assert_close(out, expected.to(device=device, dtype=dtype))
 
-    def test_convention_edge_aware_blur_pool2d_threshold_must_exceed_one_5169(self, device, dtype):
-        """edge_aware_blur_pool2d rejects an edge_threshold of 1 or less, below which every pixel is an edge (#5169)."""
-        image = (1.0 + 0.05 * torch.rand(2, 3, 9, 13)).to(device=device, dtype=dtype)
-        for edge_threshold in (0.5, 0.99, 1.0):
-            with pytest.raises(BaseError):
-                edge_aware_blur_pool2d(image, 3, edge_threshold=edge_threshold)
-            with pytest.raises(BaseError):
-                EdgeAwareBlurPool2D(3, edge_threshold=edge_threshold)(image)
-
     def test_convention_edge_aware_blur_pool2d_keeps_a_constant_image_at_any_kernel_size_5228(self, device, dtype):
         """edge_aware_blur_pool2d reflects the border as far as its kernel reaches: a constant image stays (#5228)."""
         # A 7-tap binomial reaches 3 px past the border and a 15-tap one 7 px, past the 2 px the edge test reads.

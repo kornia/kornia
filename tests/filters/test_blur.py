@@ -353,18 +353,18 @@ class TestConventionsBoxBlur(BaseTester):
     """Pins for the window of :func:`box_blur` and the ``kernel_size`` order the blurs share."""
 
     @pytest.mark.parametrize(
-        "blur, pads_by_reflection",
+        "blur",
         [
-            pytest.param(box_blur, True, id="box_blur"),
-            pytest.param(lambda image, size: gaussian_blur2d(image, size, (1.5, 1.5)), True, id="gaussian_blur2d"),
-            pytest.param(median_blur, True, id="median_blur"),
+            pytest.param(box_blur, id="box_blur"),
+            pytest.param(lambda image, size: gaussian_blur2d(image, size, (1.5, 1.5)), id="gaussian_blur2d"),
+            pytest.param(median_blur, id="median_blur"),
         ],
     )
-    def test_convention_blur_kernel_size_is_height_then_width(self, blur, pads_by_reflection, device, dtype):
+    def test_convention_blur_kernel_size_is_height_then_width(self, blur, device, dtype):
         # kernel_size = (kH, kW): a (1, 5) window slides along a row and leaves a full-width horizontal bar as it is,
         # while a (5, 1) window spans five rows and spreads the bar (the median erases it). cv2.blur and
         # cv2.GaussianBlur take ksize = (width, height) instead.
-        if pads_by_reflection and not supports_reflect_padding(device, dtype):
+        if not supports_reflect_padding(device, dtype):
             pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
         bar = torch.zeros(1, 1, 7, 10, device=device, dtype=dtype)
         bar[0, 0, 2, :] = 1.0

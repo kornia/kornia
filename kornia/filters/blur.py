@@ -125,9 +125,9 @@ def box_blur(
         \end{bmatrix}
 
     Convention:
-        - ``kernel_size`` is ``(kH, kW)``, and every tap weighs ``1 / (kH * kW)``. An even extent is anchored at
-          ``(k - 1) // 2`` and the output keeps the input's size; see the Convention block on
-          :func:`~kornia.filters.filter2d` for the anchor and the border modes.
+        - ``kernel_size`` is ``(kH, kW)``. An even extent is anchored at ``(k - 1) // 2`` and the output keeps the
+          input's size; see the Convention block on :func:`~kornia.filters.filter2d` for the anchor and the border
+          modes.
         - Known defect: an integer input gets a kernel in its own dtype, whose ``1 / k`` taps truncate to 0, so on
           the CPU a uint8 image comes back as zeros (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
@@ -138,8 +138,8 @@ def box_blur(
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
           Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. The implementations agree to floating-point roundoff, except that outside eager
-          CPU execution values near the dtype's largest finite value can overflow to ``inf``.
+          for larger kernels. The two implementations agree to floating-point roundoff while a window's sum stays
+          below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -197,8 +197,8 @@ class BoxBlur(nn.Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. The implementations agree to floating-point roundoff, except that outside eager
-          CPU execution values near the dtype's largest finite value can overflow to ``inf``.
+          for larger kernels. The two implementations agree to floating-point roundoff while a window's sum stays
+          below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
 
     Returns:
         the blurred input torch.Tensor.

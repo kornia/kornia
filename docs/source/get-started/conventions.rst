@@ -674,7 +674,8 @@ The blurs give sizes and standard deviations rows first, as torch orders ``(H, W
 ``(kh, kw)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)` in :func:`~kornia.filters.gaussian_blur2d`,
 :func:`~kornia.filters.box_blur`, :func:`~kornia.filters.median_blur` and the filters built on them. OpenCV passes
 both pairs x first, so swap them when porting; scipy uses kornia's order. For odd ``kh`` and ``kw``, with the border
-mapped by the table above:
+mapped by the table above (for ``circular`` only scipy: ``cv2.GaussianBlur`` and ``cv2.blur`` reject ``BORDER_WRAP``
+for most kernel sizes and dtypes):
 
 - ``gaussian_blur2d(x, (kh, kw), (sy, sx))`` equals ``cv2.GaussianBlur(x, (kw, kh), sigmaX=sx, sigmaY=sy)`` and
   ``scipy.ndimage.gaussian_filter(x, sigma=(sy, sx), radius=(kh // 2, kw // 2))``.

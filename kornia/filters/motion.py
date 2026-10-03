@@ -227,8 +227,9 @@ def motion_blur(
         - The kernel is :func:`~kornia.filters.get_motion_kernel2d`'s, correlated with the image by
           :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction`` (including the
           side on which the streak of a bright point is heaviest), ``mode``, the tensor shapes and the border modes.
-        - Known defect: a tensor ``angle`` with a float ``direction`` raises ``TypeCheckError`` unless the angle's
-          dtype is the input's, promoted to at least float32, so a float32 angle fails on a float64 image
+        - Known defect: a tensor ``angle`` with a float ``direction`` raises unless the angle is a CPU tensor whose
+          dtype is the input's, promoted to at least float32: a float32 angle fails on a float64 image, and an angle
+          on any device other than the CPU fails at every dtype
           (`#5429 <https://github.com/kornia/kornia/issues/5429>`_).
 
     Args:
@@ -283,8 +284,8 @@ def motion_blur3d(
         - The kernel is :func:`~kornia.filters.get_motion_kernel3d`'s, correlated with the volume by
           :func:`~kornia.filters.filter3d`; their Convention blocks cover ``angle``, ``direction``, ``mode`` and the
           border modes. With ``direction=1`` and a zero ``angle`` the streak of a bright voxel is heaviest toward
-          :math:`+x`; a positive roll alone turns it toward :math:`+y`, and a positive pitch alone toward decreasing
-          ``D``.
+          increasing ``W``; a positive roll alone turns it toward increasing ``H``, and a positive pitch alone toward
+          decreasing ``D``.
         - Known defect: that of :func:`~kornia.filters.motion_blur`, for a :math:`(B, 3)` tensor ``angle``
           (`#5429 <https://github.com/kornia/kornia/issues/5429>`_).
 

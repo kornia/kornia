@@ -113,11 +113,16 @@ def bilateral_blur(
           the whole ``kernel_size`` rectangle, and :math:`d` is the neighbour's colour distance from the centre
           pixel: the sum of the absolute channel differences for ``'l1'``, their Euclidean norm for ``'l2'``.
           :ref:`Filtering <filtering-conventions>` compares this with OpenCV.
-        - ``sigma_color`` is in the units of the input values: an image scaled by ``s``, filtered with
+        - ``sigma_color`` is in the units of the input values: an image scaled by ``s > 0``, filtered with
           ``sigma_color * s``, gives the result scaled by ``s``.
-        - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
-        - Known defect: an integer input is differenced in its own dtype, so uint8 differences wrap and the filter
-          blends across edges it should keep (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
+        - Known defects:
+
+          - an integer input is differenced in its own dtype, so uint8 differences wrap and the filter blends
+            across edges it should keep (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+          - the batch of a tensor ``sigma_color`` or ``sigma_space`` is not checked: a batch that is neither 1 nor
+            ``B`` fails inside the filter when ``B > 1``, and for ``B = 1`` it broadcasts the output to its own batch
+            (`#5430 <https://github.com/kornia/kornia/issues/5430>`_).
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -171,8 +176,9 @@ def joint_bilateral_blur(
           ``guidance``, and ``input`` is what gets averaged.
         - ``input`` comes first and ``guidance`` second, the opposite of :func:`~kornia.filters.guided_blur`.
         - ``guidance`` may have its own channel count; its batch size and :math:`(H, W)` must equal ``input``'s.
-        - Known defect: that of :func:`~kornia.filters.bilateral_blur`, for an integer ``guidance``
-          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - Known defects: those of :func:`~kornia.filters.bilateral_blur`, for an integer ``guidance``
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_) and for a tensor ``sigma_color`` or
+          ``sigma_space`` (`#5430 <https://github.com/kornia/kornia/issues/5430>`_).
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.

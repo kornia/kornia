@@ -34,9 +34,9 @@ def unsharp_mask(
     .. image:: _static/img/unsharp_mask.png
 
     Convention:
-        - The output is ``input + (input - blurred)``, where ``blurred`` is :func:`~kornia.filters.gaussian_blur2d`
-          with the same ``kernel_size``, ``sigma`` and ``border_type``: the gain on the detail is fixed at 1. See
-          the Convention block on :func:`~kornia.filters.gaussian_blur2d` for the argument order.
+        - The blur in the formula above is :func:`~kornia.filters.gaussian_blur2d` with the same ``kernel_size``,
+          ``sigma`` and ``border_type``, and the detail it removes is added back with a fixed gain of 1. See the
+          Convention block on :func:`~kornia.filters.gaussian_blur2d` for the argument order.
         - The output is not clamped: next to an edge it overshoots on both sides, so a step from 0 to 1 comes back
           below 0 and above 1. :ref:`Filtering <filtering-conventions>` maps the call onto scikit-image.
 

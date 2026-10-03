@@ -378,3 +378,10 @@ class TestConventionsMedianBlur(BaseTester):
             zero_padded = median_blur(image, kernel_size, border_type="constant").detach()
             assert zero_padded[0, 0, 0, 0] == 0 and zero_padded[0, 0, -1, -1] == 0
             assert int((zero_padded != image.detach()).sum()) == changed
+        # the default is 'reflect', not just a mode that keeps a constant
+        torch.manual_seed(0)
+        noisy = torch.rand(1, 1, 11, 13).to(device=device, dtype=dtype).requires_grad_(requires_grad)
+        for kernel_size in (3, 5):
+            default = median_blur(noisy, kernel_size).detach()
+            self.assert_close(default, median_blur(noisy, kernel_size, border_type="reflect").detach())
+            assert not torch.equal(default, median_blur(noisy, kernel_size, border_type="replicate").detach())

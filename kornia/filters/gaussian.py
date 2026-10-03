@@ -120,7 +120,8 @@ def gaussian_blur2d(
         the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
 
     Raises:
-        ~kornia.core.exceptions.ShapeError: if input is not a 4D torch.Tensor.
+        ~kornia.core.exceptions.TypeCheckError: if input is not a torch.Tensor.
+        ~kornia.core.exceptions.ShapeError: if input is not 4D.
         ~kornia.core.exceptions.BaseError: if sigma values are not positive.
         ~kornia.core.exceptions.BaseError: if the ``sigma`` batch is neither 1 nor the input batch.
         ~kornia.core.exceptions.BaseError: if kernel_size is not a positive odd integer.
