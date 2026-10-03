@@ -53,7 +53,7 @@ def test_kimi_vl_official_weights():
     with open(index_path) as f:
         index = json.load(f)
 
-    vision_keys = [k for k in index["weight_map"].keys() if "vision_tower" in k or "multi_modal_projector" in k]
+    vision_keys = [k for k in index["weight_map"] if "vision_tower" in k or "multi_modal_projector" in k]
     shards = {index["weight_map"][k] for k in vision_keys}
 
     state_dict = {}
