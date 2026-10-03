@@ -33,6 +33,7 @@ from kornia.filters import (
     filter2d_separable,
     filter3d,
     gaussian,
+    gaussian_blur2d,
     get_binary_kernel2d,
     get_box_kernel1d,
     get_box_kernel2d,
@@ -51,8 +52,12 @@ from kornia.filters import (
     get_sobel_kernel2d,
     get_spatial_gradient_kernel2d,
     get_spatial_gradient_kernel3d,
+    laplacian,
     laplacian_1d,
+    spatial_gradient,
+    spatial_gradient3d,
 )
+from kornia.filters.blur import _box_blur_pool
 
 from testing.base import (
     BaseTester,
@@ -60,6 +65,7 @@ from testing.base import (
     _supports_kernel_probe,
     supports_nearest_3d_grid_sample,
     supports_reflect_padding,
+    supports_replicate_padding,
 )
 
 
@@ -1696,32 +1702,103 @@ class TestConventionsFilter2d(BaseTester):
         assert out[..., 2, 3].flatten()[0].item() == 0
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
-    def test_wart_uppercase_padding_returns_the_valid_size_5156(self, name, device, dtype):
-        """padding='SAME' passes the case-insensitive check but misses the 'same' branch: valid size (#5156)."""
+    def test_convention_padding_and_behaviour_are_case_insensitive_5156(self, name, device, dtype):
+        """padding='SAME' pads as 'same' does and 'Valid' crops as 'valid', in filter2d and fft_conv (#5156)."""
         _fft_guard(name, device, dtype)
+        fn = _FILTER2D_FNS[name]
         image = _rand(1, 1, 5, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 3, device=device, dtype=dtype, seed=1)
-        assert _FILTER2D_FNS[name](image, kernel, "constant", padding="SAME").shape == (1, 1, 3, 5)
+        same = fn(image, kernel, "constant", padding="SAME")
+        assert same.shape == (1, 1, 5, 7)
+        assert torch.equal(same, fn(image, kernel, "constant", padding="same"))
+        valid = fn(image, kernel, "constant", padding="Valid")
+        assert valid.shape == (1, 1, 3, 5)
+        assert torch.equal(valid, fn(image, kernel, "constant", padding="valid"))
+        conv = fn(image, kernel, "constant", behaviour="CONV")
+        assert torch.equal(conv, fn(image, kernel, "constant", behaviour="conv"))
+        # a spelling outside the set is still rejected by kornia, and the message keeps it as given
+        with pytest.raises(BaseError, match="Invalid padding mode, Full"):
+            fn(image, kernel, "constant", padding="Full")
 
     @pytest.mark.parametrize(
         "case",
-        ["filter2d_border_type", "fft_conv_border_type", "filter3d_border_type", "kernel2d_mode", "kernel3d_mode"],
+        [
+            "filter2d",
+            "filter2d_separable",
+            "fft_conv",
+            "filter3d",
+            "box_blur_pool",
+            "laplacian",
+            "gaussian_blur2d",
+            "kernel2d_mode",
+            "kernel3d_mode",
+            "spatial_gradient_order1",
+            "spatial_gradient_order2",
+            "spatial_gradient3d_order1",
+            "spatial_gradient3d_order2",
+        ],
     )
-    def test_wart_uppercase_border_type_or_mode_passes_validation_then_raises_5156(self, case, device, dtype):
-        """'REFLECT', 'Replicate', 'Sobel' and 'Diff' pass the case-insensitive check, then fail to dispatch (#5156)."""
-        image = _rand(1, 1, 5, 7, device=device, dtype=dtype)
+    def test_convention_border_type_and_mode_are_case_insensitive_5156(self, case, device, dtype):
+        """'REFLECT', 'Replicate', 'CIRCULAR', 'Sobel' and 'Diff' give their lower-case spelling's result (#5156).
+
+        The ``order=1`` gradients and the large ``gaussian_blur2d`` image take the fast paths, which dispatch on the
+        spelling themselves, so the upper-case call must take the same path and not fall through to the generic one.
+        """
+        _fft_guard(case, device, dtype)
+        if "gradient" in case and not supports_replicate_padding(device, dtype):
+            pytest.skip("spatial_gradient pads with mode='replicate', which this device lacks for this dtype")
+        image = _rand(1, 2, 5, 7, device=device, dtype=dtype)
+        volume = _rand(1, 1, 3, 5, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 3, device=device, dtype=dtype, seed=1)
+        # 256x256 with 2 channels is the smallest image the CPU fast path of gaussian_blur2d accepts
+        large = _rand(1, 2, 256, 256, device=device, dtype=dtype) if case == "gaussian_blur2d" else image
         calls = {
-            "filter2d_border_type": lambda: filter2d(image, kernel, border_type="REFLECT"),
-            "fft_conv_border_type": lambda: fft_conv(image, kernel, border_type="REFLECT"),
-            "filter3d_border_type": lambda: filter3d(image[:, :, None], kernel[:, None], border_type="Replicate"),
-            "kernel2d_mode": lambda: get_spatial_gradient_kernel2d("Sobel", 1, device=device, dtype=dtype),
-            "kernel3d_mode": lambda: get_spatial_gradient_kernel3d("Diff", 1, device=device, dtype=dtype),
+            "filter2d": lambda spelling: filter2d(image, kernel, border_type=spelling),
+            "filter2d_separable": lambda spelling: filter2d_separable(image, kernel[:, 0], kernel[:, 1], spelling),
+            "fft_conv": lambda spelling: fft_conv(image, kernel, border_type=spelling),
+            "filter3d": lambda spelling: filter3d(volume, kernel[:, None].expand(-1, 3, -1, -1), spelling),
+            "box_blur_pool": lambda spelling: _box_blur_pool(image, (3, 3), spelling, True),
+            "laplacian": lambda spelling: laplacian(image, 3, border_type=spelling),
+            "gaussian_blur2d": lambda spelling: gaussian_blur2d(large, (3, 3), (1.0, 1.0), border_type=spelling),
+            "kernel2d_mode": lambda spelling: get_spatial_gradient_kernel2d(spelling, 1, device=device, dtype=dtype),
+            "kernel3d_mode": lambda spelling: get_spatial_gradient_kernel3d(spelling, 2, device=device, dtype=dtype),
+            "spatial_gradient_order1": lambda spelling: spatial_gradient(image, mode=spelling, order=1),
+            "spatial_gradient_order2": lambda spelling: spatial_gradient(image, mode=spelling, order=2),
+            "spatial_gradient3d_order1": lambda spelling: spatial_gradient3d(volume, mode=spelling, order=1),
+            "spatial_gradient3d_order2": lambda spelling: spatial_gradient3d(volume, mode=spelling, order=2),
         }
-        # the error comes from past the check (torch's F.pad or the kernel dispatch), not from kornia's validation
-        with pytest.raises(Exception) as error:
-            calls[case]()
-        assert not isinstance(error.value, BaseError)
+        spellings = {
+            "kernel2d_mode": [("Sobel", "sobel"), ("DIFF", "diff")],
+            "kernel3d_mode": [("Diff", "diff")],
+            "spatial_gradient_order1": [("Sobel", "sobel"), ("DIFF", "diff")],
+            "spatial_gradient_order2": [("Sobel", "sobel"), ("DIFF", "diff")],
+            "spatial_gradient3d_order1": [("Diff", "diff")],
+            "spatial_gradient3d_order2": [("Diff", "diff")],
+        }.get(case, [("REFLECT", "reflect"), ("Replicate", "replicate"), ("CIRCULAR", "circular")])
+        for upper, lower in spellings:
+            if lower == "reflect" and not supports_reflect_padding(device, dtype):
+                continue
+            assert torch.equal(calls[case](upper), calls[case](lower))
+        if case == "spatial_gradient3d_order1":
+            # the slicing fast path differences a +-60000 step to inf in float16 while conv3d accumulates it to 60000,
+            # so the two spellings only agree when both take the same path
+            step = torch.full_like(volume, -60000.0)
+            step[..., 4:] = 60000.0
+            assert torch.equal(spatial_gradient3d(step, mode="Diff"), spatial_gradient3d(step, mode="diff"))
+        # a spelling outside the set is still rejected by kornia, and the message keeps it as given
+        bad = "Scharr" if "mode" in case or "gradient" in case else "Mirror"
+        with pytest.raises(BaseError, match=bad):
+            calls[case](bad)
+
+    def test_convention_filter3d_behaviour_is_case_insensitive_5156(self, device, dtype):
+        """filter3d(behaviour='CONV') flips the kernel as 'conv' does, and 'Corr' correlates as 'corr' does (#5156)."""
+        volume = _rand(1, 2, 3, 5, 7, device=device, dtype=dtype)
+        kernel = _rand(1, 3, 3, 3, device=device, dtype=dtype, seed=1)
+        conv = filter3d(volume, kernel, behaviour="conv")
+        corr = filter3d(volume, kernel, behaviour="corr")
+        assert not torch.equal(conv, corr)
+        assert torch.equal(filter3d(volume, kernel, behaviour="CONV"), conv)
+        assert torch.equal(filter3d(volume, kernel, behaviour="Corr"), corr)
 
     @pytest.mark.parametrize("behaviour", ["corr", "conv"])
     def test_convention_filter3d_normalized_accepts_a_non_contiguous_kernel_5159(self, behaviour, device, dtype):
@@ -2254,11 +2331,12 @@ class TestConventionsKernels(BaseTester):
     @pytest.mark.parametrize(
         "builder", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]
     )
-    def test_wart_gaussian_kernel1d_rejects_a_python_int_sigma_5157(self, builder, device, dtype):
-        """The 1d Gaussian builders raise for sigma=1, where the 2d builder accepts sigma=(1, 1) (#5157)."""
-        with pytest.raises((BaseError, AttributeError)):
-            builder(5, 1, device=device, dtype=dtype)
-        assert builder(5, 1.0, device=device, dtype=dtype).shape == (1, 5)
+    def test_convention_gaussian_kernel1d_accepts_a_python_int_sigma_5157(self, builder, device, dtype):
+        """The 1d Gaussian builders accept integer sigma just like the 2d builder (#5157)."""
+        actual = builder(5, 1, device=device, dtype=dtype)
+        expected = builder(5, 1.0, device=device, dtype=dtype)
+        assert actual.shape == (1, 5)
+        self.assert_close(actual, expected)
         assert get_gaussian_kernel2d((5, 5), (1, 1), device=device, dtype=dtype).shape == (1, 5, 5)
 
     @pytest.mark.parametrize("case", ["box_int32", "gaussian_uint8", "laplacian_uint8", "gradient3d_int32"])
