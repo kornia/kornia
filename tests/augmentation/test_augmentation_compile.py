@@ -293,6 +293,17 @@ class TestAugmentationCompile(BaseTester):
         input = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         self.assert_close(InheritedFlip()(input), input + 1)
 
+    @pytest.mark.parametrize("nested_first", [False, True])
+    def test_compile_nested_container_matrix(self, device, dtype, torch_optimizer, nested_first):
+        # A nested container records its matrix inside the compiled outer forward (#4476).
+        nested = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0))
+        horizontal = K.RandomHorizontalFlip(p=1.0)
+        aug = K.AugmentationSequential(*([nested, horizontal] if nested_first else [horizontal, nested]))
+        input = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        self.assert_close(torch_optimizer(aug, fullgraph=True)(input), input.flip((-2, -1)))
+        expected = torch.tensor([[[-1.0, 0.0, 5.0], [0.0, -1.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(aug.transform_matrix, expected)
+
 
 class TestRandomCropCompile(BaseTester):
     @pytest.mark.parametrize("padding_mode", ["constant", "reflect", "replicate"])
