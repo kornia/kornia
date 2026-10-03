@@ -27,25 +27,18 @@ from testing.base import BaseTester
 
 
 class TestRgbToHls(BaseTester):
-    @pytest.mark.parametrize(
-        ("dtype", "blue"),
-        [
-            (torch.float32, 6e-8),
-            (torch.float16, 1e-3),
-            (torch.bfloat16, 1e-2),
-            (torch.float64, 1e-17),
-        ],
-    )
     @pytest.mark.parametrize("requires_grad", [False, True])
-    def test_red_hue_rounded_to_period_is_wrapped(self, device, dtype, blue, requires_grad):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
-
-        image = torch.tensor([1.0, 0.0, blue], device=device, dtype=dtype).reshape(1, 3, 1, 1)
-        image.requires_grad_(requires_grad)
+    def test_red_hue_rounded_to_period_is_wrapped(self, device, dtype, requires_grad):
+        # A tiny negative red-max hue rounds up to the dtype's 2π (#5369); 4 * eps gives the largest hue below it.
+        blue = {torch.float16: 1e-3, torch.bfloat16: 1e-2, torch.float32: 6e-8, torch.float64: 1e-17}[dtype]
+        near_seam = 4 * torch.finfo(dtype).eps
+        image = torch.tensor([[1.0, 1.0], [0.0, 0.0], [blue, near_seam]], device=device, dtype=dtype)
+        image = image.reshape(1, 3, 1, 2).requires_grad_(requires_grad)
         hls = kornia.color.rgb_to_hls(image)
+        hue = hls[0, 0, 0]
 
-        assert torch.equal(hls[:, 0], torch.zeros_like(hls[:, 0]))
+        assert hue[0] == 0
+        assert 6.2 < hue[1] < 2 * math.pi
         if requires_grad:
             hls.sum().backward()
             assert image.grad is not None
