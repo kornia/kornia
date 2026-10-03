@@ -208,13 +208,17 @@ def otsu_threshold(
         - Each plane is histogrammed on its own range, ``nbins`` bins between its minimum and its maximum, not over a
           fixed :math:`[0, 1]` or :math:`[0, 255]`. On the default path the threshold is the upper edge of the
           selected histogram bin, in input units and in the input's dtype. For an integer input it is the largest
-          integer below that value, so ``x > threshold`` keeps every pixel on or above it. Among splits of equal
-          between-class variance the lowest wins. A constant plane uses its constant value as the threshold.
+          integer below that value, so ``x > threshold`` keeps every pixel on or above it. On the CPU, among splits
+          of equal between-class variance the lowest wins. A constant plane uses its constant value as the threshold.
         - The foreground is ``x > threshold``, strictly. The first output is ``x * (x > threshold)``, not a
           binary image, and its gradient is that mask.
-        - Known defect: ``slow_and_differentiable=True`` only swaps in a kernel density estimate of fixed bandwidth
-          ``1e-3``: the threshold still has no gradient, and pixels far from the ``nbins`` sample points are missed
-          (`#5174 <https://github.com/kornia/kornia/issues/5174>`_).
+        - Known defects:
+
+          - ``slow_and_differentiable=True`` only swaps in a kernel density estimate of fixed bandwidth ``1e-3``: the
+            threshold still has no gradient, and pixels far from the ``nbins`` sample points are missed
+            (`#5174 <https://github.com/kornia/kornia/issues/5174>`_).
+          - on MPS a later one of the equal splits across empty bins can win, so the threshold differs from the
+            CPU's while the mask is the same (`#5421 <https://github.com/kornia/kornia/issues/5421>`_).
 
     Args:
         x (Tensor): Input tensor (image or batch of images) of at most five dimensions.

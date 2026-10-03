@@ -379,6 +379,23 @@ class TestConventionsOtsuThreshold(BaseTester):
         assert mask.flatten().tolist() == [False, False, True, True] * 2
         assert torch.equal(mask, x > threshold.view(2, 1, 1, 1))
 
+    def test_wart_otsu_equivalent_splits_pick_a_later_edge_on_mps_5421(self, device, dtype):
+        """#5421: of the equal splits across empty bins MPS can pick a later edge than the CPU, with the same mask."""
+        if device.type != "mps":
+            pytest.skip("#5421 compares the threshold computed on MPS with the one computed on the CPU")
+        # x^3 sampled at 40 and 48 points leaves empty bins between its levels, and every split across them gives the
+        # same classes. The CPU's between-class variance is flat there and takes the lowest; MPS's cumulative sums are
+        # not, and on at least one of the two images it takes a later edge
+        images = [torch.linspace(0, 1, 40).pow(3).view(1, 1, 4, 10), torch.linspace(0, 1, 48).pow(3).view(1, 1, 6, 8)]
+        later = []
+        for img in images:
+            img = img.to(dtype)
+            mask_cpu, threshold_cpu = otsu_threshold(img, return_mask=True)
+            mask_mps, threshold_mps = otsu_threshold(img.to(device), return_mask=True)
+            assert torch.equal(mask_mps.cpu(), mask_cpu)
+            later.append(threshold_mps.item() > threshold_cpu.item())
+        assert any(later)
+
     def test_wart_otsu_slow_path_threshold_has_no_gradient_and_kde_skips_pixels_5174(self, device, dtype):
         """#5174: the slow path gives no threshold gradient, and its 1e-3 KDE skips pixels between its sample points."""
         generator = torch.Generator().manual_seed(0)
