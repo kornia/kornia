@@ -33,6 +33,7 @@ from kornia.filters import (
     filter2d_separable,
     filter3d,
     gaussian,
+    gaussian_blur2d,
     get_binary_kernel2d,
     get_box_kernel1d,
     get_box_kernel2d,
@@ -1728,20 +1729,29 @@ class TestConventionsFilter2d(BaseTester):
             "filter3d",
             "box_blur_pool",
             "laplacian",
+            "gaussian_blur2d",
             "kernel2d_mode",
             "kernel3d_mode",
-            "spatial_gradient",
-            "spatial_gradient3d",
+            "spatial_gradient_order1",
+            "spatial_gradient_order2",
+            "spatial_gradient3d_order1",
+            "spatial_gradient3d_order2",
         ],
     )
     def test_convention_border_type_and_mode_are_case_insensitive_5156(self, case, device, dtype):
-        """'REFLECT', 'Replicate', 'CIRCULAR', 'Sobel' and 'Diff' give their lower-case spelling's result (#5156)."""
+        """'REFLECT', 'Replicate', 'CIRCULAR', 'Sobel' and 'Diff' give their lower-case spelling's result (#5156).
+
+        The ``order=1`` gradients and the large ``gaussian_blur2d`` image take the fast paths, which dispatch on the
+        spelling themselves, so the upper-case call must take the same path and not fall through to the generic one.
+        """
         _fft_guard(case, device, dtype)
-        if case in ("spatial_gradient", "spatial_gradient3d") and not supports_replicate_padding(device, dtype):
+        if "gradient" in case and not supports_replicate_padding(device, dtype):
             pytest.skip("spatial_gradient pads with mode='replicate', which this device lacks for this dtype")
         image = _rand(1, 2, 5, 7, device=device, dtype=dtype)
         volume = _rand(1, 1, 3, 5, 7, device=device, dtype=dtype)
         kernel = _rand(1, 3, 3, device=device, dtype=dtype, seed=1)
+        # 256x256 with 2 channels is the smallest image the CPU fast path of gaussian_blur2d accepts
+        large = _rand(1, 2, 256, 256, device=device, dtype=dtype) if case == "gaussian_blur2d" else image
         calls = {
             "filter2d": lambda spelling: filter2d(image, kernel, border_type=spelling),
             "filter2d_separable": lambda spelling: filter2d_separable(image, kernel[:, 0], kernel[:, 1], spelling),
@@ -1749,21 +1759,32 @@ class TestConventionsFilter2d(BaseTester):
             "filter3d": lambda spelling: filter3d(volume, kernel[:, None].expand(-1, 3, -1, -1), spelling),
             "box_blur_pool": lambda spelling: _box_blur_pool(image, (3, 3), spelling, True),
             "laplacian": lambda spelling: laplacian(image, 3, border_type=spelling),
+            "gaussian_blur2d": lambda spelling: gaussian_blur2d(large, (3, 3), (1.0, 1.0), border_type=spelling),
             "kernel2d_mode": lambda spelling: get_spatial_gradient_kernel2d(spelling, 1, device=device, dtype=dtype),
             "kernel3d_mode": lambda spelling: get_spatial_gradient_kernel3d(spelling, 2, device=device, dtype=dtype),
-            "spatial_gradient": lambda spelling: spatial_gradient(image, mode=spelling, order=2),
-            "spatial_gradient3d": lambda spelling: spatial_gradient3d(volume, mode=spelling),
+            "spatial_gradient_order1": lambda spelling: spatial_gradient(image, mode=spelling, order=1),
+            "spatial_gradient_order2": lambda spelling: spatial_gradient(image, mode=spelling, order=2),
+            "spatial_gradient3d_order1": lambda spelling: spatial_gradient3d(volume, mode=spelling, order=1),
+            "spatial_gradient3d_order2": lambda spelling: spatial_gradient3d(volume, mode=spelling, order=2),
         }
         spellings = {
             "kernel2d_mode": [("Sobel", "sobel"), ("DIFF", "diff")],
             "kernel3d_mode": [("Diff", "diff")],
-            "spatial_gradient": [("Sobel", "sobel"), ("DIFF", "diff")],
-            "spatial_gradient3d": [("Diff", "diff")],
+            "spatial_gradient_order1": [("Sobel", "sobel"), ("DIFF", "diff")],
+            "spatial_gradient_order2": [("Sobel", "sobel"), ("DIFF", "diff")],
+            "spatial_gradient3d_order1": [("Diff", "diff")],
+            "spatial_gradient3d_order2": [("Diff", "diff")],
         }.get(case, [("REFLECT", "reflect"), ("Replicate", "replicate"), ("CIRCULAR", "circular")])
         for upper, lower in spellings:
             if lower == "reflect" and not supports_reflect_padding(device, dtype):
                 continue
             assert torch.equal(calls[case](upper), calls[case](lower))
+        if case == "spatial_gradient3d_order1":
+            # the slicing fast path differences a +-60000 step to inf in float16 while conv3d accumulates it to 60000,
+            # so the two spellings only agree when both take the same path
+            step = torch.full_like(volume, -60000.0)
+            step[..., 4:] = 60000.0
+            assert torch.equal(spatial_gradient3d(step, mode="Diff"), spatial_gradient3d(step, mode="diff"))
         # a spelling outside the set is still rejected by kornia, and the message keeps it as given
         bad = "Scharr" if "mode" in case or "gradient" in case else "Mirror"
         with pytest.raises(BaseError, match=bad):
