@@ -407,7 +407,16 @@ class TestTensorWrapperProtocol(BaseTester):
             (lambda t: TensorWrapper(t.clone()).sum(), True),
             (lambda t: (TensorWrapper(t) @ TensorWrapper(t.T)).unwrap(), False),
         ],
-        ids=["data", "unwrap", "add", "inplace_and_reflected", "torch_add", "getitem", "method_intermediate_tensor", "matmul"],
+        ids=[
+            "data",
+            "unwrap",
+            "add",
+            "inplace_and_reflected",
+            "torch_add",
+            "getitem",
+            "method_intermediate_tensor",
+            "matmul",
+        ],
     )
     def test_eager_backend_traces_a_function_that_builds_a_wrapper(self, device, dtype, fn, fullgraph):
         # The eager backend keeps this in the ordinary jobs; test_dynamo covers the optimizer backends.
