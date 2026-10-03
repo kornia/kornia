@@ -30,6 +30,18 @@ from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel2d
 from .median import _compute_zero_padding
 
 
+def _check_sigma_batch(name: str, sigma: torch.Tensor, input: torch.Tensor) -> None:
+    """Check that a tensor sigma has a batch of 1, shared by the input, or the input batch."""
+    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size,
+    # so a dynamic-shape torch.compile would recompile for each new batch.
+    if sigma.shape[0] not in (1, input.shape[0]):
+        KORNIA_CHECK(
+            False,
+            f"{name} must have a batch of 1 or the input batch. "
+            f"Got a {name} batch of {sigma.shape[0]} for an input batch of {input.shape[0]}",
+        )
+
+
 def _bilateral_blur(
     input: torch.Tensor,
     guidance: Optional[torch.Tensor],
@@ -53,12 +65,17 @@ def _bilateral_blur(
 
     if isinstance(sigma_color, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ["B"])
+        _check_sigma_batch("sigma_color", sigma_color, input)
         # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
         if not is_compiling() and not bool((sigma_color > 0).all()):
             KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
         sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1, 1)
     elif not sigma_color > 0:
         KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
+
+    if isinstance(sigma_space, torch.Tensor):
+        KORNIA_CHECK_SHAPE(sigma_space, ["B", "2"])
+        _check_sigma_batch("sigma_space", sigma_space, input)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
@@ -111,9 +128,11 @@ def bilateral_blur(
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges. It must be positive.
+          Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
+          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
+          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -128,6 +147,7 @@ def bilateral_blur(
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive.
         BaseError: if ``sigma_color`` is not positive.
+        BaseError: if the batch of a tensor ``sigma_color`` or ``sigma_space`` is neither 1 nor the input batch.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -161,9 +181,11 @@ def joint_bilateral_blur(
         guidance: the guidance torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges. It must be positive.
+          Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
+          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
+          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -177,6 +199,7 @@ def joint_bilateral_blur(
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive.
         BaseError: if ``sigma_color`` is not positive.
+        BaseError: if the batch of a tensor ``sigma_color`` or ``sigma_space`` is neither 1 nor the input batch.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -228,9 +251,11 @@ class BilateralBlur(_BilateralBlur):
     Arguments:
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges. It must be positive.
+          Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
+          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
+          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -249,6 +274,8 @@ class BilateralBlur(_BilateralBlur):
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive; raised from the constructor.
         BaseError: if ``sigma_color`` is not positive; raised from ``forward``.
+        BaseError: if the batch of a tensor ``sigma_color`` or ``sigma_space`` is neither 1 nor the input batch;
+          raised from ``forward``.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -296,9 +323,11 @@ class JointBilateralBlur(_BilateralBlur):
     Arguments:
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges. It must be positive.
+          Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
+          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
+          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -316,6 +345,8 @@ class JointBilateralBlur(_BilateralBlur):
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive; raised from the constructor.
         BaseError: if ``sigma_color`` is not positive; raised from ``forward``.
+        BaseError: if the batch of a tensor ``sigma_color`` or ``sigma_space`` is neither 1 nor the input batch;
+          raised from ``forward``.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
