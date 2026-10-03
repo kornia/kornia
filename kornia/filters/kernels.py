@@ -22,7 +22,6 @@ from typing import Any, Optional, Union
 
 import torch
 
-from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
@@ -1298,18 +1297,3 @@ def get_hanning_kernel2d(
     ky = get_hanning_kernel1d(kernel_size[0], device, dtype)[None].T
     kx = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
     return ky @ kx
-
-
-@deprecated(replace_with="get_gaussian_kernel1d", version="0.6.10")
-def get_gaussian_kernel1d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
-    return get_gaussian_kernel1d(*args, **kwargs)
-
-
-@deprecated(replace_with="get_gaussian_kernel2d", version="0.6.10")
-def get_gaussian_kernel2d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
-    return get_gaussian_kernel2d(*args, **kwargs)
-
-
-@deprecated(replace_with="get_gaussian_kernel3d", version="0.6.10")
-def get_gaussian_kernel3d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
-    return get_gaussian_kernel3d(*args, **kwargs)
