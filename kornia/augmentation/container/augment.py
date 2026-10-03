@@ -427,7 +427,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = self.transform_op.inverse(  # type: ignore
                     *outputs, module=module, param=param, extra_args=self.extra_args
                 )
-                if not isinstance(outputs, list | tuple):
+                if not isinstance(outputs, (list, tuple)):
                     # Make sure we are unpacking a list whilst post-proc
                     outputs = [outputs]
 
@@ -510,7 +510,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, torch.Tensor | Keypoints):
+                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Keypoints)):
                     if isinstance(_out_k, list):
                         _out_k = [i.type(in_arg.dtype) for i in _out_k]
                     else:
@@ -519,7 +519,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, torch.Tensor | Boxes):
+                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Boxes)):
                     if isinstance(_out_b, list):
                         _out_b = [i.type(in_arg.dtype) for i in _out_b]
                     else:
@@ -604,7 +604,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             for param in params:
                 module = self.get_submodule(param.name)
                 outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
-                if not isinstance(outputs, list | tuple):
+                if not isinstance(outputs, (list, tuple)):
                     # Make sure we are unpacking a list whilst post-proc
                     outputs = [outputs]
                 self._update_transform_matrix_by_module(module)
@@ -715,7 +715,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         idx = data_keys.index(DataKey.INPUT)
         if isinstance(output, dict):
             return output[original_keys[idx]]
-        if len(data_keys) > 1 and isinstance(output, list | tuple):
+        if len(data_keys) > 1 and isinstance(output, (list, tuple)):
             return output[idx]
         return output
 
