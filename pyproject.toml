@@ -249,7 +249,7 @@ select = [
   # "DJ",   # flake8-django
   # "EM",   # flake8-errmsg
   # "ERA",  # eradicate
-  # "EXE",  # flake8-executable
+  "EXE",  # flake8-executable
   # "FA",   # flake8-future-annotations
   # "FBT",  # flake8-boolean-trap
   # "FIX",  # flake8-fixme
