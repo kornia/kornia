@@ -160,12 +160,14 @@ def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
         the normalised tensor, in ``input``'s dtype. An all-zero vector normalises to zero with a
         zero gradient: a zero vector has no direction, and the gradient of the ``eps`` clamp there,
         ``1 / eps``, is ~1e12 in float32 and overflows to ``inf`` once cast back to float16. A
-        non-zero vector keeps ``normalize``'s value and gradient.
+        non-zero vector, including one that holds a NaN, keeps ``normalize``'s value and gradient.
     """
     x = input.float() if input.dtype == torch.float16 else input
     # `amax` rather than a squared norm, so a tiny non-zero vector cannot underflow into the zero branch.
-    nonzero = x.abs().amax(dim=dim, keepdim=True) > 0
-    out = torch.where(nonzero, F.normalize(x, dim=dim, eps=1e-12), torch.zeros_like(x))
+    # `== 0` rather than `> 0`: `amax` propagates NaN and `NaN > 0` is False, which sent a vector holding
+    # a NaN down the zero branch and hid the NaN that `normalize` returns.
+    zero = x.abs().amax(dim=dim, keepdim=True) == 0
+    out = torch.where(zero, torch.zeros_like(x), F.normalize(x, dim=dim, eps=1e-12))
     return out.to(input.dtype)
 
 
