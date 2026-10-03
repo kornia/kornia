@@ -364,9 +364,7 @@ Enhancement
   operate on HSV data.
 - :func:`kornia.enhance.normalize` and :func:`kornia.enhance.denormalize` use channel axis 1
   in ``(B, C, ...)``. :func:`kornia.enhance.normalize_min_max` takes ``(*, C, H, W)`` and rescales
-  each ``H x W`` plane independently. Outside rank 4, ``denormalize`` checks ``(C,)`` statistics
-  against the wrong axis; pass ``(1, C)``
-  (`#5318 <https://github.com/kornia/kornia/issues/5318>`_).
+  each ``H x W`` plane independently.
 - :func:`kornia.enhance.integral_image` sums inclusively over the last two axes. The returned
   image has the input shape, without an extra zero border.
 - :class:`kornia.enhance.ZCAWhitening` uses ``dim`` as the sample axis and flattens all other

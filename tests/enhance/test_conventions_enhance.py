@@ -61,6 +61,17 @@ class TestEnhanceConventions(BaseTester):
         self.assert_close(kornia.enhance.denormalize(normalized, mean, std), data)
         self.assert_close(kornia.enhance.Denormalize(mean, std)(normalized), data)
 
+    @pytest.mark.parametrize("wrong", ["mean", "std"])
+    def test_convention_denormalize_rejects_channel_vector_of_other_length_5318(self, wrong, device, dtype):
+        # Depth 4 matches the vector, the single channel does not: dimension -3 accepted this and
+        # broadcast the channel axis to four.
+        data = torch.zeros(2, 1, 4, 2, 2, device=device, dtype=dtype)
+        one = torch.ones(1, device=device, dtype=dtype)
+        four = torch.ones(4, device=device, dtype=dtype)
+        mean, std = (four, one) if wrong == "mean" else (one, four)
+        with pytest.raises(ValueError):
+            kornia.enhance.denormalize(data, mean, std)
+
     def test_convention_denormalize_rank5_batch_channel_statistics_workaround(self, device, dtype):
         data = torch.arange(2 * 4 * 3 * 2 * 2, device=device, dtype=dtype).reshape(2, 4, 3, 2, 2) / 32.0
         mean = torch.tensor([[0.1, 0.2, 0.3, 0.4]], device=device, dtype=dtype)
