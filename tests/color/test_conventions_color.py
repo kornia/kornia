@@ -53,7 +53,7 @@ class TestColorConventions(BaseTester):
         expected = torch.tensor([[[[0.412453]], [[0.212671]], [[0.019334]]]], device=device, dtype=dtype)
         self.assert_close(xyz, expected)
 
-    def test_convention_grayscale_to_rgb_returns_independent_storage(self, device, dtype):
+    def test_convention_grayscale_to_rgb_5321_does_not_alias_input(self, device, dtype):
         image = torch.tensor([[[[0.2, 0.7]]]], device=device, dtype=dtype)
         before = image.clone()
 
