@@ -186,20 +186,43 @@ class TestCheckSameDevice:
 
 
 class TestCheckSameDevices:
-    def test_valid(self, device):
-        assert KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device=device), torch.rand(1, device=device)]) is True
+    @pytest.mark.parametrize("count", [1, 2, 3])
+    def test_valid(self, device, count):
+        assert KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device=device) for _ in range(count)]) is True
 
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
+    @pytest.mark.parametrize(
+        "tensors, got, actual_type, expected_type",
+        [
+            ([], "an empty list", None, None),
+            ((), "tuple", tuple, list),
+            ((torch.zeros(1),), "tuple", tuple, list),
+            (None, "NoneType", type(None), list),
+            ("tensor", "str", str, list),
+            ([1], "a list containing int", int, torch.Tensor),
+            ([torch.zeros(1), 1], "a list containing int", int, torch.Tensor),
+        ],
+    )
+    def test_invalid_input(self, tensors, got, actual_type, expected_type):
+        assert KORNIA_CHECK_SAME_DEVICES(tensors, raises=False) is False
+        with pytest.raises(TypeCheckError, match=f"Expected a non-empty list of tensors, got {got}\\.") as exc_info:
+            KORNIA_CHECK_SAME_DEVICES(tensors, raises=True)
+        assert exc_info.value.actual_type is actual_type
+        assert exc_info.value.expected_type is expected_type
+
+    @pytest.mark.parametrize("tensors", [[], (torch.zeros(1),), [torch.zeros(1), 1]])
+    def test_invalid_input_message(self, tensors):
+        with pytest.raises(TypeCheckError, match="custom message"):
+            KORNIA_CHECK_SAME_DEVICES(tensors, msg="custom message")
+
     def test_invalid(self):
-        with pytest.raises(DeviceError):
-            KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device="cpu"), torch.rand(1, device="cuda")])
+        with pytest.raises(DeviceError) as exc_info:
+            KORNIA_CHECK_SAME_DEVICES([torch.rand(1), torch.empty(1, device="meta")], msg="custom message")
+        assert exc_info.value.expected_device == torch.device("cpu")
+        assert exc_info.value.actual_devices == [torch.device("cpu"), torch.device("meta")]
+        assert "custom message" in str(exc_info.value)
 
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid_raises_false(self):
-        assert (
-            KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device="cpu"), torch.rand(1, device="cuda")], raises=False)
-            is False
-        )
+        assert KORNIA_CHECK_SAME_DEVICES([torch.rand(1), torch.empty(1, device="meta")], raises=False) is False
 
 
 class TestCheckIsColor:

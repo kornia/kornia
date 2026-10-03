@@ -35,7 +35,7 @@ from .blur_pool import (
 from .canny import Canny, canny
 from .dissolving import StableDiffusionDissolving
 from .filter import convolve2d, convolve3d, correlate2d, correlate3d, fft_conv, filter2d, filter2d_separable, filter3d
-from .gaussian import GaussianBlur2d, gaussian_blur2d, gaussian_blur2d_t
+from .gaussian import GaussianBlur2d, gaussian_blur2d
 from .guided import GuidedBlur, guided_blur
 from .in_range import InRange, in_range
 from .kernels import (
@@ -47,11 +47,8 @@ from .kernels import (
     get_gaussian_discrete_kernel1d,
     get_gaussian_erf_kernel1d,
     get_gaussian_kernel1d,
-    get_gaussian_kernel1d_t,
     get_gaussian_kernel2d,
-    get_gaussian_kernel2d_t,
     get_gaussian_kernel3d,
-    get_gaussian_kernel3d_t,
     get_hanning_kernel1d,
     get_hanning_kernel2d,
     get_laplacian_kernel1d,
@@ -105,7 +102,6 @@ __all__ = [
     "filter3d",
     "gaussian",
     "gaussian_blur2d",
-    "gaussian_blur2d_t",
     "get_binary_kernel2d",
     "get_box_kernel1d",
     "get_box_kernel2d",
@@ -113,11 +109,8 @@ __all__ = [
     "get_gaussian_discrete_kernel1d",
     "get_gaussian_erf_kernel1d",
     "get_gaussian_kernel1d",
-    "get_gaussian_kernel1d_t",
     "get_gaussian_kernel2d",
-    "get_gaussian_kernel2d_t",
     "get_gaussian_kernel3d",
-    "get_gaussian_kernel3d_t",
     "get_hanning_kernel1d",
     "get_hanning_kernel2d",
     "get_laplacian_kernel1d",

@@ -40,9 +40,7 @@ from kornia.core.exceptions import DeviceError, TypeCheckError
 
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
-    if importlib.util.find_spec("torch_xla") is not None:
-        return True
-    return False
+    return importlib.util.find_spec("torch_xla") is not None
 
 
 def is_mps_tensor_safe(x: torch.Tensor) -> bool:
