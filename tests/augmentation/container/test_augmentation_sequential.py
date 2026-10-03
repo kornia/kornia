@@ -1067,7 +1067,8 @@ class TestConventionAugmentationSequential(BaseTester):
         out_image, out_masks = seq(image, masks)
         restored_image, restored = seq.inverse(out_image, out_masks)
         self.assert_close(restored_image, image)
-        assert isinstance(restored, list) and len(restored) == 2
+        assert isinstance(restored, list)
+        assert len(restored) == 2
         assert [m.dtype for m in restored] == [torch.int64, torch.bool]
         for entry, original in zip(restored, masks):
             assert torch.equal(entry, original)
