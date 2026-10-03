@@ -25,7 +25,7 @@ import torch.nn.functional as F
 
 from kornia.color import rgb_to_grayscale
 from kornia.core._compat import torch_version, torch_version_ge
-from kornia.core.exceptions import BaseError, ImageError
+from kornia.core.exceptions import ImageError
 from kornia.filters import Canny, canny, gaussian_blur2d, sobel, spatial_gradient
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
@@ -695,33 +695,51 @@ class TestConventionsCanny(BaseTester):
             x = 16 - on[:, 1] if mirrored else on[:, 1]
             assert set((on[:, 0] + x).tolist()) == {13, 14}
 
-    def test_wart_canny_two_level_step_has_no_edge_5170(self, device, dtype):
-        """#5170: NMS needs strictly greater on both sides, so the tied pair of a two-level step is suppressed."""
+    def test_convention_canny_tied_step_keeps_its_left_or_upper_pixel_5170(self, device, dtype):
+        """Of the two equal-magnitude pixels across a two-level step, the left (upper) one is the edge."""
         self._require_padding(device, dtype)
+        # 0 | 1 between x = 6 and x = 7 of a 9x14 image, no blur: the raw Sobel magnitudes of x = 6 and x = 7 tie at 4
         step = torch.zeros(1, 1, 9, 14, device=device, dtype=dtype)
         step[..., 7:] = 1.0
-        for img in (step, step.transpose(-1, -2)):
+        expected = torch.zeros_like(step)
+        expected[..., 6] = 1.0
+        # the rule is positional: the dark-to-bright and the bright-to-dark step keep the same pixel
+        for img in (step, 1.0 - step):
             _, edges = canny(img, kernel_size=1)
-            assert edges.sum().item() == 0
-        # control: the ramped step has no tie and gives one pixel per row
-        _, edges = canny(self._ramped_step(1.0, device, dtype), kernel_size=1)
-        assert edges[0, 0].nonzero()[:, 1].tolist() == [7] * 9
+            self.assert_close(edges, expected)
+            # relabel: transposed, the upper pixel of the tie is kept
+            _, edges_t = canny(img.transpose(-1, -2), kernel_size=1)
+            self.assert_close(edges_t, expected.transpose(-1, -2))
 
-    def test_wart_canny_rejects_thresholds_of_one_and_above_5171(self, device, dtype):
-        """#5171: thresholds must lie in (0, 1) though the magnitude of a [0, 1] image reaches 4."""
+    def test_convention_canny_thresholds_have_no_upper_bound_5171(self, device, dtype):
+        """The thresholds are in unnormalized Sobel units, which reach 4 on a [0, 1] image, and are not capped at 1."""
         self._require_padding(device, dtype)
-        img = self._ramped_step(1.0, device, dtype)
-        magnitude, _ = canny(img, kernel_size=1)
-        self.assert_close(magnitude.max(), torch.tensor(4.0, device=device, dtype=dtype))
-        with pytest.raises(BaseError):
-            canny(img, 2.0, 3.0, kernel_size=1)
-        with pytest.raises(BaseError):
-            Canny(2.0, 3.0)
+        img = self._ramped_step(1.0, device, dtype)  # the ridge at x = 7 has magnitude 4
+        ridge = torch.zeros_like(img)
+        ridge[..., 7] = 1.0
+        for low, high, expected in ((2.0, 3.0, ridge), (2.0, 4.5, 0.5 * ridge), (4.5, 5.0, 0.0 * ridge)):
+            _, edges = canny(img, low, high, kernel_size=1, hysteresis=False)
+            self.assert_close(edges, expected)
+            _, edges = Canny(low, high, kernel_size=1, hysteresis=False)(img)
+            self.assert_close(edges, expected)
 
-    def test_wart_canny_unsupported_channel_count_is_not_validated_5171(self, device, dtype):
-        """#5171: only C in {1, 3} works; other channel counts fail inside torch, not in a kornia check."""
-        self._require_padding(device, dtype)  # else the missing pad kernel raises first
+    def test_convention_canny_rejects_channel_counts_other_than_1_and_3_5171(self, device, dtype):
+        """Only C = 1 and C = 3 (read as RGB) are accepted; any other channel count raises a kornia ImageError."""
         for channels in (2, 4):
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(ImageError):
                 canny(torch.rand(1, channels, 12, 13, device=device, dtype=dtype))
-            assert not isinstance(excinfo.value, BaseError)
+            with pytest.raises(ImageError):
+                Canny()(torch.rand(1, channels, 12, 13, device=device, dtype=dtype))
+
+    def test_wart_canny_integer_input_finds_no_edge_5155(self, device, dtype):
+        """#5155: an integer image is not converted to a floating dtype, and the default blur truncates it to zeros."""
+        self._require_padding(device, dtype)
+        if device.type == "mps":
+            pytest.skip("#5155: MPS rejects integer convolution instead of returning zeros")
+        # the ramped step 0 | 6 | 10: in a floating dtype its blurred ridge, about 26, gives one edge pixel per row
+        img = self._ramped_step(10.0, device, torch.float64)
+        _, edges = canny(img.to(dtype), 5.0, 10.0)
+        assert edges[0, 0].nonzero()[:, 1].tolist() == [7] * 9
+        for int_dtype in (torch.int16, torch.int32, torch.int64):
+            _, edges = canny(img.to(int_dtype), 5.0, 10.0)
+            assert edges.count_nonzero().item() == 0

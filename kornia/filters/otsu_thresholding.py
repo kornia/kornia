@@ -212,21 +212,9 @@ def otsu_threshold(
           between-class variance the lowest wins. A constant plane uses its constant value as the threshold.
         - The foreground is ``x > threshold``, strictly. The first output is ``x * (x > threshold)``, not a
           binary image, and its gradient is that mask.
-        - Known defects:
-
-          - the minimum and maximum are taken over the whole input, so every plane is histogrammed on the joint
-            range and its threshold depends on the other images and channels in the call
-            (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
-          - the threshold is read from ``linspace(min, max, nbins)``, not the histogram's bin edges, so it sits up to
-            one bin above the split; at ``nbins=2`` nothing is kept
-            (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
-          - a constant plane, which has no split, gets the threshold 0 whatever its value
-            (`#5172 <https://github.com/kornia/kornia/issues/5172>`_).
-          - ``return_mask=True`` returns ``result > 0``, so foreground pixels of value 0 or below are reported as
-            background (`#5173 <https://github.com/kornia/kornia/issues/5173>`_).
-          - ``slow_and_differentiable=True`` only swaps in a kernel density estimate of fixed bandwidth ``1e-3``: the
-            threshold still has no gradient, and pixels far from the ``nbins`` sample points are missed
-            (`#5174 <https://github.com/kornia/kornia/issues/5174>`_).
+        - Known defect: ``slow_and_differentiable=True`` only swaps in a kernel density estimate of fixed bandwidth
+          ``1e-3``: the threshold still has no gradient, and pixels far from the ``nbins`` sample points are missed
+          (`#5174 <https://github.com/kornia/kornia/issues/5174>`_).
 
     Args:
         x (Tensor): Input tensor (image or batch of images) of at most five dimensions.

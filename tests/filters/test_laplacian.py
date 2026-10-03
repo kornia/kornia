@@ -321,11 +321,18 @@ class TestConventionsLaplacian(BaseTester):
         self.assert_close(out, laplacian(ramp, 3, border_type="reflect"))
         self.assert_close(out[0, 0, 3, [0, 5]], torch.tensor([0.375, 0.0], device=device, dtype=dtype))
 
-    def test_wart_laplacian_kernel_size_one_returns_nan_5175(self, device, dtype):
-        """#5175: kernel_size=1 passes validation and the normalized 1x1 kernel is 0 / 0."""
+    def test_convention_laplacian_rejects_kernel_size_one_5175(self, device, dtype):
+        """kernel_size needs 3 or more taps along one axis: 1 and (1, 1) raise, (1, 3) is accepted."""
         self._require_reflect_padding(device, dtype)
         data = torch.rand(1, 1, 5, 6, device=device, dtype=dtype)
-        assert laplacian(data, 1).isnan().all()
+        for kernel_size in (1, (1, 1)):
+            with pytest.raises(BaseError):
+                laplacian(data, kernel_size)
+            with pytest.raises(BaseError):
+                Laplacian(kernel_size)
+        # a 1 x 3 kernel is the 1-D stencil [1, -2, 1] along x, divided by its absolute sum 4
+        ramp = (torch.arange(6, device=device, dtype=dtype) ** 2).expand(1, 1, 5, 6)
+        self.assert_close(laplacian(ramp, (1, 3))[0, 0, 2, 1:-1], torch.full((4,), 0.5, device=device, dtype=dtype))
 
     def test_wart_laplacian_integer_input_returns_zeros_5155(self, device, dtype):
         """#5155: the kernel takes the integer input's dtype, so the normalised taps truncate to 0."""
@@ -344,9 +351,16 @@ class TestConventionsLaplacian(BaseTester):
         # unnormalised, the taps survive but the sum is uint8 arithmetic: -640 at the bright pixel reads -640 mod 256
         assert laplacian(img, 3, normalized=False)[0, 0, 2, 3].item() == 128
 
-    def test_wart_laplacian_uppercase_border_type_passes_check_then_raises_5156(self, device, dtype):
-        """#5156: the border_type check lower-cases, the padding call does not."""
-        data = torch.rand(1, 1, 7, 10, device=device, dtype=dtype)
-        with pytest.raises(Exception) as excinfo:
-            laplacian(data, 3, border_type="REFLECT")
-        assert not isinstance(excinfo.value, BaseError)
+    def test_convention_laplacian_border_type_is_case_insensitive_5156(self, device, dtype):
+        """border_type is case-insensitive: 'REFLECT' and 'Reflect' pad as 'reflect' does, and so for every mode."""
+        self._require_reflect_padding(device, dtype)
+        generator = torch.Generator().manual_seed(0)
+        data = torch.rand(1, 1, 7, 10, generator=generator).to(device=device, dtype=dtype)
+        outputs = {}
+        for border_type in ("reflect", "circular", "constant"):
+            outputs[border_type] = laplacian(data, 3, border_type=border_type)
+            for spelling in (border_type.upper(), border_type.capitalize()):
+                self.assert_close(laplacian(data, 3, border_type=spelling), outputs[border_type])
+        # the modes differ on the border, so a spelling that fell back to another mode would be seen
+        assert not torch.allclose(outputs["reflect"], outputs["circular"])
+        assert not torch.allclose(outputs["reflect"], outputs["constant"])

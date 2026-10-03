@@ -463,11 +463,18 @@ class TestConventionsInRange(BaseTester):
         as_float = in_range(values.to(dtype), (100.7,), (200.2,), return_mask=True)
         assert as_float.flatten().tolist() == [0, 1, 1, 0]
 
-    def test_wart_in_range_checks_one_tensor_bound_shape_5176(self, device, dtype):
-        """#5176: a (W,) upper bound is accepted when the lower bound is (B, C, 1, 1), and applied per column."""
+    def test_convention_in_range_checks_each_tensor_bound_shape_5176(self, device, dtype):
+        """Each Tensor bound is checked on its own, and a 1-D bound is read per channel, never per column."""
         generator = torch.Generator().manual_seed(0)
-        img = torch.rand(2, 3, 4, 5, generator=generator).to(device=device, dtype=dtype)
-        lower = torch.zeros(2, 3, 1, 1, device=device, dtype=dtype)
-        upper = torch.tensor([1.0, 1.0, 1.0, 1.0, 0.0], device=device, dtype=dtype)
-        mask = in_range(img, lower, upper, return_mask=True)
-        assert mask.sum(dim=(0, 1, 2)).tolist() == [8, 8, 8, 8, 0]
+        img = torch.rand(2, 3, 4, 5, generator=generator).to(device=device, dtype=dtype)  # C = 3, W = 5
+        per_sample = torch.zeros(2, 3, 1, 1, device=device, dtype=dtype)
+        per_column = torch.tensor([1.0, 1.0, 1.0, 1.0, 0.0], device=device, dtype=dtype)
+        # a (W,) bound is rejected whichever bound it is, even beside a valid (B, C, 1, 1) one
+        with pytest.raises(ValueError):
+            in_range(img, per_sample, per_column, return_mask=True)
+        with pytest.raises(ValueError):
+            in_range(img, per_column - 1, per_sample + 1, return_mask=True)
+        # a (C,) bound applies to its channel: channel 2's upper bound 0.5 decides the mask
+        per_channel = torch.tensor([1.0, 1.0, 0.5], device=device, dtype=dtype)
+        mask = in_range(img, per_sample, per_channel, return_mask=True)
+        self.assert_close(mask, (img[:, 2:] <= 0.5).to(dtype))

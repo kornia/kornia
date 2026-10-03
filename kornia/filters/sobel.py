@@ -48,8 +48,6 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
         - The border is always replicated, so the derivative of a linear ramp is half its slope on the first and
           last pixel along it. There is no ``border_type``, unlike :func:`~kornia.filters.filter2d` and
           :func:`~kornia.filters.laplacian`, whose default is ``'reflect'``.
-        - Known defect: ``mode`` is checked case-insensitively but used as given, so ``'Sobel'`` raises
-          (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
 
     Args:
         input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
@@ -125,8 +123,6 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
           new axis 2; see its Convention block for their order and units. There is no ``normalized`` argument:
           the output is always in derivative units.
         - The border is always replicated, as in :func:`~kornia.filters.spatial_gradient`.
-        - Known defect: ``mode`` is checked case-insensitively but used as given, so ``'Diff'`` raises
-          (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
 
     Args:
         input: input features torch.Tensor with shape :math:`(B, C, D, H, W)`.

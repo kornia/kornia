@@ -75,22 +75,16 @@ def laplacian(
           for size 3. Unlike ``normalized`` in :func:`~kornia.filters.spatial_gradient`, this does not give
           derivative units: size 3 returns :math:`3 \nabla^2 / 16`. :ref:`Filtering <filtering-conventions>`
           compares both scales with scipy and OpenCV.
-        - Known defects:
-
-          - ``kernel_size=1`` passes validation, and the normalised :math:`1 \times 1` kernel is ``0 / 0``, so the
-            output is all NaN (`#5175 <https://github.com/kornia/kornia/issues/5175>`_).
-          - an integer input casts the kernel to its dtype, as :func:`~kornia.filters.filter2d` does, so the
-            normalised kernel truncates to 0 and on the CPU the output is all zeros
-            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
-          - ``border_type`` is checked case-insensitively but used as given, so ``'REFLECT'`` raises
-            (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
+        - Known defect: an integer input casts the kernel to its dtype, as :func:`~kornia.filters.filter2d` does,
+          so the normalised kernel truncates to 0 and on the CPU the output is all zeros
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         input: the input image tensor with shape :math:`(B, C, H, W)`.
         kernel_size: the size of the kernel. It should be odd and positive, and at least 3 along one axis.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+          ``'replicate'`` or ``'circular'``, case-insensitive.
         normalized: if True, L1 norm of the kernel is set to 1.
 
     Return:
@@ -165,7 +159,7 @@ class Laplacian(nn.Module):
         kernel_size: the size of the kernel. It should be odd and positive, and at least 3 along one axis.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+          ``'replicate'`` or ``'circular'``, case-insensitive.
         normalized: if True, L1 norm of the kernel is set to 1.
 
     Raises:

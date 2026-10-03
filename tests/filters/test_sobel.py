@@ -22,7 +22,6 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core._compat import torch_version
-from kornia.core.exceptions import BaseError
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from kornia.filters.kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
@@ -761,9 +760,18 @@ class TestConventionsSpatialGradient(BaseTester):
         self.assert_close(sobel(flat), torch.full_like(flat, 1e-3))
         self.assert_close(sobel(flat, eps=0.0), torch.zeros_like(flat))
 
-    def test_wart_spatial_gradient_capitalised_mode_passes_check_then_raises_5156(self, device, dtype):
-        """#5156: the mode check lower-cases, the dispatch does not."""
-        img = torch.rand(1, 1, 6, 9, device=device, dtype=dtype)
-        with pytest.raises(Exception) as excinfo:
-            spatial_gradient(img, mode="Sobel")
-        assert not isinstance(excinfo.value, BaseError)
+    def test_convention_spatial_gradient_mode_is_case_insensitive_5156(self, device, dtype):
+        """mode is case-insensitive: 'Sobel' and 'DIFF' give the results of 'sobel' and 'diff'."""
+        self._require_replicate_padding(device, dtype, three_d=True)
+        generator = torch.Generator().manual_seed(0)
+        img = torch.rand(1, 1, 6, 9, generator=generator).to(device=device, dtype=dtype)
+        for order in (1, 2):
+            sobel_out = spatial_gradient(img, "sobel", order)
+            diff_out = spatial_gradient(img, "diff", order)
+            assert not torch.allclose(sobel_out, diff_out)  # the spelling decides which operator runs
+            self.assert_close(spatial_gradient(img, "Sobel", order), sobel_out)
+            self.assert_close(spatial_gradient(img, "DIFF", order), diff_out)
+        volume = torch.rand(1, 1, 5, 6, 7, generator=generator).to(device=device, dtype=dtype)
+        for order in (1, 2):
+            self.assert_close(spatial_gradient3d(volume, "Diff", order), spatial_gradient3d(volume, "diff", order))
+        self.assert_close(SpatialGradient3d("Diff")(volume), spatial_gradient3d(volume))

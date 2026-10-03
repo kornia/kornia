@@ -71,16 +71,13 @@ def in_range(
     where `C` is the number of channels. Both comparisons are inclusive.
 
     Convention:
-        - A pixel passes only if every channel lies in its inclusive range; a NaN fails. The mask is
+        - A pixel passes only if every channel lies in its range; a NaN fails. The mask is
           :math:`(*, 1, H, W)` in the input's dtype, 1 for a pass. ``lower > upper`` is not rejected and selects
           nothing.
         - ``return_mask=False`` returns ``input * mask``: the channels of a failing pixel become 0, except a NaN or
           infinite one, which becomes NaN.
         - The bounds, laid out as the note below says, are cast to the input's dtype, so on an integer image a
           fractional bound truncates: a lower bound of ``100.7`` admits ``100``.
-        - Known defect: the tensor shape check passes as soon as one bound is :math:`(B, C, 1, 1)`, and the other
-          then broadcasts against the image, so a :math:`(W,)` bound is applied per column
-          (`#5176 <https://github.com/kornia/kornia/issues/5176>`_).
 
     Args:
         input: The input torch.Tensor to be filtered in the shape of :math:`(*, *, H, W)`.

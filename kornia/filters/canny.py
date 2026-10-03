@@ -71,9 +71,8 @@ def canny(
     .. image:: _static/img/canny.png
 
     Convention:
-        - A 3-channel input is read as RGB and converted with :func:`~kornia.color.rgb_to_grayscale`; a 1-channel
-          input is used as it is. Both outputs are :math:`(B, 1, H, W)` in the input's floating dtype; an integer
-          input raises.
+        - A 3-channel input is converted with :func:`~kornia.color.rgb_to_grayscale`, which reads channel 0 as
+          red. For a floating input both outputs are :math:`(B, 1, H, W)` in the input's dtype.
         - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``, so both pairs are rows first
           (see the Convention block on :func:`~kornia.filters.gaussian_blur2d`); ``kernel_size=1`` skips the blur.
           The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
@@ -94,14 +93,9 @@ def canny(
           edge map does not.
         - Hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, repeated until
           nothing changes, and returns edges of 0 and 1.
-        - Known defects:
-
-          - a step between two constant regions yields no edge: suppression drops both of its equal-magnitude
-            pixels, and after the blur rounding decides (`#5170 <https://github.com/kornia/kornia/issues/5170>`_).
-          - both thresholds must lie in :math:`(0, 1)`, so without the blur no threshold can reject a step higher
-            than 0.25, whose magnitude exceeds 1 (`#5171 <https://github.com/kornia/kornia/issues/5171>`_).
-          - a channel count other than 1 or 3 is not validated and fails with a raw torch error
-            (`#5171 <https://github.com/kornia/kornia/issues/5171>`_).
+        - Known defect: an integer input is not converted to a floating dtype. With the default blur a signed
+          integer image blurs to zeros and yields no edge; a uint8 image, or any integer image where torch has no
+          integer convolution, raises a raw torch error (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1, or to 3 for an RGB
