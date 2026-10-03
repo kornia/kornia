@@ -1790,6 +1790,16 @@ class TestConventionsFilter2d(BaseTester):
         with pytest.raises(BaseError, match=bad):
             calls[case](bad)
 
+    def test_convention_filter3d_behaviour_is_case_insensitive_5156(self, device, dtype):
+        """filter3d(behaviour='CONV') flips the kernel as 'conv' does, and 'Corr' correlates as 'corr' does (#5156)."""
+        volume = _rand(1, 2, 3, 5, 7, device=device, dtype=dtype)
+        kernel = _rand(1, 3, 3, 3, device=device, dtype=dtype, seed=1)
+        conv = filter3d(volume, kernel, behaviour="conv")
+        corr = filter3d(volume, kernel, behaviour="corr")
+        assert not torch.equal(conv, corr)
+        assert torch.equal(filter3d(volume, kernel, behaviour="CONV"), conv)
+        assert torch.equal(filter3d(volume, kernel, behaviour="Corr"), corr)
+
     @pytest.mark.parametrize("behaviour", ["corr", "conv"])
     def test_convention_filter3d_normalized_accepts_a_non_contiguous_kernel_5159(self, behaviour, device, dtype):
         """filter3d(normalized=True) gives a permuted kernel the result of its contiguous copy (#5159)."""
