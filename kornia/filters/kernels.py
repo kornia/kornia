@@ -33,7 +33,7 @@ def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, a
     for size in kernel_size:
         KORNIA_CHECK(
             isinstance(size, int) and (((size % 2 == 1) or allow_even) and size > min_value),
-            f"Kernel size must be an {fmt} integer bigger than {min_value}. Gotcha {size} on {kernel_size}",
+            f"Kernel size must be an {fmt} integer bigger than {min_value}. Got {size} on {kernel_size}",
         )
 
 

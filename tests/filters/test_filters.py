@@ -167,6 +167,11 @@ class TestFilter2D(BaseTester):
             filter2d(data, k, padding="a")
         assert "Invalid padding mode, a. Ex" in str(errinfo)
 
+        # a bad behaviour is named as such, not as a bad padding mode (#5157)
+        with pytest.raises(Exception) as errinfo:
+            filter2d(data, k, behaviour="a")
+        assert "Invalid behaviour mode, a. Ex" in str(errinfo)
+
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
@@ -497,7 +502,11 @@ class TestFilter3D(BaseTester):
 
         with pytest.raises(Exception) as errinfo:
             filter3d(data, k, border_type="a")
-        assert "Invalid border, gotcha a. Ex" in str(errinfo)
+        assert "Invalid border, got a. Ex" in str(errinfo)
+
+        with pytest.raises(Exception) as errinfo:
+            filter3d(data, k, behaviour="a")
+        assert "Invalid behaviour mode, got a. Ex" in str(errinfo)
 
     def test_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -2307,6 +2316,21 @@ class TestConventionsKernels(BaseTester):
         assert actual.shape == (1, 5)
         self.assert_close(actual, expected)
         assert get_gaussian_kernel2d((5, 5), (1, 1), device=device, dtype=dtype).shape == (1, 5, 5)
+
+    @pytest.mark.parametrize(
+        ("build", "message"),
+        [
+            (lambda: get_gaussian_kernel1d(4, 1.0), "Got 4 on (4,)"),
+            (lambda: get_motion_kernel2d(1, 0.0), "Got 1 on (1,)"),
+        ],
+        ids=["kernel_size", "motion_kernel_size"],
+    )
+    def test_a_bad_kernel_size_message_reads_got(self, build, message):
+        """The size checks said "Gotcha" for "Got" (#5157)."""
+        with pytest.raises(BaseError) as errinfo:
+            build()
+        assert message in str(errinfo.value)
+        assert "Gotcha" not in str(errinfo.value)
 
     @pytest.mark.parametrize("case", ["box_int32", "gaussian_uint8", "laplacian_uint8", "gradient3d_int32"])
     def test_wart_kernel_builders_truncate_or_wrap_in_an_integer_dtype_5155(self, case, device):
