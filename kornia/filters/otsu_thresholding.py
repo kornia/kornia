@@ -169,9 +169,13 @@ class OtsuThreshold(torch.nn.Module):
         # Find the maximum inter-class variance and corresponding threshold
         t_max = torch.argmax(inter_class_var, dim=1)  # Shape: (nchannel,)
         max_var = inter_class_var.gather(1, t_max[:, None]).squeeze(1)  # Shape: (nchannel,)
-        best_thresholds = torch.where(
-            max_var > 0, bin_edges.gather(1, (t_max + 1)[:, None]).squeeze(1), bin_edges[:, 0]
-        ).to(x.dtype)
+        upper_edges = bin_edges.gather(1, (t_max + 1)[:, None]).squeeze(1)
+        if not x.is_floating_point():
+            # An integer pixel on or above the upper edge is counted in the foreground, so the integer threshold is
+            # the largest integer below that edge. Truncating toward zero would round a negative edge up, and keep
+            # an integer edge, and drop the level just above the split from the foreground.
+            upper_edges = upper_edges.ceil() - 1
+        best_thresholds = torch.where(max_var > 0, upper_edges, bin_edges[:, 0]).to(x.dtype)
 
         # Preserve a constant plane's exact input value, including integers outside floating-point precision.
         plane_min = x_flattened.amin(dim=1).detach()
@@ -194,7 +198,8 @@ def otsu_threshold(
     r"""Apply automatic image thresholding using Otsu algorithm to the input tensor.
 
     Each image/channel plane uses its own histogram range. On the default path, the threshold is the upper edge
-    of the selected histogram bin. A constant plane uses its constant value as the threshold.
+    of the selected histogram bin. For an integer input it is the largest integer below that value, so
+    ``x > threshold`` keeps every pixel on or above it. A constant plane uses its constant value as the threshold.
 
     Args:
         x (Tensor): Input tensor (image or batch of images).

@@ -165,6 +165,36 @@ class TestOtsuThreshold(BaseTester):
         assert threshold.item() == 125
         assert mask.flatten()[126]
 
+    @pytest.mark.parametrize(
+        "input_dtype,sign,offset,nbins,expected,kept,dropped",
+        [
+            (torch.int16, 1, -128, 256, -3, 126, 125),
+            (torch.int16, -1, 0, 256, -126, 125, 126),
+            (torch.uint8, 1, 0, 255, 125, 126, 125),
+        ],
+        ids=["shifted_below_zero", "mirrored", "edge_on_an_integer"],
+    )
+    def test_integer_threshold_is_the_largest_integer_below_the_edge_5172(
+        self, input_dtype, sign, offset, nbins, expected, kept, dropped, device
+    ):
+        # The image above, shifted below zero, mirrored, or with 255 bins, whose selected upper edge is 126 exactly.
+        # Truncating the edge toward zero rounds a negative edge up and keeps an integer edge, so the level just
+        # above the split (scikit-image and OpenCV keep it) was dropped from the foreground.
+        values = torch.cat([torch.arange(256), torch.full((300,), 60), torch.full((300,), 190)])
+        image = (sign * values + offset).to(device=device, dtype=input_dtype).view(1, 1, 8, 107)
+        mask, threshold = otsu_threshold(image, nbins=nbins, return_mask=True)
+        assert threshold.item() == expected
+        assert mask.flatten()[kept]
+        assert not mask.flatten()[dropped]
+
+    def test_float64_threshold_uses_float64_edges_5172(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        # The single split of two bins is the midpoint 0.5 + 2**-31, which float32 rounds to 0.5.
+        image = torch.tensor([[0.0, 0.1, 0.2, 0.55, 0.9, 1.0 + 2**-30]], device=device, dtype=torch.float64)
+        _, threshold = otsu_threshold(image, nbins=2)
+        assert threshold.item() == 0.5 + 2**-31
+
     @pytest.mark.parametrize("shape", [(2, 6, 10), (2, 1, 6, 10), (1, 2, 6, 10), (1, 2, 1, 6, 10)])
     @pytest.mark.parametrize("slow_and_differentiable", [False, True])
     def test_planes_use_independent_ranges_5172(self, shape, slow_and_differentiable, device, dtype):
