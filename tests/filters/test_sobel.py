@@ -25,7 +25,7 @@ from kornia.core._compat import torch_version
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from kornia.filters.kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
-from testing.base import BaseTester, supports_replicate_padding
+from testing.base import BaseTester, supports_replicate_padding, supports_replicate_padding_3d
 
 sobel_module = importlib.import_module("kornia.filters.sobel")
 
@@ -631,22 +631,11 @@ class TestSobel(BaseTester):
         self.assert_close(op(data), op_optimized(data))
 
 
-def _supports_replicate_padding_3d(device, dtype):
-    # torch 2.5.1 has no float16 CPU replication_pad3d, like the 2-D kernel that supports_replicate_padding probes
-    try:
-        F.pad(torch.zeros(1, 1, 2, 2, 2, device=device, dtype=dtype), (1, 1, 1, 1, 1, 1), mode="replicate")
-    except RuntimeError as err:
-        if "not implemented for" in str(err):
-            return False
-        raise
-    return True
-
-
 class TestConventionsSpatialGradient(BaseTester):
     @staticmethod
     def _require_replicate_padding(device, dtype, three_d=False):
         if not supports_replicate_padding(device, dtype) or (
-            three_d and not _supports_replicate_padding_3d(device, dtype)
+            three_d and not supports_replicate_padding_3d(device, dtype)
         ):
             pytest.skip("torch has no replicate padding kernel for this device and dtype")
 

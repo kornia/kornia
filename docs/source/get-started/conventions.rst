@@ -689,8 +689,9 @@ one:
   Gaussian blur that OpenCV does not apply, and OpenCV's default L1 magnitude :math:`|g_x| + |g_y|` has no kornia
   counterpart. The two edge maps agree except at exact ties. :func:`~kornia.filters.canny` resolves a tie along the
   gradient as OpenCV does, but it computes the magnitude in floating point from ``img / 255``, where rounding can
-  break a tie of OpenCV's integer magnitudes either way. A magnitude equal to a threshold fails OpenCV's strict test
-  but passes :func:`~kornia.filters.canny`'s, whose ``eps`` sits inside the square root.
+  break a tie of OpenCV's integer magnitudes either way. A magnitude equal to a threshold fails OpenCV's strict test.
+  :func:`~kornia.filters.canny`'s ``eps``, inside the square root, lifts it above the threshold in float64, and in
+  float32 unless rounding absorbs ``eps``, as it can for magnitudes above about 2.8.
 - ``skimage.feature.canny`` thresholds the same unnormalized magnitude of a floating-point image and has the same
   defaults, 0.1 and 0.2, so thresholds carry over; its Gaussian blur and its interpolating suppression differ from
   :func:`~kornia.filters.canny`'s, so the edge maps do not match.

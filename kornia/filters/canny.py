@@ -73,8 +73,8 @@ def canny(
     Convention:
         - A 3-channel input is converted with :func:`~kornia.color.rgb_to_grayscale`, which reads channel 0 as
           red. For a floating input both outputs are :math:`(B, 1, H, W)` in the input's dtype.
-        - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``, so both pairs are rows first
-          (see the Convention block on :func:`~kornia.filters.gaussian_blur2d`); ``kernel_size=1`` skips the blur.
+        - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``: ``kernel_size`` is ``(kh, kw)``
+          and ``sigma`` is ``(sigma_y, sigma_x)``, rows first in both; ``kernel_size=1`` skips the blur.
           The magnitude is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` of the **unnormalised** Sobel gradient
           ``spatial_gradient(blurred, normalized=False)``: a slope of ``s`` gives ``8 s``, eight times what
           :func:`~kornia.filters.sobel` returns by default. On an image in :math:`[0, 1]` it is not bounded by 1: a
@@ -89,13 +89,14 @@ def canny(
           a pixel must be strictly greater than its left (upper) neighbour and greater than or equal to its right
           (lower) one, so of two pixels of equal magnitude across a step edge the left (upper) one is kept. Along a
           diagonal it must be strictly greater than both. A pixel with zero gradient is never kept. The returned
-          magnitude is taken after this step, so it is zero off the edge ridges; it carries the gradient, and the
-          edge map does not.
+          magnitude is taken after this step, so it is zero off the edge ridges; it is differentiable with respect
+          to the input, and the edge map is not.
         - Hysteresis keeps a weak pixel connected to a strong one through any of its 8 neighbours, repeated until
           nothing changes, and returns edges of 0 and 1.
-        - Known defect: an integer input is not converted to a floating dtype. With the default blur a signed
-          integer image blurs to zeros and yields no edge; a uint8 image, or any integer image where torch has no
-          integer convolution, raises a raw torch error (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - Known defect: an integer input is not converted to a floating dtype. With the default blur a 1-channel
+          signed integer image blurs to zeros and yields no edge; a uint8 image, a 3-channel integer image, or any
+          integer image where torch has no integer convolution raises
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1, or to 3 for an RGB
@@ -177,8 +178,9 @@ def canny(
     negative_idx: torch.Tensor = (angle_45 + 4) % 8
     negative_idx = negative_idx.long()
 
-    # The two neighbours along the gradient direction, read with one gather per channel. Two separate gathers on the
-    # padded magnitude miscompile under inductor on MPS, the second reading a wrong magnitude (pytorch/pytorch#199642)
+    # The two neighbours along the gradient direction, read with one gather per channel. Inductor on MPS miscompiles
+    # two separate gathers when the pixel is read from the padded magnitude rather than from the window: the second
+    # comparison recomputes the pixel's magnitude from gx alone (pytorch/pytorch#199642)
     neighbour_both: torch.Tensor = torch.gather(window, 2, torch.stack([positive_idx, negative_idx], 2))
     neighbour_positive: torch.Tensor = neighbour_both[:, :, 0]
     neighbour_negative: torch.Tensor = neighbour_both[:, :, 1]

@@ -454,14 +454,21 @@ class TestConventionsInRange(BaseTester):
         # lower > upper is not rejected; it selects nothing
         assert in_range(img, upper, lower, return_mask=True).sum().item() == 0
 
-    def test_convention_in_range_bounds_are_cast_to_input_dtype(self, device, dtype):
-        # on an integer image a fractional bound truncates: 100.7 -> 100 admits the value 100, a float image does not
+    def test_wart_in_range_fractional_bound_truncates_on_integer_input_5423(self, device, dtype):
+        """#5423: a fractional bound is cast to the integer input's dtype, so lower=100.7 admits 100."""
+        # a floating image keeps lower <= input <= upper: the value 100 lies below the lower bound 100.7
         values = torch.tensor([100, 101, 200, 201], device=device, dtype=torch.uint8).view(1, 1, 1, 4)
+        as_float = in_range(values.to(dtype), (100.7,), (200.2,), return_mask=True)
+        assert as_float.flatten().tolist() == [0, 1, 1, 0]
+        # uint8 with tuple bounds: the lower bound truncates to 100 and admits the value 100
         as_uint8 = in_range(values, (100.7,), (200.2,), return_mask=True)
         assert as_uint8.dtype == torch.uint8
         assert as_uint8.flatten().tolist() == [1, 1, 1, 0]
-        as_float = in_range(values.to(dtype), (100.7,), (200.2,), return_mask=True)
-        assert as_float.flatten().tolist() == [0, 1, 1, 0]
+        # int16 with Tensor bounds: the upper bound -3.5 truncates toward zero to -3 and admits the value -3, which
+        # flooring it to -4 would reject
+        negative = torch.tensor([-4, -3, -2], device=device, dtype=torch.int16).view(1, 1, 1, 3)
+        lower, upper = torch.tensor([-10.0], device=device), torch.tensor([-3.5], device=device)
+        assert in_range(negative, lower, upper, return_mask=True).flatten().tolist() == [1, 1, 0]
 
     def test_convention_in_range_checks_each_tensor_bound_shape_5176(self, device, dtype):
         """Each Tensor bound is checked on its own, and a 1-D bound is read per channel, never per column."""

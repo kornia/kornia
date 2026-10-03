@@ -227,7 +227,7 @@ def otsu_threshold(
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, or the boolean mask ``x > threshold`` when
-        ``return_mask`` is True, either with the shape of ``x``, and the computed threshold values. The thresholded
+        ``return_mask`` is True, each with the shape of ``x``, and the computed threshold values. The thresholded
         tensor cannot tell a kept pixel of value 0 from a dropped one; use the mask for that.
 
     Raises:

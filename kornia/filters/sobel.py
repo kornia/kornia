@@ -120,8 +120,8 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
 
     Convention:
         - The derivatives are the kernels of :func:`~kornia.filters.get_spatial_gradient_kernel3d`, stacked on a
-          new axis 2; see its Convention block for their order and units. There is no ``normalized`` argument:
-          the output is always in derivative units.
+          new axis 2; see its Convention block for their order and units. There is no ``normalized`` argument: a
+          floating input gives derivative units.
         - The border is always replicated, as in :func:`~kornia.filters.spatial_gradient`.
 
     Args:
@@ -190,7 +190,8 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
         - The output is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` per channel, where :math:`(g_x, g_y)` is
           ``spatial_gradient(input, 'sobel', normalized=normalized)``; see the Convention block on
           :func:`~kornia.filters.spatial_gradient`. With the default ``normalized=True`` a plane of slope ``s``
-          gives ``s``; ``normalized=False`` gives ``8 s``, the scale :func:`~kornia.filters.canny` thresholds.
+          gives :math:`\sqrt{s^2 + \epsilon}`, about ``s``; ``normalized=False`` gives about ``8 s``, the scale
+          :func:`~kornia.filters.canny` thresholds.
         - ``eps`` sits inside the square root, so a flat region returns :math:`\sqrt{\epsilon}`, ``1e-3`` by
           default, not 0.
 
