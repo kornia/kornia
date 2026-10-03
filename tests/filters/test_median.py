@@ -25,7 +25,7 @@ from kornia.core.exceptions import BaseError
 from kornia.filters import MedianBlur, median_blur
 from kornia.filters.kernels import get_binary_kernel2d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 median_module = importlib.import_module("kornia.filters.median")
 
@@ -355,3 +355,33 @@ class TestMedianBlur(BaseTester):
         expected = op(data)
         self.assert_close(actual.isnan(), expected.isnan())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+
+class TestConventionsMedianBlur(BaseTester):
+    """Pins for the border of :func:`median_blur`."""
+
+    # Without a gradient a square 3x3 or 5x5 window on the CPU runs the selection network; with one, the
+    # convolution + median path. Both pad as border_type says.
+    @pytest.mark.parametrize("requires_grad", [False, True], ids=["selection_network", "conv_median"])
+    def test_convention_median_blur_default_border_keeps_a_constant_image_4670(self, requires_grad, device, dtype):
+        """median_blur reflects the border by default, so a constant image keeps its corners (#4670)."""
+        # border_type='constant' takes a border median over zeros as well: a 3x3 corner window holds 4 image pixels
+        # and 5 zeros, so its median is 0; a 5x5 window zeroes a triangle of 3 pixels at each corner.
+        # Snippet used to generate expected:
+        #   image = torch.full((1, 1, 11, 13), 0.8)
+        #   for k in (3, 5): print((median_blur(image, k, "constant") != image).sum())  # 4, 12
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        image = torch.full((1, 1, 11, 13), 0.8, device=device, dtype=dtype).requires_grad_(requires_grad)
+        for kernel_size, changed in ((3, 4), (5, 12)):
+            self.assert_close(median_blur(image, kernel_size).detach(), image.detach())
+            zero_padded = median_blur(image, kernel_size, border_type="constant").detach()
+            assert zero_padded[0, 0, 0, 0] == 0 and zero_padded[0, 0, -1, -1] == 0
+            assert int((zero_padded != image.detach()).sum()) == changed
+        # the default is 'reflect', not just a mode that keeps a constant
+        torch.manual_seed(0)
+        noisy = torch.rand(1, 1, 11, 13).to(device=device, dtype=dtype).requires_grad_(requires_grad)
+        for kernel_size in (3, 5):
+            default = median_blur(noisy, kernel_size).detach()
+            self.assert_close(default, median_blur(noisy, kernel_size, border_type="reflect").detach())
+            assert not torch.equal(default, median_blur(noisy, kernel_size, border_type="replicate").detach())

@@ -16,10 +16,12 @@
 #
 
 import math
+import warnings
 
 import numpy as np
 import pytest
 import torch
+import torch.nn.functional as F
 
 from kornia.core.exceptions import BaseError
 from kornia.filters import (
@@ -31,7 +33,7 @@ from kornia.filters import (
     max_blur_pool2d,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 
 def _zero_padded_reference(x: torch.Tensor, k: int, s: int) -> torch.Tensor:
@@ -353,3 +355,172 @@ class TestEdgeAwareBlurPool(BaseTester):
         expected = _zero_padded_reference(padded, kernel_size, 1)[..., pad:-pad, pad:-pad]
         actual = edge_aware_blur_pool2d(data.to(device=device, dtype=dtype), kernel_size, edge_threshold=1e6)
         self.assert_close(actual, expected.to(device=device, dtype=dtype))
+
+
+class TestConventionsBlurPool(BaseTester):
+    """Pins for the sampling, padding and anchor of the blur pools, and for their filed defects."""
+
+    def test_convention_blur_pool2d_odd_kernel_samples_every_stride_th_pixel_from_0(self, device, dtype):
+        # For an odd kernel, blur_pool2d zero-pads (k - 1) // 2 per side, blurs, and keeps rows and columns 0, s, 2s,
+        # ... of the stride-1 blur: the output is ceil(H / s) x ceil(W / s). pyrdown instead resamples between pixels
+        # to floor(H / 2) x floor(W / 2).
+        torch.manual_seed(0)
+        image = torch.rand(1, 2, 7, 10).to(device=device, dtype=dtype)
+        for kernel_size in (3, 5):
+            dense = blur_pool2d(image, kernel_size, stride=1)
+            assert dense.shape == image.shape
+            for stride in (2, 3):
+                out = blur_pool2d(image, kernel_size, stride=stride)
+                assert out.shape[-2:] == (math.ceil(7 / stride), math.ceil(10 / stride))
+                self.assert_close(out, dense[..., ::stride, ::stride])
+                self.assert_close(BlurPool2D(kernel_size, stride=stride)(image), out)
+
+    def test_convention_blur_pool2d_zero_pads_the_border(self, device, dtype):
+        # blur_pool2d pads with zeros, so a constant map darkens along its border: each padded side drops the outer
+        # quarter of the binomial [1, 2, 1] / 4 weights. antialiased-cnns' BlurPool reflect-pads by default and
+        # matches kornia with pad_type='zero'.
+        # Snippet used to generate expected:
+        #   out = blur_pool2d(torch.ones(1, 1, 7, 10), 3); print(out[0, 0, 0], out[0, 0, :, 0])
+        ones = torch.ones(1, 1, 7, 10, device=device, dtype=dtype)
+        out = blur_pool2d(ones, 3)
+        self.assert_close(out[0, 0, 0], torch.tensor([0.5625, 0.75, 0.75, 0.75, 0.75], device=device, dtype=dtype))
+        self.assert_close(out[0, 0, :, 0], torch.tensor([0.5625, 0.75, 0.75, 0.5625], device=device, dtype=dtype))
+        self.assert_close(out[0, 0, 1:-1, 1:], torch.ones(2, 4, device=device, dtype=dtype))
+
+    def test_convention_blur_pool2d_even_kernel_is_anchored_at_k_minus_1_over_2(self, device, dtype):
+        # An even kernel's window covers [i - (k - 1) // 2, i + k // 2] -- the filters convention (filter2d, box_blur)
+        # and antialiased-cnns' anchor -- so a delta off the centre lights the rows and columns below.
+        # Snippet used to generate expected:
+        #   x = torch.zeros(1, 1, 7, 9); x[0, 0, 3, 4] = 1
+        #   nz = blur_pool2d(x, k, stride=1)[0, 0].nonzero(); print(nz[:, 0].unique(), nz[:, 1].unique())
+        image = torch.zeros(1, 1, 7, 9, device=device, dtype=dtype)
+        image[0, 0, 3, 4] = 1.0
+        for kernel_size, rows, cols in (
+            (2, [2, 3], [3, 4]),
+            (3, [2, 3, 4], [3, 4, 5]),
+            (4, [1, 2, 3, 4], [2, 3, 4, 5]),
+        ):
+            lit = blur_pool2d(image, kernel_size, stride=1)[0, 0].nonzero()
+            assert lit[:, 0].unique().tolist() == rows
+            assert lit[:, 1].unique().tolist() == cols
+
+    def test_convention_max_blur_pool2d_is_a_stride_one_max_pool_then_blur_pool2d(self, device, dtype):
+        # max_blur_pool2d(x, k, stride, max_pool_size) = blur_pool2d(F.max_pool2d(x, max_pool_size, stride=1), k,
+        # stride): the max pool never strides, so the output is ceil((H - max_pool_size + 1) / stride), not H / stride.
+        torch.manual_seed(0)
+        image = torch.rand(1, 2, 7, 10).to(device=device, dtype=dtype)
+        for kernel_size, max_pool_size, size in ((3, 2, (3, 5)), (3, 3, (3, 4)), (5, 2, (3, 5)), (4, 2, (3, 5))):
+            out = max_blur_pool2d(image, kernel_size, stride=2, max_pool_size=max_pool_size)
+            assert out.shape[-2:] == size
+            self.assert_close(out, blur_pool2d(F.max_pool2d(image, max_pool_size, stride=1), kernel_size, stride=2))
+            self.assert_close(MaxBlurPool2D(kernel_size, 2, max_pool_size)(image), out)
+
+    def test_convention_edge_aware_blur_pool2d_edge_is_an_intensity_ratio(self, device, dtype):
+        # A pixel keeps its value where the channel mean of log2(I(x + 2) / I(x - 2)), along x or y, exceeds
+        # log2(edge_threshold) in magnitude (dilated by edge_dilation_kernel_size), and is blurred elsewhere: the
+        # threshold is a ratio of intensities 4 px apart, so the decision is scale-invariant for intensities well
+        # above epsilon. The comparison is strict. Positive intensities are assumed: a negative pixel's log is NaN,
+        # which never counts as an edge.
+        # The default edge_threshold is 1.25, and the output keeps the input size. On a vertical step between
+        # columns 5 and 6 the blur would move those two columns by a quarter of the step.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+
+        def moved(step, out):
+            return (out[..., 5:7] - step[..., 5:7]).abs().max()
+
+        for low, high, kept in ((1.0, 1.2, False), (1.0, 1.3, True), (10.0, 12.0, False), (10.0, 13.0, True)):
+            step = torch.full((1, 1, 9, 12), low, device=device, dtype=dtype)
+            step[..., 6:] = high
+            out = edge_aware_blur_pool2d(step, 3)
+            assert out.shape == step.shape
+            if kept:
+                self.assert_close(out[..., 5:7], step[..., 5:7])
+            else:
+                assert moved(step, out) > (high - low) / 8
+        # a ratio of 1.3 in one channel of two averages below the threshold
+        step = torch.ones(1, 2, 9, 12, device=device, dtype=dtype)
+        step[:, 0, :, 6:] = 1.3
+        assert moved(step, edge_aware_blur_pool2d(step, 3)) > 0.3 / 8
+        # a negative step with the same ratio is blurred, and no NaN reaches the output
+        step = torch.full((1, 1, 9, 12), -1.0, device=device, dtype=dtype)
+        step[..., 6:] = -1.3
+        out = edge_aware_blur_pool2d(step, 3)
+        assert moved(step, out) > 0.3 / 8
+        assert not out.isnan().any()
+        # strict: with epsilon=0 a 1 -> 2 step has a log2 ratio of exactly 1 = log2(2), which is not an edge at
+        # edge_threshold=2 and is one just below it
+        step = torch.ones(1, 1, 9, 12, device=device, dtype=dtype)
+        step[..., 6:] = 2.0
+        assert moved(step, edge_aware_blur_pool2d(step, 3, edge_threshold=2.0, epsilon=0.0)) > 1 / 8
+        self.assert_close(edge_aware_blur_pool2d(step, 3, edge_threshold=1.99, epsilon=0.0)[..., 5:7], step[..., 5:7])
+
+    def test_convention_edge_aware_blur_pool2d_compares_pixels_two_apart_and_dilates_the_edges(self, device, dtype):
+        # The edge test at x compares x - 2 with x + 2 (and y - 2 with y + 2), and edge_dilation_kernel_size widens
+        # the kept band. Period-2 stripes, 1.0 | 1.15, scaled by 1.5 from column 8 on: pixels two apart match away
+        # from the step, so only columns 6..9 see the 1.5 ratio, and the stripes make every blurred column differ
+        # from the input. Transposing the image moves the band to rows 6..9.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        step = (1.0 + 0.15 * (torch.arange(16) % 2)).expand(1, 1, 9, 16).to(device=device, dtype=dtype).contiguous()
+        step[..., 8:] *= 1.5
+        for dilation, kept in ((1, [6, 7, 8, 9]), (3, [5, 6, 7, 8, 9, 10])):
+            out = edge_aware_blur_pool2d(step, 3, edge_dilation_kernel_size=dilation)
+            assert [c for c in range(16) if torch.equal(out[..., c], step[..., c])] == kept
+        transposed = step.transpose(-1, -2).contiguous()
+        out = edge_aware_blur_pool2d(transposed, 3, edge_dilation_kernel_size=1)
+        assert [r for r in range(16) if torch.equal(out[..., r, :], transposed[..., r, :])] == [6, 7, 8, 9]
+
+    def test_convention_blur_pool2d_even_kernel_keeps_ceil_h_over_stride_5166(self, device, dtype):
+        """An even kernel pads (k - 1) // 2 before and k // 2 after, so the blur pools keep ceil(H / stride) (#5166)."""
+        torch.manual_seed(0)
+        image = torch.rand(1, 2, 7, 10).to(device=device, dtype=dtype)
+        for kernel_size in (2, 4):
+            dense = blur_pool2d(image, kernel_size, stride=1)
+            assert dense.shape == image.shape
+            assert BlurPool2D(kernel_size, stride=1)(image).shape == image.shape
+            assert max_blur_pool2d(image, kernel_size, stride=1, max_pool_size=1).shape == image.shape
+            for stride in (2, 3):
+                out = blur_pool2d(image, kernel_size, stride=stride)
+                assert out.shape[-2:] == (math.ceil(7 / stride), math.ceil(10 / stride))
+                self.assert_close(out, dense[..., ::stride, ::stride])
+
+    def test_wart_max_blur_pool2d_ceil_mode_has_no_effect_5165(self, device, dtype):
+        """max_blur_pool2d passes ceil_mode to a stride-1 max pool, where it cannot change anything (#5165)."""
+        # The fix gives ceil_mode a meaning or deprecates it; a deprecation warning fails this pin as well.
+        for height, width in ((7, 10), (8, 11)):
+            image = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                ceil = max_blur_pool2d(image, 3, stride=2, max_pool_size=2, ceil_mode=True)
+                ceil_module = MaxBlurPool2D(3, stride=2, max_pool_size=2, ceil_mode=True)(image)
+            assert not [w for w in caught if issubclass(w.category, (DeprecationWarning, FutureWarning))]
+            assert torch.equal(ceil, max_blur_pool2d(image, 3, stride=2, max_pool_size=2, ceil_mode=False))
+            assert torch.equal(ceil_module, ceil)
+
+    @pytest.mark.parametrize("kernel_size", [2, 4])
+    def test_convention_edge_aware_blur_pool2d_even_kernel_size_keeps_the_input_shape_5163(
+        self, kernel_size, device, dtype
+    ):
+        """edge_aware_blur_pool2d blurs with an even kernel_size as blur_pool2d does and keeps the shape (#5163)."""
+        # With edge_threshold=1e6 no pixel is an edge, so the output is the stride-1 blur_pool2d of the input
+        # reflect-padded by 2, cropped back: an even kernel is anchored at (k - 1) // 2 there too.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        image = torch.rand(1, 1, 8, 9).to(device=device, dtype=dtype) + 0.1
+        out = edge_aware_blur_pool2d(image, kernel_size, edge_threshold=1e6)
+        assert out.shape == image.shape
+        self.assert_close(EdgeAwareBlurPool2D(kernel_size, edge_threshold=1e6)(image), out)
+        padded = F.pad(image.cpu().double(), (2, 2, 2, 2), mode="reflect")
+        expected = blur_pool2d(padded, kernel_size, stride=1)[..., 2:-2, 2:-2]
+        self.assert_close(out, expected.to(device=device, dtype=dtype))
+
+    def test_convention_edge_aware_blur_pool2d_keeps_a_constant_image_at_any_kernel_size_5228(self, device, dtype):
+        """edge_aware_blur_pool2d reflects the border as far as its kernel reaches: a constant image stays (#5228)."""
+        # A 7-tap binomial reaches 3 px past the border and a 15-tap one 7 px, past the 2 px the edge test reads.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        ones = torch.ones(1, 1, 15, 18, device=device, dtype=dtype)
+        for kernel_size in (3, 5, 7, 9, 15):
+            self.assert_close(edge_aware_blur_pool2d(ones, kernel_size), ones)
