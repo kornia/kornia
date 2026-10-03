@@ -83,9 +83,10 @@ permissions:
 jobs:
   tests:
     runs-on: ${{ inputs.os }}
-    # Hang guard: norms are ~6–15m (ubuntu), ~25m (MPS), ~61m (hosted macOS CPU).
+    # Hang guard: norms are ~6–15m (ubuntu), ~25m (MPS), ~61m (hosted macOS CPU), and 26–45m for the
+    # inductor leg, whose cold compiles run ~1.6x slower on EPYC 7763 runners than on 9V45 ones.
     # Keep well under GitHub's 6h default so a wedged test fails as a timeout.
-    timeout-minutes: ${{ inputs.device == 'mps' && 45 || startsWith(inputs.os, 'macos') && 90 || 45 }}
+    timeout-minutes: ${{ inputs.device == 'mps' && 45 || startsWith(inputs.os, 'macos') && 90 || inputs.optimizer == 'inductor' && 60 || 45 }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:

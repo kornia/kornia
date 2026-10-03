@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import sys
 from collections import defaultdict
 from functools import partial
@@ -202,10 +203,13 @@ def run(args: argparse.Namespace) -> None:
                 "kornia/geometry/homography.py",
                 "kornia/geometry/epipolar/fundamental.py",
                 "kornia/geometry/epipolar/essential.py",
+                "kornia/geometry/_ransac_program.py",
             )
         },
         units="pairs/s",
         dtype="float32",
+        compile=args.compile,
+        artifact_enabled=os.environ.get("KORNIA_RANSAC_AOT", "1") != "0",
         models=models,
         budgets=args.budgets,
         seeds=args.seeds,
@@ -256,11 +260,14 @@ def run(args: argparse.Namespace) -> None:
                         max_samples=budget,
                         confidence=args.confidence,
                         seed=0,
+                        compile=args.compile,
                     )
                     minimum = {"H": 4, "F": 7, "E": 5}[problem]
                     enough = len(kp1) >= minimum
                     median = iqr = None
                     if enough and not args.no_timing:
+                        if args.compile:
+                            estimator(kp1, kp2)  # the first call compiles, or loads the saved graph
                         median, iqr = time_us(partial(estimator, kp1, kp2), min_run_time=args.min_run_time)
                     for seed_index, seed in enumerate(args.seeds):
                         estimator.seed = seed
@@ -349,6 +356,9 @@ def main() -> None:
         "--min-run-time", type=float, default=0.1, help="Minimum repeated timing duration per pair/budget"
     )
     parser.add_argument("--no-timing", action="store_true", help="Evaluate geometric quality only")
+    parser.add_argument(
+        "--compile", action="store_true", help="Time RANSAC(compile=True); its first call compiles and is not timed"
+    )
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args()
     if not args.models or any(model not in MODEL_TYPES for model in args.models.split(",")):

@@ -272,7 +272,7 @@ class LineSegmentDetectionModule:
             num_iter = math.ceil(num_cand / group_size)
             sampled_feat_lst = []
             for iter_idx in range(num_iter):
-                if not iter_idx == num_iter - 1:
+                if iter_idx != num_iter - 1:
                     cand_h_ = cand_h[iter_idx * group_size : (iter_idx + 1) * group_size, :]
                     cand_w_ = cand_w[iter_idx * group_size : (iter_idx + 1) * group_size, :]
                     normalized_seg_length_ = normalized_seg_length[iter_idx * group_size : (iter_idx + 1) * group_size]
