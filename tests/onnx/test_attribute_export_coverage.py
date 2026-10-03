@@ -22,15 +22,6 @@ import pytest
 import torch
 from torch import nn
 
-pytestmark = pytest.mark.device_agnostic
-
-onnx = pytest.importorskip("onnx")
-ort = pytest.importorskip("onnxruntime")
-pytest.importorskip("onnxscript")
-
-if torch.__version__ < "2.5":
-    pytest.skip("ONNX export coverage requires torch >= 2.5", allow_module_level=True)
-
 from kornia.color.gray import BgrToGrayscale, GrayscaleToRgb, RgbToGrayscale
 from kornia.color.hls import HlsToRgb, RgbToHls
 from kornia.color.hsv import HsvToRgb, RgbToHsv
@@ -67,6 +58,15 @@ from kornia.filters.dexined import DexiNed
 from kornia.filters.motion import MotionBlur3D
 from kornia.filters.sobel import SpatialGradient, SpatialGradient3d
 from kornia.models.segmentation.base import SemanticSegmentation
+
+onnx = pytest.importorskip("onnx")
+ort = pytest.importorskip("onnxruntime")
+pytest.importorskip("onnxscript")
+
+if torch.__version__ < "2.5":
+    pytest.skip("ONNX export coverage requires torch >= 2.5", allow_module_level=True)
+
+pytestmark = pytest.mark.device_agnostic
 
 
 def _shape_from_attribute(shape: list[int], *, channel_override: int | None = None) -> tuple[int, ...]:
