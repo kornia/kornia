@@ -689,39 +689,53 @@ class TestConventionsMotionBlur(BaseTester):
         with pytest.raises(BaseError, match="kernel_size"):
             motion_blur3d(torch.rand(1, 1, 5, 9, 12, device=device, dtype=dtype), (3, 3, 3), (30.0, 0.0, 0.0), 0.5)
 
-    def test_wart_motion_blur_float32_tensor_angle_with_float_direction_raises_on_float64_5429(self, device):
-        """A float32 tensor angle with a float direction raises on a float64 input, in 2-D and 3-D (#5429)."""
-        # The float direction becomes a float64 tensor that no longer matches the float32 angle. Both stay on the CPU,
-        # so the error is the dtype one, never the device one of the next pin. A fix that brings both to one
-        # floating dtype returns a float64 blur and fails this pin.
+    def test_wart_motion_blur_float32_tensor_parameter_with_a_python_number_raises_on_float64_5429(self, device):
+        """A float32 tensor angle or direction with a Python number for the other raises on a float64 input (#5429)."""
+        # The Python number becomes a float64 tensor that no longer matches the float32 one. Both stay on the CPU, so
+        # the error is the dtype one, never the device one of the next pin. A fix on either side alone fails this pin;
+        # a fix that brings both to one floating dtype returns a float64 blur.
         if device.type == "mps":
             pytest.skip("MPS has no float64")
         image = torch.rand(1, 1, 9, 11, device=device, dtype=torch.float64)
         volume = torch.rand(1, 1, 7, 9, 11, device=device, dtype=torch.float64)
+        # tensor angle, Python-number direction
         with pytest.raises(TypeCheckError):
             motion_blur(image, 5, torch.tensor([30.0]), 0.5)
         with pytest.raises(TypeCheckError):
             motion_blur(image, 5, torch.tensor(30.0), 0.5)
         with pytest.raises(TypeCheckError):
             motion_blur3d(volume, 5, torch.tensor([[30.0, 0.0, 0.0]]), 0.5)
-        # control: a float64 angle runs
+        # Python-number angle, tensor direction
+        with pytest.raises(TypeCheckError):
+            motion_blur(image, 5, 30.0, torch.tensor([0.5]))
+        with pytest.raises(TypeCheckError):
+            motion_blur3d(volume, 5, (30.0, 0.0, 0.0), torch.tensor([0.5]))
+        # control: float64 tensors run
         assert motion_blur(image, 5, torch.tensor([30.0], dtype=torch.float64), 0.5).dtype == torch.float64
+        assert motion_blur(image, 5, 30.0, torch.tensor([0.5], dtype=torch.float64)).dtype == torch.float64
 
-    def test_wart_motion_blur_device_tensor_angle_with_float_direction_raises_5429(self, device, dtype):
-        """A tensor angle on a non-CPU device with a float direction raises, in 2-D and 3-D (#5429)."""
-        # The float direction is built on the CPU, so it never matches an angle on the input's device, even in the
-        # dtype it is built in (the input's, promoted to at least float32). A fix that builds it on the angle's device
-        # and in its dtype returns a blur and fails this pin.
+    def test_wart_motion_blur_device_tensor_parameter_with_a_python_number_raises_5429(self, device, dtype):
+        """A tensor angle or direction on a non-CPU device with a Python number for the other raises (#5429)."""
+        # The Python number is built on the CPU, so it never matches a tensor on the input's device, even in the dtype
+        # it is built in (the input's, promoted to at least float32). A fix on either side alone fails this pin; a
+        # fix that builds the number on the tensor's device and in its dtype returns a blur.
         if device.type == "cpu":
             pytest.skip("#5429's device mismatch needs a non-CPU device; the CPU dtype case is the float64 pin")
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS has no float64")
         image = torch.rand(1, 1, 9, 11, device=device).to(dtype)
         volume = torch.rand(1, 1, 7, 9, 11, device=device).to(dtype)
-        angle_dtype = torch.promote_types(dtype, torch.float32)
+        tensor_dtype = torch.promote_types(dtype, torch.float32)
+        # tensor angle, Python-number direction
         with pytest.raises(DeviceError):
-            motion_blur(image, 5, torch.tensor([30.0], device=device, dtype=angle_dtype), 0.5)
+            motion_blur(image, 5, torch.tensor([30.0], device=device, dtype=tensor_dtype), 0.5)
         with pytest.raises(DeviceError):
-            motion_blur3d(volume, 5, torch.tensor([[30.0, 0.0, 0.0]], device=device, dtype=angle_dtype), 0.5)
-        # control: the same angle on the CPU runs
-        assert motion_blur(image, 5, torch.tensor([30.0], dtype=angle_dtype), 0.5).device == image.device
+            motion_blur3d(volume, 5, torch.tensor([[30.0, 0.0, 0.0]], device=device, dtype=tensor_dtype), 0.5)
+        # Python-number angle, tensor direction
+        with pytest.raises(DeviceError):
+            motion_blur(image, 5, 30.0, torch.tensor([0.5], device=device, dtype=tensor_dtype))
+        with pytest.raises(DeviceError):
+            motion_blur3d(volume, 5, (30.0, 0.0, 0.0), torch.tensor([0.5], device=device, dtype=tensor_dtype))
+        # control: the same tensors on the CPU run
+        assert motion_blur(image, 5, torch.tensor([30.0], dtype=tensor_dtype), 0.5).device == image.device
+        assert motion_blur(image, 5, 30.0, torch.tensor([0.5], dtype=tensor_dtype)).device == image.device

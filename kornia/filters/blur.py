@@ -138,8 +138,8 @@ def box_blur(
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
           Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. The two implementations agree to floating-point roundoff while a window's sum stays
-          below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
+          for larger kernels. The two implementations agree to floating-point roundoff while the sum of a window's
+          absolute values stays below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -197,8 +197,8 @@ class BoxBlur(nn.Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. The two implementations agree to floating-point roundoff while a window's sum stays
-          below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
+          for larger kernels. The two implementations agree to floating-point roundoff while the sum of a window's
+          absolute values stays below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
 
     Returns:
         the blurred input torch.Tensor.
