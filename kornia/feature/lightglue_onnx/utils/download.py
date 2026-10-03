@@ -35,29 +35,36 @@ def download_onnx_from_url(
     file_name: Optional[str] = None,
     timeout: Optional[float] = None,
 ) -> str:
-    r"""Load the ONNX model at the given URL.
+    r"""Download the ONNX model at the given URL into the cache and return its path.
 
-    If downloaded file is a zip file, it will be automatically
-    decompressed.
-
-    If the object is already present in `model_dir`, it's deserialized and
-    returned.
+    A file already present in ``model_dir`` is returned without a request.
     The default value of ``model_dir`` is ``<hub_dir>/checkpoints`` where
     ``hub_dir`` is the directory returned by :func:`~torch.hub.get_dir`.
+    The transfer goes through :func:`kornia.core.download.download_file_from_url`,
+    which bounds a stalled server, retries transient failures and leaves no
+    partial file in the cache.
 
     Args:
         url (str): URL of the object to download
-        model_dir (str, optional): directory in which to save the object
+        model_dir (str, optional): directory in which to save the object; a leading ``~`` is expanded
         progress (bool, optional): whether or not to display a progress bar to stderr.
             Default: True
         check_hash(bool, optional): If True, the filename part of the URL should follow the naming convention
             ``filename-<sha256>.ext`` where ``<sha256>`` is the first eight or more
             digits of the SHA256 hash of the contents of the file. The hash is used to
-            ensure unique names and to verify the contents of the file.
+            ensure unique names and to verify the contents of the file. A file already in the cache
+            is checked too, and fetched again if it does not match.
             Default: False
         file_name (str, optional): name for the downloaded file. Filename from ``url`` will be used if not set.
         timeout (float, optional): maximum seconds a connection or read may stall. Defaults to the
             ``KORNIA_DOWNLOAD_TIMEOUT`` environment variable or 30 seconds.
+
+    Returns:
+        The path of the cached file.
+
+    Raises:
+        RuntimeError: if the download fails, or with ``check_hash`` the file does not match its hash. The
+            original error is chained as the cause.
 
     Example:
         >>> model = download_onnx_from_url('https://github.com/fabio-sim/LightGlue-ONNX/releases/download/v1.0.0/disk_lightglue_fused_fp16.onnx')
