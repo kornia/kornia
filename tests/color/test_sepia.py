@@ -100,3 +100,11 @@ class TestSepia(BaseTester):
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img), op_module(img))
+
+    def test_black_image_stays_black(self, device, dtype):
+        # eps keeps the shared maximum of a black image from dividing 0 by 0.
+        image = torch.zeros(2, 3, 4, 4, device=device, dtype=dtype)
+
+        actual = kornia.color.sepia(image)
+
+        self.assert_close(actual, torch.zeros_like(image), rtol=0.0, atol=0.0)
