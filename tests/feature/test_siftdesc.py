@@ -242,6 +242,16 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         torch.nn.functional.normalize(y_ref.float(), dim=1, eps=1e-12).to(desc_dtype).sum().backward()
         self.assert_close(y.grad, y_ref.grad)
 
+    def test_l2_normalize_propagates_nan(self, device):
+        from kornia.core.utils import _l2_normalize
+
+        nan, inf = float("nan"), float("inf")
+        x = torch.tensor([[nan, 1.0], [inf, 0.0], [0.0, 0.0], [3.0, 4.0]], device=device)
+        out = _l2_normalize(x, dim=1)
+        # a vector holding a NaN is not a zero vector: it keeps `F.normalize`'s NaN instead of becoming zeros
+        assert bool(torch.isnan(out[0]).all()), out[0]
+        torch.testing.assert_close(out[1:], torch.nn.functional.normalize(x[1:], dim=1), equal_nan=True)
+
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     def test_dense_sift(self, device, desc_dtype):
         if not supports_replicate_padding(device, desc_dtype):
