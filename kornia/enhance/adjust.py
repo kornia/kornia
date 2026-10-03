@@ -1077,8 +1077,8 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # Per-plane 256-bin histogram matching ``torch.histc(x, 256, 0, 255)`` bin placement.
     bins = torch.clamp((scaled * (256.0 / 255.0)).floor().long(), 0, 255)
     # Count in float32 (float64 stays float64): a count grows with the plane size, which half precision
-    # cannot hold. float16 overflows to inf once a plane has 65520 pixels and bfloat16 rounds counts
-    # above 256.
+    # cannot hold. float16 rounds counts above 2048 and their total overflows to inf past 65504, and
+    # bfloat16 rounds counts above 256.
     count_dtype = _normalize_to_float32_or_float64(scaled.dtype)
     histo = torch.zeros(n, 256, device=input.device, dtype=count_dtype)
     histo.scatter_add_(1, bins, torch.ones_like(scaled, dtype=count_dtype))
