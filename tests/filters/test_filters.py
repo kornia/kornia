@@ -2223,11 +2223,12 @@ class TestConventionsKernels(BaseTester):
     @pytest.mark.parametrize(
         "builder", [get_gaussian_kernel1d, get_gaussian_erf_kernel1d, get_gaussian_discrete_kernel1d]
     )
-    def test_wart_gaussian_kernel1d_rejects_a_python_int_sigma_5157(self, builder, device, dtype):
-        """The 1d Gaussian builders raise for sigma=1, where the 2d builder accepts sigma=(1, 1) (#5157)."""
-        with pytest.raises((BaseError, AttributeError)):
-            builder(5, 1, device=device, dtype=dtype)
-        assert builder(5, 1.0, device=device, dtype=dtype).shape == (1, 5)
+    def test_convention_gaussian_kernel1d_accepts_a_python_int_sigma_5157(self, builder, device, dtype):
+        """The 1d Gaussian builders accept integer sigma just like the 2d builder (#5157)."""
+        actual = builder(5, 1, device=device, dtype=dtype)
+        expected = builder(5, 1.0, device=device, dtype=dtype)
+        assert actual.shape == (1, 5)
+        self.assert_close(actual, expected)
         assert get_gaussian_kernel2d((5, 5), (1, 1), device=device, dtype=dtype).shape == (1, 5, 5)
 
     @pytest.mark.parametrize("case", ["box_int32", "gaussian_uint8", "laplacian_uint8", "gradient3d_int32"])

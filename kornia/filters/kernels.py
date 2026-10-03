@@ -130,8 +130,8 @@ def gaussian(
         mean: Mean of the Gaussian function (center); see the Convention block for an even
             ``window_size``. If not provided, it defaults to ``window_size // 2``. If a tensor,
             should be in a shape :math:`(B, 1)`.
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         A tensor with shape :math:`(B, \text{kernel_size})`, with Gaussian values.
@@ -143,8 +143,8 @@ def gaussian(
         gradient with respect to ``sigma`` is zero there, matching the continuous limit.
 
     """
-    if isinstance(sigma, float):
-        sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
+    if isinstance(sigma, (int, float)):
+        sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
@@ -197,16 +197,16 @@ def gaussian_discrete_erf(
     Args:
         window_size: the size which drives the filter amount.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by approximation of
         the error function.
 
     """
-    if isinstance(sigma, float):
-        sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
+    if isinstance(sigma, (int, float)):
+        sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
     batch_size = sigma.shape[0]
@@ -340,16 +340,16 @@ def gaussian_discrete(
     Args:
         window_size: the size which drives the filter amount.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by modified Bessel
         function.
 
     """
-    if isinstance(sigma, float):
-        sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
+    if isinstance(sigma, (int, float)):
+        sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
 
@@ -747,19 +747,17 @@ def get_gaussian_kernel1d(
         - ``force_even=True`` also accepts an even ``kernel_size``, and in a floating ``dtype`` the kernel is then
           symmetric about the middle of the window, ``(kernel_size - 1) / 2``.
         - A tensor ``sigma`` of shape :math:`(B, 1)` gives one kernel per row.
-        - Known defects:
-
-          - a Python ``int`` ``sigma`` raises, while the 2d and 3d builders accept integers
-            (`#5157 <https://github.com/kornia/kornia/issues/5157>`_).
-          - an integer ``dtype`` truncates a fractional ``sigma``, and uint8 also wraps the negative offsets, so the
-            taps before the centre are wrong (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - A Python integer ``sigma`` is treated as its floating-point equivalent. With ``dtype=None``, both use
+          the default floating-point dtype.
+        - Known defect: an integer ``dtype`` truncates a fractional ``sigma``, and uint8 also wraps the negative
+          offsets, so the taps before the centre are wrong (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         kernel_size: filter size. It should be odd and positive.
         sigma: gaussian standard deviation.
         force_even: overrides requirement for odd kernel size.
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         gaussian filter coefficients with shape :math:`(B, \text{kernel_size})`.
@@ -812,8 +810,8 @@ def get_gaussian_discrete_kernel1d(
         kernel_size: filter size. It should be odd and positive.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         force_even: overrides requirement for odd kernel size.
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         1D tensor with gaussian filter coefficients. With shape :math:`(B, \text{kernel_size})` for an odd
@@ -858,8 +856,8 @@ def get_gaussian_erf_kernel1d(
         kernel_size: filter size. It should be odd and positive.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         force_even: overrides requirement for odd kernel size.
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         1D tensor with gaussian filter coefficients. Shape :math:`(B, \text{kernel_size})`

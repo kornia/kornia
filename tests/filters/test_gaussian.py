@@ -36,6 +36,7 @@ from kornia.filters import (
     get_gaussian_kernel2d,
     get_gaussian_kernel3d,
 )
+from kornia.filters.kernels import gaussian_discrete, gaussian_discrete_erf
 
 from testing.base import BaseTester, assert_close
 
@@ -232,6 +233,54 @@ def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype
 
     assert actual.shape == (bs, window_size)
     assert_close(actual.sum(), expected.sum())
+
+
+@pytest.mark.parametrize(
+    "builder",
+    [
+        gaussian,
+        gaussian_discrete_erf,
+        gaussian_discrete,
+        get_gaussian_kernel1d,
+        get_gaussian_erf_kernel1d,
+        get_gaussian_discrete_kernel1d,
+    ],
+)
+class TestGaussianIntegerSigma(BaseTester):
+    @pytest.mark.parametrize("sigma", [1, 2])
+    def test_explicit_dtype(self, builder, sigma, device, dtype):
+        actual = builder(5, sigma, device=device, dtype=dtype)
+        expected = builder(5, float(sigma), device=device, dtype=dtype)
+
+        assert actual.shape == (1, 5)
+        assert actual.device == device
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected)
+        self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("sigma", [1, 2])
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_default_dtype(self, builder, sigma, default_dtype, device):
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            actual = builder(5, sigma, device=device)
+            expected = builder(5, float(sigma), device=device)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+
+        # An int64 intermediate can silently truncate the discrete kernel to all zeros (#5157).
+        assert actual.shape == (1, 5)
+        assert actual.device == device
+        assert actual.dtype == default_dtype
+        self.assert_close(actual, expected)
+        self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=default_dtype))
+
+    def test_tensor_sigma_gradcheck(self, builder, device):
+        sigma = torch.tensor([[1.5], [7.0]], device=device, dtype=torch.float64)
+        self.gradcheck(builder, (7, sigma))
 
 
 class TestGaussianDiscreteStability(BaseTester):

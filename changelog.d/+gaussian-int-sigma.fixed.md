@@ -1,0 +1,1 @@
+The 1-D Gaussian kernel builders and their underlying helpers now accept Python integer `sigma` values like their floating-point equivalents, preserving the default floating-point dtype when no dtype is specified.
