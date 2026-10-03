@@ -51,6 +51,18 @@ def _compute_padding(kernel_size: list[int]) -> list[int]:
     return out_padding
 
 
+def _check_kernel_batch(input: torch.Tensor, kernel: torch.Tensor) -> None:
+    """Check that the kernel batch is 1 or the input batch."""
+    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size,
+    # so a dynamic-shape torch.compile would recompile for each new batch.
+    if kernel.shape[0] not in (1, input.shape[0]):
+        KORNIA_CHECK(
+            False,
+            "The kernel batch must be 1 or the input batch. "
+            f"Got a kernel batch of {kernel.shape[0]} for an input batch of {input.shape[0]}",
+        )
+
+
 def filter2d(
     input: torch.Tensor,
     kernel: torch.Tensor,
@@ -77,22 +89,19 @@ def filter2d(
           ``k // 2`` for a kernel ``k`` taps long along it, and ``'circular'`` at least that long; a shorter axis
           raises.
         - A :math:`(1, kH, kW)` kernel is shared by the whole batch, and a :math:`(B, kH, kW)` kernel gives each
-          sample its own, shared by the sample's channels; there are no per-channel kernels.
+          sample its own, shared by the sample's channels; there are no per-channel kernels. Any other kernel batch
+          raises.
         - ``normalized=True`` divides each kernel by the sum of its absolute values, so a zero-sum derivative kernel
           keeps its sign.
+        - ``border_type``, ``padding`` and ``behaviour`` are case-insensitive: ``'REFLECT'``, ``'SAME'`` and
+          ``'CONV'`` are ``'reflect'``, ``'same'`` and ``'conv'``.
         - The kernel is cast to the input's dtype and device and stays differentiable; the output has the input's
           dtype.
         - Known defects:
 
-          - a kernel batch that divides the input batch without matching it is not rejected: with 2 kernels for 4
-            samples, sample ``i`` is filtered with kernel ``i % 2``
-            (`#5154 <https://github.com/kornia/kornia/issues/5154>`_).
           - an integer input casts the kernel to its dtype, so a fractional kernel truncates to 0: a uint8 image
             filtered with a box kernel comes back as zeros, or the call raises where torch has no integer
             convolution (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
-          - ``padding`` and ``border_type`` are checked case-insensitively but used as given: ``padding='SAME'``
-            returns the ``'valid'`` output and ``border_type='REFLECT'`` raises
-            (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
 
     Args:
         input: the input tensor with shape of
@@ -133,6 +142,7 @@ def filter2d(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK_IS_TENSOR(kernel)
     KORNIA_CHECK_SHAPE(kernel, ["B", "H", "W"])
+    _check_kernel_batch(input, kernel)
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
@@ -146,9 +156,12 @@ def filter2d(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
         f"Invalid padding mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
+    # the checks are case-insensitive, so dispatch on the lower-case spelling as well
+    border_type, padding, behaviour = str(border_type).lower(), str(padding).lower(), str(behaviour).lower()
+
     # prepare kernel
     b, c, h, w = input.shape
-    if str(behaviour).lower() == "conv":
+    if behaviour == "conv":
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
@@ -167,7 +180,7 @@ def filter2d(
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
-    input = input.view(-1, tmp_kernel.size(0), input.size(-2), input.size(-1))
+    input = input.reshape(-1, tmp_kernel.size(0), input.size(-2), input.size(-1))
 
     # convolve the tensor with the kernel.
     output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
@@ -319,6 +332,7 @@ def filter3d(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "D", "H", "W"])
     KORNIA_CHECK_IS_TENSOR(kernel)
     KORNIA_CHECK_SHAPE(kernel, ["B", "D", "H", "W"])
+    _check_kernel_batch(input, kernel)
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
@@ -329,10 +343,12 @@ def filter3d(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
         f"Invalid behaviour mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
+    # the checks are case-insensitive, so dispatch on the lower-case spelling as well
+    border_type, behaviour = str(border_type).lower(), str(behaviour).lower()
 
     # prepare kernel
     b, c, d, h, w = input.shape
-    if str(behaviour).lower() == "conv":
+    if behaviour == "conv":
         tmp_kernel = kernel.flip((-3, -2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
@@ -350,7 +366,7 @@ def filter3d(
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, depth, height, width)
-    input_pad = input_pad.view(-1, tmp_kernel.size(0), input_pad.size(-3), input_pad.size(-2), input_pad.size(-1))
+    input_pad = input_pad.reshape(-1, tmp_kernel.size(0), input_pad.size(-3), input_pad.size(-2), input_pad.size(-1))
 
     # convolve the tensor with the kernel.
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
@@ -389,13 +405,9 @@ def fft_conv(
           window reaches it.
         - Known defects:
 
-          - one input sample with a batch of kernels is broadcast, one output per kernel, where
-            :func:`~kornia.filters.filter2d` raises (`#5154 <https://github.com/kornia/kornia/issues/5154>`_).
           - an integer input truncates a fractional kernel to 0, as in :func:`~kornia.filters.filter2d`, and the
             result is in torch's default floating dtype (float32) instead of the input's
             (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
-          - with ``padding='valid'`` and a kernel taller or wider than the input, it returns a wrongly sized tensor
-            where :func:`~kornia.filters.filter2d` raises (`#5285 <https://github.com/kornia/kornia/issues/5285>`_).
 
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.
@@ -451,6 +463,7 @@ def fft_conv(
 
     KORNIA_CHECK_IS_TENSOR(kernel)
     KORNIA_CHECK_SHAPE(kernel, ["B", "H", "W"])
+    _check_kernel_batch(input, kernel)
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
@@ -466,11 +479,20 @@ def fft_conv(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
         f"Invalid behaviour mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
+    # the checks are case-insensitive, so dispatch on the lower-case spelling as well
+    border_type, padding, behaviour = str(border_type).lower(), str(padding).lower(), str(behaviour).lower()
 
-    _, c, _, _ = input.shape
+    _, c, h, w = input.shape
     kh, kw = kernel.shape[-2:]
 
-    if str(behaviour).lower() == "conv":
+    # without padding the kernel has to fit inside the input, as F.conv2d requires in filter2d
+    KORNIA_CHECK(
+        padding == "same" or (kh <= h and kw <= w),
+        f"With padding='valid' the kernel must not be larger than the input. Got a {kh} x {kw} kernel for a {h} x {w}"
+        " input",
+    )
+
+    if behaviour == "conv":
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)

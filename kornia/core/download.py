@@ -666,7 +666,8 @@ def _download_url_to_file(
     for _ in range(tempfile.TMP_MAX):
         partial = f"{dst}.{uuid.uuid4().hex}.partial"
         try:
-            f = open(partial, "xb")
+            # Opened outside ``with`` so a taken name can be retried; ``with f:`` below closes it.
+            f = open(partial, "xb")  # noqa: SIM115
         except FileExistsError:
             continue
         break
@@ -721,8 +722,17 @@ def _download_url_to_file(
             f"that take no timeout, such as pretrained model constructors"
         ) from e
     finally:
-        if os.path.exists(partial):
+        try:
             os.remove(partial)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            # Another process (an antivirus scanner on Windows, say) can still hold the file open. Raising here
+            # would replace the error that ended the transfer, which decides whether the download is retried.
+            _warn(
+                f"Could not remove the temporary download file {partial}: {e}. "
+                f"Delete it by hand once no other process holds it."
+            )
 
 
 def _prefetch_to_cache(url: str, kwargs: dict[str, Any], timeout: float) -> bool:

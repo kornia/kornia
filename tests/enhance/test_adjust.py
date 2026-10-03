@@ -33,6 +33,23 @@ def _sync(device) -> None:
         torch.mps.synchronize()
 
 
+class TestFloatScalarPrecision(BaseTester):
+    @pytest.mark.parametrize(
+        "operation,kwargs",
+        [
+            (kornia.enhance.adjust_hue_raw, {"factor": 0.1}),
+            (kornia.enhance.adjust_gamma, {"gamma": 0.1}),
+            (kornia.enhance.adjust_gamma, {"gamma": 1.0, "gain": 0.1}),
+            (kornia.enhance.solarize, {"thresholds": 0.1}),
+            (kornia.enhance.solarize, {"thresholds": 0.5, "additions": 0.1}),
+        ],
+    )
+    def test_float_matches_image_dtype_tensor(self, device, dtype, operation, kwargs):
+        image = torch.tensor([0.05, 0.1], device=device, dtype=dtype).repeat(1, 3, 1, 1)
+        tensors = {key: image.new_tensor(value) for key, value in kwargs.items()}
+        self.assert_close(operation(image, **kwargs), operation(image, **tensors), rtol=0, atol=0)
+
+
 class TestInvert(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
@@ -268,6 +285,24 @@ class TestAdjustHue(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_hue, (img, 2.0))
+
+    def test_hue_raw_wraps_negative_sum_5326(self, device, dtype):
+        data = torch.tensor([[[[1.0, 0.0]]], [[[0.0, 1.0]]], [[[0.0, 0.0]]]], device=device, dtype=dtype).view(
+            1, 3, 1, 2
+        )
+
+        hsv = kornia.color.rgb_to_hsv(data)
+        out = kornia.enhance.adjust_hue_raw(hsv, -0.5)
+
+        self.assert_close(out[:, 0], torch.remainder(hsv[:, 0] - 0.5, 2 * pi))
+        assert (out[:, 0] >= 0).all()
+
+    def test_hue_raw_wrap_never_returns_the_period_5326(self, device, dtype):
+        # 0 - eps / 16 is below 0, but 2π - eps / 16 rounds to 2π in this dtype; the wrapped hue must be 0, not 2π.
+        hsv = torch.tensor([0.0, 0.5, 0.5], device=device, dtype=dtype).view(1, 3, 1, 1)
+        factor = torch.tensor(-torch.finfo(dtype).eps / 16, device=device, dtype=dtype)
+        hue = kornia.enhance.adjust_hue_raw(hsv, factor)[0, 0, 0, 0]
+        assert hue.item() == 0.0
 
 
 class TestAdjustGamma(BaseTester):
@@ -1302,6 +1337,14 @@ class TestSolarize(BaseTester):
         if device.type != "cpu":
             pytest.skip("CPU only: the value check is an async device assert elsewhere")
         img = torch.rand(2, 3, 4, 5, device=device)
+        with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, addition)
+
+    @pytest.mark.parametrize("addition", [0.5001, -0.5001])
+    def test_float_additions_checked_before_rounding(self, device, dtype, addition):
+        # A float is checked as given, on the host, for every device: float16/bfloat16 round 0.5001 to 0.5,
+        # and a check on an MPS tensor is skipped.
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
             TestSolarize.f(img, 0.5, addition)
 

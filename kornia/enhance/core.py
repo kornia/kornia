@@ -23,6 +23,12 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
+def _broadcasts_to(shape: torch.Size, target: torch.Size) -> bool:
+    if len(shape) > len(target):
+        return False
+    return all(dim in (1, tdim) for dim, tdim in zip(reversed(shape), reversed(target)))
+
+
 def add_weighted(
     src1: torch.Tensor,
     alpha: Union[float, torch.Tensor],
@@ -31,6 +37,12 @@ def add_weighted(
     gamma: Union[float, torch.Tensor],
 ) -> torch.Tensor:
     r"""Calculate the weighted sum of two Tensors.
+
+    Convention:
+        src1 and src2 must have exactly the same shape; a Python number coefficient applies to
+        every element. A tensor coefficient must broadcast to src1's shape without changing it,
+        such as a 0-d scalar or a per-image (B, 1, 1, 1) weight; a mismatched or extra leading axis
+        raises. See :class:`AddWeighted` for the module wrapper.
 
     .. image:: _static/img/add_weighted.png
 
@@ -41,10 +53,10 @@ def add_weighted(
 
     Args:
         src1: torch.Tensor with an arbitrary shape, equal to shape of src2.
-        alpha: weight of the src1 elements as Union[float, torch.Tensor].
+        alpha: weight of the src1 elements, a float or a tensor broadcastable to the src1 shape.
         src2: torch.Tensor with an arbitrary shape, equal to shape of src1.
-        beta: weight of the src2 elements as Union[float, torch.Tensor].
-        gamma: scalar added to each sum as Union[float, torch.Tensor].
+        beta: weight of the src2 elements, a float or a tensor broadcastable to the src1 shape.
+        gamma: value added to each sum, a float or a tensor broadcastable to the src1 shape.
 
     Returns:
         Weighted torch.Tensor with shape equal to src1 and src2 shapes.
@@ -56,22 +68,17 @@ def add_weighted(
         >>> output.shape
         torch.Size([1, 1, 5, 5])
 
-    Notes:
-        torch.Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
-
     """
     KORNIA_CHECK_IS_TENSOR(src1)
     KORNIA_CHECK_IS_TENSOR(src2)
     KORNIA_CHECK(src1.shape == src2.shape, f"src1 and src2 have different shapes. Got {src1.shape} and {src2.shape}")
 
-    if isinstance(alpha, torch.Tensor):
-        KORNIA_CHECK(src1.shape == alpha.shape, "alpha has a different shape than src.")
-
-    if isinstance(beta, torch.Tensor):
-        KORNIA_CHECK(src1.shape == beta.shape, "beta has a different shape than src.")
-
-    if isinstance(gamma, torch.Tensor):
-        KORNIA_CHECK(src1.shape == gamma.shape, "gamma has a different shape than src.")
+    for name, coef in (("alpha", alpha), ("beta", beta), ("gamma", gamma)):
+        if isinstance(coef, torch.Tensor):
+            KORNIA_CHECK(
+                _broadcasts_to(coef.shape, src1.shape),
+                f"{name} with shape {tuple(coef.shape)} does not broadcast to the src shape {tuple(src1.shape)}.",
+            )
 
     return src1 * alpha + src2 * beta + gamma
 
@@ -79,15 +86,18 @@ def add_weighted(
 class AddWeighted(nn.Module):
     r"""Calculate the weighted sum of two Tensors.
 
+    Convention:
+        See :func:`add_weighted`.
+
     The function calculates the weighted sum of two Tensors as follows:
 
     .. math::
         out = src1 * alpha + src2 * beta + gamma
 
     Args:
-        alpha: weight of the src1 elements as Union[float, torch.Tensor].
-        beta: weight of the src2 elements as Union[float, torch.Tensor].
-        gamma: scalar added to each sum as Union[float, torch.Tensor].
+        alpha: weight of the src1 elements, a float or a tensor broadcastable to the src1 shape.
+        beta: weight of the src2 elements, a float or a tensor broadcastable to the src1 shape.
+        gamma: value added to each sum, a float or a tensor broadcastable to the src1 shape.
 
     Shape:
         - Input1: torch.Tensor with an arbitrary shape, equal to shape of Input2.
@@ -100,9 +110,6 @@ class AddWeighted(nn.Module):
         >>> output = AddWeighted(0.5, 0.5, 1.0)(input1, input2)
         >>> output.shape
         torch.Size([1, 1, 5, 5])
-
-    Notes:
-        torch.Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
 
     """
 

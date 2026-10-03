@@ -24,6 +24,32 @@ from testing.base import BaseTester
 
 
 class TestSSIM3d(BaseTester):
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int16])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_integer_images(self, device, image_dtype, padding):
+        # Integer Gaussian weights must not truncate to zero (#5297).
+        black = torch.zeros((1, 1, 5, 5, 5), device=device, dtype=image_dtype)
+        white = torch.full_like(black, 255)
+        actual = kornia.metrics.ssim3d(black, white, 3, max_val=255.0, padding=padding)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, torch.full_like(actual, 0.0001), atol=1e-6, rtol=1e-4)
+
+    @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int16, torch.int32, torch.int64])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_integer_images_match_the_float32_result(self, device, image_dtype, padding):
+        # A textured pair exercises the variances and the covariance, which a pair of constant images cancels.
+        # The 12-bit values of the wider types are not all exact in float16.
+        max_val = 255.0 if image_dtype == torch.uint8 else 4095.0
+        generator = torch.Generator().manual_seed(0)
+        img1 = (torch.rand((1, 2, 8, 8, 8), generator=generator) * max_val).round()
+        img2 = (img1 + torch.randn((1, 2, 8, 8, 8), generator=generator) * max_val / 6).clamp(0, max_val).round()
+        img1, img2 = img1.to(device), img2.to(device)
+        expected = kornia.metrics.ssim3d(img1, img2, 5, max_val=max_val, padding=padding)
+        actual = kornia.metrics.ssim3d(img1.to(image_dtype), img2.to(image_dtype), 5, max_val=max_val, padding=padding)
+        assert actual.dtype == torch.float32
+        assert expected.mean() < 0.95
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_dynamo_dynamic_range(self, device, dtype, torch_optimizer):
         img = torch.full((1, 1) + (8,) * 3, 128.0, device=device, dtype=dtype)
         optimized = torch_optimizer(kornia.metrics.ssim3d)
