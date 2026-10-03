@@ -49,8 +49,6 @@ _DOWNLOAD_PRIMITIVES: tuple[tuple[str, str], ...] = (
     ("kornia.core.download", "_download_url_to_file"),
     ("torch.hub", "download_url_to_file"),
     ("kornia.feature.lightglue_onnx.utils.download", "download_url_to_file"),
-    # kornia.onnx.download.CachedDownloader.download reaches the network here.
-    ("urllib.request", "urlretrieve"),
 )
 
 
