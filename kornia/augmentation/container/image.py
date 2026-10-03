@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import contextlib
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
 
 import torch
@@ -332,11 +333,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         for (_, module), param in zip(named_modules, params if params is not None else []):
             if isinstance(module, K.GeometricAugmentationBase2D) and isinstance(param.data, dict):
                 ori_shape = input.shape
-                try:
+                # Ignore error for 5-dim video
+                with contextlib.suppress(ValueError):
                     input = module.transform_tensor(input)
-                except ValueError:
-                    # Ignore error for 5-dim video
-                    pass
                 # Standardize shape
                 if recompute:
                     flags = override_parameters(module.flags, extra_args, in_place=False)
