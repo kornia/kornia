@@ -399,12 +399,16 @@ class TestTensorWrapperProtocol(BaseTester):
             (lambda t: TensorWrapper(t).unwrap(), True),
             (lambda t: (TensorWrapper(t) + 1).unwrap(), True),
             (_build_and_update, True),
+            (lambda t: TensorWrapper(t).sum(), True),
+            # A forwarded method on a wrapper built from an intermediate tensor (#5241).
+            (lambda t: TensorWrapper(t.clone()).sum(), True),
+            (lambda t: TensorWrapper(t * 2).mean(dim=-1), True),
+            (lambda t: TensorWrapper(t + 1).reshape(-1), True),
             # torch 2.5.1's Dynamo breaks the graph here, cleanly: it does not send unary ``-`` or ``~``, a
             # comparison, ``@`` or a binary or in-place operator with a tensor operand to a user class, and it cannot
             # trace a torch function on a wrapper or ``__getitem__``.
             (lambda t: torch.add(TensorWrapper(t), 1).unwrap(), False),
             (lambda t: TensorWrapper(t)[0].unwrap(), False),
-            (lambda t: TensorWrapper(t.clone()).sum(), True),
             (lambda t: (TensorWrapper(t) @ TensorWrapper(t.T)).unwrap(), False),
         ],
         ids=[
@@ -412,9 +416,12 @@ class TestTensorWrapperProtocol(BaseTester):
             "unwrap",
             "add",
             "inplace_and_reflected",
+            "method",
+            "sum_intermediate",
+            "mean_intermediate",
+            "reshape_intermediate",
             "torch_add",
             "getitem",
-            "method_intermediate_tensor",
             "matmul",
         ],
     )
