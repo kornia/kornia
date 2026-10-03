@@ -128,9 +128,7 @@ class TestOtsuThreshold(BaseTester):
             [[10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10]], device=device, dtype=dtype
         )
 
-        expected = torch.tensor(
-            [[10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10]], device=device, dtype=dtype
-        )
+        expected = torch.zeros_like(input)
 
         op = OtsuThreshold()
         thresh_result, _thresh_value = op(input)
@@ -152,6 +150,52 @@ class TestOtsuThreshold(BaseTester):
         assert 0.25 < expected.item() < 0.75
         atol = 1 / 256 if dtype == torch.float64 else 0.0
         self.assert_close(threshold, expected.to(dtype), rtol=0.0, atol=atol)
+
+    def test_two_bins_uses_histogram_split_5172(self, device, dtype):
+        image = torch.tensor([[0.0, 0.1, 0.2, 0.55, 0.9, 1.0]], device=device, dtype=dtype)
+        mask, threshold = otsu_threshold(image, nbins=2, return_mask=True)
+        # The two histc bins split [0, 1] at 0.5. The previous nbins-point linspace returned 1 instead.
+        self.assert_close(threshold, image.new_tensor([0.5]), rtol=0, atol=0)
+        assert mask.tolist() == [[False, False, False, True, True, True]]
+
+    def test_uint8_pixel_above_selected_bin_5172(self, device):
+        image = torch.cat([torch.arange(256), torch.full((300,), 60), torch.full((300,), 190)])
+        image = image.to(device=device, dtype=torch.uint8).view(1, 1, 8, 107)
+        mask, threshold = otsu_threshold(image, return_mask=True)
+        assert threshold.item() == 125
+        assert mask.flatten()[126]
+
+    @pytest.mark.parametrize("shape", [(2, 6, 10), (2, 1, 6, 10), (1, 2, 6, 10), (1, 2, 1, 6, 10)])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_planes_use_independent_ranges_5172(self, shape, slow_and_differentiable, device, dtype):
+        first = torch.linspace(0, 1, 60, device=device, dtype=dtype).square().view(6, 10)
+        second = torch.linspace(0.6, 4.3, 60, device=device, dtype=dtype).view(6, 10)
+        image = torch.stack([first, second]).reshape(shape)
+        expected = [otsu_threshold(plane, slow_and_differentiable=slow_and_differentiable) for plane in [first, second]]
+        result, threshold = otsu_threshold(image, slow_and_differentiable=slow_and_differentiable)
+        self.assert_close(threshold, torch.cat([item[1] for item in expected]), rtol=0, atol=0)
+        self.assert_close(result, torch.stack([item[0] for item in expected]).reshape(shape), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("value", [-0.4, 0.0, 0.4])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_constant_threshold_is_plane_value_5172(self, value, slow_and_differentiable, device, dtype):
+        image = torch.full((1, 1, 4, 5), value, device=device, dtype=dtype)
+        mask, threshold = otsu_threshold(image, slow_and_differentiable=slow_and_differentiable, return_mask=True)
+        self.assert_close(threshold, image.flatten()[:1], rtol=0, atol=0)
+        assert not mask.any()
+
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    @pytest.mark.parametrize(
+        "input_dtype,value", [(torch.int32, 2**24 + 1), (torch.int64, 2**24 + 1), (torch.int64, 2**53 + 1)]
+    )
+    @pytest.mark.parametrize("sign", [-1, 1])
+    def test_constant_integer_preserves_exact_value_5172(
+        self, input_dtype, value, sign, slow_and_differentiable, device
+    ):
+        image = torch.full((2, 3), sign * value, dtype=input_dtype, device=device)
+        mask, threshold = otsu_threshold(image, slow_and_differentiable=slow_and_differentiable, return_mask=True)
+        assert torch.equal(threshold, image.flatten()[:1])
+        assert not mask.any()
 
 
 def test_mask(device, dtype):
