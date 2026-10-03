@@ -61,6 +61,21 @@ class TestBoxes2D(BaseTester):
                     with pytest.raises(ValueError, match="non-finite coordinates"):
                         Boxes.from_tensor(invalid_source, mode=mode, validate_boxes=True)
 
+    @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_convention_vertex_modes_reject_non_finite_coordinates_4177(self, mode, value, device, dtype):
+        # Kornia#4177: vertex modes accept arbitrary finite quadrilaterals, but
+        # validate_boxes=True rejects non-finite coordinates.
+        vertices = torch.tensor(
+            [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        vertices[0, 1, 0] = value
+
+        with pytest.raises(ValueError, match="non-finite coordinates"):
+            Boxes.from_tensor(vertices, mode=mode, validate_boxes=True)
+
     @pytest.mark.parametrize("container", ["Boxes", "Boxes3D"])
     def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, container, device, dtype):
         # kornia#4238 (2D) and kornia#4258 (3D): validate_boxes=False keeps a non-finite coordinate.
@@ -156,17 +171,45 @@ class TestBoxes2D(BaseTester):
         self.assert_close(widths, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
-    def test_wart_vertices_import_is_not_validated_4177(self, mode, device, dtype):
-        # Wart pin for kornia#4177: neither vertex mode is validated. The exclusive
-        # 'vertices' import also subtracts one from fixed positions, so a non-rectangular
-        # quadrilateral is silently reshaped instead of rejected with validate_boxes=True.
-        # The -1 deformation is the inclusive offset tracked in kornia#3934.
-        quadrilateral = torch.tensor([[[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]]], device=device, dtype=dtype)
+    @pytest.mark.parametrize(
+        "quadrilateral",
+        [
+            # Rotated quadrilateral.
+            [[[1.0, 2.0], [4.0, 1.0], [5.0, 4.0], [2.0, 5.0]]],
+            # Sheared quadrilateral.
+            [[[3.0, 2.0], [6.0, 2.0], [7.0, 3.0], [4.0, 3.0]]],
+            # Projective quadrilateral.
+            [[[0.0, 0.0], [8.0, 1.0], [7.0, 6.0], [1.0, 5.0]]],
+            # Reordered vertices.
+            [[[0.0, 0.0], [0.0, 5.0], [6.0, 5.0], [6.0, 0.0]]],
+        ],
+    )
+    def test_vertices_import_preserves_arbitrary_quadrilaterals_4177(self, mode, quadrilateral, device, dtype):
+        # Kornia#4177: vertex modes validate finiteness only and must preserve
+        # arbitrary quadrilaterals such as rotated, sheared, projective, and reordered boxes.
+        quadrilateral = torch.tensor(quadrilateral, device=device, dtype=dtype)
+
         boxes = Boxes.from_tensor(quadrilateral, mode=mode, validate_boxes=True)
+
         expected = quadrilateral.clone()
         if mode == "vertices":
-            expected = torch.tensor([[[0.0, 0.0], [8.0, 0.0], [2.0, 6.0], [0.0, 0.0]]], device=device, dtype=dtype)
+            expected[..., 1:3, 0] -= 1
+            expected[..., 2:, 1] -= 1
+
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+
+    def test_vertices_plus_import_accepts_one_pixel_box_4177(self, device, dtype):
+        # Kornia#4177: vertices_plus may represent a one-pixel box with four
+        # identical vertices, and validate_boxes=True must accept it.
+        vertices = torch.tensor(
+            [[[5.0, 5.0], [5.0, 5.0], [5.0, 5.0], [5.0, 5.0]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        boxes = Boxes.from_tensor(vertices, mode="vertices_plus", validate_boxes=True)
+
+        self.assert_close(boxes.data, vertices, atol=0.0, rtol=0.0)
 
     def test_convention_constructor_mode_is_only_an_export_label(self, device, dtype):
         vertices = torch.tensor([[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]], device=device, dtype=dtype)
@@ -187,6 +230,8 @@ class TestBoxes2D(BaseTester):
         sheared = boxes.transform_boxes(shear)
         expected_data = torch.tensor([[[3.0, 2.0], [6.0, 2.0], [7.0, 3.0], [4.0, 3.0]]], device=device, dtype=dtype)
         self.assert_close(sheared.data, expected_data, atol=0.0, rtol=0.0)
+        imported = Boxes.from_tensor(sheared.data, mode="vertices_plus", validate_boxes=True)
+        self.assert_close(imported.data, sheared.data, atol=0.0, rtol=0.0)
         expected_export = torch.tensor([[[3.0, 2.0], [7.0, 2.0], [7.0, 3.0], [3.0, 3.0]]], device=device, dtype=dtype)
         self.assert_close(sheared.to_tensor("vertices_plus"), expected_export, atol=0.0, rtol=0.0)
 
@@ -1928,6 +1973,26 @@ class TestVideoBoxes(BaseTester):
         video_boxes = VideoBoxes.from_tensor(boxes)
         assert isinstance(video_boxes, VideoBoxes)
         assert video_boxes.temporal_channel_size == boxes.size(1)
+
+    def test_validate_boxes_preserves_arbitrary_quadrilaterals_4177(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype)
+        boxes[0, 0, 0] = torch.tensor(
+            [[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )
+
+        video_boxes = VideoBoxes.from_tensor(boxes, validate_boxes=True)
+
+        self.assert_close(video_boxes.data, boxes.reshape(-1, 1, 4, 2), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype)
+        boxes[0, 0, 0, 0, 0] = value
+
+        with pytest.raises(ValueError, match="non-finite coordinates"):
+            VideoBoxes.from_tensor(boxes, validate_boxes=True)
 
     def test_exception(self, device, dtype):
         frame = self._sample_video_boxes(device, dtype, batch=1, time=1)[0]  # (T, N, 4, 2)
