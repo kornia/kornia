@@ -36,16 +36,16 @@ from kornia.color.hls import HlsToRgb, RgbToHls
 from kornia.color.hsv import HsvToRgb, RgbToHsv
 from kornia.color.lab import LabToRgb, RgbToLab
 from kornia.color.luv import LuvToRgb, RgbToLuv
-from kornia.color.raw import RawToRgb, RgbToRaw, CFA
+from kornia.color.raw import CFA, RawToRgb, RgbToRaw
 from kornia.color.rgb import (
     BgrToRgb,
     BgrToRgba,
     LinearRgbToRgb,
+    RgbaToBgr,
+    RgbaToRgb,
     RgbToBgr,
     RgbToLinearRgb,
     RgbToRgba,
-    RgbaToBgr,
-    RgbaToRgb,
 )
 from kornia.color.xyz import RgbToXyz, XyzToRgb
 from kornia.color.ycbcr import RgbToYcbcr, YcbcrToRgb
@@ -81,7 +81,6 @@ def _shape_from_attribute(shape: list[int], *, channel_override: int | None = No
             result[index] = 16
 
     return tuple(result)
-
 
 
 def _make_cases():
@@ -197,8 +196,7 @@ def _export_and_run(module: nn.Module, inputs: tuple[torch.Tensor, ...]) -> None
     assert len(session.get_inputs()) == len(inputs)
 
     ort_inputs = {
-        input_info.name: tensor.detach().cpu().numpy()
-        for input_info, tensor in zip(session.get_inputs(), inputs)
+        input_info.name: tensor.detach().cpu().numpy() for input_info, tensor in zip(session.get_inputs(), inputs)
     }
 
     outputs = session.run(None, ort_inputs)
