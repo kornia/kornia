@@ -697,6 +697,24 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     q2_b = 0.5 * A + R
     q2_c = 0.5 * y + E
 
+    # When one root pair is much larger than the other, the small factor's constant y/2 -+ E is the difference of two
+    # numbers of the large pair's size, and in float32 that cancellation flips its discriminant: the small real roots
+    # come back as zero placeholders. The large factor has no such cancellation. Rebuild the small factor from
+    # it with Vieta's relations for the product (x^2 + b1 x + c1)(x^2 + b2 x + c2): c1 * c2 = D and
+    # b1 * c2 + b2 * c1 = C, as solve_quadratic takes its small root as c / q. A separation of _DOMINANT_ROOT_RATIO
+    # between the two constants decides it; the roots do not depend on the ratio anywhere from 2 to 1024.
+    first_small = torch.abs(q1_c) <= torch.abs(q2_c)
+    c_large = torch.where(first_small, q2_c, q1_c)
+    b_large = torch.where(first_small, q2_b, q1_b)
+    separated = _DOMINANT_ROOT_RATIO * torch.minimum(torch.abs(q1_c), torch.abs(q2_c)) < torch.abs(c_large)
+    safe_c_large = torch.where(separated, c_large, torch.ones_like(c_large))
+    c_small = D / safe_c_large
+    b_small = (C - b_large * c_small) / safe_c_large
+    q1_b = torch.where(separated & first_small, b_small, q1_b)
+    q1_c = torch.where(separated & first_small, c_small, q1_c)
+    q2_b = torch.where(separated & ~first_small, b_small, q2_b)
+    q2_c = torch.where(separated & ~first_small, c_small, q2_c)
+
     roots1 = solve_quadratic(torch.stack([q1_a, q1_b, q1_c], dim=1))
     roots2 = solve_quadratic(torch.stack([q2_a, q2_b, q2_c], dim=1))
 
@@ -720,12 +738,6 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # candidates below, because from zero Newton can also stop anywhere |p| is merely small.
     root_candidates = torch.cat([roots1, roots2], dim=-1)
     is_candidate = root_candidates != 0
-    # When Ferrari loses a real pair beside roots at a much larger scale, Newton from zero
-    # needs more than two steps to reach it. Seed placeholders from the quadratic formed by
-    # the middle terms; the full quartic residual below still decides whether each seed is valid.
-    reduced_roots = solve_quadratic(torch.stack((B, C, D), dim=-1))
-    reduced_candidates = torch.cat((reduced_roots, reduced_roots), dim=-1)
-    root_candidates = torch.where(is_candidate, root_candidates, reduced_candidates)
     A_e, B_e, C_e, D_e = (t.unsqueeze(-1) for t in (A, B, C, D))
 
     def quartic(x: torch.Tensor) -> torch.Tensor:

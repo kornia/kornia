@@ -1472,6 +1472,51 @@ class TestConventionPolynomialSolvers(BaseTester):
         expected = torch.tensor([[-0.25, 0.0, 0.0, 0.5]] * len(values), device=device, dtype=dtype)
         self.assert_close(roots.sort(dim=-1).values, expected, atol=1e-4, rtol=1e-4)
 
+    def test_quartic_keeps_small_real_roots_next_to_large_real_pair_5348(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("the cancellation pinned here is a float32 one")
+        # (x - 0.5)(x + 0.25)(x - 1e4)(x - 2e4): the large pair is real, so recovering the small roots from zero
+        # placeholders afterwards cannot reach them; rebuilding the small factor from the large one does.
+        coeffs = torch.tensor([[1.0, -30000.25, 200007499.875, -49996250.0, -25000000.0]], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs).sort(dim=-1).values
+
+        expected = torch.tensor([[-0.25, 0.5, 10000.0, 20000.0]], device=device, dtype=dtype)
+        self.assert_close(roots, expected, atol=1e-5, rtol=1e-6)
+
+    def test_quartic_close_small_pair_next_to_large_complex_pair_float64_5348(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("float64 rows; the float32 family is pinned above")
+        # (x - 0.01)(x - 0.0105)(x^2 + 2000 x + 4e9) and (x + 0.03)(x + 0.0315)(x^2 + 100 x + 1e10). The cancellation
+        # also costs float64: the first row lost both real roots and the second was 1.9e-7 off. The complex pair's
+        # nonzero linear term makes the small factor's x coefficient depend on b_large * c_small.
+        coeffs = torch.tensor(
+            [
+                [1.0, 1999.9795, 3999999959.000105, -81999999.79, 420000.0],
+                [1.0, 100.0615, 10000000006.150944, 615000000.0945, 9450000.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        roots = solver.solve_quartic(coeffs)
+
+        assert torch.equal((roots != 0).sum(dim=-1), torch.full((2,), 2, device=device))
+        expected = torch.tensor([[0.0, 0.0, 0.01, 0.0105], [-0.0315, -0.03, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(roots.sort(dim=-1).values, expected, atol=0.0, rtol=1e-12)
+
+    def test_quartic_gradient_finite_with_tiny_quadratic_coefficient(self, device, dtype):
+        # x^4 + 1e-12 x^2 + x + 1 has no real roots. A candidate derived from B x^2 + C x + D would sit near
+        # -C / B = -1e12, whose fourth power overflows float32 in a discarded torch.where lane and turns every
+        # coefficient gradient into nan, although the returned roots are all zero.
+        coeffs = torch.tensor([[1.0, 0.0, 1e-12, 1.0, 1.0]], device=device, dtype=dtype, requires_grad=True)
+
+        roots = solver.solve_quartic(coeffs)
+        roots.sum().backward()
+
+        assert torch.equal(roots.detach(), torch.zeros_like(roots))
+        assert torch.isfinite(coeffs.grad).all()
+
     def test_convention_solve_quartic_tiny_leading_coefficient_real_roots_4954(self, device, dtype):
         if dtype != torch.float32:
             pytest.skip("pinned in float32, where the old absolute tolerance (1e-6) is what this row crosses")
