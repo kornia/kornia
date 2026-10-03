@@ -33,7 +33,7 @@ def _promote_integer_data(data: torch.Tensor) -> torch.Tensor:
     :func:`normalize` and :func:`denormalize` cast ``mean`` and ``std`` to the dtype of ``data``. For an integer
     tensor that truncates a fractional statistic to an integer (``0.5`` becomes ``0``) and runs the subtraction and
     ``addcmul`` in the integer dtype, where the result wraps. Promoting the data first, as ``data * 0.5`` does, keeps
-    the statistics exact. Floating and complex tensors are returned untouched.
+    a fractional statistic and computes in floating point. Floating and complex tensors are returned untouched.
     """
     if data.is_floating_point() or data.is_complex():
         return data
@@ -112,7 +112,7 @@ class Normalize(nn.Module):
             normalized by ``(x - mean) / std``.
         """
         # Promote before the statistics are built in the input dtype: for an integer input a fractional Python
-        # statistic would otherwise truncate here, before `normalize` sees it (#5403).
+        # statistic would otherwise truncate here, before `normalize` sees it.
         input = _promote_integer_data(input)
 
         # A Python number becomes (1,) and a sequence (1, *shape), the shapes the
@@ -152,9 +152,9 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
 
     Note:
         An integer or bool ``data`` is converted to torch's default floating dtype (float32 unless changed) before
-        ``mean`` and ``std`` are applied, so a fractional statistic is kept exact and the result is floating
-        (`#5403 <https://github.com/kornia/kornia/issues/5403>`_). Floating and complex inputs keep their dtype.
-        Pixel values are not rescaled: give ``mean`` and ``std`` in the 0-255 scale for a uint8 image.
+        ``mean`` and ``std`` are applied, so a fractional statistic is not truncated and the result is floating.
+        Floating and complex inputs keep their dtype. Pixel values are not rescaled: give ``mean`` and ``std`` in the
+        0-255 scale for a uint8 image.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -287,7 +287,7 @@ class Denormalize(nn.Module):
             A tensor with the same shape as ``input`` where each channel is
             transformed by ``x * std + mean``.
         """
-        # Promote before the statistics are built in the input dtype, as in `Normalize.forward` (#5403).
+        # Promote before the statistics are built in the input dtype, as in `Normalize.forward`.
         input = _promote_integer_data(input)
 
         # A Python number becomes (1,) and a sequence keeps its own shape, as the
@@ -334,8 +334,8 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
 
     Note:
         An integer or bool ``data`` is converted to torch's default floating dtype (float32 unless changed) before
-        ``mean`` and ``std`` are applied, so the result is floating and cannot wrap
-        (`#5403 <https://github.com/kornia/kornia/issues/5403>`_). Floating and complex inputs keep their dtype.
+        ``mean`` and ``std`` are applied, so the result is floating and cannot wrap. Floating and complex inputs keep
+        their dtype.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
