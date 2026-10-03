@@ -89,6 +89,11 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
     """
     # read image and return as `np.ndarray` with shape HxWxC
     try:
+        # open the file first so Python raises the specific OSError subclass
+        # (FileNotFoundError, IsADirectoryError, PermissionError) naming the path
+        # for every format, instead of kornia_rs's bare OSError without the name
+        with open(path_file, "rb"):
+            pass
         if path_file.suffix.lower() in [".jpg", ".jpeg"]:
             img = _rs_io.read_image_jpegturbo(str(path_file))
         elif path_file.suffix.lower() == ".png":
