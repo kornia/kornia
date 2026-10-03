@@ -151,6 +151,13 @@ class TestBilateralBlur(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
+    def test_dynamo_tensor_sigma_color_fullgraph_5169(self, device, dtype, torch_optimizer):
+        """The data-dependent sigma_color check is skipped under compile, so a tensor sigma_color stays one graph."""
+        data = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = BilateralBlur(3, torch.tensor([0.3, 0.7], device=device, dtype=dtype), (1.0, 1.0))
+        op_optimized = torch_optimizer(op, fullgraph=True)
+        self.assert_close(op_optimized(data), op(data))
+
     def test_opencv_grayscale(self, device, dtype):
         img = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]
         img = torch.tensor(img, device=device, dtype=dtype).view(1, 1, 4, 4) / 255
