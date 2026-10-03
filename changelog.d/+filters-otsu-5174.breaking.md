@@ -1,0 +1,21 @@
+`otsu_threshold` and `OtsuThreshold` with `slow_and_differentiable=True` now return a threshold with a gradient with
+respect to the input, and return different threshold values:
+
+- The threshold now has a gradient. Its value is the hard Otsu split of the path's histogram, and its gradient is a
+  straight-through surrogate: the gradient of a soft-argmax over the between-class variance curve of a wider kernel
+  density estimate, with a standard deviation of 0.5 bin, at a temperature relative to the curve, so it does not depend
+  on the intensity scale of the input. The threshold used to have no gradient. The thresholded image is still
+  `x * (x > threshold)`, whose gradient is that mask.
+- The histogram is now the mass that a Gaussian kernel density estimate with a standard deviation of 0.1 bin puts in
+  each of the `nbins` bins, so every pixel contributes its full mass. The estimate used to be sampled at `nbins` points
+  with a fixed bandwidth of `1e-3` in input units, which missed every pixel more than a few `1e-3` away from a sample
+  point, most pixels at small `nbins`. The thresholds change accordingly, and are usually within one bin of the
+  default path's.
+- The threshold is now read with the default path's bin-edge convention: the upper edge of the selected bin among
+  `nbins` equal bins over the plane's range, or for an integer input the largest integer below that edge. It used to
+  be read from the `nbins` sample points `linspace(min, max, nbins)`, up to one bin above the split.
+- Of splits that give the same partition, the lowest is now taken on every device: a bin counts as non-empty only
+  above 1 % of one pixel's mass. The kernel tails used to give empty bins a tiny positive mass, the rounding of the
+  cumulative sums chose between equivalent splits, and CPU and MPS could return different thresholds for the same
+  input.
+- The path no longer calls `.item()`, so it compiles with `fullgraph=True`.

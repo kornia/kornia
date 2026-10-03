@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version
 from kornia.filters.otsu_thresholding import OtsuThreshold, otsu_threshold
 
 from testing.base import BaseTester, assert_close
@@ -53,9 +54,9 @@ class TestOtsuThreshold(BaseTester):
 
     @staticmethod
     def _separated_image(device, dtype):
-        """A fixed 5x5 image whose ``nbins=3`` Otsu threshold is 0.5 and keeps 14 of 25 pixels.
+        """A fixed 5x5 image whose ``nbins=3`` slow-path Otsu threshold is 2/3 and keeps 10 of 25 pixels.
 
-        Every pixel is at least 1.9e-3 from the threshold in each tested dtype (the smallest margin is 1.95e-3, in
+        Every pixel is at least 6.3e-3 from the threshold in each tested dtype (the smallest margin is 6.35e-3, in
         float16), so a finite-difference step cannot move a pixel across it. The values are fixed rather than drawn: a
         random draw often puts the threshold at the data maximum (empty output) or at a near-tie between two splits,
         and gradcheck then fails.
@@ -79,9 +80,11 @@ class TestOtsuThreshold(BaseTester):
         assert (out > 0).any()
         assert not (img64 > threshold).all()
         assert (img64 - threshold).abs().min() > 1e-3
-        # The analytical gradient of the output is just the mask (no gradient flows through the threshold), so
-        # this only checks that no pixel crosses the threshold under the finite-difference perturbation.
-        self.gradcheck(otsu_threshold, (img, 3, True, False))
+        # The analytical gradient of the thresholded image is just the mask (no gradient flows from the image output
+        # through the threshold), so this only checks that no pixel crosses the threshold under the finite-difference
+        # perturbation. The threshold output is left out: its value is piecewise constant and its gradient a
+        # straight-through surrogate, which finite differences cannot check (see TestOtsuThresholdDifferentiable).
+        self.gradcheck(lambda img: otsu_threshold(img, 3, True, False)[0], (img,))
 
     def test_differentiable_tensor_otsu(self, device, dtype):
         img = self._separated_image(device, dtype).requires_grad_(True)
@@ -282,3 +285,231 @@ def test_otsu_threshold_basic(shape, device, dtype):
     img = torch.rand(shape, device=device, dtype=dtype)
     thresh_result, _thresh_value = otsu_threshold(img)
     assert thresh_result.shape == img.shape
+
+
+def _bimodal_uint8_image(device):
+    # the image of #5172: every value 0..255 once, plus 300 pixels at 60 and 300 at 190
+    values = torch.cat([torch.arange(256), torch.full((300,), 60), torch.full((300,), 190)])
+    return values.to(device=device, dtype=torch.uint8).view(1, 1, 8, 107)
+
+
+def _quantile_mixture(device, dtype, dark=(0.3, 0.06, 700), bright=(0.7, 0.1, 300), bright_shift=0.0, levels=None):
+    """A (1, 1, 20, 50) image of two modes, each ``(mean, std, count)``, at the quantiles of a normal distribution.
+
+    Quantiles rather than a random draw: the image is the same on every device and in every run. The default modes
+    overlap, so the threshold sits between them and follows them. With ``levels``, the values are rounded to multiples
+    of ``1 / levels``, as in an 8-bit image scaled to [0, 1].
+    """
+
+    def quantiles(n):
+        p = (torch.arange(n, dtype=torch.float64) + 0.5) / n
+        return 2**0.5 * torch.erfinv(2 * p - 1)
+
+    (dark_mean, dark_std, dark_count), (bright_mean, bright_std, bright_count) = dark, bright
+    x = torch.cat(
+        [
+            dark_mean + dark_std * quantiles(dark_count),
+            bright_mean + bright_shift + bright_std * quantiles(bright_count),
+        ]
+    )
+    if levels is not None:
+        x = (x * levels).round().clamp(0, levels) / levels
+    return x.view(1, 1, 20, 50).to(device=device, dtype=dtype)
+
+
+def _documented_soft_threshold(x, nbins, bandwidth=0.5, temperature=0.01):
+    # The formula of otsu_threshold's note, written independently: Gaussian bin masses with the tails kept in the end
+    # bins, the between-class variance in bins, and a softmax at `temperature` times its maximum over the upper edges
+    # k + 1 of the splits.
+    v = x.flatten()
+    lo, hi = v.min(), v.max()
+    c = (v - lo) * nbins / (hi - lo)
+    edges = torch.arange(1, nbins, dtype=v.dtype, device=v.device)
+    above = 0.5 * (1 + torch.erf((c[:, None] - edges) / (bandwidth * 2**0.5))).mean(0)
+    p = -torch.diff(torch.cat([above.new_ones(1), above, above.new_zeros(1)]))
+    k = torch.arange(nbins, dtype=v.dtype, device=v.device)
+    w0, s0 = p.cumsum(0)[:-1], (p * k).cumsum(0)[:-1]
+    w1, s1 = 1 - w0, (p * k).sum() - s0
+    var = w0 * w1 * (s0 / w0 - s1 / w1) ** 2
+    return lo + (torch.softmax(var / (temperature * var.max()), 0) * edges).sum() * (hi - lo) / nbins
+
+
+class TestOtsuThresholdDifferentiable(BaseTester):
+    # No gradcheck on the threshold: its value is the hard split, piecewise constant in x, while its gradient is that of
+    # a soft-argmax over a smoother between-class variance curve (straight-through), so finite differences of the
+    # threshold do not match it by design. These tests check that the gradient exists, is finite, is consistent with
+    # translating a plane, reaches every pixel and points the right way.
+    def test_threshold_has_a_gradient_5174(self, device, dtype):
+        x = _quantile_mixture(device, dtype).requires_grad_(True)
+        out, threshold = otsu_threshold(x, slow_and_differentiable=True)
+        assert threshold.requires_grad
+        (grad,) = torch.autograd.grad(threshold.sum(), x, retain_graph=True)
+        assert grad.isfinite().all()
+        assert grad.count_nonzero() > 0
+
+        # the gradient leaves the value alone: the same input without a gradient gets the same threshold
+        _, detached = otsu_threshold(x.detach(), slow_and_differentiable=True)
+        assert not detached.requires_grad
+        self.assert_close(threshold.detach(), detached, rtol=0.0, atol=0.0)
+
+        # the thresholded image is x * (x > threshold): its gradient is the mask
+        (grad,) = torch.autograd.grad(out.sum(), x)
+        self.assert_close(grad, (x.detach() > threshold.detach()).to(dtype))
+
+        # the default path's threshold has no gradient
+        _, threshold = otsu_threshold(x)
+        assert not threshold.requires_grad
+
+    def test_threshold_gradient_sums_to_one_per_plane_5174(self, device, dtype):
+        # Moving every pixel of a plane by c moves its threshold by c and no other plane's, so the gradient of each
+        # plane's threshold sums to 1 over that plane and is 0 on the others. A constant plane's threshold is its value,
+        # whose gradient its pixels share.
+        planes = [
+            _quantile_mixture(device, dtype),
+            _quantile_mixture(device, dtype, dark=(0.3, 0.08, 600), bright=(0.7, 0.08, 400), levels=255),
+            torch.linspace(0, 1, 1000, dtype=torch.float64).square().view(1, 1, 20, 50).to(device=device, dtype=dtype),
+            torch.full((1, 1, 20, 50), 0.4, device=device, dtype=dtype),
+        ]
+        x = torch.cat(planes).view(2, 2, 20, 50).requires_grad_(True)
+        _, thresholds = otsu_threshold(x, slow_and_differentiable=True)
+        (grad,) = torch.autograd.grad(thresholds.sum(), x, retain_graph=True)
+        # bfloat16 rounds each pixel's gradient to 8 bits, and the rounding errors add up over the plane
+        atol = 3e-3 if dtype == torch.bfloat16 else 1e-3
+        self.assert_close(grad.float().sum(dim=(-2, -1)), torch.ones(2, 2, device=device), rtol=0.0, atol=atol)
+        self.assert_close(grad[1, 1], torch.full_like(grad[1, 1], 1 / 1000))
+
+        (grad,) = torch.autograd.grad(thresholds[0], x)
+        assert grad.flatten(0, 1)[1:].count_nonzero() == 0
+
+    def test_threshold_gradient_reaches_every_pixel_5174(self, device, dtype):
+        # An 8-bit image scaled to [0, 1]: at 256 bins its levels sit at fixed positions inside their bins. The gradient
+        # comes from a kernel density estimate 0.5 bin wide, so it does not concentrate on the pixels near a bin edge.
+        # The 0.1-bin estimate that selects the threshold's value would leave about half of this image's pixels, those
+        # more than about 0.3 bin from every bin edge, below 1e-3 of the largest gradient. A pixel where the gradient
+        # changes sign, near the threshold, can get an arbitrarily small gradient under any estimate; in this image the
+        # smallest is 1.5e-2 of the largest.
+        x = _quantile_mixture(device, dtype, dark=(0.3, 0.08, 600), bright=(0.7, 0.08, 400), levels=255)
+        x.requires_grad_(True)
+        _, threshold = otsu_threshold(x, slow_and_differentiable=True)
+        (grad,) = torch.autograd.grad(threshold.sum(), x)
+        magnitude = grad.abs().float()
+        assert (magnitude > 1e-3 * magnitude.max()).all()
+
+    def test_threshold_gradient_is_the_documented_surrogate_5174(self, device, dtype):
+        # The gradient is that of the note's soft-argmax: 0.5-bin kernel density estimate, temperature 0.01 of the
+        # curve's maximum. The other tests check its properties, which other bandwidths and temperatures share too.
+        if dtype != torch.float64:
+            pytest.skip("checks the formula, not dtype rounding")
+        x = _quantile_mixture(device, dtype).requires_grad_(True)
+        (grad,) = torch.autograd.grad(otsu_threshold(x, nbins=64, slow_and_differentiable=True)[1].sum(), x)
+        (expected,) = torch.autograd.grad(_documented_soft_threshold(x, 64), x)
+        self.assert_close(grad, expected, rtol=1e-9, atol=1e-12)
+
+    def test_threshold_gradient_follows_the_bright_mode_5174(self, device, dtype):
+        x = _quantile_mixture(device, dtype).requires_grad_(True)
+        _, threshold = otsu_threshold(x, slow_and_differentiable=True)
+        (grad,) = torch.autograd.grad(threshold.sum(), x)
+        up_image = _quantile_mixture(device, dtype, bright_shift=0.05)
+        down_image = _quantile_mixture(device, dtype, bright_shift=-0.05)
+        _, up = otsu_threshold(up_image, slow_and_differentiable=True)
+        _, down = otsu_threshold(down_image, slow_and_differentiable=True)
+        # shifting the bright mode moves the threshold the same way ...
+        assert up.item() > threshold.item() > down.item()
+
+        # ... and the gradient along that shift, the sum over the bright pixels, agrees in sign and is close to the
+        # threshold's actual response, (up - down) / 0.1 = 0.45, against a gradient of 0.39. The response is measured
+        # on float32 copies of half-precision images: rounding the two thresholds themselves to bfloat16 (2**-8 near
+        # 0.5) would move it by up to 2 * 2**-8 / 0.1 = 0.08.
+        reference_dtype = torch.promote_types(dtype, torch.float32)
+        _, up = otsu_threshold(up_image.to(reference_dtype), slow_and_differentiable=True)
+        _, down = otsu_threshold(down_image.to(reference_dtype), slow_and_differentiable=True)
+        response = (up.item() - down.item()) / 0.1
+        along_shift = grad.flatten()[700:].float().sum().item()
+        assert along_shift > 0
+        assert abs(along_shift - response) < 0.1
+        assert grad.flatten()[:700].float().sum().item() > 0
+
+    def test_slow_and_fast_thresholds_agree_within_one_bin_5174(self, device, dtype):
+        # The slow histogram is the mass a Gaussian kernel density estimate of bandwidth 0.1 bin puts in each bin. It
+        # differs from histc's only by the part of a pixel's mass, within a fraction of a bin of an edge, that falls in
+        # the neighbouring bin. On the images of #5174 and #5172 below, that moves the best split up by at most one
+        # bin: 0 <= slow - fast <= one bin, plus the rounding of both thresholds to the dtype (the two paths also
+        # compute the same edge with different float arithmetic, which differs in the last bits). Not a property of
+        # every image: two near-tied splits far apart can swap under any change of histogram estimator. The default
+        # path runs on the CPU, where it takes the lowest of splits that give the same partition; on MPS its
+        # cumulative sums can make a later one win (0.4766 instead of 0.4000 on the bimodal image, #5421).
+        generator = torch.Generator().manual_seed(0)
+        noise = torch.rand(1000, generator=generator, dtype=torch.float64)
+        ramp_a = torch.linspace(0, 1, 60, dtype=torch.float64).square().view(1, 1, 6, 10)
+        ramp_b = torch.linspace(0.6, 4.3, 60, dtype=torch.float64).view(1, 1, 6, 10)
+        cases = [
+            ("bimodal", torch.cat([0.3 + 0.1 * noise[:500], 0.6 + 0.1 * noise[500:]]).view(1, 1, 20, 50), 256),
+            ("mass at 0.3", torch.tensor([0.0] * 10 + [0.3] * 80 + [1.0] * 10).view(1, 1, 1, -1), 16),
+            ("mass at 0.7", torch.tensor([0.0] * 10 + [0.7] * 80 + [1.0] * 10).view(1, 1, 1, -1), 16),
+            ("uint8 values", _bimodal_uint8_image("cpu").double(), 256),
+            ("nbins=2", torch.tensor([[0.0, 0.1, 0.2, 0.55, 0.9, 1.0]]), 2),
+            ("ramp a", ramp_a, 256),
+            ("ramp b", ramp_b, 256),
+        ]
+        thresholds = {}
+        for name, x, nbins in cases:
+            if name == "ramp a" and dtype == torch.bfloat16:
+                # bfloat16 rounds one pixel of this ramp onto the bin edge 106 / 256: histc counts it in bin 106, the
+                # kernel splits it between bins 105 and 106, and the splits on its two sides are within 0.003 % of each
+                # other in between-class variance, so the slow path takes the other one, 6 bins up
+                continue
+            x = x.to(device=device, dtype=dtype)
+            _, fast = otsu_threshold(x.cpu(), nbins=nbins)
+            _, slow = otsu_threshold(x, nbins=nbins, slow_and_differentiable=True)
+            bin_width = (x.max().item() - x.min().item()) / nbins
+            rounding = torch.finfo(dtype).eps * max(abs(fast.item()), abs(slow.item()))
+            assert -rounding <= slow.item() - fast.item() <= bin_width + rounding, name
+            thresholds[name] = slow.item()
+        # every pixel contributes to the slow histogram: the 80 pixels at 0.3 or 0.7 decide between the two images
+        assert thresholds["mass at 0.3"] != thresholds["mass at 0.7"]
+
+        # an integer image gets the largest integer below the edge on both paths
+        image = _bimodal_uint8_image(device)
+        assert otsu_threshold(image, slow_and_differentiable=True)[1].item() == 125
+        assert otsu_threshold(image.cpu())[1].item() == 125
+
+    def test_equivalent_splits_take_the_lowest_5174(self, device, dtype):
+        # 1 / x on 60 evenly spaced x leaves runs of empty bins between its upper levels, so several splits give the
+        # same partition. The kernel tails put about 1e-23 of a pixel in each empty bin; counted as mass, they would
+        # leave the choice between those splits to the rounding of the cumulative sums, and in float16 on the CPU, or
+        # in float32 on MPS, the highest of them, 6 bins up, would win. Only a bin above 1 % of a pixel counts as
+        # non-empty, so the lowest wins on every device, as on the default path on the CPU.
+        x = (1 / torch.linspace(1, 10, 60, dtype=torch.float64)).view(1, 1, 6, 10).to(dtype)
+        _, expected = otsu_threshold(x)
+        _, slow = otsu_threshold(x.to(device), slow_and_differentiable=True)
+        self.assert_close(slow.cpu(), expected, rtol=4 * torch.finfo(dtype).eps, atol=0.0)
+
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_dynamo(self, slow_and_differentiable, device, dtype, torch_optimizer, optimizer_backend):
+        x = _quantile_mixture(device, dtype)
+        # the slow path has no .item() and compiles as one graph; the default path passes each plane's minimum and
+        # maximum to torch.histc through .item()
+        op = torch_optimizer(
+            lambda x: otsu_threshold(x, nbins=64, slow_and_differentiable=slow_and_differentiable),
+            fullgraph=slow_and_differentiable,
+        )
+        expected = otsu_threshold(x, nbins=64, slow_and_differentiable=slow_and_differentiable)
+        actual = op(x)
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
+
+        if slow_and_differentiable:
+            if (
+                optimizer_backend == "inductor"
+                and dtype == torch.float64
+                and device.type == "cpu"
+                and torch_version().startswith("2.5.")
+            ):
+                pytest.skip(
+                    "PyTorch 2.5.1 CPU Inductor has no `fmadd` overload for `VectorizedN<double, 2>` in the softmax "
+                    "backward"
+                )
+            x = x.clone().requires_grad_(True)
+            (expected_grad,) = torch.autograd.grad(otsu_threshold(x, 64, True)[1].sum(), x)
+            (actual_grad,) = torch.autograd.grad(op(x)[1].sum(), x)
+            self.assert_close(actual_grad, expected_grad)
