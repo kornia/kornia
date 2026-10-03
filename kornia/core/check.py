@@ -136,7 +136,8 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
 
     Args:
         x: the tensor to evaluate.
-        shape: a list with strings with the expected shape.
+        shape: a list with strings with the expected shape. A leading or trailing ``"*"`` matches any number
+            of dimensions; ``["*"]`` accepts any shape, and an empty list accepts only a scalar tensor.
         msg: optional custom message to append to error.
         raises: bool indicating whether an exception should be raised upon failure.
 
@@ -163,10 +164,12 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    if "*" == shape[0]:
+    dimension_offset = 0
+    if len(shape) > 0 and "*" == shape[0]:
         shape_to_check = shape[1:]
-        x_shape_to_check = x.shape[-len(shape) + 1 :]
-    elif "*" == shape[-1]:
+        dimension_offset = max(len(x.shape) - len(shape_to_check), 0)
+        x_shape_to_check = x.shape[dimension_offset:]
+    elif len(shape) > 0 and "*" == shape[-1]:
         shape_to_check = shape[:-1]
         x_shape_to_check = x.shape[: len(shape) - 1]
     else:
@@ -199,7 +202,9 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
         dim = int(dim_)
         if x_shape_to_check[i] != dim:
             if raises:
-                error_msg = f"Shape mismatch at dimension {i}: expected {dim}, got {x_shape_to_check[i]}.\n"
+                error_msg = (
+                    f"Shape mismatch at dimension {i + dimension_offset}: expected {dim}, got {x_shape_to_check[i]}.\n"
+                )
                 error_msg += f"  Expected shape: {shape}\n"
                 x_shape_list = list(x.shape)
                 error_msg += f"  Actual shape: {x_shape_list}"
