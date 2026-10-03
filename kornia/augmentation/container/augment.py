@@ -153,8 +153,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           interpolation is not recovered.
         - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
           ``True`` or ``False`` overrides it.
-        - Nested :class:`AugmentationSequential` children contribute matrices from the current call.
-          A plain :class:`ImageSequential` child is still omitted from the outer matrix
+        - Nested :class:`AugmentationSequential` children contribute the matrix they record for the current call
+          under their own ``transformation_matrix_mode``; one whose children are all non-rigid records none and is
+          skipped. A plain :class:`ImageSequential` child is still omitted from the outer matrix
           (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 
     .. warning::
@@ -375,8 +376,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return super().clear_state()
 
     def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
-        if not is_exporting():
-            self._transform_matrices.append(module.transform_matrix)
+        if is_exporting():
+            return
+        matrix = module.transform_matrix
+        # A nested container whose children are all non-rigid records no matrix under its own mode: skip it, as its
+        # own mode skipped them. Appending ``None`` made the product raise or drop it depending on the child order.
+        if matrix is not None:
+            self._transform_matrices.append(matrix)
 
     def transform_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None

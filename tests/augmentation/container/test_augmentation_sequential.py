@@ -1324,6 +1324,45 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(matrix_points[..., :2], output_points)
         self.assert_close(output_points, torch.tensor(expected_points, device=device, dtype=dtype))
 
+    @pytest.mark.parametrize("nested_first", [False, True])
+    def test_convention_nested_non_rigid_container_is_skipped_4476(self, nested_first, device, dtype):
+        # A nested container whose children are all non-rigid records no matrix and is skipped, in either order and
+        # under the outer ``rigid`` mode too: the nested container's own ``silent`` mode skipped its children.
+        image = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        expected = torch.tensor([[[-1.0, 0.0, 7.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+
+        def children():
+            nested = K.AugmentationSequential(K.RandomThinPlateSpline(p=1.0))
+            horizontal = K.RandomHorizontalFlip(p=1.0)
+            return [nested, horizontal] if nested_first else [horizontal, nested]
+
+        outer = K.AugmentationSequential(*children())
+        outer(image)
+        self.assert_close(outer.transform_matrix, expected)
+
+        image_outer = K.ImageSequential(*children())
+        image_outer(image)
+        self.assert_close(image_outer.get_transformation_matrix(image, params=image_outer._params), expected)
+
+        rigid_outer = K.AugmentationSequential(*children(), transformation_matrix_mode="rigid")
+        rigid_outer(image)
+        self.assert_close(rigid_outer.transform_matrix, expected)
+
+    def test_nested_container_records_its_params_4476(self, device, dtype):
+        nested = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0))
+        outer = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), nested)
+        image = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        output = outer(image)
+        self.assert_close(nested.inverse(output), image.flip(-1))
+
+    def test_convention_nested_rigid_container_checks_its_children_4476(self, device, dtype):
+        # A nested container records its matrix in its own mode, so ``rigid`` rejects a non-rigid child as a direct
+        # call does.
+        nested = K.AugmentationSequential(K.RandomThinPlateSpline(p=1.0), transformation_matrix_mode="rigid")
+        outer = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), nested)
+        with pytest.raises(RuntimeError, match="under `rigid` computation mode"):
+            outer(torch.rand(1, 1, 6, 8, device=device, dtype=dtype))
+
     @pytest.mark.parametrize("crop_cls", [K.CenterCrop, K.RandomCrop, K.RandomResizedCrop])
     def test_convention_slice_crop_inverse_raises(self, crop_cls, device, dtype):
         seq = K.AugmentationSequential(crop_cls((4, 6), p=1.0), data_keys=["input"])
