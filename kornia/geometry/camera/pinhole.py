@@ -50,9 +50,9 @@ class PinholeCamera:
         which disagrees with the integer pixel centres above:
         `#4263 <https://github.com/kornia/kornia/issues/4263>`_. With the :math:`(B, N, 4, 4)` storage the
         validator admits, :meth:`project` raises on :math:`(B, N, 3)` points:
-        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated: a
-        zero-padded ``K`` with ``intrinsics[3, 3] = 0`` projects but :meth:`unproject` raises on the singular
-        matrix: `#4771 <https://github.com/kornia/kornia/issues/4771>`_.
+        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated, but
+        :meth:`project` and :meth:`unproject` read only the top-left :math:`3 \times 3` block, so a zero-padded
+        ``K`` round-trips like its homogeneous embedding.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -398,7 +398,7 @@ class PinholeCamera:
         """
         if len(point_3d.shape) < 2:
             raise ValueError(f"Input must be at least a 2D tensor. Got {point_3d.shape}")
-        P = self.intrinsics @ self.extrinsics
+        P = self._projection_matrix()
         return convert_points_from_homogeneous(transform_points(P, point_3d))
 
     def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor) -> torch.Tensor:
@@ -431,9 +431,25 @@ class PinholeCamera:
             tensor([[0.4963, 0.7682, 1.0000]])
 
         """
-        P = self.intrinsics @ self.extrinsics
-        P_inv = _torch_inverse_cast(P)
+        P_inv = _torch_inverse_cast(self._projection_matrix())
         return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)
+
+    def _projection_matrix(self) -> torch.Tensor:
+        r"""Return the 4x4 projection built from the intrinsics' top-left 3x3 block.
+
+        Both :meth:`project` and :meth:`unproject` go through this matrix, so they agree on
+        which intrinsics are usable: a 3x3 ``K`` zero-padded to 4x4 round-trips exactly like its
+        homogeneous embedding, instead of projecting while ``unproject`` raises on the singular
+        4x4 product. For a homogeneous embedding the result matches ``intrinsics @ extrinsics``
+        bit for bit.
+        """
+        K = self._intrinsics[..., :3, :3]
+        E = self._extrinsics
+        P = torch.zeros(*K.shape[:-2], 4, 4, device=K.device, dtype=K.dtype)
+        P[..., :3, :3] = K @ E[..., :3, :3]
+        P[..., :3, 3:] = K @ E[..., :3, 3:]
+        P[..., 3, 3] = 1.0
+        return P
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
