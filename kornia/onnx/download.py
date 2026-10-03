@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import http.client
 import logging
 import os
 import urllib.error
@@ -83,6 +82,7 @@ class CachedDownloader:
         Raises:
             ValueError: If ``url`` is not an HTTP or HTTPS URL, if download is
                 disabled and the file is missing, or if the server answers with an HTTP error.
+            TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds without answering (see ``download``).
             urllib.error.URLError: If the server cannot be reached, or ``urllib.error.ContentTooShortError``
                 if the body is shorter than its ``Content-Length`` (see ``download``).
         """
@@ -110,8 +110,10 @@ class CachedDownloader:
 
         Raises:
             ValueError: If the file is missing and ``download_if_not_exists`` is ``False``, if ``url`` is not an
-                HTTP or HTTPS URL, or if the server answers with an HTTP error.
-            TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds without answering.
+                HTTP or HTTPS URL, if the server answers with an HTTP error, or if ``KORNIA_DOWNLOAD_TIMEOUT`` is
+                set to anything but a positive number of seconds.
+            TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds (30 s when it is unset) without
+                answering. Nothing is left at ``file_path``.
             urllib.error.ContentTooShortError: If the body is shorter than its ``Content-Length``. Nothing is
                 left at ``file_path``, so the next call downloads again.
             urllib.error.URLError: If the server cannot be reached.
@@ -133,10 +135,11 @@ class CachedDownloader:
                 _core_download._download_url_to_file(url, file_path, progress=False)
             except urllib.error.HTTPError as exc:
                 raise ValueError(f"Error in resolving `{url}`.") from exc
-            except http.client.IncompleteRead as exc:
-                received = getattr(exc, "received", len(exc.partial))
+            except _core_download._TruncatedTransfer as exc:
+                # urlretrieve's type and message for a body shorter than its Content-Length; any other
+                # IncompleteRead (a chunked body cut mid-chunk) propagates unchanged, as it did from urlretrieve
                 raise urllib.error.ContentTooShortError(
-                    f"retrieval incomplete: got only {received} out of {exc.expected} bytes", b""
+                    f"retrieval incomplete: got only {exc.received} out of {exc.announced} bytes", b""
                 ) from exc
         else:
             raise ValueError("URL must start with 'http:' or 'https:'")

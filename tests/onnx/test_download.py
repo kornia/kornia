@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import http.client
 import http.server
 import os
 import sys
@@ -89,6 +90,7 @@ class TestCachedDownloader:
     def test_download_expands_user_directory(self, download_server, monkeypatch, tmp_path):
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.chdir(tmp_path)  # without the expansion, a literal "~" directory lands in the working directory
         responses, base_url, _ = download_server
         responses["/model"] = (b"weights", 7)
 
@@ -97,6 +99,23 @@ class TestCachedDownloader:
         assert Path(path) == tmp_path / "cache" / "model.onnx"
         assert Path(path).read_bytes() == b"weights"
 
+    def test_download_expands_user_file_path(self, download_server, monkeypatch, tmp_path):
+        # the cache check and the directory creation must see the expanded path, or every call downloads again
+        # and a literal "~" directory appears in the working directory
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        (tmp_path / "cwd").mkdir()
+        monkeypatch.chdir(tmp_path / "cwd")
+        responses, base_url, hits = download_server
+        responses["/model"] = (b"weights", 7)
+
+        for _ in range(2):
+            CachedDownloader.download(f"{base_url}/model", "~/cache/model.onnx")
+
+        assert (tmp_path / "cache" / "model.onnx").read_bytes() == b"weights"
+        assert hits == ["/model"]
+        assert list((tmp_path / "cwd").iterdir()) == []
+
     def test_short_transfer_is_not_cached(self, download_server, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         responses, base_url, hits = download_server
@@ -104,7 +123,7 @@ class TestCachedDownloader:
         responses["/model"] = (payload[: len(payload) // 2], len(payload))
         url = f"{base_url}/model"
 
-        with pytest.raises(ContentTooShortError):
+        with pytest.raises(ContentTooShortError, match=r"got only 5120 out of 10240 bytes"):
             CachedDownloader.download_to_cache(url, "model", cache_dir="cache", suffix=".pth")
 
         assert list((tmp_path / "cache").iterdir()) == []
@@ -114,6 +133,18 @@ class TestCachedDownloader:
         assert CachedDownloader.download_to_cache(url, "model", cache_dir="cache", suffix=".pth") == path
         assert hits == ["/model", "/model"]
         assert list((tmp_path / "cache").iterdir()) == [tmp_path / "cache" / "model.pth"]
+
+    def test_other_incomplete_read_propagates(self, tmp_path):
+        # only a body shorter than its Content-Length becomes ContentTooShortError; any other IncompleteRead (a
+        # chunked body cut mid-chunk) propagates unchanged, as it did from urlretrieve
+        path = tmp_path / "cache" / "model.onnx"
+        cut = http.client.IncompleteRead(b"")
+
+        with mock.patch("kornia.core.download._download_url_to_file", side_effect=cut):
+            with pytest.raises(http.client.IncompleteRead) as exc_info:
+                CachedDownloader.download("http://127.0.0.1:9/model.onnx", str(path))
+
+        assert exc_info.value is cut
 
     def test_stalled_transfer_obeys_timeout_environment_variable(self, monkeypatch, tmp_path):
         for var in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
@@ -190,31 +221,27 @@ class TestCachedDownloader:
         assert hits == []
 
     def test_interrupted_transfer_leaves_no_file(self, tmp_path):
-        # KeyboardInterrupt is a BaseException: the cleanup must not be an `except Exception`
+        # KeyboardInterrupt is a BaseException: the cleanup must not be an `except Exception`. The transfer's
+        # temporary file already exists when the request is opened, so interrupting there must remove it.
         path = tmp_path / "cache" / "model.pth"
 
-        def interrupted(url, filename, **kwargs):
-            raise KeyboardInterrupt
-
-        with mock.patch("kornia.core.download._download_url_to_file", side_effect=interrupted):
+        with mock.patch("kornia.core.download.urlopen", side_effect=KeyboardInterrupt):
             with pytest.raises(KeyboardInterrupt):
                 CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
 
         assert list(path.parent.iterdir()) == []
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
-    def test_cache_file_has_default_permissions(self, tmp_path):
+    def test_cache_file_has_default_permissions(self, download_server, tmp_path):
         # a downloaded file gets the permissions of any new file (umask applied), not mkstemp's owner-only 0o600,
         # so a cache filled by one user stays readable by another
+        responses, base_url, _ = download_server
+        responses["/model.pth"] = (b"weights", 7)
         path = tmp_path / "cache" / "model.pth"
         reference = tmp_path / "reference"
         reference.write_bytes(b"")
 
-        def write(url, filename, **kwargs):
-            Path(filename).write_bytes(b"weights")
-
-        with mock.patch("kornia.core.download._download_url_to_file", side_effect=write):
-            CachedDownloader.download("http://127.0.0.1:9/model.pth", str(path))
+        CachedDownloader.download(f"{base_url}/model.pth", str(path))
 
         assert path.stat().st_mode == reference.stat().st_mode
 
