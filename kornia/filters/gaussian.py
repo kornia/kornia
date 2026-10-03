@@ -100,18 +100,10 @@ def gaussian_blur2d(
         - ``kernel_size`` is ``(kH, kW)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)`: both give the rows (y)
           first, so ``sigma[0]`` blurs along ``H`` and ``sigma[1]`` along ``W``.
           :ref:`Filtering <filtering-conventions>` maps both pairs onto OpenCV and scipy.
-        - A tensor ``sigma`` of shape :math:`(B, 2)` gives each sample its own row; a :math:`(1, 2)` row is shared
-          by the batch.
         - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
-        - Known defects:
-
-          - an integer input casts ``sigma`` and the kernel to its dtype: on the CPU a uint8 image comes back as
-            zeros, and a ``sigma`` below 1 truncates to 0 and is rejected as not positive
-            (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
-          - a tensor ``sigma`` whose batch is neither 1 nor ``B`` is not validated: a batch ``n`` that divides ``B``
-            is reused cyclically, sample ``b`` taking row ``b % n``, as :func:`~kornia.filters.filter2d` reuses a
-            kernel batch (`#5154 <https://github.com/kornia/kornia/issues/5154>`_), and any other batch fails with
-            a raw torch error (`#5169 <https://github.com/kornia/kornia/issues/5169>`_).
+        - Known defect: an integer input casts ``sigma`` and the kernel to its dtype, so on the CPU a uint8 image
+          comes back as zeros, and a ``sigma`` below 1 truncates to 0 and is rejected as not positive
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.

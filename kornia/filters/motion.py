@@ -49,9 +49,7 @@ class MotionBlur(nn.Module):
     r"""Blur 2D images (4D torch.Tensor) using the motion filter.
 
     Convention:
-        - See the Convention block on :func:`~kornia.filters.motion_blur`.
-        - Known defect: ``mode`` is ignored, so the module always rotates the kernel with ``'nearest'``
-          (`#5164 <https://github.com/kornia/kornia/issues/5164>`_).
+        See the Convention block on :func:`~kornia.filters.motion_blur`.
 
     Args:
         kernel_size: motion kernel width and height, an odd integer of at least 3.
@@ -123,14 +121,7 @@ class MotionBlur3D(nn.Module):
     r"""Blur 3D volumes (5D torch.Tensor) using the motion filter.
 
     Convention:
-        - See the Convention block on :func:`~kornia.filters.motion_blur3d`.
-        - Known defects:
-
-          - ``mode`` is ignored, so the module always rotates the kernel with ``'nearest'``
-            (`#5164 <https://github.com/kornia/kornia/issues/5164>`_).
-          - a tensor ``angle``, which :func:`~kornia.filters.motion_blur3d` accepts, fails at the first forward
-            with an ``AttributeError``, and an ``int`` angle is rejected
-            (`#5164 <https://github.com/kornia/kornia/issues/5164>`__).
+        See the Convention block on :func:`~kornia.filters.motion_blur3d`.
 
     Args:
         kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
@@ -233,17 +224,9 @@ def motion_blur(
     .. image:: _static/img/motion_blur.png
 
     Convention:
-        - The kernel is :func:`~kornia.filters.get_motion_kernel2d`'s, correlated with the image by
-          :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction`` (including the
-          side on which the streak of a bright point is heaviest), ``mode``, the tensor shapes and the border modes.
-        - Known defects:
-
-          - the default ``border_type='constant'`` zero-pads, so a constant image darkens toward the edges, where
-            :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.gaussian_blur2d` and
-            :func:`~kornia.filters.box_blur` default to ``'reflect'``
-            (`#5168 <https://github.com/kornia/kornia/issues/5168>`_).
-          - a tuple ``kernel_size`` is not rejected up front and fails with a raw ``TypeError``
-            (`#5169 <https://github.com/kornia/kornia/issues/5169>`_).
+        The kernel is :func:`~kornia.filters.get_motion_kernel2d`'s, correlated with the image by
+        :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction`` (including the side
+        on which the streak of a bright point is heaviest), ``mode``, the tensor shapes and the border modes.
 
     Args:
         input: the input torch.Tensor with shape :math:`(B, C, H, W)`.
@@ -294,17 +277,11 @@ def motion_blur3d(
     r"""Perform motion blur on 3D volumes (5D torch.Tensor).
 
     Convention:
-        - The kernel is :func:`~kornia.filters.get_motion_kernel3d`'s, correlated with the volume by
-          :func:`~kornia.filters.filter3d`; their Convention blocks cover ``angle``, ``direction``, ``mode`` and the
-          border modes. With ``direction=1`` and zero angles the streak of a bright voxel is heaviest toward
-          :math:`+x`; a positive roll turns it toward :math:`+y` and a positive pitch toward decreasing ``D``.
-        - Known defects:
-
-          - the default ``border_type='constant'`` zero-pads, so a constant volume darkens toward the faces, where
-            :func:`~kornia.filters.filter3d` defaults to ``'replicate'``
-            (`#5168 <https://github.com/kornia/kornia/issues/5168>`_).
-          - a tuple ``kernel_size`` is not rejected up front and fails with a raw ``TypeError``
-            (`#5169 <https://github.com/kornia/kornia/issues/5169>`_).
+        The kernel is :func:`~kornia.filters.get_motion_kernel3d`'s, correlated with the volume by
+        :func:`~kornia.filters.filter3d`; their Convention blocks cover ``angle``, ``direction``, ``mode`` and the
+        border modes. With ``direction=1`` and a zero ``angle`` the streak of a bright voxel is heaviest toward
+        :math:`+x`; a positive roll alone turns it toward :math:`+y`, and a positive pitch alone toward decreasing
+        ``D``.
 
     Args:
         input: the input torch.Tensor with shape :math:`(B, C, D, H, W)`.

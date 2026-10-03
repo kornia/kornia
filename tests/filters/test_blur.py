@@ -357,7 +357,7 @@ class TestConventionsBoxBlur(BaseTester):
         [
             pytest.param(box_blur, True, id="box_blur"),
             pytest.param(lambda image, size: gaussian_blur2d(image, size, (1.5, 1.5)), True, id="gaussian_blur2d"),
-            pytest.param(median_blur, False, id="median_blur"),
+            pytest.param(median_blur, True, id="median_blur"),
         ],
     )
     def test_convention_blur_kernel_size_is_height_then_width(self, blur, pads_by_reflection, device, dtype):

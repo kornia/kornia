@@ -104,9 +104,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
         - ``kernel_size`` is ``(kH, kW)``, rows first, and both entries are odd, so every window has one middle
           value.
         - A window that holds a NaN or an infinity returns NaN, even where the median of its values is finite.
-        - Known defect: there is no ``border_type``; the window is zero-padded, so a border median is taken over
-          zeros as well as image values, and with a window of at least 3 x 3 a constant image comes back with 0 in
-          its corners (`#4670 <https://github.com/kornia/kornia/issues/4670>`_).
+        - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
 
     Args:
         input: the input image with shape :math:`(B,C,H,W)`.

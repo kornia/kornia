@@ -784,20 +784,14 @@ class TestConventionsGaussianBlur(BaseTester):
         # the same blur of the same values in floating point keeps the constant image
         self.assert_close(gaussian_blur2d(image.float(), (3, 3), (1.0, 1.0)), image.float())
 
-    def test_wart_gaussian_blur2d_sigma_batch_is_not_validated_5169(self, device, dtype):
-        """gaussian_blur2d does not validate the sigma batch: a divisor of B cycles, another size fails raw (#5169)."""
-        if not supports_reflect_padding(device, dtype):
-            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+    def test_convention_gaussian_blur2d_sigma_batch_is_one_or_the_input_batch_5169(self, device, dtype):
+        """gaussian_blur2d rejects a tensor sigma whose batch is neither 1 nor B, on both paths (#5169)."""
         torch.manual_seed(0)
         image = torch.rand(4, 3, 9, 13).to(device=device, dtype=dtype)
-        # a (2, 2) sigma for B = 4 runs: sample b is blurred with sigma row b % 2
-        sigma = torch.tensor([[0.8, 0.8], [3.0, 3.0]], device=device, dtype=dtype)
-        out = gaussian_blur2d(image, 5, sigma)
-        for sample in range(4):
-            row = sample % 2
-            self.assert_close(
-                out[sample : sample + 1], gaussian_blur2d(image[sample : sample + 1], 5, sigma[row : row + 1])
-            )
-        # a batch that does not divide B fails inside torch
-        with pytest.raises(RuntimeError):
-            gaussian_blur2d(image[:2], 3, torch.ones(3, 2, device=device, dtype=dtype))
+        two_rows = torch.tensor([[0.8, 0.8], [3.0, 3.0]], device=device, dtype=dtype)
+        for separable in (True, False):
+            # a batch of 2 is rejected for B = 4 although it divides it, and a batch of 3 for B = 2
+            with pytest.raises(BaseError, match="batch"):
+                gaussian_blur2d(image, 5, two_rows, separable=separable)
+            with pytest.raises(BaseError, match="batch"):
+                gaussian_blur2d(image[:2], 3, torch.ones(3, 2, device=device, dtype=dtype), separable=separable)

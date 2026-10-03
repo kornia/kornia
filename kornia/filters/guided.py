@@ -194,8 +194,6 @@ def guided_blur(
         - ``eps`` is added to the local variance of ``guidance``, so it is in squared guidance units: guidance and
           input scaled by ``s``, filtered with ``eps * s**2``, give the result scaled by ``s``.
           :ref:`Filtering <filtering-conventions>` maps the arguments onto OpenCV's ``guidedFilter``.
-        - Known defect: ``subsample=s`` needs ``H`` and ``W`` divisible by ``s``; any other size fails with a raw
-          torch error (`#5167 <https://github.com/kornia/kornia/issues/5167>`_).
 
     Arguments:
         guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.

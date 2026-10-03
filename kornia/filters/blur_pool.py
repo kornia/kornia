@@ -237,16 +237,12 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
 
     Convention:
         - The blur is the normalised binomial (Pascal) kernel, which must be square. The blurred map is sampled
-          every ``stride`` pixels from index 0, so an odd ``kernel_size`` returns
-          :math:`\lceil H / \text{stride} \rceil \times \lceil W / \text{stride} \rceil`.
-        - The border is zero-padded by ``(k - 1) // 2`` and there is no ``border_type``, so from ``kernel_size=3``
-          a constant map comes out darker along its border. An even ``kernel_size`` is anchored at
-          ``(k - 1) // 2``, as in :func:`~kornia.filters.filter2d`. :ref:`Filtering <filtering-conventions>`
-          compares the padding and the output size with antialiased-cnns, and the sampling with
+          every ``stride`` pixels from index 0.
+        - The border is zero-padded, ``(k - 1) // 2`` pixels before and ``k // 2`` after, and there is no
+          ``border_type``, so a constant map comes out darker where the kernel reaches past the border. An even
+          ``kernel_size`` is thereby anchored at ``(k - 1) // 2``, as in :func:`~kornia.filters.filter2d`.
+          :ref:`Filtering <filtering-conventions>` compares the padding with antialiased-cnns, and the sampling with
           :func:`~kornia.geometry.transform.pyrdown`.
-        - Known defect: the padding is ``(k - 1) // 2`` on both sides, so for an even ``kernel_size`` the blurred
-          map is one row and one column short, and a :math:`7 \times 10` map comes back :math:`6 \times 9` at
-          ``stride=1`` (`#5166 <https://github.com/kornia/kornia/issues/5166>`_).
 
     Args:
         input: torch.Tensor to apply operation to.
@@ -296,10 +292,8 @@ def max_blur_pool2d(
 
     Convention:
         - The result equals ``blur_pool2d(F.max_pool2d(input, max_pool_size, stride=1), kernel_size, stride)``: the
-          max pool runs at stride 1 without padding and ``stride`` belongs to the blur, so the output has
-          :func:`~kornia.filters.blur_pool2d`'s size for a map of ``H - max_pool_size + 1`` rows and
-          ``W - max_pool_size + 1`` columns. See the Convention block on :func:`~kornia.filters.blur_pool2d` for
-          the kernel and the border.
+          max pool runs at stride 1 without padding and ``stride`` belongs to the blur. See the Convention block on
+          :func:`~kornia.filters.blur_pool2d` for the kernel and the border.
         - Known defect: ``ceil_mode`` goes to the stride-1 max pool, where it has no effect
           (`#5165 <https://github.com/kornia/kornia/issues/5165>`_).
 
@@ -390,23 +384,15 @@ def edge_aware_blur_pool2d(
     Convention:
         - Nothing is downsampled: the output has the input's shape.
         - A pixel is on an edge when, along ``x`` or ``y``, the channel mean of ``log2(input + epsilon)`` differs
-          by more than ``log2(edge_threshold)`` between the pixels two before and two after it: ``edge_threshold``
-          is a ratio of intensities four pixels apart, so scaling the image does not move the edges while the
-          intensities stay well above ``epsilon``. Pixels on the edge map, dilated by ``edge_dilation_kernel_size``,
-          keep their input value; every other pixel takes the value blurred with
-          :func:`~kornia.filters.blur_pool2d`'s kernel at stride 1.
+          by more than ``log2(edge_threshold)`` between the pixels two before and two after it, so scaling the image
+          does not move the edges while the intensities stay well above ``epsilon``. Pixels on the edge map,
+          dilated by ``edge_dilation_kernel_size``, keep their input value; every other pixel takes the value
+          blurred with :func:`~kornia.filters.blur_pool2d`'s kernel at stride 1, with the border reflected as
+          ``border_type='reflect'`` reflects it in :func:`~kornia.filters.filter2d`, so a constant image keeps its
+          value to roundoff.
         - The input is taken to be positive: the logarithm of a negative value is NaN, which never exceeds the
           threshold, so a test that reads a negative value never finds an edge, and negative regions are blurred
           except where the dilation of an adjacent edge reaches them.
-        - Known defects:
-
-          - an even ``kernel_size`` is accepted and then fails with a raw torch shape error
-            (`#5163 <https://github.com/kornia/kornia/issues/5163>`_).
-          - an ``edge_threshold`` below 1 passes the positivity check but makes every pixel of a positive image an
-            edge, so the input comes back unchanged (`#5169 <https://github.com/kornia/kornia/issues/5169>`_).
-          - the input is reflect-padded by a fixed 2 pixels before the blur, so from ``kernel_size=7`` the blur
-            also reaches its zero padding and a constant image darkens near its border
-            (`#5228 <https://github.com/kornia/kornia/issues/5228>`_).
 
     Args:
         input: the input image to blur with shape :math:`(B, C, H, W)`.

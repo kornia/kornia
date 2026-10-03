@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.filters import (
     BilateralBlur,
     JointBilateralBlur,
@@ -514,23 +515,27 @@ class TestConventionsBilateralBlur(BaseTester):
         self.assert_close(bilateral_blur(stripes.float(), 3, 50.0, (1.0, 1.0)), stripes.float(), rtol=0.0, atol=0.01)
 
     @pytest.mark.parametrize("kernel_size", [4, (3, 4)])
-    def test_wart_bilateral_blur_even_kernel_size_fails_inside_the_filter_5163(self, kernel_size, device, dtype):
-        """The bilateral filters accept an even kernel_size and then fail with a raw torch error (#5163)."""
-        self._skip_without_reflect_padding(device, dtype)
+    def test_convention_bilateral_blur_even_kernel_size_is_rejected_up_front_5163(self, kernel_size, device, dtype):
+        """The bilateral filters reject an even kernel_size with a kornia error, the modules at construction (#5163)."""
         image = torch.rand(1, 1, 8, 9, device=device, dtype=dtype)
-        calls = (
-            lambda: bilateral_blur(image, kernel_size, 0.1, (1.0, 1.0)),
-            lambda: joint_bilateral_blur(image, image, kernel_size, 0.1, (1.0, 1.0)),
-            lambda: BilateralBlur(kernel_size, 0.1, (1.0, 1.0))(image),
-            lambda: JointBilateralBlur(kernel_size, 0.1, (1.0, 1.0))(image, image),
-        )
-        for call in calls:
-            with pytest.raises(RuntimeError):
-                call()
+        with pytest.raises(BaseError):
+            bilateral_blur(image, kernel_size, 0.1, (1.0, 1.0))
+        with pytest.raises(BaseError):
+            joint_bilateral_blur(image, image, kernel_size, 0.1, (1.0, 1.0))
+        for module in (BilateralBlur, JointBilateralBlur):
+            with pytest.raises(BaseError):
+                module(kernel_size, 0.1, (1.0, 1.0))
 
-    def test_wart_bilateral_blur_zero_sigma_color_turns_the_image_to_nan_5169(self, device, dtype):
-        """bilateral_blur does not check sigma_color > 0: a tensor of zeros makes every output pixel NaN (#5169)."""
-        self._skip_without_reflect_padding(device, dtype)
+    def test_convention_bilateral_blur_sigma_color_must_be_positive_5169(self, device, dtype):
+        """The bilateral filters reject a sigma_color that is not positive, a float or any entry of a tensor (#5169)."""
         image = torch.rand(2, 3, 9, 13, device=device, dtype=dtype)
-        out = bilateral_blur(image, 3, torch.zeros(2, device=device, dtype=dtype), (1.0, 1.0))
-        assert out.isnan().all()
+        for sigma_color in (
+            torch.zeros(2, device=device, dtype=dtype),
+            torch.tensor([0.1, -0.1], device=device, dtype=dtype),
+            0.0,
+            -0.1,
+        ):
+            with pytest.raises(BaseError):
+                bilateral_blur(image, 3, sigma_color, (1.0, 1.0))
+            with pytest.raises(BaseError):
+                joint_bilateral_blur(image, image, 3, sigma_color, (1.0, 1.0))

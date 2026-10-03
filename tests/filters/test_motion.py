@@ -538,10 +538,19 @@ class TestConventionsMotionBlur(BaseTester):
             flat //= size
         return tuple(i - c for i, c in zip(reversed(index), centre))
 
+    @staticmethod
+    def _skip_without_default_border(device, dtype, volumetric):
+        # The default border pads with reflect (2-D) or replicate (3-D), which some torch builds lack for half dtypes.
+        if volumetric and not supports_replicate_padding_3d(device, dtype):
+            pytest.skip(f"this torch build has no 3D replicate padding kernel for {dtype} on {device.type}")
+        if not volumetric and not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+
     def test_convention_motion_blur_angle_is_counterclockwise_as_displayed(self, device, dtype):
         # angle is in degrees and turns the streak counter-clockwise as the image is displayed (row 0 on top), as
         # rotate() does: with direction=1 a point's streak is heaviest 2 px right of it at angle 0 and 2 px above
         # it (row - 2) at angle 90.
+        self._skip_without_default_border(device, dtype, False)
         image = torch.zeros(1, 1, 9, 12, device=device, dtype=dtype)
         image[0, 0, 3, 7] = 1.0
         at_0 = motion_blur(image, 5, 0.0, 1.0)
@@ -563,6 +572,7 @@ class TestConventionsMotionBlur(BaseTester):
         # image for -1, and 0.2 on each of 5 pixels for 0.
         # Snippet used to generate expected:
         #   x = torch.zeros(1, 1, 9, 12); x[0, 0, 3, 7] = 1; print(motion_blur(x, 5, 0.0, d)[0, 0, 3, 5:10])
+        self._skip_without_default_border(device, dtype, False)
         image = torch.zeros(1, 1, 9, 12, device=device, dtype=dtype)
         image[0, 0, 3, 7] = 1.0
         forward, backward, even = [0.0, 0.1, 0.2, 0.3, 0.4], [0.4, 0.3, 0.2, 0.1, 0.0], [0.2] * 5
@@ -572,11 +582,13 @@ class TestConventionsMotionBlur(BaseTester):
             self.assert_close(out[0, 0, 3, 5:10], torch.tensor(expected, device=device, dtype=dtype))
 
     def test_convention_motion_blur3d_positive_roll_turns_x_toward_y(self, device, dtype):
-        # angle = (yaw, pitch, roll) in degrees about the (x, y, z) axes, and the streak starts along +x. A positive
-        # roll turns +x toward +y: clockwise as displayed, the opposite sense to motion_blur's angle. A positive
-        # pitch turns it toward -z, and yaw, a turn about the streak's own axis, leaves it along +x.
+        # angle = (yaw, pitch, roll) is one axis-angle vector (rx, ry, rz) in degrees, and the streak starts along +x.
+        # Each case sets one component, a turn about that axis. A positive roll turns +x toward +y: clockwise as
+        # displayed, the opposite sense to motion_blur's angle. A positive pitch turns it toward -z, and yaw, a turn
+        # about the streak's own axis, leaves it along +x.
         # Snippet used to generate expected (k = 3, direction = 1; the heaviest voxel's (depth, row, column) offset):
         #   v = torch.zeros(1, 1, 7, 9, 11); v[0, 0, 3, 5, 4] = 1; out = motion_blur3d(v, 3, angle, 1.0)
+        self._skip_without_default_border(device, dtype, True)
         volume = torch.zeros(1, 1, 7, 9, 11, device=device, dtype=dtype)
         volume[0, 0, 3, 5, 4] = 1.0
         for angle, offset in (
@@ -589,8 +601,9 @@ class TestConventionsMotionBlur(BaseTester):
             assert self._heaviest_offset(motion_blur3d(volume, 3, angle, 1.0)[0, 0], (3, 5, 4)) == offset
 
     def test_convention_motion_blur3d_module_float_angle_is_used_for_all_three_axes(self, device, dtype):
-        # MotionBlur3D takes a float angle as (angle, angle, angle): yaw, pitch and roll alike. At 50 degrees every
-        # triple that leaves one or two of the axes at 0 is a different kernel.
+        # MotionBlur3D takes a float angle as the vector (angle, angle, angle): yaw, pitch and roll alike. At 50
+        # degrees every vector that leaves one or two of its components at 0 is a different kernel.
+        self._skip_without_default_border(device, dtype, True)
         torch.manual_seed(0)
         volume = torch.rand(1, 1, 7, 8, 9).to(device=device, dtype=dtype)
         out = MotionBlur3D(3, 50.0, 0.5)(volume)
@@ -602,6 +615,7 @@ class TestConventionsMotionBlur(BaseTester):
     def test_convention_motion_blur_tensor_angle_and_direction_are_per_sample(self, device, dtype):
         # A tensor angle and direction are (B,): entry b drives sample b. A scalar direction is not broadcast
         # against a (B,) angle.
+        self._skip_without_default_border(device, dtype, False)
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip(f"this torch build has no 2D grid_sample kernel for {dtype} on {device.type}")
         torch.manual_seed(0)
@@ -614,9 +628,25 @@ class TestConventionsMotionBlur(BaseTester):
         with pytest.raises(BaseError):
             motion_blur(image, 5, angle, 0.5)
 
+    def test_convention_motion_blur_direction_one_streaks_toward_increasing_column(self, device, dtype):
+        # motion_blur correlates with get_motion_kernel2d's kernel, whose heavy end is on the left for direction=1, so
+        # the streak of a bright point is heaviest to its right: toward increasing column, 2 px away for size 5.
+        # border_type='constant' is passed explicitly, so the pin does not depend on the default border.
+        # Snippet used to generate expected:
+        #   x = torch.zeros(1, 1, 11, 15); x[0, 0, 4, 6] = 1
+        #   print(divmod(int(motion_blur(x, 5, 0.0, 1.0, "constant").argmax()), 15))  # (4, 8)
+        image = torch.zeros(1, 1, 11, 15, device=device, dtype=dtype)
+        image[0, 0, 4, 6] = 1.0
+        for blur in (lambda x: motion_blur(x, 5, 0.0, 1.0, "constant"), MotionBlur(5, 0.0, 1.0, "constant")):
+            out = blur(image)[0, 0]
+            assert divmod(int(out.detach().cpu().float().argmax()), 15) == (4, 8)
+            assert out[4, 8] > out[4, 7] > out[4, 6] > out[4, 5]
+            assert out[4, 4] == 0
+
     @pytest.mark.parametrize("volumetric", [False, True], ids=["MotionBlur", "MotionBlur3D"])
-    def test_wart_motion_blur_modules_ignore_mode_5164(self, volumetric, device, dtype):
-        """MotionBlur and MotionBlur3D drop their mode argument and always build a 'nearest' kernel (#5164)."""
+    def test_convention_motion_blur_modules_honour_mode_5164(self, volumetric, device, dtype):
+        """MotionBlur and MotionBlur3D rotate the kernel with their mode argument, as the functions do (#5164)."""
+        self._skip_without_default_border(device, dtype, volumetric)
         torch.manual_seed(0)
         if volumetric:
             image = torch.rand(1, 1, 5, 6, 7).to(device=device, dtype=dtype)
@@ -628,42 +658,46 @@ class TestConventionsMotionBlur(BaseTester):
             out = MotionBlur(5, 30.0, 0.3, mode="bilinear")(image)
             nearest = motion_blur(image, 5, 30.0, 0.3, mode="nearest")
             bilinear = motion_blur(image, 5, 30.0, 0.3, mode="bilinear")
-        self.assert_close(out, nearest)
-        assert (out - bilinear).abs().max() > 0.03
+        self.assert_close(out, bilinear)
+        assert (out - nearest).abs().max() > 0.03
 
-    def test_wart_motion_blur3d_module_rejects_a_tensor_or_int_angle_5164(self, device, dtype):
-        """MotionBlur3D stores only a float or 3-sequence angle: a tensor angle fails, an int is rejected (#5164)."""
-        volume = torch.rand(1, 1, 5, 6, 7, device=device, dtype=dtype)
-        angle = torch.tensor([[10.0, 20.0, 30.0]])
-        with pytest.raises(AttributeError):
-            MotionBlur3D(3, angle, 0.5)(volume)
-        with pytest.raises(BaseError):
-            MotionBlur3D(3, 35, 0.5)
-        # control: the function takes the same tensor angle
-        assert motion_blur3d(volume, 3, angle, 0.5).shape == volume.shape
+    def test_convention_motion_blur3d_module_takes_a_tensor_or_int_angle_5164(self, device, dtype):
+        """MotionBlur3D takes a (B, 3) tensor angle as motion_blur3d does, and an int as a float (#5164)."""
+        self._skip_without_default_border(device, dtype, True)
+        torch.manual_seed(0)
+        volume = torch.rand(1, 1, 5, 6, 7).to(device=device, dtype=dtype)
+        # the tensor angle and direction share a device and a dtype, as get_motion_kernel3d requires
+        angle, direction = torch.tensor([[10.0, 20.0, 30.0]]), torch.tensor([0.5])
+        self.assert_close(MotionBlur3D(3, angle, direction)(volume), motion_blur3d(volume, 3, angle, direction))
+        self.assert_close(MotionBlur3D(3, 35, 0.5)(volume), motion_blur3d(volume, 3, (35.0, 35.0, 35.0), 0.5))
 
-    def test_wart_motion_blur_default_border_darkens_a_constant_image_5168(self, device, dtype):
-        """The motion blurs default to border_type='constant' and darken a constant image at its edges (#5168)."""
-        # Snippet used to generate expected:
-        #   motion_blur(torch.ones(1, 1, 5, 7), 5, 0.0, 0.0)[0, 0, 2]
-        #   motion_blur3d(torch.ones(1, 1, 5, 6, 7), 3, (0.0, 0.0, 0.0), 0.0)[0, 0, 2, 3]
+    def test_convention_motion_blur_default_border_keeps_a_constant_image_5168(self, device, dtype):
+        """The 2-D motion blurs default to border_type='reflect' and the 3-D ones to 'replicate' (#5168)."""
+        # Both defaults keep a constant image constant at its edges, where 'constant' darkens it.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip(f"this torch build has no 3D replicate padding kernel for {dtype} on {device.type}")
         image = torch.ones(1, 1, 5, 7, device=device, dtype=dtype)
-        row = torch.tensor([0.6, 0.8, 1.0, 1.0, 1.0, 0.8, 0.6], device=device, dtype=dtype)
-        self.assert_close(motion_blur(image, 5, 0.0, 0.0)[0, 0, 2], row)
-        self.assert_close(MotionBlur(5, 0.0, 0.0)(image)[0, 0, 2], row)
+        self.assert_close(motion_blur(image, 5, 0.0, 0.0), image)
+        self.assert_close(MotionBlur(5, 0.0, 0.0)(image), image)
+        assert motion_blur(image, 5, 0.0, 0.0, "constant")[0, 0, 2, 0] < 0.9
         volume = torch.ones(1, 1, 5, 6, 7, device=device, dtype=dtype)
-        line = torch.tensor([2 / 3, 1.0, 1.0, 1.0, 1.0, 1.0, 2 / 3], device=device, dtype=dtype)
-        self.assert_close(motion_blur3d(volume, 3, (0.0, 0.0, 0.0), 0.0)[0, 0, 2, 3], line)
-        self.assert_close(MotionBlur3D(3, (0.0, 0.0, 0.0), 0.0)(volume)[0, 0, 2, 3], line)
+        self.assert_close(motion_blur3d(volume, 3, (0.0, 0.0, 0.0), 0.0), volume)
+        self.assert_close(MotionBlur3D(3, (0.0, 0.0, 0.0), 0.0)(volume), volume)
+        assert motion_blur3d(volume, 3, (0.0, 0.0, 0.0), 0.0, "constant")[0, 0, 2, 3, 0] < 0.9
+        # the defaults are those two modes, not just modes that keep a constant
+        torch.manual_seed(0)
+        image, volume = torch.rand_like(image), torch.rand_like(volume)
+        self.assert_close(motion_blur(image, 5, 30.0, 0.5), motion_blur(image, 5, 30.0, 0.5, "reflect"))
+        self.assert_close(
+            motion_blur3d(volume, 3, (10.0, 20.0, 30.0), 0.5),
+            motion_blur3d(volume, 3, (10.0, 20.0, 30.0), 0.5, "replicate"),
+        )
 
-    def test_wart_motion_blur_tuple_kernel_size_raises_a_raw_type_error_5169(self, device, dtype):
-        """motion_blur and motion_blur3d take an int kernel_size; a tuple fails inside the kernel builder with a
-        TypeError that does not name it (#5169)."""
-        # The error comes from Python (arithmetic or range() on the tuple) and does not name the argument; a fix that
-        # validates kernel_size, with a kornia error or a TypeError naming it, fails this pin.
-        with pytest.raises(TypeError) as planar:
+    def test_convention_motion_blur_kernel_size_must_be_an_int_5169(self, device, dtype):
+        """motion_blur and motion_blur3d reject a tuple kernel_size with a kornia error that names it (#5169)."""
+        with pytest.raises(BaseError, match="kernel_size"):
             motion_blur(torch.rand(1, 1, 9, 12, device=device, dtype=dtype), (5, 5), 30.0, 0.5)
-        assert "kernel_size" not in str(planar.value)
-        with pytest.raises(TypeError) as volumetric:
+        with pytest.raises(BaseError, match="kernel_size"):
             motion_blur3d(torch.rand(1, 1, 5, 9, 12, device=device, dtype=dtype), (3, 3, 3), (30.0, 0.0, 0.0), 0.5)
-        assert "kernel_size" not in str(volumetric.value)

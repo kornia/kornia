@@ -116,14 +116,8 @@ def bilateral_blur(
         - ``sigma_color`` is in the units of the input values: an image scaled by ``s``, filtered with
           ``sigma_color * s``, gives the result scaled by ``s``.
         - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
-        - Known defects:
-
-          - an even ``kernel_size`` is accepted and then fails with a raw torch shape error
-            (`#5163 <https://github.com/kornia/kornia/issues/5163>`_).
-          - an integer input is differenced in its own dtype, so uint8 differences wrap and the filter blends
-            across edges it should keep (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
-          - ``sigma_color`` is not checked to be positive: a tensor of zeros returns an all-NaN image
-            (`#5169 <https://github.com/kornia/kornia/issues/5169>`_).
+        - Known defect: an integer input is differenced in its own dtype, so uint8 differences wrap and the filter
+          blends across edges it should keep (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -177,10 +171,8 @@ def joint_bilateral_blur(
           ``guidance``, and ``input`` is what gets averaged.
         - ``input`` comes first and ``guidance`` second, the opposite of :func:`~kornia.filters.guided_blur`.
         - ``guidance`` may have its own channel count; its batch size and :math:`(H, W)` must equal ``input``'s.
-        - Known defects: those of :func:`~kornia.filters.bilateral_blur`
-          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_,
-          `#5163 <https://github.com/kornia/kornia/issues/5163>`_,
-          `#5169 <https://github.com/kornia/kornia/issues/5169>`_).
+        - Known defect: that of :func:`~kornia.filters.bilateral_blur`, for an integer ``guidance``
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.

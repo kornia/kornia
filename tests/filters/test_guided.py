@@ -743,13 +743,13 @@ class TestConventionsGuidedBlur(BaseTester):
         assert (out - box_blur(box_blur(image, (7, 11)), (7, 11))).abs().max() > 0.05
 
     @pytest.mark.parametrize("guidance_channels", [1, 3])
-    def test_wart_guided_blur_subsample_needs_a_divisible_size_5167(self, guidance_channels, device, dtype):
-        """guided_blur(subsample=s) fails with a raw torch error when H or W is not a multiple of s (#5167)."""
+    def test_convention_guided_blur_subsample_takes_any_size_5167(self, guidance_channels, device, dtype):
+        """guided_blur(subsample=s) filters an image whose H and W are not multiples of s, at the input size (#5167)."""
         self._skip_without_reflect_padding(device, dtype)
-        guidance = torch.rand(1, guidance_channels, 9, 13, device=device, dtype=dtype)
-        image = torch.rand(1, 2, 9, 13, device=device, dtype=dtype)
-        with pytest.raises(RuntimeError):
-            guided_blur(guidance, image, 5, 0.01, subsample=2)
-        # control: an 8 x 12 crop, divisible by 2, runs
-        crop = (..., slice(0, 8), slice(0, 12))
-        assert guided_blur(guidance[crop], image[crop], 5, 0.01, subsample=2).shape == (1, 2, 8, 12)
+        torch.manual_seed(0)
+        guidance = torch.rand(1, guidance_channels, 9, 13).to(device=device, dtype=dtype)
+        image = torch.rand(1, 2, 9, 13).to(device=device, dtype=dtype)
+        out = guided_blur(guidance, image, 5, 0.01, subsample=2)
+        assert out.shape == image.shape
+        assert out.isfinite().all()
+        self.assert_close(GuidedBlur(5, 0.01, subsample=2)(guidance, image), out)
