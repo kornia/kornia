@@ -61,6 +61,29 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         return _params
 
     @classmethod
+    def get_transform_matrix(cls, module: nn.Module, param: ParamItem, input: Any) -> torch.Tensor:
+        """Get the matrix recorded by these params, not by the module's most recent image call."""
+        params = cls.get_instance_module_param(param)
+        if getattr(module, "_transform_matrix_params", None) is params:
+            transform = getattr(module, "transform_matrix", None)
+            if transform is not None:
+                return transform
+
+        forward_input_shape = params.get("forward_input_shape")
+        if forward_input_shape is None:
+            raise ValueError("`forward_input_shape` is required to replay geometric annotations without an image.")
+
+        if isinstance(input, list):
+            input = input[0] if input else None
+        if isinstance(input, Boxes | Keypoints):
+            input = input.data
+        reference = input if isinstance(input, torch.Tensor) else None
+        device = reference.device if reference is not None else forward_input_shape.device
+        dtype = reference.dtype if reference is not None and torch.is_floating_point(reference) else torch.float32
+        matrix_input = torch.empty((), device=device, dtype=dtype).expand(tuple(forward_input_shape.tolist()))
+        return module.generate_transformation_matrix(matrix_input, params, module.flags)
+
+    @classmethod
     def get_sequential_module_param(cls, param: ParamItem) -> List[ParamItem]:
         """Extract nested sequential parameters from a :class:`ParamItem`.
 
@@ -447,7 +470,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
                 input,
                 params=cls.get_instance_module_param(param),
                 flags=module.flags,
-                transform=module.transform_matrix,
+                transform=cls.get_transform_matrix(module, param, input),
                 **extra_args,
             )
 
@@ -506,7 +529,11 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             for i, inp in enumerate(input):
                 params_i["batch_prob"] = params["batch_prob"][i]
                 tfm_inp = module.transform_masks(
-                    inp, params=params_i, flags=module.flags, transform=module.transform_matrix, **extra_args
+                    inp,
+                    params=params_i,
+                    flags=module.flags,
+                    transform=cls.get_transform_matrix(module, param, inp),
+                    **extra_args,
                 )
                 tfm_input.append(tfm_inp)
             input = tfm_input
@@ -566,9 +593,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
-            if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
-            transform = module.compute_inverse_transformation(module.transform_matrix)
+            transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             input = module.inverse_masks(
                 input,
                 params=cls.get_instance_module_param(param),
@@ -607,9 +632,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             extra_args = {}
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
-            if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
-            transform = module.compute_inverse_transformation(module.transform_matrix)
+            transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             params = cls.get_instance_module_param(param)
             params_i = copy.deepcopy(params)
             inv_input = []
@@ -669,7 +692,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 _input,
                 cls.get_instance_module_param(param),
                 module.flags,
-                transform=module.transform_matrix,
+                transform=cls.get_transform_matrix(module, param, _input),
                 **extra_args,
             )
 
@@ -720,9 +743,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
-            if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
-            transform = module.compute_inverse_transformation(module.transform_matrix)
+            transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, _input))
             _input = module.inverse_boxes(
                 _input,
                 param.data,  # type: ignore[arg-type]
@@ -777,7 +798,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 _input,
                 cls.get_instance_module_param(param),
                 module.flags,
-                transform=module.transform_matrix,
+                transform=cls.get_transform_matrix(module, param, _input),
                 **extra_args,
             )
 
@@ -836,9 +857,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
-            if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
-            transform = module.compute_inverse_transformation(module.transform_matrix)
+            transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, _input))
             _input = module.inverse_keypoints(
                 _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args
             )
