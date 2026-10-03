@@ -93,6 +93,8 @@ def filter2d(
           raises.
         - ``normalized=True`` divides each kernel by the sum of its absolute values, so a zero-sum derivative kernel
           keeps its sign.
+        - ``border_type``, ``padding`` and ``behaviour`` are case-insensitive: ``'REFLECT'``, ``'SAME'`` and
+          ``'CONV'`` are ``'reflect'``, ``'same'`` and ``'conv'``.
         - The kernel is cast to the input's dtype and device and stays differentiable; the output has the input's
           dtype.
         - Known defects:
@@ -100,9 +102,6 @@ def filter2d(
           - an integer input casts the kernel to its dtype, so a fractional kernel truncates to 0: a uint8 image
             filtered with a box kernel comes back as zeros, or the call raises where torch has no integer
             convolution (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
-          - ``padding`` and ``border_type`` are checked case-insensitively but used as given: ``padding='SAME'``
-            returns the ``'valid'`` output and ``border_type='REFLECT'`` raises
-            (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
 
     Args:
         input: the input tensor with shape of
@@ -157,9 +156,12 @@ def filter2d(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
         f"Invalid padding mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
+    # the checks are case-insensitive, so dispatch on the lower-case spelling as well
+    border_type, padding, behaviour = str(border_type).lower(), str(padding).lower(), str(behaviour).lower()
+
     # prepare kernel
     b, c, h, w = input.shape
-    if str(behaviour).lower() == "conv":
+    if behaviour == "conv":
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
@@ -341,10 +343,12 @@ def filter3d(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
         f"Invalid behaviour mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
+    # the checks are case-insensitive, so dispatch on the lower-case spelling as well
+    border_type, behaviour = str(border_type).lower(), str(behaviour).lower()
 
     # prepare kernel
     b, c, d, h, w = input.shape
-    if str(behaviour).lower() == "conv":
+    if behaviour == "conv":
         tmp_kernel = kernel.flip((-3, -2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
@@ -475,6 +479,8 @@ def fft_conv(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
         f"Invalid behaviour mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
+    # the checks are case-insensitive, so dispatch on the lower-case spelling as well
+    border_type, padding, behaviour = str(border_type).lower(), str(padding).lower(), str(behaviour).lower()
 
     _, c, h, w = input.shape
     kh, kw = kernel.shape[-2:]
@@ -486,7 +492,7 @@ def fft_conv(
         " input",
     )
 
-    if str(behaviour).lower() == "conv":
+    if behaviour == "conv":
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
