@@ -33,6 +33,23 @@ def _sync(device) -> None:
         torch.mps.synchronize()
 
 
+class TestFloatScalarPrecision(BaseTester):
+    @pytest.mark.parametrize(
+        "operation,kwargs",
+        [
+            (kornia.enhance.adjust_hue_raw, {"factor": 0.1}),
+            (kornia.enhance.adjust_gamma, {"gamma": 0.1}),
+            (kornia.enhance.adjust_gamma, {"gamma": 1.0, "gain": 0.1}),
+            (kornia.enhance.solarize, {"thresholds": 0.1}),
+            (kornia.enhance.solarize, {"thresholds": 0.5, "additions": 0.1}),
+        ],
+    )
+    def test_float_matches_image_dtype_tensor(self, device, dtype, operation, kwargs):
+        image = torch.tensor([0.05, 0.1], device=device, dtype=dtype).repeat(1, 3, 1, 1)
+        tensors = {key: image.new_tensor(value) for key, value in kwargs.items()}
+        self.assert_close(operation(image, **kwargs), operation(image, **tensors), rtol=0, atol=0)
+
+
 class TestInvert(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
@@ -1336,6 +1353,14 @@ class TestSolarize(BaseTester):
         if device.type != "cpu":
             pytest.skip("CPU only: the value check is an async device assert elsewhere")
         img = torch.rand(2, 3, 4, 5, device=device)
+        with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, addition)
+
+    @pytest.mark.parametrize("addition", [0.5001, -0.5001])
+    def test_float_additions_checked_before_rounding(self, device, dtype, addition):
+        # A float is checked as given, on the host, for every device: float16/bfloat16 round 0.5001 to 0.5,
+        # and a check on an MPS tensor is skipped.
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
             TestSolarize.f(img, 0.5, addition)
 

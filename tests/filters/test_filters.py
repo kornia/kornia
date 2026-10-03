@@ -19,6 +19,7 @@
 import pytest
 import torch
 import torch.nn.functional as F
+from torch._dynamo.testing import CompileCounter
 
 from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError
@@ -1606,39 +1607,76 @@ class TestConventionsFilter2d(BaseTester):
         # constant padding runs on any size
         assert filter2d(_rand(1, 1, 3, 1, device=device, dtype=dtype), kernel, "constant").shape == (1, 1, 3, 1)
 
-    @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d"])
-    def test_wart_kernel_batch_dividing_the_input_batch_is_applied_cyclically_5154(self, name, device, dtype):
-        """Two kernels for four samples are not rejected: sample i is filtered with kernel i % 2 (#5154)."""
+    @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d", "fft_conv"])
+    def test_convention_kernel_batch_is_one_or_the_input_batch_5154(self, name, device, dtype):
+        """A kernel batch that is neither 1 nor the input batch raises a kornia error naming both (#5154)."""
+        _fft_guard(name, device, dtype)
         if name == "filter2d_separable":
             image = _rand(4, 1, 5, 7, device=device, dtype=dtype)
-            kernel_x = _rand(2, 3, device=device, dtype=dtype, seed=1)
-            kernel_y = _rand(2, 3, device=device, dtype=dtype, seed=2)
+            kernel_x = _rand(4, 3, device=device, dtype=dtype, seed=1)
+            kernel_y = _rand(4, 3, device=device, dtype=dtype, seed=2)
 
             def run(x, lo, hi):
                 return filter2d_separable(x, kernel_x[lo:hi], kernel_y[lo:hi], "constant")
 
         else:
-            fn = filter3d if name == "filter3d" else filter2d
+            fn = {"filter2d": filter2d, "filter3d": filter3d, "fft_conv": fft_conv}[name]
             image = _rand(4, 1, *((3,) if name == "filter3d" else ()), 5, 7, device=device, dtype=dtype)
-            kernels = _rand(2, *((3,) if name == "filter3d" else ()), 3, 3, device=device, dtype=dtype, seed=1)
+            kernels = _rand(4, *((3,) if name == "filter3d" else ()), 3, 3, device=device, dtype=dtype, seed=1)
 
             def run(x, lo, hi):
                 return fn(x, kernels[lo:hi], "constant")
 
-        out = run(image, 0, 2)
-        assert out.shape == image.shape
+        # one kernel for the whole batch and one kernel per sample are the two accepted shapes
+        shared = run(image, 0, 1)
+        own = run(image, 0, 4)
+        assert shared.shape == own.shape == image.shape
         for i in range(4):
-            self.assert_close(out[i : i + 1], run(image[i : i + 1], i % 2, i % 2 + 1))
+            self.assert_close(shared[i : i + 1], run(image[i : i + 1], 0, 1))
+            self.assert_close(own[i : i + 1], run(image[i : i + 1], i, i + 1))
+        # 2 kernels divide the 4 samples and 3 do not: both raise the kornia error, not a torch view error
+        for count in (2, 3):
+            with pytest.raises(BaseError, match=f"kernel batch of {count} for an input batch of 4"):
+                run(image, 0, count)
 
-    def test_wart_fft_conv_broadcasts_one_sample_over_the_kernel_batch_5154(self, device, dtype):
-        """fft_conv returns a batch of 4 for one sample and 4 kernels, where filter2d raises (#5154)."""
+    def test_convention_fft_conv_rejects_a_kernel_batch_for_one_sample_5154(self, device, dtype):
+        """One sample with four kernels raises in fft_conv as in filter2d instead of broadcasting (#5154)."""
         _fft_guard("fft_conv", device, dtype)
         image = _rand(1, 1, 5, 7, device=device, dtype=dtype)
         kernels = _rand(4, 3, 3, device=device, dtype=dtype, seed=1)
-        out = fft_conv(image, kernels, border_type="constant")
-        assert out.shape == (4, 1, 5, 7)
-        for j in range(4):
-            self.assert_close(out[j : j + 1], fft_conv(image, kernels[j : j + 1], border_type="constant"))
+        for fn in (fft_conv, filter2d):
+            with pytest.raises(BaseError, match="kernel batch of 4 for an input batch of 1"):
+                fn(image, kernels, border_type="constant")
+
+    @pytest.mark.parametrize("per_sample", [False, True])
+    @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d", "fft_conv"])
+    def test_compile_kernel_batch_check_keeps_the_batch_dynamic_5154(
+        self, name, per_sample, device, dtype, torch_optimizer
+    ):
+        """The kernel batch check does not specialize the batch: one dynamic graph serves every batch (#5154)."""
+        _fft_guard(name, device, dtype)
+        if name == "fft_conv" and torch_version_le(2, 5, 1):
+            pytest.skip("torch 2.5.1 cannot trace torch.fft.rfftn with dynamic shapes")
+        if name == "filter2d_separable":
+
+            def op(x, k):
+                return filter2d_separable(x, k[:, 0], k[:, 1], "constant")
+
+        else:
+            fn = {"filter2d": filter2d, "filter3d": filter3d, "fft_conv": fft_conv}[name]
+
+            def op(x, k):
+                return fn(x, k, "constant")
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        depth = (5,) if name == "filter3d" else ()
+        # no batch equals another axis, so duck sizing cannot tie the batch to it
+        for batch in (2, 4, 6):
+            image = _rand(batch, 3, *depth, 7, 9, device=device, dtype=dtype)
+            kernel = _rand(batch if per_sample else 1, *((3,) if depth else ()), 3, 3, device=device, dtype=dtype)
+            self.assert_close(compiled(image, kernel), op(image, kernel))
+        assert counter.frame_count == 1
 
     @pytest.mark.parametrize("name", ["filter2d", "filter2d_separable", "filter3d", "fft_conv"])
     def test_wart_integer_input_truncates_a_fractional_kernel_to_zero_5155(self, name, device, dtype):

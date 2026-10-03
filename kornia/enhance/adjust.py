@@ -269,7 +269,7 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
     )
 
     if isinstance(factor, float):
-        factor = torch.as_tensor(factor)
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
 
     factor = factor.to(image.device, image.dtype)
 
@@ -389,10 +389,10 @@ def adjust_gamma(
         raise TypeError(f"The gain should be a positive float or torch.Tensor. Got {type(gain)}")
 
     if isinstance(gamma, float):
-        gamma = torch.Tensor([gamma])
+        gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
 
     if isinstance(gain, float):
-        gain = torch.Tensor([gain])
+        gain = torch.tensor([gain], device=input.device, dtype=input.dtype)
 
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
@@ -846,17 +846,22 @@ def solarize(
         raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(thresholds)}")
 
     if isinstance(thresholds, float):
-        thresholds = torch.as_tensor(thresholds)
+        thresholds = torch.as_tensor(thresholds, device=input.device, dtype=input.dtype)
 
     if additions is not None:
         if not isinstance(additions, (float, torch.Tensor)):
             raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(additions)}")
 
         if isinstance(additions, float):
-            additions = torch.as_tensor(additions)
+            # Check the Python value on the host: rounded to float16/bfloat16, a value just past the bound
+            # passes, and the check is skipped for a tensor on MPS.
+            in_range = torch.tensor(-0.5 <= additions <= 0.5)
+            additions = torch.as_tensor(additions, device=input.device, dtype=input.dtype)
+        else:
+            in_range = ((additions <= 0.5) & (additions >= -0.5)).all()
 
         _assert_async_value_check(
-            ((additions <= 0.5) & (additions >= -0.5)).all(),
+            in_range,
             "The addition must be in the closed range [-0.5, 0.5]. Clamp it first: min(max(additions, -0.5), 0.5) "
             "for floats, additions.clamp(-0.5, 0.5) for tensors.",
         )

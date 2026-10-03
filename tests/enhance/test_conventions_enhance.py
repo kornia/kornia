@@ -87,8 +87,7 @@ class TestEnhanceConventions(BaseTester):
 
     @pytest.mark.parametrize("explicit_center", [False, True])
     @pytest.mark.parametrize("return_pdf", [False, True])
-    @pytest.mark.xfail(strict=True, reason="#5363: rank-2 image histogram squeezes away a single bin axis")
-    def test_wart_image_histogram_rank2_single_bin_preserves_bin_axis_5363(
+    def test_convention_image_histogram_rank2_single_bin_preserves_bin_axis_5363(
         self, device, dtype, explicit_center, return_pdf
     ):
         image = torch.tensor([[0.25, 0.75]], device=device, dtype=dtype)
