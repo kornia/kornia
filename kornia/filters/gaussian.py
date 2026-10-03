@@ -103,7 +103,7 @@ def gaussian_blur2d(
             with shape :math:`(B, 2)`. Values must be positive.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+          ``'replicate'`` or ``'circular'``, case-insensitive. Default: ``'reflect'``.
         separable: run as composition of two 1d-convolutions. Default: ``True``.
 
     Returns:
@@ -165,13 +165,14 @@ def gaussian_blur2d(
         bs = sigma.shape[0]
         kernel_x = get_gaussian_kernel1d(kx, sigma[:, 1].view(bs, 1))
         kernel_y = get_gaussian_kernel1d(ky, sigma[:, 0].view(bs, 1))
+        border = str(border_type).lower()
         if (
             _gaussian_blur2d_cpu_eligible(input)
             and not (torch.is_grad_enabled() and sigma.requires_grad)
             and bs in (1, input.shape[0])
-            and border_type in ("constant", "reflect", "replicate", "circular")
+            and border in ("constant", "reflect", "replicate", "circular")
         ):
-            out = _gaussian_blur2d_cpu(input, kernel_x, kernel_y, border_type)
+            out = _gaussian_blur2d_cpu(input, kernel_x, kernel_y, border)
         else:
             out = filter2d_separable(input, kernel_x, kernel_y, border_type)
     else:

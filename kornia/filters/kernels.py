@@ -653,8 +653,7 @@ def get_spatial_gradient_kernel2d(
         - The kernels are raw integer stencils, not derivative estimates. Per unit slope Sobel answers 8 and
           ``'diff'`` answers 2; per unit second derivative Sobel answers 64 on all three channels, while ``'diff'``
           answers 1 on :math:`\partial_{xx}` and :math:`\partial_{yy}` and 4 on :math:`\partial_{xy}`.
-        - Known defect: ``mode`` is checked case-insensitively but used as given, so ``'Sobel'`` raises
-          (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
+        - ``mode`` is case-insensitive: ``'Sobel'`` is ``'sobel'``.
 
     Args:
         mode: ``'sobel'`` or ``'diff'``.
@@ -669,6 +668,8 @@ def get_spatial_gradient_kernel2d(
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
     KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
+    # the check is case-insensitive, so dispatch on the lower-case spelling as well
+    mode = mode.lower()
 
     if mode == "sobel" and order == 1:
         kernel: torch.Tensor = get_sobel_kernel2d(device=device, dtype=dtype)
@@ -697,12 +698,10 @@ def get_spatial_gradient_kernel3d(
           singleton second axis that :func:`~kornia.filters.get_spatial_gradient_kernel2d` lacks.
         - In a floating ``dtype`` every channel is in derivative units: it answers 1 to a unit slope or a unit
           second derivative, unlike the raw 2d stencils.
-        - Known defects:
-
-          - ``mode`` is checked case-insensitively but used as given, so ``'Diff'`` raises
-            (`#5156 <https://github.com/kornia/kornia/issues/5156>`_).
-          - a signed integer ``dtype`` truncates the half and quarter taps to 0, so the first-order channels and
-            the mixed second-order ones are all zero (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+        - ``mode`` is case-insensitive: ``'Diff'`` is ``'diff'``.
+        - Known defect: a signed integer ``dtype`` truncates the half and quarter taps to 0, so the first-order
+          channels and the mixed second-order ones are all zero
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
         mode: ``'diff'``.
@@ -716,6 +715,8 @@ def get_spatial_gradient_kernel3d(
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
     KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
+    # the check is case-insensitive, so dispatch on the lower-case spelling as well
+    mode = mode.lower()
 
     if mode == "diff" and order == 1:
         kernel = get_diff_kernel3d(device=device, dtype=dtype)
