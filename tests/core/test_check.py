@@ -191,26 +191,28 @@ class TestCheckSameDevices:
         assert KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device=device) for _ in range(count)]) is True
 
     @pytest.mark.parametrize(
-        "tensors, got, actual_type",
+        "tensors, got, actual_type, expected_type",
         [
-            ([], "an empty list", None),
-            ((), "tuple", tuple),
-            ((torch.zeros(1),), "tuple", tuple),
-            (None, "NoneType", type(None)),
-            ("tensor", "str", str),
-            ([1], "a list containing int", int),
-            ([torch.zeros(1), 1], "a list containing int", int),
+            ([], "an empty list", None, None),
+            ((), "tuple", tuple, list),
+            ((torch.zeros(1),), "tuple", tuple, list),
+            (None, "NoneType", type(None), list),
+            ("tensor", "str", str, list),
+            ([1], "a list containing int", int, torch.Tensor),
+            ([torch.zeros(1), 1], "a list containing int", int, torch.Tensor),
         ],
     )
-    def test_invalid_input(self, tensors, got, actual_type):
+    def test_invalid_input(self, tensors, got, actual_type, expected_type):
         assert KORNIA_CHECK_SAME_DEVICES(tensors, raises=False) is False
         with pytest.raises(TypeCheckError, match=f"Expected a non-empty list of tensors, got {got}\\.") as exc_info:
             KORNIA_CHECK_SAME_DEVICES(tensors, raises=True)
         assert exc_info.value.actual_type is actual_type
+        assert exc_info.value.expected_type is expected_type
 
-    def test_invalid_input_message(self):
+    @pytest.mark.parametrize("tensors", [[], (torch.zeros(1),), [torch.zeros(1), 1]])
+    def test_invalid_input_message(self, tensors):
         with pytest.raises(TypeCheckError, match="custom message"):
-            KORNIA_CHECK_SAME_DEVICES([], msg="custom message")
+            KORNIA_CHECK_SAME_DEVICES(tensors, msg="custom message")
 
     def test_invalid(self):
         with pytest.raises(DeviceError) as exc_info:
