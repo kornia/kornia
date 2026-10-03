@@ -612,9 +612,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if DataKey.INPUT in original_data_keys:
                     inp = in_args[0]
                     # A video input shall be BCDHW while an image input shall be BCHW
-                    if self.contains_video_sequential:
-                        _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
-                    elif self.contains_3d_augmentation:
+                    if self.contains_video_sequential or self.contains_3d_augmentation:
                         _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                     else:
                         _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
