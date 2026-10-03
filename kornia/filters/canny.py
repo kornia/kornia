@@ -177,7 +177,8 @@ def canny(
     negative_idx: torch.Tensor = (angle_45 + 4) % 8
     negative_idx = negative_idx.long()
 
-    # The two neighbours along the gradient direction, read with one gather per channel
+    # The two neighbours along the gradient direction, read with one gather per channel. Two separate gathers on the
+    # padded magnitude miscompile under inductor on MPS, the second reading a wrong magnitude (pytorch/pytorch#199642)
     neighbour_both: torch.Tensor = torch.gather(window, 2, torch.stack([positive_idx, negative_idx], 2))
     neighbour_positive: torch.Tensor = neighbour_both[:, :, 0]
     neighbour_negative: torch.Tensor = neighbour_both[:, :, 1]
