@@ -936,10 +936,10 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cam.project(regular), kornia.geometry.camera.project_points(regular, K3))
 
     def test_wart_unproject_fails_on_zero_padded_intrinsics_4771(self, device, dtype):
-        # Wart pin for #4771: a 3x3 K zero-padded to 4x4 ([3, 3] = 0) constructs and projects correctly, but
-        # unproject inverts the singular intrinsics @ extrinsics and raises. Delete or invert when #4771 is
-        # repaired (constructor validation or a 3x3-block unproject both fail this pin). The control sets
-        # [3, 3] = 1 and changes nothing else, so the raise is attributable to the zero pad.
+        # Inverted pin for #4771: project and unproject both build the projection from the intrinsics'
+        # top-left 3x3 block, so a 3x3 K zero-padded to 4x4 ([3, 3] = 0) round-trips exactly like its
+        # homogeneous embedding. The control sets [3, 3] = 1 and changes nothing else, so the two cameras
+        # agree bit for bit.
         height, width = torch.tensor([6], device=device), torch.tensor([8], device=device)
         point = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
         depth = torch.tensor([[4.0]], device=device, dtype=dtype)
@@ -954,8 +954,7 @@ class TestPinholeCamera(BaseTester):
             kornia.geometry.camera.PinholeCamera(control, _e44(device, dtype), height, width).unproject(uv, depth),
             point,
         )
-        with pytest.raises(RuntimeError):
-            cam.unproject(uv, depth)
+        self.assert_close(cam.unproject(uv, depth), point)
 
     def test_convention_from_parameters_fills_every_batch_element_4279(self, device, dtype):
         # Regression pin for #4279: image size must be filled for every camera in the batch.
