@@ -229,6 +229,7 @@ select = [
   "SIM103",  # needless-bool
   "SIM114",  # if-with-same-arms
   "SIM115",  # open-file-with-context-handler
+  "SIM117",  # multiple-with-statements
   "SIM201",  # negate-equal-op
   "SIM210",  # if-expr-with-true-false
   "SIM211",  # if-expr-with-false-true
