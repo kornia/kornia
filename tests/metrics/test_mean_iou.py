@@ -155,6 +155,25 @@ class TestMeanIoUBBox(BaseTester):
         assert reference_input.grad is not None
         self.assert_close(first.grad, reference_input.grad.to(dtype=dtype).to(device=device), atol=1e-6, rtol=1e-3)
 
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_areas_are_not_rounded_to_the_box_dtype(self, swap, device, dtype):
+        # In float16 the areas 40000 and 40800 sum past the maximum, which gave an IoU of 0. Computed in bfloat16 the
+        # IoU was 0.9765625, and rounding only the taller box's area gives 0.984375, instead of 0.98046875. Every
+        # coordinate is exact in both dtypes.
+        square = torch.tensor([[0, 0, 200, 200]], device=device, dtype=dtype)
+        taller = torch.tensor([[0, 0, 200, 204]], device=device, dtype=dtype)
+        boxes_1, boxes_2 = (taller, square) if swap else (square, taller)
+        actual = kornia.metrics.mean_iou_bbox(boxes_1, boxes_2)
+        expected = torch.tensor([[40000 / 40800]], device=device, dtype=dtype)
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    def test_integer_boxes_return_float32(self, device):
+        boxes = torch.tensor([[0, 0, 512, 512], [256, 0, 768, 512]], device=device)
+        actual = kornia.metrics.mean_iou_bbox(boxes, boxes)
+        assert actual.dtype == torch.float32
+        expected = torch.tensor([[1.0, 1.0 / 3.0], [1.0 / 3.0, 1.0]], device=device)
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
     def test_bbox_xyxy_format(self, device, dtype):
         """Test XYXY format (original behavior)."""
         boxes_1 = torch.tensor([[40, 40, 60, 60], [30, 40, 50, 60]], device=device, dtype=dtype)
