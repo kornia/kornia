@@ -187,7 +187,7 @@ class Vector3(TensorWrapper):
             :class:`Vector3` containing the assembled coordinates.
         """
         KORNIA_CHECK(type(x) is type(y) is type(z))
-        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)), ...)
+        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
         # TODO: this is totally insane ...
@@ -301,7 +301,7 @@ class Vector2(TensorWrapper):
             :class:`Vector2` containing the assembled coordinates.
         """
         KORNIA_CHECK(type(x) is type(y))
-        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)), ...)
+        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y), device=device, dtype=dtype), Vector2)
         # TODO: this is totally insane ...

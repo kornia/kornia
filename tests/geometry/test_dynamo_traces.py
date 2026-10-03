@@ -21,35 +21,37 @@ import torch
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector2, Vector3
 
-# Safely check for dynamo without relying on internal Kornia paths
-pytestmark = pytest.mark.skipif(not hasattr(torch, "compile"), reason="Dynamo (torch.compile) is not available")
+from testing.base import BaseTester, dynamo_is_available
 
 
-def test_eager_backend_traces_geometry():
-    t = torch.rand(4)
-    plane = Hyperplane(Vector3(torch.tensor([0.0, 0.0, 1.0])), Scalar(torch.tensor(0.5)))
+@pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+class TestGeometryEagerBackendTraces(BaseTester):
+    # Dynamo on torch 2.5.1 cannot trace ``isinstance`` against a ``A | B`` union (#5371). The test names keep
+    # "compile" and "dynamo" out, so the ordinary jobs, including the torch 2.5.1 legs that have Dynamo, run them.
 
-    # Define the 3 cases that were breaking fullgraph compilation
-    def fn_vec3(x):
-        return Vector3.from_coords(x, x, x).data
+    def test_eager_backend_traces_vector3_from_coords(self, device, dtype):
+        def fn(x):
+            return Vector3.from_coords(x, 2 * x, -x).data
 
-    def fn_vec2(x):
-        return Vector2.from_coords(x, x).data
+        torch._dynamo.reset()
+        x = torch.tensor([0.5, -1.0, 2.0, 3.0], device=device, dtype=dtype)
+        self.assert_close(torch.compile(fn, backend="eager", fullgraph=True)(x), fn(x))
 
-    def fn_plane(p):
-        return plane.signed_distance(p)
+    def test_eager_backend_traces_vector2_from_coords(self, device, dtype):
+        def fn(x):
+            return Vector2.from_coords(x, 2 * x).data
 
-    # Test Vector3
-    torch._dynamo.reset()
-    compiled_vec3 = torch.compile(fn_vec3, backend="eager", fullgraph=True)
-    compiled_vec3(t)  # Should not raise
+        torch._dynamo.reset()
+        x = torch.tensor([0.5, -1.0, 2.0, 3.0], device=device, dtype=dtype)
+        self.assert_close(torch.compile(fn, backend="eager", fullgraph=True)(x), fn(x))
 
-    # Test Vector2
-    torch._dynamo.reset()
-    compiled_vec2 = torch.compile(fn_vec2, backend="eager", fullgraph=True)
-    compiled_vec2(t)  # Should not raise
+    def test_eager_backend_traces_hyperplane_signed_distance(self, device, dtype):
+        normal = Vector3(torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype))
+        plane = Hyperplane(normal, Scalar(torch.tensor(0.5, device=device, dtype=dtype)))
 
-    # Test Hyperplane
-    torch._dynamo.reset()
-    compiled_plane = torch.compile(fn_plane, backend="eager", fullgraph=True)
-    compiled_plane(torch.rand(3))  # Should not raise
+        def fn(p):
+            return plane.signed_distance(p).data
+
+        torch._dynamo.reset()
+        p = torch.tensor([[1.0, 2.0, 3.0], [0.0, -1.0, -0.5]], device=device, dtype=dtype)
+        self.assert_close(torch.compile(fn, backend="eager", fullgraph=True)(p), fn(p))
