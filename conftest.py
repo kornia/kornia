@@ -707,7 +707,7 @@ main deps:
     - torch-{torch.__version__}
         - commit: {torch.version.git_version}
         - cuda: {torch.version.cuda}
-        - nvidia-driver: {env_info["nvidia"] if "nvidia" in env_info else None}
+        - nvidia-driver: {env_info.get("nvidia")}
 x deps:
     - {accelerate_info}
 dev deps:
