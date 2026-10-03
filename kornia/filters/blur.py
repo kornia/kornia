@@ -88,6 +88,8 @@ def _box_blur_pool(
         str(border_type).lower() in {"constant", "reflect", "replicate", "circular"},
         f"Invalid border, {border_type}. Expected one of constant, reflect, replicate, circular",
     )
+    # the check is case-insensitive, so pad with the lower-case spelling as well
+    border_type = str(border_type).lower()
 
     # A one-dimensional window needs only one pass, even in separable mode.
     windows = ((1, kx), (ky, 1)) if separable and ky > 1 and kx > 1 else ((ky, kx),)
