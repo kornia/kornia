@@ -208,6 +208,21 @@ def supports_bilinear_2d_grid_sample_backward(device: torch.device, dtype: torch
     return _supports_kernel_probe(_bilinear_2d_grid_sample_backward_op, device.type, dtype)
 
 
+def _nearest_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
+    F.grid_sample(inp, grid, mode="nearest", align_corners=True)
+
+
+def supports_nearest_2d_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports nearest interpolation in 2D ``grid_sample`` for ``dtype``.
+
+    Probed at runtime and cached per (device type, dtype), so tests guarded by this helper
+    auto-enable once PyTorch adds the missing interpolation kernel.
+    """
+    return _supports_kernel_probe(_nearest_2d_grid_sample_op, device.type, dtype)
+
+
 def _bicubic_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
     inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
     grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
