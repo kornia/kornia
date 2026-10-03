@@ -377,8 +377,7 @@ class RgbToYuv420(nn.Module):
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
         """Convert an RGB tensor to YUV420 planes.
@@ -426,8 +425,7 @@ class RgbToYuv422(nn.Module):
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
         """Convert an RGB tensor to YUV422 planes.
@@ -519,8 +517,7 @@ class Yuv420ToRgb(nn.Module):
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
         """Convert YUV420 luma/chroma planes to RGB.
@@ -566,8 +563,7 @@ class Yuv422ToRgb(nn.Module):
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
         """Convert YUV422 luma/chroma planes to RGB.
