@@ -283,19 +283,27 @@ class TestSe2(BaseTester):
         self.assert_close(g.log(), v, rtol=8 * eps, atol=8 * eps)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
-    def test_wart_se2_hat_and_vee_layout_4929(self, device, dtype, batch_size):
-        # https://github.com/kornia/kornia/issues/4929: hat places translation in the bottom row and has a symmetric
-        # rotation block; vee reads that same non-generator layout, so vee(hat(v)) conceals the defect.
+    def test_convention_se2_hat_and_vee_are_the_generator_4929(self, device, dtype, batch_size):
+        # https://github.com/kornia/kornia/issues/4929: hat used to put the translation in the bottom row and the
+        # angle in a symmetric block, and vee read that layout. Pin both separately, since vee(hat(v)) round-trips
+        # either way.
         v = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         s_hat = Se2.hat(torch.cat((v, theta), -1))
-        self.assert_close(v, s_hat[..., 2, 0:2])
-        self.assert_close(s_hat[..., 0:2, 0:2].squeeze(), So2.hat(theta).squeeze())
+        self.assert_close(s_hat[..., :2, 2], v)
+        self.assert_close(s_hat[..., :2, :2].squeeze(), So2.hat(theta.squeeze(-1)).squeeze())
+        self.assert_close(s_hat[..., 2, :], torch.zeros_like(s_hat[..., 2, :]))
         omega = self._make_rand_data(device, dtype, input_shape=(batch_size, 3, 3))
         recovered = Se2.vee(omega)
-        self.assert_close(torch.stack((recovered[..., 0], recovered[..., 1]), -1), omega[..., 2, :2])
-        self.assert_close(recovered[..., -1], omega[..., 0, 1])
+        self.assert_close(recovered[..., :2], omega[..., :2, 2])
+        self.assert_close(recovered[..., -1], omega[..., 1, 0])
         self.assert_close(Se2.vee(s_hat), torch.cat((v, theta), -1))
+
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
+    def test_matrix_exp_of_hat_is_exp(self, device, dtype, batch_size):
+        v = self._make_rand_data(device, dtype, (batch_size, 3))
+        expm = torch.linalg.matrix_exp(Se2.hat(v).double()).to(dtype)
+        self.assert_close(expm, Se2.exp(v).matrix())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_identity(self, device, dtype, batch_size):
