@@ -62,6 +62,13 @@ def _is_numpy_array(arg: Any) -> bool:
     return numpy_module is not None and isinstance(arg, numpy_module.ndarray)
 
 
+def _is_pil_image(arg: Any) -> bool:
+    # Look PIL up for the same reason as NumPy above, and because Pillow is optional: a PIL image can exist only once
+    # PIL is imported, so a tensor mask must not load it through the lazy loader.
+    pil_module = sys.modules.get("PIL.Image")
+    return pil_module is not None and isinstance(arg, pil_module.Image)
+
+
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
@@ -655,6 +662,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     ) -> Any:
         """Overwrite the __call__ function to handle various inputs.
 
+        Arguments convert by data key, and only an image takes the image conversion. A mask given as a NumPy array,
+        a PIL image or an image file path keeps its dtype and label values, palette indices included. Every mask
+        must match the image's height and width, with a batch size of 1 or the image's.
+
         Args:
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert.
@@ -716,13 +727,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if data_key in _IMG_OPTIONS:
             return arg
         if data_key in _MSK_OPTIONS:
-            if _is_numpy_array(arg):
-                return image_to_tensor(arg)
-            if isinstance(arg, Image.Image):  # type: ignore
-                return image_to_tensor(np.array(arg))
+            # A PIL image or an image file converts like its NumPy array, so labels and palette indices are kept.
             if isinstance(arg, str) and self._is_valid_arg(arg):
                 with Image.open(arg) as mask:  # type: ignore
-                    return image_to_tensor(np.array(mask))
+                    arg = np.array(mask)
+            elif _is_pil_image(arg):
+                arg = np.array(arg)
+            if _is_numpy_array(arg):
+                if not arg.dtype.isnative:  # torch.from_numpy rejects big-endian data, such as PIL's "I;16B" mode
+                    arg = arg.astype(arg.dtype.newbyteorder("="))
+                return image_to_tensor(arg)
             return arg
         if _is_numpy_array(arg):
             return torch.as_tensor(arg)
