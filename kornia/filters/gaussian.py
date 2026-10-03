@@ -17,13 +17,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
@@ -257,8 +254,3 @@ class GaussianBlur2d(nn.Module):
             reducing high-frequency noise and fine texture.
         """
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
-
-
-@deprecated(replace_with="gaussian_blur2d", version="0.6.10")
-def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
-    return gaussian_blur2d(*args, **kwargs)
