@@ -187,6 +187,11 @@ class TensorWrapper:
         # Wrap the result if it's a tensor
         return _wrap(val, type(self))
 
+    def sum(self, *args: Any, **kwargs: Any) -> Tensor:
+        """Return the sum of the underlying tensor."""
+        self.used_attrs.add("sum")
+        return self._data.sum(*args, **kwargs)
+
     def __setattr__(self, name: str, value: Any) -> None:
         """Set attribute on underlying tensor."""
         # Only track non-internal attributes

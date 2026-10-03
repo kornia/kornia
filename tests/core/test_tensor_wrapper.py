@@ -401,13 +401,13 @@ class TestTensorWrapperProtocol(BaseTester):
             (_build_and_update, True),
             # torch 2.5.1's Dynamo breaks the graph here, cleanly: it does not send unary ``-`` or ``~``, a
             # comparison, ``@`` or a binary or in-place operator with a tensor operand to a user class, and it cannot
-            # trace a torch function on a wrapper, ``__getitem__`` or a forwarded method.
+            # trace a torch function on a wrapper or ``__getitem__``.
             (lambda t: torch.add(TensorWrapper(t), 1).unwrap(), False),
             (lambda t: TensorWrapper(t)[0].unwrap(), False),
-            (lambda t: TensorWrapper(t).sum(), False),
+            (lambda t: TensorWrapper(t.clone()).sum(), True),
             (lambda t: (TensorWrapper(t) @ TensorWrapper(t.T)).unwrap(), False),
         ],
-        ids=["data", "unwrap", "add", "inplace_and_reflected", "torch_add", "getitem", "method", "matmul"],
+        ids=["data", "unwrap", "add", "inplace_and_reflected", "torch_add", "getitem", "method_intermediate_tensor", "matmul"],
     )
     def test_eager_backend_traces_a_function_that_builds_a_wrapper(self, device, dtype, fn, fullgraph):
         # The eager backend keeps this in the ordinary jobs; test_dynamo covers the optimizer backends.
