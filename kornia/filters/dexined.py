@@ -363,9 +363,10 @@ class DexiNed(nn.Module):
         normalization use inference behavior.
 
         Args:
-            path_file: URL or local checkpoint identifier accepted by
-                :func:`kornia.core.download.load_state_dict_from_url`, or a
-                list of candidate URLs tried in order (HF-first fallback).
+            path_file: URL accepted by
+                :func:`kornia.core.download.load_state_dict_from_url` (a local
+                file as a ``file://`` URL), or a list of candidate URLs tried in
+                order (HF-first fallback).
         """
         # use torch.hub to load pretrained model
         pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
