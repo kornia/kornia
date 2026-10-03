@@ -137,6 +137,22 @@ class TestMotionBlur(BaseTester):
         with pytest.raises(Exception, match=r"direction and angle must have the same length. Got 2 and 3."):
             get_motion_kernel2d(3, angle, direction)
 
+    @pytest.mark.parametrize("kernel_size", [(5, 5), [5, 5], 5.0], ids=["tuple", "list", "float"])
+    def test_convention_kernel_size_must_be_an_int_5169(self, kernel_size, device, dtype):
+        # The motion kernel is square, so kernel_size is a single int. Anything else raises a kornia error that names
+        # the argument, from the kernel builder, the function and the module alike.
+        image = torch.rand(1, 1, 8, 9, device=device, dtype=dtype)
+        angle = torch.tensor([30.0], device=device, dtype=dtype)
+        direction = torch.tensor([0.5], device=device, dtype=dtype)
+        calls = (
+            lambda: get_motion_kernel2d(kernel_size, angle, direction),
+            lambda: motion_blur(image, kernel_size, 30.0, 0.5),
+            lambda: MotionBlur(kernel_size, 30.0, 0.5)(image),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match=f"kernel_size must be an int. Got {type(kernel_size).__name__}"):
+                call()
+
     def test_noncontiguous(self, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
@@ -335,6 +351,22 @@ class TestMotionBlur3D(BaseTester):
         expected = torch.ones(1, device=device, dtype=dtype) * batch_size
         assert actual.shape == (batch_size, ksize, ksize, ksize)
         self.assert_close(actual.sum(), expected.sum())
+
+    @pytest.mark.parametrize("kernel_size", [(5, 5, 5), [5, 5, 5], 5.0], ids=["tuple", "list", "float"])
+    def test_convention_kernel_size_must_be_an_int_5169(self, kernel_size, device, dtype):
+        # The motion kernel is cubic, so kernel_size is a single int. Anything else raises a kornia error that names
+        # the argument, from the kernel builder, the function and the module alike.
+        volume = torch.rand(1, 1, 6, 8, 9, device=device, dtype=dtype)
+        angle = torch.tensor([[0.0, 90.0, 90.0]], device=device, dtype=dtype)
+        direction = torch.tensor([0.5], device=device, dtype=dtype)
+        calls = (
+            lambda: get_motion_kernel3d(kernel_size, angle, direction),
+            lambda: motion_blur3d(volume, kernel_size, (0.0, 90.0, 90.0), 0.5),
+            lambda: MotionBlur3D(kernel_size, (0.0, 90.0, 90.0), 0.5)(volume),
+        )
+        for call in calls:
+            with pytest.raises(BaseError, match=f"kernel_size must be an int. Got {type(kernel_size).__name__}"):
+                call()
 
     def test_noncontiguous(self, device, dtype):
         if not supports_replicate_padding_3d(device, dtype):
