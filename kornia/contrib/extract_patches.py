@@ -329,11 +329,8 @@ def _check_patch_fit(original_size: Tuple[int, int], window_size: Tuple[int, int
     # the remainder takes into account half a window on each side,
     # the rest of the image is divided based on the stride, not the window
     # size
-    if (remainder_horizontal != 0) or (remainder_vertical != 0):
-        # needs padding to fit
-        return False
-    # we can fit a full number of patches in, based on the stride
-    return True
+    # we can fit a full number of patches in, based on the stride, only if nothing remains
+    return remainder_horizontal == 0 and remainder_vertical == 0
 
 
 def combine_tensor_patches(

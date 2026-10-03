@@ -406,13 +406,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         """
         for arg in self.children():
-            if isinstance(arg, ImageSequential) and not arg.is_intensity_only(strict):
-                return False
             if isinstance(arg, ImageSequential):
-                pass
-            elif isinstance(arg, K.IntensityAugmentationBase2D):
-                pass
-            elif strict:
+                if not arg.is_intensity_only(strict):
+                    return False
+            elif strict and not isinstance(arg, K.IntensityAugmentationBase2D):
                 # disallow non-registered ops if in strict mode
                 # TODO: add an ops register module
                 return False
