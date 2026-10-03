@@ -224,9 +224,12 @@ def motion_blur(
     .. image:: _static/img/motion_blur.png
 
     Convention:
-        The kernel is :func:`~kornia.filters.get_motion_kernel2d`'s, correlated with the image by
-        :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction`` (including the side
-        on which the streak of a bright point is heaviest), ``mode``, the tensor shapes and the border modes.
+        - The kernel is :func:`~kornia.filters.get_motion_kernel2d`'s, correlated with the image by
+          :func:`~kornia.filters.filter2d`; their Convention blocks cover ``angle``, ``direction`` (including the
+          side on which the streak of a bright point is heaviest), ``mode``, the tensor shapes and the border modes.
+        - Known defect: a tensor ``angle`` with a float ``direction`` raises ``TypeCheckError`` unless the angle's
+          dtype is the input's, promoted to at least float32, so a float32 angle fails on a float64 image
+          (`#5429 <https://github.com/kornia/kornia/issues/5429>`_).
 
     Args:
         input: the input torch.Tensor with shape :math:`(B, C, H, W)`.
@@ -277,11 +280,13 @@ def motion_blur3d(
     r"""Perform motion blur on 3D volumes (5D torch.Tensor).
 
     Convention:
-        The kernel is :func:`~kornia.filters.get_motion_kernel3d`'s, correlated with the volume by
-        :func:`~kornia.filters.filter3d`; their Convention blocks cover ``angle``, ``direction``, ``mode`` and the
-        border modes. With ``direction=1`` and a zero ``angle`` the streak of a bright voxel is heaviest toward
-        :math:`+x`; a positive roll alone turns it toward :math:`+y`, and a positive pitch alone toward decreasing
-        ``D``.
+        - The kernel is :func:`~kornia.filters.get_motion_kernel3d`'s, correlated with the volume by
+          :func:`~kornia.filters.filter3d`; their Convention blocks cover ``angle``, ``direction``, ``mode`` and the
+          border modes. With ``direction=1`` and a zero ``angle`` the streak of a bright voxel is heaviest toward
+          :math:`+x`; a positive roll alone turns it toward :math:`+y`, and a positive pitch alone toward decreasing
+          ``D``.
+        - Known defect: that of :func:`~kornia.filters.motion_blur`, for a :math:`(B, 3)` tensor ``angle``
+          (`#5429 <https://github.com/kornia/kornia/issues/5429>`_).
 
     Args:
         input: the input torch.Tensor with shape :math:`(B, C, D, H, W)`.

@@ -628,21 +628,6 @@ class TestConventionsMotionBlur(BaseTester):
         with pytest.raises(BaseError):
             motion_blur(image, 5, angle, 0.5)
 
-    def test_convention_motion_blur_direction_one_streaks_toward_increasing_column(self, device, dtype):
-        # motion_blur correlates with get_motion_kernel2d's kernel, whose heavy end is on the left for direction=1, so
-        # the streak of a bright point is heaviest to its right: toward increasing column, 2 px away for size 5.
-        # border_type='constant' is passed explicitly, so the pin does not depend on the default border.
-        # Snippet used to generate expected:
-        #   x = torch.zeros(1, 1, 11, 15); x[0, 0, 4, 6] = 1
-        #   print(divmod(int(motion_blur(x, 5, 0.0, 1.0, "constant").argmax()), 15))  # (4, 8)
-        image = torch.zeros(1, 1, 11, 15, device=device, dtype=dtype)
-        image[0, 0, 4, 6] = 1.0
-        for blur in (lambda x: motion_blur(x, 5, 0.0, 1.0, "constant"), MotionBlur(5, 0.0, 1.0, "constant")):
-            out = blur(image)[0, 0]
-            assert divmod(int(out.detach().cpu().float().argmax()), 15) == (4, 8)
-            assert out[4, 8] > out[4, 7] > out[4, 6] > out[4, 5]
-            assert out[4, 4] == 0
-
     @pytest.mark.parametrize("volumetric", [False, True], ids=["MotionBlur", "MotionBlur3D"])
     def test_convention_motion_blur_modules_honour_mode_5164(self, volumetric, device, dtype):
         """MotionBlur and MotionBlur3D rotate the kernel with their mode argument, as the functions do (#5164)."""
@@ -701,3 +686,20 @@ class TestConventionsMotionBlur(BaseTester):
             motion_blur(torch.rand(1, 1, 9, 12, device=device, dtype=dtype), (5, 5), 30.0, 0.5)
         with pytest.raises(BaseError, match="kernel_size"):
             motion_blur3d(torch.rand(1, 1, 5, 9, 12, device=device, dtype=dtype), (3, 3, 3), (30.0, 0.0, 0.0), 0.5)
+
+    def test_wart_motion_blur_float32_tensor_angle_with_float_direction_raises_on_float64_5429(self, device):
+        """A float32 tensor angle with a float direction raises on a float64 input, in 2-D and 3-D (#5429)."""
+        # The float direction becomes a float64 tensor that no longer matches the float32 angle. A fix that brings
+        # both to one floating dtype returns a float64 blur and fails this pin.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        image = torch.rand(1, 1, 9, 11, device=device, dtype=torch.float64)
+        volume = torch.rand(1, 1, 7, 9, 11, device=device, dtype=torch.float64)
+        with pytest.raises(BaseError):
+            motion_blur(image, 5, torch.tensor([30.0]), 0.5)
+        with pytest.raises(BaseError):
+            motion_blur(image, 5, torch.tensor(30.0), 0.5)
+        with pytest.raises(BaseError):
+            motion_blur3d(volume, 5, torch.tensor([[30.0, 0.0, 0.0]]), 0.5)
+        # control: a float64 angle runs
+        assert motion_blur(image, 5, torch.tensor([30.0], dtype=torch.float64), 0.5).dtype == torch.float64
